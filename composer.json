@@ -1,8 +1,8 @@
 {
-  "name": "jl1dvg/medforge",
   "autoload": {
     "psr-4": {
-      "MedForge\\": "./"
+      "Controllers\\": "controllers/",
+      "Models\\": "models/"
     }
   }
 }
