@@ -27,7 +27,7 @@ require_once __DIR__ . '/../../bootstrap.php';
         <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i class="icon-Settings-1"><span
                             class="path1"></span><span class="path2"></span></i>Reportes</a>
             <uL>
-                <li><a href="<?php echo BASE_URL . 'views/main/repots/qx_reports.php'; ?>"><i class="icon-Commit"><span
+                <li><a href="<?php echo BASE_URL . 'views/reportes/cirugias.php'; ?>"><i class="icon-Commit"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Reporte de Protocolos</a></li>
                 <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i class="icon-Commit"><span
