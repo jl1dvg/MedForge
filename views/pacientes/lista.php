@@ -77,7 +77,7 @@ $pacientes = $pacienteController->obtenerPacientesConUltimaConsulta();
                                         <?php if (!empty($pacientes)): ?>
                                             <?php foreach ($pacientes as $row): ?>
                                                 <tr class="hover-primary"
-                                                    onclick="window.location='patients/patient_details.php?hc_number=<?= $row['hc_number']; ?>';"
+                                                    onclick="window.location='detalles.php?hc_number=<?= $row['hc_number']; ?>';"
                                                     style="cursor:pointer;">
                                                     <td><?= $row['hc_number']; ?></td>
                                                     <td><?= !empty($row['ultima_fecha']) ? date('d/m/Y', strtotime($row['ultima_fecha'])) : 'No disponible'; ?></td>
@@ -85,17 +85,12 @@ $pacientes = $pacienteController->obtenerPacientesConUltimaConsulta();
                                                     <td><?= !empty($row['afiliacion']) ? $row['afiliacion'] : 'N/A'; ?></td>
                                                     <td>
                                                         <?php
-                                                        if (!empty($row['fecha_caducidad'])) {
-                                                            $fecha_caducidad = strtotime($row['fecha_caducidad']);
-                                                            $fecha_actual = time();
-                                                            if ($fecha_caducidad < $fecha_actual) {
-                                                                echo '<span class="badge badge-danger-light">Sin Cobertura</span>';
-                                                            } else {
-                                                                echo '<span class="badge badge-success-light">Con Cobertura</span>';
-                                                            }
-                                                        } else {
-                                                            echo '<span class="badge badge-warning-light">N/A</span>';
-                                                        }
+                                                        $cobertura = $pacienteController->verificarCoberturaPaciente($row['hc_number']);
+                                                        echo match ($cobertura) {
+                                                            'Con Cobertura' => '<span class="badge badge-success-light">Con Cobertura</span>',
+                                                            'Sin Cobertura' => '<span class="badge badge-danger-light">Sin Cobertura</span>',
+                                                            default => '<span class="badge badge-warning-light">N/A</span>',
+                                                        };
                                                         ?>
                                                     </td>
                                                     <td>
