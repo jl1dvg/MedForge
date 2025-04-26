@@ -284,37 +284,29 @@ $username = $dashboardController->getAuthenticatedUser();
 <!-- Page Content overlay -->
 <script>
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
-        // Verificar si el botón está activo
+        // Verificar si el botón está activo o no
         var isActive = button.classList.contains('active');
-        var newStatus = isActive ? 1 : 0;  // Si el botón está activo (on), el nuevo estado será 0 (off); si no, será 1 (on)
+        var newStatus = isActive ? 1 : 0;
 
         // Cambiar visualmente el estado del botón
         if (isActive) {
-            button.classList.add('active');
-            button.setAttribute('aria-pressed', 'true');
-        } else {
             button.classList.remove('active');
             button.setAttribute('aria-pressed', 'false');
+        } else {
+            button.classList.add('active');
+            button.setAttribute('aria-pressed', 'true');
         }
 
-        // Realizar la petición AJAX para actualizar el estado en la base de datos
+        // ⬇️ Si el usuario está activando el botón (impreso = 1), ABRIMOS EL PDF INMEDIATAMENTE
+        if (newStatus === 0) {  // OJO: aquí es 0 porque apenas damos click, el toggle no se ha cambiado
+            window.open('/public/ajax/generate_protocolo_pdf.php?form_id=' + form_id + '&hc_number=' + hc_number, '_blank');
+        }
+
+        // Enviar la actualización del estado al servidor (independientemente)
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', 'update_print_status.php', true);
+        xhr.open('POST', '/public/update_print_status.php', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + newStatus);
-
-        xhr.onload = function () {
-            if (xhr.status === 200 && xhr.responseText === 'success') {
-                console.log('Estado actualizado en la base de datos');
-
-                // Solo si el nuevo estado es "on" (printed = 1), generamos el PDF
-                if (newStatus === 1) {
-                    window.open('/public/generate_pdf.php?form_id=' + form_id + '&hc_number=' + hc_number, '_blank');
-                }
-            } else {
-                console.log('Error al actualizar el estado');
-            }
-        };
+        xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + (isActive ? 0 : 1)); // Cambiamos el valor aquí
     }
 
     let currentFormId;  // Variable para almacenar el form_id actual
