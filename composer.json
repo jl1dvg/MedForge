@@ -4,5 +4,8 @@
       "Controllers\\": "controllers/",
       "Models\\": "models/"
     }
+  },
+  "require": {
+    "mpdf/mpdf": "^8.2"
   }
 }
