@@ -15,38 +15,54 @@ class GuardarProtocoloController
 
     public function guardar(array $data): bool
     {
-        $sql = "UPDATE protocolo_data SET
-                    membrete = :membrete,
-                    dieresis = :dieresis,
-                    exposicion = :exposicion,
-                    hallazgo = :hallazgo,
-                    operatorio = :operatorio,
-                    complicaciones_operatorio = :complicaciones_operatorio,
-                    datos_cirugia = :datos_cirugia,
-                    procedimientos = :procedimientos,
-                    diagnosticos = :diagnosticos,
-                    lateralidad = :lateralidad,
-                    tipo_anestesia = :tipo_anestesia,
-                    hora_inicio = :hora_inicio,
-                    hora_fin = :hora_fin,
-                    fecha_inicio = :fecha_inicio,
-                    fecha_fin = :fecha_fin,
-                    cirujano_1 = :cirujano_1,
-                    cirujano_2 = :cirujano_2,
-                    primer_ayudante = :primer_ayudante,
-                    segundo_ayudante = :segundo_ayudante,
-                    tercer_ayudante = :tercer_ayudante,
-                    ayudante_anestesia = :ayudante_anestesia,
-                    anestesiologo = :anestesiologo,
-                    instrumentista = :instrumentista,
-                    circulante = :circulante,
-                    insumos = :insumos,
-                    medicamentos = :medicamentos,
-                    status = :status
-                WHERE form_id = :form_id AND hc_number = :hc_number";
+        $sql = "INSERT INTO protocolo_data (
+            form_id, hc_number, procedimiento_id, membrete, dieresis, exposicion, hallazgo, operatorio,
+            complicaciones_operatorio, datos_cirugia, procedimientos, diagnosticos,
+            lateralidad, tipo_anestesia, hora_inicio, hora_fin, fecha_inicio, fecha_fin,
+            cirujano_1, cirujano_2, primer_ayudante, segundo_ayudante, tercer_ayudante,
+            ayudante_anestesia, anestesiologo, instrumentista, circulante, insumos,
+            medicamentos, status
+        ) VALUES (
+            :form_id, :hc_number, :procedimiento_id, :membrete, :dieresis, :exposicion, :hallazgo, :operatorio,
+            :complicaciones_operatorio, :datos_cirugia, :procedimientos, :diagnosticos,
+            :lateralidad, :tipo_anestesia, :hora_inicio, :hora_fin, :fecha_inicio, :fecha_fin,
+            :cirujano_1, :cirujano_2, :primer_ayudante, :segundo_ayudante, :tercer_ayudante,
+            :ayudante_anestesia, :anestesiologo, :instrumentista, :circulante, :insumos,
+            :medicamentos, :status
+        )
+        ON DUPLICATE KEY UPDATE
+            procedimiento_id = VALUES(procedimiento_id),
+            membrete = VALUES(membrete),
+            dieresis = VALUES(dieresis),
+            exposicion = VALUES(exposicion),
+            hallazgo = VALUES(hallazgo),
+            operatorio = VALUES(operatorio),
+            complicaciones_operatorio = VALUES(complicaciones_operatorio),
+            datos_cirugia = VALUES(datos_cirugia),
+            procedimientos = VALUES(procedimientos),
+            diagnosticos = VALUES(diagnosticos),
+            lateralidad = VALUES(lateralidad),
+            tipo_anestesia = VALUES(tipo_anestesia),
+            hora_inicio = VALUES(hora_inicio),
+            hora_fin = VALUES(hora_fin),
+            fecha_inicio = VALUES(fecha_inicio),
+            fecha_fin = VALUES(fecha_fin),
+            cirujano_1 = VALUES(cirujano_1),
+            cirujano_2 = VALUES(cirujano_2),
+            primer_ayudante = VALUES(primer_ayudante),
+            segundo_ayudante = VALUES(segundo_ayudante),
+            tercer_ayudante = VALUES(tercer_ayudante),
+            ayudante_anestesia = VALUES(ayudante_anestesia),
+            anestesiologo = VALUES(anestesiologo),
+            instrumentista = VALUES(instrumentista),
+            circulante = VALUES(circulante),
+            insumos = VALUES(insumos),
+            medicamentos = VALUES(medicamentos),
+            status = VALUES(status)";
 
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([
+            'procedimiento_id' => $data['procedimiento_id'] ?? '',
             'membrete' => $data['membrete'] ?? '',
             'dieresis' => $data['dieresis'] ?? '',
             'exposicion' => $data['exposicion'] ?? '',
@@ -77,5 +93,31 @@ class GuardarProtocoloController
             'form_id' => $data['form_id'],
             'hc_number' => $data['hc_number']
         ]);
+    }
+
+    public function api($data)
+    {
+        $data['hc_number'] = $data['hc_number'] ?? $data['hcNumber'] ?? null;
+        $data['form_id'] = $data['form_id'] ?? $data['formId'] ?? null;
+        $data['fecha_inicio'] = $data['fecha_inicio'] ?? $data['fechaInicio'] ?? null;
+        $data['fecha_fin'] = $data['fecha_fin'] ?? $data['fechaFin'] ?? null;
+        $data['hora_inicio'] = $data['hora_inicio'] ?? $data['horaInicio'] ?? null;
+        $data['hora_fin'] = $data['hora_fin'] ?? $data['horaFin'] ?? null;
+        $data['tipo_anestesia'] = $data['tipo_anestesia'] ?? $data['tipoAnestesia'] ?? null;
+        $data['procedimiento_id'] = $data['procedimiento_id'] ?? $data['procedimiento_id'] ?? null;
+        $data['insumos'] = $data['insumos'] ?? [];
+        $data['medicamentos'] = $data['medicamentos'] ?? [];
+
+        if (!$data['hc_number'] || !$data['form_id']) {
+            return ["success" => false, "message" => "Datos no válidos"];
+        }
+
+        $ok = $this->guardar($data);
+
+        if ($ok) {
+            return ["success" => true, "message" => "Datos guardados correctamente"];
+        }
+
+        return ["success" => false, "message" => "Error al guardar el protocolo"];
     }
 }
