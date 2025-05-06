@@ -19,7 +19,7 @@ class ObtenerInsumosProtocoloController
             return ["success" => false, "message" => "Parámetros insuficientes"];
         }
 
-        $sql = "SELECT insumos, hora_inicio, hora_fin FROM protocolo_data WHERE hc_number = :hc AND form_id = :form_id";
+        $sql = "SELECT insumos, hora_inicio, hora_fin, status FROM protocolo_data WHERE hc_number = :hc AND form_id = :form_id";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
             ':hc' => $data['hcNumber'],
@@ -31,6 +31,7 @@ class ObtenerInsumosProtocoloController
         if ($row) {
             $horaInicio = $row['hora_inicio'];
             $horaFin = $row['hora_fin'];
+            $status = $row['status'];
 
             $duracion = null;
             if ($horaInicio && $horaFin) {
@@ -83,7 +84,8 @@ class ObtenerInsumosProtocoloController
                 "success" => true,
                 "message" => "Insumos encontrados",
                 "insumos" => $insumos,
-                "duracion" => $duracion
+                "duracion" => $duracion,
+                "status" => $status,
             ];
         } else {
             return [
