@@ -11,38 +11,35 @@ require_once __DIR__ . '/../../bootstrap.php';
 
     <!-- Sample menu definition -->
     <ul id="main-menu" class="sm sm-blue">
-        <li><a href="<?php echo BASE_URL . 'views/main.php'; ?>"><i class="icon-Layout-4-blocks"><span
-                            class="path1"></span><span class="path2"></span></i>Dashboard</a>
+        <li><a href="<?php echo BASE_URL . 'views/main.php'; ?>"><i class="mdi mdi-view-dashboard"><span
+                            class="path1"></span><span class="path2"></span></i>Inicio</a>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i class="icon-Compiling"><span
+        <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i class="mdi mdi-account-multiple"><span
                             class="path1"></span><span class="path2"></span></i>Pacientes</a>
-            <ul>
-                <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i class="icon-Commit"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Lista Pacientes</a></li>
-                <li><a href="patient_details.html"><i class="icon-Commit"><span class="path1"></span><span
-                                    class="path2"></span></i>Detalle de pacientes</a></li>
-            </ul>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i class="icon-Settings-1"><span
-                            class="path1"></span><span class="path2"></span></i>Reportes</a>
+        <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i
+                        class="mdi mdi-file-chart"><span
+                            class="path1"></span><span class="path2"></span></i>Reportes y Solicitudes</a>
             <uL>
-                <li><a href="<?php echo BASE_URL . 'views/reportes/cirugias.php'; ?>"><i class="icon-Commit"><span
+                <li><a href="<?php echo BASE_URL . 'views/reportes/cirugias.php'; ?>"><i
+                                class="mdi mdi-table-large"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Reporte de Protocolos</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i class="icon-Commit"><span
+                <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i
+                                class="mdi mdi-timetable"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Solicitudes de Cirugía</a></li>
             </uL>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/main/editors/protocolos_templates_list.php'; ?>"><i
-                        class="icon-Air-ballon"><span
-                            class="path1"></span><span class="path2"></span></i>Editor de Protocolos</a>
+        <li><a href="<?php echo BASE_URL . 'views/editor/lista_protocolos.php'; ?>"><i
+                        class="mdi mdi-tooltip-edit"><span
+                            class="path1"></span><span class="path2"></span></i>Protocolos Quirúrgicos</a>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/main/insumos/insumos.php'; ?>"><i class="icon-Settings-1"><span
-                            class="path1"></span><span class="path2"></span></i>Insumos</a>
+        <li><a href="<?php echo BASE_URL . 'views/insumos/insumos.php'; ?>"><i class="mdi mdi-medical-bag"><span
+                            class="path1"></span><span class="path2"></span></i>Gestión de Insumos</a>
             <uL>
-                <li><a href="<?php echo BASE_URL . 'views/main/insumos/insumos.php'; ?>"><i class="icon-Commit"><span
+                <li><a href="<?php echo BASE_URL . 'views/insumos/insumos.php'; ?>"><i
+                                class="mdi mdi-clipboard-list-outline"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Insumos</a></li>
             </uL>

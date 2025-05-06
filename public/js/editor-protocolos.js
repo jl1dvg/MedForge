@@ -3,6 +3,32 @@ $(function () {
     console.log('jQuery version:', $.fn.jquery);
     "use strict";
 
+    const operatorioEditor = document.getElementById('operatorio');
+
+    // Convert editor spans to placeholder string [[ID:...]]
+    function getOperatorioValue() {
+        let result = '';
+        operatorioEditor.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                result += node.textContent;
+            } else if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('tag')) {
+                result += `[[ID:${node.dataset.id}]]`;
+            } else {
+                result += node.textContent;
+            }
+        });
+        return result;
+    }
+
+    // Render placeholders [[ID:x]] as spans
+    function renderOperatorioPlaceholders(raw) {
+        return raw.replace(/\[\[ID:(\d+)\]\]/g, (match, id) => {
+            const insumo = listaInsumos.find(i => String(i.id) === id);
+            const nombre = insumo ? insumo.nombre : '';
+            return `<span class="tag" data-id="${id}">${nombre}</span>&nbsp;`;
+        });
+    }
+
     // ---------- MEDICAMENTOS ----------
     var medicamentosTable = $('#medicamentosTable').DataTable({paging: false});
 
@@ -82,19 +108,24 @@ $(function () {
     // ---------- INSUMOS ----------
     var insumosTable = $('#insumosTable').DataTable({paging: false});
     $('#insumosTable').editableTableWidget();
+    // Limpiar filas existentes antes de cargar insumos desde JSON
+    insumosTable.clear().draw();
 
     // Cargar insumos existentes
     var initialInsumosJson = $('#insumosInput').val();
     if (initialInsumosJson) {
         try {
             var initialInsumos = JSON.parse(initialInsumosJson);
+            console.log('🔍 initialInsumos parsed:', initialInsumos);
             for (const cat in initialInsumos) {
+                console.log(`🔍 Cargando categoría "${cat}" con ${initialInsumos[cat].length} ítems`);
                 // Build category options
                 var categoriaOptions = '';
                 for (const c in insumosDisponibles) {
                     categoriaOptions += `<option value="${c}">${c.replace('_', ' ')}</option>`;
                 }
                 initialInsumos[cat].forEach(function (item) {
+                    console.log('  ➕ Agregando item:', item);
                     // Build name options with selected item
                     var nombreOptions = '';
                     if (insumosDisponibles[cat]) {
@@ -109,6 +140,7 @@ $(function () {
                     // Set the category select value
                     var newRow = insumosTable.row(':last').nodes().to$();
                     newRow.find('select[name="categoria"]').val(cat).trigger('change');
+                    console.log('  ✅ Fila agregada para categoría:', cat);
                 });
             }
         } catch (e) {
@@ -198,13 +230,18 @@ $(function () {
         console.log("✅ INSUMOS JSON ACTUALIZADO:", json);
     };
 
-// SUBMIT DEL FORMULARIO
+    const rawOperatorio = document.getElementById('operatorioInput').value || '';
+    operatorioEditor.innerHTML = renderOperatorioPlaceholders(rawOperatorio);
+
+    // SUBMIT DEL FORMULARIO
     $('#guardarProtocolo').on('click', function (e) {
         console.log('✅ #guardarProtocolo clicked');
         e.preventDefault();
         actualizarInsumos();
         actualizarMedicamentos();
 
+        // Populate hidden operatorio input with editor content converted to placeholders
+        document.getElementById('operatorioInput').value = getOperatorioValue();
         const form = document.getElementById('editarProtocoloForm');
         const formData = new FormData(form);
 

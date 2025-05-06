@@ -1,8 +1,41 @@
 document.addEventListener("DOMContentLoaded", function () {
     const table = document.getElementById("insumosEditable");
+    const tbody = document.getElementById("tablaInsumosBody");
     const agregarBtn = document.getElementById("agregarInsumoBtn");
 
     if (!table || !agregarBtn) return;
+
+    fetch("/views/insumos/insumos.php?json=1")
+        .then(res => res.json())
+        .then(json => {
+            if (json.success && Array.isArray(json.insumos)) {
+                json.insumos.forEach(insumo => agregarFilaExistente(insumo));
+            }
+        });
+
+    function agregarFilaExistente(data) {
+        const row = tbody.insertRow(-1);
+        row.setAttribute("data-id", data.id);
+
+        const campos = [
+            "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
+            "nombre", "producto_issfa", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
+        ];
+
+        campos.forEach(campo => {
+            const td = row.insertCell();
+            td.setAttribute("contenteditable", "true");
+            td.classList.add("editable");
+            td.dataset.field = campo;
+            td.textContent = data[campo] ?? "";
+        });
+
+        const accionTd = row.insertCell();
+        const btn = document.createElement("button");
+        btn.className = "btn btn-sm btn-success save-btn";
+        btn.textContent = "Guardar";
+        accionTd.appendChild(btn);
+    }
 
     // Guardar celda editada
     table.addEventListener("click", function (e) {
@@ -14,7 +47,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Agregar nueva fila
     agregarBtn.addEventListener("click", function () {
-        const nuevaFila = table.insertRow(-1);
+        const nuevaFila = tbody.insertRow(-1);
         nuevaFila.setAttribute("data-id", "nuevo");
         const campos = [
             "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
@@ -67,7 +100,7 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        fetch("../insumos/actualizar_insumo.php", {
+        fetch("/views/insumos/guardar_insumo.php", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(data)

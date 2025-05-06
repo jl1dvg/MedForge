@@ -243,16 +243,6 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
 
                     </div>
                     <div class="col-xl-8 col-12">
-                        <div class="d-md-flex align-items-center justify-content-between mb-20">
-                            <a href="javascript:void(0);" class="btn btn-primary me-5 mb-md-0 mb-5"><i
-                                        class="fa fa-edit"></i> Edit Profile</a>
-                            <div class="d-flex">
-                                <a href="javascript:void(0);" class="btn btn-outline btn-danger me-5"><i
-                                            class="fa fa-times-circle-o"></i> Reject Patient</a>
-                                <a href="javascript:void(0);" class="btn btn-success"><i
-                                            class="fa fa-check-circle-o"></i> Accept Patient</a>
-                            </div>
-                        </div>
                         <div class="box">
                             <?php
                             // Determinar la imagen de fondo en función del seguro

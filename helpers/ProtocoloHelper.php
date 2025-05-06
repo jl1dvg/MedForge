@@ -42,7 +42,8 @@ class ProtocoloHelper
         return null;
     }
 
-public static function obtenerDiagnosticosAnteriores(PDO $db, string $hc_number, string $form_id, ?string $nombreProcedimiento): array    {
+    public static function obtenerDiagnosticosAnteriores(PDO $db, string $hc_number, string $form_id, ?string $nombreProcedimiento): array
+    {
         $sql = "SELECT diagnosticos FROM consulta_data WHERE hc_number = ? AND form_id < ? ORDER BY form_id DESC LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$hc_number, $form_id]);
@@ -83,5 +84,130 @@ public static function obtenerDiagnosticosAnteriores(PDO $db, string $hc_number,
         $stmt->execute([$searchTerm]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row['imagen_link'] ?? null;
+    }
+
+    public static function procesarTextoEvolucion(?string $texto, int $ancho = 70): array
+    {
+        if (!$texto) return [];
+        $wrapped = wordwrap($texto, $ancho, "\n", true);
+        return explode("\n", $wrapped);
+    }
+
+    private static ?array $signosVitales = null;
+
+    public static function obtenerSignosVitales(): array
+    {
+        if (self::$signosVitales === null) {
+            self::$signosVitales = [
+                'sistolica' => rand(110, 130),
+                'diastolica' => rand(70, 83),
+                'fc' => rand(75, 100),
+            ];
+        }
+        return self::$signosVitales;
+    }
+
+    public static function reemplazarSignosVitales(string $texto, array $signosVitales): string
+    {
+        $reemplazos = [
+            '$sistolica' => $signosVitales['sistolica'],
+            '$diastolica' => $signosVitales['diastolica'],
+            '$fc' => $signosVitales['fc'],
+        ];
+
+        return strtr($texto, $reemplazos);
+    }
+
+    public static function procesarEvolucionConSignos(string $texto, int $ancho, array $signosVitales): array
+    {
+        // Primero reemplazamos las variables de signos vitales
+        $textoConSignos = self::reemplazarSignosVitales($texto, $signosVitales);
+
+        // Luego aplicamos el wordwrap
+        $wrapped = wordwrap($textoConSignos, $ancho, "\n", true);
+        return explode("\n", $wrapped);
+    }
+
+    public static function procesarMedicamentos(array $medicamentosArray, string $horaInicioModificada, string $mainSurgeon, string $anestesiologo, string $ayudante_anestesia)
+    {
+        $horaActual = new \DateTime($horaInicioModificada);
+        $datosMedicamentos = [];
+
+        foreach ($medicamentosArray as $medicamento) {
+            $dosis = $medicamento['dosis'] ?? 'N/A';
+            $frecuencia = $medicamento['frecuencia'] ?? 'N/A';
+            $nombre_medicamento = $medicamento['medicamento'] ?? 'N/A';
+            $via_administracion = $medicamento['via_administracion'] ?? 'N/A';
+            $responsableTexto = '';
+
+            switch ($medicamento['responsable']) {
+                case 'Asistente':
+                    $responsableTexto = 'ENF. ' . self::inicialesNombre($ayudante_anestesia);
+                    break;
+                case 'Anestesiólogo':
+                    $responsableTexto = 'ANEST. ' . self::inicialesNombre($anestesiologo);
+                    break;
+                case 'Cirujano Principal':
+                    $responsableTexto = 'OFTAL. ' . self::inicialesNombre($mainSurgeon);
+                    break;
+            }
+
+            $datosMedicamentos[] = [
+                'medicamento' => $nombre_medicamento,
+                'dosis' => $dosis,
+                'frecuencia' => $frecuencia,
+                'via' => $via_administracion,
+                'hora' => $horaActual->format('H:i'),
+                'responsable' => $responsableTexto,
+            ];
+
+            // Aumentar la hora para el siguiente medicamento
+            $horaActual->modify('+5 minutes');
+        }
+
+        return $datosMedicamentos;
+    }
+
+// Función auxiliar para obtener iniciales
+    private static function inicialesNombre($nombreCompleto)
+    {
+        $partes = explode(' ', $nombreCompleto);
+        $iniciales = '';
+        foreach ($partes as $parte) {
+            if (!empty($parte)) {
+                $iniciales .= strtoupper(substr($parte, 0, 1)) . '. ';
+            }
+        }
+        return trim($iniciales);
+    }
+
+    public static function procesarInsumos(string $insumosJson): array
+    {
+        $insumosArray = json_decode($insumosJson, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($insumosArray)) {
+            return [];
+        }
+
+        $resultado = [];
+
+        foreach ($insumosArray as $categoria => $insumos) {
+            $categoria_nombre = match ($categoria) {
+                'equipos' => 'EQUIPOS ESPECIALES',
+                'anestesia' => 'INSUMOS Y MEDICAMENTOS DE ANESTESIA',
+                'quirurgicos' => 'INSUMOS Y MEDICAMENTOS QUIRURGICOS',
+                default => $categoria
+            };
+
+            foreach ($insumos as $insumo) {
+                $resultado[] = [
+                    'categoria' => $categoria_nombre,
+                    'nombre' => $insumo['nombre'] ?? '',
+                    'cantidad' => $insumo['cantidad'] ?? '',
+                ];
+            }
+        }
+
+        return $resultado;
     }
 }
