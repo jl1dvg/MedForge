@@ -8,7 +8,7 @@ function loadResult(rowData) {
     document.getElementById('result-popup').innerHTML = "QX realizada - " + rowData.membrete;
     document.getElementById('lab-order-id').innerHTML = "Protocolo: " + rowData.form_id;
 
-    document.getElementById('markAsReviewed').checked = rowData.status == 1;
+    //document.getElementById('markAsReviewed').checked = rowData.status == 1;
 
     // Diagnósticos
     let diagnosticoData = [];
