@@ -85,6 +85,16 @@ $username = $dashboardController->getAuthenticatedUser();
                                         foreach ($cirugias as $cirugia) {
                                             $printed = $cirugia->printed ?? 0;
                                             $buttonClass = $printed ? 'active' : '';
+                                            $estado = $cirugia->getEstado();
+                                            $badgeEstado = match ($estado) {
+                                                'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
+                                                'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
+                                                default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>"
+                                            };
+                                            $onclick = $estado === 'revisado'
+                                                ? "togglePrintStatus(" . $cirugia->form_id . ", '" . $cirugia->hc_number . "', this, 1)"
+                                                : "Swal.fire({ icon: 'warning', title: 'Pendiente revisión', text: 'Debe revisar el protocolo antes de imprimir.' })";
+                                            $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : "";
 
                                             echo "<tr>
                                                     <td>" . htmlspecialchars($cirugia->form_id ?? '', ENT_QUOTES, 'UTF-8') . "</td>
@@ -100,22 +110,17 @@ $username = $dashboardController->getAuthenticatedUser();
                                                            data-bs-toggle='modal'
                                                            data-bs-target='#resultModal'
                                                            data-cirugia='" . htmlspecialchars(json_encode($cirugia->toArray()), ENT_QUOTES, "UTF-8") . "'
-                                                           onclick='loadResultFromElement(this)'>";
-                                            $estado = $cirugia->getEstado();
-                                            $badge = match ($estado) {
-                                                'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
-                                                'no revisado' => "<span class='badge bg-warning'><i class='fa  fa-exclamation-triangle'></i></span>",
-                                                default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>"
-                                            };
-                                            echo $badge;
-                                            echo "<i class='mdi mdi-file-document'></i> Protocolo
+                                                           onclick='loadResultFromElement(this)'>
+                                                           $badgeEstado
+                                                           <i class='mdi mdi-file-document'></i> Protocolo
                                                         </a>
                                                     </td>
                                                     <td>
-                                                        <a class='btn btn-app btn-primary' title='Imprimir protocolo'
-                                                           onclick='togglePrintStatus(" . $cirugia->form_id . ", \"" . $cirugia->hc_number . "\", this, " . $printed . ")'>
-                                                            " . ($printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : "") . "
-                                                            <i class='fa fa-print'></i> Imprimir
+                                                        <a class='btn btn-app btn-primary'
+                                                           title='Imprimir protocolo'
+                                                           onclick=\"" . htmlspecialchars($onclick, ENT_QUOTES, 'UTF-8') . "\">
+                                                           $badgePrinted
+                                                           <i class='fa fa-print'></i> Imprimir
                                                         </a>
                                                     </td>
                                                 </tr>";
@@ -231,17 +236,16 @@ $username = $dashboardController->getAuthenticatedUser();
                     <div class="comment">
                         <p><span class="fw-600">Comentario</span> : <span class="comment-here text-mute"></span></p>
                     </div>
-                    <!-- Agregar checkbox para marcar como revisado -->
+                    <!-- Agregar checkbox para marcar como revisado
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="markAsReviewed">
                         <label class="form-check-label" for="markAsReviewed">Marcar como revisado</label>
-                    </div>
+                    </div> -->
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-danger pull-right" data-bs-dismiss="modal">Cerrar</button>
-                    <button type="button" class="btn btn-info pull-right" onclick="redirectToEditProtocol()">Editar
-                    </button>
-                    <button type="button" class="btn btn-success pull-right" onclick="updateProtocolStatus()">Guardar
+                    <button type="button" class="btn btn-info pull-right" onclick="redirectToEditProtocol()">Revisar
+                        Protocolo
                     </button>
                 </div>
             </div>
@@ -293,38 +297,6 @@ $username = $dashboardController->getAuthenticatedUser();
         window.location.href = url;
     }
 
-    function updateProtocolStatus() {
-        // Obtener si el checkbox está marcado
-        const isReviewed = document.getElementById('markAsReviewed').checked ? 1 : 0;
-
-        // Realizar la petición AJAX para actualizar el campo "status" en la base de datos
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', 'update_protocol_status.php', true);  // Archivo PHP para manejar la actualización
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState === 4 && xhr.status === 200) {
-                console.log(xhr.responseText);  // Ver la respuesta del servidor
-
-                // Verificamos si la respuesta contiene 'success'
-                if (xhr.status === 200 && xhr.responseText.trim().includes('success')) {
-                    console.log('Estado del protocolo actualizado correctamente');
-
-                    // Cerrar el modal sin usar jQuery
-                    const modalElement = document.getElementById('resultModal');
-                    const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                    modalInstance.hide();
-
-                    // Recargar la tabla general después de cerrar el modal
-                    reloadPatientTable();
-                } else {
-                    console.log('Error al actualizar el estado del protocolo');
-                }
-            }
-        };
-        // Enviar el form_id, hc_number y el nuevo estado (revisado o no)
-        xhr.send(`form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}&status=${isReviewed}`);
-    }
-
     function reloadPatientTable() {
         // Hacer una petición AJAX al mismo archivo
         const xhr = new XMLHttpRequest();
@@ -348,7 +320,7 @@ $username = $dashboardController->getAuthenticatedUser();
 <script src="/public/js/pages/chat-popup.js"></script>
 <script src="/public/assets/icons/feather-icons/feather.min.js"></script>
 <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     $.fn.dataTable.ext.type.order['dd-mm-yyyy-pre'] = function (d) {
         if (!d) {
