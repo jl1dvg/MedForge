@@ -31,7 +31,7 @@
         <td colspan='6' rowspan='2' class='verde'>FECHA NACIMIENTO</td>
         <td colspan='3' rowspan='2' class='verde'>EDAD</td>
         <td colspan='8' class='verde' style='border-right: none; border-bottom: none'>CONDICIÓN EDAD <font
-                class='font7'>(MARCAR)</font></td>
+                    class='font7'>(MARCAR)</font></td>
     </tr>
     <tr>
         <td colspan='2' height='17' class='verde'>H</td>
@@ -207,7 +207,8 @@
     </tr>
     <tr>
         <td colspan='15' class='verde_left'>Procedimiento Quirúrgicos:</td>
-        <td colspan='55' class='blanco_left'><?php echo nl2br($operatorio); ?></td>    </tr>
+        <td colspan='55' class='blanco_left'><?php echo nl2br($operatorio); ?></td>
+    </tr>
 </table>
 <table style='border: none'>
     <TR>
@@ -390,5 +391,4 @@
             </TD>
         </TR>
     </TABLE>
-</pagebreak>
 </BODY>

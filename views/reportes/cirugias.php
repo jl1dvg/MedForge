@@ -73,12 +73,10 @@ $username = $dashboardController->getAuthenticatedUser();
                                             <th class="bb-2">C.I.</th>
                                             <th class="bb-2">Nombre</th>
                                             <th class="bb-2">Afiliación</th>
-                                            <th class="bb-2">Fecha de Inicio</th>
+                                            <th class="bb-2">Fecha</th>
                                             <th class="bb-2">Procedimiento</th>
-                                            <th class="bb-2">Duración</th>
-                                            <th class="bb-2">Status</th>
-                                            <th class="bb-2">Result</th>
-                                            <th class="bb-2">Impreso</th>
+                                            <th class="bb-2"><i class="mdi mdi-file-document"></i></th>
+                                            <th class="bb-2"><i class="mdi mdi-printer"></i></th>
                                         </tr>
                                         </thead>
                                         <tbody id="patientTableBody">
@@ -89,29 +87,36 @@ $username = $dashboardController->getAuthenticatedUser();
                                             $buttonClass = $printed ? 'active' : '';
 
                                             echo "<tr>
-                                                    <td>{$counter}</td>
+                                                    <td>" . htmlspecialchars($cirugia->form_id ?? '', ENT_QUOTES, 'UTF-8') . "</td>
                                                     <td>" . htmlspecialchars($cirugia->hc_number ?? '', ENT_QUOTES, 'UTF-8') . "</td>
                                                     <td>" . htmlspecialchars($cirugia->getNombreCompleto(), ENT_QUOTES, 'UTF-8') . "</td>
                                                     <td>" . htmlspecialchars($cirugia->afiliacion ?? '', ENT_QUOTES, 'UTF-8') . "</td>
                                                     <td>" . date('d/m/Y', strtotime($cirugia->fecha_inicio)) . "</td>
                                                     <td>" . htmlspecialchars($cirugia->membrete ?? '', ENT_QUOTES, 'UTF-8') . "</td>
-                                                    <td>" . $cirugia->getDuracion() . "</td>
-                                                    <td><span class='badge {$cirugia->getBadgeClass()}'>" . ucfirst($cirugia->getEstado()) . "</span></td>
-                                                    <td>";
-                                            echo "<a href='#'
-                                                            class='text-info'
-                                                            data-bs-toggle='modal'
-                                                            data-bs-target='#resultModal'
-                                                            data-cirugia='" . htmlspecialchars(json_encode($cirugia->toArray()), ENT_QUOTES, "UTF-8") . "'
-                                                            onclick='loadResultFromElement(this)'>Result</a>";
-
-                                            echo "<a href='#' data-bs-toggle='modal' data-bs-target='#comment-dialog' class='text-info'>Comment</a>
+                                                    <td colspan='2'>
+                                                        <a href='#'
+                                                           title='Ver protocolo quirúrgico'
+                                                           class='btn btn-app btn-info'
+                                                           data-bs-toggle='modal'
+                                                           data-bs-target='#resultModal'
+                                                           data-cirugia='" . htmlspecialchars(json_encode($cirugia->toArray()), ENT_QUOTES, "UTF-8") . "'
+                                                           onclick='loadResultFromElement(this)'>";
+                                            $estado = $cirugia->getEstado();
+                                            $badge = match ($estado) {
+                                                'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
+                                                'no revisado' => "<span class='badge bg-warning'><i class='fa  fa-exclamation-triangle'></i></span>",
+                                                default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>"
+                                            };
+                                            echo $badge;
+                                            echo "<i class='mdi mdi-file-document'></i> Protocolo
+                                                        </a>
                                                     </td>
                                                     <td>
-                                                        <button type='button' class='btn btn-sm btn-toggle $buttonClass' data-bs-toggle='button' aria-pressed='" . ($printed ? "true" : "false") . "' autocomplete='off'
-                                                                onclick='togglePrintStatus(" . $cirugia->form_id . ", \"" . $cirugia->hc_number . "\", this, " . $printed . ")'>
-                                                            <div class='handle'></div>
-                                                        </button>
+                                                        <a class='btn btn-app btn-primary' title='Imprimir protocolo'
+                                                           onclick='togglePrintStatus(" . $cirugia->form_id . ", \"" . $cirugia->hc_number . "\", this, " . $printed . ")'>
+                                                            " . ($printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : "") . "
+                                                            <i class='fa fa-print'></i> Imprimir
+                                                        </a>
                                                     </td>
                                                 </tr>";
                                             $counter++;
@@ -244,37 +249,6 @@ $username = $dashboardController->getAuthenticatedUser();
     </div>
     <!-- /.modal-dialog -->
 </div>
-<!-- /.modal -->
-<!-- comment modal content -->
-<div class="modal fade" id="comment-dialog">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h4 class="modal-title" id="comment-popup">Radiology Investigations - Comment</h4>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row justify-content-between">
-                    <div class="col-12">
-                        <h4>Comment</h4>
-                    </div>
-                </div>
-                <form>
-                    <div class="form-group">
-                        <textarea class="form-control" id="comment-area" rows="3"></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger pull-right" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-success pull-right me-10">Save</button>
-            </div>
-        </div>
-        <!-- /.modal-content -->
-    </div>
-    <!-- /.modal-dialog -->
-</div>
-<!-- /.modal -->
 
 <?php include __DIR__ . '/../components/footer.php'; ?>
 

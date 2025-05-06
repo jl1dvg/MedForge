@@ -20,7 +20,7 @@ class ProtocoloModel
                        pr.cirujano_2, pr.circulante, pr.primer_ayudante, pr.anestesiologo, pr.segundo_ayudante,
                        pr.ayudante_anestesia, pr.tercer_ayudante, pr.membrete, pr.dieresis, pr.exposicion, pr.hallazgo,
                        pr.operatorio, pr.complicaciones_operatorio, pr.datos_cirugia, pr.procedimientos, pr.lateralidad,
-                       pr.tipo_anestesia, pr.diagnosticos, pp.procedimiento_proyectado, pr.procedimiento_id
+                       pr.tipo_anestesia, pr.diagnosticos, pp.procedimiento_proyectado, pr.procedimiento_id, pr.insumos
                 FROM patient_data p
                 INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
                 LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
@@ -56,5 +56,31 @@ class ProtocoloModel
             }
         }
         return implode('/', $codes);
+    }
+
+    public function obtenerEvolucion005(string $procedimiento_id): ?array
+    {
+        $sql = "SELECT pre_evolucion, pre_indicacion, post_evolucion, post_indicacion, alta_evolucion, alta_indicacion
+                FROM evolucion005
+                WHERE id = ?
+                LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$procedimiento_id]);
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $data ?: []; // <- Si no encuentra datos, devuelve array vacío
+    }
+
+    public function obtenerMedicamentos($procedimiento_id)
+    {
+        $stmt = $this->db->prepare("SELECT medicamentos FROM kardex WHERE procedimiento_id = ?");
+        $stmt->execute([$procedimiento_id]);
+        $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($resultado && !empty($resultado['medicamentos'])) {
+            return json_decode($resultado['medicamentos'], true);
+        }
+        return [];
     }
 }

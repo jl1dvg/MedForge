@@ -44,7 +44,7 @@ class PdfGenerator
             $mpdf->WriteHTML($stylesheet, \Mpdf\HTMLParserMode::HEADER_CSS); // ✅ Aquí sí cargamos el CSS
         }
 
-        $mpdf->WriteHTML($html); // ✅ Aquí cargamos el contenido HTML
+        $mpdf->WriteHTML($html, \Mpdf\HTMLParserMode::HTML_BODY); // ✅ Esta es la línea corregida
         $mpdf->Output($finalName, 'I'); // ✅ Y aquí mostramos el PDF
     }
 }

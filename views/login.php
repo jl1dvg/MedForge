@@ -8,7 +8,7 @@
     <meta name="author" content="">
     <link rel="icon" href="/public/images/favicon.ico">
 
-    <title>Doclinic - Log in </title>
+    <title>MedForge - Log in </title>
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="/public/css/vendors_css.css">

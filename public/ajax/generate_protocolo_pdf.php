@@ -13,7 +13,7 @@ $hc_number = $_GET['hc_number'] ?? null;
 
 if ($form_id && $hc_number) {
     $pdfController = new PdfController($pdo);
-    $pdfController->generarProtocolo($form_id, $hc_number);
+    $pdfController->generarProtocolo($form_id, $hc_number, false);
 } else {
     echo "Faltan parámetros";
 }
