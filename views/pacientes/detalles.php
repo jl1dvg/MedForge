@@ -584,7 +584,7 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
             setTimeout(() => {
                 if (ventana) ventana.close();
                 index++;
-                setTimeout(abrirVentana, 500); // pequeño espacio entre llamadas
+                setTimeout(abrirVentana, 300); // pequeño espacio entre llamadas
             }, tiempoEspera);
         }
 
