@@ -10,10 +10,11 @@ use Controllers\PdfController;
 // Capturar parámetros
 $form_id = $_GET['form_id'] ?? null;
 $hc_number = $_GET['hc_number'] ?? null;
+$modo = $_GET['modo'] ?? 'completo'; // 'completo' o 'separado'
 
 if ($form_id && $hc_number) {
     $pdfController = new PdfController($pdo);
-    $pdfController->generarProtocolo($form_id, $hc_number, false);
+    $pdfController->generarProtocolo($form_id, $hc_number, false, $_GET['modo'] ?? 'completo');
 } else {
     echo "Faltan parámetros";
 }

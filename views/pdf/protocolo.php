@@ -346,31 +346,41 @@
         </tr>
         <tr>
             <td class='blanco' style='height: 75' colspan='5'><?php
-                if (empty($cirujano2_data['nombre'])) {
+                if (!empty($cirujano2_data) && !empty($cirujano2_data['nombre'])) {
+                    echo strtoupper($cirujano2_data['nombre']);
+                } elseif (!empty($ayudante_data['nombre'])) {
                     echo strtoupper($ayudante_data['nombre']);
                 } else {
-                    echo strtoupper($cirujano2_data['nombre']);
-                } ?></td>
+                    echo '';
+                }
+                ?></td>
             <td class='blanco' colspan='5'><?php
-                if (empty($cirujano2_data['especialidad'])) {
+                if (!empty($cirujano2_data) && !empty($cirujano2_data['especialidad'])) {
+                    echo strtoupper($cirujano2_data['especialidad']);
+                } elseif (!empty($ayudante_data['especialidad'])) {
                     echo strtoupper($ayudante_data['especialidad']);
                 } else {
-                    echo strtoupper($cirujano2_data['especialidad']);
-                } ?></td>
+                    echo '';
+                }
+                ?></td>
             <td class='blanco' colspan='5'><?php
-                if (empty($cirujano2_data['cedula'])) {
+                if (!empty($cirujano2_data) && !empty($cirujano2_data['cedula'])) {
+                    echo $cirujano2_data['cedula'];
+                } elseif (!empty($ayudante_data['cedula'])) {
                     echo $ayudante_data['cedula'];
                 } else {
-                    echo $cirujano2_data['cedula'];
-                } ?></td>
-            <td class='blanco'
-                colspan='5'><?php if (!empty($cirujano2_data['firma'])) {
+                    echo '';
+                }
+                ?></td>
+            <td class='blanco' colspan='5'><?php
+                if (!empty($cirujano2_data) && !empty($cirujano2_data['firma'])) {
                     echo "<img src='" . htmlspecialchars($cirujano2_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
-                } elseif (empty($cirujano2_data['firma']) && !empty($ayudante_data['firma'])) {
+                } elseif (!empty($ayudante_data['firma'])) {
                     echo "<img src='" . htmlspecialchars($ayudante_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                 } else {
                     echo ' ';
-                } ?></td>
+                }
+                ?></td>
         </tr>
         <tr>
             <td class='blanco' style='height: 75'
