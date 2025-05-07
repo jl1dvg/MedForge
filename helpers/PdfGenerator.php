@@ -12,7 +12,7 @@ class PdfGenerator
         return ob_get_clean();
     }
 
-    public static function generarDesdeHtml(string $html, string $finalName = 'documento.pdf', string $cssPath = null)
+    public static function generarDesdeHtml(string $html, string $finalName = 'documento.pdf', string $cssPath = null, string $modoSalida = 'I', string $orientation = 'P')
     {
         $mpdf = new \Mpdf\Mpdf([
             'default_font_size' => 8,
@@ -21,7 +21,7 @@ class PdfGenerator
             'margin_right' => 5,
             'margin_top' => 5,
             'margin_bottom' => 5,
-            'orientation' => 'P',
+            'orientation' => $orientation,
             'shrink_tables_to_fit' => 1,
             'use_kwt' => true,
             'autoScriptToLang' => true,
@@ -45,6 +45,6 @@ class PdfGenerator
         }
 
         $mpdf->WriteHTML($html, \Mpdf\HTMLParserMode::HTML_BODY); // ✅ Esta es la línea corregida
-        $mpdf->Output($finalName, 'I'); // ✅ Y aquí mostramos el PDF
+        $mpdf->Output($finalName, $modoSalida);
     }
 }

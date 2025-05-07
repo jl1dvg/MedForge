@@ -434,8 +434,12 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                                         <span class="text-fade fw-500 fs-12"><?php echo date('d M Y', strtotime(isset($documento['fecha_inicio']) ? $documento['fecha_inicio'] : $documento['created_at'])); ?></span>
                                                     </div>
                                                     <a class="fs-18 text-gray hover-info"
-                                                       href="<?php echo isset($documento['membrete']) ? '../../generate_pdf.php?form_id=' . $documento['form_id'] . '&hc_number=' . $documento['hc_number'] : '../reports/solicitud_quirurgica/solicitud_qx_pdf.php?hc_number=' . $documento['hc_number'] . '&form_id=' . $documento['form_id']; ?>"
-                                                       target="_blank">
+                                                       href="#"
+                                                       onclick="<?php if (isset($documento['membrete'])): ?>
+                                                               descargarPDFsSeparados('<?= $documento['form_id'] ?>', '<?= $documento['hc_number'] ?>')
+                                                       <?php else: ?>
+                                                               window.open('../reports/solicitud_quirurgica/solicitud_qx_pdf.php?hc_number=<?= $documento['hc_number'] ?>&form_id=<?= $documento['form_id'] ?>', '_blank')
+                                                       <?php endif; ?>">
                                                         <i class="fa fa-download"></i>
                                                     </a>
                                                 </div>
@@ -562,7 +566,32 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
     </div>
 </div>
 <script>
+    function descargarPDFsSeparados(formId, hcNumber) {
+        const paginas = ['protocolo', '005', 'medicamentos', 'signos_vitales', 'insumos', 'saveqx', 'transanestesico'];
 
+        let index = 0;
+
+        function abrirVentana() {
+            if (index >= paginas.length) return;
+
+            const pagina = paginas[index];
+            const url = `/public/ajax/generate_protocolo_pdf.php?form_id=${formId}&hc_number=${hcNumber}&modo=separado&pagina=${pagina}`;
+            const ventana = window.open(url, '_blank');
+
+            // Aumentar el delay solo para transanestesico
+            const tiempoEspera = pagina === 'transanestesico' ? 9000 : 2500;
+
+            setTimeout(() => {
+                if (ventana) ventana.close();
+                index++;
+                setTimeout(abrirVentana, 500); // pequeño espacio entre llamadas
+            }, tiempoEspera);
+        }
+
+        abrirVentana();
+    }
+</script>
+<script>
     document.addEventListener('DOMContentLoaded', function () {
         const modal = document.getElementById('modalSolicitud');
         modal.addEventListener('show.bs.modal', function (event) {

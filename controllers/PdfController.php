@@ -18,7 +18,7 @@ class PdfController
         $this->protocoloModel = new ProtocoloModel($pdo); // ✅ inicializarla aquí
     }
 
-    public function generarProtocolo(string $form_id, string $hc_number, bool $soloDatos = false)
+    public function generarProtocolo(string $form_id, string $hc_number, bool $soloDatos = false, string $modo = 'completo')
     {
         $model = new ProtocoloModel($this->db);
 
@@ -146,41 +146,54 @@ class PdfController
             'saveqx.php',
         ];
 
-        $htmlTotal = '';
+        if ($modo === 'separado') {
+            $paginaSolicitada = $_GET['pagina'] ?? null;
 
-        foreach ($paginas as $index => $pagina) {
+            if ($paginaSolicitada) {
+                ob_start();
+                extract($datos);
+                $orientation = ($paginaSolicitada === 'transanestesico') ? 'L' : 'P';
+
+                include __DIR__ . '/../views/pdf/' . $paginaSolicitada . '.php';
+                $html = ob_get_clean();  // ✅ NO uses pagebreak en HTML
+
+                $nombrePdf = "{$paginaSolicitada}_{$form_id}_{$hc_number}.pdf";
+                PdfGenerator::generarDesdeHtml(
+                    $html,
+                    $nombrePdf,
+                    __DIR__ . '/../public/css/pdf/styles.css',
+                    'D',
+                    $orientation
+                );
+                return;
+            }
+        } else {
+            // 🔁 COMPORTAMIENTO ACTUAL
+            $htmlTotal = '';
+
+            foreach ($paginas as $index => $pagina) {
+                ob_start();
+                extract($datos);
+                include __DIR__ . '/../views/pdf/' . $pagina;
+                $htmlTotal .= ob_get_clean();
+
+                if ($index < count($paginas) - 1) {
+                    $htmlTotal .= '<pagebreak>';
+                }
+            }
+
+            $htmlTotal .= '<pagebreak orientation="L">';
             ob_start();
             extract($datos);
-            include __DIR__ . '/../views/pdf/' . $pagina;
-            $htmlSeccion = ob_get_clean();
+            include __DIR__ . '/../views/pdf/transanestesico.php';
+            $htmlTotal .= ob_get_clean();
 
-            $htmlTotal .= $htmlSeccion;
-
-            // 👇 Agregar un salto de página solo si no es la última
-            if ($index < count($paginas) - 1) {
-                $htmlTotal .= '<pagebreak>';
-            }
+            PdfGenerator::generarDesdeHtml(
+                $htmlTotal,
+                'protocolo_' . $form_id . '_' . $hc_number . '.pdf',
+                __DIR__ . '/../public/css/pdf/styles.css'
+            );
         }
-
-        $htmlTotal .= '<pagebreak orientation="L">'; // 👈 cambio a Landscape
-
-        ob_start();
-        extract($datos);
-        include __DIR__ . '/../views/pdf/transanestesico.php';
-        $htmlTransanestesico = ob_get_clean();
-        $htmlTotal .= $htmlTransanestesico;
-
-// (si quieres volver a Portrait después)
-// $htmlTotal .= '<pagebreak orientation="P">';
-        if ($soloDatos) {
-            return $datos;
-        }
-// Ahora generas el PDF
-        PdfGenerator::generarDesdeHtml(
-            $htmlTotal,
-            'protocolo_' . $form_id . '_' . $hc_number . '.pdf',
-            __DIR__ . '/../public/css/pdf/styles.css'
-        );
     }
 }
 
