@@ -121,7 +121,7 @@ class PacienteController
 
     public function getDocumentosDescargables($hc_number)
     {
-        $stmt1 = $this->db->prepare("SELECT form_id, hc_number, membrete, fecha_inicio FROM protocolo_data WHERE hc_number = ?");
+        $stmt1 = $this->db->prepare("SELECT form_id, hc_number, membrete, fecha_inicio FROM protocolo_data WHERE hc_number = ? AND status = 1");
         $stmt1->execute([$hc_number]);
         $protocolos = $stmt1->fetchAll(PDO::FETCH_ASSOC);
 
@@ -248,7 +248,11 @@ class PacienteController
 
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $nombreProcedimientos = '';
-            $procedimientos = json_decode($row['procedimientos'], true);
+            $procedimientos = [];
+
+            if (!empty($row['procedimientos']) && is_string($row['procedimientos'])) {
+                $procedimientos = json_decode($row['procedimientos'], true);
+            }
 
             if (is_array($procedimientos)) {
                 foreach ($procedimientos as $index => $proc) {
