@@ -97,7 +97,7 @@ class PdfController
         }
 
         // Obtener medicamentos
-        $medicamentosArray = $this->protocoloModel->obtenerMedicamentos($datos['procedimiento_id']);
+        $medicamentosArray = $this->protocoloModel->obtenerMedicamentos($datos['procedimiento_id'], $form_id, $hc_number);
         $datos['medicamentos'] = ProtocoloHelper::procesarMedicamentos(
             $medicamentosArray,
             $datos['horaInicioModificada'],

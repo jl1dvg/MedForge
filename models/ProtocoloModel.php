@@ -72,8 +72,18 @@ class ProtocoloModel
         return $data ?: []; // <- Si no encuentra datos, devuelve array vacío
     }
 
-    public function obtenerMedicamentos($procedimiento_id)
+    public function obtenerMedicamentos($procedimiento_id, $form_id, $hc_number)
     {
+        // Verificar primero si protocolo_data tiene medicamentos válidos
+        $stmt = $this->db->prepare("SELECT medicamentos FROM protocolo_data WHERE form_id = ? AND hc_number = ?");
+        $stmt->execute([$form_id, $hc_number]);
+        $protocolo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!empty($protocolo['medicamentos']) && json_decode($protocolo['medicamentos'], true) !== null) {
+            return json_decode($protocolo['medicamentos'], true);
+        }
+
+        // Si no hay en protocolo_data, buscar en kardex
         $stmt = $this->db->prepare("SELECT medicamentos FROM kardex WHERE procedimiento_id = ?");
         $stmt->execute([$procedimiento_id]);
         $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -81,6 +91,7 @@ class ProtocoloModel
         if ($resultado && !empty($resultado['medicamentos'])) {
             return json_decode($resultado['medicamentos'], true);
         }
+
         return [];
     }
 }
