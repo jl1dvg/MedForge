@@ -25,7 +25,7 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 class="mdi mdi-table-large"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Reporte de Protocolos</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i
+                <li><a href="<?php echo BASE_URL . 'views/editor/lista_protocolos.php'; ?>"><i
                                 class="mdi mdi-timetable"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Solicitudes de Cirugía</a></li>

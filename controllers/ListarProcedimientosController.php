@@ -13,7 +13,7 @@ class ListarProcedimientosController
         $this->db = $pdo;
     }
 
-    public function listar(): array
+    public function listar(string $afiliacion = ''): array
     {
         $procedimientos = [];
         $sql = "SELECT * FROM procedimientos";
@@ -26,7 +26,7 @@ class ListarProcedimientosController
             $codigos = $this->fetchAll("SELECT * FROM procedimientos_codigos WHERE procedimiento_id = ?", [$id]);
             $diagnosticos = $this->fetchAll("SELECT * FROM procedimientos_diagnosticos WHERE procedimiento_id = ?", [$id]);
 
-            $operatorio = $this->procesarOperatorio($row['operatorio'] ?? '');
+            $operatorio = $this->procesarOperatorio($row['operatorio'] ?? '', $afiliacion);
 
             $procedimientos[] = array_merge($row, [
                 'tecnicos' => $tecnicos,
@@ -46,13 +46,17 @@ class ListarProcedimientosController
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function procesarOperatorio(string $texto): string
+    private function procesarOperatorio(string $texto, string $afiliacion): string
     {
-        return preg_replace_callback('/\[\[ID:(\d+)\]\]/', function ($matches) {
-            $stmt = $this->db->prepare("SELECT nombre FROM insumos WHERE id = ?");
+        return preg_replace_callback('/\[\[ID:(\d+)\]\]/', function ($matches) use ($afiliacion) {
+            $stmt = $this->db->prepare("SELECT nombre, producto_issfa FROM insumos WHERE id = ?");
             $stmt->execute([(int)$matches[1]]);
-            $nombre = $stmt->fetchColumn();
-            return $nombre ?: $matches[0];
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) return $matches[0];
+            if ($afiliacion === 'MEDEC S.A. (GOLDEN)' && !empty($row['producto_issfa'])) {
+                return $row['producto_issfa'];
+            }
+            return $row['nombre'];
         }, $texto);
     }
 }

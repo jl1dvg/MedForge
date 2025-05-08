@@ -9,6 +9,8 @@ header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json");
 
 $controller = new ListarProcedimientosController($pdo);
-$response = $controller->listar();
+$afiliacion = $_GET['afiliacion'] ?? '';
+$response = $controller->listar($afiliacion);
+$response['afiliacion_recibida'] = $afiliacion;
 
 echo json_encode($response);

@@ -364,6 +364,13 @@ foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
 }
 $row++;
 
+// === Agrupar insumos según IVA
+$insumosConIVA = array_filter($data['insumos'], fn($insumo) => $insumo['iva'] == 1);
+$medicamentosSinIVA = array_filter($data['insumos'], fn($insumo) => $insumo['iva'] == 0);
+
+// Guardar inicio de bloque sin IVA (oxígeno + medicamentos sin IVA)
+$inicioBloqueSinIVA = $row;
+
 // Filas de oxígeno
 foreach ($data['oxigeno'] as $o) {
     $codigo = $o['codigo'];
@@ -387,10 +394,35 @@ foreach ($data['oxigeno'] as $o) {
     $row++;
 }
 
-// === Total oxígeno columna J
+// Filas de medicamentos sin IVA
+foreach ($medicamentosSinIVA as $o) {
+    $codigo = $o['codigo'];
+    $nombre = $o['nombre'];
+    $cantidad = $o['cantidad'];
+    $precio = $o['precio'];
+
+    $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
+    $sheet->setCellValue("C{$row}", $codigo);
+    $sheet->setCellValue("D{$row}", $nombre);
+    $sheet->setCellValue("E{$row}", $precio);
+    $sheet->setCellValue("F{$row}", $cantidad);
+    $sheet->setCellValue("G{$row}", $precio * $cantidad);
+    $sheet->setCellValue("H{$row}", ($precio * $cantidad) * 1.10);
+    $sheet->setCellValue("I{$row}", 0);
+    $sheet->setCellValue("J{$row}", ($precio * $cantidad) * 1.10);
+
+    foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
+        $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+    }
+
+    $row++;
+}
+
+// === Total oxígeno columna J (realmente total de bloque sin IVA)
 $totalOxigenoRow = $row;
+$finBloqueSinIVA = $row - 1;
 $sheet->setCellValue("I{$totalOxigenoRow}", "TOTAL:");
-$sheet->setCellValue("J{$totalOxigenoRow}", "=SUM(J" . ($totalOxigenoRow - count($data['oxigeno'])) . ":J" . ($totalOxigenoRow - 1) . ")");
+$sheet->setCellValue("J{$totalOxigenoRow}", "=SUM(J{$inicioBloqueSinIVA}:J{$finBloqueSinIVA})");
 $sheet->getStyle("B{$totalOxigenoRow}:J{$totalOxigenoRow}")->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
 $sheet->getStyle("B{$totalOxigenoRow}:J{$totalOxigenoRow}")->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFFF0000');
 $sheet->getStyle("B{$totalOxigenoRow}:J{$totalOxigenoRow}")->getBorders()->getAllBorders()->setBorderStyle('thin');
@@ -438,7 +470,7 @@ foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
 $row++;
 
 // Filas de insumos
-foreach ($data['insumos'] as $o) {
+foreach ($insumosConIVA as $o) {
     $codigo = $o['codigo'];
     $nombre = $o['nombre'];
     $cantidad = $o['cantidad'];
@@ -464,7 +496,7 @@ foreach ($data['insumos'] as $o) {
 // === Total insumos columna J
 $totalInsumosRow = $row;
 $sheet->setCellValue("I{$totalInsumosRow}", "TOTAL:");
-$sheet->setCellValue("J{$totalInsumosRow}", "=SUM(J" . ($totalInsumosRow - count($data['insumos'])) . ":J" . ($totalInsumosRow - 1) . ")");
+$sheet->setCellValue("J{$totalInsumosRow}", "=SUM(J" . ($totalInsumosRow - count($insumosConIVA)) . ":J" . ($totalInsumosRow - 1) . ")");
 $sheet->getStyle("B{$totalInsumosRow}:J{$totalInsumosRow}")->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
 $sheet->getStyle("B{$totalInsumosRow}:J{$totalInsumosRow}")->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFFF0000');
 $sheet->getStyle("B{$totalInsumosRow}:J{$totalInsumosRow}")->getBorders()->getAllBorders()->setBorderStyle('thin');

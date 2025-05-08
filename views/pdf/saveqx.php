@@ -862,8 +862,9 @@
     </tr>
     <tr>
         <td class="blanco" colspan="15"
-            rowspan="5">
-            ?></td>
+            rowspan="5"><img src="<?php echo asset('assets/firmas/baquejenniffer.png'); ?>" alt="Imagen de la firma"
+                             style="max-height: 70px;">
+        </td>
         <td class="blanco" colspan="16"
             rowspan="5"><?php echo "<img src='" . htmlspecialchars($cirujano_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
             ?></td>
