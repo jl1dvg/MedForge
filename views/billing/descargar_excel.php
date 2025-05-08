@@ -365,8 +365,8 @@ foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
 $row++;
 
 // === Agrupar insumos según IVA
-$insumosConIVA = array_filter($data['insumos'], fn($insumo) => $insumo['iva'] == 1);
-$medicamentosSinIVA = array_filter($data['insumos'], fn($insumo) => $insumo['iva'] == 0);
+$insumosConIVA = $data['insumos'];
+$medicamentosSinIVA = $data['medicamentos'];
 
 // Guardar inicio de bloque sin IVA (oxígeno + medicamentos sin IVA)
 $inicioBloqueSinIVA = $row;

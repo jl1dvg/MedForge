@@ -116,6 +116,34 @@ class BillingController
         $stmt->execute([$billingId]);
         $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $insumosConIVA = array_filter($insumos, fn($i) => isset($i['iva']) && (int)$i['iva'] === 1);
+
+        // Obtener medicamentos (iva = 0) y mapear código según afiliación
+        $medicamentosSinIVA = array_filter($insumos, fn($i) => isset($i['iva']) && (int)$i['iva'] === 0);
+        //var_dump($medicamentosSinIVA);
+
+        if (!empty($medicamentosSinIVA)) {
+            $codigos = array_unique(array_filter(array_map(fn($m) => $m['codigo'], $medicamentosSinIVA)));
+
+            if (!empty($codigos)) {
+                $placeholders = implode(',', array_fill(0, count($codigos), '?'));
+                $stmt = $this->db->prepare("SELECT codigo_isspol, codigo_issfa, codigo_msp, codigo_iess, nombre FROM insumos WHERE codigo_isspol IN ($placeholders)");
+                $stmt->execute(array_values($codigos));
+                $insumosReferencia = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $referenciaMap = [];
+                foreach ($insumosReferencia as $r) {
+                    $referenciaMap[$r['codigo_isspol']] = $r;
+                }
+
+                $afiliacion = $pacienteInfo['afiliacion'] ?? '';
+                foreach ($medicamentosSinIVA as &$med) {
+                    $med = $this->ajustarCodigoPorAfiliacion($med, $afiliacion, $referenciaMap);
+                }
+                unset($med);
+            }
+        }
+
         // Obtener oxigeno
         $stmt = $this->db->prepare("SELECT * FROM billing_oxigeno WHERE billing_id = ?");
         $stmt->execute([$billingId]);
@@ -130,7 +158,8 @@ class BillingController
             'billing' => $billing,
             'procedimientos' => $procedimientos,
             'derechos' => $derechos,
-            'insumos' => $insumos,
+            'insumos' => $insumosConIVA,
+            'medicamentos' => $medicamentosSinIVA,
             'oxigeno' => $oxigeno,
             'anestesia' => $anestesia,
             'paciente' => $pacienteInfo,
@@ -153,5 +182,35 @@ class BillingController
             $stmt = $this->db->prepare("DELETE FROM $tabla WHERE billing_id = ?");
             $stmt->execute([$billingId]);
         }
+    }
+
+    /**
+     * Ajusta el código y nombre del medicamento según la afiliación y el mapa de referencia.
+     */
+    private function ajustarCodigoPorAfiliacion(array $medicamento, string $afiliacion, array $referenciaMap): array
+    {
+        $codigoClave = $medicamento['codigo'] ?? '';
+        $referencia = $referenciaMap[$codigoClave] ?? null;
+
+        if ($referencia) {
+            switch ($afiliacion) {
+                case 'ISSFA':
+                    $medicamento['codigo'] = $referencia['codigo_issfa'] ?? $codigoClave;
+                    break;
+                case 'MSP':
+                    $medicamento['codigo'] = $referencia['codigo_msp'] ?? $codigoClave;
+                    break;
+                case 'IESS':
+                    $medicamento['codigo'] = $referencia['codigo_iess'] ?? $codigoClave;
+                    break;
+                case 'ISSPOL':
+                    $medicamento['codigo'] = $referencia['codigo_isspol'] ?? $codigoClave;
+                    break;
+            }
+
+            $medicamento['nombre'] = $referencia['nombre'] ?? $medicamento['nombre'];
+        }
+
+        return $medicamento;
     }
 }
