@@ -1,7 +1,6 @@
 <?php if (isset($categorias, $insumosDisponibles, $insumosPaciente)): ?>
-    <div class="table-responsive">
-        <table id="insumosTable"
-               class="table editable-table mb-0">
+    <div class="table-responsive table-sm table-hover table-striped align-middle">
+        <table id="insumosTable" class="table table-bordered table-sm table-hover table-striped align-middle editable-table mb-0">
             <thead>
             <tr>
                 <th>Categoría</th>
@@ -20,7 +19,7 @@
                         ?>
                         <tr class="categoria-<?= htmlspecialchars($categoria) ?>">
                             <td>
-                                <select class="form-control categoria-select" name="categoria[]">
+                                <select class="form-select form-select-sm categoria-select" name="categoria[]">
                                     <?php foreach ($categorias as $cat): ?>
                                         <option value="<?= htmlspecialchars($cat) ?>" <?= ($cat == $categoria) ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($cat) ?>
@@ -29,7 +28,7 @@
                                 </select>
                             </td>
                             <td>
-                                <select class="form-control nombre-select" name="nombre[]">
+                                <select class="form-select form-select-sm nombre-select" name="nombre[]">
                                     <?php
                                     if (isset($insumosDisponibles[$categoria])) {
                                         foreach ($insumosDisponibles[$categoria] as $insumo) {
@@ -45,9 +44,9 @@
                             <td contenteditable="true" data-cantidad="<?= htmlspecialchars($item['cantidad']) ?>">
                                 <?= htmlspecialchars($item['cantidad']) ?>
                             </td>
-                            <td>
-                                <button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button>
-                                <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>
+                            <td class="text-center w-auto">
+                                <button class="btn btn-sm btn-success add-row-btn"><i class="fa fa-plus"></i></button>
+                                <button class="btn btn-sm btn-danger delete-btn"><i class="fa fa-minus"></i></button>
                             </td>
                         </tr>
                         <?php
@@ -60,14 +59,14 @@
                 ?>
                 <tr class="categoria-equipos">
                     <td>
-                        <select class="form-control categoria-select" name="categoria[]">
+                        <select class="form-select form-select-sm categoria-select" name="categoria[]">
                             <?php foreach ($categorias as $cat): ?>
                                 <option value="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </td>
                     <td>
-                        <select class="form-control nombre-select" name="nombre[]">
+                        <select class="form-select form-select-sm nombre-select" name="nombre[]">
                             <?php
                             foreach ($insumosDisponibles['equipos'] ?? [] as $insumo) {
                                 echo '<option value="' . htmlspecialchars($insumo['id']) . '">' . htmlspecialchars($insumo['nombre']) . '</option>';
@@ -76,9 +75,9 @@
                         </select>
                     </td>
                     <td contenteditable="true" data-cantidad="1">1</td>
-                    <td>
-                        <button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button>
-                        <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>
+                    <td class="text-center w-auto">
+                        <button class="btn btn-sm btn-success add-row-btn"><i class="fa fa-plus"></i></button>
+                        <button class="btn btn-sm btn-danger delete-btn"><i class="fa fa-minus"></i></button>
                     </td>
                 </tr>
                 <?php

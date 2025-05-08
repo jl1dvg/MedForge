@@ -81,6 +81,27 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
             padding: 2px 4px;
             border-radius: 4px;
         }
+
+        #insumosTable td, #insumosTable th {
+            padding: 0.35rem 0.5rem;
+            font-size: 1rem;
+        }
+
+        #insumosTable td[contenteditable="true"] {
+            border: 1px dashed #ccc;
+            cursor: text;
+        }
+
+        #insumosTable td[contenteditable="true"]:focus {
+            outline: 2px solid #007bff;
+            background-color: #fff;
+        }
+
+        #insumosTable td,
+        #insumosTable th {
+            text-align: center;
+            vertical-align: middle;
+        }
     </style>
 
 </head>
