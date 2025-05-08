@@ -135,11 +135,12 @@ $(function () {
                         });
                     }
                     // Add row to table
-                    var newRowData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, `<select class="form-control nombre-select" name="nombre">${nombreOptions}</select>`, item.cantidad, '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
+                    var newRowData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, `<select class="form-control nombre-select" name="nombre">${nombreOptions}</select>`, `${item.cantidad}`, '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
                     insumosTable.row.add(newRowData).draw(false);
                     // Set the category select value
                     var newRow = insumosTable.row(':last').nodes().to$();
                     newRow.find('select[name="categoria"]').val(cat).trigger('change');
+                    newRow.find('td:eq(2)').attr('contenteditable', 'true');
                     console.log('  ✅ Fila agregada para categoría:', cat);
                 });
             }
@@ -160,13 +161,14 @@ $(function () {
             categoriaOptions += `<option value="${cat}">${cat.replace('_', ' ')}</option>`;
         }
 
-        var newData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, '<select class="form-control nombre-select" name="nombre"><option value="">Seleccione una categoría</option></select>', '1', '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
+        var newData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, '<select class="form-control nombre-select" name="nombre"><option value="">Seleccione una categoría</option></select>', '<td contenteditable="true">1</td>', '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
 
         const currentRow = $(this).parents('tr');
         const rowIndex = insumosTable.row(currentRow).index();
         insumosTable.row.add(newData).draw(false);
         const newRow = insumosTable.row(rowIndex + 1).nodes().to$();
         newRow.insertAfter(currentRow);
+        $('#insumosTable').editableTableWidget(); // Re-inicializa para nuevas celdas
         actualizarInsumos();
     });
 
