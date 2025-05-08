@@ -156,7 +156,7 @@ $(function () {
 
     $('#insumosTable').on('click', '.add-row-btn', function (event) {
         event.preventDefault();
-        var categoriaOptions = '';
+        var categoriaOptions = '<option value="">Seleccione categoría</option>';
         for (const cat in insumosDisponibles) {
             categoriaOptions += `<option value="${cat}">${cat.replace('_', ' ')}</option>`;
         }
@@ -168,6 +168,10 @@ $(function () {
         insumosTable.row.add(newData).draw(false);
         const newRow = insumosTable.row(rowIndex + 1).nodes().to$();
         newRow.insertAfter(currentRow);
+        // Hacer scroll hacia la nueva fila
+        $('html, body').animate({
+            scrollTop: newRow.offset().top - 100
+        }, 300);
         $('#insumosTable').editableTableWidget(); // Re-inicializa para nuevas celdas
         actualizarInsumos();
     });
