@@ -55,8 +55,8 @@ class BillingController
 
             // Insertar insumos
             foreach ($data['insumos'] as $i) {
-                $stmt = $this->db->prepare("INSERT INTO billing_insumos (billing_id, insumo_id, codigo, nombre, cantidad, precio) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $i['id'], $i['codigo'], $i['nombre'], $i['cantidad'], $i['precio']]);
+                $stmt = $this->db->prepare("INSERT INTO billing_insumos (billing_id, insumo_id, codigo, nombre, cantidad, precio, iva) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$billingId, $i['id'], $i['codigo'], $i['nombre'], $i['cantidad'], $i['precio'], $i['iva']]);
             }
 
             // Insertar oxígeno

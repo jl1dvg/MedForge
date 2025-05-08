@@ -163,6 +163,7 @@ class DashboardController
                    pr.fecha_inicio, pr.id, pr.membrete, pr.form_id
             FROM patient_data p 
             INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
+            WHERE p.afiliacion != 'ALQUILER' 
             ORDER BY pr.fecha_inicio DESC, pr.id DESC
             LIMIT :limit";
 
