@@ -118,4 +118,55 @@
             </div>
         </div>
     </div>
+
+    <div class="form-group">
+        <label for="codigos">Códigos Quirúrgicos</label>
+        <div id="contenedor-codigos">
+            <?php foreach ($codigos as $index => $codigo): ?>
+                <div class="row mb-2 codigo-item align-items-center">
+                    <div class="col-md-10">
+                        <input type="text" name="codigos[]" class="form-control"
+                               value="<?= htmlspecialchars($codigo['nombre']) ?>" placeholder="Código quirúrgico">
+                        <input type="hidden" name="lateralidades[]"
+                               value="<?= htmlspecialchars($codigo['lateralidad']) ?>">
+                        <input type="hidden" name="selectores[]" value="<?= htmlspecialchars($codigo['selector']) ?>">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-danger btn-sm eliminar-codigo">Eliminar</button>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <button type="button" class="btn btn-primary mt-2" id="agregar-codigo">+ Agregar Código</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            let indexCodigo = <?= count($codigos) ?>;
+
+            document.getElementById('agregar-codigo').addEventListener('click', function () {
+                const container = document.getElementById('contenedor-codigos');
+                const row = document.createElement('div');
+                row.className = 'row mb-2 codigo-item align-items-center';
+                row.innerHTML = `
+                    <div class="col-md-10">
+                        <input type="text" name="codigos[]" class="form-control" placeholder="Código quirúrgico">
+                        <input type="hidden" name="lateralidades[]" value="#select2-consultasubsecuente-procedimientoprotocolo-${indexCodigo}-lateralidadprocedimiento-container">
+                        <input type="hidden" name="selectores[]" value="#select2-consultasubsecuente-procedimientoprotocolo-${indexCodigo}-procinterno-container">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-danger btn-sm eliminar-codigo">Eliminar</button>
+                    </div>
+                `;
+                container.appendChild(row);
+                indexCodigo++;
+            });
+
+            document.getElementById('contenedor-codigos').addEventListener('click', function (e) {
+                if (e.target.classList.contains('eliminar-codigo')) {
+                    e.target.closest('.codigo-item').remove();
+                }
+            });
+        });
+    </script>
 <?php endif; ?>

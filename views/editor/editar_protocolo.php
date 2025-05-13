@@ -21,6 +21,9 @@ $opcionesMedicamentos = $procedimientoController->obtenerOpcionesMedicamentos();
 $categorias = $procedimientoController->obtenerCategoriasInsumos();
 $insumosDisponibles = $procedimientoController->obtenerInsumosDisponibles();
 $insumosPaciente = $procedimientoController->obtenerInsumosDeProtocolo($protocolo['id']);
+$codigos = $procedimientoController->obtenerCodigosDeProcedimiento($protocolo['id']);
+$staff = $procedimientoController->obtenerStaffDeProcedimiento($protocolo['id']);
+
 
 $username = $dashboardController->getAuthenticatedUser();
 $vias = ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'];
@@ -36,6 +39,9 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="/public/css/vendors_css.css">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Style-->
     <link rel="stylesheet" href="/public/css/horizontal-menu.css">
@@ -160,13 +166,33 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                             data-bs-target="#collapseRequerido"
                                                             aria-expanded="false" aria-controls="collapseRequerido"
                                                             data-bs-parent="#accordionGeneral">
-                                                        <i class="ti-eye me-15"></i> Requerido
+                                                        <i class="fa fa-asterisk me-15"></i> Requerido
                                                     </button>
                                                 </h4>
                                                 <div id="collapseRequerido" class="accordion-collapse collapse"
                                                      aria-labelledby="headingRequerido">
                                                     <div class="accordion-body">
                                                         <?php include __DIR__ . '/secciones/requerido.php'; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Staff -->
+                                            <div class="accordion-item">
+                                                <h4 class="accordion-header" id="headingStaff">
+                                                    <button class="accordion-button collapsed box-title text-info mt-20"
+                                                            type="button"
+                                                            data-bs-toggle="collapse"
+                                                            data-bs-target="#collapseStaff"
+                                                            aria-expanded="false" aria-controls="collapseStaff"
+                                                            data-bs-parent="#accordionGeneral">
+                                                        <i class="fa fa-user-md me-15"></i> Staff
+                                                    </button>
+                                                </h4>
+                                                <div id="collapseStaff" class="accordion-collapse collapse"
+                                                     aria-labelledby="headingStaff">
+                                                    <div class="accordion-body">
+                                                        <?php include __DIR__ . '/secciones/staff.php'; ?>
                                                     </div>
                                                 </div>
                                             </div>
@@ -180,7 +206,7 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                             data-bs-target="#collapseOperatorio"
                                                             aria-expanded="false" aria-controls="collapseOperatorio"
                                                             data-bs-parent="#accordionGeneral">
-                                                        <i class="ti-pencil-alt me-15"></i> Operatorio
+                                                        <i class="fa fa-server me-15"></i> Operatorio
                                                     </button>
                                                 </h4>
                                                 <div id="collapseOperatorio" class="accordion-collapse collapse"
@@ -200,7 +226,7 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                             data-bs-target="#collapseEvolucion"
                                                             aria-expanded="false" aria-controls="collapseEvolucion"
                                                             data-bs-parent="#accordionGeneral">
-                                                        <i class="ti-pencil-alt me-15"></i> Evolución
+                                                        <i class="fa fa-notes-medical me-15"></i> Evolución
                                                     </button>
                                                 </h4>
                                                 <div id="collapseEvolucion" class="accordion-collapse collapse"
@@ -220,7 +246,7 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                             data-bs-target="#collapseKardex"
                                                             aria-expanded="false" aria-controls="collapseKardex"
                                                             data-bs-parent="#accordionGeneral">
-                                                        <i class="ti-bookmark-alt me-15"></i> Kardex
+                                                        <i class="fa fa-prescription-bottle-alt me-15"></i> Kardex
                                                     </button>
                                                 </h4>
                                                 <div id="collapseKardex" class="accordion-collapse collapse"
@@ -240,7 +266,7 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                             data-bs-target="#collapseInsumos"
                                                             aria-expanded="false" aria-controls="collapseInsumos"
                                                             data-bs-parent="#accordionGeneral">
-                                                        <i class="ti-list me-15"></i> Lista de Insumos
+                                                        <i class="fa fa-boxes me-15"></i> Lista de Insumos
                                                     </button>
                                                 </h4>
                                                 <div id="collapseInsumos" class="accordion-collapse collapse"
