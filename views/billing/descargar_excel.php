@@ -404,12 +404,12 @@ foreach ($medicamentosSinIVA as $o) {
     $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
     $sheet->setCellValue("C{$row}", $codigo);
     $sheet->setCellValue("D{$row}", $nombre);
-    $sheet->setCellValue("E{$row}", $precio);
+    $sheet->setCellValue("E{$row}", $precio - ($precio * 0.10));
     $sheet->setCellValue("F{$row}", $cantidad);
     $sheet->setCellValue("G{$row}", $precio * $cantidad);
-    $sheet->setCellValue("H{$row}", ($precio * $cantidad) * 1.10);
+    $sheet->setCellValue("H{$row}", '');
     $sheet->setCellValue("I{$row}", 0);
-    $sheet->setCellValue("J{$row}", ($precio * $cantidad) * 1.10);
+    $sheet->setCellValue("J{$row}", $precio * $cantidad);
 
     foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
         $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
