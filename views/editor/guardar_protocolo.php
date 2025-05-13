@@ -1,6 +1,8 @@
 <?php
 ob_start();
-error_reporting(0);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 require_once __DIR__ . '/../../bootstrap.php';
 ob_clean();
@@ -28,14 +30,26 @@ $dashboardController = new DashboardController($pdo);
 $username = $dashboardController->getAuthenticatedUser();
 
 // Actualizar el procedimiento usando los datos del POST
-$resultado = $procedimientoController->actualizarProcedimiento($_POST);
+//$resultado = $procedimientoController->actualizarProcedimiento($_POST);
 
 // Devolver respuesta como JSON
-if ($resultado) {
+try {
+    $resultado = $procedimientoController->actualizarProcedimiento($_POST);
     ob_clean();
-    echo json_encode(['success' => true, 'message' => 'Protocolo actualizado exitosamente']);
-} else {
+    echo json_encode([
+        'success' => $resultado,
+        'message' => $resultado ? 'Protocolo actualizado exitosamente' : 'Error al actualizar el protocolo',
+        'debug' => $_POST
+    ]);
+} catch (Throwable $e) {
     ob_clean();
-    echo json_encode(['success' => false, 'message' => 'Error al actualizar el protocolo']);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Excepción capturada al guardar el protocolo',
+        'error' => $e->getMessage(),
+        'line' => $e->getLine(),
+        'file' => $e->getFile(),
+        'trace' => $e->getTraceAsString()
+    ]);
 }
 exit;

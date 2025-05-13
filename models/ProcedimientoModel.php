@@ -78,6 +78,43 @@ class ProcedimientoModel
                 $stmtInsert->execute([$datos['id'], $medicamentos]);
             }
 
+            // Guardar códigos quirúrgicos
+            if (isset($datos['codigos'], $datos['lateralidades'], $datos['selectores'])) {
+                $codigos = $datos['codigos'];
+                $lateralidades = $datos['lateralidades'];
+                $selectores = $datos['selectores'];
+                $formateados = [];
+
+                foreach ($codigos as $index => $codigo) {
+                    if (!empty($codigo)) {
+                        $formateados[] = [
+                            'nombre' => $codigo,
+                            'lateralidad' => $lateralidades[$index] ?? '',
+                            'selector' => $selectores[$index] ?? ''
+                        ];
+                    }
+                }
+
+                $this->guardarCodigosDeProcedimiento($datos['id'], $formateados);
+            }
+
+            // Guardar staff quirúrgico
+            if (isset($datos['funciones'], $datos['trabajadores'], $datos['nombres_staff'], $datos['selectores'])) {
+                $staff = [];
+                foreach ($datos['funciones'] as $index => $funcion) {
+                    if (!empty($funcion)) {
+                        $staff[] = [
+                            'funcion' => $funcion,
+                            'trabajador' => $datos['trabajadores'][$index] ?? '',
+                            'nombre' => $datos['nombres_staff'][$index] ?? '',
+                            'selector' => $datos['selectores'][$index] ?? ''
+                        ];
+                    }
+                }
+
+                $this->guardarStaffDeProcedimiento($datos['id'], $staff);
+            }
+
             $this->db->commit();
             return true;
         } catch (\Exception $e) {
@@ -140,6 +177,79 @@ class ProcedimientoModel
         $stmt->execute([$id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return !empty($row['insumos']) ? json_decode($row['insumos'], true) : [];
+    }
+
+    public function obtenerCodigosDeProcedimiento(string $procedimientoId): array
+    {
+        $sql = "SELECT * FROM procedimientos_codigos WHERE procedimiento_id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$procedimientoId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function guardarCodigosDeProcedimiento(string $procedimientoId, array $codigos): bool
+    {
+        try {
+            // Eliminar los códigos actuales
+            $sqlDelete = "DELETE FROM procedimientos_codigos WHERE procedimiento_id = ?";
+            $stmtDelete = $this->db->prepare($sqlDelete);
+            $stmtDelete->execute([$procedimientoId]);
+
+            // Insertar los nuevos códigos con lateralidad y selector
+            $sqlInsert = "INSERT INTO procedimientos_codigos (procedimiento_id, nombre, lateralidad, selector) VALUES (?, ?, ?, ?)";
+            $stmtInsert = $this->db->prepare($sqlInsert);
+            foreach ($codigos as $codigo) {
+                if (!empty($codigo['nombre'])) {
+                    $stmtInsert->execute([
+                        $procedimientoId,
+                        $codigo['nombre'],
+                        $codigo['lateralidad'],
+                        $codigo['selector']
+                    ]);
+                }
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            throw $e;
+        }
+    }
+
+    public function obtenerStaffDeProcedimiento(string $procedimientoId): array
+    {
+        $sql = "SELECT * FROM procedimientos_tecnicos WHERE procedimiento_id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$procedimientoId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function guardarStaffDeProcedimiento(string $procedimientoId, array $staff): bool
+    {
+        try {
+            // Eliminar el staff actual
+            $sqlDelete = "DELETE FROM procedimientos_tecnicos WHERE procedimiento_id = ?";
+            $stmtDelete = $this->db->prepare($sqlDelete);
+            $stmtDelete->execute([$procedimientoId]);
+
+            // Insertar el nuevo staff
+            $sqlInsert = "INSERT INTO procedimientos_tecnicos (procedimiento_id, funcion, trabajador, nombre, selector) VALUES (?, ?, ?, ?, ?)";
+            $stmtInsert = $this->db->prepare($sqlInsert);
+            foreach ($staff as $miembro) {
+                if (!empty($miembro['funcion']) && !empty($miembro['nombre'])) {
+                    $stmtInsert->execute([
+                        $procedimientoId,
+                        $miembro['funcion'],
+                        $miembro['trabajador'],
+                        $miembro['nombre'],
+                        $miembro['selector']
+                    ]);
+                }
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            throw $e;
+        }
     }
 }
 

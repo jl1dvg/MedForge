@@ -63,7 +63,7 @@ function insertarCodigoOperatorio(id, nombre) {
     range.deleteContents();
     const span = document.createElement('span');
     span.className = 'tag';
-    span.textContent = nombre;
+    span.textContent = nombre.replace(/\s+/g, ' ').trim();
     span.setAttribute('data-id', id);
     range.insertNode(span);
     const space = document.createTextNode('\u00A0');

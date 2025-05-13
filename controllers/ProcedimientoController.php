@@ -53,4 +53,14 @@ class ProcedimientoController
     {
         return $this->procedimientoModel->obtenerInsumosDeProtocolo($id);
     }
+
+    public function obtenerCodigosDeProcedimiento(string $procedimientoId): array
+    {
+        return $this->procedimientoModel->obtenerCodigosDeProcedimiento($procedimientoId);
+    }
+
+    public function obtenerStaffDeProcedimiento(string $procedimientoId): array
+    {
+        return $this->procedimientoModel->obtenerStaffDeProcedimiento($procedimientoId);
+    }
 }
