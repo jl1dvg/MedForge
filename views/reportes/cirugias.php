@@ -65,6 +65,12 @@ $username = $dashboardController->getAuthenticatedUser();
                         <div class="box">
                             <div class="box-body">
                                 <h4 class="box-title">Cirugías Realizadas</h4>
+                                <div class="mb-3">
+                                    <label for="min-date">Desde:</label>
+                                    <input type="date" id="min-date">
+                                    <label for="max-date">Hasta:</label>
+                                    <input type="date" id="max-date">
+                                </div>
                                 <div class="table-responsive">
                                     <table id="surgeryTable" class="table table-striped table-hover">
                                         <thead>
@@ -331,6 +337,25 @@ $username = $dashboardController->getAuthenticatedUser();
     };
 
     $(document).ready(function () {
+        // Filtro por rango de fechas para la columna 4 (Fecha)
+        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+            var min = $('#min-date').val();
+            var max = $('#max-date').val();
+            var date = data[4]; // Columna de la fecha
+            if (!date) return false;
+
+            var parts = date.split('/');
+            var d = new Date(parts[2], parts[1] - 1, parts[0]);
+
+            if (
+                (min === "" || new Date(min) <= d) &&
+                (max === "" || new Date(max) >= d)
+            ) {
+                return true;
+            }
+            return false;
+        });
+
         $('#surgeryTable').DataTable({
             "paging": true,
             "lengthChange": true,
@@ -339,12 +364,32 @@ $username = $dashboardController->getAuthenticatedUser();
             "info": true,
             "autoWidth": false,
             "pageLength": 25,
+            "order": [[4, "desc"]],
             "columnDefs": [
                 {
                     "targets": 4,  // Índice de la columna "Fecha de Inicio"
                     "type": "dd-mm-yyyy"  // Tipo personalizado para ordenar fechas dd/mm/yyyy
                 }
-            ]
+            ],
+            initComplete: function () {
+                this.api().columns([3]).every(function () {
+                    var column = this;
+                    var select = $('<select><option value="">Filtrar</option></select>')
+                        .appendTo($(column.header()).empty())
+                        .on('change', function () {
+                            var val = $.fn.dataTable.util.escapeRegex($(this).val());
+                            column.search(val ? '^' + val + '$' : '', true, false).draw();
+                        });
+                    column.data().unique().sort().each(function (d, j) {
+                        select.append('<option value="' + d + '">' + d + '</option>')
+                    });
+                });
+            }
+        });
+
+        // Listeners para los inputs de fecha
+        $('#min-date, #max-date').on('change', function () {
+            $('#surgeryTable').DataTable().draw();
         });
     });
 </script>

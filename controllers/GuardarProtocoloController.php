@@ -61,7 +61,7 @@ class GuardarProtocoloController
             status = VALUES(status)";
 
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([
+        if ($stmt->execute([
             'procedimiento_id' => $data['procedimiento_id'] ?? '',
             'membrete' => $data['membrete'] ?? '',
             'dieresis' => $data['dieresis'] ?? '',
@@ -92,7 +92,115 @@ class GuardarProtocoloController
             'status' => $data['status'] ?? 0,
             'form_id' => $data['form_id'],
             'hc_number' => $data['hc_number']
-        ]);
+        ])) {
+            $protocoloId = (int)$this->db->lastInsertId();
+
+            if ($protocoloId === 0) {
+                $searchStmt = $this->db->prepare("SELECT id FROM protocolo_data WHERE form_id = :form_id");
+                $searchStmt->execute([':form_id' => $data['form_id']]);
+                $protocoloId = (int)$searchStmt->fetchColumn();
+            }
+
+            // Eliminar insumos anteriores
+            $deleteStmt = $this->db->prepare("DELETE FROM protocolo_insumos WHERE protocolo_id = :protocolo_id");
+            $deleteStmt->execute([':protocolo_id' => $protocoloId]);
+
+            // Insertar nuevos insumos desnormalizados
+            $insertStmt = $this->db->prepare("
+                INSERT INTO protocolo_insumos (protocolo_id, insumo_id, nombre, cantidad, categoria)
+                VALUES (:protocolo_id, :insumo_id, :nombre, :cantidad, :categoria)
+            ");
+
+            $insumos = is_string($data['insumos']) ? json_decode($data['insumos'], true) : $data['insumos'];
+
+            if (is_array($insumos)) {
+                foreach (['equipos', 'anestesia', 'quirurgicos'] as $categoria) {
+                    if (isset($insumos[$categoria]) && is_array($insumos[$categoria])) {
+                        foreach ($insumos[$categoria] as $insumo) {
+                            $insertStmt->execute([
+                                ':protocolo_id' => $protocoloId,
+                                ':insumo_id' => $insumo['id'] ?? null,
+                                ':nombre' => $insumo['nombre'] ?? '',
+                                ':cantidad' => $insumo['cantidad'] ?? 1,
+                                ':categoria' => $categoria
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            // Asegurar que el form_id exista en procedimiento_proyectado
+            $this->db->prepare("INSERT IGNORE INTO procedimiento_proyectado (form_id, hc_number) VALUES (:form_id, :hc_number)")
+                     ->execute([
+                         ':form_id' => $data['form_id'],
+                         ':hc_number' => $data['hc_number']
+                     ]);
+
+            // Sincronizar diagnosticos en diagnosticos_asignados
+            $stmtExistentes = $this->db->prepare("SELECT dx_code FROM diagnosticos_asignados WHERE form_id = :form_id AND fuente = 'protocolo'");
+            $stmtExistentes->execute([':form_id' => $data['form_id']]);
+            $existentes = $stmtExistentes->fetchAll(PDO::FETCH_COLUMN, 0);
+
+            $nuevosDx = [];
+            $dxCodigosNuevos = [];
+
+            $diagnosticos = is_string($data['diagnosticos']) ? json_decode($data['diagnosticos'], true) : $data['diagnosticos'];
+            foreach ($diagnosticos as $dx) {
+                if (!isset($dx['idDiagnostico']) || $dx['idDiagnostico'] === 'SELECCIONE') {
+                    continue;
+                }
+
+                $parts = explode(' - ', $dx['idDiagnostico'], 2);
+                $codigo = trim($parts[0] ?? '');
+                $descripcion = trim($parts[1] ?? '');
+
+                $dxCodigosNuevos[] = $codigo;
+
+                if (in_array($codigo, $existentes)) {
+                    $stmtUpdate = $this->db->prepare("UPDATE diagnosticos_asignados SET descripcion = :descripcion, definitivo = :definitivo, lateralidad = :lateralidad, selector = :selector
+                                                      WHERE form_id = :form_id AND fuente = 'protocolo' AND dx_code = :dx_code");
+                    $stmtUpdate->execute([
+                        ':form_id' => $data['form_id'],
+                        ':dx_code' => $codigo,
+                        ':descripcion' => $descripcion,
+                        ':definitivo' => isset($dx['evidencia']) && in_array(strtoupper($dx['evidencia']), ['1', 'DEFINITIVO']) ? 1 : 0,
+                        ':lateralidad' => $dx['ojo'] ?? null,
+                        ':selector' => $dx['selector'] ?? null
+                    ]);
+                } else {
+                    $nuevosDx[] = [
+                        'form_id' => $data['form_id'],
+                        'dx_code' => $codigo,
+                        'descripcion' => $descripcion,
+                        'definitivo' => isset($dx['evidencia']) && in_array(strtoupper($dx['evidencia']), ['1', 'DEFINITIVO']) ? 1 : 0,
+                        'lateralidad' => $dx['ojo'] ?? null,
+                        'selector' => $dx['selector'] ?? null
+                    ];
+                }
+            }
+
+            $codigosEliminar = array_diff($existentes, $dxCodigosNuevos);
+            if (!empty($codigosEliminar)) {
+                $in = implode(',', array_fill(0, count($codigosEliminar), '?'));
+                $stmtDelete = $this->db->prepare("DELETE FROM diagnosticos_asignados WHERE form_id = ? AND fuente = 'protocolo' AND dx_code IN ($in)");
+                $stmtDelete->execute(array_merge([$data['form_id']], $codigosEliminar));
+            }
+
+            $insertDxStmt = $this->db->prepare("INSERT INTO diagnosticos_asignados (form_id, fuente, dx_code, descripcion, definitivo, lateralidad, selector)
+                                                VALUES (:form_id, 'protocolo', :dx_code, :descripcion, :definitivo, :lateralidad, :selector)");
+            foreach ($nuevosDx as $dx) {
+                $insertDxStmt->execute([
+                    ':form_id' => $dx['form_id'],
+                    ':dx_code' => $dx['dx_code'],
+                    ':descripcion' => $dx['descripcion'],
+                    ':definitivo' => $dx['definitivo'],
+                    ':lateralidad' => $dx['lateralidad'],
+                    ':selector' => $dx['selector']
+                ]);
+            }
+            return true;
+        }
+        return false;
     }
 
     public function api($data)
