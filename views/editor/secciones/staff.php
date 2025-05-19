@@ -33,7 +33,8 @@
                         </select>
                         <input type="hidden" name="trabajadores[]"
                                value="<?= htmlspecialchars($miembro['trabajador']) ?>">
-                        <input type="hidden" name="selectores[]" value="<?= htmlspecialchars($miembro['selector']) ?>">
+                        <input type="hidden" name="selectores[]"
+                               value="#select2-consultasubsecuente-trabajadorprotocolo-<?= $index ?>-funcion-container">
                     </div>
                     <div class="col-md-5">
                         <input type="text" name="nombres_staff[]" class="form-control"

@@ -107,7 +107,7 @@ class ProcedimientoModel
                             'funcion' => $funcion,
                             'trabajador' => $datos['trabajadores'][$index] ?? '',
                             'nombre' => $datos['nombres_staff'][$index] ?? '',
-                            'selector' => $datos['selectores'][$index] ?? ''
+                            'selector' => "#select2-consultasubsecuente-trabajadorprotocolo-{$index}-funcion-container"
                         ];
                     }
                 }
@@ -223,6 +223,11 @@ class ProcedimientoModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Guarda el staff quirúrgico de un procedimiento, validando coherencia de índices y campos requeridos.
+     * Cada miembro debe tener al menos 'funcion' y 'nombre' definidos.
+     * Si algún índice de trabajador, selector o nombre no existe, se ignora ese registro.
+     */
     public function guardarStaffDeProcedimiento(string $procedimientoId, array $staff): bool
     {
         try {
@@ -234,16 +239,39 @@ class ProcedimientoModel
             // Insertar el nuevo staff
             $sqlInsert = "INSERT INTO procedimientos_tecnicos (procedimiento_id, funcion, trabajador, nombre, selector) VALUES (?, ?, ?, ?, ?)";
             $stmtInsert = $this->db->prepare($sqlInsert);
-            foreach ($staff as $miembro) {
-                if (!empty($miembro['funcion']) && !empty($miembro['nombre'])) {
-                    $stmtInsert->execute([
-                        $procedimientoId,
-                        $miembro['funcion'],
-                        $miembro['trabajador'],
-                        $miembro['nombre'],
-                        $miembro['selector']
-                    ]);
+
+            foreach ($staff as $index => $miembro) {
+                // Validar que existan los índices requeridos en el array
+                if (
+                    !isset($miembro['funcion']) ||
+                    !isset($miembro['nombre'])
+                ) {
+                    continue;
                 }
+                // Validar campos requeridos
+                $funcion = $miembro['funcion'];
+                $nombre = $miembro['nombre'];
+                // Si faltan los datos mínimos, no guardar
+                if (empty($funcion) || empty($nombre)) {
+                    continue;
+                }
+                // Validar índices de trabajador, selector y nombre (aunque pueden ser vacíos, pero deben existir)
+                if (
+                    !array_key_exists('trabajador', $miembro) ||
+                    !array_key_exists('selector', $miembro) ||
+                    !array_key_exists('nombre', $miembro)
+                ) {
+                    continue;
+                }
+                $trabajador = $miembro['trabajador'];
+                $selector = $miembro['selector'];
+                $stmtInsert->execute([
+                    $procedimientoId,
+                    $funcion,
+                    $trabajador,
+                    $nombre,
+                    $selector
+                ]);
             }
 
             return true;

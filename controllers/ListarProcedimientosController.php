@@ -53,7 +53,7 @@ class ListarProcedimientosController
             $stmt->execute([(int)$matches[1]]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$row) return $matches[0];
-            if ($afiliacion === 'MEDEC S.A. (GOLDEN)' && !empty($row['producto_issfa'])) {
+            if ($afiliacion === 'ISSFA' && !empty($row['producto_issfa'])) {
                 return $row['producto_issfa'];
             }
             return $row['nombre'];

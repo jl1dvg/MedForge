@@ -404,7 +404,7 @@ foreach ($medicamentosSinIVA as $o) {
     $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
     $sheet->setCellValue("C{$row}", $codigo);
     $sheet->setCellValue("D{$row}", $nombre);
-    $sheet->setCellValue("E{$row}", $precio - ($precio * 0.10));
+    $sheet->setCellValue("E{$row}", $precio / 0.10);
     $sheet->setCellValue("F{$row}", $cantidad);
     $sheet->setCellValue("G{$row}", $precio * $cantidad);
     $sheet->setCellValue("H{$row}", '');
@@ -482,7 +482,7 @@ foreach ($insumosConIVA as $o) {
     $sheet->setCellValue("E{$row}", $precio);
     $sheet->setCellValue("F{$row}", $cantidad);
     $sheet->setCellValue("G{$row}", $precio * $cantidad);
-    $sheet->setCellValue("H{$row}", ($precio * $cantidad) * 1.10);
+    $sheet->setCellValue("H{$row}", ($precio * $cantidad) * 0.10);
     $sheet->setCellValue("I{$row}", ($precio * $cantidad) * 0.15);
     $sheet->setCellValue("J{$row}", (($precio * $cantidad) * 1.25));
 
