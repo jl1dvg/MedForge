@@ -7,10 +7,24 @@ use Controllers\PacienteController;
 $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
 
+// Obtener todas las afiliaciones disponibles para el select
 $username = $dashboardController->getAuthenticatedUser();
 $pacientes = $pacienteController->obtenerPacientesConUltimaConsulta();
 $hc_number = $_GET['hc_number'] ?? null;
 $patientData = $pacienteController->getPatientDetails($hc_number);
+$afiliacionesDisponibles = $pacienteController->getAfiliacionesDisponibles();
+
+// Manejar actualización del paciente si se envía el formulario POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_paciente'])) {
+    $nuevoNombre = $_POST['fname'] ?? '';
+    $nuevoSegundoNombre = $_POST['mname'] ?? '';
+    $nuevoApellido = $_POST['lname'] ?? '';
+    $nuevoSegundoApellido = $_POST['lname2'] ?? '';
+    $nuevaAfiliacion = $_POST['afiliacion'] ?? '';
+    $pacienteController->actualizarPaciente($hc_number, $nuevoNombre, $nuevoSegundoNombre, $nuevoApellido, $nuevoSegundoApellido, $nuevaAfiliacion);
+    header("Location: detalles.php?hc_number=$hc_number");
+    exit;
+}
 $diagnosticos = $pacienteController->getDiagnosticosPorPaciente($hc_number);
 $medicos = $pacienteController->getDoctoresAsignados($hc_number);
 $solicitudes = $pacienteController->getSolicitudesPorPaciente($hc_number);
@@ -282,6 +296,9 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                  style="background-image:url(<?php echo $backgroundImage; ?>); background-repeat: no-repeat; background-position: center; background-size: cover;">
                             </div>
                             <div class="box-body wed-up position-relative">
+                                <button class="btn btn-warning mb-3" data-bs-toggle="modal"
+                                        data-bs-target="#modalEditarPaciente">Editar Datos
+                                </button>
                                 <div class="d-md-flex align-items-center">
                                     <div class=" me-20 text-center text-md-start">
                                         <img src="<?php echo $avatarImage; ?>" style="height: 150px"
@@ -657,4 +674,55 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
     });
 </script>
 </body>
+<!-- Modal Editar Paciente -->
+<div class="modal fade" id="modalEditarPaciente" tabindex="-1" aria-labelledby="modalEditarPacienteLabel"
+     aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST">
+                <input type="hidden" name="actualizar_paciente" value="1">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalEditarPacienteLabel">Editar Datos del Paciente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Primer Nombre</label>
+                        <input type="text" name="fname" class="form-control"
+                               value="<?= htmlspecialchars($patientData['fname']) ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label>Segundo Nombre</label>
+                        <input type="text" name="mname" class="form-control"
+                               value="<?= htmlspecialchars($patientData['mname']) ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label>Primer Apellido</label>
+                        <input type="text" name="lname" class="form-control"
+                               value="<?= htmlspecialchars($patientData['lname']) ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label>Segundo Apellido</label>
+                        <input type="text" name="lname2" class="form-control"
+                               value="<?= htmlspecialchars($patientData['lname2']) ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label>Afiliación</label>
+                        <select name="afiliacion" class="form-control">
+                            <?php foreach ($afiliacionesDisponibles as $afiliacion): ?>
+                                <option value="<?= htmlspecialchars($afiliacion) ?>" <?= strtolower($afiliacion) === strtolower($patientData['afiliacion']) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($afiliacion) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 </html>
