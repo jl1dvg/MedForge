@@ -295,4 +295,39 @@ class PacienteController
 
         return $staff;
     }
+
+    public function actualizarPaciente($hc_number, $fname, $mname, $lname, $lname2, $afiliacion)
+    {
+        $stmt = $this->db->prepare("
+            UPDATE patient_data 
+            SET fname = :fname, 
+                mname = :mname, 
+                lname = :lname, 
+                lname2 = :lname2, 
+                afiliacion = :afiliacion 
+            WHERE hc_number = :hc_number
+        ");
+        $stmt->execute([
+            ':fname' => $fname,
+            ':mname' => $mname,
+            ':lname' => $lname,
+            ':lname2' => $lname2,
+            ':afiliacion' => $afiliacion,
+            ':hc_number' => $hc_number
+        ]);
+    }
+
+    // Obtiene todas las afiliaciones únicas disponibles desde patient_data, filtrando las que no comiencen con un número
+    public function getAfiliacionesDisponibles()
+    {
+        $stmt = $this->db->query("
+            SELECT DISTINCT afiliacion 
+            FROM patient_data 
+            WHERE afiliacion IS NOT NULL 
+              AND afiliacion != '' 
+              AND afiliacion REGEXP '^[A-Za-z]' 
+            ORDER BY afiliacion ASC
+        ");
+        return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'afiliacion');
+    }
 }
