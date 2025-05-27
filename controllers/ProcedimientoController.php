@@ -63,4 +63,24 @@ class ProcedimientoController
     {
         return $this->procedimientoModel->obtenerStaffDeProcedimiento($procedimientoId);
     }
+
+    public function existeProtocoloConId(string $id): bool
+    {
+        return $this->procedimientoModel->existeProtocoloConId($id);
+    }
+
+    public function generarIdUnicoDesdeCirugia(string $nombreCirugia): string
+    {
+        // Normaliza el nombre: minúsculas, reemplaza espacios y símbolos con guiones bajos
+        $baseId = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '_', $nombreCirugia), '_'));
+        $nuevoId = $baseId;
+        $contador = 1;
+
+        while ($this->existeProtocoloConId($nuevoId)) {
+            $nuevoId = $baseId . '_' . $contador;
+            $contador++;
+        }
+
+        return $nuevoId;
+    }
 }
