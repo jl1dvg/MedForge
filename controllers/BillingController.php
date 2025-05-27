@@ -213,4 +213,40 @@ class BillingController
 
         return $medicamento;
     }
+
+    public function obtenerValorAnestesia(string $codigo): ?float
+    {
+        $stmt = $this->db->prepare("SELECT anestesia_nivel3 FROM tarifario_2014 WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1");
+        $stmt->execute([
+            'codigo' => $codigo,
+            'codigo_sin_0' => ltrim($codigo, '0')
+        ]);
+
+        $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $resultado ? (float)$resultado['anestesia_nivel3'] : null;
+    }
+
+    public function generarExcel(string $formId): void
+    {
+        $datos = $this->obtenerDatos($formId);
+
+        // 🔍 DEBUG: Mostrar contenido completo
+        //echo "<pre>";
+        //var_dump($datos);
+        //echo "</pre>";
+        //exit;
+
+        // Código normal que puedes volver a activar después de revisar
+        $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
+
+        // Pasar los datos como variables globales
+        $GLOBALS['datos_facturacion'] = $datos;
+        $GLOBALS['form_id_facturacion'] = $formId;
+
+        if ($afiliacion === 'ISSPOL') {
+            require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+        } else {
+            require __DIR__ . '/../views/billing/generar_excel_issfa.php';
+        }
+    }
 }
