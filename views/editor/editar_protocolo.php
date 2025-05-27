@@ -17,13 +17,10 @@ if ($idDuplicar) {
         die("Error: No se encontró el protocolo a duplicar.");
     }
 
-    // Permitir que el usuario defina un nuevo nombre corto para el ID duplicado
-    $nuevoNombreCortoInput = $_POST['nuevo_nombre_corto'] ?? $_POST['cirugia'] ?? $_GET['nuevo_nombre_corto'] ?? $protocoloOriginal['cirugia'];
-    $nuevoId = $procedimientoController->generarIdUnicoDesdeCirugia($nuevoNombreCortoInput);
-    $protocoloOriginal['id'] = $nuevoId;
-
+    // Indicar que estamos duplicando, el nuevo ID se generará en guardar_protocolo.php
     $duplicando = true;
     $protocolo = $protocoloOriginal;
+    $protocolo['id'] = ''; // Limpiar el ID original para forzar generación nueva basada en el nombre corto
     // Cargar también los datos relacionados desde otras tablas
     $protocolo['codigos'] = $procedimientoController->obtenerCodigosDeProcedimiento($idDuplicar);
     $protocolo['staff'] = $procedimientoController->obtenerStaffDeProcedimiento($idDuplicar);
@@ -368,22 +365,4 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
 <script src="/public/js/autocomplete-operatorio.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </body>
-<?php if (!empty($duplicando) && $duplicando): ?>
-    <script>
-        document.getElementById('guardarProtocolo').addEventListener('click', function () {
-            Swal.fire({
-                title: '¿Deseas guardar esta nueva plantilla?',
-                text: 'Se generará una copia del protocolo con un nuevo ID.',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Sí, guardar',
-                cancelButtonText: 'Cancelar'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    document.getElementById('editarProtocoloForm').submit();
-                }
-            });
-        });
-    </script>
-<?php endif; ?>
 </html>

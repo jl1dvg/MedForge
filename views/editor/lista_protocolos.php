@@ -115,10 +115,10 @@ $username = $dashboardController->getAuthenticatedUser();
                                                                href="editar_protocolo.php?id=<?= urlencode($procedimiento['id']) ?>">Editar</a>
                                                             <a class="dropdown-item"
                                                                href="editar_protocolo.php?duplicar=<?= urlencode($procedimiento['id']) ?>">Duplicar</a>
-                                                            <a class="dropdown-item text-danger" href="#"
-                                                               onclick="if(confirm('¿Estás seguro de que deseas eliminar este protocolo?')) { window.location.href='../eliminar_protocolo.php?id=<?= urlencode($procedimiento['id']) ?>'; }">
-                                                                Eliminar
-                                                            </a>
+                                                            <form method="POST" action="eliminar_protocolo.php" onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');" style="display:inline;">
+                                                                <input type="hidden" name="id" value="<?= htmlspecialchars($procedimiento['id']) ?>">
+                                                                <button type="submit" class="dropdown-item text-danger">Eliminar</button>
+                                                            </form>
                                                         </div>
                                                     </div>
                                                 </div>
