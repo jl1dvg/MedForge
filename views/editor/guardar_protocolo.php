@@ -43,6 +43,7 @@ try {
         echo json_encode([
             'success' => $resultado,
             'message' => $resultado ? 'Protocolo actualizado exitosamente' : 'Error al actualizar el protocolo',
+            'generated_id' => $_POST['id'] ?? null,
             'debug' => $_POST
         ]);
     } catch (Throwable $e) {

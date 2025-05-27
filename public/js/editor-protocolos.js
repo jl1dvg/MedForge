@@ -5,6 +5,28 @@ $(function () {
 
     const operatorioEditor = document.getElementById('operatorio');
 
+    // ---------- CÓDIGOS QUIRÚRGICOS ----------
+    function cargarCodigos() {
+        if (Array.isArray(codigos)) {
+            codigos.forEach(c => {
+                if (typeof agregarFilaCodigo === 'function') {
+                    agregarFilaCodigo(c.nombre, c.lateralidad, c.selector);
+                }
+            });
+        }
+    }
+
+    // ---------- STAFF QUIRÚRGICO ----------
+    function cargarStaff() {
+        if (Array.isArray(staff)) {
+            staff.forEach((miembro, i) => {
+                if (typeof agregarFilaStaff === 'function') {
+                    agregarFilaStaff(miembro.funcion, miembro.trabajador, miembro.nombre, miembro.selector);
+                }
+            });
+        }
+    }
+
     // Convert editor spans to placeholder string [[ID:...]]
     function getOperatorioValue() {
         let result = '';
@@ -42,7 +64,7 @@ $(function () {
 
         let medicamentoOptions = '';
         opcionesMedicamentos.forEach(function (med) {
-            medicamentoOptions += '<option value="' + med.id + '">' + med.nombre + '</option>';
+            medicamentoOptions += '<option value="' + med.id + '">' + med.medicamento + '</option>';
         });
 
         let viaOptions = '';
@@ -239,6 +261,10 @@ $(function () {
     const rawOperatorio = document.getElementById('operatorioInput').value || '';
     operatorioEditor.innerHTML = renderOperatorioPlaceholders(rawOperatorio);
 
+    // Cargar códigos y staff si existen
+    cargarCodigos();
+    cargarStaff();
+
     // SUBMIT DEL FORMULARIO
     $('#guardarProtocolo').on('click', function (e) {
         console.log('✅ #guardarProtocolo clicked');
@@ -277,4 +303,30 @@ $(function () {
                 Swal.fire('Error', 'No se pudo actualizar el protocolo.', 'error');
             });
     });
+    // Permite agregar filas de códigos quirúrgicos dinámicamente
+    function agregarFilaCodigo(nombre = '', lateralidad = '', selector = '') {
+        const fila = `
+            <tr>
+                <td><input type="text" class="form-control" name="codigos[]" value="${nombre}"></td>
+                <td><input type="text" class="form-control" name="lateralidades[]" value="${lateralidad}"></td>
+                <td><input type="text" class="form-control" name="selectores[]" value="${selector}"></td>
+                <td><button type="button" class="btn btn-danger remove-codigo"><i class="fa fa-trash"></i></button></td>
+            </tr>
+        `;
+        $('#tablaCodigos tbody').append(fila);
+    }
+
+    // Permite agregar filas de staff quirúrgico dinámicamente
+    function agregarFilaStaff(funcion = '', trabajador = '', nombre = '', selector = '') {
+        const fila = `
+            <tr>
+                <td><input type="text" class="form-control" name="funciones[]" value="${funcion}"></td>
+                <td><input type="text" class="form-control" name="trabajadores[]" value="${trabajador}"></td>
+                <td><input type="text" class="form-control" name="nombres_staff[]" value="${nombre}"></td>
+                <td><input type="text" class="form-control" name="selectores[]" value="${selector}"></td>
+                <td><button type="button" class="btn btn-danger remove-staff"><i class="fa fa-trash"></i></button></td>
+            </tr>
+        `;
+        $('#tablaStaff tbody').append(fila);
+    }
 });

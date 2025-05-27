@@ -319,6 +319,30 @@ class ProcedimientoModel
         $stmt->execute([$id]);
         return $stmt->fetchColumn() > 0;
     }
+
+    public function eliminarProtocolo(string $id): bool
+    {
+        try {
+            $this->db->beginTransaction();
+
+            // Eliminar datos relacionados primero
+            $this->db->prepare("DELETE FROM procedimientos_codigos WHERE procedimiento_id = ?")->execute([$id]);
+            $this->db->prepare("DELETE FROM procedimientos_tecnicos WHERE procedimiento_id = ?")->execute([$id]);
+            $this->db->prepare("DELETE FROM kardex WHERE procedimiento_id = ?")->execute([$id]);
+            $this->db->prepare("DELETE FROM insumos_pack WHERE procedimiento_id = ?")->execute([$id]);
+            $this->db->prepare("DELETE FROM evolucion005 WHERE id = ?")->execute([$id]);
+
+            // Finalmente, eliminar el protocolo principal
+            $this->db->prepare("DELETE FROM procedimientos WHERE id = ?")->execute([$id]);
+
+            $this->db->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->db->rollBack();
+            error_log("❌ Error al eliminar protocolo: " . $e->getMessage());
+            return false;
+        }
+    }
 }
 
 ?>
