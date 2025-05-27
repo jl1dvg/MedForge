@@ -16,7 +16,7 @@ if (!$formId) {
 
 // Obtener datos desde variables globales
 $data = $GLOBALS['datos_facturacion'];
-$formId = $GLOBALS['form_id_facturacion'];
+$formId = $GLOBALS['form_id_facturacion'] ?? ($_GET['form_id'] ?? null);
 if (!$data) {
     die("No se encontró la prefactura para form_id: $formId");
 }
@@ -410,10 +410,14 @@ foreach ($data['derechos'] as $servicio) {
     $row++;
 }
 
+// Reemplaza por esto:
+$GLOBALS['spreadsheet'] = $spreadsheet;
+
 // Descargar archivo
 //file_put_contents(__DIR__ . '/debug_oxigeno.log', print_r($data['oxigeno'], true));
-header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment; filename="' . $pacienteInfo['hc_number'] . '_' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
-$writer = new Xlsx($spreadsheet);
-$writer->save('php://output');
-exit;
+// Elimina esto:
+//header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+//header('Content-Disposition: attachment; filename="' . $pacienteInfo['hc_number'] . '_' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
+//$writer = new Xlsx($spreadsheet);
+//$writer->save('php://output');
+//exit;

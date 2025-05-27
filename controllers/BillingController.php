@@ -41,6 +41,15 @@ class BillingController
                 $billingId = $this->db->lastInsertId();
             }
 
+            // Establecer la fecha del billing según el protocolo
+            $stmt = $this->db->prepare("SELECT fecha_inicio FROM protocolo_data WHERE form_id = ?");
+            $stmt->execute([$data['form_id']]);
+            $fechaInicio = $stmt->fetchColumn();
+            if ($fechaInicio) {
+                $stmt = $this->db->prepare("UPDATE billing_main SET created_at = ? WHERE id = ?");
+                $stmt->execute([$fechaInicio, $billingId]);
+            }
+
             // Insertar procedimientos
             foreach ($data['procedimientos'] as $p) {
                 $stmt = $this->db->prepare("INSERT INTO billing_procedimientos (billing_id, procedimiento_id, proc_codigo, proc_detalle, proc_precio) VALUES (?, ?, ?, ?, ?)");
@@ -243,10 +252,193 @@ class BillingController
         $GLOBALS['datos_facturacion'] = $datos;
         $GLOBALS['form_id_facturacion'] = $formId;
 
-        if ($afiliacion === 'ISSPOL') {
-            require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+        $modo = $_GET['modo'] ?? 'individual';
+        if ($modo === 'bulk') {
+            if ($afiliacion === 'ISSPOL') {
+                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+            } else {
+                require __DIR__ . '/../views/billing/descargar_excel.php';
+            }
         } else {
-            require __DIR__ . '/../views/billing/generar_excel_issfa.php';
+            // Individual: enviar encabezados y descargar directamente
+            require_once __DIR__ . '/../vendor/autoload.php';
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $GLOBALS['spreadsheet'] = $spreadsheet;
+
+            if ($afiliacion === 'ISSPOL') {
+                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+            } else {
+                require __DIR__ . '/../views/billing/descargar_excel.php';
+            }
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            $pacienteInfo = $datos['paciente'];
+            $filename = $pacienteInfo['hc_number'] . '_' . $pacienteInfo['lname'] . '_' . $pacienteInfo['fname'] . '.xlsx';
+            header("Content-Disposition: attachment; filename=\"$filename\"");
+            $writer->save('php://output');
+            exit;
         }
+    }
+
+    public function generarExcelAArchivo(string $formId, string $destino): bool
+    {
+        try {
+            // Verifica que exista billing_main
+            $stmt = $this->db->prepare("SELECT id FROM billing_main WHERE form_id = ?");
+            $stmt->execute([$formId]);
+            $billingId = $stmt->fetchColumn();
+            if (!$billingId) return false;
+
+            $datos = $this->obtenerDatos($formId);
+            if (!$datos || !isset($datos['paciente']['hc_number'])) return false;
+
+            // Parámetros globales requeridos
+            $GLOBALS['datos_facturacion'] = $datos;
+            $GLOBALS['form_id_facturacion'] = $formId;
+
+            $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
+            if ($afiliacion !== 'ISSPOL') return false;
+
+            require_once __DIR__ . '/../vendor/autoload.php';
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $GLOBALS['spreadsheet'] = $spreadsheet;
+
+            // Intenta generar el archivo Excel capturando excepciones
+            try {
+                ini_set('display_errors', 1);
+                error_reporting(E_ALL);
+
+                ob_start();
+                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+                $error_output = ob_get_clean();
+
+                if (!empty($error_output)) {
+                    file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error fatal incluyendo generar_excel_isspol.php para form_id $formId: $error_output\n", FILE_APPEND);
+                    return false;
+                }
+            } catch (Exception $e) {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error en generar_excel_isspol.php para form_id $formId: " . $e->getMessage() . "\n", FILE_APPEND);
+                return false;
+            }
+
+            // Guardar archivo Excel generado
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save($destino);
+            return true;
+
+        } catch (Exception $e) {
+            file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error general generando Excel para form_id $formId: " . $e->getMessage() . "\n", FILE_APPEND);
+            return false;
+        }
+    }
+
+    public function exportarPlanillasPorMes(string $mes): void
+    {
+        $stmt = $this->db->prepare("
+            SELECT pd.form_id
+            FROM protocolo_data pd
+            JOIN patient_data pa ON pa.hc_number = pd.hc_number
+            WHERE DATE_FORMAT(pd.fecha_inicio, '%Y-%m') = ?
+              AND UPPER(pa.afiliacion) = 'ISSPOL'
+              AND pd.status = 1
+        ");
+        $stmt->execute([$mes]);
+        $formIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($formIds)) {
+            die("No hay planillas para el mes indicado.");
+        }
+
+        file_put_contents(__DIR__ . '/exportar_zip_log.txt', "== Exportando planillas del mes $mes ==\n", FILE_APPEND);
+        file_put_contents(__DIR__ . '/exportar_zip_log.txt', "Cantidad de formIds encontrados: " . count($formIds) . "\n", FILE_APPEND);
+
+        $excelFiles = [];
+        foreach ($formIds as $formId) {
+            // Verificar si es ISSPOL para debug
+            $stmtDebug = $this->db->prepare("
+                SELECT pd.form_id, pd.fecha_inicio, pa.afiliacion, bm.id AS billing_id
+                FROM protocolo_data pd
+                LEFT JOIN billing_main bm ON bm.form_id = pd.form_id
+                LEFT JOIN patient_data pa ON pa.hc_number = pd.hc_number
+                WHERE pd.form_id = ?
+                LIMIT 1
+            ");
+            $stmtDebug->execute([$formId]);
+            $debugRow = $stmtDebug->fetch(\PDO::FETCH_ASSOC);
+            $logLine = "↪ form_id {$debugRow['form_id']} | Afiliacion: {$debugRow['afiliacion']} | Billing ID: " . ($debugRow['billing_id'] ?? 'NO') . "\n";
+            file_put_contents(__DIR__ . '/exportar_zip_log.txt', $logLine, FILE_APPEND);
+            file_put_contents(__DIR__ . '/exportar_zip_log.txt', "Procesando form_id $formId\n", FILE_APPEND);
+            // Verificar que exista billing_main para este form_id y loguear el id si existe
+            $stmtCheck = $this->db->prepare("SELECT id FROM billing_main WHERE form_id = ?");
+            $stmtCheck->execute([$formId]);
+            $billingId = $stmtCheck->fetchColumn();
+            if (!$billingId) {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "✘ No hay billing_main registrado para el form_id: $formId\n", FILE_APPEND);
+                continue;
+            } else {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "✔ billing_main encontrado: billing_id = $billingId para el form_id: $formId\n", FILE_APPEND);
+            }
+            $datos = $this->obtenerDatos($formId);
+            // Asegurar parámetros globales y GET antes de generar Excel
+            $_GET['form_id'] = $formId;
+            $GLOBALS['form_id_facturacion'] = $formId;
+            $GLOBALS['datos_facturacion'] = $datos;
+
+            $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
+            file_put_contents(__DIR__ . '/exportar_zip_log.txt', "Afiliación: $afiliacion\n", FILE_APPEND);
+
+            if ($afiliacion !== 'ISSPOL') {
+                continue;
+            }
+
+            // Usar un nombre temporal único y persistente para cada archivo Excel
+            $tempFile = sys_get_temp_dir() . '/' . uniqid("excel_{$formId}_") . '.xlsx';
+
+            try {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "→ Iniciando generación de Excel para $formId...\n", FILE_APPEND);
+                $ok = $this->generarExcelAArchivo($formId, $tempFile);
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "← Finalizó intento de generación de Excel para $formId, resultado: " . ($ok ? 'Éxito' : 'Error') . "\n", FILE_APPEND);
+            } catch (Exception $e) {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Excepción al generar Excel para $formId: " . $e->getMessage() . "\n", FILE_APPEND);
+                $ok = false;
+            }
+            if ($ok && file_exists($tempFile) && filesize($tempFile) > 0) {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "✔ Excel generado para $formId\n", FILE_APPEND);
+                $filename = $datos['paciente']['hc_number'] . "_" . $datos['paciente']['lname'] . "_" . $datos['paciente']['fname'] . ".xlsx";
+                // Guardar info para descarga posterior
+                $excelFiles[] = ['path' => $tempFile, 'name' => $filename];
+            } else {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "✘ Error generando Excel para $formId\n", FILE_APPEND);
+            }
+        }
+
+        if (empty($excelFiles)) {
+            die("No se generaron archivos para exportar.");
+        }
+
+        // Copiar los archivos al directorio público y preparar para descarga automática
+        $publicDir = __DIR__ . '/../tmp';
+        if (!is_dir($publicDir)) {
+            mkdir($publicDir, 0777, true);
+        }
+        foreach ($excelFiles as $file) {
+            $publicPath = $publicDir . '/' . $file['name'];
+            copy($file['path'], $publicPath);
+        }
+        // Página HTML con redirección y descarga automática por JavaScript
+        echo "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Descargando archivos...</title>";
+        echo "<script>";
+        echo "window.onload = function() {";
+        foreach ($excelFiles as $file) {
+            $url = '/tmp/' . rawurlencode($file['name']);
+            echo "var a = document.createElement('a'); a.href = '$url'; a.download = ''; document.body.appendChild(a); a.click(); document.body.removeChild(a);";
+        }
+        echo "setTimeout(function() { window.close(); }, 5000);";
+        echo "};";
+        echo "</script></head><body>";
+        echo "<p>Iniciando descarga automática de archivos...</p>";
+        echo "</body></html>";
+        exit;
     }
 }

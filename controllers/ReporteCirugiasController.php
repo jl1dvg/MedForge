@@ -21,10 +21,12 @@ class ReporteCirugiasController
                        pr.dieresis, pr.exposicion, pr.hallazgo, pr.operatorio, pr.complicaciones_operatorio, pr.datos_cirugia, 
                        pr.procedimientos, pr.lateralidad, pr.tipo_anestesia, pr.diagnosticos, pp.procedimiento_proyectado,
                        pr.cirujano_1, pr.instrumentista, pr.cirujano_2, pr.circulante, pr.primer_ayudante, pr.anestesiologo, 
-                       pr.segundo_ayudante, pr.ayudante_anestesia, pr.tercer_ayudante, pr.status
+                       pr.segundo_ayudante, pr.ayudante_anestesia, pr.tercer_ayudante, pr.status,
+                       CASE WHEN bm.id IS NOT NULL THEN 1 ELSE 0 END AS existeBilling
                 FROM patient_data p 
                 INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
                 LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
                 ORDER BY pr.fecha_inicio DESC, pr.id DESC";
 
         $rows = $this->db->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
