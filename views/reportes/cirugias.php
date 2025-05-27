@@ -83,6 +83,7 @@ $username = $dashboardController->getAuthenticatedUser();
                                             <th class="bb-2">Procedimiento</th>
                                             <th class="bb-2"><i class="mdi mdi-file-document"></i></th>
                                             <th class="bb-2"><i class="mdi mdi-printer"></i></th>
+                                            <th class="bb-2"><i class="fa fa-file-excel-o"></i></th>
                                         </tr>
                                         </thead>
                                         <tbody id="patientTableBody">
@@ -127,6 +128,14 @@ $username = $dashboardController->getAuthenticatedUser();
                                                            onclick=\"" . htmlspecialchars($onclick, ENT_QUOTES, 'UTF-8') . "\">
                                                            $badgePrinted
                                                            <i class='fa fa-print'></i> Imprimir
+                                                        </a>
+                                                    </td>
+                                                    <td>
+                                                        <a class='btn btn-app btn-success'
+                                                           title='Descargar planilla Excel'
+                                                           href='/public/index.php/billing/excel?form_id=" . htmlspecialchars($cirugia->form_id, ENT_QUOTES, "UTF-8") . "'
+                                                           target='_blank'>
+                                                           <i class='fa fa-file-excel-o'></i> Planilla
                                                         </a>
                                                     </td>
                                                 </tr>";
@@ -320,6 +329,16 @@ $username = $dashboardController->getAuthenticatedUser();
         };
         xhr.send();
     }
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('a[data-cirugia]').forEach(link => {
+            link.addEventListener('click', function () {
+                const data = JSON.parse(this.getAttribute('data-cirugia'));
+                document.getElementById('downloadExcelBtn').setAttribute('href', `/public/index.php/billing/excel?form_id=${data.form_id}`);
+            });
+        });
+    });
 </script>
 <!-- Vendor JS -->
 <script src="/public/js/vendors.min.js"></script>
