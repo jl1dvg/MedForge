@@ -34,13 +34,28 @@ $username = $dashboardController->getAuthenticatedUser();
 
 // Devolver respuesta como JSON
 try {
-    $resultado = $procedimientoController->actualizarProcedimiento($_POST);
-    ob_clean();
-    echo json_encode([
-        'success' => $resultado,
-        'message' => $resultado ? 'Protocolo actualizado exitosamente' : 'Error al actualizar el protocolo',
-        'debug' => $_POST
-    ]);
+    if (empty($_POST['id']) && !empty($_POST['cirugia'])) {
+        $_POST['id'] = $procedimientoController->generarIdUnicoDesdeCirugia($_POST['cirugia']);
+    }
+    try {
+        $resultado = $procedimientoController->actualizarProcedimiento($_POST);
+        ob_clean();
+        echo json_encode([
+            'success' => $resultado,
+            'message' => $resultado ? 'Protocolo actualizado exitosamente' : 'Error al actualizar el protocolo',
+            'debug' => $_POST
+        ]);
+    } catch (Throwable $e) {
+        ob_clean();
+        echo json_encode([
+            'success' => false,
+            'message' => 'Excepción capturada al guardar el protocolo',
+            'error' => $e->getMessage(),
+            'line' => $e->getLine(),
+            'file' => $e->getFile(),
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
 } catch (Throwable $e) {
     ob_clean();
     echo json_encode([

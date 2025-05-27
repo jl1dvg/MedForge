@@ -31,6 +31,21 @@ class ProcedimientoModel
         try {
             $this->db->beginTransaction();
 
+            // Si no existe el protocolo, lo creamos (necesario al duplicar)
+            $sqlCheckProc = "SELECT COUNT(*) FROM procedimientos WHERE id = ?";
+            $stmtCheckProc = $this->db->prepare($sqlCheckProc);
+            $stmtCheckProc->execute([$datos['id']]);
+
+            if ($stmtCheckProc->fetchColumn() == 0) {
+                $sqlInsertProc = "INSERT INTO procedimientos (id, cirugia, categoria, membrete) VALUES (?, '', '', '')";
+                $stmtInsertProc = $this->db->prepare($sqlInsertProc);
+                $stmtInsertProc->execute([$datos['id']]);
+
+                $sqlInsertEvo = "INSERT INTO evolucion005 (id) VALUES (?)";
+                $stmtInsertEvo = $this->db->prepare($sqlInsertEvo);
+                $stmtInsertEvo->execute([$datos['id']]);
+            }
+
             $sql = "UPDATE procedimientos p
                     JOIN evolucion005 e ON p.id = e.id
                     SET p.cirugia = ?, p.categoria = ?, p.membrete = ?, p.dieresis = ?, 
@@ -112,14 +127,20 @@ class ProcedimientoModel
                     }
                 }
 
-                $this->guardarStaffDeProcedimiento($datos['id'], $staff);
+                try {
+                    $this->guardarStaffDeProcedimiento($datos['id'], $staff);
+                } catch (\Exception $e) {
+                    error_log("❌ Error al guardar staff: " . $e->getMessage());
+                    throw $e;
+                }
             }
 
             $this->db->commit();
             return true;
         } catch (\Exception $e) {
             $this->db->rollBack();
-            return false;
+            error_log("❌ Error en actualizarProcedimiento: " . $e->getMessage());
+            throw $e; // 🔥 Esto es clave
         }
     }
 
@@ -231,6 +252,17 @@ class ProcedimientoModel
     public function guardarStaffDeProcedimiento(string $procedimientoId, array $staff): bool
     {
         try {
+            if (
+                count($staff) === 0 ||
+                !is_array($staff)
+            ) {
+                throw new \Exception("Staff vacío o mal formado.");
+            }
+
+            foreach ($staff as $index => $miembro) {
+                error_log("👨‍⚕️ Staff[{$index}]: " . json_encode($miembro));
+            }
+
             // Eliminar el staff actual
             $sqlDelete = "DELETE FROM procedimientos_tecnicos WHERE procedimiento_id = ?";
             $stmtDelete = $this->db->prepare($sqlDelete);
@@ -278,6 +310,14 @@ class ProcedimientoModel
         } catch (\Exception $e) {
             throw $e;
         }
+    }
+
+    public function existeProtocoloConId(string $id): bool
+    {
+        $sql = "SELECT COUNT(*) FROM procedimientos WHERE id = ?";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$id]);
+        return $stmt->fetchColumn() > 0;
     }
 }
 

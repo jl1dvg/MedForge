@@ -7,22 +7,44 @@ use Controllers\ProcedimientoController;
 $procedimientoController = new ProcedimientoController($pdo);
 $dashboardController = new DashboardController($pdo);
 
+$idDuplicar = $_GET['duplicar'] ?? null;
 $id = $_GET['id'] ?? null;
-if (!$id) {
+
+if ($idDuplicar) {
+    // Obtener datos del protocolo original
+    $protocoloOriginal = $procedimientoController->obtenerProtocoloPorId($idDuplicar);
+    if (!$protocoloOriginal) {
+        die("Error: No se encontró el protocolo a duplicar.");
+    }
+
+    // Permitir que el usuario defina un nuevo nombre corto para el ID duplicado
+    $nuevoNombreCortoInput = $_POST['nuevo_nombre_corto'] ?? $_POST['cirugia'] ?? $_GET['nuevo_nombre_corto'] ?? $protocoloOriginal['cirugia'];
+    $nuevoId = $procedimientoController->generarIdUnicoDesdeCirugia($nuevoNombreCortoInput);
+    $protocoloOriginal['id'] = $nuevoId;
+
+    $duplicando = true;
+    $protocolo = $protocoloOriginal;
+    // Cargar también los datos relacionados desde otras tablas
+    $protocolo['codigos'] = $procedimientoController->obtenerCodigosDeProcedimiento($idDuplicar);
+    $protocolo['staff'] = $procedimientoController->obtenerStaffDeProcedimiento($idDuplicar);
+    $protocolo['insumos'] = $procedimientoController->obtenerInsumosDeProtocolo($idDuplicar);
+    $protocolo['medicamentos'] = $procedimientoController->obtenerMedicamentosDeProtocolo($idDuplicar);
+} elseif ($id) {
+    $protocolo = $procedimientoController->obtenerProtocoloPorId($id);
+    if (!$protocolo) {
+        die("Error: No se encontró el protocolo.");
+    }
+    $duplicando = false;
+} else {
     die('Error: ID de protocolo no especificado.');
 }
-
-$protocolo = $procedimientoController->obtenerProtocoloPorId($id);
-if (!$protocolo) {
-    die('Error: No se encontró el protocolo.');
-}
-$medicamentos = $procedimientoController->obtenerMedicamentosDeProtocolo($protocolo['id']);
+$medicamentos = $duplicando ? ($protocolo['medicamentos'] ?? []) : $procedimientoController->obtenerMedicamentosDeProtocolo($protocolo['id']);
 $opcionesMedicamentos = $procedimientoController->obtenerOpcionesMedicamentos();
 $categorias = $procedimientoController->obtenerCategoriasInsumos();
 $insumosDisponibles = $procedimientoController->obtenerInsumosDisponibles();
-$insumosPaciente = $procedimientoController->obtenerInsumosDeProtocolo($protocolo['id']);
-$codigos = $procedimientoController->obtenerCodigosDeProcedimiento($protocolo['id']);
-$staff = $procedimientoController->obtenerStaffDeProcedimiento($protocolo['id']);
+$insumosPaciente = $duplicando ? ($protocolo['insumos'] ?? []) : $procedimientoController->obtenerInsumosDeProtocolo($protocolo['id']);
+$codigos = $protocolo['codigos'] ?? $procedimientoController->obtenerCodigosDeProcedimiento($protocolo['id']);
+$staff = $protocolo['staff'] ?? $procedimientoController->obtenerStaffDeProcedimiento($protocolo['id']);
 
 
 $username = $dashboardController->getAuthenticatedUser();
@@ -137,8 +159,13 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                 </ol>
                             </nav>
                         </div>
+                        <?php if (!empty($duplicando) && $duplicando): ?>
+                            <div class="alert alert-info mt-10">
+                                <strong>Duplicando protocolo:</strong> estás creando una copia basada en
+                                <em><?= htmlspecialchars($idDuplicar) ?></em>.
+                            </div>
+                        <?php endif; ?>
                     </div>
-
                 </div>
             </div>
 
@@ -172,7 +199,9 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                 <div id="collapseRequerido" class="accordion-collapse collapse"
                                                      aria-labelledby="headingRequerido">
                                                     <div class="accordion-body">
-                                                        <?php include __DIR__ . '/secciones/requerido.php'; ?>
+                                                        <?php
+                                                        $codigos = $codigos ?? $protocolo['codigos'] ?? [];
+                                                        include __DIR__ . '/secciones/requerido.php'; ?>
                                                     </div>
                                                 </div>
                                             </div>
@@ -192,7 +221,9 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
                                                 <div id="collapseStaff" class="accordion-collapse collapse"
                                                      aria-labelledby="headingStaff">
                                                     <div class="accordion-body">
-                                                        <?php include __DIR__ . '/secciones/staff.php'; ?>
+                                                        <?php
+                                                        $staff = $staff ?? $protocolo['staff'] ?? [];
+                                                        include __DIR__ . '/secciones/staff.php'; ?>
                                                     </div>
                                                 </div>
                                             </div>
@@ -325,8 +356,34 @@ $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
     const vias = <?= json_encode($vias); ?>;
     const responsables = <?= json_encode($responsables); ?>;
 </script>
+<script>
+    const codigos = <?= json_encode($protocolo['codigos'] ?? []); ?>;
+    const staff = <?= json_encode($protocolo['staff'] ?? []); ?>;
+</script>
+<input type="hidden" id="medicamentosInput" name="medicamentos"
+       value='<?= json_encode($protocolo['medicamentos'] ?? []) ?>'>
+<input type="hidden" id="insumosInput" name="insumos"
+       value='<?= json_encode($protocolo['insumos'] ?? ["equipos" => [], "quirurgicos" => [], "anestesia" => []]) ?>'>
 <script src="/public/js/editor-protocolos.js"></script>
 <script src="/public/js/autocomplete-operatorio.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </body>
+<?php if (!empty($duplicando) && $duplicando): ?>
+    <script>
+        document.getElementById('guardarProtocolo').addEventListener('click', function () {
+            Swal.fire({
+                title: '¿Deseas guardar esta nueva plantilla?',
+                text: 'Se generará una copia del protocolo con un nuevo ID.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, guardar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('editarProtocoloForm').submit();
+                }
+            });
+        });
+    </script>
+<?php endif; ?>
 </html>
