@@ -64,12 +64,22 @@ $username = $dashboardController->getAuthenticatedUser();
                     <div class="col-12">
                         <div class="box">
                             <div class="box-body">
-                                <h4 class="box-title">Cirugías Realizadas</h4>
-                                <div class="mb-3">
-                                    <label for="min-date">Desde:</label>
-                                    <input type="date" id="min-date">
-                                    <label for="max-date">Hasta:</label>
-                                    <input type="date" id="max-date">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h4 class="box-title">Cirugías Realizadas</h4>
+                                    <select id="descargarZipMes" class="form-select w-auto">
+                                        <option value="">Descargar planillas del mes...</option>
+                                        <?php
+                                        $mesesUnicos = [];
+                                        foreach ($cirugias as $c) {
+                                            $mes = date('Y-m', strtotime($c->fecha_inicio));
+                                            $mesesUnicos[$mes] = date('F Y', strtotime($c->fecha_inicio));
+                                        }
+                                        krsort($mesesUnicos);
+                                        foreach ($mesesUnicos as $val => $label) {
+                                            echo "<option value=\"$val\">$label</option>";
+                                        }
+                                        ?>
+                                    </select>
                                 </div>
                                 <div class="table-responsive">
                                     <table id="surgeryTable" class="table table-striped table-hover">
@@ -81,9 +91,12 @@ $username = $dashboardController->getAuthenticatedUser();
                                             <th class="bb-2">Afiliación</th>
                                             <th class="bb-2">Fecha</th>
                                             <th class="bb-2">Procedimiento</th>
-                                            <th class="bb-2"><i class="mdi mdi-file-document"></i></th>
-                                            <th class="bb-2"><i class="mdi mdi-printer"></i></th>
-                                            <th class="bb-2"><i class="fa fa-file-excel-o"></i></th>
+                                            <th class="bb-2" title="Ver protocolo"><i class="mdi mdi-file-document"></i>
+                                            </th>
+                                            <th class="bb-2" title="Imprimir protocolo"><i class="mdi mdi-printer"></i>
+                                            </th>
+                                            <th class="bb-2" title="Descargar Excel"><i class="fa fa-file-excel-o"></i>
+                                            </th>
                                         </tr>
                                         </thead>
                                         <tbody id="patientTableBody">
@@ -102,6 +115,9 @@ $username = $dashboardController->getAuthenticatedUser();
                                                 ? "togglePrintStatus(" . $cirugia->form_id . ", '" . $cirugia->hc_number . "', this, 1)"
                                                 : "Swal.fire({ icon: 'warning', title: 'Pendiente revisión', text: 'Debe revisar el protocolo antes de imprimir.' })";
                                             $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : "";
+                                            $badgeBilling = $cirugia->existeBilling
+                                                ? "<span class='badge bg-success' title='Planilla generada'><i class='fa fa-check'></i></span>"
+                                                : "<span class='badge bg-secondary' title='Sin planilla generada'><i class='fa fa-ban'></i></span>";
 
                                             echo "<tr>
                                                     <td>" . htmlspecialchars($cirugia->form_id ?? '', ENT_QUOTES, 'UTF-8') . "</td>
@@ -110,7 +126,7 @@ $username = $dashboardController->getAuthenticatedUser();
                                                     <td>" . htmlspecialchars($cirugia->afiliacion ?? '', ENT_QUOTES, 'UTF-8') . "</td>
                                                     <td>" . date('d/m/Y', strtotime($cirugia->fecha_inicio)) . "</td>
                                                     <td>" . htmlspecialchars($cirugia->membrete ?? '', ENT_QUOTES, 'UTF-8') . "</td>
-                                                    <td colspan='2'>
+                                                    <td>
                                                         <a href='#'
                                                            title='Ver protocolo quirúrgico'
                                                            class='btn btn-app btn-info'
@@ -135,6 +151,7 @@ $username = $dashboardController->getAuthenticatedUser();
                                                            title='Descargar planilla Excel'
                                                            href='/public/index.php/billing/excel?form_id=" . htmlspecialchars($cirugia->form_id, ENT_QUOTES, "UTF-8") . "'
                                                            target='_blank'>
+                                                           $badgeBilling
                                                            <i class='fa fa-file-excel-o'></i> Planilla
                                                         </a>
                                                     </td>
@@ -300,6 +317,9 @@ $username = $dashboardController->getAuthenticatedUser();
         xhr.open('POST', '/public/update_print_status.php', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + (isActive ? 0 : 1)); // Cambiamos el valor aquí
+        xhr.onerror = function () {
+            Swal.fire('Error', 'No se pudo actualizar el estado de impresión.', 'error');
+        };
     }
 
     let currentFormId;  // Variable para almacenar el form_id actual
@@ -339,6 +359,15 @@ $username = $dashboardController->getAuthenticatedUser();
             });
         });
     });
+
+    // Descargar ZIP por mes
+    document.getElementById('descargarZipMes').addEventListener('change', function () {
+        const mes = this.value;
+        if (mes) {
+            window.open(`/public/index.php/billing/exportar_mes?mes=${mes}`, '_blank');
+            this.value = '';
+        }
+    });
 </script>
 <!-- Vendor JS -->
 <script src="/public/js/vendors.min.js"></script>
@@ -346,6 +375,11 @@ $username = $dashboardController->getAuthenticatedUser();
 <script src="/public/assets/icons/feather-icons/feather.min.js"></script>
 <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- DataTables Buttons (Excel export) -->
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
 <script>
     $.fn.dataTable.ext.type.order['dd-mm-yyyy-pre'] = function (d) {
         if (!d) {
@@ -356,26 +390,8 @@ $username = $dashboardController->getAuthenticatedUser();
     };
 
     $(document).ready(function () {
-        // Filtro por rango de fechas para la columna 4 (Fecha)
-        $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-            var min = $('#min-date').val();
-            var max = $('#max-date').val();
-            var date = data[4]; // Columna de la fecha
-            if (!date) return false;
 
-            var parts = date.split('/');
-            var d = new Date(parts[2], parts[1] - 1, parts[0]);
-
-            if (
-                (min === "" || new Date(min) <= d) &&
-                (max === "" || new Date(max) >= d)
-            ) {
-                return true;
-            }
-            return false;
-        });
-
-        $('#surgeryTable').DataTable({
+        const table = $('#surgeryTable').DataTable({
             "paging": true,
             "lengthChange": true,
             "searching": true,
@@ -388,6 +404,29 @@ $username = $dashboardController->getAuthenticatedUser();
                 {
                     "targets": 4,  // Índice de la columna "Fecha de Inicio"
                     "type": "dd-mm-yyyy"  // Tipo personalizado para ordenar fechas dd/mm/yyyy
+                }
+            ],
+            "rowGroup": {
+                dataSrc: function (row) {
+                    let fecha = row[4];
+                    if (!fecha) return "Sin fecha";
+                    const partes = fecha.split('/');
+                    const mes = partes[1];
+                    const anio = partes[2];
+                    const nombreMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                    return `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
+                }
+            },
+            dom: 'Bfrtip',
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Exportar a Excel',
+                    title: 'Reporte de Cirugías Agrupado',
+                    exportOptions: {
+                        columns: ':visible'
+                    }
                 }
             ],
             initComplete: function () {
@@ -406,13 +445,47 @@ $username = $dashboardController->getAuthenticatedUser();
             }
         });
 
-        // Listeners para los inputs de fecha
-        $('#min-date, #max-date').on('change', function () {
-            $('#surgeryTable').DataTable().draw();
+        // Filtro por mes/año
+        const grupos = new Set();
+        table.rows().data().each(function (row) {
+            let fecha = row[4];
+            if (!fecha) return;
+            const partes = fecha.split('/');
+            const mes = partes[1];
+            const anio = partes[2];
+            const nombreMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            const grupo = `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
+            grupos.add(grupo);
         });
+
+        const filtroGrupo = $('<select id="filtroGrupo" class="form-select mb-2"><option value="">Todos los meses</option></select>');
+        grupos.forEach(grupo => filtroGrupo.append(`<option value="${grupo}">${grupo}</option>`));
+        $('#surgeryTable_wrapper').prepend(filtroGrupo);
+
+        filtroGrupo.on('change', function () {
+            const valor = this.value;
+            $.fn.dataTable.ext.search.push(function (settings, data) {
+                let fecha = data[4];
+                if (!fecha) return false;
+                const partes = fecha.split('/');
+                const mes = partes[1];
+                const anio = partes[2];
+                const nombreMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                const grupo = `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
+                return valor === "" || grupo === valor;
+            });
+            table.draw();
+        });
+
     });
 </script>
 
+
+<!-- DataTables RowGroup plugin -->
+<script src="https://cdn.datatables.net/rowgroup/1.3.1/js/dataTables.rowGroup.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/rowgroup/1.3.1/css/rowGroup.dataTables.min.css">
 
 <!-- Doclinic App -->
 <script src="/public/js/jquery.smartmenus.js"></script>

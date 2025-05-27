@@ -32,10 +32,9 @@ if (!$formId) {
     die("Falta el parámetro form_id.");
 }
 
-// Obtener datos desde el controller
-$controller = new BillingController($pdo);
-$data = $controller->obtenerDatos($formId);
-
+// Obtener datos desde variables globales
+$data = $GLOBALS['datos_facturacion'];
+$formId = $GLOBALS['form_id_facturacion'];
 if (!$data) {
     die("No se encontró la prefactura para form_id: $formId");
 }
@@ -44,6 +43,11 @@ if (!$data) {
 $pacienteInfo = $data['paciente'] ?? [];
 $formDetails = $data['formulario'] ?? [];
 $edadCalculada = $formDetails['edad'] ?? '';
+$formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? '';
+$fechaISO = $formDetails['fecha_inicio'] ?? '';
+$fecha = $fechaISO ? date('d-m-Y', strtotime($fechaISO)) : '';
+$cedula = $pacienteInfo['cedula'] ?? '';
+$periodo = date('Y-m', strtotime($fechaISO));
 
 // Agregar valores de protocoloExtendido para uso en el Excel
 $formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? '';
