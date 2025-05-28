@@ -83,4 +83,9 @@ class ProcedimientoController
 
         return $nuevoId;
     }
+
+    public function eliminarProtocolo(string $id): bool
+    {
+        return $this->procedimientoModel->eliminarProtocolo($id);
+    }
 }
