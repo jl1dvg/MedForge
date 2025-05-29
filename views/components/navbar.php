@@ -44,5 +44,14 @@ require_once __DIR__ . '/../../bootstrap.php';
                                     class="path2"></span></i>Insumos</a></li>
             </uL>
         </li>
+        <li><a href="<?php echo BASE_URL . 'views/informes/informe_isspol.php'; ?>"><i class="mdi mdi-file-document"><span
+                            class="path1"></span><span class="path2"></span></i>Informes</a>
+            <uL>
+                <li><a href="<?php echo BASE_URL . 'views/informes/informe_isspol.php'; ?>"><i
+                                class="mdi mdi-file-chart"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Consolidado ISSPOL</a></li>
+            </uL>
+        </li>
     </ul>
 </nav>
