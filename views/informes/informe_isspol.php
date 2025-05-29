@@ -8,25 +8,31 @@ use Controllers\DashboardController;
 use Helpers\InformesHelper;
 
 $billingController = new BillingController($pdo);
-
 $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
-
 // Paso 1: Obtener todas las facturas disponibles
 $username = $dashboardController->getAuthenticatedUser();
 $facturas = $billingController->obtenerFacturasDisponibles();
-
 // Obtener modo de informe
 $modo = $_GET['modo'] ?? 'individual';
 
-// Paso 2: Detectar si hay selección
-$billingId = $_GET['billing_id'] ?? null;
+// Definir filtros centralizados
+$filtros = [
+    'modo' => $modo,
+    'billing_id' => $_GET['billing_id'] ?? null,
+    'mes' => $_GET['mes'] ?? '',
+    'apellido' => $_GET['apellido'] ?? '',
+    // 'cie10' => $_GET['cie10'] ?? '', // reservado para uso futuro
+    // 'medico' => $_GET['medico'] ?? '', // reservado para uso futuro
+];
+
+$billingId = $filtros['billing_id'];
 $formId = null;
 $datos = [];
 
 // Filtro de mes para modo consolidado
 if ($modo === 'consolidado') {
-    $mesSeleccionado = $_GET['mes'] ?? '';
+    $mesSeleccionado = $filtros['mes'];
 }
 
 if ($billingId) {
@@ -102,12 +108,30 @@ if ($billingId) {
                                 </select>
 
                                 <?php if ($modo !== 'consolidado'): ?>
+                                    <label for="mes" class="form-label">Selecciona un mes:</label>
+                                    <select name="mes" id="mes" class="form-select mb-3" onchange="this.form.submit()">
+                                        <option value="">-- Todos los meses --</option>
+                                        <?php
+                                        $mesesUnicos = array_unique(array_map(function ($factura) {
+                                            return date('Y-m', strtotime($factura['fecha_inicio']));
+                                        }, $facturas));
+                                        sort($mesesUnicos);
+                                        foreach ($mesesUnicos as $mesOption):
+                                            $selected = ($filtros['mes'] === $mesOption) ? 'selected' : '';
+                                            echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
+                                        endforeach;
+                                        ?>
+                                    </select>
+
                                     <label for="billing_id" class="form-label">Selecciona una factura:</label>
                                     <select name="billing_id" id="billing_id" class="form-select"
                                             onchange="this.form.submit()">
                                         <option value="">-- Selecciona una factura --</option>
-                                        <?php foreach ($facturas as $factura): ?>
-                                            <?php
+                                        <?php
+                                        $facturasFiltradas = array_filter($facturas, function ($factura) use ($filtros) {
+                                            return !$filtros['mes'] || date('Y-m', strtotime($factura['fecha_inicio'])) === $filtros['mes'];
+                                        });
+                                        foreach ($facturasFiltradas as $factura):
                                             $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
                                             if (strtoupper($pacienteInfo['afiliacion'] ?? '') !== 'ISSPOL') continue;
                                             $fechaFormateada = date('d/m/Y', strtotime($factura['fecha_inicio']));
@@ -136,7 +160,7 @@ if ($billingId) {
                                                 }, $facturas));
                                                 sort($mesesDisponibles);
                                                 foreach ($mesesDisponibles as $mesOption):
-                                                    $selected = ($_GET['mes'] ?? '') === $mesOption ? 'selected' : '';
+                                                    $selected = ($filtros['mes']) === $mesOption ? 'selected' : '';
                                                     echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
                                                 endforeach;
                                                 ?>
@@ -145,7 +169,7 @@ if ($billingId) {
                                         <div class="col-md-4">
                                             <label for="apellido" class="form-label">Apellido del paciente</label>
                                             <input type="text" name="apellido" id="apellido" class="form-control"
-                                                   value="<?= htmlspecialchars($_GET['apellido'] ?? '') ?>"
+                                                   value="<?= htmlspecialchars($filtros['apellido']) ?>"
                                                    placeholder="Buscar por apellido">
                                         </div>
                                         <!--
@@ -477,7 +501,7 @@ if ($billingId) {
                                    class="btn btn-success mt-3">
                                     Descargar Excel
                                 </a>
-                                <a href="/views/informes/informe_isspol.php?modo=consolidado<?= isset($mesSeleccionado) ? '&mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                <a href="/views/informes/informe_isspol.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
                                    class="btn btn-secondary mt-3 ms-2">
                                     ← Regresar al consolidado
                                 </a>
@@ -487,47 +511,37 @@ if ($billingId) {
                             <?php elseif ($modo === 'consolidado'): ?>
                                 <h4>Consolidado mensual de pacientes ISSPOL</h4>
                                 <?php
-                                $consolidado = [];
+                                // $filtros ya está definido arriba
+                                $consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteController);
+
+                                // Caching for patient details and billing data
+                                $pacientesCache = [];
+                                $datosCache = [];
                                 foreach ($facturas as $factura) {
-                                    $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
-                                    if (strtoupper($pacienteInfo['afiliacion'] ?? '') !== 'ISSPOL') continue;
-
-                                    $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
-                                    if (!$datosPaciente) continue;
-
-                                    $fechaFactura = $factura['fecha_inicio'];
-                                    $mes = date('Y-m', strtotime($fechaFactura));
-                                    if (isset($mesSeleccionado) && $mesSeleccionado && $mes !== $mesSeleccionado) continue;
-                                    if (!isset($consolidado[$mes])) $consolidado[$mes] = [];
-
-                                    $total = InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-
-                                    $consolidado[$mes][] = [
-                                        'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
-                                        'hc_number' => $factura['hc_number'],
-                                        'form_id' => $factura['form_id'],
-                                        'fecha' => $fechaFactura,
-                                        'total' => $total,
-                                        'id' => $factura['id'],
-                                    ];
+                                    $hc = $factura['hc_number'];
+                                    $fid = $factura['form_id'];
+                                    if (!isset($pacientesCache[$hc])) {
+                                        $pacientesCache[$hc] = $pacienteController->getPatientDetails($hc);
+                                    }
+                                    if (!isset($datosCache[$fid])) {
+                                        $datosCache[$fid] = $billingController->obtenerDatos($fid);
+                                    }
                                 }
 
                                 echo "</body>";
 
                                 foreach ($consolidado as $mes => $pacientes) {
-// Aplicar filtros de apellido, cie10 y medico
-                                    $apellidoFiltro = strtolower(trim($_GET['apellido'] ?? ''));
-// $cie10Filtro = strtolower(trim($_GET['cie10'] ?? ''));
-// $medicoFiltro = strtolower(trim($_GET['medico'] ?? ''));
+                                    // Aplicar filtros de apellido, cie10 y medico
+                                    $apellidoFiltro = strtolower(trim($filtros['apellido']));
+                                    // $cie10Filtro = strtolower(trim($filtros['cie10'] ?? ''));
+                                    // $medicoFiltro = strtolower(trim($filtros['medico'] ?? ''));
 
-                                    $pacientes = array_filter($pacientes, function ($p) use ($apellidoFiltro, $pacienteController, $billingController) {
-                                        $pacienteInfo = $pacienteController->getPatientDetails($p['hc_number']);
-                                        $datosPaciente = $billingController->obtenerDatos($p['form_id']);
-
+                                    $pacientes = array_filter($pacientes, function ($p) use ($apellidoFiltro, $pacientesCache, $datosCache) {
+                                        $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
+                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
                                         $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));
-// $cie10 = strtolower($datosPaciente['formulario']['diagnostico1_codigo'] ?? '');
-// $medico = strtolower($datosPaciente['paciente']['cedula_medico'] ?? '');
-
+                                        // $cie10 = strtolower($datosPaciente['formulario']['diagnostico1_codigo'] ?? '');
+                                        // $medico = strtolower($datosPaciente['paciente']['cedula_medico'] ?? '');
                                         return (!$apellidoFiltro || str_contains($apellidoCompleto, $apellidoFiltro));
                                     });
 
@@ -556,11 +570,10 @@ if ($billingId) {
                                     $n = 1;
                                     foreach ($pacientes as $p) {
                                         // Obtener info detallada para columnas extra
-                                        $pacienteInfo = $pacienteController->getPatientDetails($p['hc_number']);
-                                        $datosPaciente = $billingController->obtenerDatos($p['form_id']);
+                                        $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
+                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
                                         $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
-                                        $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) :
-                                            '--';
+                                        $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
                                         $url = "/views/informes/informe_isspol.php?modo=individual&billing_id=" . urlencode($p['id']);
                                         echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url);
                                         $n++;
