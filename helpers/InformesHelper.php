@@ -126,7 +126,7 @@ class InformesHelper
             <td>{$genero}</td>
             <td>{$items}</td>
             <td>{$monto_sol}</td>
-            <td><a href='{$url}' class='btn btn-sm btn-info' target='_blank'>Ver detalle</a></td>
+            <td><a href='{$url}' class='btn btn-sm btn-info'>Ver detalle</a></td>
         </tr>";
     }
 
@@ -168,5 +168,26 @@ class InformesHelper
         }
 
         return $consolidado;
+    }
+
+    public static function filtrarPacientes(array $pacientes, array &$pacientesCache, array &$datosCache, $pacienteController, $billingController, string $apellidoFiltro): array
+    {
+        return array_filter($pacientes, function ($p) use (&$pacientesCache, &$datosCache, $pacienteController, $billingController, $apellidoFiltro) {
+            $hc = $p['hc_number'];
+            $fid = $p['form_id'];
+
+            if (!isset($pacientesCache[$hc])) {
+                $pacientesCache[$hc] = $pacienteController->getPatientDetails($hc);
+            }
+
+            if (!isset($datosCache[$fid])) {
+                $datosCache[$fid] = $billingController->obtenerDatos($fid);
+            }
+
+            $pacienteInfo = $pacientesCache[$hc] ?? [];
+            $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));
+
+            return (!$apellidoFiltro || str_contains($apellidoCompleto, $apellidoFiltro));
+        });
     }
 }
