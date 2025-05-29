@@ -3,6 +3,7 @@
 namespace Helpers;
 
 use Controllers\BillingController;
+use Controllers\PacienteController;
 
 class InformesHelper
 {
@@ -127,5 +128,45 @@ class InformesHelper
             <td>{$monto_sol}</td>
             <td><a href='{$url}' class='btn btn-sm btn-info' target='_blank'>Ver detalle</a></td>
         </tr>";
+    }
+
+    public static function obtenerConsolidadoFiltrado(
+        array              $facturas,
+        array              $filtros,
+        BillingController  $billingController,
+        PacienteController $pacienteController
+    ): array
+    {
+        $consolidado = [];
+
+        foreach ($facturas as $factura) {
+            $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
+            if (strtoupper($pacienteInfo['afiliacion'] ?? '') !== 'ISSPOL') continue;
+
+            $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
+            if (!$datosPaciente) continue;
+
+            $fechaFactura = $factura['fecha_inicio'];
+            $mes = date('Y-m', strtotime($fechaFactura));
+            if (!empty($filtros['mes']) && $mes !== $filtros['mes']) continue;
+
+            $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));
+            if (!empty($filtros['apellido']) && !str_contains($apellidoCompleto, strtolower($filtros['apellido']))) {
+                continue;
+            }
+
+            $total = InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+
+            $consolidado[$mes][] = [
+                'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
+                'hc_number' => $factura['hc_number'],
+                'form_id' => $factura['form_id'],
+                'fecha' => $fechaFactura,
+                'total' => $total,
+                'id' => $factura['id'],
+            ];
+        }
+
+        return $consolidado;
     }
 }
