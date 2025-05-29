@@ -441,4 +441,15 @@ class BillingController
         echo "</body></html>";
         exit;
     }
+
+    public function obtenerFacturasDisponibles(): array
+    {
+        $stmt = $this->db->query("
+            SELECT bm.id, bm.form_id, pd.hc_number, pd.fecha_inicio 
+            FROM billing_main bm
+            JOIN protocolo_data pd ON bm.form_id = pd.form_id
+            ORDER BY pd.fecha_inicio DESC
+        ");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }
