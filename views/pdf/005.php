@@ -80,7 +80,8 @@
         <td class='verde' colspan='23' width="35%">FARMACOTERAPIA E INDICACIONES<span
                     style='font-size:6pt;font-family:Arial;font-weight:normal;'><br>(Para enfermería y otro profesional de salud)</span>
         </td>
-        <td class='verde' colspan='5'><span style='font-size:6pt;font-family:Arial;font-weight:normal;'>ADMINISTR. <br>FÁRMACOS<br>DISPOSITIVO</span>
+        <td class='verde' colspan='5' width="8%"><span
+                    style='font-size:6pt;font-family:Arial;font-weight:normal;'>ADMINISTR. <br>FÁRMACOS<br>DISPOSITIVO</span>
         </td>
     </tr>
     <?php
@@ -106,7 +107,7 @@
         $altaIndicacion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['alta_indicacion'], 80, $signos);
     }
 
-    $maxLines = max(count($preEvolucion), count($preIndicacion), count($postEvolucion), count($postIndicacion), 10); // mínimo 10 líneas
+    $maxLines = max(count($preEvolucion), count($preIndicacion), count($postEvolucion), count($postIndicacion), 7); // mínimo 10 líneas
 
     ?>
     <tr>
@@ -148,6 +149,21 @@
             <td colspan="5" class="blanco_left"></td>
         </tr>
     <?php endfor; ?>
+    <tr>
+        <td colspan="6" class="blanco_left"></td>
+        <td colspan="3" class="blanco_left"></td>
+        <td colspan="29" class="blanco_left" style="text-align: left;">
+            <?php if (!empty($anestesiologo_data['firma'])): ?>
+                <div style="margin-bottom: -25px;">
+                    <img src="<?= htmlspecialchars($anestesiologo_data['firma']) ?>" alt="Firma del cirujano"
+                         style="max-height: 60px;">
+                </div>
+            <?php endif; ?>
+            <?= strtoupper($anestesiologo_data['nombre']) ?>
+        <td class="blanco_break"></td>
+        <td colspan="23" class="blanco_left"><?= $postIndicacion[$i] ?? '' ?></td>
+        <td colspan="5" class="blanco_left"></td>
+    </tr>
 
     <tr>
         <td colspan="6" class="blanco_left"></td>
@@ -160,7 +176,7 @@
 
     <?php
     // Calcular el número máximo de líneas para la sección de alta
-    $maxLinesAlta = max(count($altaEvolucion), count($altaIndicacion), 10);
+    $maxLinesAlta = max(count($altaEvolucion), count($altaIndicacion), 7);
 
     for ($i = 0; $i < $maxLinesAlta; $i++): ?>
         <tr>
@@ -172,6 +188,22 @@
             <td colspan="5" class="blanco_left"></td>
         </tr>
     <?php endfor; ?>
+    <tr>
+        <td colspan="6" class="blanco_left"></td>
+        <td colspan="3" class="blanco_left"></td>
+        <td colspan="29" class="blanco_left" style="text-align: left;">
+            <?php if (!empty($cirujano_data['firma'])): ?>
+                <div style="margin-bottom: -25px;">
+                    <img src="<?= htmlspecialchars($cirujano_data['firma']) ?>" alt="Firma del cirujano"
+                         style="max-height: 60px;">
+                </div>
+            <?php endif; ?>
+            <?= strtoupper($cirujano_data['nombre']) ?>
+        </td>
+        <td class="blanco_break"></td>
+        <td colspan="23" class="blanco_left"></td>
+        <td colspan="5" class="blanco_left"></td>
+    </tr>
 </table>
 
 
@@ -186,3 +218,4 @@
     </TR>
 </table>
 </body>
+</file>

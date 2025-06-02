@@ -25,11 +25,15 @@ class PdfController
         $datos = $model->obtenerProtocolo($form_id, $hc_number);
 
         if (!$datos) {
-            die('No se encontró el protocolo.');
+            throw new \Exception('No se encontró el protocolo.');
         }
 
         // Procesamientos adicionales
-        $datos['edad'] = (new \DateTime($datos['fecha_nacimiento']))->diff(new \DateTime($datos['fecha_inicio']))->y;
+        if (!empty($datos['fecha_nacimiento']) && !empty($datos['fecha_inicio'])) {
+            $datos['edad'] = (new \DateTime($datos['fecha_nacimiento']))->diff(new \DateTime($datos['fecha_inicio']))->y;
+        } else {
+            $datos['edad'] = null;
+        }
 
         $fechaInicioParts = explode(' ', $datos['fecha_inicio']);
         $fechaPart = $fechaInicioParts[0] ?? '';
@@ -124,7 +128,7 @@ class PdfController
                 $totalHoras = $interval->h . 'h ' . $interval->i . 'min';
 
                 // Para totalHorasConDescuento simplemente restamos, por ejemplo 30 minutos
-                $fin->modify('-30 minutes'); // Ajuste de 30 minutos
+                $fin->modify('-10 minutes'); // Ajuste de 30 minutos
                 $intervalConDescuento = $inicio->diff($fin);
                 $totalHorasConDescuento = $intervalConDescuento->h . 'h ' . $intervalConDescuento->i . 'min';
             }
