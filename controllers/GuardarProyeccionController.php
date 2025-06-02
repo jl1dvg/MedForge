@@ -146,6 +146,13 @@ class GuardarProyeccionController
             ':hora' => $data['hora'] ?? null
         ]);
 
-        return ["success" => true, "message" => "Datos guardados correctamente"];
+        $ejecutado = $stmt2->rowCount();
+        error_log("📌 Registros afectados en procedimiento_proyectado: $ejecutado");
+
+        if ($ejecutado === 0) {
+            return ["success" => false, "message" => "No se insertó ni actualizó ningún registro en procedimiento_proyectado."];
+        } else {
+            return ["success" => true, "message" => "Datos guardados correctamente"];
+        }
     }
 }
