@@ -29,8 +29,8 @@ class UserModel
     public function createUser($data)
     {
         $stmt = $this->db->prepare("
-            INSERT INTO users (username, password, email, is_subscribed, is_approved, nombre, cedula, registro, sede, firma, especialidad, subespecialidad)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, password, email, is_subscribed, is_approved, nombre, cedula, registro, sede, firma, especialidad, subespecialidad, permisos)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         return $stmt->execute([
             $data['username'],
@@ -44,14 +44,15 @@ class UserModel
             $data['sede'],
             $data['firma'],
             $data['especialidad'],
-            $data['subespecialidad']
+            $data['subespecialidad'],
+            $data['permisos']
         ]);
     }
 
     public function updateUser($id, $data)
     {
         $stmt = $this->db->prepare("
-            UPDATE users SET username=?, email=?, is_subscribed=?, is_approved=?, nombre=?, cedula=?, registro=?, sede=?, firma=?, especialidad=?, subespecialidad=?
+            UPDATE users SET username=?, email=?, is_subscribed=?, is_approved=?, nombre=?, cedula=?, registro=?, sede=?, firma=?, especialidad=?, subespecialidad=?, permisos=?
             WHERE id=?
         ");
         return $stmt->execute([
@@ -66,6 +67,7 @@ class UserModel
             $data['firma'],
             $data['especialidad'],
             $data['subespecialidad'],
+            $data['permisos'],
             $id
         ]);
     }

@@ -60,7 +60,7 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 <li class="user-body">
                                     <a class="dropdown-item" href="extra_profile.html"><i
                                                 class="ti-user text-muted me-2"></i> Profile</a>
-                                    <a class="dropdown-item" href="auth_login.html"><i
+                                    <a class="dropdown-item" href="/views/logout.php"><i
                                                 class="ti-lock text-muted me-2"></i> Logout</a>
                                 </li>
                             </ul>

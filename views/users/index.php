@@ -58,9 +58,9 @@ $username = $dashboardController->getAuthenticatedUser();
             </div>
 
             <div class="content">
-                <div class="row">
+                <div class="row d-flex flex-column flex-md-row">
                     <div class="col-12">
-                        <div class="box">
+                        <div class="box shadow-sm rounded">
                             <div class="box-header d-flex justify-content-between align-items-center">
                                 <div>
                                     <h4 class="box-title">📋 <strong>Listado de Usuarios</strong></h4>
@@ -72,8 +72,9 @@ $username = $dashboardController->getAuthenticatedUser();
                             </div>
                             <div class="box-body">
                                 <div class="table-responsive">
-                                    <table class="table table-bordered table-striped table-hover table-sm align-middle">
-                                        <thead>
+                                    <table id="example"
+                                           class="table table-striped table-hover table-sm invoice-archive">
+                                        <thead class="bg-primary">
                                         <tr>
                                             <th>ID</th>
                                             <th>Usuario</th>
@@ -85,16 +86,29 @@ $username = $dashboardController->getAuthenticatedUser();
                                         </thead>
                                         <tbody>
                                         <?php foreach ($users as $user): ?>
-                                            <tr>
+                                            <tr data-row-id="<?= $user['id'] ?>">
                                                 <td><?= htmlspecialchars($user['id']) ?></td>
                                                 <td><?= htmlspecialchars($user['username']) ?></td>
                                                 <td><?= htmlspecialchars($user['email']) ?></td>
-                                                <td><?= htmlspecialchars($user['nombre']) ?></td>
+                                                <td>
+                                                    <?= htmlspecialchars($user['nombre']) ?><br>
+                                                    <span class="badge <?= $user['is_approved'] ? 'bg-success' : 'bg-warning' ?>">
+                                                        <?= $user['is_approved'] ? 'Aprobado' : 'Pendiente' ?>
+                                                    </span>
+                                                </td>
                                                 <td><?= htmlspecialchars($user['especialidad']) ?></td>
                                                 <td>
                                                     <button class="btn btn-info btn-sm btn-editar-usuario"
-                                                            data-id="<?= $user['id'] ?>">
-                                                        Editar
+                                                            data-id="<?= $user['id'] ?>"
+                                                            title="Editar usuario"
+                                                            aria-label="Editar usuario">
+                                                        <i class="fas fa-user-edit"></i> Editar
+                                                    </button>
+                                                    <button class="btn btn-outline-secondary btn-sm btn-ver-perfil"
+                                                            data-id="<?= $user['id'] ?>"
+                                                            title="Ver perfil del usuario"
+                                                            aria-label="Ver perfil del usuario">
+                                                        <i class="fas fa-id-badge"></i> Perfil
                                                     </button>
                                                 </td>
                                             </tr>
@@ -126,22 +140,25 @@ $username = $dashboardController->getAuthenticatedUser();
 <script src="/public/js/menus.js"></script>
 <script src="/public/js/template.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="/public/js/pages/data-table.js"></script>
 
-<script>
-    $(document).on('click', '.btn-editar-usuario', function () {
-        let userId = $(this).data('id');
-        $("#modalEditarUsuario .modal-body").load('/views/users/edit.php?id=' + userId, function () {
-            $("#modalEditarUsuario").modal('show');
-        });
-    });
-</script>
 
 <!-- Modal de edición de usuario -->
 <div class="modal fade" id="modalEditarUsuario" tabindex="-1" aria-labelledby="modalEditarUsuarioLabel"
      aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
+        <div class="modal-content card shadow-sm">
             <!-- Contenido del modal se cargará dinámicamente aquí -->
+        </div>
+    </div>
+</div>
+
+<!-- Modal para visualizar el perfil del usuario -->
+<div class="modal fade" id="modalPerfilUsuario" tabindex="-1" aria-labelledby="modalPerfilUsuarioLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content card shadow-sm">
+            <!-- Contenido del perfil se cargará dinámicamente aquí -->
         </div>
     </div>
 </div>
@@ -150,10 +167,28 @@ $username = $dashboardController->getAuthenticatedUser();
 <script>
     $(document).on('click', '.btn-editar-usuario', function () {
         let userId = $(this).data('id');
-        $('#modalEditarUsuario .modal-content').load('/views/users/edit.php?id=' + userId, function () {
-            const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
-            modal.show();
-        });
+        $('#modalEditarUsuario')
+            .data('id', userId)
+            .find('.modal-content')
+            .load('/views/users/edit.php?id=' + userId, function () {
+                $('#modalEditarUsuarioLabel').text('Editar Usuario');
+                $('#modalEditarUsuario button[type="submit"]').text('Actualizar Usuario');
+                const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
+                modal.show();
+            });
+    });
+
+    // Manejador para el botón "Agregar Usuario"
+    $(document).on('click', '#agregarUsuarioBtn', function () {
+        $('#modalEditarUsuario')
+            .removeData('id') // para asegurarnos que no tenga un ID previo
+            .find('.modal-content')
+            .load('/views/users/create.php', function () {
+                $('#modalEditarUsuarioLabel').text('Crear Usuario');
+                $('#modalEditarUsuario button[type="submit"]').text('Crear Usuario');
+                const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
+                modal.show();
+            });
     });
 </script>
 <script>
@@ -163,7 +198,11 @@ $username = $dashboardController->getAuthenticatedUser();
         const userId = $('#modalEditarUsuario').data('id');
         const action = '/views/users/edit.php?id=' + userId;
 
+        const submitButton = form.find('button[type="submit"]');
+        submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...');
+
         $.post(action, form.serialize(), function (response) {
+            submitButton.prop('disabled', false).text(userId ? 'Actualizar Usuario' : 'Crear Usuario');
             if (response.trim() === 'ok') {
                 Swal.fire({
                     icon: 'success',
@@ -171,7 +210,13 @@ $username = $dashboardController->getAuthenticatedUser();
                     text: 'El usuario ha sido actualizado correctamente.',
                     confirmButtonText: 'Aceptar'
                 }).then(() => {
-                    location.reload();
+                    const row = $('tr[data-row-id="' + userId + '"]');
+                    row.find('td:nth-child(2)').text(form.find('[name="username"]').val());
+                    row.find('td:nth-child(3)').text(form.find('[name="email"]').val());
+                    row.find('td:nth-child(4)').text(form.find('[name="nombre"]').val());
+                    row.find('td:nth-child(5)').text(form.find('[name="especialidad"]').val());
+                    row.addClass('table-success');
+                    setTimeout(() => row.removeClass('table-success'), 2000);
                 });
             } else {
                 Swal.fire({
@@ -189,9 +234,30 @@ $username = $dashboardController->getAuthenticatedUser();
             .data('id', userId)
             .find('.modal-content')
             .load('/views/users/edit.php?id=' + userId, function () {
+                $('#modalEditarUsuarioLabel').text('Editar Usuario');
+                $('#modalEditarUsuario button[type="submit"]').text('Actualizar Usuario');
                 const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
                 modal.show();
             });
+    });
+</script>
+<script>
+    $(document).on('click', '.btn-ver-perfil', function () {
+        let userId = $(this).data('id');
+        $('#modalPerfilUsuario')
+            .find('.modal-content')
+            .load('/views/users/profile.php?id=' + userId, function () {
+                const modal = new bootstrap.Modal(document.getElementById('modalPerfilUsuario'));
+                modal.show();
+            });
+    });
+</script>
+<script>
+    // Limpieza del backdrop y restauración de scroll cuando se cierra el modal
+    $('#modalEditarUsuario, #modalPerfilUsuario').on('hidden.bs.modal', function () {
+        $('body').removeClass('modal-open');
+        $('.modal-backdrop').remove();
+        $('body').css('overflow', 'auto'); // <-- restaura scroll
     });
 </script>
 </body>
