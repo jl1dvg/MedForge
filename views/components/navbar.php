@@ -44,14 +44,27 @@ require_once __DIR__ . '/../../bootstrap.php';
                                     class="path2"></span></i>Insumos</a></li>
             </uL>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/informes/informe_isspol.php'; ?>"><i class="mdi mdi-file-document"><span
+        <li><a href="#"><i
+                        class="mdi mdi-file-document"><span
                             class="path1"></span><span class="path2"></span></i>Informes</a>
             <uL>
                 <li><a href="<?php echo BASE_URL . 'views/informes/informe_isspol.php'; ?>"><i
                                 class="mdi mdi-file-chart"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Consolidado ISSPOL</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/informes/informe_particulares.php'; ?>"><i
+                                class="mdi mdi-file-chart"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Antenciones Particulares</a></li>
             </uL>
         </li>
+        <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>
+        <li><a href="#"><i class="mdi mdi-settings"></i>Configuración</a>
+            <ul>
+                <li><a href="<?php echo BASE_URL . 'views/users/index.php'; ?>"><i class="mdi mdi-account-key"></i>Usuarios</a>
+                </li>
+            </ul>
+        </li>
+        <?php endif; ?>
     </ul>
 </nav>

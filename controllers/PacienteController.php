@@ -330,4 +330,120 @@ class PacienteController
         ");
         return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'afiliacion');
     }
+
+    public function getAtencionesParticularesPorSemana($fechaInicio, $fechaFin)
+    {
+        // Excluir todas las afiliaciones de seguros generales e IESS relacionados
+        $sql = "
+SELECT p.hc_number, CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS nombre_completo,
+       'consulta' AS tipo, cd.form_id, cd.fecha, LOWER(p.afiliacion) AS afiliacion, pp.procedimiento_proyectado, pp.doctor
+FROM patient_data p
+JOIN consulta_data cd ON cd.hc_number = p.hc_number
+JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id
+WHERE cd.fecha BETWEEN :inicio1 AND :fin1
+  AND LOWER(p.afiliacion) NOT IN ('isspol', 'issfa', 'iess', 'msp',
+                                  'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino', 
+                                  'seguro campesino jubilado', 'seguro general', 'seguro general jubilado', 
+                                  'seguro general por montepío', 'seguro general tiempo parcial')
+
+UNION ALL
+
+SELECT p.hc_number, CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS nombre_completo,
+       'protocolo' AS tipo, pd.form_id, pd.fecha_inicio AS fecha, LOWER(p.afiliacion) AS afiliacion, pp.procedimiento_proyectado, pp.doctor
+FROM patient_data p
+JOIN protocolo_data pd ON pd.hc_number = p.hc_number
+JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id
+WHERE pd.fecha_inicio BETWEEN :inicio2 AND :fin2
+  AND LOWER(p.afiliacion) NOT IN ('isspol', 'issfa', 'iess', 'msp',
+                                  'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino', 
+                                  'seguro campesino jubilado', 'seguro general', 'seguro general jubilado', 
+                                  'seguro general por montepío', 'seguro general tiempo parcial')
+";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio1' => $fechaInicio,
+            ':fin1' => $fechaFin,
+            ':inicio2' => $fechaInicio,
+            ':fin2' => $fechaFin,
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function obtenerPacientesPaginados($start, $length, $search = '', $orderColumn = 'hc_number', $orderDir = 'ASC')
+    {
+        $columns = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
+        $orderBy = in_array($orderColumn, $columns) ? $orderColumn : 'hc_number';
+
+        $searchSql = '';
+        $params = [];
+
+        if (!empty($search)) {
+            $searchSql = "WHERE p.hc_number LIKE :search1 OR p.fname LIKE :search2 OR p.lname LIKE :search3 OR p.afiliacion LIKE :search4";
+            $params[':search1'] = "%$search%";
+            $params[':search2'] = "%$search%";
+            $params[':search3'] = "%$search%";
+            $params[':search4'] = "%$search%";
+        }
+
+        $countTotal = $this->db->query("SELECT COUNT(*) FROM patient_data")->fetchColumn();
+
+        $stmtFiltered = $this->db->prepare("
+            SELECT COUNT(*) 
+            FROM patient_data p
+            $searchSql
+        ");
+        if (!empty($params)) {
+            $stmtFiltered->execute($params);
+        } else {
+            $stmtFiltered->execute();
+        }
+        $countFiltered = $stmtFiltered->fetchColumn();
+
+        $sql = "
+            SELECT 
+                p.hc_number,
+                CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS full_name,
+                (SELECT MAX(fecha) FROM consulta_data WHERE hc_number = p.hc_number) AS ultima_fecha,
+                p.afiliacion
+            FROM patient_data p
+            $searchSql
+            ORDER BY $orderBy $orderDir
+            LIMIT :start, :length
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        if (!empty($params)) {
+            foreach ($params as $key => $val) {
+                $stmt->bindValue($key, $val);
+            }
+        }
+        $stmt->bindValue(':start', (int)$start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', (int)$length, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $data = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $estado = $this->verificarCoberturaPaciente($row['hc_number']);
+            $data[] = [
+                'hc_number' => $row['hc_number'],
+                'ultima_fecha' => $row['ultima_fecha']
+                    ? date('d/m/Y', strtotime($row['ultima_fecha']))
+                    : '', 'full_name' => $row['full_name'],
+                'afiliacion' => $row['afiliacion'],
+                'estado_html' => $estado === 'Con Cobertura'
+                    ? "<span class='badge bg-success'>Con Cobertura</span>"
+                    : "<span class='badge bg-danger'>Sin Cobertura</span>",
+                'acciones_html' => "<a href='/views/pacientes/detalles.php?hc_number={$row['hc_number']}' class='btn btn-sm btn-primary'>Ver</a>"
+            ];
+        }
+
+        return [
+            'recordsTotal' => $countTotal,
+            'recordsFiltered' => $countFiltered,
+            'data' => $data
+        ];
+    }
 }
+

@@ -62,59 +62,19 @@ $pacientes = $pacienteController->obtenerPacientesConUltimaConsulta();
                         <div class="box">
                             <div class="box-body">
                                 <div class="table-responsive rounded card-table">
-                                    <table class="table border-no" id="example1">
-                                        <thead>
+                                    <table class="table table-striped table-hover table-sm invoice-archive"
+                                           id="example1">
+                                        <thead class="bg-primary">
                                         <tr>
-                                            <th>ID del Paciente</th>
-                                            <th>Fecha de Ingreso</th>
-                                            <th>Nombre del Paciente</th>
+                                            <th>ID</th>
+                                            <th>Última consulta</th>
+                                            <th>Nombre completo</th>
                                             <th>Afiliación</th>
                                             <th>Estado</th>
-                                            <th></th>
+                                            <th>Acciones</th>
                                         </tr>
                                         </thead>
-                                        <tbody>
-                                        <?php if (!empty($pacientes)): ?>
-                                            <?php foreach ($pacientes as $row): ?>
-                                                <tr class="hover-primary"
-                                                    onclick="window.location='detalles.php?hc_number=<?= $row['hc_number']; ?>';"
-                                                    style="cursor:pointer;">
-                                                    <td><?= $row['hc_number']; ?></td>
-                                                    <td><?= !empty($row['ultima_fecha']) ? date('d/m/Y', strtotime($row['ultima_fecha'])) : 'No disponible'; ?></td>
-                                                    <td><?= $row['full_name']; ?></td>
-                                                    <td><?= !empty($row['afiliacion']) ? $row['afiliacion'] : 'N/A'; ?></td>
-                                                    <td>
-                                                        <?php
-                                                        $cobertura = $pacienteController->verificarCoberturaPaciente($row['hc_number']);
-                                                        echo match ($cobertura) {
-                                                            'Con Cobertura' => '<span class="badge badge-success-light">Con Cobertura</span>',
-                                                            'Sin Cobertura' => '<span class="badge badge-danger-light">Sin Cobertura</span>',
-                                                            default => '<span class="badge badge-warning-light">N/A</span>',
-                                                        };
-                                                        ?>
-                                                    </td>
-                                                    <td>
-                                                        <div class="btn-group">
-                                                            <a class="hover-primary dropdown-toggle no-caret"
-                                                               data-bs-toggle="dropdown"><i
-                                                                        class="fa fa-ellipsis-h"></i></a>
-                                                            <div class="dropdown-menu">
-                                                                <a class="dropdown-item"
-                                                                   href="patients/patient_details.php?hc_number=<?= $row['hc_number']; ?>">Ver
-                                                                    Detalles</a>
-                                                                <a class="dropdown-item" href="#">Editar</a>
-                                                                <a class="dropdown-item" href="#">Eliminar</a>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        <?php else: ?>
-                                            <tr>
-                                                <td colspan="8">No hay datos disponibles</td>
-                                            </tr>
-                                        <?php endif; ?>
-                                        </tbody>
+                                        <tbody></tbody>
                                     </table>
                                 </div>
                             </div>

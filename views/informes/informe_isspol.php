@@ -460,7 +460,7 @@ if ($billingId) {
                                         </tbody>
                                     </table>
                                 </div>
-                                <a href="/generar_excel_isspol.php?billing_id=<?= $billingId ?>"
+                                <a href="/public/index.php/billing/excel?form_id=<?= $formIdTexto ?>"
                                    class="btn btn-success mt-3">
                                     Descargar Excel
                                 </a>
