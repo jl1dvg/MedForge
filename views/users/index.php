@@ -104,12 +104,12 @@ $username = $dashboardController->getAuthenticatedUser();
                                                             aria-label="Editar usuario">
                                                         <i class="fas fa-user-edit"></i> Editar
                                                     </button>
-                                                    <button class="btn btn-outline-secondary btn-sm btn-ver-perfil"
-                                                            data-id="<?= $user['id'] ?>"
-                                                            title="Ver perfil del usuario"
-                                                            aria-label="Ver perfil del usuario">
+                                                    <a href="/views/users/profile.php?id=<?= $user['id'] ?>"
+                                                       class="btn btn-outline-secondary btn-sm"
+                                                       title="Ver perfil del usuario"
+                                                       aria-label="Ver perfil del usuario">
                                                         <i class="fas fa-id-badge"></i> Perfil
-                                                    </button>
+                                                    </a>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>

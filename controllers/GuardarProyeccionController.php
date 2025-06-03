@@ -155,4 +155,127 @@ class GuardarProyeccionController
             return ["success" => true, "message" => "Datos guardados correctamente"];
         }
     }
+
+    public function actualizarEstadoFlujo($id, $nuevoEstado): array
+    {
+        $sql = "UPDATE flujo_pacientes SET estado_actual = :estado, fecha_cambio = NOW() WHERE id = :id";
+        $stmt = $this->db->prepare($sql);
+        $ok = $stmt->execute([
+            ':estado' => $nuevoEstado,
+            ':id' => $id
+        ]);
+
+        return $ok
+            ? ['success' => true]
+            : ['success' => false, 'error' => 'Error al actualizar en la base de datos'];
+    }
+
+    public function obtenerFlujoPacientes($fecha = null): array
+    {
+        $sql = "SELECT 
+                pp.id,
+                pp.form_id,
+                pp.hc_number,
+                pp.procedimiento_proyectado AS procedimiento,
+                pp.estado_agenda AS estado,
+                pp.fecha AS fecha_cambio,
+                pp.hora AS hora,
+                pp.doctor AS doctor,
+                pd.fname,
+                pd.mname,
+                pd.lname,
+                pd.lname2,
+                pp.afiliacion
+            FROM procedimiento_proyectado pp
+            INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
+        WHERE 1 ";
+        $params = [];
+        if ($fecha) {
+            $sql .= " AND pp.fecha = ? ";
+            $params[] = $fecha;
+        }
+        $sql .= " ORDER BY pp.fecha DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Optimización: Consulta única para todos los historiales
+        $formIds = array_column($solicitudes, 'form_id');
+        if (!$formIds) return $solicitudes;
+
+        $placeholders = implode(',', array_fill(0, count($formIds), '?'));
+        $histStmt = $this->db->prepare(
+            "SELECT form_id, estado, fecha_hora_cambio
+             FROM procedimiento_proyectado_estado
+             WHERE form_id IN ($placeholders)
+             ORDER BY form_id ASC, fecha_hora_cambio ASC"
+        );
+        $histStmt->execute($formIds);
+
+        // Agrupa los historiales por form_id
+        $historiales = [];
+        while ($row = $histStmt->fetch(PDO::FETCH_ASSOC)) {
+            $historiales[$row['form_id']][] = [
+                'estado' => $row['estado'],
+                'fecha_hora_cambio' => $row['fecha_hora_cambio']
+            ];
+        }
+
+        // Asocia el historial a cada solicitud
+        foreach ($solicitudes as &$sol) {
+            $sol['historial_estados'] = $historiales[$sol['form_id']] ?? [];
+        }
+        return $solicitudes;
+    }
+
+    public function actualizarEstado($formId, $nuevoEstado): array
+    {
+        error_log("🟣 Intentando actualizar estado: form_id=$formId, nuevoEstado=$nuevoEstado");
+        $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado WHERE form_id = :form_id";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':estado' => $nuevoEstado,
+            ':form_id' => $formId
+        ]);
+        error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
+        if ($stmt->rowCount() > 0) {
+            // Registrar el cambio en el historial de estados
+            $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
+                     VALUES (?, ?, NOW())";
+            $this->db->prepare($sql2)->execute([$formId, $nuevoEstado]);
+            return ['success' => true];
+        } else {
+            // Nuevo chequeo: ¿existe ese form_id?
+            error_log("🟤 Chequeando existencia de form_id: $formId");
+            $check = $this->db->prepare("SELECT COUNT(*) FROM procedimiento_proyectado WHERE form_id = ?");
+            $check->execute([$formId]);
+            if ($check->fetchColumn() == 0) {
+                error_log("🔴 El form_id $formId NO existe en procedimiento_proyectado");
+                return ['success' => false, 'message' => 'El form_id no existe en la tabla procedimiento_proyectado'];
+            }
+            error_log("🟠 El form_id $formId existe pero no se pudo actualizar el estado (posiblemente mismo valor)");
+            return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
+        }
+    }
+
+    public function getCambiosRecientes()
+    {
+        $ultimoTimestamp = $_GET['desde'] ?? null;
+
+        $query = "SELECT * FROM procedimiento_proyectado";
+        if ($ultimoTimestamp) {
+            $query .= " WHERE updated_at > ?";
+            $stmt = $this->db->prepare($query);
+            $stmt->execute([$ultimoTimestamp]);
+        } else {
+            $stmt = $this->db->query($query);
+        }
+
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode([
+            'pacientes' => $result,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+    }
 }
