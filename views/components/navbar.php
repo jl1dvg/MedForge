@@ -14,8 +14,18 @@ require_once __DIR__ . '/../../bootstrap.php';
         <li><a href="<?php echo BASE_URL . 'views/main.php'; ?>"><i class="mdi mdi-view-dashboard"><span
                             class="path1"></span><span class="path2"></span></i>Inicio</a>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i class="mdi mdi-account-multiple"><span
+        <li><a href="#"><i
+                        class="mdi mdi-account-multiple"><span
                             class="path1"></span><span class="path2"></span></i>Pacientes</a>
+            <uL>
+                <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i class="mdi mdi-account-multiple"><span
+                                    class="path1"></span><span class="path2"></span></i>Lista de Pacientes</a>
+                </li>
+                <li><a href="<?php echo BASE_URL . 'views/pacientes/flujo/flujo.php'; ?>"><i
+                                class="mdi mdi-account-multiple"><span
+                                    class="path1"></span><span class="path2"></span></i>Flujo de Pacientes</a>
+                </li>
+            </uL>
         </li>
         <li><a href="<?php echo BASE_URL . 'views/main/repots/solicitudes.php'; ?>"><i
                         class="mdi mdi-file-chart"><span
@@ -59,12 +69,12 @@ require_once __DIR__ . '/../../bootstrap.php';
             </uL>
         </li>
         <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>
-        <li><a href="#"><i class="mdi mdi-settings"></i>Configuración</a>
-            <ul>
-                <li><a href="<?php echo BASE_URL . 'views/users/index.php'; ?>"><i class="mdi mdi-account-key"></i>Usuarios</a>
-                </li>
-            </ul>
-        </li>
+            <li><a href="#"><i class="mdi mdi-settings"></i>Configuración</a>
+                <ul>
+                    <li><a href="<?php echo BASE_URL . 'views/users/index.php'; ?>"><i class="mdi mdi-account-key"></i>Usuarios</a>
+                    </li>
+                </ul>
+            </li>
         <?php endif; ?>
     </ul>
 </nav>
