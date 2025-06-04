@@ -89,7 +89,7 @@
     use Helpers\ProtocoloHelper;
 
     // ✅ Primero obtenemos signos vitales una sola vez
-    $signos = ProtocoloHelper::obtenerSignosVitales();
+    $signos = ProtocoloHelper::obtenerSignosVitalesYEdad($edadPaciente);
 
     $preEvolucion = [];
     $preIndicacion = [];
@@ -99,12 +99,12 @@
     $altaIndicacion = [];
 
     if (!empty($datos['evolucion005'])) {
-        $preEvolucion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['pre_evolucion'], 70, $signos);
-        $preIndicacion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['pre_indicacion'], 80, $signos);
-        $postEvolucion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['post_evolucion'], 70, $signos);
-        $postIndicacion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['post_indicacion'], 80, $signos);
-        $altaEvolucion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['alta_evolucion'], 70, $signos);
-        $altaIndicacion = ProtocoloHelper::procesarEvolucionConSignos($datos['evolucion005']['alta_indicacion'], 80, $signos);
+        $preEvolucion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['pre_evolucion'], 70, $signos);
+        $preIndicacion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['pre_indicacion'], 80, $signos);
+        $postEvolucion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['post_evolucion'], 70, $signos);
+        $postIndicacion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['post_indicacion'], 80, $signos);
+        $altaEvolucion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['alta_evolucion'], 70, $signos);
+        $altaIndicacion = ProtocoloHelper::procesarEvolucionConVariables($datos['evolucion005']['alta_indicacion'], 80, $signos);
     }
 
     $maxLines = max(count($preEvolucion), count($preIndicacion), count($postEvolucion), count($postIndicacion), 7); // mínimo 10 líneas

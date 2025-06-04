@@ -5251,14 +5251,15 @@
             (stripos($medicamento['via'], 'topica') === false)) {
 
                 $nombre_medicamento = htmlspecialchars($medicamento['medicamento'] ?? 'N/A');
+                $dosis = htmlspecialchars($medicamento['dosis'] ?? 'N/A');
 
                 // Iniciar nueva fila si corresponde
                 if ($columnaActual == 1) {
-                    echo "<tr style='height: 12px'>";
+                    echo "<tr style='height: 10px'>";
                 }
 
-                echo "<td class='blanco_left_tr'>{$contadorFila}</td>";
-                echo "<td class='blanco_left_tr'>{$nombre_medicamento}</td>";
+                echo "<td class='blanco_left_tr' style='font-size: 4px'>{$contadorFila}</td>";
+                echo "<td class='blanco_left_tr' style='font-size: 4px'>{$nombre_medicamento} {$dosis}</td>";
 
                 if ($columnaActual == 4) {
                     echo "</tr>";
@@ -5788,7 +5789,7 @@
         <tr style="height: 12px">
             <td class="blanco_left_tr" colspan="6">IV PERIFÉRICO 1</td>
             <td class="blanco_tr" colspan="7"><b>"22"</b></td>
-            <td class="blancO" colspan="29"><b>ANTEBRAZO</b></td>
+            <td class="blanco_left_tr" colspan="29"><b>ANTEBRAZO</b></td>
             <td class="blanco_left_tr" colspan="12">DEXTROSA 10%</td>
             <td class="blanco_left_tr" colspan="12"></td>
             <td class="blanco_left_tr" colspan="12">PLASMA</td>
