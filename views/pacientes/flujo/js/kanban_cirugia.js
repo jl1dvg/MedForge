@@ -1,4 +1,39 @@
+// Definir estados para columnas del tablero de Cirugía
+const ESTADOS_CIRUGIA = [
+    {label: "Agendado", id: "agendado"},
+    {label: "Llegado", id: "llegado"},
+    {label: "Preoperatorio", id: "preoperatorio"},
+    {label: "En quirófano", id: "en-quirofano"},
+    {label: "Recuperación", id: "recuperacion"},
+    {label: "Alta", id: "alta"}
+];
+
+function renderColumnasCirugia() {
+    const board = document.querySelector('.kanban-board');
+    if (!board) return;
+
+    // Limpiar columnas actuales
+    board.innerHTML = '';
+
+    ESTADOS_CIRUGIA.forEach(estado => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col';
+        col.innerHTML = `
+            <div class='kanban-column box box-solid box-primary rounded shadow-sm p-1 me-0' style='min-width: 250px; flex-shrink: 0;'>
+            <div class='box-header with-border'>
+            <h5 class='text-center box-title'>${estado.label} <span class='badge bg-danger' id='badge-${estado.id}' style='display:none;'>¡+4!</span></h5>
+            <ul class='box-controls pull-right'><li><a class='box-btn-close' href='#'></a></li><li><a class='box-btn-slide' href='#'></a></li><li><a class='box-btn-fullscreen' href='#'></a></li></ul></div>
+            <div class='box-body p-0'>
+            <div class='kanban-items' id='kanban-${estado.id}'></div>         
+            </div>
+            </div>
+        `;
+        board.appendChild(col);
+    });
+}
+
 function renderKanbanCirugia() {
+    renderColumnasCirugia(); // ← Agregado aquí
     // Extraer todos los trayectos de cirugía de todas las visitas
     const trayectosCirugia = allSolicitudes
         .flatMap(visita =>

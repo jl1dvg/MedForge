@@ -1,4 +1,39 @@
+// Definir estados para columnas del tablero de Examenes
+const ESTADOS_IMAGENES = [
+    {label: "Agendado", id: "agendado"},
+    {label: "Llegado", id: "llegado"},
+    {label: "Admisión", id: "admision"},
+    {label: "En examen", id: "en-examen"},
+    {label: "Revisión resultados", id: "revision-resultados"},
+    {label: "Alta", id: "alta"}
+];
+
+function renderColumnasExamen() {
+    const board = document.querySelector('.kanban-board');
+    if (!board) return;
+
+    // Limpiar columnas actuales
+    board.innerHTML = '';
+
+    ESTADOS_IMAGENES.forEach(estado => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col';
+        col.innerHTML = `
+            <div class='kanban-column box box-solid box-warning rounded shadow-sm p-1 me-0' style='min-width: 250px; flex-shrink: 0;'>
+            <div class='box-header with-border'>
+            <h5 class='text-center box-title'>${estado.label} <span class='badge bg-danger' id='badge-${estado.id}' style='display:none;'>¡+4!</span></h5>
+            <ul class='box-controls pull-right'><li><a class='box-btn-close' href='#'></a></li><li><a class='box-btn-slide' href='#'></a></li><li><a class='box-btn-fullscreen' href='#'></a></li></ul></div>
+            <div class='box-body p-0'>
+            <div class='kanban-items' id='kanban-${estado.id}'></div>         
+            </div>
+            </div>
+        `;
+        board.appendChild(col);
+    });
+}
+
 function renderKanbanExamen() {
+    renderColumnasExamen(); // ← Agregado aquí
     // Extraer todos los trayectos de cirugía de todas las visitas
     const trayectosExamen = allSolicitudes
         .flatMap(visita =>

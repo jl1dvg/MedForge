@@ -1,4 +1,39 @@
 // kanban_base.js
+// Definir estados para columnas del tablero de Visitas
+const ESTADOS_VISITA = [
+    {label: "Agendado", id: "agendado"},
+    {label: "Llegado", id: "llegado"},
+    {label: "Preoperatorio", id: "preoperatorio"},
+    {label: "En quirófano", id: "en-quirofano"},
+    {label: "Recuperación", id: "recuperacion"},
+    {label: "Alta", id: "alta"},
+    {label: "Otro", id: "otro"}
+];
+
+function renderColumnasVisita() {
+    const board = document.querySelector('.kanban-board');
+    if (!board) return;
+
+    // Limpiar columnas actuales
+    board.innerHTML = '';
+
+    ESTADOS_VISITA.forEach(estado => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col';
+        col.innerHTML = `
+            <div class='kanban-column box box-solid box-info rounded shadow-sm p-1 me-0' style='min-width: 250px; flex-shrink: 0;'>
+            <div class='box-header with-border'>
+            <h5 class='text-center box-title'>${estado.label} <span class='badge bg-danger' id='badge-${estado.id}' style='display:none;'>¡+4!</span></h5>
+            <ul class='box-controls pull-right'><li><a class='box-btn-close' href='#'></a></li><li><a class='box-btn-slide' href='#'></a></li><li><a class='box-btn-fullscreen' href='#'></a></li></ul></div>
+            <div class='box-body p-0'>
+            <div class='kanban-items' id='kanban-${estado.id}'></div>         
+            </div>
+            </div>
+        `;
+        board.appendChild(col);
+    });
+}
+
 // =========================
 // VARIABLES GLOBALES
 // =========================
@@ -28,7 +63,16 @@ function llenarSelectDoctoresYFechas(datosFiltrados) {
     const doctorFiltro = document.getElementById('kanbanDoctorFilter');
     const currentDoctor = doctorFiltro.value;
     doctorFiltro.innerHTML = '<option value="">Todos</option>';
-    const doctoresSet = new Set(datosFiltrados.map(item => item.doctor));
+
+    // Recorrer trayectos para poblar los doctores únicos
+    const doctoresSet = new Set();
+    datosFiltrados.forEach(visita => {
+        if (Array.isArray(visita.trayectos)) {
+            visita.trayectos.forEach(t => {
+                if (t.doctor) doctoresSet.add(t.doctor);
+            });
+        }
+    });
     doctoresSet.forEach(doctor => {
         if (doctor) {
             const option = document.createElement('option');
@@ -40,11 +84,11 @@ function llenarSelectDoctoresYFechas(datosFiltrados) {
             doctorFiltro.appendChild(option);
         }
     });
-    // Fecha
+    // Fecha: solo usa fechas de la visita
     const fechaFiltro = document.getElementById('kanbanFechaFiltro');
     if (fechaFiltro) {
         fechaFiltro.innerHTML = '<option value="">Todas</option>';
-        const fechasSet = new Set(datosFiltrados.map(item => item.fecha_cambio));
+        const fechasSet = new Set(datosFiltrados.map(item => item.fecha_visita));
         const fechasOrdenadas = Array.from(fechasSet).sort().reverse();
         fechasOrdenadas.forEach(fecha => {
             const option = document.createElement('option');
@@ -55,33 +99,55 @@ function llenarSelectDoctoresYFechas(datosFiltrados) {
     }
 }
 
-function llenarSelectProcedimientoCategorias() {
-    // Extraer categorías únicas de allSolicitudes
-    const categorias = Array.from(
-        new Set(
-            allSolicitudes
-                .map(s => extraerCategoriaProcedimiento(s.procedimiento))
-                .filter(Boolean)
-        )
-    ).sort();
-    const select = document.getElementById('filtroProcedimiento');
-    if (select) {
-        select.innerHTML = '<option value="">Todos</option>' +
-            categorias.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+function formatearProcedimientoCorto(proc) {
+    if (!proc || typeof proc !== 'string') return '';
+
+    // SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS
+    if (proc.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES')) {
+        const partes = proc.split(' - ');
+        // Toma el cuarto segmento si existe, o el tercero si no hay "AMBOS OJOS"
+        return partes[3] ? partes[2] : (partes[2] || '');
     }
+    // CIRUGIAS - CYP-OCU-035 - IPL TRATAMIENTO DE OJO SECO (AO POR SESION) - IZQUIERDO
+    if (proc.startsWith('CIRUGIAS')) {
+        return 'CIRUGIAS';
+    }
+    // IMAGENES - IMA-DIA-003 - 281306-CAMPIMETRIA COMPUTARIZADA - CAMPO VISUAL (AO) - AMBOS OJOS
+    if (proc.startsWith('IMAGENES')) {
+        // Busca el nombre del estudio: después del segundo " - "
+        const partes = proc.split(' - ');
+        // Busca la primera parte que contiene paréntesis, sino el 3er segmento (usualmente el nombre)
+        const conParentesis = partes.find(p => p.includes('('));
+        return conParentesis || partes[3] || partes[2] || 'IMAGEN';
+    }
+    // Si nada coincide, muestra el tercer segmento si existe
+    const partes = proc.split(' - ');
+    return partes[3] || partes[2] || proc;
 }
 
-// Extrae y asigna la categoría al dataset de cada tarjeta al cargar
-function extraerCategoriaProcedimiento(procedimiento) {
-    if (typeof procedimiento !== 'string') return '';
-    return procedimiento.split(' - ')[0]?.trim() || '';
+// kanban_base.js (puedes ponerlo al final o cerca del render principal)
+function renderTabActivo() {
+    const activeTab = document.querySelector('.tab-kanban.active');
+    if (!activeTab) return;
+    const tipo = activeTab.dataset.tipo;
+    if (tipo === 'cirugia' && typeof renderKanbanCirugia === "function") {
+        renderKanbanCirugia();
+    } else if (tipo === 'consulta' && typeof renderKanbanConsulta === "function") {
+        renderKanbanConsulta();
+    } else if (tipo === 'examen' && typeof renderKanbanExamen === "function") {
+        renderKanbanExamen();
+    } else {
+        renderKanban();
+    }
 }
 
 // =========================
 // FUNCIONES DE RENDER Y RESUMEN
 // =========================
 function renderKanban() {
+    renderColumnasVisita();
     const filtered = filtrarSolicitudes(); // ya devuelve solo VISITAS de la fecha filtrada
+    llenarSelectDoctoresYFechas(filtered);
 
     // Limpiar columnas
     document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
@@ -101,8 +167,19 @@ function renderKanban() {
             estadoGlobal = 'Otro';
         }
 
-        // Declarar estadoId solo una vez y reutilizar
+        // --- Mapeo defensivo de estados ---
+        // Array de IDs válidos según las columnas
+        const idsValidos = ESTADOS_VISITA.map(e => e.id);
+
+        // Normaliza el estadoId
         let estadoId = estadoGlobal.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+        // Si el estadoId no está en los IDs válidos, mapea a "otro"
+        if (!idsValidos.includes(estadoId)) {
+            estadoGlobal = 'Otro';
+            estadoId = 'otro';
+        }
+
         conteoPorEstado[estadoId] = (conteoPorEstado[estadoId] || 0) + 1;
 
         // Cronómetro: tiempo desde la llegada (hora_llegada de la visita)
@@ -172,7 +249,13 @@ function renderKanban() {
             <div>
                 <span style="font-weight:600">Trayectos:</span> ${[...tipos].length > 0 ? [...tipos].join(' + ') : 'Ninguno'}
             </div>
-            <div style="font-size:0.93em;color:#375;">${procedimientos.filter(p => p && p !== '(no definido)').slice(0, 2).join('<br>')}</div>
+            <div style="font-size:0.93em;color:#375;">
+                ${procedimientos
+            .filter(p => p && p !== '(no definido)')
+            .slice(0, 2)
+            .map(p => formatearProcedimientoCorto(p))
+            .join('<br>')}
+            </div>            
             <div>
                 <i class="mdi mdi-stethoscope"></i> ${[...doctores].join(', ')}
             </div>
@@ -307,8 +390,6 @@ function aplicarFiltros() {
 
         card.style.display = visible ? '' : 'none';
     });
-    // Después de aplicar los filtros básicos, aplicar el de procedimiento
-    aplicarFiltroProcedimiento();
 
     // Generar el resumen estadístico según los datos filtrados
     // Recopilar los datos filtrados actualmente visibles
@@ -323,30 +404,6 @@ function aplicarFiltros() {
     generarResumenKanban(filtrados);
 }
 
-function aplicarFiltroProcedimiento() {
-    const filtro = document.getElementById('filtroProcedimiento')?.value.toLowerCase() || '';
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        const categoria = card.dataset.procedimiento_categoria?.toLowerCase() || '';
-        // Si ya está oculto por otros filtros, no lo mostramos
-        if (card.style.display === 'none') return;
-        card.style.display = (filtro === '' || categoria.includes(filtro)) ? '' : 'none';
-    });
-
-    // Actualizar los filtros dependientes (doctor y fecha) según la categoría seleccionada
-    // 1. Obtener los datos actualmente visibles tras aplicar el filtro de procedimiento
-    const datosFiltrados = [];
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        if (card.style.display !== 'none') {
-            // Buscar en allSolicitudes el objeto correspondiente por form_id
-            const formId = card.getAttribute('data-form');
-            const obj = allSolicitudes.find(s => String(s.form_id) === String(formId));
-            if (obj) datosFiltrados.push(obj);
-        }
-    });
-    llenarSelectDoctoresYFechas(datosFiltrados);
-    // Generar el resumen estadístico según los datos filtrados por procedimiento
-    generarResumenKanban(datosFiltrados);
-}
 
 // =========================
 // POLLING Y RED
@@ -389,9 +446,7 @@ function verificarCambiosRecientes() {
                     .then(flujo => {
                         allSolicitudes = flujo;
                         poblarAfiliacionesUnicas(allSolicitudes);
-                        llenarSelectProcedimientoCategorias();
-                        renderKanban();
-                        aplicarFiltros();
+                        renderTabActivo();
                     });
                 // Mostrar banner visual solo si hay actualizaciones recientes
                 if (data.pacientes.length > 0) {
@@ -425,6 +480,9 @@ function verificarCambiosRecientes() {
 // INICIALIZACIÓN DE INTERFAZ Y LISTENERS
 // =========================
 $(document).ready(function () {
+    // Primero renderiza las columnas de Visitas
+    renderColumnasVisita();
+
     // Iniciar polling de cambios recientes cada 30 segundos
     setInterval(verificarCambiosRecientes, 30000);
 
@@ -436,9 +494,7 @@ $(document).ready(function () {
         .then(data => {
             allSolicitudes = data;
             poblarAfiliacionesUnicas(allSolicitudes);
-            llenarSelectProcedimientoCategorias();
-            renderKanban();
-            aplicarFiltros();
+            renderTabActivo();
         })
         .catch(error => {
             console.error('Error al cargar las solicitudes del flujo:', error);
@@ -460,15 +516,13 @@ $(document).ready(function () {
         onSet: function (context) {
             const picker = this;
             const selected = picker.get('select', 'yyyy-mm-dd');
+            renderColumnasVisita(); // <- ¡Agregado aquí para resetear columnas antes de recargar!
             fetch(`/public/ajax/flujo?fecha=${selected}&modo=visita`)
                 .then(response => response.json())
                 .then(data => {
                     allSolicitudes = data;
                     poblarAfiliacionesUnicas(allSolicitudes);
-                    llenarSelectProcedimientoCategorias();
-                    renderKanban();
-                    // Aplicar filtros en frontend después de renderizar
-                    aplicarFiltros();
+                    renderTabActivo();
                 })
                 .catch(error => {
                     console.error('Error al cargar las solicitudes del flujo:', error);
@@ -477,10 +531,9 @@ $(document).ready(function () {
     });
 
     // Listeners para filtros en frontend
-    ['kanbanDoctorFilter', 'kanbanAfiliacionFilter', 'kanbanDateFilter', /*'kanbanTipoFiltro',*/ 'filtroProcedimiento'].forEach(id => {
+    ['kanbanDoctorFilter', 'kanbanAfiliacionFilter', 'kanbanDateFilter'].forEach(id => {
         const input = document.getElementById(id);
-        if (input) input.addEventListener('input', aplicarFiltros);
-        // Para selects (change también)
-        if (input && input.tagName === 'SELECT') input.addEventListener('change', aplicarFiltros);
+        if (input) input.addEventListener('input', renderTabActivo);
+        if (input && input.tagName === 'SELECT') input.addEventListener('change', renderTabActivo);
     });
 });

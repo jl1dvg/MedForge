@@ -44,8 +44,9 @@ if (php_sapi_name() !== 'cli' && (!isset($_GET['start']) && !isset($_GET['end'])
                     $.get('agenda.php?fecha=' + fecha, function (data) {
                         $('#output').append(`✅ ${fecha}: ${JSON.stringify(data)}\n`);
                         siguienteFecha();
-                    }).fail(function () {
-                        $('#output').append(`❌ Error en fecha ${fecha}\n`);
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        const errorMsg = jqXHR.responseText || errorThrown || textStatus;
+                        $('#output').append(`❌ Error en fecha ${fecha}: ${errorMsg}\n`);
                         siguienteFecha();
                     });
                 }
@@ -222,6 +223,14 @@ foreach ($fechas as $fecha) {
     }
     header('Content-Type: application/json');
     // echo json_encode($resultado);
+
+    // Quitar campos con valor null antes de enviar a la API
+    function quitarCamposNulos($array) {
+        return array_filter($array, function ($v) {
+            return $v !== null;
+        });
+    }
+    $resultado = array_map('quitarCamposNulos', $resultado);
 
     // Enviar datos a la API que guarda en la base de datos
     $apiUrl = 'https://cive.consulmed.me/api/proyecciones/guardar.php'; // Ajusta a tu URL real
