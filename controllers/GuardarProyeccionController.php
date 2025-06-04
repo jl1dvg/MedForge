@@ -77,6 +77,35 @@ class GuardarProyeccionController
             }
         }
 
+        // Proteger campos de nombre para evitar nulos
+        $data['lname'] = $data['lname'] ?? 'DESCONOCIDO';
+        $data['fname'] = $data['fname'] ?? '';
+        $data['mname'] = $data['mname'] ?? '';
+        $data['lname2'] = $data['lname2'] ?? '';
+
+        // Guardar datos del paciente SIEMPRE antes de crear o actualizar la visita
+        $sqlPatient = "
+            INSERT INTO patient_data (hc_number, lname, lname2, fname, mname, afiliacion, fecha_caducidad)
+            VALUES (:hc, :lname, :lname2, :fname, :mname, :afiliacion, :caducidad)
+            ON DUPLICATE KEY UPDATE 
+                lname = VALUES(lname),
+                lname2 = VALUES(lname2),
+                fname = VALUES(fname),
+                mname = VALUES(mname),
+                afiliacion = VALUES(afiliacion),
+                fecha_caducidad = VALUES(fecha_caducidad)
+        ";
+        $stmt = $this->db->prepare($sqlPatient);
+        $stmt->execute([
+            ':hc' => $hcNumber,
+            ':lname' => $data['lname'],
+            ':lname2' => $data['lname2'],
+            ':fname' => $data['fname'],
+            ':mname' => $data['mname'],
+            ':afiliacion' => $data['afiliacion'] ?? null,
+            ':caducidad' => $data['fechaCaducidad'] ?? null,
+        ]);
+
         // 1. Verifica o crea la visita
         $fecha_visita = isset($data['fecha']) ? date('Y-m-d', strtotime($data['fecha'])) : date('Y-m-d');
         $hc_number = $data['hcNumber'];
@@ -96,39 +125,13 @@ class GuardarProyeccionController
         if (!$visita_id) {
             // Crea la visita si no existe, con la hora más temprana
             $usuario = $data['usuario'] ?? 'sistema';
-            $stmt = $this->db->prepare("INSERT INTO paciente_visita (hc_number, fecha_visita, hora_llegada, usuario_registro) VALUES (?, ?, ?, ?)");
+            $stmt = $this->db->prepare("INSERT INTO visitas (hc_number, fecha_visita, hora_llegada, usuario_registro) VALUES (?, ?, ?, ?)");
             $stmt->execute([$hc_number, $fecha_visita, $hora_llegada_completa, $usuario]);
             $visita_id = $this->db->lastInsertId();
         } else {
             // Si ya existe, actualizar la hora_llegada si es necesario (siempre ponemos la más temprana)
-            $stmt = $this->db->prepare("UPDATE paciente_visita SET hora_llegada = ? WHERE id = ?");
+            $stmt = $this->db->prepare("UPDATE visitas SET hora_llegada = ? WHERE id = ?");
             $stmt->execute([$hora_llegada_completa, $visita_id]);
-        }
-
-        // Guardar datos del paciente si hay nombres o afiliación
-        if (isset($data['lname'], $data['fname'])) {
-            $sqlPatient = "
-                INSERT INTO patient_data (hc_number, lname, lname2, fname, mname, afiliacion, fecha_caducidad)
-                VALUES (:hc, :lname, :lname2, :fname, :mname, :afiliacion, :caducidad)
-                ON DUPLICATE KEY UPDATE 
-                    lname = VALUES(lname),
-                    lname2 = VALUES(lname2),
-                    fname = VALUES(fname),
-                    mname = VALUES(mname),
-                    afiliacion = VALUES(afiliacion),
-                    fecha_caducidad = VALUES(fecha_caducidad)
-            ";
-
-            $stmt = $this->db->prepare($sqlPatient);
-            $stmt->execute([
-                ':hc' => $hcNumber,
-                ':lname' => $data['lname'] ?? null,
-                ':lname2' => $data['lname2'] ?? null,
-                ':fname' => $data['fname'] ?? null,
-                ':mname' => $data['mname'] ?? null,
-                ':afiliacion' => $data['afiliacion'] ?? null,
-                ':caducidad' => $data['fechaCaducidad'] ?? null,
-            ]);
         }
 
         // Verificar si form_id ya existe
@@ -143,12 +146,12 @@ class GuardarProyeccionController
             error_log("➕ form_id $form_id no existe. Se insertará nuevo registro.");
         }
 
-        // Guardar procedimiento proyectado con más campos
+        // Guardar procedimiento proyectado con más campos (incluye visita_id)
         $sql = "
             INSERT INTO procedimiento_proyectado 
-                (form_id, procedimiento_proyectado, doctor, hc_number, sede_departamento, id_sede, estado_agenda, afiliacion, fecha, hora)
+                (form_id, procedimiento_proyectado, doctor, hc_number, sede_departamento, id_sede, estado_agenda, afiliacion, fecha, hora, visita_id)
             VALUES 
-                (:form_id, :procedimiento, :doctor, :hc, :sede_departamento, :id_sede, :estado_agenda, :afiliacion, :fecha, :hora)
+                (:form_id, :procedimiento, :doctor, :hc, :sede_departamento, :id_sede, :estado_agenda, :afiliacion, :fecha, :hora, :visita_id)
             ON DUPLICATE KEY UPDATE 
                 procedimiento_proyectado = VALUES(procedimiento_proyectado),
                 doctor = VALUES(doctor),

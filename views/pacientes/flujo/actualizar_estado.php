@@ -42,3 +42,24 @@ try {
         'message' => 'Excepción: ' . $e->getMessage()
     ]);
 }
+
+
+$estados = [
+    'Agendado' => 'agendado',
+    'Pagado' => 'pagado',
+    'Admisión' => 'admision',
+    'En atención' => 'en-atencion',
+    'Esperando resultado' => 'esperando-resultado',
+    'Post-procedimiento' => 'post-procedimiento',
+    'Alta' => 'alta',
+];
+foreach ($estados as $estadoLabel => $estadoId) {
+    echo "<div class='kanban-column box box-solid box-primary rounded shadow-sm p-1 me-0' style='min-width: 250px; flex-shrink: 0;'>";
+    echo "<div class='box-header with-border'>";
+    echo "<h5 class='text-center box-title'>$estadoLabel <span class='badge bg-danger' id='badge-$estadoId' style='display:none;'>¡+4!</span></h5>";
+    echo "<ul class='box-controls pull-right'><li><a class='box-btn-close' href='#'></a></li><li><a class='box-btn-slide' href='#'></a></li><li><a class='box-btn-fullscreen' href='#'></a></li></ul></div>";
+    echo "<div class='box-body p-0'>";
+    echo "<div class='kanban-items' id='kanban-$estadoId'></div>";
+    echo "</div>"; // Cierre de box-body
+    echo "</div>";
+}
