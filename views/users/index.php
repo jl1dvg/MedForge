@@ -196,7 +196,7 @@ $username = $dashboardController->getAuthenticatedUser();
         e.preventDefault();
         const form = $(this);
         const userId = $('#modalEditarUsuario').data('id');
-        const action = '/views/users/edit.php?id=' + userId;
+        const action = userId ? '/views/users/edit.php?id=' + userId : '/views/users/create.php';
 
         const submitButton = form.find('button[type="submit"]');
         submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...');
@@ -258,6 +258,12 @@ $username = $dashboardController->getAuthenticatedUser();
         $('body').removeClass('modal-open');
         $('.modal-backdrop').remove();
         $('body').css('overflow', 'auto'); // <-- restaura scroll
+    });
+
+    // Si el modal tiene aria-hidden mal configurado, lo corregimos al mostrarlo
+    $('#modalEditarUsuario, #modalPerfilUsuario').on('shown.bs.modal', function () {
+        $(this).attr('aria-hidden', 'false');
+        $('body').css('overflow', 'auto');
     });
 </script>
 </body>

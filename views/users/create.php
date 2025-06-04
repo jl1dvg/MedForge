@@ -31,8 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Contraseña:</label>
-                    <input type="password" class="form-control" name="password" required maxlength="255">
-                </div>
+                    <input type="password" class="form-control" name="password" required maxlength="255"
+                           autocomplete="new-password"></div>
                 <div class="col-md-6">
                     <label class="form-label">Email:</label>
                     <input type="email" class="form-control" name="email" required maxlength="100">
@@ -76,12 +76,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div class="col-md-6 d-flex align-items-center">
                     <div class="form-check me-3">
-                        <input type="checkbox" class="form-check-input" name="is_subscribed" value="1">
-                        <label class="form-check-label">Suscrito</label>
+                        <input type="checkbox" class="form-check-input" name="is_subscribed" id="is_subscribed"
+                               value="1">
+                        <label class="form-check-label" for="is_subscribed">Suscrito</label>
                     </div>
                     <div class="form-check">
-                        <input type="checkbox" class="form-check-input" name="is_approved" value="1">
-                        <label class="form-check-label">Aprobado</label>
+                        <input type="checkbox" class="form-check-input" name="is_approved" id="is_approved" value="1">
+                        <label class="form-check-label" for="is_approved">Aprobado</label>
                     </div>
                 </div>
 

@@ -99,36 +99,34 @@ class ProtocoloHelper
 
     private static ?array $signosVitales = null;
 
-    public static function obtenerSignosVitales(): array
+    public static function obtenerSignosVitalesYEdad($edad): array
     {
         if (self::$signosVitales === null) {
             self::$signosVitales = [
                 'sistolica' => rand(110, 130),
                 'diastolica' => rand(70, 83),
                 'fc' => rand(75, 100),
+                'edadPaciente' => $edad
             ];
         }
         return self::$signosVitales;
     }
 
-    public static function reemplazarSignosVitales(string $texto, array $signosVitales): string
+    public static function reemplazarVariablesTexto(string $texto, array $variables): string
     {
         $reemplazos = [
-            '$sistolica' => $signosVitales['sistolica'],
-            '$diastolica' => $signosVitales['diastolica'],
-            '$fc' => $signosVitales['fc'],
+            '$sistolica' => $variables['sistolica'] ?? '',
+            '$diastolica' => $variables['diastolica'] ?? '',
+            '$fc' => $variables['fc'] ?? '',
+            '$edadPaciente' => $variables['edadPaciente'] ?? '',
         ];
-
         return strtr($texto, $reemplazos);
     }
 
-    public static function procesarEvolucionConSignos(string $texto, int $ancho, array $signosVitales): array
+    public static function procesarEvolucionConVariables(string $texto, int $ancho, array $variables): array
     {
-        // Primero reemplazamos las variables de signos vitales
-        $textoConSignos = self::reemplazarSignosVitales($texto, $signosVitales);
-
-        // Luego aplicamos el wordwrap
-        $wrapped = wordwrap($textoConSignos, $ancho, "\n", true);
+        $textoConVariables = self::reemplazarVariablesTexto($texto, $variables);
+        $wrapped = wordwrap($textoConVariables, $ancho, "\n", true);
         return explode("\n", $wrapped);
     }
 

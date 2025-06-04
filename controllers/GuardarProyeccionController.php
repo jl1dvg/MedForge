@@ -77,6 +77,34 @@ class GuardarProyeccionController
             }
         }
 
+        // 1. Verifica o crea la visita
+        $fecha_visita = isset($data['fecha']) ? date('Y-m-d', strtotime($data['fecha'])) : date('Y-m-d');
+        $hc_number = $data['hcNumber'];
+
+        // Buscar la hora más temprana para esa fecha y paciente
+        $sqlHora = "SELECT MIN(hora) FROM procedimiento_proyectado WHERE hc_number = ? AND fecha = ?";
+        $stmtHora = $this->db->prepare($sqlHora);
+        $stmtHora->execute([$hc_number, $fecha_visita]);
+        $hora_llegada = $stmtHora->fetchColumn() ?: '08:00:00'; // Valor por defecto si no hay hora
+        $hora_llegada_completa = $fecha_visita . ' ' . $hora_llegada;
+
+        // Busca si ya existe visita hoy
+        $stmt = $this->db->prepare("SELECT id FROM visitas WHERE hc_number = ? AND fecha_visita = ?");
+        $stmt->execute([$hc_number, $fecha_visita]);
+        $visita_id = $stmt->fetchColumn();
+
+        if (!$visita_id) {
+            // Crea la visita si no existe, con la hora más temprana
+            $usuario = $data['usuario'] ?? 'sistema';
+            $stmt = $this->db->prepare("INSERT INTO paciente_visita (hc_number, fecha_visita, hora_llegada, usuario_registro) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$hc_number, $fecha_visita, $hora_llegada_completa, $usuario]);
+            $visita_id = $this->db->lastInsertId();
+        } else {
+            // Si ya existe, actualizar la hora_llegada si es necesario (siempre ponemos la más temprana)
+            $stmt = $this->db->prepare("UPDATE paciente_visita SET hora_llegada = ? WHERE id = ?");
+            $stmt->execute([$hora_llegada_completa, $visita_id]);
+        }
+
         // Guardar datos del paciente si hay nombres o afiliación
         if (isset($data['lname'], $data['fname'])) {
             $sqlPatient = "
@@ -129,7 +157,8 @@ class GuardarProyeccionController
                 estado_agenda = VALUES(estado_agenda),
                 afiliacion = VALUES(afiliacion),
                 fecha = VALUES(fecha),
-                hora = VALUES(hora)
+                hora = VALUES(hora),
+                visita_id = VALUES(visita_id)
         ";
 
         $stmt2 = $this->db->prepare($sql);
@@ -143,7 +172,8 @@ class GuardarProyeccionController
             ':estado_agenda' => $data['estado_agenda'] ?? null,
             ':afiliacion' => $data['afiliacion'] ?? null,
             ':fecha' => $data['fecha'] ?? null,
-            ':hora' => $data['hora'] ?? null
+            ':hora' => $data['hora'] ?? null,
+            ':visita_id' => $visita_id
         ]);
 
         $ejecutado = $stmt2->rowCount();
@@ -156,18 +186,87 @@ class GuardarProyeccionController
         }
     }
 
-    public function actualizarEstadoFlujo($id, $nuevoEstado): array
+    public function obtenerFlujoPacientesPorVisita($fecha = null): array
     {
-        $sql = "UPDATE flujo_pacientes SET estado_actual = :estado, fecha_cambio = NOW() WHERE id = :id";
+        // 1. Saca todas las visitas del día (con info de paciente)
+        $sql = "SELECT 
+                v.id AS visita_id,
+                v.hc_number,
+                v.fecha_visita,
+                v.hora_llegada,
+                v.usuario_registro,
+                v.observaciones,
+                pd.fname,
+                pd.mname,
+                pd.lname,
+                pd.lname2
+            FROM visitas v
+            INNER JOIN patient_data pd ON v.hc_number = pd.hc_number
+            WHERE 1";
+        $params = [];
+        if ($fecha) {
+            $sql .= " AND v.fecha_visita = ?";
+            $params[] = $fecha;
+        }
+        $sql .= " ORDER BY v.hora_llegada ASC";
         $stmt = $this->db->prepare($sql);
-        $ok = $stmt->execute([
-            ':estado' => $nuevoEstado,
-            ':id' => $id
-        ]);
+        $stmt->execute($params);
+        $visitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        return $ok
-            ? ['success' => true]
-            : ['success' => false, 'error' => 'Error al actualizar en la base de datos'];
+        // 2. Saca TODOS los procedimientos/trayectos para esas visitas
+        $visitaIds = array_column($visitas, 'visita_id');
+        if (!$visitaIds) return $visitas;
+        $placeholders = implode(',', array_fill(0, count($visitaIds), '?'));
+        $sqlTray = "SELECT 
+                    pp.id,
+                    pp.form_id,
+                    pp.visita_id,
+                    pp.procedimiento_proyectado AS procedimiento,
+                    pp.estado_agenda AS estado,
+                    pp.fecha AS fecha_cambio,
+                    pp.hora AS hora,
+                    pp.doctor AS doctor,
+                    pp.afiliacion AS afiliacion
+                FROM procedimiento_proyectado pp
+                WHERE pp.visita_id IN ($placeholders)
+                ORDER BY pp.hora ASC";
+        $stmtTray = $this->db->prepare($sqlTray);
+        $stmtTray->execute($visitaIds);
+        $trayectos = $stmtTray->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. Saca todos los historiales de esos form_id
+        $formIds = array_column($trayectos, 'form_id');
+        $historiales = [];
+        if ($formIds) {
+            $ph = implode(',', array_fill(0, count($formIds), '?'));
+            $histStmt = $this->db->prepare(
+                "SELECT form_id, estado, fecha_hora_cambio
+             FROM procedimiento_proyectado_estado
+             WHERE form_id IN ($ph)
+             ORDER BY form_id ASC, fecha_hora_cambio ASC"
+            );
+            $histStmt->execute($formIds);
+            while ($row = $histStmt->fetch(PDO::FETCH_ASSOC)) {
+                $historiales[$row['form_id']][] = [
+                    'estado' => $row['estado'],
+                    'fecha_hora_cambio' => $row['fecha_hora_cambio']
+                ];
+            }
+        }
+
+        // 4. Agrupa los trayectos/procedimientos en la visita
+        $trayectosPorVisita = [];
+        foreach ($trayectos as $t) {
+            $t['historial_estados'] = $historiales[$t['form_id']] ?? [];
+            $trayectosPorVisita[$t['visita_id']][] = $t;
+        }
+
+        // 5. Inserta los trayectos en cada visita
+        foreach ($visitas as &$v) {
+            $v['trayectos'] = $trayectosPorVisita[$v['visita_id']] ?? [];
+        }
+
+        return $visitas;
     }
 
     public function obtenerFlujoPacientes($fecha = null): array
@@ -185,13 +284,17 @@ class GuardarProyeccionController
                 pd.mname,
                 pd.lname,
                 pd.lname2,
-                pp.afiliacion
+                pp.afiliacion,
+                v.id AS visita_id,
+                v.fecha_visita,
+                v.hora_llegada
             FROM procedimiento_proyectado pp
             INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
-        WHERE 1 ";
+            LEFT JOIN visitas v ON pp.visita_id = v.id
+            WHERE 1 ";
         $params = [];
         if ($fecha) {
-            $sql .= " AND pp.fecha = ? ";
+            $sql .= " AND v.fecha_visita = ? ";
             $params[] = $fecha;
         }
         $sql .= " ORDER BY pp.fecha DESC";
