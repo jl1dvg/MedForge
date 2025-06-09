@@ -23,11 +23,22 @@ try {
     error_log("🧪 Contenido bruto recibido: " . $rawInput);
     $data = json_decode($rawInput, true);
 
-    // Forzar el campo "estado" a "AGENDADO" en cada entrada
+    // Asignar "estado" a "AGENDADO" solo si el form_id no existe en la base de datos
     foreach ($data as &$item) {
-        $item['estado'] = 'AGENDADO';
+        if (!isset($item['form_id']) || empty($item['form_id'])) {
+            continue;
+        }
+
+        // Verificar si el form_id ya existe en la base de datos
+        $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM procedimiento_proyectado WHERE form_id = ?");
+        $stmtCheck->execute([$item['form_id']]);
+        $formExiste = $stmtCheck->fetchColumn() > 0;
+
+        if (!$formExiste) {
+            $item['estado'] = 'AGENDADO';
+        }
     }
-    unset($item); // rompe la referencia
+    unset($item);
 
     if ($data === null) {
         error_log("❌ JSON mal formado o vacío: " . $rawInput);

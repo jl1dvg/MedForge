@@ -2,7 +2,7 @@
 const ESTADOS_CONSULTA = [
     {label: "Agendado", id: "agendado"},
     {label: "Llegado", id: "llegado"},
-    {label: "Admisión", id: "admision"},
+    {label: "Optometria", id: "optometria"},
     {label: "En consulta", id: "en-consulta"},
     {label: "Alta", id: "alta"}
 ];

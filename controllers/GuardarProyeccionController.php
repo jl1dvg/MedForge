@@ -183,6 +183,35 @@ class GuardarProyeccionController
         $ejecutado = $stmt2->rowCount();
         error_log("📌 Registros afectados en procedimiento_proyectado: $ejecutado");
 
+        // Registrar en el historial si se ha insertado o actualizado
+        if ($exists && !empty($data['estado_agenda'])) {
+            // Ver estado anterior
+            $stmtEstado = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = ?");
+            $stmtEstado->execute([$form_id]);
+            $estadoActual = $stmtEstado->fetchColumn();
+
+            if ($estadoActual !== $data['estado_agenda']) {
+                $stmtHistorial = $this->db->prepare("
+                    INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
+                    VALUES (?, ?, NOW())
+                ");
+                $stmtHistorial->execute([
+                    $form_id,
+                    $data['estado_agenda']
+                ]);
+            }
+        } elseif (!$exists && !empty($data['estado_agenda'])) {
+            // Insertar directamente para nuevos registros
+            $stmtHistorial = $this->db->prepare("
+                INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
+                VALUES (?, ?, NOW())
+            ");
+            $stmtHistorial->execute([
+                $form_id,
+                $data['estado_agenda']
+            ]);
+        }
+
         if ($ejecutado === 0) {
             return ["success" => false, "message" => "No se insertó ni actualizó ningún registro en procedimiento_proyectado."];
         } else {
@@ -384,5 +413,31 @@ class GuardarProyeccionController
             'pacientes' => $result,
             'timestamp' => date('Y-m-d H:i:s')
         ]);
+    }
+
+    public function obtenerDatosPacientePorFormId($formId): ?array
+    {
+        $sql = "
+        SELECT 
+            pp.procedimiento_proyectado AS procedimiento,
+            pp.doctor AS doctor,
+            pd.fname, pd.mname, pd.lname, pd.lname2
+        FROM procedimiento_proyectado pp
+        INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
+        WHERE pp.form_id = ?
+        LIMIT 1
+    ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$formId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) return null;
+
+        $nombreCompleto = trim("{$row['fname']} {$row['mname']} {$row['lname']} {$row['lname2']}");
+        return [
+            'nombre' => $nombreCompleto,
+            'procedimiento' => $row['procedimiento'],
+            'doctor' => $row['doctor']
+        ];
     }
 }
