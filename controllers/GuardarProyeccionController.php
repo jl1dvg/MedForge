@@ -157,7 +157,7 @@ class GuardarProyeccionController
                 doctor = VALUES(doctor),
                 sede_departamento = VALUES(sede_departamento),
                 id_sede = VALUES(id_sede),
-                estado_agenda = VALUES(estado_agenda),
+                estado_agenda = IFNULL(VALUES(estado_agenda), estado_agenda),
                 afiliacion = VALUES(afiliacion),
                 fecha = VALUES(fecha),
                 hora = VALUES(hora),
@@ -172,7 +172,8 @@ class GuardarProyeccionController
             ':hc' => $hcNumber,
             ':sede_departamento' => $data['sede_departamento'] ?? null,
             ':id_sede' => $data['id_sede'] ?? null,
-            ':estado_agenda' => $data['estado_agenda'] ?? null,
+            // Cambia la lógica de estado_agenda según si existe el form_id
+            ':estado_agenda' => $exists ? null : 'AGENDADO',
             ':afiliacion' => $data['afiliacion'] ?? null,
             ':fecha' => $data['fecha'] ?? null,
             ':hora' => $data['hora'] ?? null,
