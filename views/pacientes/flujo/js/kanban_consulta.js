@@ -32,9 +32,16 @@ function renderColumnasConsulta() {
 }
 
 function renderKanbanConsulta() {
-    renderColumnasConsulta(); // ← Agregado aquí
+    showLoader(); // Mostrar loader antes de renderizar
+
+    // Render columnas
+    renderColumnasConsulta();
+
+    // Filtrar SOLO trayectos de consulta según filtros activos
+    const visitasFiltradas = filtrarSolicitudes();
+
     // Extraer todos los trayectos de cirugía de todas las visitas
-    const trayectosConsulta = allSolicitudes
+    const trayectosConsulta = visitasFiltradas
         .flatMap(visita =>
             Array.isArray(visita.trayectos)
                 ? visita.trayectos
@@ -43,10 +50,10 @@ function renderKanbanConsulta() {
                 : []
         );
 
-    // Limpiar columnas del tablero
+    // Limpiar columnas
     document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
 
-    // Conteo de pacientes por estado y para promedios
+    // Conteo y resumen
     const conteoPorEstado = {};
     const promedioPorEstado = {};
 
@@ -127,10 +134,6 @@ function renderKanbanConsulta() {
         const col = document.getElementById(estadoId);
         if (col) {
             col.appendChild(tarjeta);
-        } else {
-            // Puedes decidir si agregas columna "Otros"
-            // let otrosCol = document.getElementById('kanban-otros');
-            // if (otrosCol) otrosCol.appendChild(tarjeta);
         }
     });
 
@@ -150,7 +153,7 @@ function renderKanbanConsulta() {
                 const item = evt.item;
                 const newEstado = evt.to.id.replace('kanban-', '').replace(/-/g, ' ').toUpperCase();
                 const trayectoId = item.getAttribute('data-id');
-                const formId = item.getAttribute('data-form'); // ¡AQUÍ SE CORRIGE!
+                const formId = item.getAttribute('data-form');
 
                 // Buscar trayecto en allSolicitudes y actualizarlo
                 let trayectoActual = null;
@@ -174,14 +177,13 @@ function renderKanbanConsulta() {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        form_id: formId, // ← ¡AQUÍ USAS el form_id correcto!
+                        form_id: formId,
                         estado: newEstado
                     })
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (!data.success) {
-                            // Si falla, revertir
                             if (trayectoActual && estadoAnterior) {
                                 trayectoActual.estado = estadoAnterior;
                                 renderKanbanConsulta();
@@ -202,6 +204,7 @@ function renderKanbanConsulta() {
         });
     });
 
-    // Resumen visual solo de estos trayectos
     generarResumenKanban(trayectosConsulta);
+
+    hideLoader(); // Oculta el loader al finalizar el render
 }

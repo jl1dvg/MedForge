@@ -1,4 +1,14 @@
 // kanban_base.js
+
+// Loader helpers
+function showLoader() {
+    document.getElementById('loader').style.display = 'block';
+}
+
+function hideLoader() {
+    document.getElementById('loader').style.display = 'none';
+}
+
 // Definir estados para columnas del tablero de Visitas
 const ESTADOS_VISITA = [
     {label: "Agendado", id: "agendado"},
@@ -73,7 +83,8 @@ function llenarSelectDoctoresYFechas(datosFiltrados) {
             });
         }
     });
-    doctoresSet.forEach(doctor => {
+    const doctoresOrdenados = Array.from(doctoresSet).sort((a, b) => a.localeCompare(b, 'es', {sensitivity: 'base'}));
+    doctoresOrdenados.forEach(doctor => {
         if (doctor) {
             const option = document.createElement('option');
             option.value = doctor;
@@ -404,7 +415,6 @@ function aplicarFiltros() {
     generarResumenKanban(filtrados);
 }
 
-
 // =========================
 // POLLING Y RED
 // =========================
@@ -423,57 +433,97 @@ if (typeof showToast !== 'function') {
     }
 }
 
+let pollingIntervalId = null;
+
+function startPolling() {
+    if (!pollingIntervalId) {
+        pollingIntervalId = setInterval(verificarCambiosRecientes, 30000);
+    }
+}
+
+function stopPolling() {
+    if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+        pollingIntervalId = null;
+    }
+}
+
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+        stopPolling();
+    } else {
+        verificarCambiosRecientes();
+        startPolling();
+    }
+});
+
 function verificarCambiosRecientes() {
     const url = new URL('/public/ajax/flujo_recientes.php', window.location.origin);
     if (ultimoTimestamp) {
         url.searchParams.set('desde', ultimoTimestamp);
     }
 
-    console.log("⏳ Verificando cambios recientes...");
-
+    showLoader();
     fetch(url)
         .then(response => response.json())
         .then(data => {
-            //console.log("📦 Cambios recibidos:", data);
-
             if (data && Array.isArray(data.pacientes) && data.pacientes.length > 0) {
-                // Aquí puedes decidir cómo actualizar el Kanban.
-                // Por ejemplo, recargar todo, o actualizar solo los pacientes cambiados.
-                // Por simplicidad, recargamos todo:
+                // Data nueva, refrescamos el flujo completo (no borramos DOM todavía)
                 const today = moment().format('YYYY-MM-DD');
+                // 🚩 No borres columnas hasta tener los datos:
                 fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
                     .then(response => response.json())
                     .then(flujo => {
+                        // 1. Compara la data anterior con la nueva para detectar movimientos de estado (opcional)
+                        const prevData = JSON.stringify(allSolicitudes);
                         allSolicitudes = flujo;
-                        poblarAfiliacionesUnicas(allSolicitudes);
-                        renderTabActivo();
-                    });
-                // Mostrar banner visual solo si hay actualizaciones recientes
-                if (data.pacientes.length > 0) {
-                    const alerta = document.createElement('div');
-                    alerta.textContent = 'Tablero actualizado ✅';
-                    alerta.style.position = 'fixed';
-                    alerta.style.top = '20px';
-                    alerta.style.right = '20px';
-                    alerta.style.padding = '10px 20px';
-                    alerta.style.backgroundColor = '#28a745';
-                    alerta.style.color = '#fff';
-                    alerta.style.fontWeight = 'bold';
-                    alerta.style.borderRadius = '5px';
-                    alerta.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)';
-                    alerta.style.zIndex = '9999';
-                    document.body.appendChild(alerta);
 
-                    setTimeout(() => {
-                        document.body.removeChild(alerta);
-                    }, 3000);
-                }
+                        // 2. Refresca los filtros únicos (afiliaciones, doctores, etc.)
+                        poblarAfiliacionesUnicas(allSolicitudes);
+
+                        // 3. Repinta SOLO el tab activo, esto ya limpia columnas y vuelve a poner tarjetas con los nuevos estados
+                        renderTabActivo();
+
+                        // 4. Loader fuera
+                        hideLoader();
+
+                        // 5. Banner visual si hubo realmente cambios en la data (opcional)
+                        if (prevData !== JSON.stringify(flujo)) {
+                            const alerta = document.createElement('div');
+                            alerta.textContent = 'Tablero actualizado ✅';
+                            alerta.style.position = 'fixed';
+                            alerta.style.top = '20px';
+                            alerta.style.right = '20px';
+                            alerta.style.padding = '10px 20px';
+                            alerta.style.backgroundColor = '#28a745';
+                            alerta.style.color = '#fff';
+                            alerta.style.fontWeight = 'bold';
+                            alerta.style.borderRadius = '5px';
+                            alerta.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)';
+                            alerta.style.zIndex = '9999';
+                            document.body.appendChild(alerta);
+
+                            setTimeout(() => {
+                                document.body.removeChild(alerta);
+                            }, 3000);
+                        }
+                    })
+                    .catch(err => {
+                        hideLoader();
+                        console.error('❌ Error al refrescar flujo:', err);
+                    });
+            } else {
+                // No hay cambios recientes, oculta loader si estaba visible
+                hideLoader();
             }
             if (data && data.timestamp) {
                 ultimoTimestamp = data.timestamp;
             }
         })
-        .catch(err => console.error('❌ Error al verificar cambios recientes:', err));
+        .catch(err => {
+            hideLoader();
+            console.error('❌ Error al verificar cambios recientes:', err);
+        });
 }
 
 // =========================
@@ -483,20 +533,23 @@ $(document).ready(function () {
     // Primero renderiza las columnas de Visitas
     renderColumnasVisita();
 
-    // Iniciar polling de cambios recientes cada 30 segundos
-    setInterval(verificarCambiosRecientes, 30000);
+    // Iniciar polling de cambios recientes cada 30 segundos SOLO cuando visible
+    startPolling();
 
     // Cargar solicitudes por defecto usando la fecha de hoy al cargar la página
     const today = moment().format('YYYY-MM-DD');
     document.getElementById('kanbanDateFilter').value = today;
+    showLoader();
     fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
         .then(response => response.json())
         .then(data => {
             allSolicitudes = data;
             poblarAfiliacionesUnicas(allSolicitudes);
+            hideLoader();
             renderTabActivo();
         })
         .catch(error => {
+            hideLoader();
             console.error('Error al cargar las solicitudes del flujo:', error);
         });
 
@@ -517,14 +570,17 @@ $(document).ready(function () {
             const picker = this;
             const selected = picker.get('select', 'yyyy-mm-dd');
             renderColumnasVisita(); // <- ¡Agregado aquí para resetear columnas antes de recargar!
-            fetch(`/public/ajax/flujo?fecha=${selected}&modo=visita`)
+            showLoader();
+            fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
                 .then(response => response.json())
                 .then(data => {
                     allSolicitudes = data;
                     poblarAfiliacionesUnicas(allSolicitudes);
+                    hideLoader();
                     renderTabActivo();
                 })
                 .catch(error => {
+                    hideLoader();
                     console.error('Error al cargar las solicitudes del flujo:', error);
                 });
         }
