@@ -33,9 +33,16 @@ function renderColumnasCirugia() {
 }
 
 function renderKanbanCirugia() {
-    renderColumnasCirugia(); // ← Agregado aquí
-    // Extraer todos los trayectos de cirugía de todas las visitas
-    const trayectosCirugia = allSolicitudes
+    showLoader();
+
+    // Renderiza las columnas primero (vacía y crea el layout)
+    renderColumnasCirugia();
+
+    // Obtiene la data FRESCA y filtrada (aplica todos los filtros activos)
+    const visitasFiltradas = filtrarSolicitudes();
+
+    // FlatMap para obtener solo trayectos de cirugía
+    const trayectosCirugia = visitasFiltradas
         .flatMap(visita =>
             Array.isArray(visita.trayectos)
                 ? visita.trayectos
@@ -44,10 +51,10 @@ function renderKanbanCirugia() {
                 : []
         );
 
-    // Limpiar columnas del tablero
+    // Limpiar columnas
     document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
 
-    // Conteo de pacientes por estado y para promedios
+    // Conteo y resumen
     const conteoPorEstado = {};
     const promedioPorEstado = {};
 
@@ -128,10 +135,6 @@ function renderKanbanCirugia() {
         const col = document.getElementById(estadoId);
         if (col) {
             col.appendChild(tarjeta);
-        } else {
-            // Puedes decidir si agregas columna "Otros"
-            // let otrosCol = document.getElementById('kanban-otros');
-            // if (otrosCol) otrosCol.appendChild(tarjeta);
         }
     });
 
@@ -151,7 +154,7 @@ function renderKanbanCirugia() {
                 const item = evt.item;
                 const newEstado = evt.to.id.replace('kanban-', '').replace(/-/g, ' ').toUpperCase();
                 const trayectoId = item.getAttribute('data-id');
-                const formId = item.getAttribute('data-form'); // ¡AQUÍ SE CORRIGE!
+                const formId = item.getAttribute('data-form');
 
                 // Buscar trayecto en allSolicitudes y actualizarlo
                 let trayectoActual = null;
@@ -175,14 +178,13 @@ function renderKanbanCirugia() {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        form_id: formId, // ← ¡AQUÍ USAS el form_id correcto!
+                        form_id: formId,
                         estado: newEstado
                     })
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (!data.success) {
-                            // Si falla, revertir
                             if (trayectoActual && estadoAnterior) {
                                 trayectoActual.estado = estadoAnterior;
                                 renderKanbanCirugia();
@@ -205,4 +207,6 @@ function renderKanbanCirugia() {
 
     // Resumen visual solo de estos trayectos
     generarResumenKanban(trayectosCirugia);
+
+    hideLoader(); // Oculta el loader al finalizar el render
 }

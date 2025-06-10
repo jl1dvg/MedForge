@@ -1,3 +1,5 @@
+// kanban_examenes.js
+
 // Definir estados para columnas del tablero de Examenes
 const ESTADOS_IMAGENES = [
     {label: "Agendado", id: "agendado"},
@@ -33,9 +35,14 @@ function renderColumnasExamen() {
 }
 
 function renderKanbanExamen() {
-    renderColumnasExamen(); // ← Agregado aquí
-    // Extraer todos los trayectos de cirugía de todas las visitas
-    const trayectosExamen = allSolicitudes
+    showLoader();
+    renderColumnasExamen();
+
+    // Filtrar visitas según los filtros activos
+    const visitasFiltradas = filtrarSolicitudes();
+
+    // Extraer todos los trayectos de exámenes de todas las visitas filtradas
+    const trayectosExamen = visitasFiltradas
         .flatMap(visita =>
             Array.isArray(visita.trayectos)
                 ? visita.trayectos
@@ -44,10 +51,10 @@ function renderKanbanExamen() {
                 : []
         );
 
-    // Limpiar columnas del tablero
+    // Limpiar columnas
     document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
 
-    // Conteo de pacientes por estado y para promedios
+    // Conteo y resumen
     const conteoPorEstado = {};
     const promedioPorEstado = {};
 
@@ -96,7 +103,9 @@ function renderKanbanExamen() {
         const nombrePaciente = [t.visita.fname, t.visita.lname, t.visita.lname2].filter(Boolean).join(' ');
         // Procedimiento principal
         let nombreProcedimiento = t.procedimiento;
-        if (typeof t.procedimiento === 'string') {
+        if (typeof formatearProcedimientoCorto === "function") {
+            nombreProcedimiento = formatearProcedimientoCorto(t.procedimiento);
+        } else if (typeof t.procedimiento === 'string') {
             const partes = t.procedimiento.split(' - ');
             if (partes.length >= 3) nombreProcedimiento = partes.slice(2).join(' - ');
         }
@@ -128,10 +137,6 @@ function renderKanbanExamen() {
         const col = document.getElementById(estadoId);
         if (col) {
             col.appendChild(tarjeta);
-        } else {
-            // Puedes decidir si agregas columna "Otros"
-            // let otrosCol = document.getElementById('kanban-otros');
-            // if (otrosCol) otrosCol.appendChild(tarjeta);
         }
     });
 
@@ -151,7 +156,7 @@ function renderKanbanExamen() {
                 const item = evt.item;
                 const newEstado = evt.to.id.replace('kanban-', '').replace(/-/g, ' ').toUpperCase();
                 const trayectoId = item.getAttribute('data-id');
-                const formId = item.getAttribute('data-form'); // ¡AQUÍ SE CORRIGE!
+                const formId = item.getAttribute('data-form');
 
                 // Buscar trayecto en allSolicitudes y actualizarlo
                 let trayectoActual = null;
@@ -175,14 +180,13 @@ function renderKanbanExamen() {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        form_id: formId, // ← ¡AQUÍ USAS el form_id correcto!
+                        form_id: formId,
                         estado: newEstado
                     })
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (!data.success) {
-                            // Si falla, revertir
                             if (trayectoActual && estadoAnterior) {
                                 trayectoActual.estado = estadoAnterior;
                                 renderKanbanExamen();
@@ -203,6 +207,7 @@ function renderKanbanExamen() {
         });
     });
 
-    // Resumen visual solo de estos trayectos
     generarResumenKanban(trayectosExamen);
+
+    hideLoader(); // Oculta el loader al finalizar el render
 }
