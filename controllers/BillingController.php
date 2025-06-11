@@ -445,4 +445,20 @@ class BillingController
         $stmt->execute([$formId]);
         return $stmt->fetchColumn(); // Devuelve solo el valor del cod_derivacion
     }
+
+    function abreviarAfiliacion($afiliacion) {
+        $mapa = [
+            'contribuyente voluntario' => 'CV',
+            'conyuge' => 'CY',
+            'conyuge pensionista' => 'CP',
+            'seguro campesino' => 'SC',
+            'seguro campesino jubilado' => 'CJ',
+            'seguro general' => 'SG',
+            'seguro general jubilado' => 'JU',
+            'seguro general por montepío' => 'MO',
+            'seguro general tiempo parcial' => 'TP'
+        ];
+        $normalizado = strtolower(trim($afiliacion));
+        return $mapa[$normalizado] ?? strtoupper($afiliacion);
+    }
 }
