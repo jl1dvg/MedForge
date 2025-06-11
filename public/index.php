@@ -20,9 +20,10 @@ if (!$pdo) {
 // Ruta para generar Excel por afiliación
 if ($path === '/billing/excel' && $method === 'GET') {
     $formId = $_GET['form_id'] ?? null;
+    $grupo = $_GET['grupo'] ?? '';
     if ($formId) {
         $controller = new BillingController($pdo);
-        $controller->generarExcel($formId);
+        $controller->generarExcel($formId, $grupo);
     } else {
         http_response_code(400);
         echo "Falta parámetro form_id";
@@ -31,9 +32,10 @@ if ($path === '/billing/excel' && $method === 'GET') {
 // Ruta para generar ZIP con todas las planillas del mes
 if ($path === '/billing/exportar_mes' && $method === 'GET') {
     $mes = $_GET['mes'] ?? null;
+    $grupo = $_GET['grupo'] ?? '';
     if ($mes) {
         $controller = new BillingController($pdo);
-        $controller->exportarPlanillasPorMes($mes);
+        $controller->exportarPlanillasPorMes($mes, $grupo);
     } else {
         http_response_code(400);
         echo "Falta parámetro mes";
