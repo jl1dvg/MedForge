@@ -2,6 +2,25 @@
 require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
+if (isset($_POST['scrape_derivacion']) && isset($_POST['form_id_scrape'])) {
+    $formId = $_POST['form_id_scrape'];
+    $escapedFormId = escapeshellarg($formId);
+    $script = "/homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py";
+    $output = shell_exec("python3 $script $escapedFormId 2>&1");
+
+    // Codificar el resultado para pasar por URL (solo resumen)
+    $shortOutput = urlencode(substr($output, 0, 300));
+    header("Location: informe_iess.php?scrape_exito=1&form_id=$formId&msg=$shortOutput");
+    exit;
+}
+
+// Mostrar resultado del scrape si está presente
+if (isset($_GET['scrape_exito']) && $_GET['scrape_exito'] == '1') {
+    $formId = htmlspecialchars($_GET['form_id']);
+    $msg = isset($_GET['msg']) ? htmlspecialchars(urldecode($_GET['msg'])) : '';
+    echo "<div class='alert alert-success' style='margin: 20px;'>✅ Código de derivación procesado para formulario <strong>$formId</strong>.<br><pre style='white-space: pre-wrap; margin-top: 10px;'>$msg</pre></div>";
+}
+
 use Controllers\BillingController;
 use Controllers\PacienteController;
 use Controllers\DashboardController;
@@ -87,7 +106,7 @@ if ($billingId) {
             <div class="content-header">
                 <div class="d-flex align-items-center">
                     <div class="me-auto">
-                        <h3 class="page-title">Informe ISSPOL</h3>
+                        <h3 class="page-title">Informe IESS</h3>
                         <div class="d-inline-block align-items-center">
                             <nav>
                                 <ol class="breadcrumb">
@@ -132,11 +151,37 @@ if ($billingId) {
                                     $facturasFiltradas = array_filter($facturas, function ($factura) use ($filtros) {
                                         return !$filtros['mes'] || date('Y-m', strtotime($factura['fecha_inicio'])) === $filtros['mes'];
                                     });
+
+                                    function normalizarAfiliacion($str)
+                                    {
+                                        $str = strtolower(trim($str));
+                                        $str = preg_replace('/\s+/', ' ', $str); // Quita espacios extra
+                                        $str = strtr($str, [
+                                            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+                                            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u',
+                                            'ñ' => 'n', 'Ñ' => 'n'
+                                        ]);
+                                        return $str;
+                                    }
+
+                                    $afiliacionesIESS = [
+                                        'contribuyente voluntario',
+                                        'conyuge',
+                                        'conyuge pensionista',
+                                        'seguro campesino',
+                                        'seguro campesino jubilado',
+                                        'seguro general',
+                                        'seguro general jubilado',
+                                        'seguro general por montepío',
+                                        'seguro general tiempo parcial'
+                                    ];
+
                                     foreach ($facturasFiltradas as $factura):
                                         $mes = date('Y-m', strtotime($factura['fecha_inicio']));
                                         $hc = $factura['hc_number'];
                                         $pacienteInfo = $cachePorMes[$mes]['pacientes'][$hc] ?? [];
-                                        if (strtoupper($pacienteInfo['afiliacion'] ?? '') !== 'ISSPOL') continue;
+                                        $afiliacion = normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
+                                        if (!in_array($afiliacion, $afiliacionesIESS)) continue;
                                         $fechaFormateada = date('d/m/Y', strtotime($factura['fecha_inicio']));
                                         $nombrePaciente = $pacienteInfo['fname'] . ' ' . $pacienteInfo['lname'];
                                         $formIdTexto = $factura['form_id'] ?? 'Sin proceso';
@@ -154,7 +199,7 @@ if ($billingId) {
                                                placeholder="Buscar por apellido">
                                     </div>
                                     <div class="col-md-12 mt-2">
-                                        <a href="/views/informes/informe_isspol.php?modo=consolidado"
+                                        <a href="/views/informes/informe_iess.php?modo=consolidado"
                                            class="btn btn-secondary">Limpiar</a>
                                     </div>
                                 </div>
@@ -460,11 +505,11 @@ if ($billingId) {
                                         </tbody>
                                     </table>
                                 </div>
-                                <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=ISSPOL"
+                                <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=IESS"
                                    class="btn btn-success mt-3">
                                     Descargar Excel
                                 </a>
-                                <a href="/views/informes/informe_isspol.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
+                                <a href="/views/informes/informe_iess.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
                                    class="btn btn-secondary mt-3 ms-2">
                                     ← Regresar al consolidado
                                 </a>
@@ -472,19 +517,30 @@ if ($billingId) {
                                 <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
                                 </table>
                             <?php else: ?>
-                                <h4>Consolidado mensual de pacientes ISSPOL</h4>
+                                <h4>Consolidado mensual de pacientes IESS</h4>
                                 <?php
                                 // $filtros ya está definido arriba
                                 $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
                                 $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
-                                $afiliacionesISSPOL = ['isspol'];
+                                $afiliacionesIESS = [
+                                    'contribuyente voluntario',
+                                    'conyuge',
+                                    'conyuge pensionista',
+                                    'seguro campesino',
+                                    'seguro campesino jubilado',
+                                    'seguro general',
+                                    'seguro general jubilado',
+                                    'seguro general por montepío',
+                                    'seguro general tiempo parcial'
+                                ];
                                 $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
                                     $facturas,
                                     $filtros,
                                     $billingController,
                                     $pacienteController,
-                                    $afiliacionesISSPOL
+                                    $afiliacionesIESS
                                 );
+
                                 foreach ($consolidado as $mes => $pacientes) {
                                     // Aplicar filtros de apellido usando helper
                                     $apellidoFiltro = strtolower(trim($filtros['apellido']));
@@ -534,9 +590,9 @@ if ($billingId) {
                                         $datosPaciente = $datosCache[$p['form_id']] ?? [];
                                         $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
                                         $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
-                                        $url = "/views/informes/informe_isspol.php?billing_id=" . urlencode($p['id']);
-                                        $afiliacionPaciente = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $afiliacionPaciente);
+                                        $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($p['id']);
+                                        $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
+                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $afiliacion);
                                         $n++;
                                     }
                                     echo "
@@ -546,7 +602,7 @@ if ($billingId) {
                                     echo "</div>";
                                 }
                                 ?>
-                                <a href="/views/informes/generar_consolidado_isspol.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                <a href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
                                    class="btn btn-primary mt-3">
                                     Descargar Consolidado
                                 </a>

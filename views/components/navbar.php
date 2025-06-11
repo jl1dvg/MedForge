@@ -62,6 +62,10 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 class="mdi mdi-file-chart"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Consolidado ISSPOL</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/informes/informe_iess.php'; ?>"><i
+                                class="mdi mdi-file-chart"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Consolidado IESS</a></li>
                 <li><a href="<?php echo BASE_URL . 'views/informes/informe_particulares.php'; ?>"><i
                                 class="mdi mdi-file-chart"><span
                                     class="path1"></span><span

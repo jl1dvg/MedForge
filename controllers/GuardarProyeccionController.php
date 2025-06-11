@@ -165,6 +165,19 @@ class GuardarProyeccionController
         ";
 
         $stmt2 = $this->db->prepare($sql);
+        error_log("📤 Datos enviados a procedimiento_proyectado: " . json_encode([
+                'form_id' => $form_id,
+                'procedimiento' => $procedimiento,
+                'doctor' => $doctor,
+                'hc' => $hcNumber,
+                'sede_departamento' => $data['sede_departamento'] ?? null,
+                'id_sede' => $data['id_sede'] ?? null,
+                'estado_agenda' => $exists ? null : 'AGENDADO',
+                'afiliacion' => $data['afiliacion'] ?? null,
+                'fecha' => $data['fecha'] ?? null,
+                'hora' => $data['hora'] ?? null,
+                'visita_id' => $visita_id
+            ]));
         $stmt2->execute([
             ':form_id' => $form_id,
             ':procedimiento' => $procedimiento,
@@ -212,10 +225,11 @@ class GuardarProyeccionController
             ]);
         }
 
-        if ($ejecutado === 0) {
-            return ["success" => false, "message" => "No se insertó ni actualizó ningún registro en procedimiento_proyectado."];
+        // Nueva lógica de éxito/error según existencia y filas afectadas
+        if (!$exists && $ejecutado === 0) {
+            return ["success" => false, "message" => "No se insertó ningún nuevo registro en procedimiento_proyectado."];
         } else {
-            return ["success" => true, "message" => "Datos guardados correctamente"];
+            return ["success" => true, "message" => $exists ? "Registro actualizado o ya existente sin cambios" : "Nuevo registro insertado"];
         }
     }
 
@@ -439,5 +453,31 @@ class GuardarProyeccionController
             'procedimiento' => $row['procedimiento'],
             'doctor' => $row['doctor']
         ];
+    }
+
+    public function obtenerPalabrasClaveProcedimientos(): array
+    {
+        $sql = "SELECT DISTINCT procedimiento_proyectado FROM procedimiento_proyectado WHERE procedimiento_proyectado IS NOT NULL";
+        $stmt = $this->db->query($sql);
+        $resultados = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $palabras = [];
+        foreach ($resultados as $texto) {
+            // Separar por espacios y caracteres especiales comunes
+            $tokens = preg_split('/[\s,;.()\-]+/', strtoupper($texto));
+            foreach ($tokens as $token) {
+                $token = trim($token);
+                if (strlen($token) >= 4 && !is_numeric($token)) {
+                    $palabras[] = $token;
+                }
+            }
+        }
+
+        // Contar ocurrencias
+        $frecuencia = array_count_values($palabras);
+        arsort($frecuencia);
+
+        // Opcional: devolver solo las 100 más frecuentes
+        return array_slice($frecuencia, 0, 100, true);
     }
 }
