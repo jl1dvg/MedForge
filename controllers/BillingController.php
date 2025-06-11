@@ -437,4 +437,12 @@ class BillingController
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+
+    public function obtenerDerivacionPorFormId($formId)
+    {
+        $stmt = $this->db->prepare("SELECT cod_derivacion FROM derivaciones_form_id WHERE form_id = ?");
+        $stmt->execute([$formId]);
+        return $stmt->fetchColumn(); // Devuelve solo el valor del cod_derivacion
+    }
 }

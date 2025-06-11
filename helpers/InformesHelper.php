@@ -100,7 +100,7 @@ class InformesHelper
         </tr>";
     }
 
-    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $grupo = '')
+    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $grupo = '')
     {
         $prefijo = $grupo ? strtoupper($grupo) . '-' : '';
         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
@@ -127,13 +127,16 @@ class InformesHelper
             <td>{$genero}</td>
             <td>{$items}</td>
             <td>{$monto_sol}</td>
-                        <td>
-                <a href='{$url}' class='btn btn-sm btn-info'>Ver detalle</a>
-                <form method='post' style='display:inline;'>
-                    <input type='hidden' name='form_id_scrape' value='{$p['form_id']}'>
-                    <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
-                </form>
-            </td>
+            <td>" .
+            (!empty($codigoDerivacion)
+                ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"
+                : "<form method='post' style='display:inline;'>
+                          <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($p['form_id']) . "'>
+                          <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
+                       </form>"
+            ) .
+            "</td>
+            <td><a href='{$url}' class='btn btn-sm btn-info'>Ver detalle</a></td>
         </tr>";
     }
 

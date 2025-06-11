@@ -14,13 +14,6 @@ if (isset($_POST['scrape_derivacion']) && isset($_POST['form_id_scrape'])) {
     exit;
 }
 
-// Mostrar resultado del scrape si está presente
-if (isset($_GET['scrape_exito']) && $_GET['scrape_exito'] == '1') {
-    $formId = htmlspecialchars($_GET['form_id']);
-    $msg = isset($_GET['msg']) ? htmlspecialchars(urldecode($_GET['msg'])) : '';
-    echo "<div class='alert alert-success' style='margin: 20px;'>✅ Código de derivación procesado para formulario <strong>$formId</strong>.<br><pre style='white-space: pre-wrap; margin-top: 10px;'>$msg</pre></div>";
-}
-
 use Controllers\BillingController;
 use Controllers\PacienteController;
 use Controllers\DashboardController;
@@ -580,6 +573,7 @@ if ($billingId) {
         <th>Ge</th>
         <th>Items</th>
         <th>Monto Sol.</th>
+        <th>Cod. Derivacion</th>
         <th>Acción</th>
     </tr>
     </thead>
@@ -592,7 +586,8 @@ if ($billingId) {
                                         $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
                                         $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($p['id']);
                                         $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $afiliacion);
+                                        $codigoDerivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $afiliacion);
                                         $n++;
                                     }
                                     echo "
