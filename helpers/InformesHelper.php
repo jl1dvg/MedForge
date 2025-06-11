@@ -100,8 +100,9 @@ class InformesHelper
         </tr>";
     }
 
-    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url)
+    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $grupo = '')
     {
+        $prefijo = $grupo ? strtoupper($grupo) . '-' : '';
         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
         $fecha_ingreso = $datosPaciente['formulario']['fecha_inicio'] ?? ($p['fecha'] ?? '');
@@ -113,7 +114,7 @@ class InformesHelper
         $monto_sol = number_format($p['total'], 2);
 
         return "<tr>
-            <td>ISSPOL-{$n}</td>
+        <td>{$prefijo}{$n}</td>
             <td>{$hc_number}</td>
             <td>{$apellido}</td>
             <td>{$nombre}</td>
@@ -126,7 +127,13 @@ class InformesHelper
             <td>{$genero}</td>
             <td>{$items}</td>
             <td>{$monto_sol}</td>
-            <td><a href='{$url}' class='btn btn-sm btn-info'>Ver detalle</a></td>
+                        <td>
+                <a href='{$url}' class='btn btn-sm btn-info'>Ver detalle</a>
+                <form method='post' style='display:inline;'>
+                    <input type='hidden' name='form_id_scrape' value='{$p['form_id']}'>
+                    <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
+                </form>
+            </td>
         </tr>";
     }
 
@@ -134,14 +141,16 @@ class InformesHelper
         array              $facturas,
         array              $filtros,
         BillingController  $billingController,
-        PacienteController $pacienteController
+        PacienteController $pacienteController,
+        array              $afiliacionesPermitidas = []
     ): array
     {
         $consolidado = [];
 
         foreach ($facturas as $factura) {
             $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
-            if (strtoupper($pacienteInfo['afiliacion'] ?? '') !== 'ISSPOL') continue;
+            $afiliacion = self::normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
+            if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas)) continue;
 
             $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
             if (!$datosPaciente) continue;
@@ -168,6 +177,18 @@ class InformesHelper
         }
 
         return $consolidado;
+    }
+
+    public static function normalizarAfiliacion($str)
+    {
+        $str = strtolower(trim($str));
+        $str = preg_replace('/\s+/', ' ', $str);
+        $str = strtr($str, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
+            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u',
+            'ñ' => 'n', 'Ñ' => 'n'
+        ]);
+        return $str;
     }
 
     public static function filtrarPacientes(array $pacientes, array &$pacientesCache, array &$datosCache, $pacienteController, $billingController, string $apellidoFiltro): array

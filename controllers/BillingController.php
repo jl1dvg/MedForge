@@ -235,41 +235,31 @@ class BillingController
         return $resultado ? (float)$resultado['anestesia_nivel3'] : null;
     }
 
-    public function generarExcel(string $formId): void
+    public function generarExcel(string $formId, string $grupoAfiliacion = ''): void
     {
         $datos = $this->obtenerDatos($formId);
 
-        // 🔍 DEBUG: Mostrar contenido completo
-        //echo "<pre>";
-        //var_dump($datos);
-        //echo "</pre>";
-        //exit;
+        // Validar que se pase grupo de afiliación
+        if (empty($grupoAfiliacion)) {
+            die("Error: Debe especificar el grupo de afiliación (IESS, ISSPOL, ISSFA, MSP, etc).");
+        }
 
         // Código normal que puedes volver a activar después de revisar
         $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
-
-        // Pasar los datos como variables globales
         $GLOBALS['datos_facturacion'] = $datos;
         $GLOBALS['form_id_facturacion'] = $formId;
 
         $modo = $_GET['modo'] ?? 'individual';
+        // Asignar plantilla obligatoriamente según grupo de afiliación
+        $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . '.php';
+
         if ($modo === 'bulk') {
-            if ($afiliacion === 'ISSPOL') {
-                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
-            } else {
-                require __DIR__ . '/../views/billing/descargar_excel.php';
-            }
+            require $archivoPlantilla;
         } else {
-            // Individual: enviar encabezados y descargar directamente
             require_once __DIR__ . '/../vendor/autoload.php';
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $GLOBALS['spreadsheet'] = $spreadsheet;
-
-            if ($afiliacion === 'ISSPOL') {
-                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
-            } else {
-                require __DIR__ . '/../views/billing/descargar_excel.php';
-            }
+            require $archivoPlantilla;
 
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -281,7 +271,7 @@ class BillingController
         }
     }
 
-    public function generarExcelAArchivo(string $formId, string $destino): bool
+    public function generarExcelAArchivo(string $formId, string $destino, string $grupoAfiliacion = ''): bool
     {
         try {
             // Verifica que exista billing_main
@@ -298,31 +288,30 @@ class BillingController
             $GLOBALS['form_id_facturacion'] = $formId;
 
             $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
-            if ($afiliacion !== 'ISSPOL') return false;
+            if ($grupoAfiliacion && $afiliacion !== strtoupper($grupoAfiliacion)) return false;
 
             require_once __DIR__ . '/../vendor/autoload.php';
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $GLOBALS['spreadsheet'] = $spreadsheet;
 
-            // Intenta generar el archivo Excel capturando excepciones
+            $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . '.php';
             try {
                 ini_set('display_errors', 1);
                 error_reporting(E_ALL);
 
                 ob_start();
-                require __DIR__ . '/../views/billing/generar_excel_isspol.php';
+                require $archivoPlantilla;
                 $error_output = ob_get_clean();
 
                 if (!empty($error_output)) {
-                    file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error fatal incluyendo generar_excel_isspol.php para form_id $formId: $error_output\n", FILE_APPEND);
+                    file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error fatal incluyendo $archivoPlantilla para form_id $formId: $error_output\n", FILE_APPEND);
                     return false;
                 }
             } catch (Exception $e) {
-                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error en generar_excel_isspol.php para form_id $formId: " . $e->getMessage() . "\n", FILE_APPEND);
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Error en $archivoPlantilla para form_id $formId: " . $e->getMessage() . "\n", FILE_APPEND);
                 return false;
             }
 
-            // Guardar archivo Excel generado
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
             $writer->save($destino);
             return true;
@@ -333,17 +322,17 @@ class BillingController
         }
     }
 
-    public function exportarPlanillasPorMes(string $mes): void
+    public function exportarPlanillasPorMes(string $mes, string $grupoAfiliacion = 'ISSPOL'): void
     {
         $stmt = $this->db->prepare("
             SELECT pd.form_id
             FROM protocolo_data pd
             JOIN patient_data pa ON pa.hc_number = pd.hc_number
             WHERE DATE_FORMAT(pd.fecha_inicio, '%Y-%m') = ?
-              AND UPPER(pa.afiliacion) = 'ISSPOL'
+              AND UPPER(pa.afiliacion) = ?
               AND pd.status = 1
         ");
-        $stmt->execute([$mes]);
+        $stmt->execute([$mes, strtoupper($grupoAfiliacion)]);
         $formIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         if (empty($formIds)) {
@@ -388,16 +377,12 @@ class BillingController
             $afiliacion = strtoupper($datos['paciente']['afiliacion'] ?? '');
             file_put_contents(__DIR__ . '/exportar_zip_log.txt', "Afiliación: $afiliacion\n", FILE_APPEND);
 
-            if ($afiliacion !== 'ISSPOL') {
-                continue;
-            }
-
             // Usar un nombre temporal único y persistente para cada archivo Excel
             $tempFile = sys_get_temp_dir() . '/' . uniqid("excel_{$formId}_") . '.xlsx';
 
             try {
                 file_put_contents(__DIR__ . '/exportar_zip_log.txt', "→ Iniciando generación de Excel para $formId...\n", FILE_APPEND);
-                $ok = $this->generarExcelAArchivo($formId, $tempFile);
+                $ok = $this->generarExcelAArchivo($formId, $tempFile, $grupoAfiliacion);
                 file_put_contents(__DIR__ . '/exportar_zip_log.txt', "← Finalizó intento de generación de Excel para $formId, resultado: " . ($ok ? 'Éxito' : 'Error') . "\n", FILE_APPEND);
             } catch (Exception $e) {
                 file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Excepción al generar Excel para $formId: " . $e->getMessage() . "\n", FILE_APPEND);
