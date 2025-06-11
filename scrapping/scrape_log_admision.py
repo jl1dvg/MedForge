@@ -107,7 +107,9 @@ if __name__ == "__main__":
                 data = {
                     "form_id": form_id,
                     "hc_number": hc_number,
-                    "codigo_derivacion": codigo
+                    "codigo_derivacion": codigo,
+                    "fecha_registro": registro,
+                    "fecha_vigencia": vigencia
                 }
                 print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))
                 enviar_a_api(data)

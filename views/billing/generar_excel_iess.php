@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../bootstrap.php';
 global $pdo;
 
 use Controllers\ReglaController;
+use Controllers\BillingController;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -40,6 +41,7 @@ $formDetails['diagnostico2'] = $formDetails['diagnosticos'][1]['idDiagnostico'] 
 
 // Inicializar controlador de reglas clínicas
 $reglaController = new ReglaController($pdo);
+$billingController = new BillingController($pdo);
 
 // Preparar contexto para evaluación
 $contexto = [
@@ -50,6 +52,8 @@ $contexto = [
 
 // Evaluar reglas clínicas activas
 $accionesReglas = $reglaController->evaluar($contexto);
+$codigoDerivacion = $billingController->obtenerDerivacionPorFormId($formId);
+$abreviaturaAfiliacion = $billingController->abreviarAfiliacion($pacienteInfo['afiliacion'] ?? '');
 
 $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
 $diagnosticoSecundario = $formDetails['diagnostico2'] ?? '';
@@ -124,29 +128,88 @@ $cols = [
 foreach ($data['procedimientos'] as $index => $p) {
     $descripcion = $p['proc_detalle'] ?? '';
     $precioBase = (float)($p['proc_precio'] ?? 0);
+    $codigo = $p['proc_codigo'] ?? '';
 
-    // Lógica de porcentaje ISSPOL-like
+    // Lógica especial para el código 67036 (duplicar fila y 62.5%)
+    if ($codigo === '67036') {
+        $porcentaje = 0.625;
+        $valorUnitario = $precioBase;
+        $total = $valorUnitario * $porcentaje;
+        for ($dup = 0; $dup < 2; $dup++) {
+            $colVals = [
+                '0000000135', // A
+                '000002',     // B
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C
+                $abreviaturaAfiliacion, // D
+                $pacienteInfo['hc_number'] ?? '', // E
+                $nombrePaciente,   // F
+                $sexo,             // G
+                $pacienteInfo['fecha_nacimiento'] ?? '', // H
+                $contexto['edad'] ?? '', // I
+                'PRO/INTERV',      // J
+                $codigo,           // K
+                $descripcion,      // L
+                $diagnosticoPrincipal, // M
+                '', '',            // N, O
+                '1',               // P
+                number_format($valorUnitario, 2), // Q (unitario sin %)
+                '',                // R
+                'T',               // S
+                $pacienteInfo['hc_number'] ?? '', // T
+                $nombrePaciente,   // U
+                '',                // V
+                $codigoDerivacion ?? '', // W
+                '1',               // X
+                'D',               // Y
+                '', '', '', '',    // Z, AA, AB, AC
+                '0',               // AD
+                '0',               // AE
+                number_format($total, 2), // AF (total 62.5%)
+                '',                // AG
+                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI
+                '',                // AJ
+                'NO',              // AK
+                '',                // AL
+                'NO',              // AM
+                'P',               // AN
+                '1',               // AO
+                '', '',            // AP, AQ
+                'F',               // AR
+            ];
+            foreach ($cols as $i => $col) {
+                $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            foreach ($cols as $col) {
+                $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+            }
+            $row++;
+        }
+        continue;
+    }
+
+    // Lógica normal
     if ($index === 0 || stripos($descripcion, 'separado') !== false) {
         $porcentaje = 1;
     } else {
         $porcentaje = 0.5;
     }
-    $valorUnitario = $precioBase * $porcentaje;
-    $total = $valorUnitario;
+    $valorUnitario = $precioBase;
+    $total = $valorUnitario * $porcentaje;
 
     $colVals = [
         '0000000135',        // A: Número de protocolo/referencia
         '000002',            // B: Ítem
         date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-        strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+        $abreviaturaAfiliacion, // D: Día
         $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
         $nombrePaciente,     // F: Nombre completo paciente
         $sexo,               // G: Sexo
         $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
         $contexto['edad'] ?? '',  // I: Edad
         'PRO/INTERV',        // J: Tipo prestación
-        $p['proc_codigo'] ?? '', // K: Código procedimiento
-        $p['proc_detalle'] ?? '',// L: Descripción procedimiento
+        $codigo, // K: Código procedimiento
+        $descripcion,// L: Descripción procedimiento
         $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
         '',                  // N: Diagnóstico secundario
         '',                  // O: Diagnóstico 3
@@ -157,7 +220,7 @@ foreach ($data['procedimientos'] as $index => $p) {
         $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
         $nombrePaciente,     // U: Nombre (repetido)
         '',                  // V: Vacío
-        'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+        $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
         '1',                 // X: Ítem adicional/fijo
         'D',                 // Y: Movimiento
         '', '', '', '',      // Z, AA, AB, AC: vacíos
@@ -197,7 +260,7 @@ if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocolo
             '0000000135',        // A: Número de protocolo/referencia
             '000002',            // B: Ítem
             date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-            strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+            $abreviaturaAfiliacion, // D: Día
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
@@ -267,7 +330,7 @@ if (!empty($data['procedimientos'][0])) {
         '0000000135',        // A: Número de protocolo/referencia
         '000002',            // B: Ítem
         date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-        strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+        $abreviaturaAfiliacion, // D: Día
         $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
         $nombrePaciente,     // F: Nombre completo paciente
         $sexo,               // G: Sexo
@@ -286,7 +349,7 @@ if (!empty($data['procedimientos'][0])) {
         $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
         $nombrePaciente,     // U: Nombre (repetido)
         '',                  // V: Vacío
-        'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+        $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
         '1',                 // X: Ítem adicional/fijo
         'D',                 // Y: Movimiento
         '', '', '', '',      // Z, AA, AB, AC: vacíos
@@ -327,7 +390,7 @@ foreach ($data['anestesia'] as $a) {
         '0000000135',        // A: Número de protocolo/referencia
         '000002',            // B: Ítem
         date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-        strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+        $abreviaturaAfiliacion, // D: Día
         $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
         $nombrePaciente,     // F: Nombre completo paciente
         $sexo,               // G: Sexo
@@ -346,7 +409,7 @@ foreach ($data['anestesia'] as $a) {
         $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
         $nombrePaciente,     // U: Nombre (repetido)
         '',                  // V: Vacío
-        'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+        $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
         '1',                 // X: Ítem adicional/fijo
         'D',                 // Y: Movimiento
         '', '', '', '',      // Z, AA, AB, AC: vacíos
@@ -411,6 +474,7 @@ foreach ($fuenteDatos as $bloque) {
         }
         $subtotal = $valorUnitario * $cantidad;
         $bodega = 1;
+        $abreviatura = ($grupo === 'FARMACIA') ? 'M' : 'I';
         $iva = ($grupo === 'FARMACIA') ? 0 : 1;
         $total = $subtotal + ($iva ? $subtotal * 0.1 : 0);
 
@@ -418,13 +482,13 @@ foreach ($fuenteDatos as $bloque) {
             '0000000135',        // A: Número de protocolo/referencia
             '000002',            // B: Ítem
             date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-            strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+            $abreviaturaAfiliacion, // D: Día
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
             $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $grupo,              // J: Tipo prestación (FARMACIA/INSUMOS)
+            'PRO/INTERV',              // J: Tipo prestación (FARMACIA/INSUMOS)
             $codigo,             // K: Código insumo/fármaco
             $descripcion,        // L: Descripción insumo/fármaco
             $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
@@ -437,7 +501,7 @@ foreach ($fuenteDatos as $bloque) {
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
             $nombrePaciente,     // U: Nombre (repetido)
             '',                  // V: Vacío
-            'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+            $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
             '1',                 // X: Ítem adicional/fijo
             'D',                 // Y: Movimiento
             '', '', '', '',      // Z, AA, AB, AC: vacíos
@@ -451,7 +515,7 @@ foreach ($fuenteDatos as $bloque) {
             'NO',                // AK: Emergencia
             '',                  // AL: Vacío
             'NO',                // AM: Reingreso
-            'P',                 // AN: Estado prestación
+            $abreviatura,                 // AN: Estado prestación
             '1',                 // AO: Número de prestación
             '', '',              // AP, AQ: vacíos
             'F',                 // AR: ¿Facturado?
@@ -483,13 +547,13 @@ foreach ($data['derechos'] as $servicio) {
         '0000000135',        // A: Número de protocolo/referencia
         '000002',            // B: Ítem
         date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
-        strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)), // D: Día
+        $abreviaturaAfiliacion, // D: Día
         $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
         $nombrePaciente,     // F: Nombre completo paciente
         $sexo,               // G: Sexo
         $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
         $contexto['edad'] ?? '',  // I: Edad
-        'SERVICIOS INSTITUCIONALES', // J: Tipo prestación
+        'PRO/INTERV', // J: Tipo prestación
         $codigo,             // K: Código servicio
         $descripcion,        // L: Descripción servicio
         $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
@@ -502,7 +566,7 @@ foreach ($data['derechos'] as $servicio) {
         $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
         $nombrePaciente,     // U: Nombre (repetido)
         '',                  // V: Vacío
-        'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+        $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
         '1',                 // X: Ítem adicional/fijo
         'D',                 // Y: Movimiento
         '', '', '', '',      // Z, AA, AB, AC: vacíos

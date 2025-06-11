@@ -15,6 +15,7 @@ $pacienteController = new PacienteController($pdo);
 $mes = $_GET['mes'] ?? null;
 $facturas = $billingController->obtenerFacturasDisponibles();
 
+
 $pacientesCache = [];
 $datosCache = [];
 $filtros = ['mes' => $mes];
@@ -132,6 +133,9 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
         ];
         $accionesReglas = $reglaController->evaluar($contexto);
 
+        $codigoDerivacion = $billingController->obtenerDerivacionPorFormId($formId);
+        $abreviaturaAfiliacion = $billingController->abreviarAfiliacion($pacienteInfo['afiliacion'] ?? '');
+
         $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
         $diagnosticoSecundario = $formDetails['diagnostico2'] ?? '';
 
@@ -139,50 +143,116 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
         foreach ($data['procedimientos'] as $index => $p) {
             $descripcion = $p['proc_detalle'] ?? '';
             $precioBase = (float)($p['proc_precio'] ?? 0);
-            $porcentaje = ($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5;
-            $valorUnitario = $precioBase * $porcentaje;
-            $total = $valorUnitario;
+            $codigo = $p['proc_codigo'] ?? '';
+
+            // Lógica especial para el código 67036 (duplicar fila y 62.5%)
+            if ($codigo === '67036') {
+                $porcentaje = 0.625;
+                $valorUnitario = $precioBase;
+                $total = $valorUnitario * $porcentaje;
+                for ($dup = 0; $dup < 2; $dup++) {
+                    $colVals = [
+                        '0000000135', // A
+                        '000002',     // B
+                        date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C
+                        $abreviaturaAfiliacion, // D
+                        $pacienteInfo['hc_number'] ?? '', // E
+                        $nombrePaciente,   // F
+                        $sexo,             // G
+                        $pacienteInfo['fecha_nacimiento'] ?? '', // H
+                        $contexto['edad'] ?? '', // I
+                        'PRO/INTERV',      // J
+                        $codigo,           // K
+                        $descripcion,      // L
+                        $diagnosticoPrincipal, // M
+                        '', '',            // N, O
+                        '1',               // P
+                        number_format($valorUnitario, 2), // Q (unitario sin %)
+                        '',                // R
+                        'T',               // S
+                        $pacienteInfo['hc_number'] ?? '', // T
+                        $nombrePaciente,   // U
+                        '',                // V
+                        $codigoDerivacion ?? '', // W
+                        '1',               // X
+                        'D',               // Y
+                        '', '', '', '', // Z, AA, AB, AC
+                        '0',               // AD
+                        '0',               // AE
+                        number_format($total, 2), // AF (total 62.5%)
+                        '',                // AG
+                        date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH
+                        date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI
+                        '',                // AJ
+                        'NO',              // AK
+                        '',                // AL
+                        'NO',              // AM
+                        'P',               // AN
+                        '1',               // AO
+                        '', '',            // AP, AQ
+                        'F',               // AR
+                    ];
+                    foreach ($cols as $i => $col) {
+                        $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                    }
+                    foreach ($cols as $col) {
+                        $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+                    }
+                    $row++;
+                }
+                continue;
+            }
+
+            // Lógica normal
+            if ($index === 0 || stripos($descripcion, 'separado') !== false) {
+                $porcentaje = 1;
+            } else {
+                $porcentaje = 0.5;
+            }
+            $valorUnitario = $precioBase;
+            $total = $valorUnitario * $porcentaje;
+
             $colVals = [
-                '0000000135',
-                '000002',
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                $sexo,
-                $pacienteInfo['fecha_nacimiento'] ?? '',
-                $contexto['edad'] ?? '',
-                'PRO/INTERV',
-                $p['proc_codigo'] ?? '',
-                $p['proc_detalle'] ?? '',
-                $diagnosticoPrincipal,
-                '',
-                '',
-                '1',
-                number_format($valorUnitario, 2),
-                '',
-                'T',
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                '',
-                'CPPSSG-27-05-2024-RPC-SFGG-208',
-                '1',
-                'D',
-                '', '', '', '', // Z, AA, AB, AC
-                '0',
-                '0',
-                number_format($total, 2),
-                '',
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                '',
-                'NO',
-                '',
-                'NO',
-                'P',
-                '1',
-                '', '',
-                'F',
+                '0000000135',        // A: Número de protocolo/referencia
+                '000002',            // B: Ítem
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                $abreviaturaAfiliacion, // D: Día
+                $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                $nombrePaciente,     // F: Nombre completo paciente
+                $sexo,               // G: Sexo
+                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                $contexto['edad'] ?? '',  // I: Edad
+                'PRO/INTERV',        // J: Tipo prestación
+                $codigo, // K: Código procedimiento
+                $descripcion,// L: Descripción procedimiento
+                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                '',                  // N: Diagnóstico secundario
+                '',                  // O: Diagnóstico 3
+                '1',                 // P: Cantidad
+                number_format($valorUnitario, 2), // Q: Valor unitario **con porcentaje**
+                '',                  // R: Vacío/fijo
+                'T',                 // S: Tipo pago
+                $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                $nombrePaciente,     // U: Nombre (repetido)
+                '',                  // V: Vacío
+                $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
+                '1',                 // X: Ítem adicional/fijo
+                'D',                 // Y: Movimiento
+                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                '0',                 // AD: IVA
+                '0',                 // AE: Descuento
+                number_format($total, 2), // AF: Total **con porcentaje**
+                '',                  // AG: Vacío
+                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                '',                  // AJ: Vacío
+                'NO',                // AK: Emergencia
+                '',                  // AL: Vacío
+                'NO',                // AM: Reingreso
+                'P',                 // AN: Estado prestación
+                '1',                 // AO: Número de prestación
+                '', '',              // AP, AQ: vacíos
+                'F',                 // AR: ¿Facturado?
             ];
             foreach ($cols as $i => $col) {
                 $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -193,7 +263,6 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             $row++;
         }
 
-        // === Ayudantes ===
         if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante'])) {
             foreach ($data['procedimientos'] as $index => $p) {
                 $descripcion = $p['proc_detalle'] ?? '';
@@ -202,46 +271,46 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 $valorUnitario = $precio * $porcentaje;
                 $total = $valorUnitario;
                 $colVals = [
-                    '0000000135',
-                    '000002',
-                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                    strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                    $pacienteInfo['hc_number'] ?? '',
-                    $nombrePaciente,
-                    $sexo,
-                    $pacienteInfo['fecha_nacimiento'] ?? '',
-                    $contexto['edad'] ?? '',
-                    'PRO/INTERV',
-                    $p['proc_codigo'] ?? '',
-                    $p['proc_detalle'] ?? '',
-                    $diagnosticoPrincipal,
-                    '',
-                    '',
-                    '1',
-                    number_format($valorUnitario, 2),
-                    '',
-                    'T',
-                    $pacienteInfo['hc_number'] ?? '',
-                    $nombrePaciente,
-                    '',
-                    'CPPSSG-27-05-2024-RPC-SFGG-208',
-                    '1',
-                    'D',
-                    '', '', '', '', // Z, AA, AB, AC
-                    '0',
-                    '0',
-                    number_format($total, 2),
-                    '',
-                    date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                    '',
-                    'NO',
-                    '',
-                    'NO',
-                    'P',
-                    '1',
-                    '', '',
-                    'F',
+                    '0000000135',        // A: Número de protocolo/referencia
+                    '000002',            // B: Ítem
+                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                    $abreviaturaAfiliacion, // D: Día
+                    $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                    $nombrePaciente,     // F: Nombre completo paciente
+                    $sexo,               // G: Sexo
+                    $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                    $contexto['edad'] ?? '',  // I: Edad
+                    'PRO/INTERV',        // J: Tipo prestación
+                    $p['proc_codigo'] ?? '', // K: Código procedimiento
+                    $p['proc_detalle'] ?? '',// L: Descripción procedimiento
+                    $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                    '',                  // N: Diagnóstico secundario
+                    '',                  // O: Diagnóstico 3
+                    '1',                 // P: Cantidad
+                    number_format($valorUnitario, 2), // Q: Valor unitario **con porcentaje**
+                    '',                  // R: Vacío/fijo
+                    'T',                 // S: Tipo pago
+                    $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                    $nombrePaciente,     // U: Nombre (repetido)
+                    '',                  // V: Vacío
+                    'CPPSSG-27-05-2024-RPC-SFGG-208', // W: Autorización/referencia (ajustar)
+                    '1',                 // X: Ítem adicional/fijo
+                    'D',                 // Y: Movimiento
+                    '', '', '', '',      // Z, AA, AB, AC: vacíos
+                    '0',                 // AD: IVA
+                    '0',                 // AE: Descuento
+                    number_format($total, 2), // AF: Total **con porcentaje**
+                    '',                  // AG: Vacío
+                    date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                    '',                  // AJ: Vacío
+                    'NO',                // AK: Emergencia
+                    '',                  // AL: Vacío
+                    'NO',                // AM: Reingreso
+                    'P',                 // AN: Estado prestación
+                    '1',                 // AO: Número de prestación
+                    '', '',              // AP, AQ: vacíos
+                    'F',                 // AR: ¿Facturado?
                 ];
                 foreach ($cols as $i => $col) {
                     $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -253,9 +322,17 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             }
         }
 
-        // === ANESTESIA ===
+// === ANESTESIA en formato IESS 44 columnas ===
+        $cols = [
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+            'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
+        ];
+
+// -- Anestesia por procedimiento principal (si aplica) --
         $codigoAnestesia = $data['procedimientos'][0]['proc_codigo'] ?? '';
-        $precioReal = $codigoAnestesia && isset($GLOBALS['controller']) ? $GLOBALS['controller']->obtenerValorAnestesia($codigoAnestesia) : null;
+        $precioReal = $codigoAnestesia ? $billingController->obtenerValorAnestesia($codigoAnestesia) : null;
+
+
         if (!empty($data['procedimientos'][0])) {
             $p = $data['procedimientos'][0];
             $precio = (float)$p['proc_precio'];
@@ -263,102 +340,46 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             $cantidad = 1;
             $total = $valorUnitario * $cantidad;
             $colVals = [
-                '0000000135',
-                '000002',
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                $sexo,
-                $pacienteInfo['fecha_nacimiento'] ?? '',
-                $contexto['edad'] ?? '',
-                'PRO/INTERV',
-                $p['proc_codigo'] ?? '',
-                $p['proc_detalle'] ?? '',
-                $diagnosticoPrincipal,
-                '',
-                '',
-                '1',
-                number_format($valorUnitario, 2),
-                '',
-                'T',
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                '',
-                'CPPSSG-27-05-2024-RPC-SFGG-208',
-                '1',
-                'D',
-                '', '', '', '', // Z, AA, AB, AC
-                '0',
-                '0',
-                number_format($total, 2),
-                '',
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                '',
-                'NO',
-                '',
-                'NO',
-                'P',
-                '1',
-                '', '',
-                'F',
-            ];
-            foreach ($cols as $i => $col) {
-                $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            }
-            foreach ($cols as $col) {
-                $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
-            }
-            $row++;
-        }
-        foreach ($data['anestesia'] as $a) {
-            $codigo = $a['codigo'];
-            $descripcion = $a['nombre'];
-            $cantidad = (float)$a['tiempo'];
-            $valorUnitario = (float)$a['valor2'];
-            $total = $cantidad * $valorUnitario;
-            $colVals = [
-                '0000000135',
-                '000002',
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                $sexo,
-                $pacienteInfo['fecha_nacimiento'] ?? '',
-                $contexto['edad'] ?? '',
-                'PRO/INTERV',
-                $codigo,
-                $descripcion,
-                $diagnosticoPrincipal,
-                '',
-                '',
-                $cantidad,
-                number_format($valorUnitario, 2),
-                '',
-                'T',
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                '',
-                'CPPSSG-27-05-2024-RPC-SFGG-208',
-                '1',
-                'D',
-                '', '', '', '', // Z, AA, AB, AC
-                '0',
-                '0',
-                number_format($total, 2),
-                '',
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                '',
-                'NO',
-                '',
-                'NO',
-                'P',
-                '1',
-                '', '',
-                'F',
+                '0000000135',        // A: Número de protocolo/referencia
+                '000002',            // B: Ítem
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                $abreviaturaAfiliacion, // D: Día
+                $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                $nombrePaciente,     // F: Nombre completo paciente
+                $sexo,               // G: Sexo
+                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                $contexto['edad'] ?? '',  // I: Edad
+                'PRO/INTERV',        // J: Tipo prestación
+                $p['proc_codigo'] ?? '', // K: Código procedimiento
+                $p['proc_detalle'] ?? '',// L: Descripción procedimiento
+                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                '',                  // N: Diagnóstico secundario
+                '',                  // O: Diagnóstico 3
+                '1',                 // P: Cantidad
+                number_format($valorUnitario, 2), // Q: Valor unitario
+                '',                  // R: Vacío/fijo
+                'T',                 // S: Tipo pago
+                $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                $nombrePaciente,     // U: Nombre (repetido)
+                '',                  // V: Vacío
+                $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
+                '1',                 // X: Ítem adicional/fijo
+                'D',                 // Y: Movimiento
+                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                '0',                 // AD: IVA
+                '0',                 // AE: Descuento
+                number_format($total, 2), // AF: Total
+                '',                  // AG: Vacío
+                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                '',                  // AJ: Vacío
+                'NO',                // AK: Emergencia
+                '',                  // AL: Vacío
+                'NO',                // AM: Reingreso
+                'P',                 // AN: Estado prestación
+                '1',                 // AO: Número de prestación
+                '', '',              // AP, AQ: vacíos
+                'F',                 // AR: ¿Facturado?
             ];
             foreach ($cols as $i => $col) {
                 $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -369,10 +390,73 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             $row++;
         }
 
-        // === FARMACIA E INSUMOS ===
+// -- Anestesia agrupada (foreach) --
+        foreach ($data['anestesia'] as $a) {
+            $codigo = $a['codigo'];
+            $descripcion = $a['nombre'];
+            $cantidad = (float)$a['tiempo'];
+            $valorUnitario = (float)$a['valor2'];
+            $total = $cantidad * $valorUnitario;
+            $colVals = [
+                '0000000135',        // A: Número de protocolo/referencia
+                '000002',            // B: Ítem
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                $abreviaturaAfiliacion, // D: Día
+                $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                $nombrePaciente,     // F: Nombre completo paciente
+                $sexo,               // G: Sexo
+                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                $contexto['edad'] ?? '',  // I: Edad
+                'PRO/INTERV',        // J: Tipo prestación
+                $codigo,             // K: Código procedimiento (anestesia)
+                $descripcion,        // L: Descripción procedimiento (anestesia)
+                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                '',                  // N: Diagnóstico secundario
+                '',                  // O: Diagnóstico 3
+                $cantidad,           // P: Cantidad
+                number_format($valorUnitario, 2), // Q: Valor unitario
+                '',                  // R: Vacío/fijo
+                'T',                 // S: Tipo pago
+                $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                $nombrePaciente,     // U: Nombre (repetido)
+                '',                  // V: Vacío
+                $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
+                '1',                 // X: Ítem adicional/fijo
+                'D',                 // Y: Movimiento
+                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                '0',                 // AD: IVA
+                '0',                 // AE: Descuento
+                number_format($total, 2), // AF: Total
+                '',                  // AG: Vacío
+                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                '',                  // AJ: Vacío
+                'NO',                // AK: Emergencia
+                '',                  // AL: Vacío
+                'NO',                // AM: Reingreso
+                'P',                 // AN: Estado prestación
+                '1',                 // AO: Número de prestación
+                '', '',              // AP, AQ: vacíos
+                'F',                 // AR: ¿Facturado?
+            ];
+            foreach ($cols as $i => $col) {
+                $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            }
+            foreach ($cols as $col) {
+                $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+            }
+            $row++;
+        }
+
+// === FARMACIA E INSUMOS EN FORMATO IESS (44 COLUMNAS) ===
+        $cols = [
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+            'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
+        ];
+
         $fuenteDatos = [
-            ['grupo' => 'FARMACIA', 'items' => array_merge($data['medicamentos'] ?? [], $data['oxigeno'] ?? [])],
-            ['grupo' => 'INSUMOS', 'items' => $data['insumos'] ?? []],
+            ['grupo' => 'FARMACIA', 'items' => array_merge($data['medicamentos'], $data['oxigeno'])],
+            ['grupo' => 'INSUMOS', 'items' => $data['insumos']],
         ];
         foreach ($fuenteDatos as $bloque) {
             $grupo = $bloque['grupo'];
@@ -390,6 +474,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 }
                 $codigo = $item['codigo'] ?? '';
                 if (isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2'])) {
+                    // Este es oxígeno
                     $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
                     $valorUnitario = (float)$item['valor2'];
                 } else {
@@ -398,49 +483,50 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 }
                 $subtotal = $valorUnitario * $cantidad;
                 $bodega = 1;
+                $abreviatura = ($grupo === 'FARMACIA') ? 'M' : 'I';
                 $iva = ($grupo === 'FARMACIA') ? 0 : 1;
                 $total = $subtotal + ($iva ? $subtotal * 0.1 : 0);
                 $colVals = [
-                    '0000000135',
-                    '000002',
-                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                    strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                    $pacienteInfo['hc_number'] ?? '',
-                    $nombrePaciente,
-                    $sexo,
-                    $pacienteInfo['fecha_nacimiento'] ?? '',
-                    $contexto['edad'] ?? '',
-                    $grupo,
-                    $codigo,
-                    $descripcion,
-                    $diagnosticoPrincipal,
-                    '',
-                    '',
-                    $cantidad,
-                    number_format($valorUnitario, 2),
-                    '',
-                    'T',
-                    $pacienteInfo['hc_number'] ?? '',
-                    $nombrePaciente,
-                    '',
-                    'CPPSSG-27-05-2024-RPC-SFGG-208',
-                    '1',
-                    'D',
-                    '', '', '', '', // Z, AA, AB, AC
-                    $iva,
-                    '0',
-                    number_format($total, 2),
-                    '',
-                    date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                    '',
-                    'NO',
-                    '',
-                    'NO',
-                    'P',
-                    '1',
-                    '', '',
-                    'F',
+                    '0000000135',        // A: Número de protocolo/referencia
+                    '000002',            // B: Ítem
+                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                    $abreviaturaAfiliacion, // D: Día
+                    $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                    $nombrePaciente,     // F: Nombre completo paciente
+                    $sexo,               // G: Sexo
+                    $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                    $contexto['edad'] ?? '',  // I: Edad
+                    'PRO/INTERV',              // J: Tipo prestación (FARMACIA/INSUMOS)
+                    $codigo,             // K: Código insumo/fármaco
+                    $descripcion,        // L: Descripción insumo/fármaco
+                    $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                    '',                  // N: Diagnóstico secundario
+                    '',                  // O: Diagnóstico 3
+                    $cantidad,           // P: Cantidad
+                    number_format($valorUnitario, 2), // Q: Valor unitario
+                    '',                  // R: Vacío/fijo
+                    'T',                 // S: Tipo pago
+                    $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                    $nombrePaciente,     // U: Nombre (repetido)
+                    '',                  // V: Vacío
+                    $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
+                    '1',                 // X: Ítem adicional/fijo
+                    'D',                 // Y: Movimiento
+                    '', '', '', '',      // Z, AA, AB, AC: vacíos
+                    $iva,                // AD: IVA
+                    '0',                 // AE: Descuento
+                    number_format($total, 2), // AF: Total (con IVA si aplica)
+                    '',                  // AG: Vacío
+                    date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                    '',                  // AJ: Vacío
+                    'NO',                // AK: Emergencia
+                    '',                  // AL: Vacío
+                    'NO',                // AM: Reingreso
+                    $abreviatura,                 // AN: Estado prestación
+                    '1',                 // AO: Número de prestación
+                    '', '',              // AP, AQ: vacíos
+                    'F',                 // AR: ¿Facturado?
                 ];
                 foreach ($cols as $i => $col) {
                     $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -452,7 +538,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             }
         }
 
-        // === Servicios institucionales ===
+// === Servicios institucionales y equipos especializados en formato IESS 44 columnas ===
         foreach ($data['derechos'] as $servicio) {
             $codigo = $servicio['codigo'];
             $descripcion = $servicio['detalle'];
@@ -462,47 +548,49 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
             $bodega = 0;
             $iva = 0;
             $total = $subtotal;
+            $porcentajePago = 100;
+
             $colVals = [
-                '0000000135',
-                '000002',
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                strtoupper(substr(date('l', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), 0, 2)),
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                $sexo,
-                $pacienteInfo['fecha_nacimiento'] ?? '',
-                $contexto['edad'] ?? '',
-                'SERVICIOS INSTITUCIONALES',
-                $codigo,
-                $descripcion,
-                $diagnosticoPrincipal,
-                '',
-                '',
-                $cantidad,
-                number_format($valorUnitario, 2),
-                '',
-                'T',
-                $pacienteInfo['hc_number'] ?? '',
-                $nombrePaciente,
-                '',
-                'CPPSSG-27-05-2024-RPC-SFGG-208',
-                '1',
-                'D',
-                '', '', '', '', // Z, AA, AB, AC
-                $iva,
-                '0',
-                number_format($total, 2),
-                '',
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')),
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')),
-                '',
-                'NO',
-                '',
-                'NO',
-                'P',
-                '1',
-                '', '',
-                'F',
+                '0000000135',        // A: Número de protocolo/referencia
+                '000002',            // B: Ítem
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // C: Fecha egreso
+                $abreviaturaAfiliacion, // D: Día
+                $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
+                $nombrePaciente,     // F: Nombre completo paciente
+                $sexo,               // G: Sexo
+                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                $contexto['edad'] ?? '',  // I: Edad
+                'PRO/INTERV', // J: Tipo prestación
+                $codigo,             // K: Código servicio
+                $descripcion,        // L: Descripción servicio
+                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                '',                  // N: Diagnóstico secundario
+                '',                  // O: Diagnóstico 3
+                $cantidad,           // P: Cantidad
+                number_format($valorUnitario, 2), // Q: Valor unitario
+                '',                  // R: Vacío/fijo
+                'T',                 // S: Tipo pago
+                $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
+                $nombrePaciente,     // U: Nombre (repetido)
+                '',                  // V: Vacío
+                $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
+                '1',                 // X: Ítem adicional/fijo
+                'D',                 // Y: Movimiento
+                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                $iva,                // AD: IVA
+                '0',                 // AE: Descuento
+                number_format($total, 2), // AF: Total
+                '',                  // AG: Vacío
+                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
+                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                '',                  // AJ: Vacío
+                'NO',                // AK: Emergencia
+                '',                  // AL: Vacío
+                'NO',                // AM: Reingreso
+                'P',                 // AN: Estado prestación
+                '1',                 // AO: Número de prestación
+                '', '',              // AP, AQ: vacíos
+                'F',                 // AR: ¿Facturado?
             ];
             foreach ($cols as $i => $col) {
                 $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
