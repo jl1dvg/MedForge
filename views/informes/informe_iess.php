@@ -1,18 +1,26 @@
 <?php
-require_once __DIR__ . '/../../bootstrap.php';
-require_once __DIR__ . '/../../helpers/InformesHelper.php';
+ob_start();
 
-if (isset($_POST['scrape_derivacion']) && isset($_POST['form_id_scrape'])) {
-    $formId = $_POST['form_id_scrape'];
-    $escapedFormId = escapeshellarg($formId);
-    $script = "/homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py";
-    $output = shell_exec("python3 $script $escapedFormId 2>&1");
+// Manejo de parámetros para scraping derivación
+$form_id = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
+$hc_number = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
 
-    // Codificar el resultado para pasar por URL (solo resumen)
-    $shortOutput = urlencode(substr($output, 0, 300));
-    header("Location: informe_iess.php?scrape_exito=1&form_id=$formId&msg=$shortOutput");
+if (isset($_POST['scrape_derivacion']) || (isset($_POST['form_id_scrape']) && isset($_POST['hc_number_scrape']))) {
+    // Si faltan parámetros requeridos, redirigir con mensaje de error
+    if (!$form_id || !$hc_number) {
+        header("Location: ./informe_iess.php?scrape_exito=1&form_id=" . urlencode($form_id ?? '') . "&hc_number=" . urlencode($hc_number ?? '') . "&msg=" . urlencode("❌ Faltan parámetros requeridos."));
+        exit;
+    }
+    $command = "/usr/bin/python3 /homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py " . escapeshellarg($form_id) . " " . escapeshellarg($hc_number);
+    shell_exec($command);
+    header("Location: ./informe_iess.php?scrape_exito=1&form_id={$form_id}&hc_number={$hc_number}&msg=" . urlencode("✅ Código derivación obtenido y guardado correctamente."));
     exit;
 }
+
+$safe_hc_number = escapeshellarg($hc_number);
+
+require_once __DIR__ . '/../../bootstrap.php';
+require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
 use Controllers\BillingController;
 use Controllers\PacienteController;
@@ -586,8 +594,11 @@ if ($billingId) {
                                         $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
                                         $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($p['id']);
                                         $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        $codigoDerivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $afiliacion);
+                                        $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                        $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+                                        $referido = $derivacion['referido'] ?? '';
+                                        $diagnostico = $derivacion['diagnostico'] ?? '';
+                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
                                         $n++;
                                     }
                                     echo "

@@ -441,12 +441,13 @@ class BillingController
 
     public function obtenerDerivacionPorFormId($formId)
     {
-        $stmt = $this->db->prepare("SELECT cod_derivacion FROM derivaciones_form_id WHERE form_id = ?");
+        $stmt = $this->db->prepare("SELECT * FROM derivaciones_form_id WHERE form_id = ?");
         $stmt->execute([$formId]);
-        return $stmt->fetchColumn(); // Devuelve solo el valor del cod_derivacion
+        return $stmt->fetch(PDO::FETCH_ASSOC); // Devuelve un array con todas las columnas
     }
 
-    function abreviarAfiliacion($afiliacion) {
+    function abreviarAfiliacion($afiliacion)
+    {
         $mapa = [
             'contribuyente voluntario' => 'CV',
             'conyuge' => 'CY',

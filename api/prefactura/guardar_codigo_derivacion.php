@@ -8,10 +8,12 @@ $codigo = $data['codigo_derivacion'] ?? null;
 $hcNumber = $data['hc_number'] ?? null;
 $fechaRegistro = $data['fecha_registro'] ?? null;
 $fechaVigencia = $data['fecha_vigencia'] ?? null;
+$referido = $data['referido'] ?? null;
+$diagnostico = $data['diagnostico'] ?? null;
 
 if ($formId && $codigo) {
     $controller = new DerivacionController($pdo);
-    $resultado = $controller->guardarDerivacion($codigo, $formId, $hcNumber, $fechaRegistro, $fechaVigencia);
+    $resultado = $controller->guardarDerivacion($codigo, $formId, $hcNumber, $fechaRegistro, $fechaVigencia, $referido, $diagnostico);
     if ($resultado) {
         echo json_encode(["success" => true]);
     } else {

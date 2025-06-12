@@ -41,5 +41,6 @@ if (isset($_SESSION['last_activity_time']) && (time() - $_SESSION['last_activity
     session_destroy();
     header("Location: /views/login.php?expired=1");
     exit();
+} else {
+    $_SESSION['last_activity_time'] = time();
 }
-$_SESSION['last_activity_time'] = time();
