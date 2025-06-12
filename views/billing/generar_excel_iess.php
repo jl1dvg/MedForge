@@ -238,7 +238,7 @@ foreach ($data['procedimientos'] as $index => $p) {
         '',                  // AL: Vacío
         'NO',                // AM: Reingreso
         'P',                 // AN: Estado prestación
-        '1',                 // AO: Número de prestación
+        '1',                 // AO: Número de medico
         '', '',              // AP, AQ: vacíos
         'F',                 // AR: ¿Facturado?
     ];
@@ -367,7 +367,7 @@ if (!empty($data['procedimientos'][0])) {
         '',                  // AL: Vacío
         'NO',                // AM: Reingreso
         'P',                 // AN: Estado prestación
-        '1',                 // AO: Número de prestación
+        '3',                 // AO: Número de medico
         '', '',              // AP, AQ: vacíos
         'F',                 // AR: ¿Facturado?
     ];
@@ -427,7 +427,7 @@ foreach ($data['anestesia'] as $a) {
         '',                  // AL: Vacío
         'NO',                // AM: Reingreso
         'P',                 // AN: Estado prestación
-        '1',                 // AO: Número de prestación
+        '6',                 // AO: Número de prestación
         '', '',              // AP, AQ: vacíos
         'F',                 // AR: ¿Facturado?
     ];
@@ -519,7 +519,7 @@ foreach ($fuenteDatos as $bloque) {
             '',                  // AL: Vacío
             'NO',                // AM: Reingreso
             $abreviatura,                 // AN: Estado prestación
-            '1',                 // AO: Número de prestación
+            '',                 // AO: Número de prestación
             '', '',              // AP, AQ: vacíos
             'F',                 // AR: ¿Facturado?
         ];
@@ -584,7 +584,7 @@ foreach ($data['derechos'] as $servicio) {
         '',                  // AL: Vacío
         'NO',                // AM: Reingreso
         'P',                 // AN: Estado prestación
-        '1',                 // AO: Número de prestación
+        '',                 // AO: Número de prestación
         '', '',              // AP, AQ: vacíos
         'F',                 // AR: ¿Facturado?
     ];

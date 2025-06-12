@@ -311,7 +311,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                     '',                  // AL: Vacío
                     'NO',                // AM: Reingreso
                     'P',                 // AN: Estado prestación
-                    '1',                 // AO: Número de prestación
+                    '3',                 // AO: Número de prestación
                     '', '',              // AP, AQ: vacíos
                     'F',                 // AR: ¿Facturado?
                 ];
@@ -380,7 +380,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 '',                  // AL: Vacío
                 'NO',                // AM: Reingreso
                 'P',                 // AN: Estado prestación
-                '1',                 // AO: Número de prestación
+                '6',                 // AO: Número de prestación
                 '', '',              // AP, AQ: vacíos
                 'F',                 // AR: ¿Facturado?
             ];

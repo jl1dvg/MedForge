@@ -127,145 +127,158 @@ if ($billingId) {
                 <div class="row">
                     <div class="col-lg-12 col-12">
                         <div class="box">
-                            <form method="GET" class="mb-4">
-                                <input type="hidden" name="modo" value="consolidado">
-                                <label for="mes" class="form-label">Selecciona un mes:</label>
-                                <select name="mes" id="mes" class="form-select mb-3" onchange="this.form.submit()">
-                                    <option value="">-- Todos los meses --</option>
-                                    <?php
-                                    $mesesUnicos = array_unique(array_map(function ($factura) {
-                                        return date('Y-m', strtotime($factura['fecha_inicio']));
-                                    }, $facturas));
-                                    sort($mesesUnicos);
-                                    foreach ($mesesUnicos as $mesOption):
-                                        $selected = ($filtros['mes'] === $mesOption) ? 'selected' : '';
-                                        echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
-                                    endforeach;
-                                    ?>
-                                </select>
+                            <div class="card shadow-sm mb-4">
+                                <div class="card-body">
+                                    <form method="GET" class="row g-3 align-items-end">
+                                        <input type="hidden" name="modo" value="consolidado">
 
-                                <label for="billing_id" class="form-label">Selecciona una factura:</label>
-                                <select name="billing_id" id="billing_id" class="form-select"
-                                        onchange="this.form.submit()">
-                                    <option value="">-- Selecciona una factura --</option>
-                                    <?php
-                                    $facturasFiltradas = array_filter($facturas, function ($factura) use ($filtros) {
-                                        return !$filtros['mes'] || date('Y-m', strtotime($factura['fecha_inicio'])) === $filtros['mes'];
-                                    });
+                                        <div class="col-md-4">
+                                            <label for="mes" class="form-label fw-bold">
+                                                <i class="mdi mdi-calendar"></i> Selecciona un mes:
+                                            </label>
+                                            <select name="mes" id="mes" class="form-select"
+                                                    onchange="this.form.submit()">
+                                                <option value="">-- Todos los meses --</option>
+                                                <?php
+                                                // Solo mostrar meses con al menos una factura de paciente IESS
+                                                $afiliacionesIESS = [
+                                                    'contribuyente voluntario',
+                                                    'conyuge',
+                                                    'conyuge pensionista',
+                                                    'seguro campesino',
+                                                    'seguro campesino jubilado',
+                                                    'seguro general',
+                                                    'seguro general jubilado',
+                                                    'seguro general por montepío',
+                                                    'seguro general tiempo parcial'
+                                                ];
+                                                $mesesValidos = [];
+                                                foreach ($facturas as $factura) {
+                                                    $mes = date('Y-m', strtotime($factura['fecha_inicio']));
+                                                    $hc = $factura['hc_number'];
+                                                    // Precargar detalles si no existen en cache
+                                                    if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
+                                                        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+                                                    }
+                                                    $afiliacion = strtolower(trim($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? ''));
+                                                    if (in_array($afiliacion, $afiliacionesIESS, true)) {
+                                                        $mesesValidos[$mes] = true;
+                                                    }
+                                                }
+                                                $mesesValidos = array_keys($mesesValidos);
+                                                sort($mesesValidos);
+                                                foreach ($mesesValidos as $mesOption):
+                                                    $selected = ($filtros['mes'] === $mesOption) ? 'selected' : '';
+                                                    echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
+                                                endforeach;
+                                                ?>
+                                            </select>
+                                        </div>
 
-                                    function normalizarAfiliacion($str)
-                                    {
-                                        $str = strtolower(trim($str));
-                                        $str = preg_replace('/\s+/', ' ', $str); // Quita espacios extra
-                                        $str = strtr($str, [
-                                            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
-                                            'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u',
-                                            'ñ' => 'n', 'Ñ' => 'n'
-                                        ]);
-                                        return $str;
-                                    }
+                                        <div class="col-md-4">
+                                            <label for="apellido" class="form-label fw-bold">
+                                                <i class="mdi mdi-account-search"></i> Apellido del paciente
+                                            </label>
+                                            <input type="text" name="apellido" id="apellido" class="form-control"
+                                                   value="<?= htmlspecialchars($filtros['apellido']) ?>"
+                                                   placeholder="Buscar por apellido">
+                                        </div>
 
-                                    $afiliacionesIESS = [
-                                        'contribuyente voluntario',
-                                        'conyuge',
-                                        'conyuge pensionista',
-                                        'seguro campesino',
-                                        'seguro campesino jubilado',
-                                        'seguro general',
-                                        'seguro general jubilado',
-                                        'seguro general por montepío',
-                                        'seguro general tiempo parcial'
-                                    ];
+                                        <div class="col-md-4 d-flex gap-2">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="mdi mdi-magnify"></i> Buscar
+                                            </button>
+                                            <a href="/views/informes/informe_iess.php?modo=consolidado"
+                                               class="btn btn-outline-secondary">
+                                                <i class="mdi mdi-filter-remove"></i> Limpiar
+                                            </a>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
 
-                                    foreach ($facturasFiltradas as $factura):
-                                        $mes = date('Y-m', strtotime($factura['fecha_inicio']));
-                                        $hc = $factura['hc_number'];
-                                        $pacienteInfo = $cachePorMes[$mes]['pacientes'][$hc] ?? [];
-                                        $afiliacion = normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
-                                        if (!in_array($afiliacion, $afiliacionesIESS)) continue;
-                                        $fechaFormateada = date('d/m/Y', strtotime($factura['fecha_inicio']));
-                                        $nombrePaciente = $pacienteInfo['fname'] . ' ' . $pacienteInfo['lname'];
-                                        $formIdTexto = $factura['form_id'] ?? 'Sin proceso';
-                                        ?>
-                                        <option value="<?= $factura['id'] ?>" <?= ($factura['id'] == $billingId ? 'selected' : '') ?>>
-                                            <?= "{$nombrePaciente} | Proceso: {$formIdTexto} | {$fechaFormateada}" ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div class="row g-3 mb-3 mt-3">
-                                    <div class="col-md-4">
-                                        <label for="apellido" class="form-label">Apellido del paciente</label>
-                                        <input type="text" name="apellido" id="apellido" class="form-control"
-                                               value="<?= htmlspecialchars($filtros['apellido']) ?>"
-                                               placeholder="Buscar por apellido">
-                                    </div>
-                                    <div class="col-md-12 mt-2">
-                                        <a href="/views/informes/informe_iess.php?modo=consolidado"
-                                           class="btn btn-secondary">Limpiar</a>
+                            <?php if ($formId && $datos):
+                            $paciente = $datos['paciente'] ?? [];
+                            $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
+                            $hcNumber = $paciente['hc_number'] ?? '';
+                            $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
+                            ?>
+                            <div class="row invoice-info mb-3">
+                                <div class="col-md-6 invoice-col">
+                                    <strong>Desde</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador
+                                            -
+                                            CIVE</strong><br>
+                                        <span class="d-inline">Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero.</span><br>
+                                        <strong>Teléfono: (04) 372-9340 &nbsp;&nbsp;&nbsp; Email:
+                                            info@cive.ec</strong>
+                                    </address>
+                                </div>
+                                <div class="col-md-6 invoice-col text-end">
+                                    <strong>Paciente</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
+                                        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
+                                        Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
+                                        <?php if (!empty($paciente['ci'])): ?>
+                                            Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
+                                        <?php endif; ?>
+                                        <?php if (!empty($paciente['fecha_nacimiento'])): ?>
+                                            F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
+                                            <br>
+                                        <?php endif; ?>
+                                    </address>
+                                </div>
+                                <div class="col-sm-12 invoice-col mb-15">
+                                    <div class="invoice-details row no-margin">
+                                        <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3">
+                                            <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
+                                        </div>
                                     </div>
                                 </div>
-                            </form>
-
-                            <?php if ($formId && $datos): ?>
-                                <h5>
-                                    Paciente: <?= $datos['paciente']['lname'] . ' ' . $datos['paciente']['lname2'] . ' ' . $datos['paciente']['fname'] . ' ' . $datos['paciente']['mname'] ?? '' ?>
-                                    (<?= $datos['paciente']['hc_number'] ?? '' ?>)</h5>
-                                <h6>Afiliación: <?= strtoupper($datos['paciente']['afiliacion'] ?? '-') ?></h6>
-                                <div class="table-responsive"
-                                     style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                    <table class="table table-bordered table-striped mt-4">
+                            </div>
+                            <div class="row">
+                                <div class="col-12 table-responsive">
+                                    <table class="table table-bordered align-middle mb-0">
                                         <thead class="table-dark">
                                         <tr>
-                                            <th>Tipo Prestación</th>
-                                            <th>Cédula Paciente</th>
-                                            <th>Período</th>
-                                            <th>Grupo-tipo</th>
-                                            <th>Tipo de procedimiento</th>
-                                            <th>Cédula del médico</th>
-                                            <th>Fecha de prestación</th>
-                                            <th>Código</th>
-                                            <th>Descripción</th>
-                                            <th>Anestesia</th>
-                                            <th>%Pago</th>
-                                            <th>Cantidad</th>
-                                            <th>Valor Unitario</th>
-                                            <th>Subtotal</th>
-                                            <th>%Bodega</th>
-                                            <th>%IVA</th>
-                                            <th>Total</th>
+                                            <th class="text-center">#</th>
+                                            <th class="text-center">Código</th>
+                                            <th class="text-center">Descripción</th>
+                                            <th class="text-center">Anestesia</th>
+                                            <th class="text-center">%Pago</th>
+                                            <th class="text-end">Cantidad</th>
+                                            <th class="text-end">Valor Unitario</th>
+                                            <th class="text-end">Subtotal</th>
+                                            <th class="text-center">%Bodega</th>
+                                            <th class="text-center">%IVA</th>
+                                            <th class="text-end">Total</th>
                                         </tr>
                                         </thead>
                                         <tbody>
                                         <?php
                                         $total = 0;
-                                        $periodo = $datos['formulario']['fecha_inicio'] ?? '';
-                                        $fecha = $periodo;
-                                        $cedulaMedico = $datos['paciente']['cedula_medico'] ?? '';
-                                        $cedulaPaciente = $datos['paciente']['ci'] ?? $datos['paciente']['hc_number'];
+                                        $n = 1;
 
+                                        // Procedimientos
                                         foreach ($datos['procedimientos'] as $index => $p) {
                                             $codigo = $p['proc_codigo'] ?? '';
                                             $descripcion = $p['proc_detalle'] ?? '';
-                                            $precio = (float)($p['proc_precio'] ?? 0);
+                                            $valorUnitario = (float)($p['proc_precio'] ?? 0);
                                             $cantidad = 1;
-
-                                            if ($index === 0 || stripos($descripcion, 'separado') !== false) {
-                                                $porcentaje = 1;
-                                            } else {
-                                                $porcentaje = 0.5;
-                                            }
-
-                                            if ($codigo === '67036') {
-                                                $porcentaje = 0.625;
-                                            }
-
-                                            $valorUnitario = $precio;
+                                            $porcentaje = ($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5;
+                                            if ($codigo === '67036') $porcentaje = 0.625;
                                             $subtotal = $valorUnitario * $cantidad * $porcentaje;
                                             $total += $subtotal;
 
-                                            $tipo = 'AMBULATORIO';
-                                            $grupo = 'HONORARIOS PROFESIONALES';
-                                            $tipoProc = 'CIRUJANO';
                                             $anestesia = 'NO';
                                             $porcentajePago = $porcentaje * 100;
                                             $bodega = 0;
@@ -273,41 +286,32 @@ if ($billingId) {
                                             $montoTotal = $subtotal;
 
                                             echo "<tr>
-                        <td>{$tipo}</td>
-                        <td>{$cedulaPaciente}</td>
-                        <td>{$periodo}</td>
-                        <td>{$grupo}</td>
-                        <td>{$tipoProc}</td>
-                        <td>{$cedulaMedico}</td>
-                        <td>{$fecha}</td>
-                        <td>{$codigo}</td>
-                        <td>{$descripcion}</td>
-                        <td>{$anestesia}</td>
-                        <td>{$porcentajePago}</td>
-                        <td>{$cantidad}</td>
-                        <td>" . number_format($valorUnitario, 2) . "</td>
-                        <td>" . number_format($subtotal, 2) . "</td>
-                        <td>{$bodega}</td>
-                        <td>{$iva}</td>
-                        <td>" . number_format($montoTotal, 2) . "</td>
-                    </tr>";
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                    </tr>";
+                                            $n++;
                                         }
 
+                                        // AYUDANTE
                                         if (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante'])) {
                                             foreach ($datos['procedimientos'] as $index => $p) {
                                                 $codigo = $p['proc_codigo'] ?? '';
                                                 $descripcion = $p['proc_detalle'] ?? '';
-                                                $precio = (float)($p['proc_precio'] ?? 0);
+                                                $valorUnitario = (float)($p['proc_precio'] ?? 0);
                                                 $cantidad = 1;
-
                                                 $porcentaje = ($index === 0) ? 0.2 : 0.1;
-                                                $valorUnitario = $precio;
                                                 $subtotal = $valorUnitario * $cantidad * $porcentaje;
                                                 $total += $subtotal;
 
-                                                $tipo = 'AMBULATORIO';
-                                                $grupo = 'HONORARIOS PROFESIONALES';
-                                                $tipoProc = 'AYUDANTE';
                                                 $anestesia = 'NO';
                                                 $porcentajePago = $porcentaje * 100;
                                                 $bodega = 0;
@@ -315,37 +319,30 @@ if ($billingId) {
                                                 $montoTotal = $subtotal;
 
                                                 echo "<tr>
-                            <td>{$tipo}</td>
-                            <td>{$cedulaPaciente}</td>
-                            <td>{$periodo}</td>
-                            <td>{$grupo}</td>
-                            <td>{$tipoProc}</td>
-                            <td>{$cedulaMedico}</td>
-                            <td>{$fecha}</td>
-                            <td>{$codigo}</td>
-                            <td>{$descripcion}</td>
-                            <td>{$anestesia}</td>
-                            <td>{$porcentajePago}</td>
-                            <td>{$cantidad}</td>
-                            <td>" . number_format($valorUnitario, 2) . "</td>
-                            <td>" . number_format($subtotal, 2) . "</td>
-                            <td>{$bodega}</td>
-                            <td>{$iva}</td>
-                            <td>" . number_format($montoTotal, 2) . "</td>
-                        </tr>";
+                                                            <td class='text-center'>{$n}</td>
+                                                            <td class='text-center'>{$codigo}</td>
+                                                            <td>{$descripcion}</td>
+                                                            <td class='text-center'>{$anestesia}</td>
+                                                            <td class='text-center'>{$porcentajePago}</td>
+                                                            <td class='text-end'>{$cantidad}</td>
+                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                            <td class='text-center'>{$bodega}</td>
+                                                            <td class='text-center'>{$iva}</td>
+                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                        </tr>";
+                                                $n++;
                                             }
                                         }
 
+                                        // ANESTESIA
                                         foreach ($datos['anestesia'] as $a) {
-                                            $codigo = $a['codigo'];
-                                            $descripcion = $a['nombre'];
-                                            $cantidad = (float)$a['tiempo'];
-                                            $valorUnitario = (float)$a['valor2'];
+                                            $codigo = $a['codigo'] ?? '';
+                                            $descripcion = $a['nombre'] ?? '';
+                                            $cantidad = (float)($a['tiempo'] ?? 0);
+                                            $valorUnitario = (float)($a['valor2'] ?? 0);
                                             $subtotal = $cantidad * $valorUnitario;
                                             $total += $subtotal;
-                                            $tipo = 'AMBULATORIO';
-                                            $grupo = 'HONORARIOS PROFESIONALES';
-                                            $tipoProc = 'ANESTESIOLOGO';
                                             $anestesia = 'SI';
                                             $porcentajePago = 100;
                                             $bodega = 0;
@@ -353,66 +350,19 @@ if ($billingId) {
                                             $montoTotal = $subtotal;
 
                                             echo "<tr>
-                        <td>{$tipo}</td>
-                        <td>{$cedulaPaciente}</td>
-                        <td>{$periodo}</td>
-                        <td>{$grupo}</td>
-                        <td>{$tipoProc}</td>
-                        <td>{$cedulaMedico}</td>
-                        <td>{$fecha}</td>
-                        <td>{$codigo}</td>
-                        <td>{$descripcion}</td>
-                        <td>{$anestesia}</td>
-                        <td>{$porcentajePago}</td>
-                        <td>{$cantidad}</td>
-                        <td>" . number_format($valorUnitario, 2) . "</td>
-                        <td>" . number_format($subtotal, 2) . "</td>
-                        <td>{$bodega}</td>
-                        <td>{$iva}</td>
-                        <td>" . number_format($montoTotal, 2) . "</td>
-                    </tr>";
-                                        }
-                                        if (!empty($datos['procedimientos'][0])) {
-                                            $codigoAnestesia = $datos['procedimientos'][0]['proc_codigo'] ?? '';
-                                            $precioReal = $codigoAnestesia ? $billingController->obtenerValorAnestesia($codigoAnestesia) : null;
-
-                                            $p = $datos['procedimientos'][0];
-                                            $codigo = $p['proc_codigo'] ?? '';
-                                            $descripcion = $p['proc_detalle'] ?? '';
-                                            $precio = (float)$p['proc_precio'] ?? 0;
-                                            $cantidad = 1;
-                                            $porcentaje = 1;
-                                            $valorUnitario = $precioReal ?? $precio;
-                                            $subtotal = $valorUnitario * $cantidad * $porcentaje;
-                                            $total += $subtotal;
-                                            $tipo = 'AMBULATORIO';
-                                            $grupo = 'HONORARIOS PROFESIONALES';
-                                            $tipoProc = 'ANESTESIOLOGO';
-                                            $anestesia = 'SI';
-                                            $porcentajePago = $porcentaje * 100;
-                                            $bodega = 0;
-                                            $iva = 0;
-                                            $montoTotal = $subtotal;
-
-                                            echo "<tr>
-                        <td>{$tipo}</td>
-                        <td>{$cedulaPaciente}</td>
-                        <td>{$periodo}</td>
-                        <td>{$grupo}</td>
-                        <td>{$tipoProc}</td>
-                        <td>{$cedulaMedico}</td>
-                        <td>{$fecha}</td>
-                        <td>{$codigo}</td>
-                        <td>{$descripcion}</td>
-                        <td>{$anestesia}</td>
-                        <td>{$porcentajePago}</td>
-                        <td>{$cantidad}</td>
-                        <td>" . number_format($valorUnitario, 2) . "</td>
-                        <td>" . number_format($subtotal, 2) . "</td>
-                        <td>{$bodega}</td>
-                        <td>{$iva}</td>
-                        <td>" . number_format($montoTotal, 2) . "</td>
-                    </tr>";
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                    </tr>";
+                                            $n++;
                                         }
 
                                         // FARMACIA e INSUMOS
@@ -438,133 +388,135 @@ if ($billingId) {
                                                 $iva = ($grupo === 'FARMACIA') ? 0 : 1;
                                                 $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
                                                 $total += $montoTotal;
-                                                $tipo = 'AMBULATORIO';
-                                                $grupoTipo = $grupo;
-                                                $tipoProc = '';
                                                 $anestesia = 'NO';
                                                 $porcentajePago = 100;
 
                                                 echo "<tr>
-                            <td>{$tipo}</td>
-                            <td>{$cedulaPaciente}</td>
-                            <td>{$periodo}</td>
-                            <td>{$grupoTipo}</td>
-                            <td>{$tipoProc}</td>
-                            <td>{$cedulaMedico}</td>
-                            <td>{$fecha}</td>
-                            <td>{$codigo}</td>
-                            <td>{$descripcion}</td>
-                            <td>{$anestesia}</td>
-                            <td>{$porcentajePago}</td>
-                            <td>{$cantidad}</td>
-                            <td>" . number_format($valorUnitario, 2) . "</td>
-                            <td>" . number_format($subtotal, 2) . "</td>
-                            <td>{$bodega}</td>
-                            <td>{$iva}</td>
-                            <td>" . number_format($montoTotal, 2) . "</td>
-                        </tr>";
+                                                            <td class='text-center'>{$n}</td>
+                                                            <td class='text-center'>{$codigo}</td>
+                                                            <td>{$descripcion}</td>
+                                                            <td class='text-center'>{$anestesia}</td>
+                                                            <td class='text-center'>{$porcentajePago}</td>
+                                                            <td class='text-end'>{$cantidad}</td>
+                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                            <td class='text-center'>{$bodega}</td>
+                                                            <td class='text-center'>{$iva}</td>
+                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                        </tr>";
+                                                $n++;
                                             }
                                         }
 
                                         // SERVICIOS INSTITUCIONALES (derechos)
                                         foreach ($datos['derechos'] as $servicio) {
-                                            $codigo = $servicio['codigo'];
-                                            $descripcion = $servicio['detalle'];
-                                            $cantidad = $servicio['cantidad'];
-                                            $valorUnitario = $servicio['precio_afiliacion'];
+                                            $codigo = $servicio['codigo'] ?? '';
+                                            $descripcion = $servicio['detalle'] ?? '';
+                                            $cantidad = $servicio['cantidad'] ?? 1;
+                                            $valorUnitario = $servicio['precio_afiliacion'] ?? 0;
                                             $subtotal = $valorUnitario * $cantidad;
                                             $bodega = 0;
                                             $iva = 0;
                                             $montoTotal = $subtotal;
                                             $total += $montoTotal;
+                                            $anestesia = 'NO';
+                                            $porcentajePago = 100;
 
                                             echo "<tr>
-                        <td>AMBULATORIO</td>
-                        <td>{$cedulaPaciente}</td>
-                        <td>{$periodo}</td>
-                        <td>SERVICIOS INSTITUCIONALES</td>
-                        <td></td>
-                        <td>{$cedulaMedico}</td>
-                        <td>{$fecha}</td>
-                        <td>{$codigo}</td>
-                        <td>{$descripcion}</td>
-                        <td>NO</td>
-                        <td>100</td>
-                        <td>{$cantidad}</td>
-                        <td>" . number_format($valorUnitario, 2) . "</td>
-                        <td>" . number_format($subtotal, 2) . "</td>
-                        <td>{$bodega}</td>
-                        <td>{$iva}</td>
-                        <td>" . number_format($montoTotal, 2) . "</td>
-                    </tr>";
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                    </tr>";
+                                            $n++;
                                         }
                                         ?>
-                                        <tr class="table-secondary fw-bold">
-                                            <td colspan="16" class="text-end">Total a Pagar</td>
-                                            <td class="text-end"><?= number_format($total, 2) ?></td>
-                                        </tr>
                                         </tbody>
                                     </table>
                                 </div>
-                                <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=IESS"
-                                   class="btn btn-success mt-3">
-                                    Descargar Excel
-                                </a>
-                                <a href="/views/informes/informe_iess.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
-                                   class="btn btn-secondary mt-3 ms-2">
-                                    ← Regresar al consolidado
-                                </a>
-                            <?php elseif ($billingId): ?>
-                                <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
-                                </table>
-                            <?php else: ?>
-                                <h4>Consolidado mensual de pacientes IESS</h4>
-                                <?php
-                                // $filtros ya está definido arriba
-                                $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
-                                $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
-                                $afiliacionesIESS = [
-                                    'contribuyente voluntario',
-                                    'conyuge',
-                                    'conyuge pensionista',
-                                    'seguro campesino',
-                                    'seguro campesino jubilado',
-                                    'seguro general',
-                                    'seguro general jubilado',
-                                    'seguro general por montepío',
-                                    'seguro general tiempo parcial'
-                                ];
-                                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-                                    $facturas,
-                                    $filtros,
-                                    $billingController,
-                                    $pacienteController,
-                                    $afiliacionesIESS
-                                );
 
-                                foreach ($consolidado as $mes => $pacientes) {
-                                    // Aplicar filtros de apellido usando helper
-                                    $apellidoFiltro = strtolower(trim($filtros['apellido']));
-                                    $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
+                                <!-- Bloque total estilo invoice -->
+                                <div class="row mt-3">
+                                    <div class="col-12 text-end">
+                                        <p class="lead mb-1">
+                                            <b>Total a pagar</b>
+                                            <span class="text-danger ms-2" style="font-size: 1.25em;">
+                                                $<?= number_format($total, 2) ?>
+                                            </span>
+                                        </p>
+                                        <!-- Si quieres puedes agregar detalles adicionales, como subtotal, descuentos, etc. aquí -->
+                                        <!-- <div>
+                                            <p>Sub - Total amount: $<?= number_format($subtotal, 2) ?></p>
+                                            <p>Tax (IVA 12%): $<?= number_format($iva, 2) ?></p>
+                                        </div> -->
+                                        <div class="total-payment mt-2">
+                                            <h4 class="fw-bold">
+                                                <span class="text-success"><b>Total :</b></span>
+                                                $<?= number_format($total, 2) ?>
+                                            </h4>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-4">
+                                    <div class="col-12 text-end">
+                                        <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=IESS"
+                                           class="btn btn-success btn-lg me-2">
+                                            <i class="fa fa-file-excel-o"></i> Descargar Excel
+                                        </a>
+                                        <a href="/views/informes/informe_iess.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
+                                           class="btn btn-outline-secondary btn-lg">
+                                            <i class="fa fa-arrow-left"></i> Regresar al consolidado
+                                        </a>
+                                    </div>
+                                </div>
+                                <?php elseif ($billingId): ?>
+                                    <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.
+                                    </div>
+                                    </table>
+                                <?php else: ?>
+                                    <h4>Consolidado mensual de pacientes IESS</h4>
+                                    <?php
+                                    // $filtros ya está definido arriba
+                                    $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
+                                    $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
+                                    $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                                        $facturas,
+                                        $filtros,
+                                        $billingController,
+                                        $pacienteController,
+                                        $afiliacionesIESS
+                                    );
 
-                                    // Calcular totales del mes
-                                    $totalMes = 0;
-                                    $totalPacientes = count($pacientes);
-                                    foreach ($pacientes as $p) {
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                    }
+                                    foreach ($consolidado as $mes => $pacientes) {
+                                        // Aplicar filtros de apellido usando helper
+                                        $apellidoFiltro = strtolower(trim($filtros['apellido']));
+                                        $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
 
-                                    $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                                    $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                                    echo "<div class='d-flex justify-content-between align-items-center mt-4'>
+                                        // Calcular totales del mes
+                                        $totalMes = 0;
+                                        $totalPacientes = count($pacientes);
+                                        foreach ($pacientes as $p) {
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                                        }
+
+                                        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                        $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                        echo "<div class='d-flex justify-content-between align-items-center mt-4'>
                                             <h5>Mes: {$mesFormateado}</h5>
                                             <div>
                                                 🧮 Total pacientes: {$totalPacientes} &nbsp;&nbsp; 💵 Monto total: $" . number_format($totalMes, 2) . "
                                             </div>
                                           </div>";
-                                    echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
-                                    echo "
+                                        echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
+                                        echo "
 <table class='table table-bordered table-striped'>
     <thead class='table-dark'>
     <tr>
@@ -575,68 +527,67 @@ if ($billingId) {
         <th>Fecha Ingreso</th>
         <th>Fecha Egreso</th>
         <th>CIE10</th>
-        <th>Descripción</th>
+        <th>Médico</th>
         <th># Hist. C.</th>
         <th>Edad</th>
         <th>Ge</th>
-        <th>Items</th>
         <th>Monto Sol.</th>
         <th>Cod. Derivacion</th>
         <th>Acción</th>
     </tr>
     </thead>
     <tbody>";
-                                    $n = 1;
-                                    foreach ($pacientes as $p) {
-                                        $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
-                                        $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
-                                        $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($p['id']);
-                                        $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                                        $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
-                                        $referido = $derivacion['referido'] ?? '';
-                                        $diagnostico = $derivacion['diagnostico'] ?? '';
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
-                                        $n++;
-                                    }
-                                    echo "
+                                        $n = 1;
+                                        foreach ($pacientes as $p) {
+                                            $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
+                                            $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
+                                            $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($p['id']);
+                                            $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
+                                            $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                            $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+                                            $referido = $derivacion['referido'] ?? '';
+                                            $diagnostico = $derivacion['diagnostico'] ?? '';
+                                            echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
+                                            $n++;
+                                        }
+                                        echo "
     </tbody>
 </table>
 ";
-                                    echo "</div>";
-                                }
-                                ?>
-                                <a href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
-                                   class="btn btn-primary mt-3">
-                                    Descargar Consolidado
-                                </a>
-                            <?php endif; ?>
+                                        echo "</div>";
+                                    }
+                                    ?>
+                                    <a href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                       class="btn btn-primary mt-3">
+                                        Descargar Consolidado
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <!-- /.content -->
+
             </div>
-            <!-- /.content -->
-
         </div>
+        <!-- /.content-wrapper -->
     </div>
-    <!-- /.content-wrapper -->
-</div>
-<?php include __DIR__ . '/../components/footer.php'; ?>
+    <?php include __DIR__ . '/../components/footer.php'; ?>
 
-<!-- Vendor JS -->
-<script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
-<script src="/public/js/pages/chat-popup.js"></script>
-<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+    <!-- Vendor JS -->
+    <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
+    <script src="/public/js/pages/chat-popup.js"></script>
+    <script src="/public/assets/icons/feather-icons/feather.min.js"></script>
+    <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
 
 
-<!-- Doclinic App -->
-<script src="/public/js/jquery.smartmenus.js"></script>
-<script src="/public/js/menus.js"></script>
-<script src="/public/js/template.js"></script>
+    <!-- Doclinic App -->
+    <script src="/public/js/jquery.smartmenus.js"></script>
+    <script src="/public/js/menus.js"></script>
+    <script src="/public/js/template.js"></script>
 </body>
 </html>
