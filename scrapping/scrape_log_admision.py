@@ -42,37 +42,58 @@ def iniciar_sesion_y_extraer_log():
         print("❌ Fallo el login")
         return
 
-    # print("✅ Login exitoso")
-
-    # 3. Obtener la página de log
-    log_page = session.get(LOG_URL, headers=headers)
-    soup = BeautifulSoup(log_page.text, 'html.parser')
-
-    tabla = soup.find('table', class_='detail-view')
-    if not tabla:
-        print("❌ No se encontró la tabla de detalle.")
+    # Paso 1: Obtener el número de historia clínica (hc_number) desde los argumentos
+    hc_number = sys.argv[2] if len(sys.argv) > 2 else None
+    if not hc_number:
+        print("❌ No se proporcionó hc_number como segundo argumento.")
         return
 
-    filas = tabla.find_all('tr')
-    campos = {}
+    # Paso 2: Buscar el ID interno del paciente usando el número de historia clínica
+    buscar_url = f"http://cive.ddns.net:8085/documentacion/doc-documento/paciente-list?q={hc_number}"
+    r = session.get(buscar_url, headers=headers)
+    match = re.search(r'"id":"(\d+)"', r.text)
+    if not match:
+        print("❌ No se pudo obtener el ID del paciente.")
+        return
+    paciente_id = match.group(1)
 
-    for fila in filas:
-        th = fila.find('th').text.strip()
-        td = fila.find('td').text.strip()
-        campos[th] = td
+    # Paso 3: Buscar el enlace de modificación desde el form_id y el id del paciente
+    form_id = sys.argv[1]
+    paciente_view_url = f"http://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
+    r = session.get(paciente_view_url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
+    link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
+    if not link_tag:
+        print("❌ No se encontró el enlace de actualización.")
+        return
+    href = link_tag["href"]
+    update_url = "http://cive.ddns.net:8085" + href.replace("&amp;", "&")
 
-    codigo_derivacion = campos.get('Codigo', '')
-    identificacion = campos.get('Identificacion Afiliado', '')
-    fecha_registro = campos.get('Fecha Registro', '')
-    fecha_vigencia = campos.get('Fecha Vigencia', '')
+    # Paso 4: Entrar al formulario de modificación y extraer los datos
+    r = session.get(update_url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    resultado = [{
-        "codigo_derivacion": codigo_derivacion,
-        "identificacion": identificacion,
+    codigo = soup.find("input", {"id": "docsolicitudpaciente-cod_derivacion"})["value"].strip()
+    fecha_registro = soup.find("input", {"id": "docsolicitudpaciente-fecha_registro"})["value"].strip()
+    fecha_vigencia = soup.find("input", {"id": "docsolicitudpaciente-fecha_vigencia"})["value"].strip()
+
+    referido_option = soup.select_one("select#docsolicitudpaciente-referido_id option[selected]")
+    # print("🔍 HTML Referido Option:", referido_option)
+    referido_text = ""
+    if referido_option:
+        referido_text = referido_option.get_text(strip=True)
+
+    diagnostico_options = soup.select(
+        "select[id^=docsolicitudpaciente-presuntivosenfermedadesexterna-][id$=-idenfermedades] option[selected]")
+    diagnosticos = [opt.get_text(strip=True) for opt in diagnostico_options if opt]
+    return [{
+        "codigo_derivacion": codigo,
         "fecha_registro": fecha_registro,
-        "fecha_vigencia": fecha_vigencia
+        "fecha_vigencia": fecha_vigencia,
+        "identificacion": hc_number,
+        "diagnostico": "; ".join(diagnosticos),
+        "referido": referido_text
     }]
-    return resultado
 
 
 def enviar_a_api(data):
@@ -99,7 +120,11 @@ if __name__ == "__main__":
                 codigo = r['codigo_derivacion'].strip().split('SECUENCIAL')[0]  # Limpiar sufijo
                 registro = r['fecha_registro'].strip()
                 vigencia = r['fecha_vigencia'].strip()
+                referido = r['referido'].strip()
+                diagnostico = r['diagnostico'].strip()
                 print(f"📌 Código Derivación: {codigo}")
+                print(f"📌 Medico: {referido}")
+                print(f"📌 Diagnostico: {diagnostico}")
                 print(f"Fecha de registro: {registro}")
                 print(f"Fecha de Vigencia: {vigencia}")
                 form_id = sys.argv[1] if len(sys.argv) > 1 else None
@@ -109,36 +134,10 @@ if __name__ == "__main__":
                     "hc_number": hc_number,
                     "codigo_derivacion": codigo,
                     "fecha_registro": registro,
-                    "fecha_vigencia": vigencia
+                    "fecha_vigencia": vigencia,
+                    "referido": referido,
+                    "diagnostico": diagnostico
                 }
                 print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))
                 enviar_a_api(data)
                 break
-            # print(f"📍 Acción: {r['ip']}")
-            # print(f"🧭 Fecha y Hora: {r['navegador']}")
-            # if r.get('paciente'):
-            #     print(f"👤 Paciente: {r['paciente']}")
-            # if r.get('identificacion'):
-            #     print(f"🆔 Cédula: {r['identificacion']}")
-            # if r.get('fecha_agenda'):
-            #     print(f"📆 Fecha Agenda: {r['fecha_agenda']}")
-            # if r.get('procedimiento'):
-            #     print(f"🩺 Procedimiento: {r['procedimiento']}")
-            # if r.get('formato'):
-            #     print(f"🧾 Formato: {r['formato']}")
-            # if r.get('cie10'):
-            #     print(f"💬 CIE10: {r['cie10']}")
-            # if r.get('nota_evolucion'):
-            #     print(f"🧠 Nota Evolución: {r['nota_evolucion']}")
-            # print(f"📄 Observaciones:\n{r['observaciones']}")
-            # print("=" * 80)
-
-# La siguiente sección que imprime solo el código de derivación ha sido comentada/eliminada para evitar duplicados y salida sin formato.
-# if len(sys.argv) > 1:
-#     LOG_URL = f"http://cive.ddns.net:8085/admin/log-sistema/log-admision?id={sys.argv[1]}"
-#     resultados = iniciar_sesion_y_extraer_log()
-#     if resultados:
-#         for r in resultados:
-#             if r['codigo_derivacion']:
-#                 print(r['codigo_derivacion'])  # solo imprime el código
-#                 break

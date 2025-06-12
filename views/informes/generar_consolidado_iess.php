@@ -133,7 +133,10 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
         ];
         $accionesReglas = $reglaController->evaluar($contexto);
 
-        $codigoDerivacion = $billingController->obtenerDerivacionPorFormId($formId);
+        $derivacion = $billingController->obtenerDerivacionPorFormId($formId);
+        $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+        $referido = $derivacion['referido'] ?? '';
+        $cie10 = $soloCIE10 = implode('; ', array_map(fn($d) => explode(' -', trim($d))[0], explode(';', $derivacion['diagnostico'])));
         $abreviaturaAfiliacion = $billingController->abreviarAfiliacion($pacienteInfo['afiliacion'] ?? '');
 
         $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
@@ -164,7 +167,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                         'PRO/INTERV',      // J
                         $codigo,           // K
                         $descripcion,      // L
-                        $diagnosticoPrincipal, // M
+                        $cie10, // M
                         '', '',            // N, O
                         '1',               // P
                         number_format($valorUnitario, 2), // Q (unitario sin %)
@@ -225,7 +228,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 'PRO/INTERV',        // J: Tipo prestación
                 $codigo, // K: Código procedimiento
                 $descripcion,// L: Descripción procedimiento
-                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 '1',                 // P: Cantidad
@@ -283,7 +286,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                     'PRO/INTERV',        // J: Tipo prestación
                     $p['proc_codigo'] ?? '', // K: Código procedimiento
                     $p['proc_detalle'] ?? '',// L: Descripción procedimiento
-                    $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                    $cie10,   // M: Diagnóstico principal (CIE10)
                     '',                  // N: Diagnóstico secundario
                     '',                  // O: Diagnóstico 3
                     '1',                 // P: Cantidad
@@ -352,7 +355,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 'PRO/INTERV',        // J: Tipo prestación
                 $p['proc_codigo'] ?? '', // K: Código procedimiento
                 $p['proc_detalle'] ?? '',// L: Descripción procedimiento
-                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 '1',                 // P: Cantidad
@@ -410,7 +413,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 'PRO/INTERV',        // J: Tipo prestación
                 $codigo,             // K: Código procedimiento (anestesia)
                 $descripcion,        // L: Descripción procedimiento (anestesia)
-                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 $cantidad,           // P: Cantidad
@@ -499,7 +502,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                     'PRO/INTERV',              // J: Tipo prestación (FARMACIA/INSUMOS)
                     $codigo,             // K: Código insumo/fármaco
                     $descripcion,        // L: Descripción insumo/fármaco
-                    $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                    $cie10,   // M: Diagnóstico principal (CIE10)
                     '',                  // N: Diagnóstico secundario
                     '',                  // O: Diagnóstico 3
                     $cantidad,           // P: Cantidad
@@ -563,7 +566,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 'PRO/INTERV', // J: Tipo prestación
                 $codigo,             // K: Código servicio
                 $descripcion,        // L: Descripción servicio
-                $diagnosticoPrincipal,   // M: Diagnóstico principal (CIE10)
+                $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 $cantidad,           // P: Cantidad

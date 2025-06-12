@@ -100,7 +100,7 @@ class InformesHelper
         </tr>";
     }
 
-    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $grupo = '')
+    public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $grupo = '')
     {
         $prefijo = $grupo ? strtoupper($grupo) . '-' : '';
         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
@@ -120,8 +120,8 @@ class InformesHelper
             <td>{$nombre}</td>
             <td>" . ($fecha_ingreso ? date('d/m/Y', strtotime($fecha_ingreso)) : '--') . "</td>
             <td>" . ($fecha_egreso ? date('d/m/Y', strtotime($fecha_egreso)) : '--') . "</td>
-            <td>{$cie10}</td>
-            <td>{$desc_diag}</td>
+            <td>" . htmlspecialchars(self::extraerCie10($diagnostico)) . "</td>
+            <td>{$referido}</td>
             <td>{$hc_number}</td>
             <td>{$edad}</td>
             <td>{$genero}</td>
@@ -132,6 +132,7 @@ class InformesHelper
                 ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"
                 : "<form method='post' style='display:inline;'>
                           <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($p['form_id']) . "'>
+                            <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($hc_number) . "'>
                           <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
                        </form>"
             ) .
@@ -213,5 +214,17 @@ class InformesHelper
 
             return (!$apellidoFiltro || str_contains($apellidoCompleto, $apellidoFiltro));
         });
+    }
+
+    public static function extraerCie10(string $diagnostico): string
+    {
+        $cie10s = [];
+        $partes = explode(';', $diagnostico);
+        foreach ($partes as $parte) {
+            if (preg_match('/^\s*([A-Z]\d{2,3})\s*-/', trim($parte), $matches)) {
+                $cie10s[] = $matches[1];
+            }
+        }
+        return implode(', ', $cie10s);
     }
 }
