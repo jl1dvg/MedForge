@@ -107,10 +107,7 @@ class InformesHelper
         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
         $fecha_ingreso = $datosPaciente['formulario']['fecha_inicio'] ?? ($p['fecha'] ?? '');
         $fecha_egreso = $fecha_ingreso;
-        $cie10 = $datosPaciente['formulario']['diagnostico1_codigo'] ?? '--';
-        $desc_diag = $datosPaciente['formulario']['diagnostico1_nombre'] ?? '--';
         $hc_number = $p['hc_number'];
-        $items = 75;
         $monto_sol = number_format($p['total'], 2);
 
         return "<tr>
@@ -125,7 +122,6 @@ class InformesHelper
             <td>{$hc_number}</td>
             <td>{$edad}</td>
             <td>{$genero}</td>
-            <td>{$items}</td>
             <td>{$monto_sol}</td>
             <td>" .
             (!empty($codigoDerivacion)
