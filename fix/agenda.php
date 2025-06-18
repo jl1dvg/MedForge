@@ -233,7 +233,7 @@ foreach ($fechas as $fecha) {
     $resultado = array_map('quitarCamposNulos', $resultado);
 
     // Enviar datos a la API que guarda en la base de datos
-    $apiUrl = 'https://cive.consulmed.me/api/proyecciones/guardar.php'; // Ajusta a tu URL real
+    $apiUrl = 'https://asistentecive.consulmed.me/api/proyecciones/guardar.php'; // Ajusta a tu URL real
     error_log("📦 Enviando payload con " . count($resultado) . " registros: " . json_encode($resultado));
     $payload = json_encode($resultado);
 
