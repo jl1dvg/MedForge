@@ -55,7 +55,14 @@ $accionesReglas = $reglaController->evaluar($contexto);
 $derivacion = $billingController->obtenerDerivacionPorFormId($formId);
 $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
 $referido = $derivacion['referido'] ?? '';
-$cie10 = $soloCIE10 = implode('; ', array_map(fn($d) => explode(' -', trim($d))[0], explode(';', $derivacion['diagnostico'])));
+$diagnosticoStr = $derivacion['diagnostico'] ?? '';
+if ($diagnosticoStr) {
+    // Toma solo el primer diagnóstico y solo el CIE10 (antes del primer espacio o guion)
+    $primerDiagnostico = explode(';', $diagnosticoStr)[0];
+    $cie10 = trim(explode(' ', explode('-', $primerDiagnostico)[0])[0]);
+} else {
+    $cie10 = '';
+}
 $abreviaturaAfiliacion = $billingController->abreviarAfiliacion($pacienteInfo['afiliacion'] ?? '');
 
 $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
@@ -155,7 +162,7 @@ foreach ($data['procedimientos'] as $index => $p) {
                 $cie10, // M
                 '', '',            // N, O
                 '1',               // P
-                number_format($valorUnitario, 2), // Q (unitario sin %)
+                number_format($total, 2), // Q (unitario sin %)
                 '',                // R
                 'T',               // S
                 $pacienteInfo['hc_number'] ?? '', // T
@@ -479,7 +486,7 @@ foreach ($fuenteDatos as $bloque) {
         $bodega = 1;
         $abreviatura = ($grupo === 'FARMACIA') ? 'M' : 'I';
         $iva = ($grupo === 'FARMACIA') ? 0 : 1;
-        $total = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+        $total = $subtotal;     // + ($iva ? $subtotal * 0.12 : 0);
 
         $colVals = [
             '0000000135',        // A: Número de protocolo/referencia
@@ -492,7 +499,7 @@ foreach ($fuenteDatos as $bloque) {
             $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
             'PRO/INTERV',              // J: Tipo prestación (FARMACIA/INSUMOS)
-            $codigo,             // K: Código insumo/fármaco
+            ltrim($codigo, '0'),   // K: Código insumo/fármaco SIN ceros a la izquierda
             $descripcion,        // L: Descripción insumo/fármaco
             $cie10,   // M: Diagnóstico principal (CIE10)
             '',                  // N: Diagnóstico secundario

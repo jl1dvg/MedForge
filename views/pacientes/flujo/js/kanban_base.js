@@ -168,6 +168,12 @@ function renderKanban() {
     const promedioPorEstado = {};
 
     filtered.forEach(visita => {
+        console.log('Visita:', visita); // ← Aquí lo agregas
+        // 🚩 NUEVO: Si no tiene trayectos, ignora la visita y no pinta tarjeta
+        if (!Array.isArray(visita.trayectos) || visita.trayectos.length === 0) {
+            return;
+        }
+
         // Obtén estado global (el más avanzado, el primero, o el que tú decidas)
         let estadoGlobal = '';
         let trayectoPrincipal = visita.trayectos && visita.trayectos[0];

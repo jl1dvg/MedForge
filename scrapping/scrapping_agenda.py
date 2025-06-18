@@ -70,10 +70,10 @@ def scrap_fecha(fecha):
                 "estado": celdas[15],
                 "fecha": fecha,
                 "fechaCaducidad": None if celdas[16] == '(no definido)' else celdas[16],
-                "fname": partes[0] if len(partes) > 0 else '',
-                "mname": partes[1] if len(partes) > 1 else '',
-                "lname": partes[2] if len(partes) > 2 else '',
-                "lname2": " ".join(partes[3:]) if len(partes) > 3 else '',
+                "lname": partes[0] if len(partes) > 0 else '',
+                "lname2": partes[1] if len(partes) > 1 else '',
+                "fname": partes[2] if len(partes) > 2 else '',
+                "mname": " ".join(partes[3:]) if len(partes) > 3 else '',
                 "categoria": categoria,
             })
     return resultados

@@ -4,6 +4,12 @@ require_once __DIR__ . '/../../bootstrap.php';
 /** @var PDO $pdo */
 global $pdo;
 
+function truncar($valor, $decimales = 2)
+{
+    $factor = pow(10, $decimales);
+    return floor($valor * $factor) / $factor;
+}
+
 use Controllers\ReglaController;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -106,11 +112,11 @@ foreach ($data['procedimientos'] as $index => $p) {
         // Primera fila (normal)
         $valorPorcentaje = $precio * $porcentaje;
         $cantidad = 1;
-        $valorUnitario = $precio;
-        $subtotal = $valorUnitario * $cantidad * $porcentaje;
+        $valorUnitario = truncar($precio, 2);
+        $subtotal = truncar($valorUnitario * $cantidad * $porcentaje, 2);
         $bodega = 0;
         $iva = 0;
-        $total = $subtotal;
+        $total = truncar($subtotal, 2);
         $porcentajePago = $porcentaje * 100;
 
         $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -164,11 +170,11 @@ foreach ($data['procedimientos'] as $index => $p) {
 
     $valorPorcentaje = $precio * $porcentaje;
     $cantidad = 1;
-    $valorUnitario = $precio;
-    $subtotal = $valorUnitario * $cantidad * $porcentaje;
+    $valorUnitario = truncar($precio, 2);
+    $subtotal = truncar($valorUnitario * $cantidad * $porcentaje, 2);
     $bodega = 0;
     $iva = 0;
-    $total = $subtotal;
+    $total = truncar($subtotal, 2);
     $porcentajePago = $porcentaje * 100;
 
     $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -203,11 +209,11 @@ if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocolo
         $codigo = $p['proc_codigo'] ?? '';
         $descripcion = $p['proc_detalle'] ?? '';
         $cantidad = 1;
-        $valorUnitario = $precio;
-        $subtotal = $valorUnitario * $cantidad * $porcentaje;
+        $valorUnitario = truncar($precio, 2);
+        $subtotal = truncar($valorUnitario * $cantidad * $porcentaje, 2);
         $bodega = 0;
         $iva = 0;
-        $total = $subtotal;
+        $total = truncar($subtotal, 2);
         $porcentajePago = $porcentaje * 100;
 
         $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -247,11 +253,11 @@ if (!empty($data['procedimientos'][0])) {
     $codigo = $p['proc_codigo'] ?? '';
     $descripcion = $p['proc_detalle'] ?? '';
     $cantidad = 1;
-    $valorUnitario = $precioReal ?? $precio;
-    $subtotal = $valorUnitario * $cantidad * $porcentaje;
+    $valorUnitario = truncar($precioReal ?? $precio, 2);
+    $subtotal = truncar($valorUnitario * $cantidad * $porcentaje, 2);
     $bodega = 0;
     $iva = 0;
-    $total = $subtotal;
+    $total = truncar($subtotal, 2);
     $porcentajePago = $porcentaje * 100;
 
     $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -277,16 +283,24 @@ if (!empty($data['procedimientos'][0])) {
     }
     $row++;
 }
-// === Anestesia (agrupada como rubro facturable)
+// Obtener el primer procedimiento principal fuera del bucle
+$p = $data['procedimientos'][0] ?? [];
+
 foreach ($data['anestesia'] as $a) {
-    $codigo = $a['codigo'];
-    $descripcion = $a['nombre'];
+    // Si el código de anestesia es 999999, usa el código y descripción del procedimiento principal
+    if ($a['codigo'] === '999999') {
+        $codigo = $p['proc_codigo'] ?? '';
+        $descripcion = $p['proc_detalle'] ?? '';
+    } else {
+        $codigo = $a['codigo'];
+        $descripcion = $a['nombre'];
+    }
     $cantidad = (float)$a['tiempo'];
-    $valorUnitario = (float)$a['valor2'];
-    $subtotal = $cantidad * $valorUnitario;
+    $valorUnitario = truncar((float)$a['valor2'], 2);
+    $subtotal = truncar($cantidad * $valorUnitario, 2);
     $bodega = 0;
     $iva = 0;
-    $total = $subtotal;
+    $total = truncar($subtotal, 2);
     $porcentajePago = 100;
 
     $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -333,20 +347,37 @@ foreach ($fuenteDatos as $bloque) {
         if ($excluir) {
             continue;
         }
-        $codigo = $item['codigo'] ?? '';
-        //$descripcion = $item['nombre'] ?? $item['detalle'] ?? ''; // ya definida arriba
-        if (isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2'])) {
-            // Este es oxígeno
+        // Detectar si es oxígeno
+        $esOxigeno = isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2']);
+        if ($esOxigeno) {
+            $codigo = '1442'; // Código fijo para oxígeno
             $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
-            $valorUnitario = (float)$item['valor2'];
+            $valorUnitario = truncar((float)$item['valor2'], 2);
+            $valorConGestion = $valorUnitario; // Para oxígeno, sin gestión extra
+            $subtotal = truncar($valorUnitario * $cantidad, 2);
+            $total = $subtotal;
         } else {
+            $codigo = $item['codigo'] ?? '';
             $cantidad = $item['cantidad'] ?? 1;
-            $valorUnitario = $item['precio'] ?? 0;
+            $valorConGestion = $item['precio'] ?? 0;
+            // Si es farmacia, desglosar el 10%
+            if ($grupo === 'FARMACIA') {
+                // Valor base sin gestión
+                $valorUnitario = truncar($valorConGestion / 1.10, 2);
+                $subtotal = truncar($valorUnitario * $cantidad, 2);
+                $total = truncar($valorConGestion * $cantidad, 2); // Solo el valor original unitario con gestión
+            } else {
+                // INSUMOS
+                $valorUnitario = truncar($valorConGestion, 2);
+                $subtotal = truncar($valorUnitario * $cantidad, 2);
+                $total = truncar($valorConGestion * 1.12, 2) * $cantidad;
+                $total = truncar($total, 2);
+            }
         }
-        $subtotal = $valorUnitario * $cantidad;
+        $codigo = ltrim($codigo, '0'); // Quitar ceros a la izquierda
         $bodega = 1;
         $iva = ($grupo === 'FARMACIA') ? 0 : 1;
-        $total = $subtotal + ($subtotal * 0.1); // se puede ajustar si hay otro % aplicado
+        // $total ya calculado arriba
         $porcentajePago = 100;
 
         $sheet->setCellValue("A{$row}", 'AMBULATORIO');
@@ -375,15 +406,31 @@ foreach ($fuenteDatos as $bloque) {
 }
 
 // === Servicios institucionales y equipos especializados para ISSPOL
+// Lista de códigos que requieren descuento del 2%
+$codigos_descuento_2 = [
+    '394233', '394244', '394255', '394266', '394277', '394288', '394299', '394301',
+    '394312', '394323', '394333', '394344', '395281'
+];
+
 foreach ($data['derechos'] as $servicio) {
     $codigo = $servicio['codigo'];
     $descripcion = $servicio['detalle'];
     $cantidad = $servicio['cantidad'];
-    $valorUnitario = $servicio['precio_afiliacion'];
-    $subtotal = $valorUnitario * $cantidad;
+    $valorUnitarioReal = $servicio['precio_afiliacion']; // valor sin descuento
+    // Por defecto
+    $valorUnitario = truncar($valorUnitarioReal, 2);
+    $subtotal = truncar($valorUnitario * $cantidad, 2);
+    $total = $subtotal;
+
+    // Descuento 2% para ciertos códigos SOLO en unitario y subtotal
+    if (in_array($codigo, $codigos_descuento_2)) {
+        $valorUnitario = truncar($valorUnitarioReal / 1.02, 2);
+        $subtotal = truncar($valorUnitario * $cantidad, 2);
+        $total = truncar($valorUnitarioReal * $cantidad, 2); // total real sin descuento
+    }
+
     $bodega = 0;
     $iva = 0;
-    $total = $subtotal;
     $porcentajePago = 100;
 
     $sheet->setCellValue("A{$row}", 'AMBULATORIO');
