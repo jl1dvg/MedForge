@@ -26,6 +26,10 @@ foreach ($formIds as $fid) {
     }
 }
 
+$fechasGlobales = $billingController->obtenerFechasIngresoYEgreso($formIds);
+$fechaIngresoFormateadaGlobal = $fechasGlobales['ingreso'] ? date('d/m/Y', strtotime($fechasGlobales['ingreso'])) : '';
+$fechaEgresoFormateadaGlobal = $fechasGlobales['egreso'] ? date('d/m/Y', strtotime($fechasGlobales['egreso'])) : '';
+
 if (empty($datosFacturacionLote)) {
     die("No se encontró ninguna prefactura válida.");
 }
@@ -94,10 +98,7 @@ $cols = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
     'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
 ];
-// Inicializar variables globales de fecha
-$fechaIngresoFormateadaGlobal = '';
-$fechaEgresoFormateadaGlobal = '';
-$fechasGlobales = [];
+
 foreach ($datosFacturacionLote as $bloque) {
     $formId = $bloque['form_id'];
     $data = $bloque['data'];
@@ -113,19 +114,7 @@ foreach ($datosFacturacionLote as $bloque) {
     $fecha = $fechaISO ? date('d-m-Y', strtotime($fechaISO)) : '';
     $cedula = $pacienteInfo['cedula'] ?? '';
     $periodo = date('Y-m', strtotime($fechaISO));
-    $fechasCrudas = [
-        $data['formateado']['fecha'] ?? null,
-        $formDetails['fecha_inicio'] ?? null,
-        $formDetails['fecha_fin'] ?? null,
-        $visita['fecha'] ?? null,
-    ];
 
-    $fechasNormalizadas = array_map(function ($f) {
-        return (!empty($f) && $f !== '0000-00-00') ? $f : null;
-    }, $fechasCrudas);
-
-    $fechasValidas = array_filter($fechasNormalizadas);
-    $fechasGlobales = array_merge($fechasGlobales, $fechasValidas); // ✅ Guardamos todas las fechas válidas
     // Agregar valores de protocoloExtendido para uso en el Excel
     $formDetails['diagnosticos'] = [];
 
@@ -222,8 +211,8 @@ foreach ($datosFacturacionLote as $bloque) {
                     '0',               // AE
                     number_format($total, 2), // AF (total 62.5%)
                     '',                // AG
-                    date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH
-                    date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI
+                    $fechaIngresoFormateadaGlobal,
+                    $fechaEgresoFormateadaGlobal, // AH, AI
                     '',                // AJ
                     'NO',              // AK
                     '',                // AL
@@ -343,8 +332,8 @@ foreach ($datosFacturacionLote as $bloque) {
                 '0',                 // AE: Descuento
                 number_format($total, 2), // AF: Total **con porcentaje**
                 '',                  // AG: Vacío
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                $fechaIngresoFormateadaGlobal,
+                $fechaEgresoFormateadaGlobal,
                 '',                  // AJ: Vacío
                 'NO',                // AK: Emergencia
                 '',                  // AL: Vacío
@@ -412,8 +401,8 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AE: Descuento
             number_format($total, 2), // AF: Total
             '',                  // AG: Vacío
-            date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
-            date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+            $fechaIngresoFormateadaGlobal,
+            $fechaEgresoFormateadaGlobal,
             '',                  // AJ: Vacío
             'NO',                // AK: Emergencia
             '',                  // AL: Vacío
@@ -469,8 +458,8 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AE: Descuento
             number_format($total, 2), // AF: Total
             '',                  // AG: Vacío
-            date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
-            date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+            $fechaIngresoFormateadaGlobal,
+            $fechaEgresoFormateadaGlobal,
             '',                  // AJ: Vacío
             'NO',                // AK: Emergencia
             '',                  // AL: Vacío
@@ -558,8 +547,8 @@ foreach ($datosFacturacionLote as $bloque) {
                 '0',                 // AE: Descuento
                 number_format($total, 2), // AF: Total (con IVA si aplica)
                 '',                  // AG: Vacío
-                date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
-                date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+                $fechaIngresoFormateadaGlobal,
+                $fechaEgresoFormateadaGlobal,
                 '',                  // AJ: Vacío
                 'NO',                // AK: Emergencia
                 '',                  // AL: Vacío
@@ -620,8 +609,8 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AE: Descuento
             number_format($total, 2), // AF: Total
             '',                  // AG: Vacío
-            date('d/m/Y', strtotime($formDetails['fecha_inicio'] ?? '')), // AH: Fecha ingreso
-            date('d/m/Y', strtotime($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? '')), // AI: Fecha egreso
+            $fechaIngresoFormateadaGlobal,
+            $fechaEgresoFormateadaGlobal,
             '',                  // AJ: Vacío
             'NO',                // AK: Emergencia
             '',                  // AL: Vacío
@@ -638,12 +627,6 @@ foreach ($datosFacturacionLote as $bloque) {
         $row++;
     }
 }
-// Ordenar y calcular fechas globales ANTES de usarlas en las filas
-usort($fechasGlobales, fn($a, $b) => strtotime($a) <=> strtotime($b));
-$fechaIngresoGlobal = $fechasGlobales[0] ?? null;
-$fechaEgresoGlobal = end($fechasGlobales) ?: null;
-$fechaIngresoFormateadaGlobal = $fechaIngresoGlobal ? date('d/m/Y', strtotime($fechaIngresoGlobal)) : '';
-$fechaEgresoFormateadaGlobal = $fechaEgresoGlobal ? date('d/m/Y', strtotime($fechaEgresoGlobal)) : '';
 
 // Reemplaza por esto:
 $GLOBALS['spreadsheet'] = $spreadsheet;

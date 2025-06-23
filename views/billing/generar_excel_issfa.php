@@ -45,18 +45,43 @@ $formDetails = $data['formulario'] ?? [];
 $edadCalculada = $formDetails['edad'] ?? '';
 $formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? '';
 $fechaISO = $formDetails['fecha_inicio'] ?? '';
+$cirujano = $data['protocoloExtendido']['cirujano_1'] ?? '';
 $fecha = $fechaISO ? date('d-m-Y', strtotime($fechaISO)) : '';
 $cedula = $pacienteInfo['cedula'] ?? '';
 $periodo = date('Y-m', strtotime($fechaISO));
 
+// Preparar contexto para evaluación
+$contexto = [
+    'afiliacion' => $pacienteInfo['afiliacion'] ?? '',
+    'procedimiento' => $data['procedimientos'][0]['proc_detalle'] ?? '',
+    'edad' => isset($pacienteInfo['fecha_nacimiento']) ? date_diff(date_create($pacienteInfo['fecha_nacimiento']), date_create($fechaISO))->y : null,
+];
+
+
 // Agregar valores de protocoloExtendido para uso en el Excel
 $formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? '';
-$formDetails['diagnosticos'] = json_decode($data['protocoloExtendido']['diagnosticos'], true) ?? [];
-$formDetails['diagnostico1'] = $formDetails['diagnosticos'][0]['idDiagnostico'] ?? '';
-$formDetails['diagnostico2'] = $formDetails['diagnosticos'][1]['idDiagnostico'] ?? '';
 
-$diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
-$diagnosticoSecundario = $formDetails['diagnostico2'] ?? '';
+// Obtener diagnóstico principal y secundario\
+$derivacion = $GLOBALS['controller']->obtenerDerivacionPorFormId($formId);
+$codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+$referido = $derivacion['referido'] ?? '';
+$diagnosticoStr = $derivacion['diagnostico'] ?? '';
+$cie101 = '';
+$cie102 = '';
+
+if (!empty($diagnosticoStr)) {
+    $diagnosticos = explode(';', $diagnosticoStr);
+    $primerDiagnostico = $diagnosticos[0] ?? '';
+    $segundoDiagnostico = $diagnosticos[1] ?? '';
+
+    if (!empty($primerDiagnostico)) {
+        $cie101 = trim(explode(' ', explode('-', $primerDiagnostico)[0])[0]);
+    }
+
+    if (!empty($segundoDiagnostico)) {
+        $cie102 = trim(explode(' ', explode('-', $segundoDiagnostico)[0])[0]);
+    }
+}
 
 // Crear Excel
 $spreadsheet = new Spreadsheet();
@@ -143,7 +168,7 @@ $sheet->setCellValue("E{$row}", "HISTORIA CLINICA");
 $sheet->setCellValue("F{$row}", $pacienteInfo['hc_number']);
 $sheet->mergeCells("F{$row}:G{$row}");
 $sheet->setCellValue("H{$row}", "EDAD:");
-$sheet->setCellValue("I{$row}", $edadCalculada);
+$sheet->setCellValue("I{$row}", $contexto['edad']);
 $sheet->mergeCells("I{$row}:J{$row}");
 $sheet->getRowDimension($row)->setRowHeight(20);
 
@@ -161,10 +186,10 @@ $row++;
 // === B6-G6: Diagnóstico y secundario
 $sheet->setCellValue("B{$row}", "DIAGNOSTICO: ");
 $sheet->mergeCells("B{$row}:C{$row}");
-$sheet->setCellValue("D{$row}", $diagnosticoPrincipal);
+$sheet->setCellValue("D{$row}", $cie101);
 $sheet->setCellValue("E{$row}", "DIAGNOSTICO SECUNDARIO ");
 $sheet->mergeCells("E{$row}:F{$row}");
-$sheet->setCellValue("G{$row}", $diagnosticoSecundario);
+$sheet->setCellValue("G{$row}", $cie102);
 $sheet->mergeCells("G{$row}:J{$row}");
 $sheet->getRowDimension($row)->setRowHeight(20);
 
@@ -182,7 +207,7 @@ $row++;
 // === D7: Hospital derivador
 $sheet->setCellValue("A{$row}", "");
 $sheet->setCellValue("D{$row}", "HOSPITAL DERIVADOR :");
-$sheet->setCellValue("E{$row}", "");
+$sheet->setCellValue("E{$row}", $cirujano);
 $sheet->mergeCells("E{$row}:J{$row}");
 $sheet->getRowDimension($row)->setRowHeight(20);
 
@@ -293,18 +318,21 @@ if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocolo
     }
 }
 
+$codigoAnestesia = $data['procedimientos'][0]['proc_codigo'] ?? '';
+$precioReal = $codigoAnestesia ? $GLOBALS['controller']->obtenerValorAnestesia($codigoAnestesia) : null;
+
 // === Procedimiento con 16%
 if (!empty($data['procedimientos'][0])) {
     $p = $data['procedimientos'][0];
     $precio = (float)$p['proc_precio'];
     $porcentaje = 0.16;
-    $valorPorcentaje = $precio * $porcentaje;
+    $valorPorcentaje = $precioReal;
 
     $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
     $sheet->setCellValue("C{$row}", $p['proc_codigo']);
     $sheet->setCellValue("D{$row}", $p['proc_detalle']);
     $sheet->setCellValue("F{$row}", $precio);
-    $sheet->setCellValue("G{$row}", '16%');
+    $sheet->setCellValue("G{$row}", '');
     $sheet->setCellValue("J{$row}", $valorPorcentaje);
     $sheet->setCellValue("K{$row}", 'ANESTESIOLOGO'); // Valor aplicado
 
@@ -314,6 +342,33 @@ if (!empty($data['procedimientos'][0])) {
     }
 
     $row++;
+}
+
+if (!empty($data['anestesia'])) {
+
+    foreach ($data['anestesia'] as $a) {
+        $codigo = $a['codigo'];
+        $descripcion = $a['nombre'];
+
+        $cantidad = (float)$a['tiempo'];
+        $valorUnitario = round((float)$a['valor2'], 2);
+        $subtotal = round($cantidad * $valorUnitario, 2);
+
+        $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
+        $sheet->setCellValue("C{$row}", $codigo);
+        $sheet->setCellValue("D{$row}", $descripcion);
+        $sheet->setCellValue("F{$row}", $valorUnitario);
+        $sheet->setCellValue("G{$row}", '');
+        $sheet->setCellValue("J{$row}", $subtotal);
+        $sheet->setCellValue("I{$row}", $cantidad);
+        $sheet->setCellValue("K{$row}", 'ANESTESIOLOGO');
+
+        foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
+            $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+        }
+
+        $row++;
+    }
 }
 
 // === Total de valores porcentuales (columna J)
@@ -377,7 +432,13 @@ $inicioBloqueSinIVA = $row;
 
 // Filas de oxígeno
 foreach ($data['oxigeno'] as $o) {
-    $codigo = $o['codigo'];
+    if ($o['codigo'] === '911111') {
+        $codigo = '241208' ?? '';
+        $descripcion = $p['proc_detalle'] ?? '';
+    } else {
+        $codigo = $a['codigo'];
+        $descripcion = $a['nombre'];
+    }
     $nombre = $o['nombre'];
     $valor2 = $o['valor2'];
     $tiempoLitros = (float)$o['tiempo'] * (float)$o['litros'] * (float)$o['valor1'];
@@ -389,6 +450,7 @@ foreach ($data['oxigeno'] as $o) {
     $sheet->setCellValue("E{$row}", $valor2);
     $sheet->setCellValue("F{$row}", $tiempoLitros);
     $sheet->setCellValue("G{$row}", $precio);
+    $sheet->setCellValue("I{$row}", 0);
     $sheet->setCellValue("J{$row}", $precio);
 
     foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
@@ -486,9 +548,8 @@ foreach ($insumosConIVA as $o) {
     $sheet->setCellValue("E{$row}", $precio);
     $sheet->setCellValue("F{$row}", $cantidad);
     $sheet->setCellValue("G{$row}", $precio * $cantidad);
-    $sheet->setCellValue("H{$row}", ($precio * $cantidad) * 0.10);
-    $sheet->setCellValue("I{$row}", ($precio * $cantidad) * 0.15);
-    $sheet->setCellValue("J{$row}", (($precio * $cantidad) * 1.25));
+    $sheet->setCellValue("I{$row}", 0);
+    $sheet->setCellValue("J{$row}", $precio * $cantidad);
 
     foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
         $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
