@@ -6,6 +6,18 @@ use PDO;
 
 class GuardarProyeccionController
 {
+    /**
+     * Verifica si una fecha es válida para una visita.
+     * No acepta fechas nulas, menores al 2000, "0000-00-00", ni 1969, etc.
+     */
+    private function fechaValida($fecha)
+    {
+        if (empty($fecha)) return false;
+        $ts = strtotime($fecha);
+        // Rechazar fechas menores al año 2000, o null, o claramente inválidas
+        return ($ts && $ts > strtotime('2000-01-01'));
+    }
+
     private $db;
 
     public function __construct(PDO $pdo)
@@ -106,32 +118,63 @@ class GuardarProyeccionController
             ':caducidad' => $data['fechaCaducidad'] ?? null,
         ]);
 
-        // 1. Verifica o crea la visita
-        $fecha_visita = isset($data['fecha']) ? date('Y-m-d', strtotime($data['fecha'])) : date('Y-m-d');
+        // 1. Verifica si form_id ya existe y tiene visita_id asignado
+        $stmtCheckVisita = $this->db->prepare("SELECT visita_id FROM procedimiento_proyectado WHERE form_id = ?");
+        $stmtCheckVisita->execute([$form_id]);
+        $visita_id_db = $stmtCheckVisita->fetchColumn();
+        $visita_id = null;
+        $usando_visita_existente = false;
+        if ($visita_id_db) {
+            $visita_id = $visita_id_db;
+            $usando_visita_existente = true;
+            error_log("🟢 Usando visita_id ya existente para form_id $form_id: $visita_id");
+        }
+
+        // Lógica defensiva para la fecha de visita
+        if (!empty($data['fecha']) && $this->fechaValida($data['fecha'])) {
+            $fecha_visita = date('Y-m-d', strtotime($data['fecha']));
+        } else {
+            $fecha_visita = date('Y-m-d'); // fallback seguro
+            error_log("❗ Fecha inválida recibida para visita. Se usó la fecha actual: $fecha_visita");
+        }
         $hc_number = $data['hcNumber'];
 
-        // Buscar la hora más temprana para esa fecha y paciente
-        $sqlHora = "SELECT MIN(hora) FROM procedimiento_proyectado WHERE hc_number = ? AND fecha = ?";
-        $stmtHora = $this->db->prepare($sqlHora);
-        $stmtHora->execute([$hc_number, $fecha_visita]);
-        $hora_llegada = $stmtHora->fetchColumn() ?: '08:00:00'; // Valor por defecto si no hay hora
-        $hora_llegada_completa = $fecha_visita . ' ' . $hora_llegada;
+        // Antes de crear o actualizar visita, si la fecha es inválida, abortar
+        if (!$this->fechaValida($fecha_visita)) {
+            error_log("❌ No se puede crear/actualizar visita con fecha inválida: $fecha_visita");
+            throw new \Exception("❌ No se puede crear/actualizar visita con fecha inválida: $fecha_visita");
+        }
 
-        // Busca si ya existe visita hoy
-        $stmt = $this->db->prepare("SELECT id FROM visitas WHERE hc_number = ? AND fecha_visita = ?");
-        $stmt->execute([$hc_number, $fecha_visita]);
-        $visita_id = $stmt->fetchColumn();
+        // Solo crear/actualizar visita si no se está usando un visita_id ya existente
+        if (!$usando_visita_existente) {
+            // Buscar la hora más temprana para esa fecha y paciente
+            $sqlHora = "SELECT MIN(hora) FROM procedimiento_proyectado WHERE hc_number = ? AND fecha = ?";
+            $stmtHora = $this->db->prepare($sqlHora);
+            $stmtHora->execute([$hc_number, $fecha_visita]);
+            $hora_llegada = $stmtHora->fetchColumn() ?: '08:00:00'; // Valor por defecto si no hay hora
+            $hora_llegada_completa = $fecha_visita . ' ' . $hora_llegada;
 
-        if (!$visita_id) {
-            // Crea la visita si no existe, con la hora más temprana
-            $usuario = $data['usuario'] ?? 'sistema';
-            $stmt = $this->db->prepare("INSERT INTO visitas (hc_number, fecha_visita, hora_llegada, usuario_registro) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$hc_number, $fecha_visita, $hora_llegada_completa, $usuario]);
-            $visita_id = $this->db->lastInsertId();
+            // Busca si ya existe visita hoy
+            $stmt = $this->db->prepare("SELECT id FROM visitas WHERE hc_number = ? AND fecha_visita = ?");
+            $stmt->execute([$hc_number, $fecha_visita]);
+            $visita_id_encontrada = $stmt->fetchColumn();
+
+            if (!$visita_id_encontrada) {
+                // Crea la visita si no existe, con la hora más temprana
+                $usuario = $data['usuario'] ?? 'sistema';
+                $stmt = $this->db->prepare("INSERT INTO visitas (hc_number, fecha_visita, hora_llegada, usuario_registro) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$hc_number, $fecha_visita, $hora_llegada_completa, $usuario]);
+                $visita_id = $this->db->lastInsertId();
+                error_log("🆕 Visita creada para paciente $hc_number en fecha $fecha_visita con id $visita_id");
+            } else {
+                // Si ya existe, actualizar la hora_llegada si es necesario (siempre ponemos la más temprana)
+                $stmt = $this->db->prepare("UPDATE visitas SET hora_llegada = ? WHERE id = ?");
+                $stmt->execute([$hora_llegada_completa, $visita_id_encontrada]);
+                $visita_id = $visita_id_encontrada;
+                error_log("♻️ Visita existente actualizada para paciente $hc_number en fecha $fecha_visita, id $visita_id");
+            }
         } else {
-            // Si ya existe, actualizar la hora_llegada si es necesario (siempre ponemos la más temprana)
-            $stmt = $this->db->prepare("UPDATE visitas SET hora_llegada = ? WHERE id = ?");
-            $stmt->execute([$hora_llegada_completa, $visita_id]);
+            error_log("⛔ No se crea ni actualiza visita porque form_id $form_id ya tiene visita_id $visita_id asignado.");
         }
 
         // Verificar si form_id ya existe
@@ -147,6 +190,8 @@ class GuardarProyeccionController
         }
 
         // Guardar procedimiento proyectado con más campos (incluye visita_id)
+        // No se debe sobreescribir visita_id si ya tenía uno
+        // Si el registro existe y ya tiene visita_id, NO lo cambiamos
         $sql = "
             INSERT INTO procedimiento_proyectado 
                 (form_id, procedimiento_proyectado, doctor, hc_number, sede_departamento, id_sede, estado_agenda, afiliacion, fecha, hora, visita_id)
@@ -160,11 +205,10 @@ class GuardarProyeccionController
                 estado_agenda = IFNULL(VALUES(estado_agenda), estado_agenda),
                 afiliacion = VALUES(afiliacion),
                 fecha = VALUES(fecha),
-                hora = VALUES(hora),
-                visita_id = VALUES(visita_id)
+                hora = VALUES(hora)
+                -- visita_id NO se actualiza si ya existía
         ";
 
-        $stmt2 = $this->db->prepare($sql);
         error_log("📤 Datos enviados a procedimiento_proyectado: " . json_encode([
                 'form_id' => $form_id,
                 'procedimiento' => $procedimiento,
@@ -178,6 +222,8 @@ class GuardarProyeccionController
                 'hora' => $data['hora'] ?? null,
                 'visita_id' => $visita_id
             ]));
+
+        $stmt2 = $this->db->prepare($sql);
         $stmt2->execute([
             ':form_id' => $form_id,
             ':procedimiento' => $procedimiento,
@@ -192,6 +238,14 @@ class GuardarProyeccionController
             ':hora' => $data['hora'] ?? null,
             ':visita_id' => $visita_id
         ]);
+
+        if ($exists && $visita_id_db) {
+            error_log("🛡️ visita_id NO modificado para form_id $form_id porque ya tenía asignado: $visita_id_db");
+        } elseif ($exists && !$visita_id_db) {
+            error_log("⚠️ Registro existente SIN visita_id previo, se asignó: $visita_id");
+        } elseif (!$exists) {
+            error_log("🆕 Nuevo registro creado en procedimiento_proyectado con visita_id: $visita_id");
+        }
 
         $ejecutado = $stmt2->rowCount();
         error_log("📌 Registros afectados en procedimiento_proyectado: $ejecutado");
@@ -435,6 +489,7 @@ class GuardarProyeccionController
         SELECT 
             pp.procedimiento_proyectado AS procedimiento,
             pp.doctor AS doctor,
+            pp.fecha AS fecha,
             pd.fname, pd.mname, pd.lname, pd.lname2
         FROM procedimiento_proyectado pp
         INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
@@ -451,7 +506,8 @@ class GuardarProyeccionController
         return [
             'nombre' => $nombreCompleto,
             'procedimiento' => $row['procedimiento'],
-            'doctor' => $row['doctor']
+            'doctor' => $row['doctor'],
+            'fecha' => $row['fecha'],
         ];
     }
 
@@ -479,5 +535,24 @@ class GuardarProyeccionController
 
         // Opcional: devolver solo las 100 más frecuentes
         return array_slice($frecuencia, 0, 100, true);
+    }
+
+    public function obtenerPacientesPorEstado(string $estado, ?string $fecha = null)
+    {
+        // Usa fecha actual como predeterminada si no se proporciona
+        $fecha = $fecha ?? date('Y-m-d');
+
+        $sql = "SELECT form_id 
+            FROM procedimiento_proyectado 
+            WHERE estado_agenda = :estado 
+            AND fecha = :fecha";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'estado' => $estado,
+            'fecha' => $fecha
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }

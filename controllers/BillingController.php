@@ -103,9 +103,12 @@ class BillingController
 
         // Obtener datos adicionales del paciente y formulario
         require_once __DIR__ . '/PacienteController.php';
+        require_once __DIR__ . '/GuardarProyeccionController.php';
         $pacienteController = new \Controllers\PacienteController($this->db);
+        $guardarProyeccionController = new \Controllers\GuardarProyeccionController($this->db);
         $pacienteInfo = $pacienteController->getPatientDetails($billing['hc_number']);
         $formDetails = $pacienteController->getDetalleSolicitud($billing['hc_number'], $formId);
+        $visita = $guardarProyeccionController->obtenerDatosPacientePorFormId($formId);
 
         // Obtener protocoloExtendido usando ProtocoloModel
         $protocoloExtendido = $this->protocoloModel->obtenerProtocolo($formId, $billing['hc_number']);
@@ -172,6 +175,7 @@ class BillingController
             'oxigeno' => $oxigeno,
             'anestesia' => $anestesia,
             'paciente' => $pacienteInfo,
+            'visita' => $visita,
             'formulario' => $formDetails,
             'protocoloExtendido' => $protocoloExtendido,
         ];
@@ -430,10 +434,15 @@ class BillingController
     public function obtenerFacturasDisponibles(): array
     {
         $stmt = $this->db->query("
-            SELECT bm.id, bm.form_id, pd.hc_number, pd.fecha_inicio 
+            SELECT 
+                bm.id, 
+                bm.form_id, 
+                bm.hc_number, 
+            COALESCE(pd.fecha_inicio, pp.fecha) AS fecha_ordenada
             FROM billing_main bm
-            JOIN protocolo_data pd ON bm.form_id = pd.form_id
-            ORDER BY pd.fecha_inicio DESC
+            LEFT JOIN protocolo_data pd ON bm.form_id = pd.form_id
+            LEFT JOIN procedimiento_proyectado pp ON bm.form_id = pp.form_id
+        ORDER BY fecha_ordenada DESC
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -462,4 +471,62 @@ class BillingController
         $normalizado = strtolower(trim($afiliacion));
         return $mapa[$normalizado] ?? strtoupper($afiliacion);
     }
+
+    public function obtenerFormIdsFacturados(): array
+    {
+        $stmt = $this->db->query("SELECT form_id FROM billing_main");
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    public function obtenerBillingIdPorFormId($formId)
+    {
+        $stmt = $this->db->prepare("SELECT id FROM billing_main WHERE form_id = ?");
+        $stmt->execute([$formId]);
+        return $stmt->fetchColumn();
+    }
+
+    public function esCirugiaPorFormId($formId): bool
+    {
+        $stmt = $this->db->prepare("SELECT 1 FROM protocolo_data WHERE form_id = ? LIMIT 1");
+        $stmt->execute([$formId]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    public function obtenerFechasIngresoYEgreso(array $formIds): array
+    {
+        $fechas = [];
+
+        foreach ($formIds as $formId) {
+            // 1. Buscar en protocolo_data
+            $stmt = $this->db->prepare("SELECT fecha_inicio FROM protocolo_data WHERE form_id = ?");
+            $stmt->execute([$formId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!empty($row['fecha_inicio']) && $row['fecha_inicio'] !== '0000-00-00') {
+                $fechas[] = $row['fecha_inicio'];
+                continue;
+            }
+
+            // 2. Si no hay en protocolo_data, buscar en procedimiento_proyectado
+            $stmt = $this->db->prepare("SELECT fecha FROM procedimiento_proyectado WHERE form_id = ?");
+            $stmt->execute([$formId]);
+            while ($procRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if (!empty($procRow['fecha']) && $procRow['fecha'] !== '0000-00-00') {
+                    $fechas[] = $procRow['fecha'];
+                }
+            }
+        }
+
+        if (empty($fechas)) {
+            return ['ingreso' => null, 'egreso' => null];
+        }
+
+        usort($fechas, fn($a, $b) => strtotime($a) <=> strtotime($b));
+
+        return [
+            'ingreso' => $fechas[0],
+            'egreso' => end($fechas),
+        ];
+    }
+
 }

@@ -102,15 +102,48 @@ class InformesHelper
 
     public static function renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $grupo = '')
     {
-        $prefijo = $grupo ? strtoupper($grupo) . '-' : '';
+        $prefijo = '';
+        if (!empty($grupo)) {
+            $grupoNormalizado = strtoupper(trim($grupo));
+            if (in_array($grupoNormalizado, ['ISSFA', 'ISSPOL'])) {
+                $prefijo = $grupoNormalizado . '-';
+            } else {
+                // Generar iniciales como SG, CV, etc.
+                $iniciales = implode('', array_map(fn($w) => strtoupper(substr($w, 0, 1)), explode(' ', $grupoNormalizado)));
+                $prefijo = $iniciales . '-';
+            }
+        }
         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
-        $fecha_ingreso = $datosPaciente['formulario']['fecha_inicio'] ?? ($p['fecha'] ?? '');
+        $fecha_ingreso = $datosPaciente['formulario']['fecha_ordenada'] ?? ($p['fecha'] ?? '');
+        $procedimiento = $datosPaciente['procedimientos'][0]["proc_codigo"] ?? '';
+        $detalle = $datosPaciente['procedimientos'][0]["proc_detalle"] ?? '';
         $fecha_egreso = $fecha_ingreso;
         $hc_number = $p['hc_number'];
         $monto_sol = number_format($p['total'], 2);
 
-        return "<tr>
+        $referidoWords = preg_split('/\s+/', trim($referido));
+        $referidoFormateado = '';
+
+        if (count($referidoWords) === 2) {
+            $primera = $referidoWords[0];
+            $segunda = strtoupper(mb_substr($referidoWords[1], 0, 1));
+            $referidoFormateado = $primera . ' ' . $segunda;
+        } elseif (count($referidoWords) >= 3) {
+            // Unir DE/DEL con el siguiente si aplica
+            if (in_array(strtoupper($referidoWords[0]), ['DE', 'DEL'])) {
+                $primera = $referidoWords[0] . ' ' . $referidoWords[1];
+                $tercera = strtoupper(mb_substr($referidoWords[2], 0, 1));
+            } else {
+                $primera = $referidoWords[0];
+                $tercera = strtoupper(mb_substr($referidoWords[2], 0, 1));
+            }
+            $referidoFormateado = $primera . ' ' . $tercera;
+        } else {
+            $referidoFormateado = $referido;
+        }
+
+        return "<tr style='font-size: 12.5px;'>
         <td>{$prefijo}{$n}</td>
             <td>{$hc_number}</td>
             <td>{$apellido}</td>
@@ -118,8 +151,8 @@ class InformesHelper
             <td>" . ($fecha_ingreso ? date('d/m/Y', strtotime($fecha_ingreso)) : '--') . "</td>
             <td>" . ($fecha_egreso ? date('d/m/Y', strtotime($fecha_egreso)) : '--') . "</td>
             <td>" . htmlspecialchars(self::extraerCie10($diagnostico)) . "</td>
-            <td>{$referido}</td>
-            <td>{$hc_number}</td>
+            <td>" . htmlspecialchars($referidoFormateado) . "</td>
+            <td title='" . htmlspecialchars($detalle) . "'>{$procedimiento}</td>
             <td>{$edad}</td>
             <td>{$genero}</td>
             <td>{$monto_sol}</td>
@@ -137,6 +170,18 @@ class InformesHelper
         </tr>";
     }
 
+    public static function formatearListaProcedimientos(array $bloques): string {
+        $lista = [];
+        foreach ($bloques as $grupo) {
+            foreach ($grupo as $p) {
+                if (!empty($p['descripcion'])) {
+                    $lista[] = trim($p['descripcion']);
+                }
+            }
+        }
+        return implode('; ', array_unique($lista));
+    }
+
     public static function obtenerConsolidadoFiltrado(
         array              $facturas,
         array              $filtros,
@@ -149,14 +194,17 @@ class InformesHelper
 
         foreach ($facturas as $factura) {
             $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
+            if (!is_array($pacienteInfo)) {
+                continue;
+            }
             $afiliacion = self::normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
             if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas)) continue;
 
             $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
             if (!$datosPaciente) continue;
 
-            $fechaFactura = $factura['fecha_inicio'];
-            $mes = date('Y-m', strtotime($fechaFactura));
+            $fechaFactura = $factura['fecha_ordenada'];
+            $mes = (!empty($fechaFactura) && strtotime($fechaFactura)) ? date('Y-m', strtotime($fechaFactura)) : 'desconocido';
             if (!empty($filtros['mes']) && $mes !== $filtros['mes']) continue;
 
             $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));

@@ -4,6 +4,8 @@ import sys
 import json
 import re
 
+modo_quieto = "--quiet" in sys.argv
+
 USERNAME = "jdevera"
 PASSWORD = "0925619736"
 LOGIN_URL = "http://cive.ddns.net:8085/site/login"
@@ -183,18 +185,14 @@ if __name__ == "__main__":
     if resultados:
         for r in resultados:
             if r['codigo_derivacion']:
-                codigo = r['codigo_derivacion'].strip().split('SECUENCIAL')[0]  # Limpiar sufijo
+                codigo = r['codigo_derivacion'].strip().split('SECUENCIAL')[0]
                 registro = r['fecha_registro'].strip()
                 vigencia = r['fecha_vigencia'].strip()
                 referido = r['referido'].strip()
                 diagnostico = r['diagnostico'].strip()
-                print(f"📌 Código Derivación: {codigo}")
-                print(f"📌 Medico: {referido}")
-                print(f"📌 Diagnostico: {diagnostico}")
-                print(f"Fecha de registro: {registro}")
-                print(f"Fecha de Vigencia: {vigencia}")
                 form_id = sys.argv[1] if len(sys.argv) > 1 else None
-                hc_number = r.get("identificacion", "DESCONOCIDO")  # Ahora dinámico
+                hc_number = r.get("identificacion", "DESCONOCIDO")
+
                 data = {
                     "form_id": form_id,
                     "hc_number": hc_number,
@@ -202,15 +200,26 @@ if __name__ == "__main__":
                     "fecha_registro": registro,
                     "fecha_vigencia": vigencia,
                     "referido": referido,
-                    "diagnostico": diagnostico
+                    "diagnostico": diagnostico,
+                    "procedimientos": r.get("procedimientos", [])
                 }
-                print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))
-                enviar_a_api(data)
-                print("📋 Procedimientos proyectados:")
-                for p in r.get("procedimientos", []):
-                    datos = p["procedimiento_proyectado"]
-                    print(f"🧾 ID: {datos['id']} - {datos['nombre']}")
-                    print(f"   📅 Fecha ejecución: {datos.get('fecha_ejecucion', 'N/D')}")
-                    print(f"   👨‍⚕️ Doctor: {datos.get('doctor', 'N/D')}")
-                    print(f"   🏁 Estado: {datos.get('estado_alta', 'N/D')}")
+
+                if modo_quieto:
+                    print(json.dumps(data))
+                else:
+                    print(f"📌 Código Derivación: {codigo}")
+                    print(f"📌 Medico: {referido}")
+                    print(f"📌 Diagnostico: {diagnostico}")
+                    print(f"Fecha de registro: {registro}")
+                    print(f"Fecha de Vigencia: {vigencia}")
+                    print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))
+                    enviar_a_api(data)
+                    print("📋 Procedimientos proyectados:")
+                    for p in r.get("procedimientos", []):
+                        datos = p["procedimiento_proyectado"]
+                        print(f"{datos['id']}")
+                        print(f"{datos['nombre']}")
+                        print(f"{datos.get('fecha_ejecucion', 'N/D')}")
+                        print(f"{datos.get('doctor', 'N/D')}")
+                        print(f"{datos.get('estado_alta', 'N/D')}")
                 break
