@@ -27,8 +27,7 @@ header('Content-Type: application/json');
 try {
     $datos = json_decode(file_get_contents('php://input'), true);
     $controller = new DerivacionController($pdo);
-    file_put_contents('log_datos.txt', print_r($datos, true));
-    $resultado = $controller->insertarBillingMainSiNoExiste($datos['procedimientos'] ?? []);
+    $resultado = $controller->registrarProcedimientoCompleto($datos['procedimientos'] ?? []);
     echo json_encode($resultado);
 } catch (Throwable $e) {
     echo json_encode([

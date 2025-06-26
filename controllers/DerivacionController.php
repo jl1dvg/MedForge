@@ -93,24 +93,34 @@ class DerivacionController
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
+        $error_log = [];
+
         foreach ($faltantes as $item) {
-            $stmtInsert->execute([
-                $item['form_id'],
-                $item['hc_number'],
-                $item['procedimiento_proyectado'] ?? '',
-                $item['doctor'] ?? null,
-                $item['fecha'] ?? null,
-                $item['hora'] ?? null,
-                $item['sede_departamento'] ?? null,
-                $item['id_sede'] ?? null,
-                $item['afiliacion'] ?? null,
-                $item['estado_agenda'] ?? null,
-            ]);
+            try {
+                $stmtInsert->execute([
+                    $item['form_id'],
+                    $item['hc_number'],
+                    $item['procedimiento_proyectado'] ?? '',
+                    $item['doctor'] ?? null,
+                    $item['fecha'] ?? null,
+                    $item['hora'] ?? null,
+                    $item['sede_departamento'] ?? null,
+                    $item['id_sede'] ?? null,
+                    $item['afiliacion'] ?? null,
+                    $item['estado_agenda'] ?? null,
+                ]);
+            } catch (\PDOException $e) {
+                $error_log[] = [
+                    'form_id' => $item['form_id'],
+                    'error' => $e->getMessage()
+                ];
+            }
         }
 
         return [
             'creados' => array_column($faltantes, 'form_id'),
-            'ya_existian' => $existentes
+            'ya_existian' => $existentes,
+            'errores' => $error_log
         ];
     }
 
@@ -143,6 +153,21 @@ class DerivacionController
                     $stmtInsert->execute([$form_id, $item['hc_number']]);
                     $billing_id = $db->lastInsertId();
                     $nuevos[] = $form_id;
+
+                    // Verificar si ya existe una derivación para este form_id
+                    $stmtCheckDeriv = $db->prepare("SELECT COUNT(*) FROM derivaciones_form_id WHERE form_id = ?");
+                    $stmtCheckDeriv->execute([$form_id]);
+                    $existeDerivacion = $stmtCheckDeriv->fetchColumn();
+
+                    if (!$existeDerivacion) {
+                        $stmtInsertDeriv = $db->prepare("INSERT INTO derivaciones_form_id (cod_derivacion, form_id, hc_number, fecha_vigencia, fecha_registro, referido, diagnostico) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $codigoDerivacion = $item['codigo_derivacion'] ?? null;
+                        $fecha_registro = $item['fecha_registro'] ?? date('Y-m-d H:i:s');
+                        $fecha_vigencia = $item['fecha_vigencia'] ?? date('Y-m-d H:i:s');
+                        $referido = $item['referido'] ?? null;
+                        $diagnostico = $item['diagnostico'] ?? null;
+                        $stmtInsertDeriv->execute([$codigoDerivacion, $form_id, $item['hc_number'], $fecha_vigencia, $fecha_registro, $referido, $diagnostico]);
+                    }
                 } catch (\PDOException $e) {
                     $errores[] = "Error insertando billing_main $form_id: " . $e->getMessage();
                     continue;
@@ -167,6 +192,38 @@ class DerivacionController
             'nuevos' => $nuevos,
             'existentes' => $existentes,
             'procedimientos_insertados' => $procedimientosInsertados,
+            'errores' => $errores
+        ];
+    }
+
+    public function registrarProcedimientoCompleto(array $procedimientos): array
+    {
+        $creados = [];
+        $ya_existian = [];
+        $procedimientos_insertados = [];
+        $errores = [];
+
+        // Paso 1: Insertar en procedimiento_proyectado si no existe
+        $resultado_proyectado = $this->crearFormIdsFaltantes($procedimientos);
+        $creados = $resultado_proyectado['creados'];
+        $ya_existian = $resultado_proyectado['ya_existian'];
+        $errores = array_merge($errores, $resultado_proyectado['errores'] ?? []);
+
+        // Paso 2: Insertar en billing_main, derivaciones_form_id y billing_procedimientos
+        $resultado_billing = $this->insertarBillingMainSiNoExiste($procedimientos);
+        $procedimientos_insertados = $resultado_billing['procedimientos_insertados'] ?? [];
+        $errores = array_merge($errores, $resultado_billing['errores'] ?? []);
+
+        return [
+            'procedimiento_proyectado' => [
+                'creados' => $creados,
+                'ya_existian' => $ya_existian
+            ],
+            'billing' => [
+                'nuevos' => $resultado_billing['nuevos'] ?? [],
+                'existentes' => $resultado_billing['existentes'] ?? [],
+                'procedimientos_insertados' => $procedimientos_insertados
+            ],
             'errores' => $errores
         ];
     }

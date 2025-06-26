@@ -37,7 +37,8 @@ $facturas = $billingController->obtenerFacturasDisponibles();
 // Precargar datos agrupados por mes para evitar llamadas repetidas durante la creación del dropdown
 $cachePorMes = [];
 foreach ($facturas as $factura) {
-    $mes = date('Y-m', strtotime($factura['fecha_inicio']));
+    $fechaInicioRaw = $factura['fecha_inicio'] ?? null;
+    $mes = $fechaInicioRaw ? date('Y-m', strtotime($fechaInicioRaw)) : 'sin_fecha';
     $hc = $factura['hc_number'];
     $formId = $factura['form_id'];
 
@@ -188,52 +189,52 @@ if ($billingId) {
                             </div>
 
                             <?php if ($formId && $datos):
-                                $paciente = $datos['paciente'] ?? [];
-                                $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
-                                $hcNumber = $paciente['hc_number'] ?? '';
-                                $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
-                                ?>
-                                <div class="row invoice-info mb-3">
-                                    <div class="col-md-6 invoice-col">
-                                        <strong>Desde</strong>
-                                        <address>
-                                            <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador -
-                                                CIVE</strong><br>
+                            $paciente = $datos['paciente'] ?? [];
+                            $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
+                            $hcNumber = $paciente['hc_number'] ?? '';
+                            $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
+                            ?>
+                            <div class="row invoice-info mb-3">
+                                <div class="col-md-6 invoice-col">
+                                    <strong>Desde</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador -
+                                            CIVE</strong><br>
                                         <span class="d-inline">Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero.</span><br>
                                         <strong>Teléfono: (04) 372-9340 &nbsp;&nbsp;&nbsp; Email:
-                                                info@cive.ec</strong>
-                                        </address>
-                                    </div>
-                                    <div class="col-md-6 invoice-col text-end">
-                                        <strong>Paciente</strong>
-                                        <address>
-                                            <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
-                                            HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
-                                            Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
-                                            <?php if (!empty($paciente['ci'])): ?>
-                                                Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
-                                            <?php endif; ?>
-                                            <?php if (!empty($paciente['fecha_nacimiento'])): ?>
-                                                F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
-                                                <br>
-                                            <?php endif; ?>
-                                        </address>
-                                    </div>
-                                    <div class="col-sm-12 invoice-col mb-15">
-                                        <div class="invoice-details row no-margin">
-                                            <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
-                                            <div class="col-md-6 col-lg-3"><b>Fecha
-                                                    Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
-                                            </div>
-                                            <div class="col-md-6 col-lg-3"><b>Fecha
-                                                    Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
-                                            </div>
-                                            <div class="col-md-6 col-lg-3">
-                                                <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
-                                            </div>
+                                            info@cive.ec</strong>
+                                    </address>
+                                </div>
+                                <div class="col-md-6 invoice-col text-end">
+                                    <strong>Paciente</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
+                                        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
+                                        Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
+                                        <?php if (!empty($paciente['ci'])): ?>
+                                            Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
+                                        <?php endif; ?>
+                                        <?php if (!empty($paciente['fecha_nacimiento'])): ?>
+                                            F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
+                                            <br>
+                                        <?php endif; ?>
+                                    </address>
+                                </div>
+                                <div class="col-sm-12 invoice-col mb-15">
+                                    <div class="invoice-details row no-margin">
+                                        <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3">
+                                            <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
                             <div class="row">
                                 <div class="col-12 table-responsive">
                                     <table class="table table-bordered align-middle mb-0">
@@ -459,52 +460,53 @@ if ($billingId) {
                                         <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=ISSFA"
                                            class="btn btn-success btn-lg me-2">
                                             <i class="fa fa-file-excel-o"></i> Descargar Excel
-                                </a>
+                                        </a>
                                         <a href="/views/informes/informe_issfa.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
                                            class="btn btn-outline-secondary btn-lg">
                                             <i class="fa fa-arrow-left"></i> Regresar al consolidado
-                                </a>
+                                        </a>
                                     </div>
                                 </div>
-                            <?php elseif ($billingId): ?>
-                                <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
-                                </table>
-                            <?php else: ?>
-                                <h4>Consolidado mensual de pacientes ISSFA</h4>
-                                <?php
-                                // $filtros ya está definido arriba
-                                $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
-                                $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
-                                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-                                    $facturas,
-                                    $filtros,
-                                    $billingController,
-                                    $pacienteController,
-                                    $afiliacionesISSFA
-                                );
-                                foreach ($consolidado as $mes => $pacientes) {
-                                    // Aplicar filtros de apellido usando helper
-                                    $apellidoFiltro = strtolower(trim($filtros['apellido']));
-                                    $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
+                                <?php elseif ($billingId): ?>
+                                    <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.
+                                    </div>
+                                    </table>
+                                <?php else: ?>
+                                    <h4>Consolidado mensual de pacientes ISSFA</h4>
+                                    <?php
+                                    // $filtros ya está definido arriba
+                                    $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
+                                    $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
+                                    $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                                        $facturas,
+                                        $filtros,
+                                        $billingController,
+                                        $pacienteController,
+                                        $afiliacionesISSFA
+                                    );
+                                    foreach ($consolidado as $mes => $pacientes) {
+                                        // Aplicar filtros de apellido usando helper
+                                        $apellidoFiltro = strtolower(trim($filtros['apellido']));
+                                        $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
 
-                                    // Calcular totales del mes
-                                    $totalMes = 0;
-                                    $totalPacientes = count($pacientes);
-                                    foreach ($pacientes as $p) {
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                    }
+                                        // Calcular totales del mes
+                                        $totalMes = 0;
+                                        $totalPacientes = count($pacientes);
+                                        foreach ($pacientes as $p) {
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                                        }
 
-                                    $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                                    $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                                    echo "<div class='d-flex justify-content-between align-items-center mt-4'>
+                                        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                        $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                        echo "<div class='d-flex justify-content-between align-items-center mt-4'>
                                             <h5>Mes: {$mesFormateado}</h5>
                                             <div>
                                                 🧮 Total pacientes: {$totalPacientes} &nbsp;&nbsp; 💵 Monto total: $" . number_format($totalMes, 2) . "
                                             </div>
                                           </div>";
-                                    echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
-                                    echo "
+                                        echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
+                                        echo "
 <table class='table table-bordered table-striped'>
     <thead class='table-dark'>
     <tr>
@@ -525,57 +527,57 @@ if ($billingId) {
     </tr>
     </thead>
     <tbody>";
-                                    $n = 1;
-                                    foreach ($pacientes as $p) {
-                                        $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
-                                        $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
-                                        $url = "/views/informes/informe_issfa.php?billing_id=" . urlencode($p['id']);
-                                        $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                                        $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
-                                        $referido = $derivacion['referido'] ?? '';
-                                        $diagnostico = $derivacion['diagnostico'] ?? '';
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
-                                        $n++;
-                                    }
-                                    echo "
+                                        $n = 1;
+                                        foreach ($pacientes as $p) {
+                                            $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
+                                            $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
+                                            $url = "/views/informes/informe_issfa.php?billing_id=" . urlencode($p['id']);
+                                            $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
+                                            $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                            $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+                                            $referido = $derivacion['referido'] ?? '';
+                                            $diagnostico = $derivacion['diagnostico'] ?? '';
+                                            echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
+                                            $n++;
+                                        }
+                                        echo "
     </tbody>
 </table>
 ";
-                                    echo "</div>";
-                                }
-                                ?>
-                                <a href="/views/informes/generar_consolidado_issfa.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
-                                   class="btn btn-primary mt-3">
-                                    Descargar Consolidado
-                                </a>
-                            <?php endif; ?>
+                                        echo "</div>";
+                                    }
+                                    ?>
+                                    <a href="/views/informes/generar_consolidado_issfa.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                       class="btn btn-primary mt-3">
+                                        Descargar Consolidado
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <!-- /.content -->
+
             </div>
-            <!-- /.content -->
-
         </div>
+        <!-- /.content-wrapper -->
     </div>
-    <!-- /.content-wrapper -->
-</div>
-<?php include __DIR__ . '/../components/footer.php'; ?>
+    <?php include __DIR__ . '/../components/footer.php'; ?>
 
-<!-- Vendor JS -->
-<script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
-<script src="/public/js/pages/chat-popup.js"></script>
-<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+    <!-- Vendor JS -->
+    <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
+    <script src="/public/js/pages/chat-popup.js"></script>
+    <script src="/public/assets/icons/feather-icons/feather.min.js"></script>
+    <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
 
 
-<!-- Doclinic App -->
-<script src="/public/js/jquery.smartmenus.js"></script>
-<script src="/public/js/menus.js"></script>
-<script src="/public/js/template.js"></script>
+    <!-- Doclinic App -->
+    <script src="/public/js/jquery.smartmenus.js"></script>
+    <script src="/public/js/menus.js"></script>
+    <script src="/public/js/template.js"></script>
 </body>
 </html>
