@@ -79,6 +79,9 @@ if (!empty($scrapingOutput)):
                         if (strpos($g['procedimiento'], 'SER-OFT-001 - OPTOMETRIA') !== false) {
                             $is_muted = true;
                         }
+                        if (strpos($g['procedimiento'], 'SRV-ANE-002 - ANESTESIOLOGIA CONSULTA') !== false) {
+                            $is_muted = true;
+                        }
                         $ya_facturado = in_array($g['form_id'], $formIdsFacturados);
                         ?>
                         <div class="d-flex align-items-center mb-25 <?= ($is_muted || $ya_facturado) ? 'opacity-50' : '' ?>">
@@ -164,11 +167,23 @@ if (!empty($scrapingOutput)):
                             alert(`📊 Resultados:\n➕ Nuevos: ${data.nuevos.length}\n⛔ Existentes: ${data.existentes.length}`);
 
                             // Llamada unificada para registrar procedimientos completos
+                            const codigosManual = {
+                                "SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE": "92002"
+                                //"SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE": "92012"
+                            };
                             const payloadCompleto = {
                                 procedimientos: seleccionados.map(p => {
+                                    let codigo = '';
+                                    let detalle = '';
+
                                     const match = p.procedimiento.match(/ - ([0-9]{6})[-\s]+(.+)$/);
-                                    const codigo = match ? match[1] : '';
-                                    const detalle = match ? match[2].trim() : '';
+                                    if (match) {
+                                        codigo = match[1];
+                                        detalle = match[2].trim();
+                                    } else {
+                                        codigo = codigosManual[p.procedimiento] || '';
+                                        detalle = p.procedimiento;
+                                    }
                                     return {
                                         form_id: p.id,
                                         hc_number: '<?php echo $hc_number ?? ""; ?>',
