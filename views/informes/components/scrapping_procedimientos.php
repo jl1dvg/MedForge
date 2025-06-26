@@ -1,4 +1,6 @@
 <?php
+$codigoDerivacionPrincipal = $codigoDerivacion;
+$fecha_registroPrincipal = $fecha_registro;
 if (!empty($scrapingOutput)):
     $codigo_derivacion = $scrapingOutput["codigo_derivacion"] ?? '';
     $fecha_registro = $scrapingOutput["fecha_registro"] ?? '';
@@ -24,10 +26,11 @@ if (!empty($scrapingOutput)):
         }
         // Obtener form_ids ya facturados desde el controller
         $formIdsFacturados = $billingController->obtenerFormIdsFacturados(); // Este método debe retornar un array de form_id
+
         ?>
         <div class="box">
             <div class="box-header with-border">
-                <h4 class="box-title">Procedimientos proyectados</h4>
+                <h4 class="box-title">Procedimientos proyectados <?php echo $codigoDerivacionPrincipal; ?></h4>
             </div>
             <div class="box-body">
                 <div class="d-flex align-items-center mb-15">
@@ -56,10 +59,12 @@ if (!empty($scrapingOutput)):
                         $is_muted = false;
                         $is_disabled = false;
                         $estado_text = $g['estado'] ?? '';
+                        $derivacionCod = $billingController->obtenerDerivacionPorFormId($g['form_id']);
+
                         if (strpos($g['procedimiento'], 'CYP-') !== false || strpos($g['procedimiento'], '67028') !== false || strpos($g['procedimiento'], '66984') !== false) {
                             $is_disabled = true;
                         }
-                        $is_SER_OFT = strpos($g['procedimiento'], 'SER-OFT') !== false;
+                        $is_SER_OFT = strpos($g['procedimiento'], 'SER-OFT') !== false || strpos($g['procedimiento'], 'SRV-ANE-002') !== false;
                         if ($is_SER_OFT) {
                             foreach ($fechas_cirugias as $fecha_cx) {
                                 if ($fecha_proc > $fecha_cx && $fecha_proc <= strtotime('+30 days', $fecha_cx)) {
@@ -69,6 +74,9 @@ if (!empty($scrapingOutput)):
                             }
                         }
                         if (strpos($estado_text, '❌ No dado de alta') !== false) {
+                            $is_muted = true;
+                        }
+                        if (strpos($g['procedimiento'], 'SER-OFT-001 - OPTOMETRIA') !== false) {
                             $is_muted = true;
                         }
                         $ya_facturado = in_array($g['form_id'], $formIdsFacturados);
@@ -86,9 +94,25 @@ if (!empty($scrapingOutput)):
                             </div>
                             <div class="d-flex flex-column flex-grow-1">
                                 <span class="text-dark fw-500 fs-16"><?= htmlspecialchars($g['procedimiento']) ?></span>
-                                <span class="text-dark"><?= htmlspecialchars($g['form_id']) ?></span>
+                                <?php
+                                $derivacion = $billingController->obtenerDerivacionPorFormId($g['form_id']);
+                                $codigoDerivacion = is_array($derivacion) && isset($derivacion['cod_derivacion']) ? $derivacion['cod_derivacion'] : '';
+                                ?>
+                                <div>
+                                    <span class="badge bg-info me-5"><?= htmlspecialchars($g['form_id']) ?></span>
+                                    <?php if (!empty($codigoDerivacion)): ?>
+                                        <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger">Sin derivación</span>
+                                    <?php endif; ?>
+                                </div>
                                 <span class="text-fade fw-500"><?= htmlspecialchars($g['fecha']) ?></span>
                                 <span class="text-fade fw-500"><?= htmlspecialchars($g['doctor']) ?></span>
+                                <?php
+                                $derivacion = $billingController->obtenerDerivacionPorFormId($g['form_id']);
+                                $codigoDerivacion = is_array($derivacion) && isset($derivacion['cod_derivacion']) ? $derivacion['cod_derivacion'] : '';
+                                ?>
+                                <span class="text-fade fw-500"><?= htmlspecialchars($codigoDerivacion) ?></span>
                             </div>
                             <span class="badge bg-<?= $g['color'] ?>"><?= htmlspecialchars($g['estado']) ?></span>
                         </div>
@@ -111,11 +135,11 @@ if (!empty($scrapingOutput)):
                         const checkboxes = document.querySelectorAll('input[id^="md_checkbox_proj_"]:checked');
                         const seleccionados = Array.from(checkboxes).map(cb => {
                             const row = cb.closest('.d-flex');
-                            const form_id = row.querySelectorAll('.text-dark')[1]?.textContent.trim();
-                            const procedimiento = row.querySelectorAll('.text-dark')[0]?.textContent.trim();
+                            const procedimiento = row.querySelector('.text-dark')?.textContent.trim();
+                            const form_id = row.querySelector('.badge.bg-info')?.textContent.trim();
                             const fecha = row.querySelectorAll('.text-fade.fw-500')[0]?.textContent.trim();
                             const doctor = row.querySelectorAll('.text-fade.fw-500')[1]?.textContent.trim();
-                            const estado = row.querySelector('.badge')?.textContent.trim();
+                            const estado = row.querySelector('.badge.bg-success, .badge.bg-danger, .badge.bg-warning, .badge.bg-primary')?.textContent.trim();
                             return {id: form_id, procedimiento, fecha, doctor, estado};
                         });
 
@@ -139,40 +163,7 @@ if (!empty($scrapingOutput)):
 
                             alert(`📊 Resultados:\n➕ Nuevos: ${data.nuevos.length}\n⛔ Existentes: ${data.existentes.length}`);
 
-                            const billingPayload = data.nuevos.map(id => ({
-                                form_id: id,
-                                hc_number: '<?php echo $hc_number ?? ""; ?>',
-                                fecha: seleccionados.find(p => p.id === id)?.fecha.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null,
-                                codigo_derivacion: '<?php echo $codigo_derivacion; ?>'
-                            }));
-                            console.log("📝 Insertando en billing_main:", billingPayload);
-
-                            const procedimientosPayload = {
-                                procedimientos: seleccionados
-                                    .filter(p => data.nuevos.includes(p.id))
-                                    .map(p => ({
-                                            form_id: p.id,
-                                            hc_number: '<?php echo $hc_number ?? ""; ?>',
-                                            procedimiento_proyectado: p.procedimiento,
-                                            doctor: p.doctor,
-                                            sede_departamento: null,
-                                            id_sede: null,
-                                            estado_agenda: p.estado.includes("Dado de Alta") ? "Dado de Alta" : "Pendiente",
-                                            afiliacion: '<?php echo $afiliacion ?? ""; ?>',
-                                            fecha: p.fecha.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null,
-                                            hora: p.fecha.match(/\d{2}:\d{2}:\d{2}/)?.[0] ?? null,
-                                            visita_id: null
-                                        })
-                                    )
-                            };
-                            console.log("🧩 Insertando en crear_procedimientos_faltantes:", procedimientosPayload);
-
-                            await fetch('/api/billing/crear_procedimientos_faltantes.php', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify(procedimientosPayload)
-                            });
-
+                            // Llamada unificada para registrar procedimientos completos
                             const payloadCompleto = {
                                 procedimientos: seleccionados.map(p => {
                                     const match = p.procedimiento.match(/ - ([0-9]{6})[-\s]+(.+)$/);
@@ -183,7 +174,21 @@ if (!empty($scrapingOutput)):
                                         hc_number: '<?php echo $hc_number ?? ""; ?>',
                                         codigo,
                                         detalle,
-                                        precio: 0.00
+                                        precio: 0.00,
+                                        codigo_derivacion: '<?php echo $codigoDerivacionPrincipal; ?>',
+                                        fecha_vigencia: '<?php echo $fecha_vigencia ?? ""; ?>',
+                                        fecha_registro: '<?php echo $fecha_registroPrincipal ?? ""; ?>',
+                                        referido: '<?php echo $doctor ?? ""; ?>',
+                                        diagnostico: '<?php echo $diagnostico ?? ""; ?>',
+                                        procedimiento_proyectado: p.procedimiento,
+                                        doctor: p.doctor,
+                                        sede_departamento: null,
+                                        id_sede: null,
+                                        estado_agenda: p.estado.includes("Dado de Alta") ? "Dado de Alta" : "Pendiente",
+                                        afiliacion: '<?php echo $afiliacion ?? ""; ?>',
+                                        fecha: p.fecha.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null,
+                                        hora: p.fecha.match(/\d{2}:\d{2}:\d{2}/)?.[0] ?? null,
+                                        visita_id: null
                                     };
                                 })
                             };

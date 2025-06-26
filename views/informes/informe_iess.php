@@ -30,6 +30,25 @@ $dashboardController = new DashboardController($pdo);
 $username = $dashboardController->getAuthenticatedUser();
 $facturas = $billingController->obtenerFacturasDisponibles();
 
+// Agrupar facturas por código de derivación
+$grupos = [];
+foreach ($facturas as $factura) {
+    $form_id = $factura['form_id'];
+    $derivacion = $billingController->obtenerDerivacionPorFormId($form_id);
+    $codigo = $derivacion['codigo_derivacion'] ?? null;
+
+    $keyAgrupacion = $codigo ?: 'SIN_CODIGO';
+
+    $grupo = [
+        'factura' => $factura,
+        'codigo' => $codigo,
+        'form_id' => $form_id,
+        'tiene_codigo' => !empty($codigo),
+    ];
+
+    $grupos[$keyAgrupacion][] = $grupo;
+}
+
 // Precargar datos agrupados por mes para evitar llamadas repetidas durante la creación del dropdown
 $cachePorMes = [];
 foreach ($facturas as $factura) {
@@ -204,6 +223,15 @@ if (!empty($billingIds)) {
                                 $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
                                 $hcNumber = $paciente['hc_number'] ?? '';
                                 $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
+                                // Definir $codigoDerivacion para el detalle de la factura
+                                $codigoDerivacion = null;
+                                $derivacionData = $billingController->obtenerDerivacionPorFormId($primerDato['billing']['form_id']);
+                                $codigoDerivacion = $derivacionData['cod_derivacion'];
+                                $doctor = $derivacionData['referido'];
+                                $fecha_registro = $derivacionData['fecha_registro'] ?? null;
+                                $fecha_vigencia = $derivacionData['fecha_vigencia'] ?? null;
+                                $diagnostico = $derivacionData['diagnostico'] ?? null;
+                                //echo '<pre>🧾 Datos de la factura: ' . print_r($derivacionData, true) . '</pre>';
 
                                 echo "<div class='row invoice-info mb-3'>";
                                 include __DIR__ . '/components/header_factura.php';
@@ -311,6 +339,22 @@ if (!empty($billingIds)) {
                                     }
                                 }
                                 $n = 1;
+
+                                // Ejemplo de cómo iterar sobre los grupos de facturas por código de derivación:
+                                foreach ($grupos as $codigoDerivacion => $grupoFacturas):
+                                    // Insertar alerta si hay alguna factura sin código en este grupo
+                                    $tieneAlgunoSinCodigo = false;
+                                    foreach ($grupoFacturas as $item) {
+                                        if (!$item['tiene_codigo']) {
+                                            $tieneAlgunoSinCodigo = true;
+                                            break;
+                                        }
+                                    }
+                                    if ($tieneAlgunoSinCodigo) {
+                                        echo "<div class='alert alert-warning'>⚠️ Este grupo contiene facturas sin código de derivación</div>";
+                                    }
+                                    // ... aquí se puede mostrar el contenido del grupo ...
+                                endforeach;
 
                                 foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
                                     $listaPacientes = array_values($pacientesAgrupados);

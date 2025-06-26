@@ -37,7 +37,8 @@ $facturas = $billingController->obtenerFacturasDisponibles();
 // Precargar datos agrupados por mes para evitar llamadas repetidas durante la creación del dropdown
 $cachePorMes = [];
 foreach ($facturas as $factura) {
-    $mes = date('Y-m', strtotime($factura['fecha_inicio']));
+    $fechaInicioRaw = $factura['fecha_inicio'] ?? null;
+    $mes = $fechaInicioRaw ? date('Y-m', strtotime($fechaInicioRaw)) : 'sin_fecha';
     $hc = $factura['hc_number'];
     $formId = $factura['form_id'];
 
