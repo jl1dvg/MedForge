@@ -51,6 +51,10 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 class="mdi mdi-pharmacy"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Lista de Insumos</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/insumos/medicamentos.php'; ?>"><i
+                                class="mdi mdi-bowling"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Lista de Medicamentos</a></li>
             </ul>
         </li>
         <li><a href="#"><i
@@ -73,6 +77,11 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 class="mdi mdi-file-chart"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Particulares</a></li>
+            </ul>
+        </li>
+        <li><a href="#"><i class="mdi mdi-chart-areaspline"><span class="path1"></span><span class="path2"></span></i>Estadísticas</a>
+            <ul>
+                <li><a href="<?php echo BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>"><i class="mdi mdi-chart-line"><span class="path1"></span><span class="path2"></span></i>Flujo de Pacientes</a></li>
             </ul>
         </li>
         <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>

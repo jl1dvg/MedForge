@@ -13,8 +13,8 @@ $username = $dashboardController->getAuthenticatedUser();
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
     header('Content-Type: application/json');
     $controller = new InsumosController($pdo);
-    $insumos = $controller->listarTodos();
-    echo json_encode(['success' => true, 'insumos' => $insumos]);
+    $medicamentos = $controller->listarMedicamentos();
+    echo json_encode(['success' => true, 'medicamentos' => $medicamentos]);
     exit;
 }
 ?>
@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="/public/images/favicon.ico">
 
-    <title>Asistente CIVE - Dashboard</title>
+    <title>MedForge – Medicamentos</title>
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="/public/css/vendors_css.css">
@@ -35,33 +35,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
     <link rel="stylesheet" href="/public/css/skin_color.css">
 
     <style>
-        table#insumosEditable td,
-        table#insumosEditable th {
+        table#MedicamentosEditable td,
+        table#MedicamentosEditable th {
             font-size: 0.85rem;
             padding: 0.4rem 0.5rem;
         }
 
-        table#insumosEditable th {
+        table#MedicamentosEditable th {
             text-transform: uppercase;
             letter-spacing: 0.03em;
         }
     </style>
-
-    <script>
-        const style = document.createElement("style");
-        style.textContent = `
-    td.editable {
-      background-color: #fdfdfd;
-      border: 1px dashed #ddd;
-      cursor: text;
-    }
-    td.editable:focus {
-      background-color: #e9f7ef;
-      outline: none;
-    }
-  `;
-        document.head.appendChild(style);
-    </script>
 
 </head>
 <body class="layout-top-nav light-skin theme-primary fixed">
@@ -78,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
             <div class="content-header">
                 <div class="d-flex align-items-center">
                     <div class="me-auto">
-                        <h3 class="page-title">Editable Tables</h3>
+                        <h3 class="page-title">Medicamentos</h3>
                         <div class="d-inline-block align-items-center">
                             <nav>
                                 <ol class="breadcrumb">
@@ -103,37 +87,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                         <div class="box">
                             <div class="box-header d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h4 class="box-title">📋 <strong>Listado editable de insumos</strong></h4>
+                                    <h4 class="box-title">📋 <strong>Listado editable de Medicamentos</strong></h4>
                                     <h6 class="subtitle">Haz clic sobre cualquier celda para modificar su contenido. Usa
                                         los botones para guardar o eliminar.</h6>
                                 </div>
-                                <button id="agregarInsumoBtn" class="waves-effect waves-light btn btn-primary mb-5">
-                                    <i class="mdi mdi-plus-circle-outline"></i> Nuevo Insumo
+                                <button id="agregarMedicamentoBtn"
+                                        class="waves-effect waves-light btn btn-primary mb-5">
+                                    <i class="mdi mdi-plus-circle-outline"></i> Nuevo Medicamento
                                 </button>
                             </div>
 
                             <div class="box-body">
                                 <div class="table-responsive">
-                                    <table id="insumosEditable"
+                                    <table id="MedicamentosEditable"
                                            class="table table-bordered table-striped table-hover table-sm align-middle">
                                         <thead class="table-primary text-dark fw-semibold">
                                         <tr>
-                                            <th>Categoría</th>
-                                            <th>Código ISSPOL</th>
-                                            <th>Código ISSFA</th>
-                                            <th>Código IESS</th>
-                                            <th>Código MSP</th>
-                                            <th>Nombre</th>
-                                            <th>Producto ISSFA</th>
-                                            <th>Precio Base</th>
-                                            <th>IVA 15%</th>
-                                            <th>Gestión 10%</th>
-                                            <th>Precio Total</th>
-                                            <th>Precio ISSPOL</th>
+                                            <th>Medicamento</th>
+                                            <th>Vía de anministración</th>
                                             <th>Acciones</th>
                                         </tr>
                                         </thead>
-                                        <tbody id="tablaInsumosBody">
+                                        <tbody id="tablaMedicamentosBody">
                                         <!-- Las filas serán insertadas dinámicamente por JavaScript -->
                                         </tbody>
                                     </table>
@@ -174,46 +149,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
 <script src="/public/js/menus.js"></script>
 <script src="/public/js/template.js"></script>
 
-]
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const table = document.getElementById("insumosEditable");
-        const tbody = document.getElementById("tablaInsumosBody");
-        const agregarBtn = document.getElementById("agregarInsumoBtn");
+        const table = document.getElementById("MedicamentosEditable");
+        const tbody = document.getElementById("tablaMedicamentosBody");
+        const agregarBtn = document.getElementById("agregarMedicamentoBtn");
 
         if (!table || !agregarBtn) return;
 
-        fetch("/views/insumos/insumos.php?json=1")
+        fetch("/views/insumos/medicamentos.php?json=1")
             .then(res => res.json())
             .then(json => {
-                if (json.success && Array.isArray(json.insumos)) {
-                    if (json.insumos.length === 0) {
+                if (json.success && Array.isArray(json.medicamentos)) {
+                    if (json.medicamentos.length === 0) {
                         const fila = tbody.insertRow();
                         const td = fila.insertCell();
                         td.colSpan = 13;
                         td.className = "text-center text-muted";
-                        td.textContent = "No hay insumos disponibles.";
+                        td.textContent = "No hay medicamentos disponibles.";
                     } else {
-                        json.insumos.forEach(insumo => agregarFilaExistente(insumo));
+                        json.medicamentos.forEach(medicamento => agregarFilaExistente(medicamento));
                     }
+                } else {
+                    const fila = tbody.insertRow();
+                    const td = fila.insertCell();
+                    td.colSpan = 3;
+                    td.className = "text-center text-muted";
+                    td.textContent = json.message || "Error al cargar medicamentos.";
                 }
+            })
+            .catch(() => {
+                const fila = tbody.insertRow();
+                const td = fila.insertCell();
+                td.colSpan = 3;
+                td.className = "text-center text-muted";
+                td.textContent = "Error al cargar medicamentos.";
             });
 
         function agregarFilaExistente(data) {
             const row = tbody.insertRow(-1);
             row.setAttribute("data-id", data.id);
 
-            const campos = [
-                "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
-                "nombre", "producto_issfa", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
-            ];
+            const campos = ["medicamento", "via_administracion"];
 
             campos.forEach(campo => {
                 const td = row.insertCell();
-                td.setAttribute("contenteditable", "true");
-                td.classList.add("editable");
                 td.dataset.field = campo;
-                td.textContent = data[campo] ?? "";
+                td.classList.add("editable");
+                if (campo === "via_administracion") {
+                    const select = document.createElement("select");
+                    ["VIA TOPICA", "INTRAVITREA", "VIA INFILTRATIVA", "INTRAVENOSA", "SUBCOJUNTIVAL"].forEach(opcion => {
+                        const option = document.createElement("option");
+                        option.value = opcion;
+                        option.textContent = opcion;
+                        if (data[campo] === opcion) option.selected = true;
+                        select.appendChild(option);
+                    });
+                    td.appendChild(select);
+                } else {
+                    td.setAttribute("contenteditable", "true");
+                    td.setAttribute("role", "textbox");
+                    td.setAttribute("aria-label", "Nombre del medicamento");
+                    td.textContent = data[campo] ?? "";
+                }
             });
 
             const accionTd = row.insertCell();
@@ -243,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                 const btn = e.target.closest(".delete-btn");
                 const row = btn.closest("tr");
                 Swal.fire({
-                    title: "¿Eliminar insumo?",
+                    title: "¿Eliminar medicamento?",
                     text: "Esta acción no se puede deshacer.",
                     icon: "warning",
                     showCancelButton: true,
@@ -253,8 +251,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                     cancelButtonText: "Cancelar"
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        row.remove();
-                        // Opcional: podrías hacer un fetch aquí para eliminar en backend si se desea
+                        fetch("eliminar_insumo.php", {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({id: row.getAttribute("data-id")})
+                        })
+                            .then(res => res.json())
+                            .then(json => {
+                                if (json.success) {
+                                    row.remove();
+                                    Swal.fire("Eliminado", json.message, "success");
+                                } else {
+                                    Swal.fire("Error", json.message, "error");
+                                }
+                            })
+                            .catch(() => {
+                                Swal.fire("Error", "No se pudo eliminar el insumo.", "error");
+                            });
                     }
                 });
             }
@@ -264,17 +277,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
         agregarBtn.addEventListener("click", function () {
             const nuevaFila = tbody.insertRow(-1);
             nuevaFila.setAttribute("data-id", "nuevo");
-            const campos = [
-                "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
-                "nombre", "producto_issfa", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
-            ];
+            const campos = ["medicamento", "via_administracion"];
 
             campos.forEach(campo => {
                 const td = nuevaFila.insertCell();
-                td.setAttribute("contenteditable", "true");
-                td.classList.add("editable");
                 td.dataset.field = campo;
-                td.textContent = "";
+                td.classList.add("editable");
+                if (campo === "via_administracion") {
+                    const select = document.createElement("select");
+                    ["VIA TOPICA", "INTRAVITREA", "VIA INFILTRATIVA", "INTRAVENOSA", "SUBCOJUNTIVAL"].forEach(opcion => {
+                        const option = document.createElement("option");
+                        option.value = opcion;
+                        option.textContent = opcion;
+                        select.appendChild(option);
+                    });
+                    td.appendChild(select);
+                } else {
+                    td.setAttribute("contenteditable", "true");
+                    td.setAttribute("role", "textbox");
+                    td.setAttribute("aria-label", "Nombre del medicamento");
+                    td.textContent = "";
+                }
             });
 
             const accionTd = nuevaFila.insertCell();
@@ -305,9 +328,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
 
             row.querySelectorAll(".editable").forEach(cell => {
                 const campo = cell.dataset.field;
-                const valor = cell.textContent.trim();
+                let valor;
+                if (cell.dataset.field === "via_administracion") {
+                    const select = cell.querySelector("select");
+                    valor = select ? select.value : "";
+                } else {
+                    valor = cell.textContent.trim();
+                }
 
-                if (!valor && ["nombre", "categoria"].includes(campo)) {
+                if (!valor && ["medicamento", "via_administracion"].includes(campo)) {
                     cell.style.backgroundColor = "#fff3cd"; // Amarillo suave
                     valido = false;
                 } else if (["precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"].includes(campo)) {
@@ -328,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                 Swal.fire({
                     icon: "warning",
                     title: "Validación requerida",
-                    html: "<b>Revisa los siguientes puntos:</b><ul style='text-align:left'><li>Los campos <strong>nombre</strong> y <strong>categoría</strong> no pueden estar vacíos.</li><li>Los campos numéricos deben tener valores válidos.</li></ul>",
+                    html: "<b>Revisa los siguientes puntos:</b><ul style='text-align:left'><li>Los campos <strong>Medicamento</strong> y <strong>Vía de administración</strong> no pueden estar vacíos.</li><li>Los campos numéricos deben tener valores válidos.</li></ul>",
                     confirmButtonText: "Entendido",
                     confirmButtonColor: "#3085d6"
                 });
