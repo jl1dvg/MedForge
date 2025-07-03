@@ -251,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                     cancelButtonText: "Cancelar"
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        fetch("eliminar_insumo.php", {
+                        fetch("eliminar_medicamento.php", {
                             method: "POST",
                             headers: {"Content-Type": "application/json"},
                             body: JSON.stringify({id: row.getAttribute("data-id")})
@@ -266,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                                 }
                             })
                             .catch(() => {
-                                Swal.fire("Error", "No se pudo eliminar el insumo.", "error");
+                                Swal.fire("Error", "No se pudo eliminar el medicamento.", "error");
                             });
                     }
                 });
@@ -364,7 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                 return;
             }
 
-            fetch("guardar_insumo.php", {
+            fetch("guardar_medicamento.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify(data)
@@ -388,7 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                 })
                 .catch(err => {
                     console.error(err);
-                    Swal.fire("Error", "No se pudo guardar el insumo.", "error");
+                    Swal.fire("Error", "No se pudo guardar el medicamento.", "error");
                 });
         }
     });
