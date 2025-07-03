@@ -103,97 +103,97 @@ $username = $dashboardController->getAuthenticatedUser();
                 </div>
             </div>
             <div class="content">
-                <!-- FILTRO COMPACTO Y AGRUPADO -->
-                    <div class="card p-3 shadow-sm bg-light border border-primary mb-4">
-                    <form method="GET">
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-3">
-                                <label for="mes" class="form-label form-label-sm">Mes</label>
-                                <select name="mes" id="mes" class="form-select form-select-sm">
-                                    <option value="">-- Todos los meses --</option>
-                                    <?php
-                                    $mesesUnicos = array_unique(array_map(function ($atencion) {
-                                        return date('Y-m', strtotime($atencion['fecha']));
-                                    }, $atenciones));
-                                    sort($mesesUnicos);
-                                    foreach ($mesesUnicos as $mesOption):
-                                        $selected = ($_GET['mes'] ?? '') === $mesOption ? 'selected' : '';
-                                        echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
-                                    endforeach;
-                                    ?>
-                                </select>
-                            </div>
+                    <!-- FILTRO COMPACTO Y AGRUPADO -->
+                        <div class="card p-3 shadow-sm bg-light border border-primary mb-4">
+                        <form method="GET">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-3">
+                                    <label for="mes" class="form-label form-label-sm">Mes</label>
+                                    <select name="mes" id="mes" class="form-select form-select-sm">
+                                        <option value="">-- Todos los meses --</option>
+                                        <?php
+                                        $mesesUnicos = array_unique(array_map(function ($atencion) {
+                                            return date('Y-m', strtotime($atencion['fecha']));
+                                        }, $atenciones));
+                                        sort($mesesUnicos);
+                                        foreach ($mesesUnicos as $mesOption):
+                                            $selected = ($_GET['mes'] ?? '') === $mesOption ? 'selected' : '';
+                                            echo "<option value='$mesOption' $selected>" . date('F Y', strtotime($mesOption . "-01")) . "</option>";
+                                        endforeach;
+                                        ?>
+                                    </select>
+                                </div>
 
-                            <div class="col-md-3">
-                                <label for="semana" class="form-label form-label-sm">Semana</label>
-                                <select name="semana" id="semana" class="form-select form-select-sm">
-                                    <option value="">-- Todas las semanas --</option>
-                                    <option value="1" <?= ($_GET['semana'] ?? '') === '1' ? 'selected' : '' ?>>Semana 1
-                                        (1–7)
-                                    </option>
-                                    <option value="2" <?= ($_GET['semana'] ?? '') === '2' ? 'selected' : '' ?>>Semana 2
-                                        (8–14)
-                                    </option>
-                                    <option value="3" <?= ($_GET['semana'] ?? '') === '3' ? 'selected' : '' ?>>Semana 3
-                                        (15–21)
-                                    </option>
-                                    <option value="4" <?= ($_GET['semana'] ?? '') === '4' ? 'selected' : '' ?>>Semana 4
-                                        (22–28)
-                                    </option>
-                                    <option value="5" <?= ($_GET['semana'] ?? '') === '5' ? 'selected' : '' ?>>Semana 5
-                                        (29–31)
-                                    </option>
-                                </select>
-                            </div>
+                                <div class="col-md-3">
+                                    <label for="semana" class="form-label form-label-sm">Semana</label>
+                                    <select name="semana" id="semana" class="form-select form-select-sm">
+                                        <option value="">-- Todas las semanas --</option>
+                                        <option value="1" <?= ($_GET['semana'] ?? '') === '1' ? 'selected' : '' ?>>Semana 1
+                                            (1–7)
+                                        </option>
+                                        <option value="2" <?= ($_GET['semana'] ?? '') === '2' ? 'selected' : '' ?>>Semana 2
+                                            (8–14)
+                                        </option>
+                                        <option value="3" <?= ($_GET['semana'] ?? '') === '3' ? 'selected' : '' ?>>Semana 3
+                                            (15–21)
+                                        </option>
+                                        <option value="4" <?= ($_GET['semana'] ?? '') === '4' ? 'selected' : '' ?>>Semana 4
+                                            (22–28)
+                                        </option>
+                                        <option value="5" <?= ($_GET['semana'] ?? '') === '5' ? 'selected' : '' ?>>Semana 5
+                                            (29–31)
+                                        </option>
+                                    </select>
+                                </div>
 
-                            <div class="col-md-3">
-                                <label for="afiliacion" class="form-label form-label-sm">Afiliación</label>
-                                <select name="afiliacion" id="afiliacion" class="form-select form-select-sm">
-                                    <option value="">-- Todas las afiliaciones --</option>
-                                    <?php
-                                    $afiliacionesUnicas = array_unique(array_map(fn($a) => strtolower($a['afiliacion'] ?? ''), $atenciones));
-                                    sort($afiliacionesUnicas);
-                                    foreach ($afiliacionesUnicas as $afiliacion):
-                                        if (!$afiliacion) continue;
-                                        $selected = ($_GET['afiliacion'] ?? '') === $afiliacion ? 'selected' : '';
-                                        echo "<option value='$afiliacion' $selected>" . strtoupper($afiliacion) . "</option>";
-                                    endforeach;
-                                    ?>
-                                </select>
-                            </div>
+                                <div class="col-md-3">
+                                    <label for="afiliacion" class="form-label form-label-sm">Afiliación</label>
+                                    <select name="afiliacion" id="afiliacion" class="form-select form-select-sm">
+                                        <option value="">-- Todas las afiliaciones --</option>
+                                        <?php
+                                        $afiliacionesUnicas = array_unique(array_map(fn($a) => strtolower($a['afiliacion'] ?? ''), $atenciones));
+                                        sort($afiliacionesUnicas);
+                                        foreach ($afiliacionesUnicas as $afiliacion):
+                                            if (!$afiliacion) continue;
+                                            $selected = ($_GET['afiliacion'] ?? '') === $afiliacion ? 'selected' : '';
+                                            echo "<option value='$afiliacion' $selected>" . strtoupper($afiliacion) . "</option>";
+                                        endforeach;
+                                        ?>
+                                    </select>
+                                </div>
 
-                            <div class="col-md-3">
-                                <label for="tipo" class="form-label form-label-sm">Tipo</label>
-                                <select name="tipo" id="tipo" class="form-select form-select-sm">
-                                    <option value="">-- Todos los tipos --</option>
-                                    <option value="consulta" <?= ($_GET['tipo'] ?? '') === 'consulta' ? 'selected' : '' ?>>
-                                        Consulta
-                                    </option>
-                                    <option value="protocolo" <?= ($_GET['tipo'] ?? '') === 'protocolo' ? 'selected' : '' ?>>
-                                        Protocolo
-                                    </option>
-                                </select>
-                            </div>
+                                <div class="col-md-3">
+                                    <label for="tipo" class="form-label form-label-sm">Tipo</label>
+                                    <select name="tipo" id="tipo" class="form-select form-select-sm">
+                                        <option value="">-- Todos los tipos --</option>
+                                        <option value="consulta" <?= ($_GET['tipo'] ?? '') === 'consulta' ? 'selected' : '' ?>>
+                                            Consulta
+                                        </option>
+                                        <option value="protocolo" <?= ($_GET['tipo'] ?? '') === 'protocolo' ? 'selected' : '' ?>>
+                                            Protocolo
+                                        </option>
+                                    </select>
+                                </div>
 
-                            <div class="col-md-6">
-                                <label for="procedimiento" class="form-label form-label-sm">Procedimiento</label>
-                                <input type="text" name="procedimiento" id="procedimiento"
-                                       class="form-control form-control-sm"
-                                       value="<?= htmlspecialchars($_GET['procedimiento'] ?? '') ?>"
-                                       placeholder="Ej: consulta oftalmológica">
-                            </div>
+                                <div class="col-md-6">
+                                    <label for="procedimiento" class="form-label form-label-sm">Procedimiento</label>
+                                    <input type="text" name="procedimiento" id="procedimiento"
+                                           class="form-control form-control-sm"
+                                           value="<?= htmlspecialchars($_GET['procedimiento'] ?? '') ?>"
+                                           placeholder="Ej: consulta oftalmológica">
+                                </div>
 
-                            <div class="col-md-3">
-                                <button type="submit" class="btn btn-primary btn-sm w-100">Aplicar filtros</button>
-                            </div>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-primary btn-sm w-100">Aplicar filtros</button>
+                                </div>
 
-                            <div class="col-md-3">
-                                <a href="/views/informes/informe_particulares.php"
-                                   class="btn btn-secondary btn-sm w-100">Limpiar</a>
+                                <div class="col-md-3">
+                                    <a href="/views/informes/informe_particulares.php"
+                                       class="btn btn-secondary btn-sm w-100">Limpiar</a>
+                                </div>
                             </div>
-                        </div>
-                    </form>
-                </div>
+                        </form>
+                    </div>
                 <div class="row">
                     <div class="col-xl-10 col-lg-9 col-12">
                         <div class="box shadow-sm border">
