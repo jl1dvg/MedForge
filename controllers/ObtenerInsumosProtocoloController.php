@@ -22,11 +22,15 @@ class ObtenerInsumosProtocoloController
         $sql = "SELECT insumos, hora_inicio, hora_fin, status FROM protocolo_data WHERE hc_number = :hc AND form_id = :form_id";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
-            ':hc' => $data['hcNumber'],
-            ':form_id' => $data['form_id']
+            ':hc' => trim((string)$data['hcNumber']),
+            ':form_id' => (int)$data['form_id']
         ]);
-
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $debug = [
+            "inputs" => $data,
+            "sql_row" => $row,
+            "pdo_error" => $stmt->errorInfo()
+        ];
 
         if ($row) {
             $horaInicio = $row['hora_inicio'];
@@ -42,6 +46,16 @@ class ObtenerInsumosProtocoloController
             }
 
             $insumos = json_decode($row['insumos'], true);
+            $debug['raw_insumos'] = $row['insumos'];
+            $debug['parsed_insumos'] = $insumos;
+
+            if (!is_array($insumos)) {
+                return [
+                    "success" => false,
+                    "message" => "Error al decodificar JSON de insumos",
+                    "debug" => $debug
+                ];
+            }
             // Obtener afiliación del paciente
             $sqlAfiliacion = "SELECT afiliacion FROM patient_data WHERE hc_number = :hc LIMIT 1";
             $stmtAfiliacion = $this->db->prepare($sqlAfiliacion);
@@ -86,11 +100,16 @@ class ObtenerInsumosProtocoloController
                 "insumos" => $insumos,
                 "duracion" => $duracion,
                 "status" => $status,
+                "afiliacion" => $afiliacion,
+                "debug" => $debug
             ];
         } else {
             return [
                 "success" => false,
-                "message" => "No se encontraron insumos para este paciente"
+                "message" => "No se encontraron insumos para este paciente",
+                "debug" => [
+                    "inputs" => $data
+                ]
             ];
         }
     }
