@@ -170,7 +170,7 @@ if (!empty($billingIds)) {
                                                     'seguro campesino jubilado',
                                                     'seguro general',
                                                     'seguro general jubilado',
-                                                    'seguro general por montepío',
+                                                    'seguro general por montepio',
                                                     'seguro general tiempo parcial'
                                                 ];
                                                 $mesesValidos = [];

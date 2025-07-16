@@ -465,7 +465,7 @@ class BillingController
             'seguro campesino jubilado' => 'CJ',
             'seguro general' => 'SG',
             'seguro general jubilado' => 'JU',
-            'seguro general por montepío' => 'MO',
+            'seguro general por montepio' => 'MO',
             'seguro general tiempo parcial' => 'TP'
         ];
         $normalizado = strtolower(trim($afiliacion));
