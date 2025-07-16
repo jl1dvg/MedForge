@@ -11,7 +11,7 @@ class InformesHelper
     {
         $total = 0;
 
-        foreach ($datosPaciente['procedimientos'] as $index => $p) {
+        foreach (($datosPaciente['procedimientos'] ?? []) as $index => $p) {
             $codigo = $p['proc_codigo'] ?? '';
             $precio = (float)($p['proc_precio'] ?? 0);
 
@@ -24,14 +24,14 @@ class InformesHelper
         }
 
         if (!empty($datosPaciente['protocoloExtendido']['cirujano_2']) || !empty($datosPaciente['protocoloExtendido']['primer_ayudante'])) {
-            foreach ($datosPaciente['procedimientos'] as $index => $p) {
+            foreach (($datosPaciente['procedimientos'] ?? []) as $index => $p) {
                 $precio = (float)($p['proc_precio'] ?? 0);
                 $porcentaje = ($index === 0) ? 0.2 : 0.1;
                 $total += $precio * $porcentaje;
             }
         }
 
-        foreach ($datosPaciente['anestesia'] as $a) {
+        foreach (($datosPaciente['anestesia'] ?? []) as $a) {
             $valor2 = (float)($a['valor2'] ?? 0);
             $tiempo = (float)($a['tiempo'] ?? 0);
             $total += $valor2 * $tiempo;
@@ -45,8 +45,8 @@ class InformesHelper
         }
 
         $fuenteDatos = [
-            ['grupo' => 'FARMACIA', 'items' => array_merge($datosPaciente['medicamentos'], $datosPaciente['oxigeno'])],
-            ['grupo' => 'INSUMOS', 'items' => $datosPaciente['insumos']],
+            ['grupo' => 'FARMACIA', 'items' => array_merge($datosPaciente['medicamentos'] ?? [], $datosPaciente['oxigeno'] ?? [])],
+            ['grupo' => 'INSUMOS', 'items' => $datosPaciente['insumos'] ?? []],
         ];
 
         foreach ($fuenteDatos as $bloque) {
@@ -68,7 +68,7 @@ class InformesHelper
             }
         }
 
-        foreach ($datosPaciente['derechos'] as $servicio) {
+        foreach (($datosPaciente['derechos'] ?? []) as $servicio) {
             $valorUnitario = $servicio['precio_afiliacion'] ?? 0;
             $cantidad = $servicio['cantidad'] ?? 1;
             $total += $valorUnitario * $cantidad;
