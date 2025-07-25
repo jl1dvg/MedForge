@@ -203,7 +203,7 @@ class GuardarProyeccionController
                 sede_departamento = VALUES(sede_departamento),
                 id_sede = VALUES(id_sede),
                 estado_agenda = IFNULL(VALUES(estado_agenda), estado_agenda),
-                afiliacion = VALUES(afiliacion),
+                afiliacion = IF(VALUES(afiliacion) != 'SIN COBERTURA', VALUES(afiliacion), afiliacion),
                 fecha = VALUES(fecha),
                 hora = VALUES(hora)
                 -- visita_id NO se actualiza si ya existía

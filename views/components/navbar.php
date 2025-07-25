@@ -38,10 +38,18 @@ require_once __DIR__ . '/../../bootstrap.php';
                                 class="mdi mdi-table-large"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Protocolos Realizados</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/ipl/ipl_planificador_lista.php'; ?>"><i
+                                class="mdi mdi-table-large"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Planificador de IPL</a></li>
                 <li><a href="<?php echo BASE_URL . 'views/editor/lista_protocolos.php'; ?>"><i
                                 class="mdi mdi-tooltip-edit"><span
                                     class="path1"></span><span
                                     class="path2"></span></i>Plantillas de Protocolos</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/solicitudes/solicitudes.php'; ?>"><i
+                                class="mdi mdi-tooltip-edit"><span
+                                    class="path1"></span><span
+                                    class="path2"></span></i>Solicitudes</a></li>
             </ul>
         </li>
         <li><a href="<?php echo BASE_URL . 'views/insumos/insumos.php'; ?>"><i class="mdi mdi-medical-bag"><span
@@ -81,7 +89,9 @@ require_once __DIR__ . '/../../bootstrap.php';
         </li>
         <li><a href="#"><i class="mdi mdi-chart-areaspline"><span class="path1"></span><span class="path2"></span></i>Estadísticas</a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>"><i class="mdi mdi-chart-line"><span class="path1"></span><span class="path2"></span></i>Flujo de Pacientes</a></li>
+                <li><a href="<?php echo BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>"><i
+                                class="mdi mdi-chart-line"><span class="path1"></span><span class="path2"></span></i>Flujo
+                        de Pacientes</a></li>
             </ul>
         </li>
         <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>

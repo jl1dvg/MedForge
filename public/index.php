@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../controllers/BillingController.php';
+require_once __DIR__ . '/../controllers/EstadisticaFlujoController.php';
 
 use Controllers\BillingController;
 
@@ -41,6 +42,11 @@ if ($path === '/billing/exportar_mes' && $method === 'GET') {
         echo "Falta parámetro mes";
     }
 } // Puedes agregar más rutas aquí
+if ($path === '/reportes/estadistica_flujo' && $method === 'GET') {
+    $controller = new \Controllers\EstadisticaFlujoController($pdo);
+    $controller->index();
+    exit;
+}
 else {
     http_response_code(404);
     echo "Ruta no encontrada: " . htmlspecialchars($path);
