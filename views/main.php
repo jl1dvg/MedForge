@@ -153,7 +153,7 @@ $doctores_top = $controller->getTopDoctores();
                                     <div class="box-footer bg-light py-10 with-border">
                                         <div class="d-flex align-items-center justify-content-between">
                                             <p class="mb-0">Total <?= $total_cirugias; ?> cirugías registradas</p>
-                                            <a href="reports/qx_reports.php"
+                                            <a href="solicitudes/qx_reports.php"
                                                class="waves-effect waves-light btn btn-primary">Ver Todos</a>
                                         </div>
                                     </div>

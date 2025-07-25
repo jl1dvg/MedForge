@@ -4,18 +4,26 @@ namespace Controllers;
 
 use PDO;
 use Models\ProtocoloModel;
+use Models\SolicitudModel;
 use Helpers\ProtocoloHelper;
+use Helpers\SolicitudHelper;
 use PdfGenerator;
+use Controllers\SolicitudController;
 
 class PdfController
 {
     private PDO $db;
-    private ProtocoloModel $protocoloModel; // ✅ propiedad faltante
+    private ProtocoloModel $protocoloModel;
+    private SolicitudModel $solicitudModel;
+    private SolicitudController $solicitudController; // ✅ nueva propiedad
+
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
-        $this->protocoloModel = new ProtocoloModel($pdo); // ✅ inicializarla aquí
+        $this->protocoloModel = new ProtocoloModel($pdo);
+        $this->solicitudModel = new SolicitudModel($pdo);
+        $this->solicitudController = new SolicitudController($this->db);
     }
 
     public function generarProtocolo(string $form_id, string $hc_number, bool $soloDatos = false, string $modo = 'completo')
@@ -199,6 +207,51 @@ class PdfController
             );
         }
     }
+
+    public function generateCobertura(string $form_id, string $hc_number)
+    {
+        $datos = $this->solicitudController->obtenerDatosParaVista($hc_number, $form_id); // ✅ uso correcto
+
+        // Calcular edadPaciente según fecha_nacimiento y created_at
+        if (!empty($datos['paciente']['fecha_nacimiento']) && !empty($datos['solicitud']['created_at'])) {
+            $datos['edadPaciente'] = (new \DateTime($datos['paciente']['fecha_nacimiento']))->diff(new \DateTime($datos['solicitud']['created_at']))->y;
+        } else {
+            $datos['edadPaciente'] = null;
+        }
+
+        //echo '<pre>';
+        //print_r($datos);
+        //echo '</pre>';
+        //Paginas
+        $paginas = [
+            '007.php',
+            '010.php',
+        ];
+        $htmlTotal = '';
+
+        foreach ($paginas as $index => $pagina) {
+            ob_start();
+            extract($datos);
+            include dirname(__DIR__) . '/views/pdf/' . $pagina;
+            $htmlTotal .= ob_get_clean();
+
+            if ($index < count($paginas) - 1) {
+                $htmlTotal .= '<pagebreak>';
+            }
+        }
+
+        $htmlTotal .= '<pagebreak orientation="P">';
+        ob_start();
+        extract($datos);
+        include dirname(__DIR__) . '/views/pdf/referencia.php';
+        $htmlTotal .= ob_get_clean();
+
+        PdfGenerator::generarDesdeHtml(
+            $htmlTotal,
+            'cobertura_' . $form_id . '_' . $hc_number . '.pdf',
+            dirname(__DIR__) . '/public/css/pdf/referencia.css');
+    }
+
 }
 
 ?>

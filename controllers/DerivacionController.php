@@ -227,5 +227,12 @@ class DerivacionController
             'errores' => $errores
         ];
     }
+
+    public function existeDerivacion(string $formId): bool
+    {
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM derivaciones_form_id WHERE form_id = ?");
+        $stmt->execute([$formId]);
+        return $stmt->fetchColumn() > 0;
+    }
 }
 

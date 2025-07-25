@@ -217,6 +217,11 @@ $username = $dashboardController->getAuthenticatedUser();
                                                 $fecha_ideal->modify('+1 day');
                                             }
 
+                                            // Validación estricta: ninguna fecha ideal debe pasar del día exacto de vigencia
+                                            if ($fecha_ideal > $fechaVigencia) {
+                                                break;
+                                            }
+
                                             $fechas_ideales_final[] = [
                                                 'contador' => $contador++,
                                                 'fecha' => $fecha_ideal->format('Y-m-d')
