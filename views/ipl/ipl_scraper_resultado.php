@@ -37,11 +37,6 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
         $diagnostico = trim($matchDiagnostico[1], '", ');
     }
 
-    if ($fechaRegistro || $fechaVigencia) {
-        if ($fechaRegistro) echo "<strong>📅 Fecha de Registro:</strong> " . htmlspecialchars($fechaRegistro) . "<br>";
-        if ($fechaVigencia) echo "<strong>📅 Fecha de Vigencia:</strong> " . htmlspecialchars($fechaVigencia);
-    }
-
     // Decodificar respuesta del scraper si es posible (simulando un array asociativo)
     $scraperResponse = [
         'codigo_derivacion' => $codigoDerivacion,
@@ -112,38 +107,21 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                 $fecha_fin = new DateTime($match[1]);
             }
 
-            // Calcular fechas ideales (una por mes sin contar fines de semana ni duplicar fechas reales)
-            $fechas_ideales = [];
-            if ($fecha_inicio) {
-                $iter = clone $fecha_inicio;
-                $contador = 0;
-
-                while ($contador < 4) {
-                    $fecha_str = $iter->format('Y-m-d');
-                    $weekday = $iter->format('N');
-
-                    if ($weekday < 6 && !in_array($fecha_str, array_map(fn($f) => substr($f, 0, 10), $fechas_realizadas))) {
-                        $fechas_ideales[] = $fecha_str;
-                        $contador++;
-                    }
-
-                    $iter->modify('+1 month');
-                }
+            $fecha_inicio = ($fechaRegistro instanceof DateTime) ? clone $fechaRegistro : new DateTime($fechaRegistro);
+            if (!empty($fechaVigencia) && !($fechaVigencia instanceof DateTime)) {
+                $fechaVigencia = new DateTime($fechaVigencia);
             }
+            $fechas_ideales = $controller->generarFechasIdeales($fecha_inicio, $fechaVigencia);
 
             echo '<div class="alert alert-info mb-3">';
             echo '<strong>Resumen del Planificador IPL:</strong><br>';
             echo '📆 Sesiones realizadas: ' . count($fechas_realizadas) . '<br>';
-            echo '🕐 Primera sesión: ' . ($fecha_inicio ? $fecha_inicio->format('d/m/Y') : '-') . '<br>';
-            echo '🕐 Vigencia: ' . ($fecha_fin ? $fecha_fin->format('d/m/Y') : '-') . '<br>';
-            echo '📌 Sesiones faltantes: ' . count($fechas_ideales) . '<br>';
-            if (!empty($fechas_ideales)) {
-                echo '🗓 Fechas ideales pendientes:<ul>';
-                foreach ($fechas_ideales as $f) {
-                    echo '<li>' . IplHelper::formatearFecha($f) . '</li>';
-                }
-                echo '</ul>';
-            }
+            echo '📅 Fecha de Registro: ' . ($fecha_inicio ? $fecha_inicio->format('d/m/Y') : '-') . '<br>';
+            echo '📅 Fecha de Vigencia: ' . ($fecha_fin ? $fecha_fin->format('d/m/Y') : '-') . '<br>';
+            $totalSesiones = count($fechas_ideales);
+            $faltantes = IplHelper::calcularSesionesFaltantes($fechas_ideales, $fechas_realizadas);
+            echo '📌 Sesiones faltantes: ' . $faltantes . '<br>';
+
             echo '</div>';
 
             echo '<div class="table-responsive">';
@@ -170,44 +148,15 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
             if (!empty($fechaVigencia) && !($fechaVigencia instanceof DateTime)) {
                 $fechaVigencia = new DateTime($fechaVigencia);
             }
-            // Generar fechas ideales desde fecha_registro (una por mes, variando el día de manera natural y evitando fines de semana)
-            $fechas_ideales_final = [];
-            if ($fechaRegistro && $fechaVigencia) {
-                $fecha_base = clone $fechaRegistro;
-                $dia_base = (int)$fecha_base->format('d');
-                $desplazamientos = [0, -6, -3, 2, 4, 6]; // Variaciones naturales desde el día base
 
-                $contador = 1;
-                while ($fecha_base <= $fechaVigencia) {
-                    $desplazar = $desplazamientos[array_rand($desplazamientos)];
-                    $fecha_ideal = DateTime::createFromFormat('Y-m-d', $fecha_base->format('Y-m-01'));
-                    $fecha_ideal->modify("+{$dia_base} days")->modify("{$desplazar} days");
-
-                    // Evitar sábado o domingo
-                    while ((int)$fecha_ideal->format('N') >= 6) {
-                        $fecha_ideal->modify('+1 day');
-                    }
-
-                    // Validación estricta: ninguna fecha ideal debe pasar del día exacto de vigencia
-                    if ($fecha_ideal > $fechaVigencia) {
-                        break;
-                    }
-
-                    $fechas_ideales_final[] = [
-                        'contador' => $contador++,
-                        'fecha' => $fecha_ideal->format('Y-m-d')
-                    ];
-
-                    $fecha_base->modify('first day of next month');
-                }
-            }
-
+            $fecha_inicio = ($fechaRegistro instanceof DateTime) ? clone $fechaRegistro : new DateTime($fechaRegistro);
+            $fechas_ideales = $controller->generarFechasIdeales($fecha_inicio, $fechaVigencia);
             // Clonar grupos para no modificar el original
             $grupos_restantes = $grupos;
 
             // Emparejar sesiones reales a fechas ideales de forma secuencial
-            foreach ($fechas_ideales_final as $sesion) {
-                $fechaIdeal = $sesion['fecha'];
+            foreach ($fechas_ideales as $index => $fechaIdeal) {
+                $contador = $index + 1;
                 $match = null;
 
                 if (!empty($grupos_restantes)) {
@@ -220,12 +169,12 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     echo "<!-- Verificando existencia en BD: form_id = '{$formIdCheck}', hc_number = '{$hc_number}' -->";
                     $existeBD = $controller->existeDerivacionEnBD($formIdCheck, $hc_number);
                     echo '<tr class="table-' . IplHelper::claseFilaEstado($match['estado']) . '">';
-                    echo '<td>' . $sesion['contador'] . '</td>';
+                    echo '<td>' . $contador . '</td>';
                     echo '<td>' . htmlspecialchars($match['form_id']) . '</td>';
                     echo '<td>' . htmlspecialchars($match['codigo_derivacion']) . '</td>';
                     echo '<td>' . htmlspecialchars($match['procedimiento']) . '</td>';
                     echo '<td>' . htmlspecialchars($match['fecha']) . '</td>';
-                    echo '<td>' . IplHelper::formatearFecha($fechaIdeal) . '</td>';
+                    echo '<td>' . IplHelper::formatearFecha(is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal) . '</td>';
                     echo '<td>' . htmlspecialchars($match['doctor']) . '</td>';
                     echo '<td>' . IplHelper::estadoTexto($match['estado']);
 
@@ -247,12 +196,12 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     echo '</tr>';
                 } else {
                     echo '<tr class="table-warning">';
-                    echo '<td>' . $sesion['contador'] . '</td>';
+                    echo '<td>' . $contador . '</td>';
                     echo '<td>-</td>';
                     echo '<td></td>';
                     echo '<td>IPL Pendiente</td>';
                     echo '<td>-</td>';
-                    echo '<td>' . IplHelper::formatearFecha($fechaIdeal) . '</td>';
+                    echo '<td>' . IplHelper::formatearFecha(is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal) . '</td>';
                     echo '<td>-</td>';
                     echo '<td>⚠️ Pendiente</td>';
                     echo '</tr>';
@@ -269,38 +218,37 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
 
     // Generar y mostrar fechas propuestas de sesiones IPL si hay fechas válidas
 
-    include __DIR__ . '/ipl_planificador_lista_data.php';
+    //include __DIR__ . '/ipl_planificador_lista_data.php';
 }
 
 ?>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.guardar-derivacion').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            const formId = this.dataset.formId;
-            const hc = this.dataset.hc;
-            const codigo = this.dataset.codigo;
-            const fechaRegistro = this.dataset.fechaRegistro;
-            const fechaVigencia = this.dataset.fechaVigencia;
-            const diagnostico = this.dataset.diagnostico;
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.guardar-derivacion').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const formId = this.dataset.formId;
+                const hc = this.dataset.hc;
+                const codigo = this.dataset.codigo;
+                const fechaRegistro = this.dataset.fechaRegistro;
+                const fechaVigencia = this.dataset.fechaVigencia;
+                const diagnostico = this.dataset.diagnostico;
 
-            fetch('guardar_derivacion.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                body: `form_id=${formId}&hc_number=${hc}&codigo=${encodeURIComponent(codigo)}&fecha_registro=${encodeURIComponent(fechaRegistro)}&fecha_vigencia=${encodeURIComponent(fechaVigencia)}&diagnostico=${encodeURIComponent(diagnostico)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    this.outerHTML = "<span class='badge bg-success'>✅ BD</span>";
-                } else {
-                    alert("Error: " + data.message);
-                }
+                fetch('guardar_derivacion.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: `form_id=${formId}&hc_number=${hc}&codigo=${encodeURIComponent(codigo)}&fecha_registro=${encodeURIComponent(fechaRegistro)}&fecha_vigencia=${encodeURIComponent(fechaVigencia)}&diagnostico=${encodeURIComponent(diagnostico)}`
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            this.outerHTML = "<span class='badge bg-success'>✅ BD</span>";
+                        } else {
+                            alert("Error: " + data.message);
+                        }
+                    });
             });
         });
     });
-});
 </script>
-

@@ -42,4 +42,27 @@ class IplHelper
     {
         return trim("{$row['fname']} {$row['lname']} {$row['lname2']}");
     }
+
+    public static function calcularSesionesFaltantes(array $fechasIdeales, array $fechasRealizadas): int
+    {
+        $realizadas = 0;
+
+        foreach ($fechasIdeales as $fIdeal) {
+            $fechaIdeal = is_array($fIdeal) ? $fIdeal['fecha'] : $fIdeal;
+
+            foreach ($fechasRealizadas as $sesion) {
+                if (
+                    isset($sesion['fecha_real'], $sesion['estado'], $sesion['fecha_ideal']) &&
+                    !empty($sesion['fecha_real']) &&
+                    strpos($sesion['estado'], 'Dado de Alta') !== false &&
+                    substr($sesion['fecha_ideal'], 0, 10) === $fechaIdeal
+                ) {
+                    $realizadas++;
+                    break;
+                }
+            }
+        }
+
+        return count($fechasIdeales) - $realizadas;
+    }
 }
