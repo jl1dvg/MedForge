@@ -71,16 +71,24 @@ $cie102 = '';
 
 if (!empty($diagnosticoStr)) {
     $diagnosticos = explode(';', $diagnosticoStr);
-    $primerDiagnostico = $diagnosticos[0] ?? '';
-    $segundoDiagnostico = $diagnosticos[1] ?? '';
+    $codigosUnicos = [];
 
-    if (!empty($primerDiagnostico)) {
-        $cie101 = trim(explode(' ', explode('-', $primerDiagnostico)[0])[0]);
+    foreach ($diagnosticos as $dx) {
+        $dx = trim($dx);
+        if ($dx === '') continue;
+
+        // Extraer solo el código antes del primer espacio o guion
+        $codigo = trim(explode(' ', explode('-', $dx)[0])[0]);
+
+        if (!in_array($codigo, $codigosUnicos)) {
+            $codigosUnicos[] = $codigo;
+        }
+
+        if (count($codigosUnicos) === 2) break; // Solo necesitamos 2 únicos
     }
 
-    if (!empty($segundoDiagnostico)) {
-        $cie102 = trim(explode(' ', explode('-', $segundoDiagnostico)[0])[0]);
-    }
+    $cie101 = $codigosUnicos[0] ?? '';
+    $cie102 = $codigosUnicos[1] ?? '';
 }
 
 // Crear Excel
@@ -318,34 +326,18 @@ if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocolo
     }
 }
 
-$codigoAnestesia = $data['procedimientos'][0]['proc_codigo'] ?? '';
-$precioReal = $codigoAnestesia ? $GLOBALS['controller']->obtenerValorAnestesia($codigoAnestesia) : null;
-
-// === Procedimiento con 16%
-if (!empty($data['procedimientos'][0])) {
-    $p = $data['procedimientos'][0];
-    $precio = (float)$p['proc_precio'];
-    $porcentaje = 0.16;
-    $valorPorcentaje = $precioReal;
-
-    $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
-    $sheet->setCellValue("C{$row}", $p['proc_codigo']);
-    $sheet->setCellValue("D{$row}", $p['proc_detalle']);
-    $sheet->setCellValue("F{$row}", $precio);
-    $sheet->setCellValue("G{$row}", '');
-    $sheet->setCellValue("J{$row}", $valorPorcentaje);
-    $sheet->setCellValue("K{$row}", 'ANESTESIOLOGO'); // Valor aplicado
-
-
-    foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
-        $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+$anestesiaEspecialYaCobrada = false;
+if (!empty($data['anestesia'])) {
+    foreach ($data['anestesia'] as $a) {
+        if (in_array($a['codigo'], ['99149AA', '99150AA'])) {
+            $anestesiaEspecialYaCobrada = true;
+            break;
+        }
     }
-
-    $row++;
 }
 
-if (!empty($data['anestesia'])) {
-
+if ($anestesiaEspecialYaCobrada) {
+    // 🔹 SOLO imprimir los códigos de anestesia
     foreach ($data['anestesia'] as $a) {
         $codigo = $a['codigo'];
         $descripcion = $a['nombre'];
@@ -368,6 +360,59 @@ if (!empty($data['anestesia'])) {
         }
 
         $row++;
+    }
+} else {
+    // 🔹 Primero imprimir el valor fijo del anestesiólogo (16%)
+    $codigoAnestesia = $data['procedimientos'][0]['proc_codigo'] ?? '';
+    $precioReal = $codigoAnestesia ? $GLOBALS['controller']->obtenerValorAnestesia($codigoAnestesia) : null;
+
+    // === Procedimiento con 16%
+    if (!empty($data['procedimientos'][0])) {
+        $p = $data['procedimientos'][0];
+        $precio = (float)$p['proc_precio'];
+        $porcentaje = 0.16;
+        $valorPorcentaje = $precioReal;
+
+        $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
+        $sheet->setCellValue("C{$row}", $p['proc_codigo']);
+        $sheet->setCellValue("D{$row}", $p['proc_detalle']);
+        $sheet->setCellValue("F{$row}", $precio);
+        $sheet->setCellValue("G{$row}", '');
+        $sheet->setCellValue("J{$row}", $valorPorcentaje);
+        $sheet->setCellValue("K{$row}", 'ANESTESIOLOGO');
+
+        foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
+            $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+        }
+
+        $row++;
+    }
+
+    // 🔹 Luego imprimir los valores por tiempo (si existen)
+    if (!empty($data['anestesia'])) {
+        foreach ($data['anestesia'] as $a) {
+            $codigo = $a['codigo'];
+            $descripcion = $a['nombre'];
+
+            $cantidad = (float)$a['tiempo'];
+            $valorUnitario = round((float)$a['valor2'], 2);
+            $subtotal = round($cantidad * $valorUnitario, 2);
+
+            $sheet->setCellValue("B{$row}", $formDetails['fecha_inicio'] ?? '');
+            $sheet->setCellValue("C{$row}", $codigo);
+            $sheet->setCellValue("D{$row}", $descripcion);
+            $sheet->setCellValue("F{$row}", $valorUnitario);
+            $sheet->setCellValue("G{$row}", '');
+            $sheet->setCellValue("J{$row}", $subtotal);
+            $sheet->setCellValue("I{$row}", $cantidad);
+            $sheet->setCellValue("K{$row}", 'ANESTESIOLOGO');
+
+            foreach (['B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as $col) {
+                $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
+            }
+
+            $row++;
+        }
     }
 }
 
