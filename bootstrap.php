@@ -23,6 +23,7 @@ $pdo = require_once __DIR__ . '/config/database.php';
 define('BASE_PATH', __DIR__);
 define('CONTROLLER_PATH', BASE_PATH . '/controllers');
 define('MODEL_PATH', BASE_PATH . '/models');
+define('HELPER_PATH', BASE_PATH . '/helpers');
 define('VIEW_PATH', BASE_PATH . '/views');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 
