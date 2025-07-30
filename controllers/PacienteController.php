@@ -296,7 +296,7 @@ class PacienteController
         return $staff;
     }
 
-    public function actualizarPaciente($hc_number, $fname, $mname, $lname, $lname2, $afiliacion)
+    public function actualizarPaciente($hc_number, $fname, $mname, $lname, $lname2, $afiliacion, $fecha_nacimiento, $sexo, $celular)
     {
         $stmt = $this->db->prepare("
             UPDATE patient_data 
@@ -304,7 +304,10 @@ class PacienteController
                 mname = :mname, 
                 lname = :lname, 
                 lname2 = :lname2, 
-                afiliacion = :afiliacion 
+                afiliacion = :afiliacion,
+                fecha_nacimiento = :fecha_nacimiento,
+                sexo = :sexo,
+                celular = :celular
             WHERE hc_number = :hc_number
         ");
         $stmt->execute([
@@ -313,6 +316,9 @@ class PacienteController
             ':lname' => $lname,
             ':lname2' => $lname2,
             ':afiliacion' => $afiliacion,
+            ':fecha_nacimiento' => $fecha_nacimiento,
+            ':sexo' => $sexo,
+            ':celular' => $celular,
             ':hc_number' => $hc_number
         ]);
     }

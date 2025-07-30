@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../bootstrap.php';
 
 use Controllers\DashboardController;
 use Controllers\PacienteController;
+use Helpers\PacientesHelper;
 
 $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
@@ -21,7 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_paciente']
     $nuevoApellido = $_POST['lname'] ?? '';
     $nuevoSegundoApellido = $_POST['lname2'] ?? '';
     $nuevaAfiliacion = $_POST['afiliacion'] ?? '';
-    $pacienteController->actualizarPaciente($hc_number, $nuevoNombre, $nuevoSegundoNombre, $nuevoApellido, $nuevoSegundoApellido, $nuevaAfiliacion);
+    $nuevaFechaNacimiento = $_POST['fecha_nacimiento'] ?? '';
+    $nuevoSexo = $_POST['sexo'] ?? '';
+    $nuevoCelular = $_POST['celular'] ?? '';
+    $pacienteController->actualizarPaciente($hc_number, $nuevoNombre, $nuevoSegundoNombre, $nuevoApellido, $nuevoSegundoApellido, $nuevaAfiliacion, $nuevaFechaNacimiento, $nuevoSexo, $nuevoCelular);
     header("Location: detalles.php?hc_number=$hc_number");
     exit;
 }
@@ -150,8 +154,8 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                             <li>
                                                 <div class="icon bg-primary fa fa-heart-o"></div>
                                                 <a class="timeline-panel text-muted" href="#">
-                                                    <h4 class="mb-2 mt-1"><?php echo htmlspecialchars($diagnosis['idDiagnostico']); ?></h4>
-                                                    <p class="fs-15 mb-0 "><?php echo htmlspecialchars($diagnosis['fecha']); ?></p>
+                                                    <h4 class="mb-2 mt-1"><?php echo PacientesHelper::safe($diagnosis['idDiagnostico']); ?></h4>
+                                                    <p class="fs-15 mb-0 "><?php echo PacientesHelper::safe($diagnosis['fecha']); ?></p>
                                                 </a>
                                             </li>
                                         <?php endforeach; ?>
@@ -172,7 +176,7 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                             <h4 class="mb-0">
                                                 <?php
                                                 $formattedName = 'Md. ' . ucwords(strtolower($doctorData['doctor']));
-                                                echo htmlspecialchars($formattedName);
+                                                echo PacientesHelper::safe($formattedName);
                                                 ?></h4>
                                             <p class="text-muted">Oftalmólogo</p>
                                             <div class="d-flex">
@@ -229,10 +233,10 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                         </div>
                                         <div class="d-flex flex-column flex-grow-1">
                                             <a href="#" class="text-dark hover-<?= $bulletColor ?> fw-500 fs-16">
-                                                <?= nl2br(htmlspecialchars($procedimientoData['nombre'])) ?>
+                                                <?= nl2br(PacientesHelper::safe($procedimientoData['nombre'])) ?>
                                             </a>
                                             <span class="text-fade fw-500">
-                                            <?= ucfirst($procedimientoData['origen']) ?> creado el <?= date('d/m/Y', strtotime($procedimientoData['fecha'])) ?>
+                                            <?= ucfirst($procedimientoData['origen']) ?> creado el <?= PacientesHelper::formatDateSafe($procedimientoData['fecha']) ?>
                                         </span>
                                         </div>
                                         <?php if ($procedimientoData['origen'] === 'Solicitud'): ?>
@@ -257,126 +261,7 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
 
                     </div>
                     <div class="col-xl-8 col-12">
-                        <div class="box">
-                            <?php
-                            // Determinar la imagen de fondo en función del seguro
-                            $insurance = strtolower($patientData['afiliacion']);
-                            $backgroundImage = '/public/assets/logos_seguros/5.png'; // Imagen predeterminada
-
-                            $generalInsurances = [
-                                'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino', 'seguro campesino jubilado',
-                                'seguro general', 'seguro general jubilado', 'seguro general por montepío', 'seguro general tiempo parcial'
-                            ];
-
-                            foreach ($generalInsurances as $generalInsurance) {
-                                if (strpos($insurance, $generalInsurance) !== false) {
-                                    $backgroundImage = '/public/assets/logos_seguros/1.png';
-                                    break;
-                                }
-                            }
-
-                            if (strpos($insurance, 'issfa') !== false) {
-                                $backgroundImage = '/public/assets/logos_seguros/2.png';
-                            } elseif (strpos($insurance, 'isspol') !== false) {
-                                $backgroundImage = '/public/assets/logos_seguros/3.png';
-                            } elseif (strpos($insurance, 'msp') !== false) {
-                                $backgroundImage = '/public/assets/logos_seguros/4.png';
-                            }
-
-                            // Determinar la imagen del avatar en función del sexo
-                            $gender = strtolower($patientData['sexo']);
-                            $avatarImage = '/public/images/avatar/female.png'; // Imagen predeterminada
-
-                            if (strpos($gender, 'masculino') !== false) {
-                                $avatarImage = '/public/images/avatar/male.png';
-                            }
-                            ?>
-
-                            <div class="box-body text-end min-h-150"
-                                 style="background-image:url(<?php echo $backgroundImage; ?>); background-repeat: no-repeat; background-position: center; background-size: cover;">
-                            </div>
-                            <div class="box-body wed-up position-relative">
-                                <button class="btn btn-warning mb-3" data-bs-toggle="modal"
-                                        data-bs-target="#modalEditarPaciente">Editar Datos
-                                </button>
-                                <div class="d-md-flex align-items-center">
-                                    <div class=" me-20 text-center text-md-start">
-                                        <img src="<?php echo $avatarImage; ?>" style="height: 150px"
-                                             class="bg-success-light rounded10"
-                                             alt=""/>
-                                        <div class="text-center my-10">
-                                            <p class="mb-0">Afiliación</p>
-                                            <h4><?php echo $patientData['afiliacion']; ?></h4>
-                                        </div>
-                                    </div>
-                                    <div class="mt-40">
-                                        <h4 class="fw-600 mb-5"><?php
-                                            echo $patientData['fname'] . " " . $patientData['mname'] . " " . $patientData['lname'] . " " . $patientData['lname2'];
-                                            ?></h4>
-                                        <h5 class="fw-500 mb-5"><?php echo "C. I.: " . $patientData['hc_number']; ?></h5>
-                                        <p><i class="fa fa-clock-o"></i> Edad: <?
-                                            echo $pacienteController->calcularEdad($patientData['fecha_nacimiento']) . " años";
-                                            ?></p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-12">
-                                <?php if (!empty($eventos)): ?>
-                                    <section class="cd-horizontal-timeline">
-                                        <div class="timeline">
-                                            <div class="events-wrapper">
-                                                <div class="events">
-                                                    <ol>
-                                                        <?php foreach ($eventos as $index => $row): ?>
-                                                            <li>
-                                                                <?php
-                                                                $fecha_raw = $row['fecha'];
-                                                                $fecha_valida = strtotime($fecha_raw) ? date('d/m/Y', strtotime($fecha_raw)) : '01/01/2000';
-                                                                $texto_fecha = strtotime($fecha_raw) ? date('d M', strtotime($fecha_raw)) : '01 Jan';
-                                                                ?>
-                                                                <a href="#0"
-                                                                   data-date="<?php echo $fecha_valida; ?>"
-                                                                   class="<?php echo $index === 0 ? 'selected' : ''; ?>">
-                                                                    <?php echo $texto_fecha; ?>
-                                                                </a>
-                                                            </li>
-                                                        <?php endforeach; ?>
-                                                    </ol>
-                                                    <span class="filling-line" aria-hidden="true"></span>
-                                                </div>
-                                                <!-- .events -->
-                                            </div>
-                                            <!-- .events-wrapper -->
-                                            <ul class="cd-timeline-navigation">
-                                                <li><a href="#0" class="prev inactive">Prev</a></li>
-                                                <li><a href="#0" class="next">Next</a></li>
-                                            </ul>
-                                            <!-- .cd-timeline-navigation -->
-                                        </div>
-                                        <!-- .timeline -->
-                                        <div class="events-content">
-                                            <ol>
-                                                <?php foreach ($eventos as $index => $row):
-                                                    $procedimiento_parts = explode(' - ', $row['procedimiento_proyectado']);
-                                                    $nombre_procedimiento = implode(' - ', array_slice($procedimiento_parts, 2));
-                                                    ?>
-                                                    <li data-date="<?php echo date('d/m/Y', strtotime($row['fecha'])); ?>"
-                                                        class="<?php echo $index === 0 ? 'selected' : ''; ?>">
-                                                        <h2><?php echo htmlspecialchars($nombre_procedimiento); ?></h2>
-                                                        <small><?php echo date('F jS, Y', strtotime($row['fecha'])); ?></small>
-                                                        <hr class="my-30">
-                                                        <p class="pb-30"><?php echo nl2br(htmlspecialchars($row['contenido'])); ?></p>
-                                                    </li>
-                                                <?php endforeach; ?>
-                                            </ol>
-                                        </div>
-                                        <!-- .events-content -->
-                                    </section>
-                                <?php else: ?>
-                                    <p>No hay datos disponibles para mostrar en el timeline.</p>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+                        <?php include __DIR__ . '/components/tarjeta_paciente.php'; ?>
                         <div class="row">
                             <div class="col-xl-6 col-12">
                                 <script>
@@ -447,8 +332,8 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1">
                                                         <span class="title fw-500 fs-16 text-truncate"
-                                                              style="max-width: 200px;"><?php echo htmlspecialchars(isset($documento['membrete']) ? $documento['membrete'] : $documento['procedimiento']); ?></span>
-                                                        <span class="text-fade fw-500 fs-12"><?php echo date('d M Y', strtotime(isset($documento['fecha_inicio']) ? $documento['fecha_inicio'] : $documento['created_at'])); ?></span>
+                                                              style="max-width: 200px;"><?php echo PacientesHelper::safe(isset($documento['membrete']) ? $documento['membrete'] : $documento['procedimiento']); ?></span>
+                                                        <span class="text-fade fw-500 fs-12"><?php echo PacientesHelper::formatDateSafe($documento['fecha_inicio'] ?? $documento['created_at'], 'd M Y'); ?></span>
                                                     </div>
                                                     <a class="fs-18 text-gray hover-info"
                                                        href="#"
@@ -608,121 +493,7 @@ $estadisticas = $pacienteController->getEstadisticasProcedimientos($hc_number);
         abrirVentana();
     }
 </script>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const modal = document.getElementById('modalSolicitud');
-        modal.addEventListener('show.bs.modal', function (event) {
-            const button = event.relatedTarget;
-            const hcNumber = button.getAttribute('data-hc');
-            const formId = button.getAttribute('data-form-id');
-            fetch(`/public/ajax/detalle_solicitud.php?hc_number=${hcNumber}&form_id=${formId}`)
-                .then(response => response.text())
-                .then(text => {
-                    console.log('Raw response:', text);
-                    const data = JSON.parse(text);
-                    // Fecha
-                    if (data.fecha) {
-                        const parts = data.fecha.split('-');
-                        document.getElementById('modalFecha').textContent = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                    } else {
-                        document.getElementById('modalFecha').textContent = '—';
-                    }
-                    document.getElementById('modalProcedimiento').textContent = data.procedimiento ?? '—';
-                    // Diagnóstico
-                    const diagnosticosArray = (() => {
-                        try {
-                            return JSON.parse(data.diagnosticos);
-                        } catch {
-                            return [];
-                        }
-                    })();
-                    document.getElementById('modalDiagnostico').innerHTML = diagnosticosArray.length
-                        ? diagnosticosArray.map((d, i) => `${i + 1}. ${d.idDiagnostico} (${d.ojo})`).join('<br>')
-                        : '—';
-                    document.getElementById('modalDoctor').textContent = data.doctor ?? '—';
-                    document.getElementById('modalDescripcion').textContent = data.plan ?? '—';
-                    document.getElementById('modalOjo').textContent = data.ojo ?? '—';
-                    document.getElementById('modalEstado').textContent = data.estado ?? '—';
-                    document.getElementById('modalMotivo').textContent = data.motivo_consulta ?? '—';
-                    document.getElementById('modalEnfermedad').textContent = data.enfermedad_actual ?? '—';
-
-                    // Semaforización visual
-                    const semaforo = document.getElementById('modalSemaforo');
-                    const estado = data.estado?.toLowerCase();
-                    const fechaStr = data.fecha;
-                    let color = 'gray';
-
-                    if (estado === 'recibido' && fechaStr) {
-                        const fechaSolicitud = new Date(fechaStr);
-                        const hoy = new Date();
-                        const diffDias = Math.floor((hoy - fechaSolicitud) / (1000 * 60 * 60 * 24));
-
-                        if (diffDias > 14) {
-                            color = 'red';
-                        } else if (diffDias > 7) {
-                            color = 'yellow';
-                        } else {
-                            color = 'green';
-                        }
-                    }
-                    semaforo.style.backgroundColor = color;
-                })
-                .catch(error => {
-                    console.error('Error cargando los detalles:', error);
-                });
-        });
-    });
-</script>
+<script src="components/js/script_modal_detalle_solicitud.js"></script>
 </body>
-<!-- Modal Editar Paciente -->
-<div class="modal fade" id="modalEditarPaciente" tabindex="-1" aria-labelledby="modalEditarPacienteLabel"
-     aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST">
-                <input type="hidden" name="actualizar_paciente" value="1">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalEditarPacienteLabel">Editar Datos del Paciente</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label>Primer Nombre</label>
-                        <input type="text" name="fname" class="form-control"
-                               value="<?= htmlspecialchars($patientData['fname']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label>Segundo Nombre</label>
-                        <input type="text" name="mname" class="form-control"
-                               value="<?= htmlspecialchars($patientData['mname']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label>Primer Apellido</label>
-                        <input type="text" name="lname" class="form-control"
-                               value="<?= htmlspecialchars($patientData['lname']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label>Segundo Apellido</label>
-                        <input type="text" name="lname2" class="form-control"
-                               value="<?= htmlspecialchars($patientData['lname2']) ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label>Afiliación</label>
-                        <select name="afiliacion" class="form-control">
-                            <?php foreach ($afiliacionesDisponibles as $afiliacion): ?>
-                                <option value="<?= htmlspecialchars($afiliacion) ?>" <?= strtolower($afiliacion) === strtolower($patientData['afiliacion']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($afiliacion) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<?php include __DIR__ . '/components/modal_editar_paciente.php'; ?>
 </html>
