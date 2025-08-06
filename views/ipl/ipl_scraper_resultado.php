@@ -1,4 +1,42 @@
 <?php
+ob_start();
+
+function renderBotonGuardarDerivacion($item)
+{
+    ?>
+    <button
+            class="btn btn-warning btn-sm guardar-derivacion"
+            data-form-id="<?= $item['form_id'] ?>"
+            data-hc="<?= $item['hc_number'] ?>"
+            data-codigo="<?= $item['codigo_derivacion'] ?>"
+            data-fecha-registro="<?= $item['fecha_registro'] ?>"
+            data-fecha-vigencia="<?= $item['fecha_vigencia'] ?>"
+            data-diagnostico="<?= htmlspecialchars($item['diagnostico'], ENT_QUOTES) ?>"
+            data-guardar-derivacion="<?= $item['guardar_derivacion'] ?>"
+            data-guardar-planificacion="<?= $item['guardar_planificacion'] ?>"
+            data-nro-sesion="<?= $item['nro_sesion'] ?>"
+            data-fecha-ficticia="<?= htmlspecialchars($item['fecha_ficticia']) ?>"
+            data-estado="<?= htmlspecialchars($item['estado'], ENT_QUOTES) ?>"
+            data-doctor="<?= htmlspecialchars($item['doctor'], ENT_QUOTES) ?>"
+            data-procedimiento="<?= htmlspecialchars($item['procedimiento'], ENT_QUOTES) ?>"
+    >
+        💾 Guardar
+        <?php
+        if ($item['guardar_derivacion'] && $item['guardar_planificacion']) {
+            echo ' (📄 Derivación + 📆 Planificación)';
+        } elseif ($item['guardar_derivacion']) {
+            echo ' (📄 Derivación)';
+        } elseif ($item['guardar_planificacion']) {
+            echo ' (📆 Planificación)';
+        }
+        ?>
+    </button>
+    <?php
+    return ob_get_clean();
+}
+
+?>
+<?php
 require_once __DIR__ . '/../../bootstrap.php';
 
 use Helpers\IplHelper;
@@ -18,32 +56,26 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
     echo "<strong>📋 Resultado del Scraper:</strong><br></div>";
     echo "<div class='box-body' style='background: #f8f9fa; border: 1px solid #ccc; padding: 10px; border-radius: 5px;'>";
 
-    // Extraer fechas de registro y vigencia
-    $fechaRegistro = '';
-    $fechaVigencia = '';
+    // Extraer fechas, código y diagnóstico en un solo array optimizado
+    $scraperResponse = [
+        'codigo_derivacion' => '',
+        'fecha_registro' => '',
+        'fecha_vigencia' => '',
+        'diagnostico' => ''
+    ];
+
+    if (preg_match('/Código Derivación:\s*([^\n]+)/', $output, $matchCodigo)) {
+        $scraperResponse['codigo_derivacion'] = trim($matchCodigo[1]);
+    }
     if (preg_match('/Fecha de registro:\s*(\d{4}-\d{2}-\d{2})/', $output, $matchRegistro)) {
-        $fechaRegistro = $matchRegistro[1];
+        $scraperResponse['fecha_registro'] = $matchRegistro[1];
     }
     if (preg_match('/Fecha de Vigencia:\s*(\d{4}-\d{2}-\d{2})/', $output, $matchVigencia)) {
-        $fechaVigencia = $matchVigencia[1];
+        $scraperResponse['fecha_vigencia'] = $matchVigencia[1];
     }
-
-    $codigoDerivacion = '';
-    if (preg_match('/Código Derivación:\s*([^\n]+)/', $output, $matchCodigo)) {
-        $codigoDerivacion = trim($matchCodigo[1]);
-    }
-    $diagnostico = '';
     if (preg_match('/"diagnostico":\s*([^\n]+)/', $output, $matchDiagnostico)) {
-        $diagnostico = trim($matchDiagnostico[1], '", ');
+        $scraperResponse['diagnostico'] = trim($matchDiagnostico[1], '", ');
     }
-
-    // Decodificar respuesta del scraper si es posible (simulando un array asociativo)
-    $scraperResponse = [
-        'codigo_derivacion' => $codigoDerivacion,
-        'fecha_registro' => $fechaRegistro,
-        'fecha_vigencia' => $fechaVigencia,
-        'diagnostico' => $diagnostico
-    ];
 
     $form_id = trim($_POST['form_id_scrape'], "'");
     $hc_number = trim($_POST['hc_number_scrape'], "'");
@@ -99,6 +131,10 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
             $fechas_realizadas = array_values(array_filter($fechas_realizadas));
             sort($fechas_realizadas);
 
+            // Asignación segura para las variables faltantes
+            $fechaRegistro = $scraperResponse['fecha_registro'] ?? null;
+            $fechaVigencia = $scraperResponse['fecha_vigencia'] ?? null;
+
             $fecha_inicio = isset($fechas_realizadas[0]) ? new DateTime($fechas_realizadas[0]) : null;
             $fecha_fin = null;
 
@@ -108,9 +144,8 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
             }
 
             $fecha_inicio = ($fechaRegistro instanceof DateTime) ? clone $fechaRegistro : new DateTime($fechaRegistro);
-            if (!empty($fechaVigencia) && !($fechaVigencia instanceof DateTime)) {
-                $fechaVigencia = new DateTime($fechaVigencia);
-            }
+            $fechaRegistro = IplHelper::toDateTime($fechaRegistro);
+            $fechaVigencia = IplHelper::toDateTime($fechaVigencia);
             $fechas_ideales = $controller->generarFechasIdeales($fecha_inicio, $fechaVigencia);
 
             echo '<div class="alert alert-info mb-3">';
@@ -142,12 +177,8 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
 
             // === BLOQUE NUEVO: Generar fechas ideales y asociar sesiones reales secuencialmente ===
             // Asegurar que $fechaRegistro y $fechaVigencia sean objetos DateTime válidos
-            if (!empty($fechaRegistro) && !($fechaRegistro instanceof DateTime)) {
-                $fechaRegistro = new DateTime($fechaRegistro);
-            }
-            if (!empty($fechaVigencia) && !($fechaVigencia instanceof DateTime)) {
-                $fechaVigencia = new DateTime($fechaVigencia);
-            }
+            $fechaRegistro = IplHelper::toDateTime($fechaRegistro);
+            $fechaVigencia = IplHelper::toDateTime($fechaVigencia);
 
             $fecha_inicio = ($fechaRegistro instanceof DateTime) ? clone $fechaRegistro : new DateTime($fechaRegistro);
             $fechas_ideales = $controller->generarFechasIdeales($fecha_inicio, $fechaVigencia);
@@ -167,7 +198,8 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     //print_r($match);
                     $formIdCheck = trim($match['form_id']);
                     echo "<!-- Verificando existencia en BD: form_id = '{$formIdCheck}', hc_number = '{$hc_number}' -->";
-                    $existeBD = $controller->existeDerivacionEnBD($formIdCheck, $hc_number);
+                    $existeBD = $controller->existePlanificacionYDerivacion($formIdCheck, $hc_number);
+                    //print_r($existeBD);
                     echo '<tr class="table-' . IplHelper::claseFilaEstado($match['estado']) . '">';
                     echo '<td>' . $contador . '</td>';
                     echo '<td>' . htmlspecialchars($match['form_id']) . '</td>';
@@ -178,18 +210,24 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     echo '<td>' . htmlspecialchars($match['doctor']) . '</td>';
                     echo '<td>' . IplHelper::estadoTexto($match['estado']);
 
-                    // Mostramos confirmación si existe en BD
-                    if ($existeBD) {
-                        echo ' <span class="badge bg-success">✅ BD</span>';
-                    } else {
-                        echo " <button class='btn btn-warning btn-sm guardar-derivacion' 
-                            data-form-id='{$formIdCheck}' 
-                            data-hc='{$hc_number}'
-                            data-codigo='{$match['codigo_derivacion']}'
-                            data-fecha-registro='{$match['fecha_registro']}'
-                            data-fecha-vigencia='{$match['fecha_vigencia']}'
-                            data-diagnostico='" . htmlspecialchars($match['diagnostico'], ENT_QUOTES) . "'>
-                            ⚠️ Guardar BD</button>";
+                    // Mostrar el botón solo si falta derivación o planificación
+                    $item = [
+                        'form_id' => $formIdCheck,
+                        'hc_number' => $hc_number,
+                        'codigo_derivacion' => $match['codigo_derivacion'],
+                        'fecha_registro' => $match['fecha_registro'],
+                        'fecha_vigencia' => $match['fecha_vigencia'],
+                        'diagnostico' => $match['diagnostico'],
+                        'guardar_derivacion' => empty($existeBD['derivacion']) ? "1" : "0",
+                        'guardar_planificacion' => empty($existeBD['planificacion']) ? "1" : "0",
+                        'nro_sesion' => $contador,
+                        'fecha_ficticia' => is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal,
+                        'estado' => $match['estado'],
+                        'doctor' => $match['doctor'],
+                        'procedimiento' => $match['procedimiento'],
+                    ];
+                    if ($item['guardar_derivacion'] || $item['guardar_planificacion']) {
+                        echo renderBotonGuardarDerivacion($item);
                     }
 
                     echo '</td>';
@@ -223,32 +261,49 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
 
 ?>
 <script>
+    // Delegación de eventos para .guardar-derivacion
     document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('.guardar-derivacion').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                const formId = this.dataset.formId;
-                const hc = this.dataset.hc;
-                const codigo = this.dataset.codigo;
-                const fechaRegistro = this.dataset.fechaRegistro;
-                const fechaVigencia = this.dataset.fechaVigencia;
-                const diagnostico = this.dataset.diagnostico;
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.classList.contains('guardar-derivacion')) {
+                e.preventDefault();
+                const boton = e.target;
+
+                const formId = boton.dataset.formId;
+                const hc = boton.dataset.hc;
+                const codigo = boton.dataset.codigo;
+                const fechaRegistro = boton.dataset.fechaRegistro;
+                const fechaVigencia = boton.dataset.fechaVigencia;
+                const diagnostico = boton.dataset.diagnostico;
+                const guardarDerivacion = boton.dataset.guardarDerivacion;
+                const guardarPlanificacion = boton.dataset.guardarPlanificacion;
+                const nroSesion = boton.dataset.nroSesion;
+                const fechaFicticia = boton.dataset.fechaFicticia;
+                const estado = boton.dataset.estado;
+                const doctor = boton.dataset.doctor;
+                const procedimiento = boton.dataset.procedimiento;
+
+                // Opcional: Log para depuración
+                console.log("Guardando sesión:", nroSesion, "para HC:", hc, "con Form ID:", formId);
 
                 fetch('guardar_derivacion.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
-                    body: `form_id=${formId}&hc_number=${hc}&codigo=${encodeURIComponent(codigo)}&fecha_registro=${encodeURIComponent(fechaRegistro)}&fecha_vigencia=${encodeURIComponent(fechaVigencia)}&diagnostico=${encodeURIComponent(diagnostico)}`
+                    body: `form_id=${formId}&hc_number=${hc}&codigo=${encodeURIComponent(codigo)}&fecha_registro=${encodeURIComponent(fechaRegistro)}&fecha_vigencia=${encodeURIComponent(fechaVigencia)}&diagnostico=${encodeURIComponent(diagnostico)}&guardar_derivacion=${guardarDerivacion}&guardar_planificacion=${guardarPlanificacion}&nro_sesion=${nroSesion}&fecha_ficticia=${encodeURIComponent(fechaFicticia)}&estado=${encodeURIComponent(estado)}&doctor=${encodeURIComponent(doctor)}&procedimiento=${encodeURIComponent(procedimiento)}`
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            this.outerHTML = "<span class='badge bg-success'>✅ BD</span>";
+                            boton.outerHTML = "<span class='badge bg-success'>✅ BD</span>";
                         } else {
                             alert("Error: " + data.message);
                         }
+                    })
+                    .catch(error => {
+                        console.error("Error al parsear JSON:", error);
                     });
-            });
+            }
         });
     });
 </script>

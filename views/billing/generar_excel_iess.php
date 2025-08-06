@@ -158,6 +158,11 @@ foreach ($datosFacturacionLote as $bloque) {
     $esCirugia = $billingController->esCirugiaPorFormId($formId);
     //$esCirugia = !empty($data['protocoloExtendido']['cirugia']) && $data['protocoloExtendido']['cirugia'] === 'SI';
 
+
+    usort($data['procedimientos'], function ($a, $b) {
+        return (float)$b['proc_precio'] <=> (float)$a['proc_precio'];
+    });
+
     foreach ($data['procedimientos'] as $index => $p) {
         //echo '<pre>' . var_dump($data['visita']) . '</pre>';
         $descripcion = $p['proc_detalle'] ?? '';
@@ -260,7 +265,7 @@ foreach ($datosFacturacionLote as $bloque) {
             '',                  // N: Diagnóstico secundario
             '',                  // O: Diagnóstico 3
             '1',                 // P: Cantidad
-            number_format($valorUnitario, 2), // Q: Valor unitario **con porcentaje**
+            number_format($total, 2), // Q: Valor unitario **con porcentaje**
             '',                  // R: Vacío/fijo
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
