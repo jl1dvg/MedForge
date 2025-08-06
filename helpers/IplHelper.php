@@ -65,4 +65,17 @@ class IplHelper
 
         return count($fechasIdeales) - $realizadas;
     }
+
+    public static function toDateTime($fecha)
+    {
+        if ($fecha instanceof \DateTime) {
+            return $fecha;
+        }
+
+        try {
+            return new \DateTime($fecha);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
 }
