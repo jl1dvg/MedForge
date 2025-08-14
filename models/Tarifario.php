@@ -29,8 +29,9 @@ class Tarifario
         $params = [];
 
         if (!empty($f['q'])) {
-            $where[] = "(t.codigo LIKE :q OR t.descripcion LIKE :q)";
-            $params[':q'] = '%' . $f['q'] . '%';
+            $where[] = "(t.codigo LIKE :q1 OR t.descripcion LIKE :q2)";
+            $params[':q1'] = '%' . $f['q'] . '%';
+            $params[':q2'] = '%' . $f['q'] . '%';
         }
         if (!empty($f['code_type'])) {
             $where[] = "t.code_type = :code_type";
@@ -77,8 +78,9 @@ class Tarifario
         $params = [];
 
         if (!empty($f['q'])) {
-            $where[] = "(t.codigo LIKE :q OR t.descripcion LIKE :q)";
-            $params[':q'] = '%' . $f['q'] . '%';
+            $where[] = "(t.codigo LIKE :q1 OR t.descripcion LIKE :q2)";
+            $params[':q1'] = '%' . $f['q'] . '%';
+            $params[':q2'] = '%' . $f['q'] . '%';
         }
         if (!empty($f['code_type'])) {
             $where[] = "t.code_type = :code_type";

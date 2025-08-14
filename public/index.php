@@ -42,7 +42,12 @@ if ($path === '/billing/exportar_mes' && $method === 'GET') {
         http_response_code(400);
         echo "Falta parámetro mes";
     }
-} // Puedes agregar más rutas aquí
+}
+if ($path === '/codes/datatable' && $method === 'GET') {
+    $controller = new \Controllers\CodesController($pdo);
+    $controller->datatable($_GET);
+    exit;
+}
 if ($path === '/reportes/estadistica_flujo' && $method === 'GET') {
     $controller = new \Controllers\EstadisticaFlujoController($pdo);
     $controller->index();
