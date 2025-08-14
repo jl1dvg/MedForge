@@ -303,4 +303,102 @@ class CodesController
     {
         return $_SESSION['auth_user'] ?? 'system';
     }
+    public function datatable(array $req): void
+    {
+        // Cabecera JSON
+        header('Content-Type: application/json; charset=utf-8');
+
+        // Parámetros DT
+        $draw   = (int)($req['draw']   ?? 0);
+        $start  = (int)($req['start']  ?? 0);
+        $length = (int)($req['length'] ?? 25);
+        if ($length <= 0) { $length = 25; }
+        $page = (int)floor($start / $length) + 1;
+        $offset = $start;
+
+        // Ordenamiento
+        $orderColIdx = (int)($req['order'][0]['column'] ?? 0);
+        $orderDir    = strtolower($req['order'][0]['dir'] ?? 'asc') === 'desc' ? 'DESC' : 'ASC';
+        // Mapea el índice de columna DT -> nombre de columna en BD
+        $cols = [
+            0 => 'codigo',
+            1 => 'modifier',
+            2 => 'active',                 // lo renderizamos como Sí/No
+            3 => 'superbill',
+            4 => 'reportable',
+            5 => 'financial_reporting',
+            6 => 'code_type',
+            7 => 'descripcion',
+            8 => 'short_description',
+            9 => 'id',                     // related (placeholder)
+            10 => 'valor_facturar_nivel1',
+            11 => 'valor_facturar_nivel2',
+            12 => 'valor_facturar_nivel3',
+            13 => 'id',                    // acciones
+        ];
+        $orderBy = $cols[$orderColIdx] ?? 'codigo';
+
+        // Filtros propios + búsqueda global DT
+        $f = SearchBuilder::filtersFromRequest($req);
+        $searchValue = trim($req['search']['value'] ?? '');
+        if ($searchValue !== '') {
+            // si ya viene q en filtros, lo respetamos; si no, usamos el de DT
+            if (empty($f['q'])) {
+                $f['q'] = $searchValue;
+            } else {
+                // puedes concatenar si quieres
+                $f['q'] .= ' ' . $searchValue;
+            }
+        }
+
+        $tar = new \Models\Tarifario($this->db);
+
+        // Totales
+        // recordsTotal: sin filtros de búsqueda (solo estado global si decides)
+        $total = $tar->count([]);                // total absoluto de la tabla
+        // recordsFiltered: con filtros actuales
+        $filtered = $tar->count($f);
+
+        // Datos (paginados)
+        // Nota: tu search() ordena por codigo ASC. Si quieres soportar orden dinámico, crea un searchOrder($f,$offset,$limit,$orderBy,$dir)
+        // o ajusta search() para aceptar orderBy/dir. Aquí hacemos una salida rápida:
+        $rows = $tar->search($f, $offset, $length);
+
+        // Catálogo de categorías para mostrar título en vez de slug
+        $cats = (new \Models\CodeCategory($this->db))->allActive();
+        $catMap = [];
+        foreach ($cats as $c) {
+            $catMap[$c['slug']] = $c['title'];
+        }
+
+        // Armar respuesta
+        $data = [];
+        $front = $this->base(); // /public/index.php
+        foreach ($rows as $r) {
+            $id = (int)$r['id'];
+            $data[] = [
+                'codigo'             => $r['codigo'],
+                'modifier'           => $r['modifier'] ?? '',
+                'active_text'        => !empty($r['active']) ? 'Sí' : 'No',
+                'category'           => $catMap[$r['superbill'] ?? ''] ?? ($r['superbill'] ?? ''),
+                'reportable_text'    => !empty($r['reportable']) ? 'Sí' : 'No',
+                'finrep_text'        => !empty($r['financial_reporting']) ? 'Sí' : 'No',
+                'code_type'          => $r['code_type'] ?? '',
+                'descripcion'        => $r['descripcion'] ?? '',
+                'short_description'  => $r['short_description'] ?? '',
+                'related'            => '', // TODO: puedes devolver conteo si quieres
+                'valor1'             => number_format((float)($r['valor_facturar_nivel1'] ?? 0), 2),
+                'valor2'             => number_format((float)($r['valor_facturar_nivel2'] ?? 0), 2),
+                'valor3'             => number_format((float)($r['valor_facturar_nivel3'] ?? 0), 2),
+                'acciones'           => '<a href="' . htmlspecialchars($front) . '/codes/' . $id . '/edit" class="btn btn-sm btn-outline-primary">Editar</a>',
+            ];
+        }
+
+        echo json_encode([
+            'draw'            => $draw,
+            'recordsTotal'    => (int)$total,
+            'recordsFiltered' => (int)$filtered,
+            'data'            => $data,
+        ]);
+    }
 }

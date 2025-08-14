@@ -1,5 +1,14 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
+
+// Helper para marcar el item activo según la URL actual
+if (!function_exists('isActive')) {
+    function isActive(string $path): string
+    {
+        $current = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+        return str_ends_with($current, $path) ? ' is-active' : '';
+    }
+}
 ?>
 <nav class="main-nav" role="navigation">
 
@@ -9,95 +18,139 @@ require_once __DIR__ . '/../../bootstrap.php';
         <span class="main-menu-btn-icon"></span> Toggle main menu visibility
     </label>
 
-    <!-- Sample menu definition -->
+    <!-- Menu principal -->
     <ul id="main-menu" class="sm sm-blue">
-        <li><a href="<?php echo BASE_URL . 'views/main.php'; ?>"><i class="mdi mdi-view-dashboard"><span
-                            class="path1"></span><span class="path2"></span></i>Inicio</a>
+        <li class="<?= isActive('/views/main.php') ?>">
+            <a href="<?= BASE_URL . 'views/main.php'; ?>">
+                <i class="mdi mdi-view-dashboard"></i>Inicio
+            </a>
         </li>
-        <li><a href="#"><i
-                        class="mdi mdi-account-multiple"><span
-                            class="path1"></span><span class="path2"></span></i>Pacientes</a>
+
+        <li>
+            <a href="#">
+                <i class="mdi mdi-account-multiple"></i>Pacientes
+            </a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/pacientes/lista.php'; ?>"><i
-                                class="mdi mdi-account-circle"><span
-                                    class="path1"></span><span class="path2"></span></i>Lista de Pacientes</a>
+                <li class="<?= isActive('/views/pacientes/lista.php') ?>">
+                    <a href="<?= BASE_URL . 'views/pacientes/lista.php'; ?>">
+                        <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
+                    </a>
                 </li>
-                <li><a href="<?php echo BASE_URL . 'views/pacientes/flujo/flujo.php'; ?>"><i
-                                class="mdi mdi-account-convert"><span
-                                    class="path1"></span><span class="path2"></span></i>Flujo de Pacientes</a>
+                <li class="<?= isActive('/views/pacientes/flujo/flujo.php') ?>">
+                    <a href="<?= BASE_URL . 'views/pacientes/flujo/flujo.php'; ?>">
+                        <i class="mdi mdi-timetable"></i>Flujo de Pacientes
+                    </a>
                 </li>
             </ul>
         </li>
-        <li><a href="#"><i class="mdi mdi-hospital-building"><span
-                            class="path1"></span><span class="path2"></span></i>Cirugías</a>
+
+        <li>
+            <a href="#">
+                <i class="mdi mdi-hospital-building"></i>Cirugías
+            </a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/editor/lista_protocolos.php'; ?>"><i
-                                class="mdi mdi-timetable"><span
-                                    class="path1"></span><span class="path2"></span></i>Solicitudes de Cirugía</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/reportes/cirugias.php'; ?>"><i
-                                class="mdi mdi-table-large"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Protocolos Realizados</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/ipl/ipl_planificador_lista.php'; ?>"><i
-                                class="mdi mdi-table-large"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Planificador de IPL</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/editor/lista_protocolos.php'; ?>"><i
-                                class="mdi mdi-tooltip-edit"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Plantillas de Protocolos</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/solicitudes/solicitudes.php'; ?>"><i
-                                class="mdi mdi-tooltip-edit"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Solicitudes</a></li>
+                <li class="<?= isActive('/views/editor/lista_protocolos.php') ?>">
+                    <a href="<?= BASE_URL . 'views/editor/lista_protocolos.php'; ?>">
+                        <i class="mdi mdi-clipboard-outline"></i>Solicitudes de Cirugía
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/reportes/cirugias.php') ?>">
+                    <a href="<?= BASE_URL . 'views/reportes/cirugias.php'; ?>">
+                        <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/ipl/ipl_planificador_lista.php') ?>">
+                    <a href="<?= BASE_URL . 'views/ipl/ipl_planificador_lista.php'; ?>">
+                        <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/editor/lista_protocolos.php') ?>">
+                    <a href="<?= BASE_URL . 'views/editor/lista_protocolos.php'; ?>">
+                        <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/solicitudes/solicitudes.php') ?>">
+                    <a href="<?= BASE_URL . 'views/solicitudes/solicitudes.php'; ?>">
+                        <i class="mdi mdi-file-document"></i>Solicitudes
+                    </a>
+                </li>
             </ul>
         </li>
-        <li><a href="<?php echo BASE_URL . 'views/insumos/insumos.php'; ?>"><i class="mdi mdi-medical-bag"><span
-                            class="path1"></span><span class="path2"></span></i>Gestión de Insumos</a>
+
+        <li>
+            <a href="<?= BASE_URL . 'views/insumos/insumos.php'; ?>">
+                <i class="mdi mdi-medical-bag"></i>Gestión de Insumos
+            </a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/insumos/insumos.php'; ?>"><i
-                                class="mdi mdi-pharmacy"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Lista de Insumos</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/insumos/medicamentos.php'; ?>"><i
-                                class="mdi mdi-bowling"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Lista de Medicamentos</a></li>
+                <li class="<?= isActive('/views/insumos/insumos.php') ?>">
+                    <a href="<?= BASE_URL . 'views/insumos/insumos.php'; ?>">
+                        <i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/insumos/medicamentos.php') ?>">
+                    <a href="<?= BASE_URL . 'views/insumos/medicamentos.php'; ?>">
+                        <i class="mdi mdi-pill"></i>Lista de Medicamentos
+                    </a>
+                </li>
             </ul>
         </li>
-        <li><a href="#"><i
-                        class="mdi mdi-file-chart"><span
-                            class="path1"></span><span class="path2"></span></i>Facturación por Afiliación</a>
+
+        <li>
+            <a href="#">
+                <i class="mdi mdi-file-chart"></i>Facturación por Afiliación
+            </a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/informes/informe_isspol.php'; ?>"><i
-                                class="mdi mdi-file-chart"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>ISSPOL</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/informes/informe_issfa.php'; ?>"><i
-                                class="mdi mdi-file-chart"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>ISSFA</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/informes/informe_iess.php'; ?>"><i
-                                class="mdi mdi-file-chart"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>IESS</a></li>
-                <li><a href="<?php echo BASE_URL . 'views/informes/informe_particulares.php'; ?>"><i
-                                class="mdi mdi-file-chart"><span
-                                    class="path1"></span><span
-                                    class="path2"></span></i>Particulares</a></li>
+                <li class="<?= isActive('/views/informes/informe_isspol.php') ?>">
+                    <a href="<?= BASE_URL . 'views/informes/informe_isspol.php'; ?>">
+                        <i class="mdi mdi-shield"></i>ISSPOL
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/informes/informe_issfa.php') ?>">
+                    <a href="<?= BASE_URL . 'views/informes/informe_issfa.php'; ?>">
+                        <i class="mdi mdi-star"></i>ISSFA
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/informes/informe_iess.php') ?>">
+                    <a href="<?= BASE_URL . 'views/informes/informe_iess.php'; ?>">
+                        <i class="mdi mdi-account"></i>IESS
+                    </a>
+                </li>
+                <li class="<?= isActive('/views/informes/informe_particulares.php') ?>">
+                    <a href="<?= BASE_URL . 'views/informes/informe_particulares.php'; ?>">
+                        <i class="mdi mdi-account-outline"></i>Particulares
+                    </a>
+                </li>
             </ul>
         </li>
-        <li><a href="#"><i class="mdi mdi-chart-areaspline"><span class="path1"></span><span class="path2"></span></i>Estadísticas</a>
+
+        <li>
+            <a href="#">
+                <i class="mdi mdi-chart-areaspline"></i>Estadísticas
+            </a>
             <ul>
-                <li><a href="<?php echo BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>"><i
-                                class="mdi mdi-chart-line"><span class="path1"></span><span class="path2"></span></i>Flujo
-                        de Pacientes</a></li>
+                <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
+                    <a href="<?= BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>">
+                        <i class="mdi mdi-chart-line"></i>Flujo de Pacientes
+                    </a>
+                </li>
             </ul>
         </li>
+
         <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>
-            <li><a href="#"><i class="mdi mdi-settings"></i>Administración</a>
+            <li>
+                <a href="#">
+                    <i class="mdi mdi-settings"></i>Administración
+                </a>
                 <ul>
-                    <li><a href="<?php echo BASE_URL . 'views/users/index.php'; ?>"><i class="mdi mdi-account-key"></i>Usuarios</a>
+                    <li class="<?= isActive('/views/users/index.php') ?>">
+                        <a href="<?= BASE_URL . 'views/users/index.php'; ?>">
+                            <i class="mdi mdi-account-key"></i>Usuarios
+                        </a>
+                    </li>
+                    <li class="<?= isActive('/views/codes/index.php') ?>">
+                        <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
+                            <i class="mdi mdi-tag-text-outline"></i>Codificación
+                        </a>
                     </li>
                 </ul>
             </li>

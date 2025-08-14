@@ -64,205 +64,205 @@ if (strpos($script, '/views/') !== false) {
     <link rel="stylesheet" href="/public/css/horizontal-menu.css">
     <link rel="stylesheet" href="/public/css/style.css">
     <link rel="stylesheet" href="/public/css/skin_color.css">
-    <style>
-        .table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 2;
-            background: #f8f9fa;
-        }
-    </style>
+
 </head>
 <body class="layout-top-nav light-skin theme-primary fixed">
+
 <div class="wrapper">
     <!-- Content Wrapper. Contains page content -->
     <?php include __DIR__ . '/../components/header.php'; ?>
 
+    <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
         <div class="container-full">
-            <!-- Content Wrapper. Contains page content -->
-            <div class="container-fluid py-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3 class="mb-0">Códigos</h3>
-                    <a href="<?= htmlspecialchars($front) ?>/codes/create" class="btn btn-primary btn-sm">+ Nuevo
-                        código</a>
-                </div>
-                <form class="card card-body mb-3" method="get" action="/views/codes">
-                    <div class="row g-2 align-items-end">
-                        <div class="col-md-3">
-                            <label class="form-label mb-0">Buscar</label>
-                            <input type="text" name="q" class="form-control form-control-sm"
-                                   value="<?= htmlspecialchars($f['q'] ?? '') ?>" placeholder="Código o descripción">
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label mb-0">Tipo</label>
-                            <select name="code_type" class="form-select form-select-sm">
-                                <option value="">— Todos —</option>
-                                <?php foreach ($types as $t): ?>
-                                    <option value="<?= htmlspecialchars($t['key_name'] ?? $t['label'] ?? '') ?>"
-                                        <?= (!empty($f['code_type']) && ($f['code_type'] == ($t['key_name'] ?? ''))) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($t['label']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label mb-0">Categoría</label>
-                            <select name="superbill" class="form-select form-select-sm">
-                                <option value="">— Todas —</option>
-                                <?php foreach ($cats as $c): ?>
-                                    <option value="<?= htmlspecialchars($c['slug']) ?>"
-                                        <?= (!empty($f['superbill']) && $f['superbill'] == $c['slug']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($c['title']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col-md-1">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="f_active" name="active"
-                                       value="1" <?= !empty($f['active']) ? 'checked' : '' ?>>
-                                <label class="form-check-label" for="f_active">Activos</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="f_reportable" name="reportable"
-                                       value="1" <?= !empty($f['reportable']) ? 'checked' : '' ?>>
-                                <label class="form-check-label" for="f_reportable">Dx Rep</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="f_finrep" name="financial_reporting"
-                                       value="1" <?= !empty($f['financial_reporting']) ? 'checked' : '' ?>>
-                                <label class="form-check-label" for="f_finrep">Serv Rep</label>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <button class="btn btn-secondary btn-sm">Filtrar</button>
+            <!-- Content Header (Page header) -->
+            <div class="content-header">
+                <div class="d-flex align-items-center">
+                    <div class="me-auto">
+                        <h3 class="page-title">Códigos</h3>
+                        <div class="d-inline-block align-items-center">
+                            <nav>
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item"><a href="#"><i class="mdi mdi-home-outline"></i></a>
+                                    </li>
+                                    <li class="breadcrumb-item active" aria-current="page">Códigos</li>
+                                </ol>
+                            </nav>
                         </div>
                     </div>
-                </form>
-                <div class="table-responsive">
-                    <table class="table table-striped table-bordered align-middle">
-                        <thead>
-                        <tr>
-                            <th>Code</th>
-                            <th>Mod</th>
-                            <th>Act</th>
-                            <th>Category</th>
-                            <th>Dx Rep</th>
-                            <th>Serv Rep</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Short</th>
-                            <th>Related</th>
-                            <th class="text-end">N1</th>
-                            <th class="text-end">N2</th>
-                            <th class="text-end">N3</th>
-                            <th class="text-end">Acciones</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (empty($rows)): ?>
-                            <tr>
-                                <td colspan="14" class="text-center text-muted">Sin resultados</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($rows as $r): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($r['codigo']) ?></td>
-                                    <td><?= htmlspecialchars($r['modifier'] ?? '') ?></td>
-                                    <td><?= !empty($r['active']) ? 'Sí' : 'No' ?></td>
-                                    <td><?= htmlspecialchars($r['superbill'] ?? '') ?></td>
-                                    <td><?= !empty($r['reportable']) ? 'Sí' : 'No' ?></td>
-                                    <td><?= !empty($r['financial_reporting']) ? 'Sí' : 'No' ?></td>
-                                    <td><?= htmlspecialchars($r['code_type'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($r['descripcion'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($r['short_description'] ?? '') ?></td>
-                                    <td>
-                                        <!-- Mostrar conteo si el controlador lo provee en el futuro -->
-                                    </td>
-                                    <td class="text-end"><?= number_format((float)($r['valor_facturar_nivel1'] ?? 0), 2) ?></td>
-                                    <td class="text-end"><?= number_format((float)($r['valor_facturar_nivel2'] ?? 0), 2) ?></td>
-                                    <td class="text-end"><?= number_format((float)($r['valor_facturar_nivel3'] ?? 0), 2) ?></td>
-                                    <td class="text-end">
-                                        <a href="<?= htmlspecialchars($front) ?>/codes/<?= (int)$r['id'] ?>/edit"
-                                           class="btn btn-sm btn-outline-primary">Editar</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php
-                // Calcula páginas de forma segura
-                $pages = max(1, (int)ceil(($total ?? 0) / max(1, ($pagesize ?? 100))));
-                $page = (int)($page ?? 1);
-                $page = max(1, min($page, $pages)); // clamp a rango válido
 
-                // Construye query conservando filtros actuales
-                $q = $_GET ?? [];
-                unset($q['page']);
-                $buildUrl = function (int $p) use ($q, $front): string {
-                    $q['page'] = $p;
-                    return $front . '/codes?' . http_build_query($q);
-                };
-
-                // Rango mostrado (X–Y de Z)
-                $from = ($total ?? 0) > 0 ? (($page - 1) * ($pagesize ?? 100)) + 1 : 0;
-                $to = ($total ?? 0) > 0 ? min($from + ($pagesize ?? 100) - 1, (int)($total ?? 0)) : 0;
-                ?>
-                <div class="d-flex justify-content-between align-items-center mt-2">
-                    <small class="text-muted">
-                        Mostrando <?= number_format((int)$from) ?>–<?= number_format((int)$to) ?>
-                        de <?= number_format((int)($total ?? 0)) ?>
-                    </small>
-
-                    <nav aria-label="Paginación de códigos">
-                        <ul class="pagination pagination-sm mb-0">
-                            <!-- Primera -->
-                            <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= htmlspecialchars($buildUrl(1)) ?>"
-                                   aria-label="Primera" <?= $page <= 1 ? 'tabindex="-1" aria-disabled="true"' : '' ?>>«</a>
-                            </li>
-                            <!-- Anterior -->
-                            <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= htmlspecialchars($buildUrl(max(1, $page - 1))) ?>"
-                                   aria-label="Anterior" <?= $page <= 1 ? 'tabindex="-1" aria-disabled="true"' : '' ?>>‹</a>
-                            </li>
-
-                            <?php
-                            // Ventana de páginas (máx 7 botones)
-                            $window = 7;
-                            $half = (int)floor($window / 2);
-                            $start = max(1, $page - $half);
-                            $end = min($pages, $start + $window - 1);
-                            // si no llena ventana, corre inicio hacia atrás
-                            $start = max(1, min($start, $end - $window + 1));
-                            ?>
-
-                            <?php for ($p = $start; $p <= $end; $p++): ?>
-                                <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                                    <a class="page-link" href="<?= htmlspecialchars($buildUrl($p)) ?>"><?= $p ?></a>
-                                </li>
-                            <?php endfor; ?>
-
-                            <!-- Siguiente -->
-                            <li class="page-item <?= $page >= $pages ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= htmlspecialchars($buildUrl(min($pages, $page + 1))) ?>"
-                                   aria-label="Siguiente" <?= $page >= $pages ? 'tabindex="-1" aria-disabled="true"' : '' ?>>›</a>
-                            </li>
-                            <!-- Última -->
-                            <li class="page-item <?= $page >= $pages ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= htmlspecialchars($buildUrl($pages)) ?>"
-                                   aria-label="Última" <?= $page >= $pages ? 'tabindex="-1" aria-disabled="true"' : '' ?>>»</a>
-                            </li>
-                        </ul>
-                    </nav>
                 </div>
             </div>
+            <!-- Contenido principal -->
+            <section class="content">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="box">
+                            <div class="box-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h3 class="mb-0">Códigos</h3>
+                                    <a href="<?= htmlspecialchars($front) ?>/codes/create"
+                                       class="btn btn-primary btn-sm">+
+                                        Nuevo
+                                        código</a>
+                                </div>
+                                <form class="card card-body mb-3" method="get" action="/views/codes">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label mb-0">Buscar</label>
+                                            <input type="text" name="q" class="form-control form-control-sm"
+                                                   value="<?= htmlspecialchars($f['q'] ?? '') ?>"
+                                                   placeholder="Código o descripción">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-0">Tipo</label>
+                                            <select name="code_type" class="form-select form-select-sm">
+                                                <option value="">— Todos —</option>
+                                                <?php foreach ($types as $t): ?>
+                                                    <option value="<?= htmlspecialchars($t['key_name'] ?? $t['label'] ?? '') ?>"
+                                                        <?= (!empty($f['code_type']) && ($f['code_type'] == ($t['key_name'] ?? ''))) ? 'selected' : '' ?>>
+                                                        <?= htmlspecialchars($t['label']) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-0">Categoría</label>
+                                            <select name="superbill" class="form-select form-select-sm">
+                                                <option value="">— Todas —</option>
+                                                <?php foreach ($cats as $c): ?>
+                                                    <option value="<?= htmlspecialchars($c['slug']) ?>"
+                                                        <?= (!empty($f['superbill']) && $f['superbill'] == $c['slug']) ? 'selected' : '' ?>>
+                                                        <?= htmlspecialchars($c['title']) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-1">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="f_active"
+                                                       name="active"
+                                                       value="1" <?= !empty($f['active']) ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="f_active">Activos</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="f_reportable"
+                                                       name="reportable"
+                                                       value="1" <?= !empty($f['reportable']) ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="f_reportable">Dx Rep</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="f_finrep"
+                                                       name="financial_reporting"
+                                                       value="1" <?= !empty($f['financial_reporting']) ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="f_finrep">Serv Rep</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button class="btn btn-secondary btn-sm">Filtrar</button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div class="table-responsive">
+                                    <table id="codesTable"
+                                           class="table table-striped table-hover table-sm invoice-archive">
+                                        <thead>
+                                        <tr>
+                                            <th>Code</th>
+                                            <th>Mod</th>
+                                            <th>Act</th>
+                                            <th>Category</th>
+                                            <th>Dx Rep</th>
+                                            <th>Serv Rep</th>
+                                            <th>Type</th>
+                                            <th>Description</th>
+                                            <th>Short</th>
+                                            <th>Related</th>
+                                            <th class="text-end">N1</th>
+                                            <th class="text-end">N2</th>
+                                            <th class="text-end">N3</th>
+                                            <th class="text-end">Acciones</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr>
+                                            <td colspan="14" class="text-center text-muted">Cargando…</td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
+
     <?php include __DIR__ . '/../components/footer.php'; ?>
 </div>
+
+<!-- Vendor JS -->
+<script src="/public/js/vendors.min.js"></script>
+<script src="/public/js/pages/chat-popup.js"></script>
+<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/rowgroup/1.3.1/css/rowGroup.dataTables.min.css">
+<script src="https://cdn.datatables.net/rowgroup/1.3.1/js/dataTables.rowGroup.min.js"></script>
+<script>
+    $(function () {
+        $('#codesTable').DataTable({
+            language: {url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
+            processing: true,
+            serverSide: true,
+            responsive: true,
+            autoWidth: false,
+            deferRender: true,
+            searching: false,
+            pageLength: 25,
+            lengthMenu: [10, 25, 50, 100],
+            // crea un viewport con scroll interno y evita que el resto del layout “corte” la tabla
+            scrollY: '60vh',
+            scrollCollapse: true,
+            ajax: {
+                url: '/public/index.php/codes/datatable',
+                type: 'GET',
+                data: function (d) {
+                    d.q = $('input[name="q"]').val() || '';
+                    d.code_type = $('select[name="code_type"]').val() || '';
+                    d.superbill = $('select[name="superbill"]').val() || '';
+                    d.active = $('#f_active').is(':checked') ? 1 : 0;
+                    d.reportable = $('#f_reportable').is(':checked') ? 1 : 0;
+                    d.financial_reporting = $('#f_finrep').is(':checked') ? 1 : 0;
+                }
+            },
+            columns: [
+                {data: 'codigo'},           // 0 Code
+                {data: 'modifier'},         // 1 Mod
+                {data: 'active_text'},      // 2 Act (Sí/No render en backend)
+                {data: 'category'},         // 3 Category (título)
+                {data: 'reportable_text'},  // 4 Dx Rep
+                {data: 'finrep_text'},      // 5 Serv Rep
+                {data: 'code_type'},        // 6 Type
+                {data: 'descripcion'},      // 7 Description
+                {data: 'short_description'},// 8 Short
+                {data: 'related'},          // 9 Related (conteo o texto)
+                {data: 'valor1', className: 'text-end'}, // 10 N1
+                {data: 'valor2', className: 'text-end'}, // 11 N2
+                {data: 'valor3', className: 'text-end'}, // 12 N3
+                {data: 'acciones', orderable: false, searchable: false} // 13 Acciones (botón Editar)
+            ],
+            order: [[0, 'asc']],
+            rowGroup: {dataSrc: 3} // agrupa por Category si quieres
+        });
+    });
+</script>
+
+<!-- Doclinic App -->
+<script src="/public/js/jquery.smartmenus.js"></script>
+<script src="/public/js/menus.js"></script>
+<script src="/public/js/template.js"></script>
+<script src="/public/js/pages/appointments.js"></script>
 </body>
 </html>
