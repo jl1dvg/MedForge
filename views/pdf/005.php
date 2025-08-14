@@ -88,8 +88,23 @@
 
     use Helpers\ProtocoloHelper;
 
+    $procedimiento_proyectado = strtoupper(
+        $nombre_procedimiento_proyectado
+            ? $nombre_procedimiento_proyectado . ' ' . $lateralidad
+            : $realizedProcedure
+    );
+    $procedimiento = ucfirst(strtolower($procedimiento_proyectado));
+
     // ✅ Primero obtenemos signos vitales una sola vez
-    $signos = ProtocoloHelper::obtenerSignosVitalesYEdad($edadPaciente);
+    $diagnosticosConcatenados = [];
+    foreach ([0, 1, 2] as $i) {
+        if (!empty($diagnosticos_previos[$i])) {
+            $texto = ucfirst(strtolower(substr($diagnosticos_previos[$i], 6)));
+            $diagnosticosConcatenados[] = $texto;
+        }
+    }
+    $diagnosticosConcatenados = implode(', ', $diagnosticosConcatenados);
+    $signos = ProtocoloHelper::obtenerSignosVitalesYEdad($edadPaciente, trim($diagnosticosConcatenados), $procedimiento);
 
     $preEvolucion = [];
     $preIndicacion = [];
@@ -139,7 +154,9 @@
         <td colspan="5" class="blanco_left"></td>
     </tr>
 
-    <?php for ($i = 0; $i < $maxLines; $i++): ?>
+    <?php
+    $maxLinesPost = max(count($postEvolucion), count($postIndicacion), 6);
+    for ($i = 0; $i < $maxLinesPost; $i++): ?>
         <tr>
             <td colspan="6" class="blanco_left"></td>
             <td colspan="3" class="blanco_left"></td>
@@ -176,7 +193,7 @@
 
     <?php
     // Calcular el número máximo de líneas para la sección de alta
-    $maxLinesAlta = max(count($altaEvolucion), count($altaIndicacion), 7);
+    $maxLinesAlta = max(count($altaEvolucion), count($altaIndicacion), 6);
 
     for ($i = 0; $i < $maxLinesAlta; $i++): ?>
         <tr>

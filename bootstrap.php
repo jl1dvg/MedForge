@@ -10,16 +10,23 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Cargar Composer Autoload (si tienes vendor/)
+// === Cargar Composer Autoload ===
 $composerAutoload = __DIR__ . '/vendor/autoload.php';
 if (file_exists($composerAutoload)) {
     require_once $composerAutoload;
 }
 
+// === Cargar variables de entorno (.env) ===
+use Dotenv\Dotenv;
+$dotenv = Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+// Ahora puedes usar $_ENV['OPENAI_API_KEY'] o getenv('OPENAI_API_KEY')
+
 // Cargar conexión a la base de datos
 $pdo = require_once __DIR__ . '/config/database.php';
 
-// Definir constantes de rutas (útiles para incluir archivos desde cualquier nivel)
+// Definir constantes de rutas
 define('BASE_PATH', __DIR__);
 define('CONTROLLER_PATH', BASE_PATH . '/controllers');
 define('MODEL_PATH', BASE_PATH . '/models');
@@ -30,7 +37,7 @@ define('PUBLIC_PATH', BASE_PATH . '/public');
 // URL base del sitio
 define('BASE_URL', 'https://asistentecive.consulmed.me/');
 
-// Helper para generar URLs públicas (como Laravel's asset())
+// Helper para generar URLs públicas
 function asset($path)
 {
     return BASE_URL . 'public/' . ltrim($path, '/');

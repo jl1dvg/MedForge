@@ -76,6 +76,30 @@ class SolicitudModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function obtenerConsultaDeSolicitud($form_id)
+    {
+        $sql = "SELECT * FROM consulta_data
+                WHERE form_id = ? ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$form_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC); // una sola fila
+    }
+
+    public function obtenerDatosYCirujanoSolicitud($form_id, $hc)
+    {
+        $sql = "SELECT sp.*, u.*
+            FROM solicitud_procedimiento sp
+            LEFT JOIN users u 
+                ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+            WHERE sp.form_id = ? AND sp.hc_number = ?
+            ORDER BY sp.created_at DESC
+            LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$form_id, $hc]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function actualizarEstado(int $id, string $estado): void
     {
         $sql = "UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id";

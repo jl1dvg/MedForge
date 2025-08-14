@@ -58,10 +58,10 @@ class ProtocoloHelper
         // 2. Si no se encontró nada, usar el respaldo desde procedimientos
         if (empty($diagnosticosArray) && !empty($idProcedimiento)) {
             $sql2 = "
-    SELECT p.dx_pre, i.dx_code, i.long_desc
-    FROM procedimientos p
-    LEFT JOIN icd10_dx_order_code i ON p.dx_pre = i.dx_code
-    WHERE p.id = ? LIMIT 1";
+            SELECT p.dx_pre, i.dx_code, i.long_desc
+            FROM procedimientos p
+            LEFT JOIN icd10_dx_order_code i ON p.dx_pre = i.dx_code
+            WHERE p.id = ? LIMIT 1";
             $stmt2 = $db->prepare($sql2);
             $stmt2->execute([$idProcedimiento]);
             $row = $stmt2->fetch(PDO::FETCH_ASSOC);
@@ -99,14 +99,16 @@ class ProtocoloHelper
 
     private static ?array $signosVitales = null;
 
-    public static function obtenerSignosVitalesYEdad($edad): array
+    public static function obtenerSignosVitalesYEdad($edad, $diagnosticoPrevio, $procedimientoProyectado): array
     {
         if (self::$signosVitales === null) {
             self::$signosVitales = [
                 'sistolica' => rand(110, 130),
                 'diastolica' => rand(70, 83),
                 'fc' => rand(75, 100),
-                'edadPaciente' => $edad
+                'edadPaciente' => $edad,
+                'previousDiagnostic1' => $diagnosticoPrevio,
+                'procedimientoProyectadoNow' => $procedimientoProyectado,
             ];
         }
         return self::$signosVitales;
@@ -119,6 +121,8 @@ class ProtocoloHelper
             '$diastolica' => $variables['diastolica'] ?? '',
             '$fc' => $variables['fc'] ?? '',
             '$edadPaciente' => $variables['edadPaciente'] ?? '',
+            '$previousDiagnostic1' => $variables['previousDiagnostic1'] ?? '',
+            '$procedimientoProyectadoNow' => $variables['procedimientoProyectadoNow'] ?? '',
         ];
         return strtr($texto, $reemplazos);
     }

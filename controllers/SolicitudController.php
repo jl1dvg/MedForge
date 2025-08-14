@@ -26,14 +26,16 @@ class SolicitudController
     public function obtenerDatosParaVista($hc, $form_id)
     {
         $data = $this->solicitudModel->obtenerDerivacionPorFormId($form_id);
-        $solicitud = $this->solicitudModel->obtenerFechaCreacionSolicitud($form_id, $hc);
+        $solicitud = $this->solicitudModel->obtenerDatosYCirujanoSolicitud($form_id, $hc);
         $paciente = $this->pacienteController->getPatientDetails($hc);
         $diagnostico = $this->solicitudModel->obtenerDxDeSolicitud($form_id);
+        $consulta = $this->solicitudModel->obtenerConsultaDeSolicitud($form_id);
         return [
             'derivacion' => $data,
             'solicitud' => $solicitud,
             'paciente' => $paciente,
-            'diagnostico' => $diagnostico
+            'diagnostico' => $diagnostico,
+            'consulta' => $consulta,
         ];
     }
 

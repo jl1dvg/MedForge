@@ -166,7 +166,7 @@ class PdfController
                 extract($datos);
                 $orientation = ($paginaSolicitada === 'transanestesico') ? 'L' : 'P';
 
-                include __DIR__ . '/../views/pdf/' . $paginaSolicitada . '.php';
+                include __DIR__ . '/../views/pdf/' . $paginaSolicitada . 'RelatedCode.php';
                 $html = ob_get_clean();  // ✅ NO uses pagebreak en HTML
 
                 $nombrePdf = "{$paginaSolicitada}_{$form_id}_{$hc_number}.pdf";
