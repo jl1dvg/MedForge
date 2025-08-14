@@ -61,11 +61,15 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
         'codigo_derivacion' => '',
         'fecha_registro' => '',
         'fecha_vigencia' => '',
-        'diagnostico' => ''
+        'diagnostico' => '',
+        'hc_number' => ''
     ];
 
     if (preg_match('/Código Derivación:\s*([^\n]+)/', $output, $matchCodigo)) {
         $scraperResponse['codigo_derivacion'] = trim($matchCodigo[1]);
+    }
+    if (preg_match('/"hc_number":\s*"([^"]+)"/', $output, $matchhcnumber)) {
+        $scraperResponse['hc_number'] = trim($matchhcnumber[1]);
     }
     if (preg_match('/Fecha de registro:\s*(\d{4}-\d{2}-\d{2})/', $output, $matchRegistro)) {
         $scraperResponse['fecha_registro'] = $matchRegistro[1];
@@ -108,6 +112,7 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     'estado' => trim($estado),
                     'color' => $color,
                     'codigo_derivacion' => $scraperResponse['codigo_derivacion'] ?? '',
+                    'hc_number' => trim($scraperResponse['hc_number']) ?? '',
                     'fecha_registro' => $scraperResponse['fecha_registro'] ?? '',
                     'fecha_vigencia' => $scraperResponse['fecha_vigencia'] ?? '',
                     'diagnostico' => $scraperResponse['diagnostico'] ?? ''
@@ -122,6 +127,7 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
         if (!empty($grupos)) {
             echo '<div class="box shadow border border-primary p-3 mb-4">';
             echo '<h5 class="text-primary">📋 Procedimientos IPL proyectados:</h5>';
+
 
             // === BLOQUE NUEVO: Resumen del Planificador IPL ===
             // Calcular fechas reales de IPL y vigencia
@@ -162,17 +168,18 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
             echo '<div class="table-responsive">';
             echo '<table class="table table-bordered table-striped table-sm">';
             echo '<thead class="bg-primary text-white">
-                                            <tr>
-                                                <th>#</th>
-                                                <th>Cod. Der.</th>
-                                                <th>Form ID</th>
-                                                <th>Procedimiento</th>
-                                                <th>Fecha Real</th>
-                                                <th>Fecha Ideal</th>
-                                                <th>Doctor</th>
-                                                <th>Estado</th>
-                                            </tr>
-                                          </thead>';
+                    <tr>
+                        <th>#</th>
+                        <th>Cod. Der.</th>
+                        <th>Form ID</th>
+                        <th>Procedimiento</th>
+                        <th>Fecha Real</th>
+                        <th>Fecha Ideal</th>
+                        <th>Doctor</th>
+                        <th>Estado</th>
+                        <th>🖨️ PDF</th>
+                    </tr>
+                  </thead>';
             echo '<tbody>';
 
             // === BLOQUE NUEVO: Generar fechas ideales y asociar sesiones reales secuencialmente ===
@@ -205,12 +212,13 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                     echo '<td>' . htmlspecialchars($match['form_id']) . '</td>';
                     echo '<td>' . htmlspecialchars($match['codigo_derivacion']) . '</td>';
                     echo '<td>' . htmlspecialchars($match['procedimiento']) . '</td>';
-                    echo '<td>' . htmlspecialchars($match['fecha']) . '</td>';
-                    echo '<td>' . IplHelper::formatearFecha(is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal) . '</td>';
+                    echo '<td>' . IplHelper::formatearFecha($match['fecha']) . '</td>';
+                    $fechaIdealGuardada = $controller->obtenerFechaIdeal($formIdCheck, $hc_number);
+                    $fechaFicticia = $fechaIdealGuardada ?: (is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal);
+                    echo '<td>' . IplHelper::formatearFecha($fechaFicticia) . '</td>';
                     echo '<td>' . htmlspecialchars($match['doctor']) . '</td>';
-                    echo '<td>' . IplHelper::estadoTexto($match['estado']);
-
-                    // Mostrar el botón solo si falta derivación o planificación
+                    echo '<td>' . IplHelper::estadoTexto($match['estado']) . '</td>';
+                    echo '<td><button class="btn btn-outline-primary btn-sm" onclick="imprimirPDF(\'' . addslashes(htmlspecialchars($match['form_id'], ENT_QUOTES)) . '\', \'' . addslashes(htmlspecialchars($match['hc_number'], ENT_QUOTES)) . '\')">🖨️ Print</button></td>';
                     $item = [
                         'form_id' => $formIdCheck,
                         'hc_number' => $hc_number,
@@ -221,7 +229,7 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
                         'guardar_derivacion' => empty($existeBD['derivacion']) ? "1" : "0",
                         'guardar_planificacion' => empty($existeBD['planificacion']) ? "1" : "0",
                         'nro_sesion' => $contador,
-                        'fecha_ficticia' => is_array($fechaIdeal) && isset($fechaIdeal['fecha']) ? $fechaIdeal['fecha'] : $fechaIdeal,
+                        'fecha_ficticia' => $fechaFicticia,
                         'estado' => $match['estado'],
                         'doctor' => $match['doctor'],
                         'procedimiento' => $match['procedimiento'],
@@ -261,6 +269,10 @@ if (isset($_POST['scrape_derivacion']) && !empty($_POST['form_id_scrape']) && !e
 
 ?>
 <script>
+    function imprimirPDF(form_id, hc_number) {
+        window.open('/public/ajax/generate_protocolo_pdf.php?form_id=' + form_id + '&hc_number=' + hc_number, '_blank');
+    }
+
     // Delegación de eventos para .guardar-derivacion
     document.addEventListener('DOMContentLoaded', function () {
         document.addEventListener('click', function (e) {

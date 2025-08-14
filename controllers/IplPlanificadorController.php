@@ -120,15 +120,17 @@ class IplPlanificadorController
             } else {
                 // Se selecciona un día aleatorio entre el 15 y el 23 de cada mes para simular variabilidad de programación
                 // sin salirse del rango del mes y evitando fines de semana.
-                $diaAleatorio = rand(15, 23);
                 $ultimoDiaDelMes = (int)$fechaTentativa->format('t');
-                $diaFinal = min($diaAleatorio, $ultimoDiaDelMes);
+                $anioMesTentativo = $fechaTentativa->format('Y-m');
+                $ultimoDiaPermitido = (int)(($fin->format('Y-m') === $anioMesTentativo) ? $fin->format('d') : $ultimoDiaDelMes);
 
-                $fechaTentativa->setDate(
-                    (int)$fechaTentativa->format('Y'),
-                    (int)$fechaTentativa->format('m'),
-                    $diaFinal
-                );
+                // Si el último día permitido del mes es menor a 15, usar ese día directamente
+                if ($ultimoDiaPermitido < 15) {
+                    $diaFinal = $ultimoDiaPermitido;
+                } else {
+                    $diaAleatorio = rand(15, min(23, $ultimoDiaPermitido));
+                    $diaFinal = $diaAleatorio;
+                }
             }
 
             // Ajustar si cae en sábado (6) o domingo (7)
@@ -169,6 +171,14 @@ class IplPlanificadorController
         } catch (PDOException $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    public function obtenerFechaIdeal($formId, $hcNumber)
+    {
+        $stmt = $this->db->prepare("SELECT fecha_ficticia FROM ipl_planificador WHERE form_id_origen = ? AND hc_number = ?");
+        $stmt->execute([$formId, $hcNumber]);
+        $resultado = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $resultado['fecha_ficticia'] ?? null;
     }
 }
 

@@ -255,7 +255,7 @@ class BillingController
 
         $modo = $_GET['modo'] ?? 'individual';
         // Asignar plantilla obligatoriamente según grupo de afiliación
-        $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . '.php';
+        $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . 'RelatedCode.php';
 
         if ($modo === 'bulk') {
             require $archivoPlantilla;
@@ -298,7 +298,7 @@ class BillingController
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $GLOBALS['spreadsheet'] = $spreadsheet;
 
-            $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . '.php';
+            $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . 'RelatedCode.php';
             try {
                 ini_set('display_errors', 1);
                 error_reporting(E_ALL);

@@ -1,140 +1,13 @@
 <?php
-if (!function_exists('generateEnfermedadProblemaActual')) {
-    function generateEnfermedadProblemaActual($examenFisico)
-    {
-        $apiKey = $_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY');
 
-        if (!$apiKey) {
-            die('API key is missing. Please set your OpenAI API key.');
-        }
+use Helpers\OpenAIHelper;
 
-        // Definir el prompt mejorado
-        $prompt = "
-    Examen físico oftalmológico: $examenFisico
-
-Redacta los hallazgos del examen físico de manera profesional, clara y sintetizada. Sigue este esquema y considera las siguientes instrucciones:
-
-1. Combina el Motivo de consulta y enfermedad actual en una sola frase concisa que describa de manera específica la razón de la consulta y la situación actual del paciente. Evita frases introductorias como 'Motivo de consulta:' o 'Enfermedad actual:'.
-2. Biomicroscopia: Presenta los hallazgos separados por ojo con las siglas OD y OI exclusivamente. Si no se menciona un ojo, omítelo. Usa frases completas y bien estructuradas.
-3. Fondo de Ojo: Incluye únicamente si hay detalles reportados. Si no se mencionan hallazgos, no lo incluyas.
-4. PIO: Si está disponible, escribe la presión intraocular en el formato OD/OI (por ejemplo, 18/18.5). Si no está reportada, omítela.
-
-Instrucciones adicionales:
-- Usa mayúsculas y minúsculas correctamente; solo usa siglas para OD, OI y PIO.
-- No incluyas secciones vacías ni detalles no reportados.
-- Sintetiza la información eliminando redundancias y enfocándote en lo relevante.
-- Evita líneas separadas para frases importantes; presenta la información de forma continua y bien organizada.
-- No inventes datos; si algo no está claro, simplemente no lo incluyas.
-
-Ejemplo de formato esperado:
-[Frase que combine el motivo de consulta y la enfermedad actual.]
-Biomicroscopia: OD: [detalles]. OI: [detalles]. 
-Fondo de Ojo: OD: [detalles]. OI: [detalles]. 
-PIO: [valor].
-
-Utiliza este esquema para el análisis.
-";
-
-        $data = [
-            'model' => 'gpt-3.5-turbo',
-            'messages' => [
-                ['role' => 'system', 'content' => 'Eres un médico oftalmólogo que está redactando una referencia detallada para un paciente que necesita cirugía.'],
-                ['role' => 'user', 'content' => $prompt]
-            ],
-            'max_tokens' => 200
-        ];
-
-        $options = [
-            'http' => [
-                'header' => "Content-type: application/json\r\nAuthorization: Bearer $apiKey\r\n",
-                'method' => 'POST',
-                'content' => json_encode($data),
-                'ignore_errors' => true // Capturar errores HTTP
-            ],
-        ];
-
-        $context = stream_context_create($options);
-        $response = file_get_contents('https://api.openai.com/v1/chat/completions', false, $context);
-
-        if ($response === FALSE) {
-            $error = error_get_last();
-            die('Error occurred: ' . $error['message']);
-        }
-
-        $responseData = json_decode($response, true);
-
-        if (isset($responseData['error'])) {
-            die('API Error: ' . $responseData['error']['message']);
-        }
-
-        return $responseData['choices'][0]['message']['content'];
-    }
+// Inicializa el helper de OpenAI (requiere que el autoload/bootstrapping ya esté cargado antes)
+$ai = null;
+if (class_exists(OpenAIHelper::class)) {
+    $ai = new OpenAIHelper();
 }
-if (!function_exists('generatePlanTratamiento')) {
-    function generatePlanTratamiento($plan, $insurance)
-    {
-        $apiKey = $_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY');
-
-        if (!$apiKey) {
-            die('API key is missing. Please set your OpenAI API key.');
-        }
-
-        $prompt = "
-Plan de tratamiento basado en la evaluación oftalmológica: $plan
-
-Redacta un plan de tratamiento breve, claro y profesional, respetando el siguiente formato y estilo:
-
-1. **Procedimientos:** Enumera exclusivamente los procedimientos quirúrgicos necesarios. Usa frases directas y justificaciones breves si es relevante y evita colocar fechas.
-2. **Exámenes prequirúrgicos y valoración cardiológica:** Incluye esta sección con el siguiente contexto: 'Se solicita a $insurance autorización para valoración y tratamiento integral en cardiología y electrocardiograma.'
-
-Instrucciones adicionales:
-- Usa mayúsculas y minúsculas correctamente tipo oración. Esto significa que solo las iniciales de los nombres propios y términos específicos deben estar en mayúscula. No escribas todo en mayúsculas.
-- Presenta la información de manera directa y estructurada en listas o frases cortas, sin introducir explicaciones extensas ni repeticiones.
-- Evita incluir secciones vacías o inventar información; solo menciona datos presentes en el plan proporcionado.
-- Omite encabezados si no hay contenido relevante en esa sección.
-
-Ejemplo de formato esperado:
-[Procedimiento 1].[Procedimiento 2].
-
-Exámenes prequirúrgicos y valoración cardiológica:
-- Se solicita a [aseguradora] autorización para valoración y tratamiento integral en cardiología y electrocardiograma.
-";
-
-        $data = [
-            'model' => 'gpt-3.5-turbo',
-            'messages' => [
-                ['role' => 'system', 'content' => 'Eres un médico oftalmólogo redactando un plan de tratamiento profesional basado en un análisis clínico.'],
-                ['role' => 'user', 'content' => $prompt]
-            ],
-            'max_tokens' => 300
-        ];
-
-        $options = [
-            'http' => [
-                'header' => "Content-type: application/json\r\nAuthorization: Bearer $apiKey\r\n",
-                'method' => 'POST',
-                'content' => json_encode($data),
-                'ignore_errors' => true // Capturar errores HTTP
-            ],
-        ];
-
-        $context = stream_context_create($options);
-        $response = file_get_contents('https://api.openai.com/v1/chat/completions', false, $context);
-
-        if ($response === FALSE) {
-            $error = error_get_last();
-            die('Error occurred: ' . $error['message']);
-        }
-
-        $responseData = json_decode($response, true);
-
-        if (isset($responseData['error'])) {
-            die('API Error: ' . $responseData['error']['message']);
-        }
-
-        return $responseData['choices'][0]['message']['content'];
-    }
-}
+$AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
 ?>
 <TABLE>
     <tr>
@@ -196,11 +69,35 @@ Exámenes prequirúrgicos y valoración cardiológica:
     </tr>
     <tr>
         <td colspan="71" class="blanco_left"><?php
-            //$reason = $motivoConsulta . ' ' . $enfermedadActual;
-            echo "</td>
-    </tr>
-    <tr>
-        <td colspan=\"71\" class=\"blanco_left\">"; ?></td>
+            $reason = $consulta['motivo_consulta'] . ' ' . $consulta['enfermedad_actual'];
+            $reasonAI = '';
+            $reasonAI_error = null;
+            if (isset($ai)) {
+                try {
+                    $reasonAI = $ai->generateEnfermedadProblemaActual($reason ?? '');
+                } catch (\Throwable $e) {
+                    $reasonAI_error = $e->getMessage();
+                    error_log('OpenAI generateEnfermedadProblemaActual error: ' . $reasonAI_error);
+                }
+            }
+            if (trim($reasonAI) !== '') {
+                echo wordwrap($reasonAI, 150, "</td></tr><tr><td colspan=\"71\" class=\"blanco_left\">");
+            } else {
+                // fallback: no AI output
+                echo wordwrap('[AI sin salida para criterio clínico]', 150, "</td></tr><tr><td colspan=\"71\" class=\"blanco_left\">");
+            }
+            if (!empty($AI_DEBUG)) {
+                echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Criterio Clínico</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                        'has_ai' => isset($ai),
+                        'input_preview' => mb_substr((string)($reason ?? ''), 0, 400),
+                        'output_len' => mb_strlen((string)$reasonAI),
+                        'error' => $reasonAI_error
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+            }
+            ?></td>
     </tr>
     <tr>
         <td colspan="71" class="blanco_left"></td>
@@ -213,8 +110,34 @@ Exámenes prequirúrgicos y valoración cardiológica:
     <tr>
         <td class="blanco_left">
             <?php
-            //$examenAI = generateEnfermedadProblemaActual($examenFisico);
-            //echo wordwrap($examenAI, 150, "</TD></TR><TR><TD class='blanco_left'>");
+            $examenFisico = $consulta['examen_fisico'];
+            $examenAI = '';
+            $examenAI_error = null;
+            if (isset($ai)) {
+                try {
+                    $examenAI = $ai->generateEnfermedadProblemaActual($examenFisico ?? '');
+                } catch (\Throwable $e) {
+                    $examenAI_error = $e->getMessage();
+                    error_log('OpenAI generateEnfermedadProblemaActual error: ' . $examenAI_error);
+                }
+            }
+            if (trim($examenAI) !== '') {
+                echo wordwrap($examenAI, 150, "</TD></TR><TR><TD class='blanco_left'>");
+            } else {
+                // fallback: no AI output
+                echo wordwrap('[AI sin salida para criterio clínico]', 150, "</TD></TR><TR><TD class='blanco_left'>");
+            }
+            if (!empty($AI_DEBUG)) {
+                echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Criterio Clínico</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                        'has_ai' => isset($ai),
+                        'input_preview' => mb_substr((string)($examenFisico ?? ''), 0, 400),
+                        'output_len' => mb_strlen((string)$examenAI),
+                        'error' => $examenAI_error
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+            }
             ?>
         </td>
     </tr>
@@ -291,7 +214,78 @@ echo "</table>";
     <tr>
         <td class="blanco" style="border-right: none; text-align: left">
             <?php
-            //echo wordwrap($plan, 140, "</TD></TR><TR><TD class='blanco_left'>");
+            // Texto base para diagnóstico (prioriza un campo específico si existiera)
+            $textoDiag = $consulta['diagnostico_plan'] ?? ($consulta['plan'] ?? '');
+
+            // Normaliza/convierte los estudios del formulario a array
+            $estudiosExplicitos = null;
+            $examenes = $solicitud['examenes'] ?? null; // puede venir como array, JSON o string separado por comas
+            if (is_array($examenes)) {
+                $estudiosExplicitos = array_values(array_filter(array_map('strval', $examenes), fn($s) => trim($s) !== ''));
+            } elseif (is_string($examenes) && trim($examenes) !== '') {
+                // Intenta JSON primero
+                $decoded = json_decode($examenes, true);
+                if (is_array($decoded)) {
+                    $estudiosExplicitos = array_values(array_filter(array_map('strval', $decoded), fn($s) => trim($s) !== ''));
+                } else {
+                    // Split por separadores comunes
+                    $parts = preg_split('/[,;\|\n]+/', $examenes);
+                    $estudiosExplicitos = array_values(array_filter(array_map('trim', $parts), fn($s) => $s !== ''));
+                }
+            }
+
+            $planDiagAI = '';
+            $planDiagAI_error = null;
+
+            try {
+                if (isset($ai)) {
+                    $planDiagAI = $ai->generatePlanDiagnostico($textoDiag, $estudiosExplicitos);
+                } else {
+                    $planDiagAI_error = 'OpenAIHelper no está disponible (clase no cargada).';
+                }
+            } catch (\Throwable $e) {
+                $planDiagAI_error = $e->getMessage();
+                // Log del error para inspección en el servidor (no interrumpe el PDF)
+                error_log('OpenAI generatePlanDiagnostico error: ' . $planDiagAI_error);
+            }
+
+            // Fallback: si no hay salida IA, usa el listado explícito o el texto base
+            if (trim($planDiagAI) === '') {
+                if (!empty($estudiosExplicitos)) {
+                    $fallbackLines = ["Plan de diagnóstico propuesto:"];
+                    foreach ($estudiosExplicitos as $item) {
+                        $fallbackLines[] = '- ' . $item . '.';
+                    }
+                    $planDiagAI = implode("\n", $fallbackLines);
+                } else {
+                    $planDiagAI = trim($textoDiag);
+                }
+            }
+
+            echo wordwrap($planDiagAI, 150, "</TD></TR><TR><TD class='blanco_left'>");
+
+            // Bloque de depuración opcional en el propio PDF/HTML
+            if (!empty($AI_DEBUG)) {
+                $diag = [
+                    'has_ai' => isset($ai),
+                    'model_input_preview' => mb_substr($textoDiag, 0, 400),
+                    'examenes_explicit' => $estudiosExplicitos,
+                    'ai_output_len' => mb_strlen($planDiagAI),
+                    'had_fallback' => (
+                        empty($planDiagAI_error) && trim($planDiagAI) !== '' && (
+                            (!empty($estudiosExplicitos) && strpos($planDiagAI, 'Plan de diagnóstico propuesto:') === 0)
+                            || (empty($estudiosExplicitos) && trim($planDiagAI) === trim($textoDiag))
+                        )
+                    ),
+                    'error' => $planDiagAI_error
+                ];
+                echo "<div style='border:1px dashed #06c; margin:6px 0; padding:6px; font-size:8pt; color:#036;'>
+            <b>AI DEBUG — Plan Diagnóstico</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode($diag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+                // También al log del servidor
+                error_log('AI DEBUG — Plan Diagnóstico: ' . json_encode($diag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
             ?>
     </tr>
 </table>
@@ -302,15 +296,58 @@ echo "</table>";
     <tr>
         <td colspan="71" class="blanco_left">
             <?php
-            $eye = $solicitud['ojo'];
-
-            if ($eye == 'D') {
-                $eye = 'ojo derecho.';
-            } elseif ($eye == 'I') {
+            $eye = $solicitud['ojo'] ?? '';
+            // Normaliza a texto legible sin punto final para pasarlo a IA
+            if ($eye === 'D') {
+                $eye = 'ojo derecho';
+            } elseif ($eye === 'I') {
                 $eye = 'ojo izquierdo';
+            } elseif ($eye === 'AO' || $eye === 'B') { // por si usas ambos ojos
+                $eye = 'ambos ojos';
             }
-            //$planAI = $nombre_procedimiento . ' en ' . $eye . '. Se solicita a' . $insurance . ' autorización para realización de exámenes prequirúrgicos, valoración y tratamiento integral en cardiología y electrocardiograma.';
-            //echo wordwrap($planAI, 150, "</TD></TR><TR><TD colspan=71 class='blanco_left'>");
+
+            $procedimiento = $solicitud['procedimiento'] ?? '';
+            $promptPlan = $consulta['plan'] ?? '';
+            $insurance = $paciente['afiliacion'] ?? '';
+
+            try {
+                if (isset($ai)) {
+                    $planAI = $ai->generatePlanTratamiento($promptPlan, $insurance, $procedimiento, $eye);
+                } else {
+                    $planAI_error = 'OpenAIHelper no está disponible (clase no cargada).';
+                }
+            } catch (\Throwable $e) {
+                $planAI_error = $e->getMessage();
+                // Log del error para inspección en el servidor (no interrumpe el PDF)
+                error_log('OpenAI generatePlanTratamiento error: ' . $planAI_error);
+            }
+
+            // Fallback: si por cualquier motivo no se obtuvo texto de la IA, usamos el plan crudo
+            if (trim($planAI) === '') {
+                $planAI = trim($promptPlan);
+            }
+
+            echo wordwrap($planAI, 150, "</TD></TR><TR><TD colspan=71 class='blanco_left'>");
+
+            // Bloque de depuración opcional en el propio PDF/HTML
+            if (!empty($AI_DEBUG)) {
+                $diag = [
+                    'has_ai' => isset($ai),
+                    'model_input_preview' => mb_substr($promptPlan, 0, 400),
+                    'insurance' => $insurance,
+                    'procedimiento' => $procedimiento,
+                    'ojo' => $eye,
+                    'ai_output_len' => mb_strlen($planAI),
+                    'had_fallback' => trim($planAI) === trim($promptPlan),
+                    'error' => $planAI_error
+                ];
+                echo "<div style='border:1px dashed #06c; margin:6px 0; padding:6px; font-size:8pt; color:#036;'>
+            <b>AI DEBUG — Plan Terapéutico</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode($diag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+                // También al log del servidor
+                error_log('AI DEBUG — Plan Terapéutico: ' . json_encode($diag, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
             ?>
         </td>
     </tr>
@@ -343,8 +380,12 @@ echo "</table>";
         <td colspan="16" class="verde">SEGUNDO APELLIDO</td>
     </tr>
     <tr>
-        <td colspan="8" class="blanco"><?php echo htmlspecialchars($solicitud['created_at']); ?></td>
-        <td colspan="7" class="blanco"><?php //echo htmlspecialchars($createdAtTime); ?></td>
+        <td colspan="8" class="blanco"><?php
+            $fechaCompleta = $solicitud['created_at'];
+            $fecha = date('Y-m-d', strtotime($fechaCompleta));
+            $hora = date('H:i', strtotime($fechaCompleta));
+            echo $fecha ?></td>
+        <td colspan="7" class="blanco"><?php echo $hora; ?></td>
         <td colspan="21" class="blanco"><?php echo htmlspecialchars($solicitud['doctor']); ?></td>
         <td colspan="19" class="blanco"></td>
         <td colspan="16" class="blanco"></td>
@@ -356,8 +397,14 @@ echo "</table>";
     </tr>
     <tr>
         <td colspan="15" class="blanco"
-            style="height: 40px"><?php //echo htmlspecialchars($cirujano_data['cedula']); ?></td>
-        <td colspan="26" class="blanco">&nbsp;</td>
+            style="height: 40px"><?php echo htmlspecialchars($solicitud['cedula']); ?></td>
+        <td colspan="26" class="blanco"><?php if (!empty($solicitud['firma'])): ?>
+                <div style="margin-bottom: -25px;">
+                    <img src="<?= htmlspecialchars($solicitud['firma']) ?>" alt="Firma del cirujano"
+                         style="max-height: 60px;">
+                </div>
+            <?php endif; ?>
+        </td>
         <td colspan="30" class="blanco">&nbsp;</td>
     </tr>
 </table>
