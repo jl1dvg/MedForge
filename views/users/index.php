@@ -104,8 +104,9 @@ $username = $dashboardController->getAuthenticatedUser();
                                                             aria-label="Editar usuario">
                                                         <i class="fas fa-user-edit"></i> Editar
                                                     </button>
-                                                    <a href="/views/users/profile.php?id=<?= $user['id'] ?>"
-                                                       class="btn btn-outline-secondary btn-sm"
+                                                    <a href="#"
+                                                       class="btn btn-outline-secondary btn-sm btn-ver-perfil"
+                                                       data-id="<?= $user['id'] ?>"
                                                        title="Ver perfil del usuario"
                                                        aria-label="Ver perfil del usuario">
                                                         <i class="fas fa-id-badge"></i> Perfil
@@ -165,17 +166,31 @@ $username = $dashboardController->getAuthenticatedUser();
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    $(document).on('click', '.btn-editar-usuario', function () {
+    $(document).on('click', '.btn-editar-usuario', function (e) {
+        e.preventDefault();
         let userId = $(this).data('id');
-        $('#modalEditarUsuario')
-            .data('id', userId)
-            .find('.modal-content')
-            .load('/views/users/edit.php?id=' + userId, function () {
-                $('#modalEditarUsuarioLabel').text('Editar Usuario');
-                $('#modalEditarUsuario button[type="submit"]').text('Actualizar Usuario');
-                const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
-                modal.show();
-            });
+        const $modal = $('#modalEditarUsuario');
+        const $content = $modal.find('.modal-content');
+        const url = '/views/users/edit.php?id=' + userId;
+
+        const SPINNER = '<div class="p-5 text-center"><div class="spinner-border" role="status" aria-hidden="true"></div><div class="mt-2">Cargando...</div></div>';
+        $content.html(SPINNER);
+
+        $modal.data('id', userId);
+        $content.load(url, function (responseText, status, xhr) {
+            if (status === 'error') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error al cargar',
+                    text: xhr && xhr.status ? ('HTTP ' + xhr.status + ' – ' + (xhr.statusText || '')) : 'No se pudo cargar el formulario.'
+                });
+                return;
+            }
+            $('#modalEditarUsuarioLabel').text('Editar Usuario');
+            $('#modalEditarUsuario button[type="submit"]').text('Actualizar Usuario');
+            const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
+            modal.show();
+        });
     });
 
     // Manejador para el botón "Agregar Usuario"
@@ -194,62 +209,93 @@ $username = $dashboardController->getAuthenticatedUser();
 <script>
     $(document).on('submit', '#modalEditarUsuario form', function (e) {
         e.preventDefault();
-        const form = $(this);
+        const $form = $(this);
+        const formEl = this;
         const userId = $('#modalEditarUsuario').data('id');
         const action = userId ? '/views/users/edit.php?id=' + userId : '/views/users/create.php';
 
-        const submitButton = form.find('button[type="submit"]');
+        const submitButton = $form.find('button[type="submit"]');
         submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...');
 
-        $.post(action, form.serialize(), function (response) {
-            submitButton.prop('disabled', false).text(userId ? 'Actualizar Usuario' : 'Crear Usuario');
-            if (response.trim() === 'ok') {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Actualizado',
-                    text: 'El usuario ha sido actualizado correctamente.',
-                    confirmButtonText: 'Aceptar'
-                }).then(() => {
-                    const row = $('tr[data-row-id="' + userId + '"]');
-                    row.find('td:nth-child(2)').text(form.find('[name="username"]').val());
-                    row.find('td:nth-child(3)').text(form.find('[name="email"]').val());
-                    row.find('td:nth-child(4)').text(form.find('[name="nombre"]').val());
-                    row.find('td:nth-child(5)').text(form.find('[name="especialidad"]').val());
-                    row.addClass('table-success');
-                    setTimeout(() => row.removeClass('table-success'), 2000);
-                });
-            } else {
+        // Usar FormData para incluir archivos y mantener multipart/form-data
+        const fd = new FormData(formEl);
+
+        $.ajax({
+            url: action,
+            method: 'POST',
+            data: fd,
+            processData: false, // necesario para FormData
+            contentType: false, // necesario para FormData
+            success: function (response) {
+                submitButton.prop('disabled', false).text(userId ? 'Actualizar Usuario' : 'Crear Usuario');
+                const resp = (response || '').toString().trim();
+                if (resp === 'ok') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: userId ? 'Actualizado' : 'Creado',
+                        text: userId ? 'El usuario ha sido actualizado correctamente.' : 'El usuario ha sido creado correctamente.',
+                        confirmButtonText: 'Aceptar'
+                    }).then(() => {
+                        if (userId) {
+                            const row = $('tr[data-row-id="' + userId + '"]');
+                            row.find('td:nth-child(2)').text($form.find('[name="username"]').val());
+                            row.find('td:nth-child(3)').text($form.find('[name="email"]').val());
+                            row.find('td:nth-child(4)').html(
+                                $form.find('[name="nombre"]').val() + '<br>' +
+                                '<span class="badge ' + ($form.find('[name="is_approved"]').is(':checked') ? 'bg-success' : 'bg-warning') + '">' +
+                                ($form.find('[name="is_approved"]').is(':checked') ? 'Aprobado' : 'Pendiente') +
+                                '</span>'
+                            );
+                            row.find('td:nth-child(5)').text($form.find('[name="especialidad"]').val());
+                            row.addClass('table-success');
+                            setTimeout(() => row.removeClass('table-success'), 2000);
+                        } else {
+                            // Si es creación, lo más simple: recargar página para ver el nuevo registro
+                            location.reload();
+                        }
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        html: 'No se pudo actualizar el usuario.<br><small>' + resp + '</small>'
+                    });
+                }
+            },
+            error: function (xhr) {
+                submitButton.prop('disabled', false).text(userId ? 'Actualizar Usuario' : 'Crear Usuario');
                 Swal.fire({
                     icon: 'error',
-                    title: 'Error',
-                    text: 'No se pudo actualizar el usuario. ' + response
+                    title: 'Error de red',
+                    text: xhr.responseText || 'No se pudo conectar con el servidor.'
                 });
             }
         });
     });
-
-    $(document).on('click', '.btn-editar-usuario', function () {
-        let userId = $(this).data('id');
-        $('#modalEditarUsuario')
-            .data('id', userId)
-            .find('.modal-content')
-            .load('/views/users/edit.php?id=' + userId, function () {
-                $('#modalEditarUsuarioLabel').text('Editar Usuario');
-                $('#modalEditarUsuario button[type="submit"]').text('Actualizar Usuario');
-                const modal = new bootstrap.Modal(document.getElementById('modalEditarUsuario'));
-                modal.show();
-            });
-    });
 </script>
 <script>
-    $(document).on('click', '.btn-ver-perfil', function () {
+    $(document).on('click', '.btn-ver-perfil', function (e) {
+        e.preventDefault();
         let userId = $(this).data('id');
-        $('#modalPerfilUsuario')
-            .find('.modal-content')
-            .load('/views/users/profile.php?id=' + userId, function () {
-                const modal = new bootstrap.Modal(document.getElementById('modalPerfilUsuario'));
-                modal.show();
-            });
+        const $modal = $('#modalPerfilUsuario');
+        const $content = $modal.find('.modal-content');
+        const url = '/views/users/profile.php?id=' + userId + '&modal=1';
+
+        const SPINNER = '<div class="p-5 text-center"><div class="spinner-border" role="status" aria-hidden="true"></div><div class="mt-2">Cargando...</div></div>';
+        $content.html(SPINNER);
+
+        $content.load(url, function (responseText, status, xhr) {
+            if (status === 'error') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error al cargar',
+                    text: xhr && xhr.status ? ('HTTP ' + xhr.status + ' – ' + (xhr.statusText || '')) : 'No se pudo cargar el perfil.'
+                });
+                return;
+            }
+            const modal = new bootstrap.Modal(document.getElementById('modalPerfilUsuario'));
+            modal.show();
+        });
     });
 </script>
 <script>

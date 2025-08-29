@@ -20,6 +20,7 @@ class SolicitudHelper
                 'estado' => $row['estado'] ?? 'Recibido',
                 'secuencia' => $row['secuencia'] ?? '',
                 'fecha_creacion' => $row['created_at'] ?? '',
+                'doctor' => $row['doctor'] ?? '',
                 'ojo' => match (strtoupper($row['ojo'] ?? '')) {
                     'D' => 'Derecho',
                     'I' => 'Izquierdo',

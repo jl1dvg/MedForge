@@ -256,57 +256,10 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
 <script>
-    const allSolicitudes = <?php echo json_encode(SolicitudHelper::formatearParaFrontend($solicitudes), JSON_UNESCAPED_UNICODE); ?>;
+    window.allSolicitudes = <?php echo json_encode(SolicitudHelper::formatearParaFrontend($solicitudes), JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
-<script src="solicitudes.js"></script>
-
-<!-- Script para cargar detalles de prefactura al hacer clic en la tarjeta -->
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('.kanban-board').forEach(board => {
-            board.addEventListener('click', function (e) {
-                const card = e.target.closest('.kanban-card.view-details');
-                if (!card) return;
-
-                const hc = card.getAttribute('data-hc');
-                const formId = card.getAttribute('data-form');
-                if (!hc || !formId) {
-                    console.warn('⚠️ No se encontró hc_number o form_id en la tarjeta seleccionada');
-                    return;
-                }
-
-                fetch(`get_prefactura.php?hc_number=${hc}&form_id=${formId}`)
-                    .then(res => {
-                        if (!res.ok) throw new Error("No se encontró la prefactura");
-                        return res.text();
-                    })
-                    .then(html => {
-                        document.getElementById('prefacturaContent').innerHTML = html;
-                        document.activeElement.blur(); // Evita error de foco
-
-                        const modalElement = document.getElementById('prefacturaModal');
-                        const modal = new bootstrap.Modal(modalElement);
-                        modal.show();
-                        document.querySelector('body > .wrapper').setAttribute('inert', '');
-
-                        // Limpieza de backdrop si queda visible
-                        modalElement.addEventListener('hidden.bs.modal', () => {
-                            document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-                            document.body.classList.remove('modal-open');
-                            document.body.style = ''; // Limpia estilos residuales
-                            document.querySelector('body > .wrapper').removeAttribute('inert');
-                        });
-                    })
-                    .catch(err => {
-                        document.getElementById('prefacturaContent').innerHTML = '<p class="text-danger">Error al cargar detalles de prefactura.</p>';
-                        console.error('❌ Error cargando prefactura:', err);
-                    });
-            });
-        });
-    });
-</script>
-
+<script type="module" src="solicitudes.js"></script>
 
 <!-- Doclinic App -->
 <script src="/public/js/jquery.smartmenus.js"></script>
@@ -334,107 +287,6 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
     </div>
 </div>
 <script>
-    // El bloque duplicado de SortableJS ha sido eliminado para evitar conflictos.
-    document.addEventListener('DOMContentLoaded', function () {
-        const revisarBtn = document.getElementById('btnRevisarCodigos');
-        if (revisarBtn) {
-            revisarBtn.addEventListener('click', function () {
-                console.log('🔘 Clic en botón Revisión de Códigos');
-                const modal = document.getElementById('prefacturaModal');
-                const tarjeta = document.querySelector('.kanban-card.view-details.active');
-                if (!tarjeta) return;
-
-                const newEstado = revisarBtn.dataset.estado || 'revision-codigos';
-                fetch('actualizar_estado.php', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        id: tarjeta.getAttribute('data-id'),
-                        estado: newEstado
-                    })
-                })
-                    .then(response => {
-                        if (!response.ok) throw new Error('Error en el servidor');
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log('📬 Respuesta del servidor al botón:', data);
-                        if (data.success) {
-                            showToast('✅ Estado actualizado correctamente');
-                            const formId = tarjeta.getAttribute('data-form');
-                            const solicitud = allSolicitudes.find(s => s.form_id === formId);
-                            if (solicitud) solicitud.estado = newEstado;
-                            renderKanban();
-                            bootstrap.Modal.getInstance(modal).hide();
-                        } else {
-                            showToast('❌ Error en la respuesta: ' + (data.error || 'Error desconocido'), false);
-                            console.error(data.error);
-                        }
-                    })
-                    .catch(error => {
-                        showToast('❌ No se pudo actualizar el estado', false);
-                        console.error('❌ Error en fetch:', error);
-                    });
-            });
-        } else {
-            console.warn('⚠️ No se encontró el botón #btnRevisarCodigos');
-        }
-
-        // --- Botón Solicitar Cobertura ---
-        const coberturaBtn = document.getElementById('btnSolicitarCobertura');
-        if (coberturaBtn) {
-            coberturaBtn.addEventListener('click', function () {
-                console.log('📨 Clic en botón Solicitar Cobertura');
-                const modal = document.getElementById('prefacturaModal');
-                const tarjeta = document.querySelector('.kanban-card.view-details.active');
-                if (!tarjeta) return;
-
-                const newEstado = 'esperando-cobertura';
-                const formId = tarjeta.getAttribute('data-form');
-                const hcNumber = tarjeta.getAttribute('data-hc');
-
-                // Abrir la solicitud quirúrgica PDF en una nueva pestaña
-                window.open(
-                    '/public/ajax/generate_cobertura.php?form_id=' + formId + '&hc_number=' + hcNumber, '_blank',
-                );
-
-                // Actualizar estado del backend
-                fetch('actualizar_estado.php', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        id: tarjeta.getAttribute('data-id'),
-                        estado: newEstado
-                    })
-                })
-                    .then(response => {
-                        if (!response.ok) throw new Error('Error en el servidor');
-                        return response.json();
-                    })
-                    .then(data => {
-                        console.log('📬 Respuesta del servidor al botón cobertura:', data);
-                        if (data.success) {
-                            showToast('✅ Estado actualizado correctamente');
-                            const solicitud = allSolicitudes.find(s => s.form_id === formId);
-                            if (solicitud) solicitud.estado = newEstado;
-                            renderKanban();
-                            bootstrap.Modal.getInstance(modal).hide();
-                        } else {
-                            showToast('❌ Error en la respuesta: ' + (data.error || 'Error desconocido'), false);
-                            console.error(data.error);
-                        }
-                    })
-                    .catch(error => {
-                        showToast('❌ No se pudo actualizar el estado', false);
-                        console.error('❌ Error en fetch:', error);
-                    });
-            });
-        } else {
-            console.warn('⚠️ No se encontró el botón #btnSolicitarCobertura');
-        }
-    });
-</script>
-<script>
     // Función para actualizar los contadores de tarjetas Kanban por estado
     function actualizarContadoresKanban() {
         Object.keys(agrupadasPorEstado).forEach(estado => {
@@ -448,21 +300,4 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
 </body>
 <!-- Toast container -->
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
-<script>
-    function showToast(message, isSuccess = true) {
-        const toast = document.createElement('div');
-        toast.className = `toast align-items-center text-white ${isSuccess ? 'bg-success' : 'bg-danger'} border-0 show`;
-        toast.role = 'alert';
-        toast.style.minWidth = '250px';
-        toast.style.marginBottom = '10px';
-        toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">${message}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-    `;
-        document.getElementById('toastContainer').appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
-    }
-</script>
 </html>

@@ -239,6 +239,33 @@ class BillingController
         return $resultado ? (float)$resultado['anestesia_nivel3'] : null;
     }
 
+    /**
+     * Resuelve la ruta del archivo de plantilla para generar Excel según el grupo de afiliación.
+     * Intenta varias convenciones de nombre para tolerar diferencias.
+     */
+    private function resolverPlantilla(string $grupoAfiliacion): string
+    {
+        $base = __DIR__ . '/../views/billing/';
+        $slug = strtolower(trim($grupoAfiliacion));
+        $candidatos = [
+            "generar_excel_{$slug}RelatedCode.php",
+            "generar_excel_{$slug}.php",
+            "generar_excel_{$slug}_related.php",
+            $slug . "/generar_excel.php",
+        ];
+        $probados = [];
+        foreach ($candidatos as $rel) {
+            $ruta = $base . $rel;
+            $probados[] = $ruta;
+            if (is_file($ruta)) {
+                return $ruta;
+            }
+        }
+        throw new \RuntimeException(
+            "No se encontró plantilla para '{$grupoAfiliacion}'. Buscado en:\n - " . implode("\n - ", $probados)
+        );
+    }
+
     public function generarExcel(string $formId, string $grupoAfiliacion = ''): void
     {
         $datos = $this->obtenerDatos($formId);
@@ -255,7 +282,12 @@ class BillingController
 
         $modo = $_GET['modo'] ?? 'individual';
         // Asignar plantilla obligatoriamente según grupo de afiliación
-        $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . 'RelatedCode.php';
+        try {
+            $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
+        } catch (\RuntimeException $e) {
+            http_response_code(500);
+            die("Error: " . nl2br(htmlentities($e->getMessage(), ENT_QUOTES, 'UTF-8')));
+        }
 
         if ($modo === 'bulk') {
             require $archivoPlantilla;
@@ -298,7 +330,12 @@ class BillingController
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $GLOBALS['spreadsheet'] = $spreadsheet;
 
-            $archivoPlantilla = __DIR__ . '/../views/billing/generar_excel_' . strtolower($grupoAfiliacion) . 'RelatedCode.php';
+            try {
+                $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
+            } catch (\RuntimeException $e) {
+                file_put_contents(__DIR__ . '/exportar_zip_log.txt', "❌ Plantilla no encontrada para {$grupoAfiliacion}: " . $e->getMessage() . "\n", FILE_APPEND);
+                return false;
+            }
             try {
                 ini_set('display_errors', 1);
                 error_reporting(E_ALL);

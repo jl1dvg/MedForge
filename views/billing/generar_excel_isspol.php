@@ -10,6 +10,77 @@ function truncar($valor, $decimales = 2)
     return floor($valor * $factor) / $factor;
 }
 
+/**
+ * Detecta si el ítem es uno de los medicamentos de FARMACIA con cálculo especial.
+ */
+function esMedicamentoEspecial($descripcion)
+{
+    $txt = strtoupper(preg_replace('/\s+/', ' ', trim((string)$descripcion)));
+    $objetivos = [
+        'ATROPINA LIQUIDO OFTALMICO',
+        'BUPIVACAINA (SIN EPINEFRINA) LIQUIDO PARENTERAL',
+        'TROPICAMIDA LIQUIDO OFTALMICO',
+        'DICLOFENACO LIQUIDO PARENTERAL',
+        'ENALAPRIL LIQUIDO PARENTERAL',
+        'FLUMAZENIL LIQUIDO PARENTERAL',
+    ];
+    foreach ($objetivos as $needle) {
+        if (strpos($txt, $needle) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Devuelve el valor unitario y mL predeterminados para medicamentos especiales según la descripción.
+ * Retorna array ['valor' => float, 'ml' => float] o null si no aplica.
+ */
+function obtenerValorMedicamentoEspecial($descripcion)
+{
+    $txt = strtoupper(preg_replace('/\s+/', ' ', trim((string)$descripcion)));
+    // Reglas: buscar por nombre y ml
+    if (strpos($txt, 'ATROPINA LIQUIDO OFTALMICO') !== false) {
+        // ATROPINA (5ML) => 1.21
+        return ['valor' => 1.21, 'ml' => 5];
+    }
+    if (strpos($txt, 'DICLOFENACO LIQUIDO PARENTERAL') !== false) {
+        // DICLOFENACO PARENTERAL (3ML) => 0.25
+        return ['valor' => 0.25, 'ml' => 3];
+    }
+    if (strpos($txt, 'ENALAPRIL LIQUIDO PARENTERAL') !== false) {
+        // ENALAPRIL (1ML) => 8.54
+        return ['valor' => 8.54, 'ml' => 1];
+    }
+    if (strpos($txt, 'FLUMAZENIL LIQUIDO PARENTERAL') !== false) {
+        // FLUMAZENIL (5ML) => 24.20
+        return ['valor' => 24.20, 'ml' => 5];
+    }
+    if (strpos($txt, 'TROPICAMIDA LIQUIDO OFTALMICO') !== false) {
+        // TROPICAMIDA (15ML) => 0.89
+        return ['valor' => 0.89, 'ml' => 15];
+    }
+    if (strpos($txt, 'BUPIVACAINA (SIN EPINEFRINA) LIQUIDO PARENTERAL') !== false) {
+        // BUPIVACAINA (20ML) => 0.15
+        return ['valor' => 0.15, 'ml' => 20];
+    }
+    // DICLOFENACO LIQUIDO OFTALMICO no tiene valor especial definido, usar 0.89 como antes
+    return null;
+}
+
+/**
+ * Extrae la cantidad de mL desde la descripción si viene en el formato "(5ML)" o "(5 ML)".
+ * Retorna float|null si no encuentra coincidencia.
+ */
+function extraerMlDeDescripcion($descripcion)
+{
+    $desc = (string)$descripcion;
+    if (preg_match('/\((\d+(?:\.\d+)?)\s*ML\)/i', $desc, $m)) {
+        return (float)$m[1];
+    }
+    return null;
+}
+
 use Controllers\ReglaController;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -201,7 +272,16 @@ foreach ($data['procedimientos'] as $index => $p) {
     $row++;
 }
 
-if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante'])) {
+// Regla: si existe 67036, NO generar secciones de AYUDANTE
+$hay67036 = false;
+foreach ($data['procedimientos'] as $procTmp) {
+    if (($procTmp['proc_codigo'] ?? '') === '67036') {
+        $hay67036 = true;
+        break;
+    }
+}
+
+if (!$hay67036 && (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante']))) {
     foreach ($data['procedimientos'] as $index => $p) {
         $porcentaje = ($index === 0) ? 0.2 : 0.1;
         $precio = (float)$p['proc_precio'];
@@ -360,17 +440,51 @@ foreach ($fuenteDatos as $bloque) {
             $codigo = $item['codigo'] ?? '';
             $cantidad = $item['cantidad'] ?? 1;
             $valorConGestion = $item['precio'] ?? 0;
-            // Si es farmacia, desglosar el 10%
+            // Si es farmacia, desglosar el 10% o cálculo especial
             if ($grupo === 'FARMACIA') {
-                // Valor base sin gestión
-                $valorUnitario = truncar($valorConGestion / 1.10, 2);
-                $subtotal = truncar($valorUnitario * $cantidad, 2);
-                $total = truncar($valorConGestion * $cantidad, 2); // Solo el valor original unitario con gestión
+                // Cálculo especial por mL para medicamentos específicos
+                if (esMedicamentoEspecial($descripcion)) {
+                    // Buscar valores predeterminados para este medicamento especial
+                    $valoresEspeciales = obtenerValorMedicamentoEspecial($descripcion);
+                    // Cantidad mL: primero campos explícitos; si no, desde la descripción "(5ML)", si no, usar default especial
+                    $cantidadMl = $item['ml_admin'] ?? $item['ml'] ?? $item['cantidad_ml'] ?? null;
+                    if ($cantidadMl === null) {
+                        $cantidadMl = extraerMlDeDescripcion($descripcion);
+                    }
+                    if ($cantidadMl === null && is_array($valoresEspeciales) && isset($valoresEspeciales['ml'])) {
+                        $cantidadMl = $valoresEspeciales['ml'];
+                    }
+                    $cantidad = (float)($cantidadMl ?? $cantidad);
+
+                    // Valor por mL: si no viene, usar el default especial si existe, si no, 0.89 como antes
+                    if (isset($item['valor_unitario_manual'])) {
+                        $valorUnitarioBase = $item['valor_unitario_manual'];
+                    } elseif (isset($item['valor_unitario_ml'])) {
+                        $valorUnitarioBase = $item['valor_unitario_ml'];
+                    } elseif (isset($item['valor_unitario'])) {
+                        $valorUnitarioBase = $item['valor_unitario'];
+                    } elseif (is_array($valoresEspeciales) && isset($valoresEspeciales['valor'])) {
+                        $valorUnitarioBase = $valoresEspeciales['valor'];
+                    } else {
+                        $valorUnitarioBase = 0.89;
+                    }
+                    $valorUnitario = truncar((float)$valorUnitarioBase, 2);
+
+                    $subtotal = truncar($valorUnitario * $cantidad, 2);
+                    $total = truncar($subtotal * 1.1, 2); // sin gestión adicional
+                } else {
+                    // Valor base sin gestión (se desglosa el 10% de gestión)
+                    $valorUnitario = truncar($valorConGestion / 1.10, 2);
+                    $subtotal = truncar($valorUnitario * $cantidad, 2);
+                    // Total conserva el valor original con gestión
+                    $total = truncar($valorConGestion * $cantidad, 2);
+                }
             } else {
                 // INSUMOS
                 $valorUnitario = truncar($valorConGestion, 2);
                 $subtotal = truncar($valorUnitario * $cantidad, 2);
-                $total = truncar($valorConGestion * 1.12, 2) * $cantidad;
+                // Para INSUMOS, se mantiene el 10% de gestión en el total
+                $total = truncar($valorConGestion * 1.1, 2) * $cantidad;
                 $total = truncar($total, 2);
             }
         }
@@ -463,8 +577,8 @@ $GLOBALS['spreadsheet'] = $spreadsheet;
 // Descargar archivo
 //file_put_contents(__DIR__ . '/debug_oxigeno.log', print_r($data['oxigeno'], true));
 // Elimina esto:
-//header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-//header('Content-Disposition: attachment; filename="' . $pacienteInfo['hc_number'] . '_' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
-//$writer = new Xlsx($spreadsheet);
-//$writer->save('php://output');
-//exit;
+header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+header('Content-Disposition: attachment; filename="' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
+$writer = new Xlsx($spreadsheet);
+$writer->save('php://output');
+exit;

@@ -86,14 +86,14 @@ if (!empty($form_id) && !empty($hc_number)) {
 
             // Mostrar los datos en una tabla
         }
-        echo "<h2 class='mt-3'>📋 Procedimientos partes:</h2>";
+        //echo "<h2 class='mt-3'>📋 Procedimientos partes:</h2>";
 
         if (count($partes) <= 1) {
             echo "<div class='alert alert-danger'>⚠️ Scraping ejecutado pero no se detectaron procedimientos.</div>";
             echo "<pre>" . htmlspecialchars($output) . "</pre>";
         }
 
-        print_r($partes);
+        //print_r($partes);
 
         // Generar y mostrar fechas propuestas de sesiones IPL si hay fechas válidas
     } else {
