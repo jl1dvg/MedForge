@@ -13,7 +13,51 @@ if (!$id) {
 }
 
 $user = $controller->getUserModel()->getUserById($id);
-$username = $dashboardController->getAuthenticatedUser();
+@$username = $dashboardController->getAuthenticatedUser();
+
+// Render compacto para modal
+if (isset($_GET['modal'])) {
+    if (!$user) {
+        echo '<div class="p-4">Usuario no encontrado.</div>';
+        exit;
+    }
+    ?>
+    <div class="modal-header">
+        <h5 class="modal-title">Perfil
+            de <?= htmlspecialchars($user['nombre'] ?? $user['username'] ?? 'Usuario') ?></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+    </div>
+    <div class="modal-body">
+        <div class="d-md-flex align-items-start mb-3">
+            <img src="/public/images/avatar/avatar-1.png" class="bg-primary-light rounded10 me-3" alt=""
+                 style="width:72px;height:72px;object-fit:cover;">
+            <div>
+                <div class="mb-1"><strong>Rol:</strong> <?= htmlspecialchars($user['role'] ?? 'Usuario') ?></div>
+                <div class="mb-1">
+                    <strong>Ingreso:</strong> <?= date('d M Y, h:i A', strtotime($user['created_at'] ?? 'now')) ?></div>
+            </div>
+        </div>
+        <div class="mb-2"><strong>Correo:</strong> <?= htmlspecialchars($user['email'] ?? 'No registrado') ?></div>
+        <div class="mb-2"><strong>Usuario:</strong> <?= htmlspecialchars($user['username'] ?? '---') ?></div>
+        <div class="mb-2"><strong>Especialidad:</strong> <?= htmlspecialchars($user['especialidad'] ?? '---') ?></div>
+        <div class="mb-2"><strong>Subespecialidad:</strong> <?= htmlspecialchars($user['subespecialidad'] ?? '---') ?>
+        </div>
+        <?php if (!empty($user['firma'])): ?>
+            <div class="mt-3"><strong>Firma:</strong><br>
+                <img src="<?= htmlspecialchars($user['firma']) ?>" alt="Firma" style="max-height:120px;">
+            </div>
+        <?php endif; ?>
+        <div class="mt-3">
+            <strong>Biografía</strong>
+            <p class="mb-0"><?= htmlspecialchars($user['biografia'] ?? 'Este usuario aún no ha agregado una biografía.') ?></p>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+    </div>
+    <?php
+    exit;
+}
 
 // Ejecutar agenda.php automáticamente con un rango de 15 días
 //$hoy = date('Y-m-d');

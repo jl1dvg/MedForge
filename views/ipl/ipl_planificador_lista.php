@@ -154,10 +154,10 @@ $username = $dashboardController->getAuthenticatedUser();
                                                 (!empty($codigoDerivacion)
                                                     ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"
                                                     : "<form method='post' style='display:inline;'>
-      <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($cirugia->form_id) . "'>
-      <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($cirugia->hc_number) . "'>
-      <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
-   </form>"
+                                                      <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($cirugia->form_id) . "'>
+                                                      <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($cirugia->hc_number) . "'>
+                                                      <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
+                                                      </form>"
                                                 ) .
                                                 "</td>
                                                 </tr>";

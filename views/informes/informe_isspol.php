@@ -22,6 +22,54 @@ $safe_hc_number = escapeshellarg($hc_number);
 require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
+// --- Funciones helper para medicamentos especiales y truncado ---
+if (!function_exists('truncar')) {
+    function truncar($valor, $decimales = 2)
+    {
+        $factor = pow(10, $decimales);
+        return floor($valor * $factor) / $factor;
+    }
+}
+if (!function_exists('esMedicamentoEspecial')) {
+    function esMedicamentoEspecial($descripcion)
+    {
+        $txt = strtoupper(preg_replace('/\s+/', ' ', trim((string)$descripcion)));
+        $objetivos = [
+            'ATROPINA LIQUIDO OFTALMICO',
+            'BUPIVACAINA (SIN EPINEFRINA) LIQUIDO PARENTERAL',
+            'TROPICAMIDA LIQUIDO OFTALMICO',
+            'DICLOFENACO LIQUIDO PARENTERAL',
+            'ENALAPRIL LIQUIDO PARENTERAL',
+            'FLUMAZENIL LIQUIDO PARENTERAL',
+        ];
+        foreach ($objetivos as $needle) {
+            if (strpos($txt, $needle) !== false) return true;
+        }
+        return false;
+    }
+}
+if (!function_exists('obtenerValorMedicamentoEspecial')) {
+    function obtenerValorMedicamentoEspecial($descripcion)
+    {
+        $txt = strtoupper(preg_replace('/\s+/', ' ', trim((string)$descripcion)));
+        if (strpos($txt, 'ATROPINA LIQUIDO OFTALMICO') !== false) return ['valor' => 1.21, 'ml' => 5];
+        if (strpos($txt, 'DICLOFENACO LIQUIDO PARENTERAL') !== false) return ['valor' => 0.25, 'ml' => 3];
+        if (strpos($txt, 'ENALAPRIL LIQUIDO PARENTERAL') !== false) return ['valor' => 8.54, 'ml' => 1];
+        if (strpos($txt, 'FLUMAZENIL LIQUIDO PARENTERAL') !== false) return ['valor' => 24.20, 'ml' => 5];
+        if (strpos($txt, 'TROPICAMIDA LIQUIDO OFTALMICO') !== false) return ['valor' => 0.89, 'ml' => 15];
+        if (strpos($txt, 'BUPIVACAINA (SIN EPINEFRINA) LIQUIDO PARENTERAL') !== false) return ['valor' => 0.15, 'ml' => 20];
+        return null;
+    }
+}
+if (!function_exists('extraerMlDeDescripcion')) {
+    function extraerMlDeDescripcion($descripcion)
+    {
+        $desc = (string)$descripcion;
+        if (preg_match('/\((\d+(?:\.\d+)?)\s*ML\)/i', $desc, $m)) return (float)$m[1];
+        return null;
+    }
+}
+
 use Controllers\BillingController;
 use Controllers\PacienteController;
 use Controllers\DashboardController;
@@ -189,53 +237,62 @@ if ($billingId) {
                             </div>
 
                             <?php if ($formId && $datos):
-                                $paciente = $datos['paciente'] ?? [];
-                                $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
-                                $hcNumber = $paciente['hc_number'] ?? '';
-                                $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
-                                ?>
-                                <div class="row invoice-info mb-3">
-                                    <div class="col-md-6 invoice-col">
-                                        <strong>Desde</strong>
-                                        <address>
-                                            <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador -
-                                                CIVE</strong><br>
+                            $paciente = $datos['paciente'] ?? [];
+                            $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
+                            $hcNumber = $paciente['hc_number'] ?? '';
+                            $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
+                            ?>
+                            <div class="row invoice-info mb-3">
+                                <div class="col-md-6 invoice-col">
+                                    <strong>Desde</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador -
+                                            CIVE</strong><br>
                                         <span class="d-inline">Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero.</span><br>
                                         <strong>Teléfono: (04) 372-9340 &nbsp;&nbsp;&nbsp; Email:
-                                                info@cive.ec</strong>
-                                        </address>
-                                    </div>
-                                    <div class="col-md-6 invoice-col text-end">
-                                        <strong>Paciente</strong>
-                                        <address>
-                                            <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
-                                            HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
-                                            Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
-                                            <?php if (!empty($paciente['ci'])): ?>
-                                                Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
-                                            <?php endif; ?>
-                                            <?php if (!empty($paciente['fecha_nacimiento'])): ?>
-                                                F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
-                                                <br>
-                                            <?php endif; ?>
-                                        </address>
-                                    </div>
-                                    <div class="col-sm-12 invoice-col mb-15">
-                                        <div class="invoice-details row no-margin">
-                                            <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
-                                            <div class="col-md-6 col-lg-3"><b>Fecha
-                                                    Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
-                                            </div>
-                                            <div class="col-md-6 col-lg-3"><b>Fecha
-                                                    Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
-                                            </div>
-                                            <div class="col-md-6 col-lg-3">
-                                                <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
-                                            </div>
+                                            info@cive.ec</strong>
+                                    </address>
+                                </div>
+                                <div class="col-md-6 invoice-col text-end">
+                                    <strong>Paciente</strong>
+                                    <address>
+                                        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
+                                        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
+                                        Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
+                                        <?php if (!empty($paciente['ci'])): ?>
+                                            Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
+                                        <?php endif; ?>
+                                        <?php if (!empty($paciente['fecha_nacimiento'])): ?>
+                                            F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
+                                            <br>
+                                        <?php endif; ?>
+                                    </address>
+                                </div>
+                                <div class="col-sm-12 invoice-col mb-15">
+                                    <div class="invoice-details row no-margin">
+                                        <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3"><b>Fecha
+                                                Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
+                                        </div>
+                                        <div class="col-md-6 col-lg-3">
+                                            <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
                             <div class="row">
+                                <div class="mb-2">
+                                    <span class="badge bg-primary">Procedimientos (Cirujano)</span>
+                                    <span class="badge bg-info text-dark">Ayudante</span>
+                                    <span class="badge bg-danger">Anestesia</span>
+                                    <span class="badge bg-success">Farmacia (por mL)</span>
+                                    <span class="badge bg-warning text-dark">Farmacia</span>
+                                    <span class="badge bg-light text-dark border">Insumos</span>
+                                    <span class="badge bg-secondary">Servicios Institucionales</span>
+                                </div>
                                 <div class="col-12 table-responsive">
                                     <table class="table table-bordered align-middle mb-0">
                                         <thead class="table-dark">
@@ -258,6 +315,15 @@ if ($billingId) {
                                         $total = 0;
                                         $n = 1;
 
+                                        // Detectar si existe al menos un 67036 para reglas especiales
+                                        $hay67036 = false;
+                                        foreach (($datos['procedimientos'] ?? []) as $procTmp) {
+                                            if (($procTmp['proc_codigo'] ?? '') === '67036') {
+                                                $hay67036 = true;
+                                                break;
+                                            }
+                                        }
+
                                         // Procedimientos
                                         foreach ($datos['procedimientos'] as $index => $p) {
                                             $codigo = $p['proc_codigo'] ?? '';
@@ -265,17 +331,19 @@ if ($billingId) {
                                             $valorUnitario = (float)($p['proc_precio'] ?? 0);
                                             $cantidad = 1;
                                             $porcentaje = ($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5;
-                                            if ($codigo === '67036') $porcentaje = 0.625;
-                                            $subtotal = $valorUnitario * $cantidad * $porcentaje;
-                                            $total += $subtotal;
 
-                                            $anestesia = 'NO';
-                                            $porcentajePago = $porcentaje * 100;
-                                            $bodega = 0;
-                                            $iva = 0;
-                                            $montoTotal = $subtotal;
+                                            if ($codigo === '67036') {
+                                                // Regla especial: 62.5% y generar DOS filas idénticas
+                                                $porcentaje = 0.625;
+                                                $subtotal = $valorUnitario * $cantidad * $porcentaje;
 
-                                            echo "<tr>
+                                                // Primera fila
+                                                $anestesia = 'NO';
+                                                $porcentajePago = $porcentaje * 100;
+                                                $bodega = 0;
+                                                $iva = 0;
+                                                $montoTotal = $subtotal;
+                                                echo "<tr class='table-primary'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
@@ -287,12 +355,58 @@ if ($billingId) {
                                                         <td class='text-center'>{$bodega}</td>
                                                         <td class='text-center'>{$iva}</td>
                                                         <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                </tr>";
-                                            $n++;
+                                                    </tr>";
+                                                $n++;
+                                                $total += $subtotal;
+
+                                                // Segunda fila (duplicado)
+                                                echo "<tr class='table-primary'>
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>NO</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-center'>0</td>
+                                                        <td class='text-center'>0</td>
+                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                    </tr>";
+                                                $n++;
+                                                $total += $subtotal;
+
+                                                // saltar a siguiente procedimiento
+                                                continue;
+                                            } else {
+                                                // Flujo normal para otros códigos
+                                                $subtotal = $valorUnitario * $cantidad * $porcentaje;
+                                                $total += $subtotal;
+                                                $anestesia = 'NO';
+                                                $porcentajePago = $porcentaje * 100;
+                                                $bodega = 0;
+                                                $iva = 0;
+                                                $montoTotal = $subtotal;
+
+                                                echo "<tr class='table-primary'>
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                    </tr>";
+                                                $n++;
+                                            }
                                         }
 
-                                        // AYUDANTE
-                                        if (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante'])) {
+                                        // AYUDANTE: si existe 67036, NO generar secciones de ayudante
+                                        if (!$hay67036 && (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante']))) {
                                             foreach ($datos['procedimientos'] as $index => $p) {
                                                 $codigo = $p['proc_codigo'] ?? '';
                                                 $descripcion = $p['proc_detalle'] ?? '';
@@ -309,7 +423,7 @@ if ($billingId) {
                                                 $iva = 0;
                                                 $montoTotal = $subtotal;
 
-                                                echo "<tr>
+                                                echo "<tr class='table-info'>
                                                             <td class='text-center'>{$n}</td>
                                                             <td class='text-center'>{$codigo}</td>
                                                             <td>{$descripcion}</td>
@@ -340,7 +454,7 @@ if ($billingId) {
                                             $iva = 0;
                                             $montoTotal = $subtotal;
 
-                                            echo "<tr>
+                                            echo "<tr class='table-danger'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
@@ -366,26 +480,96 @@ if ($billingId) {
                                             $grupo = $bloque['grupo'];
                                             foreach ($bloque['items'] as $item) {
                                                 $descripcion = $item['nombre'] ?? $item['detalle'] ?? '';
-                                                $codigo = $item['codigo'] ?? '';
+                                                // --- Lógica especial para FARMACIA e INSUMOS ---
                                                 if (isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2'])) {
+                                                    // OXIGENO: cálculo por litros y tiempo
+                                                    $codigo = $item['codigo'] ?? '';
                                                     $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
                                                     $valorUnitario = (float)$item['valor2'];
+                                                    $subtotal = $valorUnitario * $cantidad;
                                                 } else {
-                                                    $cantidad = $item['cantidad'] ?? 1;
-                                                    $valorUnitario = $item['precio'] ?? 0;
+                                                    $codigo = $item['codigo'] ?? '';
+                                                    // --- FARMACIA: desglosar el 10% o cálculo especial ---
+                                                    $valorConGestion = $item['precio'] ?? 0;
+                                                    if ($grupo === 'FARMACIA') {
+                                                        // Cálculo especial por mL para medicamentos específicos
+                                                        if (esMedicamentoEspecial($descripcion)) {
+                                                            $valoresEspeciales = obtenerValorMedicamentoEspecial($descripcion);
+                                                            $cantidadMl = $item['ml_admin'] ?? $item['ml'] ?? $item['cantidad_ml'] ?? null;
+                                                            if ($cantidadMl === null) {
+                                                                $cantidadMl = extraerMlDeDescripcion($descripcion);
+                                                            }
+                                                            if ($cantidadMl === null && is_array($valoresEspeciales) && isset($valoresEspeciales['ml'])) {
+                                                                $cantidadMl = $valoresEspeciales['ml'];
+                                                            }
+                                                            $cantidad = (float)($cantidadMl ?? ($item['cantidad'] ?? 1));
+                                                            // Valor por mL: si no viene, usar default especial si existe, si no, 0.89
+                                                            if (isset($item['valor_unitario_manual'])) {
+                                                                $valorUnitarioBase = $item['valor_unitario_manual'];
+                                                            } elseif (isset($item['valor_unitario_ml'])) {
+                                                                $valorUnitarioBase = $item['valor_unitario_ml'];
+                                                            } elseif (isset($item['valor_unitario'])) {
+                                                                $valorUnitarioBase = $item['valor_unitario'];
+                                                            } elseif (is_array($valoresEspeciales) && isset($valoresEspeciales['valor'])) {
+                                                                $valorUnitarioBase = $valoresEspeciales['valor'];
+                                                            } else {
+                                                                $valorUnitarioBase = 0.89;
+                                                            }
+                                                            $valorUnitario = truncar((float)$valorUnitarioBase, 2);
+                                                            $subtotal = truncar($valorUnitario * $cantidad, 2);
+                                                            $totalFarmaciaEspecial = $subtotal;
+                                                        } else {
+                                                            // Valor base sin gestión (se desglosa el 10% de gestión)
+                                                            $cantidad = $item['cantidad'] ?? 1;
+                                                            $valorUnitario = truncar($valorConGestion / 1.10, 2);
+                                                            $subtotal = truncar($valorUnitario * $cantidad, 2);
+                                                            $totalFarmaciaEspecial = truncar($valorConGestion * $cantidad, 2);
+                                                        }
+                                                    } else {
+                                                        // INSUMOS
+                                                        $cantidad = $item['cantidad'] ?? 1;
+                                                        $valorUnitario = truncar($valorConGestion, 2);
+                                                        $subtotal = truncar($valorUnitario * $cantidad, 2);
+                                                        $totalFarmaciaEspecial = truncar($valorConGestion * 1.1, 2) * $cantidad;
+                                                        $totalFarmaciaEspecial = truncar($totalFarmaciaEspecial, 2);
+                                                    }
                                                 }
-                                                $subtotal = $valorUnitario * $cantidad;
+                                                // --- Código: quitar ceros a la izquierda ---
+                                                $codigo = ltrim($codigo, '0');
                                                 $bodega = 1;
                                                 $iva = ($grupo === 'FARMACIA') ? 0 : 1;
-                                                $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                                                // --- Monto total ---
+                                                if ($grupo === 'FARMACIA') {
+                                                    if (isset($valorUnitario) && isset($cantidad) && esMedicamentoEspecial($descripcion)) {
+                                                        $montoTotal = $subtotal;
+                                                    } else {
+                                                        $montoTotal = $totalFarmaciaEspecial ?? $subtotal;
+                                                    }
+                                                } else {
+                                                    $montoTotal = $totalFarmaciaEspecial ?? $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                                                }
+                                                // Para FARMACIA no se suma 10% extra al montoTotal
                                                 $total += $montoTotal;
                                                 $anestesia = 'NO';
                                                 $porcentajePago = 100;
 
-                                                echo "<tr>
+                                                // Determinar color de fila y badge
+                                                $rowClass = '';
+                                                $badgeTipo = '';
+                                                if ($grupo === 'FARMACIA') {
+                                                    if (esMedicamentoEspecial($descripcion)) {
+                                                        $rowClass = 'table-success';
+                                                        $badgeTipo = ' <span class=\"badge bg-success\">por mL</span>';
+                                                    } else {
+                                                        $rowClass = 'table-warning';
+                                                    }
+                                                } elseif ($grupo === 'INSUMOS') {
+                                                    $rowClass = 'table-light';
+                                                }
+                                                echo "<tr class='{$rowClass}'>
                                                             <td class='text-center'>{$n}</td>
                                                             <td class='text-center'>{$codigo}</td>
-                                                            <td>{$descripcion}</td>
+                                                            <td>{$descripcion}{$badgeTipo}</td>
                                                             <td class='text-center'>{$anestesia}</td>
                                                             <td class='text-center'>{$porcentajePago}</td>
                                                             <td class='text-end'>{$cantidad}</td>
@@ -413,7 +597,7 @@ if ($billingId) {
                                             $anestesia = 'NO';
                                             $porcentajePago = 100;
 
-                                            echo "<tr>
+                                            echo "<tr class='table-secondary'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
@@ -460,52 +644,53 @@ if ($billingId) {
                                         <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=ISSPOL"
                                            class="btn btn-success btn-lg me-2">
                                             <i class="fa fa-file-excel-o"></i> Descargar Excel
-                                </a>
+                                        </a>
                                         <a href="/views/informes/informe_isspol.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
                                            class="btn btn-outline-secondary btn-lg">
                                             <i class="fa fa-arrow-left"></i> Regresar al consolidado
-                                </a>
+                                        </a>
                                     </div>
                                 </div>
-                            <?php elseif ($billingId): ?>
-                                <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
-                                </table>
-                            <?php else: ?>
-                                <h4>Consolidado mensual de pacientes ISSPOL</h4>
-                                <?php
-                                // $filtros ya está definido arriba
-                                $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
-                                $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
-                                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-                                    $facturas,
-                                    $filtros,
-                                    $billingController,
-                                    $pacienteController,
-                                    $afiliacionesISSPOL
-                                );
-                                foreach ($consolidado as $mes => $pacientes) {
-                                    // Aplicar filtros de apellido usando helper
-                                    $apellidoFiltro = strtolower(trim($filtros['apellido']));
-                                    $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
+                                <?php elseif ($billingId): ?>
+                                    <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.
+                                    </div>
+                                    </table>
+                                <?php else: ?>
+                                    <h4>Consolidado mensual de pacientes ISSPOL</h4>
+                                    <?php
+                                    // $filtros ya está definido arriba
+                                    $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
+                                    $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
+                                    $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                                        $facturas,
+                                        $filtros,
+                                        $billingController,
+                                        $pacienteController,
+                                        $afiliacionesISSPOL
+                                    );
+                                    foreach ($consolidado as $mes => $pacientes) {
+                                        // Aplicar filtros de apellido usando helper
+                                        $apellidoFiltro = strtolower(trim($filtros['apellido']));
+                                        $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
 
-                                    // Calcular totales del mes
-                                    $totalMes = 0;
-                                    $totalPacientes = count($pacientes);
-                                    foreach ($pacientes as $p) {
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                    }
+                                        // Calcular totales del mes
+                                        $totalMes = 0;
+                                        $totalPacientes = count($pacientes);
+                                        foreach ($pacientes as $p) {
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $totalMes += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                                        }
 
-                                    $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                                    $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                                    echo "<div class='d-flex justify-content-between align-items-center mt-4'>
+                                        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                        $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                        echo "<div class='d-flex justify-content-between align-items-center mt-4'>
                                             <h5>Mes: {$mesFormateado}</h5>
                                             <div>
                                                 🧮 Total pacientes: {$totalPacientes} &nbsp;&nbsp; 💵 Monto total: $" . number_format($totalMes, 2) . "
                                             </div>
                                           </div>";
-                                    echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
-                                    echo "
+                                        echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
+                                        echo "
 <table class='table table-bordered table-striped'>
     <thead class='table-dark'>
     <tr>
@@ -526,57 +711,57 @@ if ($billingId) {
     </tr>
     </thead>
     <tbody>";
-                                    $n = 1;
-                                    foreach ($pacientes as $p) {
-                                        $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
-                                        $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
-                                        $url = "/views/informes/informe_isspol.php?billing_id=" . urlencode($p['id']);
-                                        $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
-                                        $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                                        $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
-                                        $referido = $derivacion['referido'] ?? '';
-                                        $diagnostico = $derivacion['diagnostico'] ?? '';
-                                        echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
-                                        $n++;
-                                    }
-                                    echo "
+                                        $n = 1;
+                                        foreach ($pacientes as $p) {
+                                            $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
+                                            $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
+                                            $url = "/views/informes/informe_isspol.php?billing_id=" . urlencode($p['id']);
+                                            $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');
+                                            $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                            $codigoDerivacion = $derivacion['cod_derivacion'] ?? '';
+                                            $referido = $derivacion['referido'] ?? '';
+                                            $diagnostico = $derivacion['diagnostico'] ?? '';
+                                            echo InformesHelper::renderConsolidadoFila($n, $p, $pacienteInfo, $datosPaciente, $edad, $genero, $url, $codigoDerivacion, $referido, $diagnostico, $afiliacion);
+                                            $n++;
+                                        }
+                                        echo "
     </tbody>
 </table>
 ";
-                                    echo "</div>";
-                                }
-                                ?>
-                                <a href="/views/informes/generar_consolidado_isspol.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
-                                   class="btn btn-primary mt-3">
-                                    Descargar Consolidado
-                                </a>
-                            <?php endif; ?>
+                                        echo "</div>";
+                                    }
+                                    ?>
+                                    <a href="/views/informes/generar_consolidado_isspol.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                       class="btn btn-primary mt-3">
+                                        Descargar Consolidado
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <!-- /.content -->
+
             </div>
-            <!-- /.content -->
-
         </div>
+        <!-- /.content-wrapper -->
     </div>
-    <!-- /.content-wrapper -->
-</div>
-<?php include __DIR__ . '/../components/footer.php'; ?>
+    <?php include __DIR__ . '/../components/footer.php'; ?>
 
-<!-- Vendor JS -->
-<script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
-<script src="/public/js/pages/chat-popup.js"></script>
-<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+    <!-- Vendor JS -->
+    <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
+    <script src="/public/js/pages/chat-popup.js"></script>
+    <script src="/public/assets/icons/feather-icons/feather.min.js"></script>
+    <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
+    <script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
 
 
-<!-- Doclinic App -->
-<script src="/public/js/jquery.smartmenus.js"></script>
-<script src="/public/js/menus.js"></script>
-<script src="/public/js/template.js"></script>
+    <!-- Doclinic App -->
+    <script src="/public/js/jquery.smartmenus.js"></script>
+    <script src="/public/js/menus.js"></script>
+    <script src="/public/js/template.js"></script>
 </body>
 </html>

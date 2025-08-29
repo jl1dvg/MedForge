@@ -7,6 +7,24 @@ $controller = new UserController($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = $_POST;
+
+    // Manejo de carga de archivo de firma
+    if (isset($_FILES['firma']) && $_FILES['firma']['error'] === UPLOAD_ERR_OK) {
+        $uploadDir = __DIR__ . '/../../public/assets/firmas/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+        $filename = uniqid('firma_') . '.' . pathinfo($_FILES['firma']['name'], PATHINFO_EXTENSION);
+        $filePath = $uploadDir . $filename;
+        if (move_uploaded_file($_FILES['firma']['tmp_name'], $filePath)) {
+            $data['firma'] = '/public/assets/firmas/' . $filename;
+        } else {
+            $data['firma'] = '';
+        }
+    } else {
+        $data['firma'] = '';
+    }
+
     $success = $controller->getUserModel()->createUser($data);
     if ($success) {
         echo 'ok';
@@ -16,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 ?>
-<form method="POST">
+<form method="POST" enctype="multipart/form-data">
     <div class="card shadow">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Nuevo Usuario</h5>
@@ -54,8 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="text" class="form-control" name="sede" maxlength="100">
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Firma (ruta):</label>
-                    <input type="text" class="form-control" name="firma" maxlength="255">
+                    <label class="form-label">Firma (imagen):</label>
+                    <input type="file" class="form-control" name="firma" accept="image/*">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Especialidad:</label>
