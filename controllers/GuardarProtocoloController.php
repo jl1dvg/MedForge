@@ -27,14 +27,14 @@ class GuardarProtocoloController
 
             $sql = "INSERT INTO protocolo_data (
                 form_id, hc_number, procedimiento_id, membrete, dieresis, exposicion, hallazgo, operatorio,
-                complicaciones_operatorio, datos_cirugia, procedimientos, diagnosticos,
+                complicaciones_operatorio, datos_cirugia, procedimientos, diagnosticos, diagnosticos_previos,
                 lateralidad, tipo_anestesia, hora_inicio, hora_fin, fecha_inicio, fecha_fin,
                 cirujano_1, cirujano_2, primer_ayudante, segundo_ayudante, tercer_ayudante,
                 ayudante_anestesia, anestesiologo, instrumentista, circulante, insumos,
                 medicamentos, status
             ) VALUES (
                 :form_id, :hc_number, :procedimiento_id, :membrete, :dieresis, :exposicion, :hallazgo, :operatorio,
-                :complicaciones_operatorio, :datos_cirugia, :procedimientos, :diagnosticos,
+                :complicaciones_operatorio, :datos_cirugia, :procedimientos, :diagnosticos, :diagnosticos_previos,
                 :lateralidad, :tipo_anestesia, :hora_inicio, :hora_fin, :fecha_inicio, :fecha_fin,
                 :cirujano_1, :cirujano_2, :primer_ayudante, :segundo_ayudante, :tercer_ayudante,
                 :ayudante_anestesia, :anestesiologo, :instrumentista, :circulante, :insumos,
@@ -51,6 +51,7 @@ class GuardarProtocoloController
                 datos_cirugia = VALUES(datos_cirugia),
                 procedimientos = VALUES(procedimientos),
                 diagnosticos = VALUES(diagnosticos),
+                diagnosticos_previos = VALUES(diagnosticos_previos),
                 lateralidad = VALUES(lateralidad),
                 tipo_anestesia = VALUES(tipo_anestesia),
                 hora_inicio = VALUES(hora_inicio),
@@ -82,6 +83,7 @@ class GuardarProtocoloController
                 'datos_cirugia' => $data['datos_cirugia'] ?? '',
                 'procedimientos' => json_encode($data['procedimientos'] ?? '[]'),
                 'diagnosticos' => json_encode($data['diagnosticos'] ?? '[]'),
+                'diagnosticos_previos' => is_string($data['diagnosticos_previos'] ?? null) ? ($data['diagnosticos_previos'] ?? null) : json_encode($data['diagnosticos_previos'] ?? []),
                 'lateralidad' => $data['lateralidad'] ?? '',
                 'tipo_anestesia' => $data['tipo_anestesia'] ?? '',
                 'hora_inicio' => $data['hora_inicio'] ?? '',
