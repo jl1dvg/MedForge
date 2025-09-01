@@ -42,41 +42,39 @@ class ProtocoloHelper
         return null;
     }
 
-    public static function obtenerDiagnosticosAnteriores(PDO $db, string $hc_number, string $form_id, ?string $idProcedimiento): array
+    public static function obtenerDiagnosticosPrevios(PDO $db, string $hc_number, string $form_id): array
     {
-        // 1. Buscar diagnósticos anteriores en consulta_data
-        $sql = "SELECT diagnosticos FROM consulta_data WHERE hc_number = ? AND form_id < ? ORDER BY form_id DESC LIMIT 1";
+        // Lee directamente diagnosticos_previos del registro actual en protocolo_data
+        $sql = "SELECT diagnosticos_previos
+                  FROM protocolo_data
+                 WHERE hc_number = ? AND form_id = ?
+                 LIMIT 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$hc_number, $form_id]);
-        $data = $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $diagnosticosArray = [];
-        if (!empty($data['diagnosticos'])) {
-            $diagnosticosArray = json_decode($data['diagnosticos'], true);
-        }
-
-        // 2. Si no se encontró nada, usar el respaldo desde procedimientos
-        if (empty($diagnosticosArray) && !empty($idProcedimiento)) {
-            $sql2 = "
-            SELECT p.dx_pre, i.dx_code, i.long_desc
-            FROM procedimientos p
-            LEFT JOIN icd10_dx_order_code i ON p.dx_pre = i.dx_code
-            WHERE p.id = ? LIMIT 1";
-            $stmt2 = $db->prepare($sql2);
-            $stmt2->execute([$idProcedimiento]);
-            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
-
-            if ($row) {
-                return ["{$row['dx_code']} - {$row['long_desc']}", '', ''];
+        $arr = [];
+        if (!empty($row['diagnosticos_previos'])) {
+            $decoded = json_decode($row['diagnosticos_previos'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $arr = $decoded;
             }
         }
 
-        // 3. Retornar hasta 3 diagnósticos
-        return [
-            $diagnosticosArray[0]['idDiagnostico'] ?? '',
-            $diagnosticosArray[1]['idDiagnostico'] ?? '',
-            $diagnosticosArray[2]['idDiagnostico'] ?? '',
-        ];
+        // Normalizar y devolver hasta 3 elementos como ['cie10','descripcion']
+        $out = [];
+        for ($i = 0; $i < 3; $i++) {
+            $cie = isset($arr[$i]['cie10']) ? strtoupper(trim((string)$arr[$i]['cie10'])) : '';
+            $desc = isset($arr[$i]['descripcion']) ? trim((string)$arr[$i]['descripcion']) : '';
+            $out[] = ['cie10' => $cie, 'descripcion' => $desc];
+        }
+        return $out;
+    }
+
+    public static function obtenerDiagnosticosAnteriores(PDO $db, string $hc_number, string $form_id, ?string $idProcedimiento): array
+    {
+        // Compatibilidad: ahora los diagnósticos previos se leen directamente del registro actual
+        return self::obtenerDiagnosticosPrevios($db, $hc_number, $form_id);
     }
 
     public static function mostrarImagenProcedimiento(PDO $db, string $nombreProcedimiento): ?string

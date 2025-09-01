@@ -50,7 +50,25 @@ class PdfController
         $datos['nombre_procedimiento_proyectado'] = $model->obtenerNombreProcedimientoProyectado($datos['procedimiento_proyectado'] ?? '');
         $datos['codigos_concatenados'] = $model->obtenerCodigosProcedimientos($datos['procedimientos']);
 
-        $datos['diagnosticos_previos'] = ProtocoloHelper::obtenerDiagnosticosAnteriores($this->db, $hc_number, $form_id, ProtocoloHelper::obtenerIdProcedimiento($this->db, $datos['membrete']));
+        $datos['diagnosticos_previos'] = ProtocoloHelper::obtenerDiagnosticosPrevios($this->db, $hc_number, $form_id);
+        // Adaptar al formato de la vista: "CCCC - DESCRIPCION" para que substr($x, 0, 4) y substr($x, 6) funcionen
+        $previosObjs = is_array($datos['diagnosticos_previos']) ? $datos['diagnosticos_previos'] : [];
+        $previosFmt = [];
+        foreach ($previosObjs as $d) {
+            $cie = isset($d['cie10']) ? strtoupper(trim((string)$d['cie10'])) : '';
+            $desc = isset($d['descripcion']) ? strtoupper(trim((string)$d['descripcion'])) : '';
+            // Asegurar que el código ocupe exactamente 4 caracteres para que substr(..., 0, 4) funcione
+            $ciePad = str_pad($cie, 4, ' ', STR_PAD_RIGHT);
+            $previosFmt[] = $ciePad . ' - ' . $desc;
+        }
+        // Garantizar 3 entradas (la vista espera 3)
+        while (count($previosFmt) < 3) { $previosFmt[] = ''; }
+        // Reemplazar para que la vista siga usando $diagnosticos_previos[0..2]
+        $datos['diagnosticos_previos'] = [
+            $previosFmt[0] ?? '',
+            $previosFmt[1] ?? '',
+            $previosFmt[2] ?? '',
+        ];
         $datos['cirujano_data'] = ProtocoloHelper::buscarUsuarioPorNombre($this->db, $datos['cirujano_1']);
         $datos['cirujano2_data'] = isset($datos['cirujano_2']) && $datos['cirujano_2'] !== ''
             ? ProtocoloHelper::buscarUsuarioPorNombre($this->db, $datos['cirujano_2'])
