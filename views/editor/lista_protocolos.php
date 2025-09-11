@@ -65,7 +65,6 @@ $username = $dashboardController->getAuthenticatedUser();
                             <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo Protocolo
                         </a>
                     </div>
-                    // views/editor/lista_protocolos.php
                     <?php if (!empty($procedimientosPorCategoria)) : ?>
                         <div class="accordion" id="accordionProtocolos">
                             <?php foreach ($procedimientosPorCategoria
@@ -81,13 +80,14 @@ $username = $dashboardController->getAuthenticatedUser();
                                                     data-bs-target="#collapse-<?= md5($categoria) ?>"
                                                     aria-expanded="false"
                                                     aria-controls="collapse-<?= md5($categoria) ?>">
-                                                <?= htmlspecialchars($categoria) ?>
+                                                <?= htmlspecialchars($categoria) ?> (<?= count($procedimientos) ?>)
                                             </button>
                                         </div>
                                         <div class="ms-3">
                                             <a href="editar_protocolo.php?categoria=<?= urlencode($categoria) ?>"
                                                class="btn btn-sm btn-outline-primary">
-                                                <i class="mdi mdi-plus-circle-outline me-5"></i> Agregar
+                                                <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo protocolo en esta
+                                                categoría
                                             </a>
                                         </div>
                                     </h2>
@@ -98,14 +98,22 @@ $username = $dashboardController->getAuthenticatedUser();
                                             <?php foreach ($procedimientos as $procedimiento): ?>
                                                 <div class="d-flex align-items-center mb-30 border-bottom pb-15">
                                                     <div class="me-15">
-                                                        <img src="<?= htmlspecialchars($procedimiento['imagen_link']) ?>"
+                                                        <img src="<?= !empty($procedimiento['imagen_link']) ? htmlspecialchars($procedimiento['imagen_link']) : '/public/images/placeholder.png' ?>"
                                                              class="avatar avatar-lg rounded10 bg-primary-light"
-                                                             alt="Imagen protocolo"/>
+                                                             alt="<?= !empty($procedimiento['membrete']) ? htmlspecialchars($procedimiento['membrete']) : 'Imagen protocolo' ?>"/>
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1 fw-500">
                                                         <a href="#"
-                                                           class="text-dark hover-primary mb-1 fs-16"><?= htmlspecialchars($procedimiento['membrete']) ?></a>
-                                                        <span class="text-fade"><?= htmlspecialchars($procedimiento['cirugia']) ?></span>
+                                                           class="text-dark hover-primary mb-1 fs-16"
+                                                           data-bs-toggle="tooltip"
+                                                           title="<?= htmlspecialchars($procedimiento['membrete']) ?>">
+                                                            <?= htmlspecialchars($procedimiento['membrete']) ?>
+                                                        </a>
+                                                        <span class="text-fade"
+                                                              data-bs-toggle="tooltip"
+                                                              title="<?= htmlspecialchars($procedimiento['cirugia']) ?>">
+                                                            <?= htmlspecialchars($procedimiento['cirugia']) ?>
+                                                        </span>
                                                     </div>
                                                     <div class="dropdown">
                                                         <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i
@@ -115,9 +123,14 @@ $username = $dashboardController->getAuthenticatedUser();
                                                                href="editar_protocolo.php?id=<?= urlencode($procedimiento['id']) ?>">Editar</a>
                                                             <a class="dropdown-item"
                                                                href="editar_protocolo.php?duplicar=<?= urlencode($procedimiento['id']) ?>">Duplicar</a>
-                                                            <form method="POST" action="eliminar_protocolo.php" onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');" style="display:inline;">
-                                                                <input type="hidden" name="id" value="<?= htmlspecialchars($procedimiento['id']) ?>">
-                                                                <button type="submit" class="dropdown-item text-danger">Eliminar</button>
+                                                            <form method="POST" action="eliminar_protocolo.php"
+                                                                  onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');"
+                                                                  style="display:inline;">
+                                                                <input type="hidden" name="id"
+                                                                       value="<?= htmlspecialchars($procedimiento['id']) ?>">
+                                                                <button type="submit" class="dropdown-item text-danger">
+                                                                    Eliminar
+                                                                </button>
                                                             </form>
                                                         </div>
                                                     </div>
@@ -153,6 +166,15 @@ $username = $dashboardController->getAuthenticatedUser();
 <script src="/public/js/menus.js"></script>
 <script src="/public/js/template.js"></script>
 <script src="/public/js/pages/list.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    });
+</script>
 
 </body>
 </html>

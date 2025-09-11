@@ -1,20 +1,43 @@
 <?php
+// Configuración de clases CSS por grupo para filas de la tabla
+$grupoClases = [
+    'CIRUJANO' => 'table-primary',
+    'AYUDANTE' => 'table-info',
+    'ANESTESIA' => 'table-danger',
+    'FARMACIA' => 'table-warning',
+    'FARMACIA_ML' => 'table-success',
+    'INSUMOS' => 'table-light',
+    'DERECHOS' => 'table-secondary',
+];
+
+// Funciones reutilizables para formato y cálculo monetario
+function formatearMoneda($valor)
+{
+    return number_format((float)$valor, 2, '.', '');
+}
+
+function aplicarGestion($subtotal)
+{
+    return round($subtotal * 0.10, 2);
+}
+
+function aplicarIVA($subtotal)
+{
+    return round($subtotal * 0.15, 2);
+}
+
 ob_start();
 
 // Manejo de parámetros para scraping derivación
 $form_id = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
 $hc_number = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
 
-if (isset($_POST['scrape_derivacion']) || (isset($_POST['form_id_scrape']) && isset($_POST['hc_number_scrape']))) {
-    // Si faltan parámetros requeridos, redirigir con mensaje de error
-    if (!$form_id || !$hc_number) {
-        header("Location: ./informe_issfa.php?scrape_exito=1&form_id=" . urlencode($form_id ?? '') . "&hc_number=" . urlencode($hc_number ?? '') . "&msg=" . urlencode("❌ Faltan parámetros requeridos."));
-        exit;
-    }
+// Scraping output variable
+$scrapingOutput = null;
+
+if (isset($_POST['scrape_derivacion']) && !empty($form_id) && !empty($hc_number)) {
     $command = "/usr/bin/python3 /homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py " . escapeshellarg($form_id) . " " . escapeshellarg($hc_number);
-    shell_exec($command);
-    header("Location: ./informe_issfa.php?scrape_exito=1&form_id={$form_id}&hc_number={$hc_number}&msg=" . urlencode("✅ Código derivación obtenido y guardado correctamente."));
-    exit;
+    $scrapingOutput = shell_exec($command);
 }
 
 $safe_hc_number = escapeshellarg($hc_number);
@@ -78,6 +101,15 @@ if ($billingId) {
         $datos = $billingController->obtenerDatos($formId);
     }
 }
+
+// Inicializar variables por clave para mejorar legibilidad y evitar errores si alguna clave no existe
+$billing = $datos['billing'] ?? [];
+$paciente = $datos['paciente'] ?? [];
+$procedimientos = $datos['procedimientos'] ?? [];
+$derechos = $datos['derechos'] ?? [];
+$insumos = $datos['insumos'] ?? [];
+$medicamentos = $datos['medicamentos'] ?? [];
+$formulario = $datos['formulario'] ?? [];
 ?>
 <html lang="es">
 <head>
@@ -189,53 +221,50 @@ if ($billingId) {
                             </div>
 
                             <?php if ($formId && $datos):
-                            $paciente = $datos['paciente'] ?? [];
                             $nombreCompleto = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? '') . ' ' . ($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
                             $hcNumber = $paciente['hc_number'] ?? '';
                             $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
+                            // Definir $codigoDerivacion para el detalle de la factura de forma segura
+                            $codigoDerivacion = null;
+                            $derivacionData = $billingController->obtenerDerivacionPorFormId($billing['form_id']);
+                            $codigoDerivacion = $derivacionData['cod_derivacion'];
+                            $doctor = $derivacionData['referido'];
+                            $fecha_registro = $derivacionData['fecha_registro'] ?? null;
+                            $fecha_vigencia = $derivacionData['fecha_vigencia'] ?? null;
+                            $diagnostico = $derivacionData['diagnostico'] ?? null;
+                            //echo '<pre>🧾 Datos de la factura: ' . print_r($datos, true) . '</pre>';
+                            echo "<div class='row invoice-info mb-3'>";
+                            include __DIR__ . '/components/header_factura.php';
+                            echo "</div>";
+
+                            if (!empty($hcNumber)) {
+                                echo "<div class='mb-4 text-end'>
+                                        <form method='post' action='informe_issfa.php?billing_id=" . htmlspecialchars($filtros['billing_id']) . "'>
+                                            <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($billing['form_id'] ?? '') . "'>
+                                            <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($hcNumber) . "'>
+                                            <button type='submit' name='scrape_derivacion' class='btn btn-warning'>
+                                                📋 Ver todas las atenciones por cobrar
+                                            </button>
+                                        </form>
+                                    </div>";
+                            }
+
+                            include __DIR__ . '/components/scrapping_procedimientos.php';
                             ?>
-                            <div class="row invoice-info mb-3">
-                                <div class="col-md-6 invoice-col">
-                                    <strong>Desde</strong>
-                                    <address>
-                                        <strong class="text-blue fs-24">Clínica Internacional de Visión del Ecuador -
-                                            CIVE</strong><br>
-                                        <span class="d-inline">Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero.</span><br>
-                                        <strong>Teléfono: (04) 372-9340 &nbsp;&nbsp;&nbsp; Email:
-                                            info@cive.ec</strong>
-                                    </address>
-                                </div>
-                                <div class="col-md-6 invoice-col text-end">
-                                    <strong>Paciente</strong>
-                                    <address>
-                                        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
-                                        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
-                                        Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
-                                        <?php if (!empty($paciente['ci'])): ?>
-                                            Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
-                                        <?php endif; ?>
-                                        <?php if (!empty($paciente['fecha_nacimiento'])): ?>
-                                            F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
-                                            <br>
-                                        <?php endif; ?>
-                                    </address>
-                                </div>
-                                <div class="col-sm-12 invoice-col mb-15">
-                                    <div class="invoice-details row no-margin">
-                                        <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $formId ?? '--' ?></div>
-                                        <div class="col-md-6 col-lg-3"><b>Fecha
-                                                Ingreso:</b> <?= !empty($datos['formulario']['fecha_inicio']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_inicio'])) : '--' ?>
-                                        </div>
-                                        <div class="col-md-6 col-lg-3"><b>Fecha
-                                                Egreso:</b> <?= !empty($datos['formulario']['fecha_fin']) ? date('d/m/Y', strtotime($datos['formulario']['fecha_fin'])) : '--' ?>
-                                        </div>
-                                        <div class="col-md-6 col-lg-3">
-                                            <b>Médico:</b> <?= htmlspecialchars($paciente['medico'] ?? $paciente['doctor'] ?? '--') ?>
-                                        </div>
+                            <div class="row">
+                                <!-- Leyenda de colores -->
+                                <div class="mb-3">
+                                    <strong>Leyenda de colores:</strong>
+                                    <div class="d-flex flex-wrap gap-2 mt-2">
+                                        <span class="badge bg-primary">Cirujano</span>
+                                        <span class="badge bg-info text-dark">Ayudante</span>
+                                        <span class="badge bg-danger">Anestesia</span>
+                                        <span class="badge bg-warning text-dark">Farmacia</span>
+                                        <span class="badge bg-success">Farmacia Especial</span>
+                                        <span class="badge bg-light text-dark">Insumos</span>
+                                        <span class="badge bg-secondary">Derechos / Institucionales</span>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="row">
                                 <div class="col-12 table-responsive">
                                     <table class="table table-bordered align-middle mb-0">
                                         <thead class="table-dark">
@@ -250,6 +279,7 @@ if ($billingId) {
                                             <th class="text-end">Subtotal</th>
                                             <th class="text-center">%Bodega</th>
                                             <th class="text-center">%IVA</th>
+                                            <th class="text-end">+10% Gestión</th>
                                             <th class="text-end">Total</th>
                                         </tr>
                                         </thead>
@@ -259,7 +289,7 @@ if ($billingId) {
                                         $n = 1;
 
                                         // Procedimientos
-                                        foreach ($datos['procedimientos'] as $index => $p) {
+                                        foreach ($procedimientos as $index => $p) {
                                             $codigo = $p['proc_codigo'] ?? '';
                                             $descripcion = $p['proc_detalle'] ?? '';
                                             $valorUnitario = (float)($p['proc_precio'] ?? 0);
@@ -274,26 +304,29 @@ if ($billingId) {
                                             $bodega = 0;
                                             $iva = 0;
                                             $montoTotal = $subtotal;
+                                            $grupo = 'CIRUJANO';
+                                            $class = $grupoClases[$grupo] ?? '';
 
-                                            echo "<tr>
+                                            echo "<tr class='{$class}'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
                                                         <td class='text-center'>{$anestesia}</td>
                                                         <td class='text-center'>{$porcentajePago}</td>
                                                         <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
                                                         <td class='text-center'>{$bodega}</td>
                                                         <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                        <td class='text-end'>0.00</td>
+                                                        <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
                                                 </tr>";
                                             $n++;
                                         }
 
                                         // AYUDANTE
-                                        if (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante'])) {
-                                            foreach ($datos['procedimientos'] as $index => $p) {
+                                        if (isset($datos['protocoloExtendido']) && (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante']))) {
+                                            foreach ($procedimientos as $index => $p) {
                                                 $codigo = $p['proc_codigo'] ?? '';
                                                 $descripcion = $p['proc_detalle'] ?? '';
                                                 $valorUnitario = (float)($p['proc_precio'] ?? 0);
@@ -308,62 +341,153 @@ if ($billingId) {
                                                 $bodega = 0;
                                                 $iva = 0;
                                                 $montoTotal = $subtotal;
+                                                $grupo = 'AYUDANTE';
+                                                $class = $grupoClases[$grupo] ?? '';
 
-                                                echo "<tr>
+                                                echo "<tr class='{$class}'>
                                                             <td class='text-center'>{$n}</td>
                                                             <td class='text-center'>{$codigo}</td>
                                                             <td>{$descripcion}</td>
                                                             <td class='text-center'>{$anestesia}</td>
                                                             <td class='text-center'>{$porcentajePago}</td>
                                                             <td class='text-end'>{$cantidad}</td>
-                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                            <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                            <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
                                                             <td class='text-center'>{$bodega}</td>
                                                             <td class='text-center'>{$iva}</td>
-                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                            <td class='text-end'>0.00</td>
+                                                            <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
                                                        </tr>";
                                                 $n++;
                                             }
                                         }
 
                                         // ANESTESIA
-                                        foreach ($datos['anestesia'] as $a) {
-                                            $codigo = $a['codigo'] ?? '';
-                                            $descripcion = $a['nombre'] ?? '';
-                                            $cantidad = (float)($a['tiempo'] ?? 0);
-                                            $valorUnitario = (float)($a['valor2'] ?? 0);
-                                            $subtotal = $cantidad * $valorUnitario;
-                                            $total += $subtotal;
-                                            $anestesia = 'SI';
-                                            $porcentajePago = 100;
-                                            $bodega = 0;
-                                            $iva = 0;
-                                            $montoTotal = $subtotal;
+                                        $anestesiaEspecialYaCobrada = false;
+                                        $codigosEspeciales = ['99149AA', '99150AA'];
 
-                                            echo "<tr>
+                                        foreach ($datos['anestesia'] as $a) {
+                                            if (in_array($a['codigo'], $codigosEspeciales)) {
+                                                $anestesiaEspecialYaCobrada = true;
+                                                break;
+                                            }
+                                        }
+
+                                        if ($anestesiaEspecialYaCobrada) {
+                                            // Solo imprimir los códigos de anestesia especiales
+                                            foreach ($datos['anestesia'] as $a) {
+                                                $codigo = $a['codigo'] ?? '';
+                                                $descripcion = $a['nombre'] ?? '';
+                                                $cantidad = (float)($a['tiempo'] ?? 0);
+                                                $valorUnitario = (float)($a['valor2'] ?? 0);
+                                                $subtotal = $cantidad * $valorUnitario;
+                                                $total += $subtotal;
+
+                                                $anestesia = 'SI';
+                                                $porcentajePago = 100;
+                                                $bodega = 0;
+                                                $iva = 0;
+                                                $montoTotal = $subtotal;
+                                                $grupo = 'ANESTESIA';
+                                                $class = $grupoClases[$grupo] ?? '';
+
+                                                echo "<tr class='{$class}'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
                                                         <td class='text-center'>{$anestesia}</td>
                                                         <td class='text-center'>{$porcentajePago}</td>
                                                         <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
                                                         <td class='text-center'>{$bodega}</td>
                                                         <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                </tr>";
-                                            $n++;
+                                                        <td class='text-end'>0.00</td>
+                                                        <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
+                                                      </tr>";
+                                                $n++;
+                                            }
+                                        } else {
+                                            // Agregar valor fijo del 16% del primer procedimiento
+                                            if (!empty($procedimientos[0])) {
+                                                $p = $procedimientos[0];
+                                                $codigo = $p['proc_codigo'] ?? '';
+                                                $descripcion = $p['proc_detalle'] ?? '';
+                                                $valorUnitario = (float)($p['proc_precio'] ?? 0);
+                                                $cantidad = 1;
+                                                $porcentaje = 0.16;
+                                                $subtotal = $valorUnitario * $cantidad * $porcentaje;
+                                                $total += $subtotal;
+
+                                                $anestesia = 'SI';
+                                                $porcentajePago = 16;
+                                                $bodega = 0;
+                                                $iva = 0;
+                                                $montoTotal = $subtotal;
+                                                $grupo = 'ANESTESIA';
+                                                $class = $grupoClases[$grupo] ?? '';
+
+                                                echo "<tr class='{$class}'>
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>0.00</td>
+                                                        <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
+                                                      </tr>";
+                                                $n++;
+                                            }
+
+                                            // Agregar los tiempos de anestesia
+                                            foreach ($datos['anestesia'] as $a) {
+                                                $codigo = $a['codigo'] ?? '';
+                                                $descripcion = $a['nombre'] ?? '';
+                                                $cantidad = (float)($a['tiempo'] ?? 0);
+                                                $valorUnitario = (float)($a['valor2'] ?? 0);
+                                                $subtotal = $cantidad * $valorUnitario;
+                                                $total += $subtotal;
+
+                                                $anestesia = 'SI';
+                                                $porcentajePago = 100;
+                                                $bodega = 0;
+                                                $iva = 0;
+                                                $montoTotal = $subtotal;
+                                                $grupo = 'ANESTESIA';
+                                                $class = $grupoClases[$grupo] ?? '';
+
+                                                echo "<tr class='{$class}'>
+                                                        <td class='text-center'>{$n}</td>
+                                                        <td class='text-center'>{$codigo}</td>
+                                                        <td>{$descripcion}</td>
+                                                        <td class='text-center'>{$anestesia}</td>
+                                                        <td class='text-center'>{$porcentajePago}</td>
+                                                        <td class='text-end'>{$cantidad}</td>
+                                                        <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
+                                                        <td class='text-center'>{$bodega}</td>
+                                                        <td class='text-center'>{$iva}</td>
+                                                        <td class='text-end'>0.00</td>
+                                                        <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
+                                                      </tr>";
+                                                $n++;
+                                            }
                                         }
 
                                         // FARMACIA e INSUMOS
                                         $fuenteDatos = [
-                                            ['grupo' => 'FARMACIA', 'items' => array_merge($datos['medicamentos'], $datos['oxigeno'])],
-                                            ['grupo' => 'INSUMOS', 'items' => $datos['insumos']],
+                                            ['grupo' => 'FARMACIA', 'items' => array_merge($medicamentos, $datos['oxigeno'])],
+                                            ['grupo' => 'INSUMOS', 'items' => $insumos],
                                         ];
 
                                         foreach ($fuenteDatos as $bloque) {
                                             $grupo = $bloque['grupo'];
+                                            $class = $grupoClases[$grupo] ?? '';
                                             foreach ($bloque['items'] as $item) {
                                                 $descripcion = $item['nombre'] ?? $item['detalle'] ?? '';
                                                 $codigo = $item['codigo'] ?? '';
@@ -377,30 +501,32 @@ if ($billingId) {
                                                 $subtotal = $valorUnitario * $cantidad;
                                                 $bodega = 1;
                                                 $iva = ($grupo === 'FARMACIA') ? 0 : 1;
-                                                $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                                                // No sumar el 10% en la columna final, igualando al Excel
+                                                $montoTotal = ($grupo === 'FARMACIA') ? $subtotal * 1.10 : $subtotal;
                                                 $total += $montoTotal;
                                                 $anestesia = 'NO';
                                                 $porcentajePago = 100;
 
-                                                echo "<tr>
+                                                echo "<tr class='{$class}'>
                                                             <td class='text-center'>{$n}</td>
                                                             <td class='text-center'>{$codigo}</td>
                                                             <td>{$descripcion}</td>
                                                             <td class='text-center'>{$anestesia}</td>
                                                             <td class='text-center'>{$porcentajePago}</td>
                                                             <td class='text-end'>{$cantidad}</td>
-                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                            <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                            <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
                                                             <td class='text-center'>{$bodega}</td>
                                                             <td class='text-center'>{$iva}</td>
-                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                            <td class='text-end'>0.00</td>
+                                                            <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
                                                       </tr>";
                                                 $n++;
                                             }
                                         }
 
                                         // SERVICIOS INSTITUCIONALES (derechos)
-                                        foreach ($datos['derechos'] as $servicio) {
+                                        foreach ($derechos as $servicio) {
                                             $codigo = $servicio['codigo'] ?? '';
                                             $descripcion = $servicio['detalle'] ?? '';
                                             $cantidad = $servicio['cantidad'] ?? 1;
@@ -412,19 +538,22 @@ if ($billingId) {
                                             $total += $montoTotal;
                                             $anestesia = 'NO';
                                             $porcentajePago = 100;
+                                            $grupo = 'DERECHOS';
+                                            $class = $grupoClases[$grupo] ?? '';
 
-                                            echo "<tr>
+                                            echo "<tr class='{$class}'>
                                                         <td class='text-center'>{$n}</td>
                                                         <td class='text-center'>{$codigo}</td>
                                                         <td>{$descripcion}</td>
                                                         <td class='text-center'>{$anestesia}</td>
                                                         <td class='text-center'>{$porcentajePago}</td>
                                                         <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($valorUnitario) . "</td>
+                                                        <td class='text-end'>" . formatearMoneda($subtotal) . "</td>
                                                         <td class='text-center'>{$bodega}</td>
                                                         <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                                                        <td class='text-end'>0.00</td>
+                                                        <td class='text-end'>" . formatearMoneda($montoTotal) . "</td>
                                                 </tr>";
                                             $n++;
                                         }
@@ -433,24 +562,33 @@ if ($billingId) {
                                     </table>
                                 </div>
 
+                                <?php
+                                // Cálculo y presentación del IVA del 15% al final, como en el Excel
+                                $totalPlanilla = $total;
+                                $ivaGeneral = aplicarIVA($totalPlanilla);
+                                $totalConIVA = $totalPlanilla + $ivaGeneral;
+                                ?>
                                 <!-- Bloque total estilo invoice -->
                                 <div class="row mt-3">
                                     <div class="col-12 text-end">
                                         <p class="lead mb-1">
-                                            <b>Total a pagar</b>
+                                            <b>Subtotal:</b>
                                             <span class="text-danger ms-2" style="font-size: 1.25em;">
-                                                $<?= number_format($total, 2) ?>
+                                                $<?= formatearMoneda($totalPlanilla) ?>
                                             </span>
                                         </p>
-                                        <!-- Si quieres puedes agregar detalles adicionales, como subtotal, descuentos, etc. aquí -->
-                                        <!-- <div>
-                                            <p>Sub - Total amount: $<?= number_format($subtotal, 2) ?></p>
-                                            <p>Tax (IVA 12%): $<?= number_format($iva, 2) ?></p>
-                                        </div> -->
+                                        <div>
+                                            <p class="lead mb-1">
+                                                <b>IVA 15%:</b>
+                                                <span class="text-info ms-2" style="font-size: 1em;">
+                                                $<?= formatearMoneda($ivaGeneral) ?>
+                                                </span>
+                                            </p>
+                                        </div>
                                         <div class="total-payment mt-2">
                                             <h4 class="fw-bold">
                                                 <span class="text-success"><b>Total :</b></span>
-                                                $<?= number_format($total, 2) ?>
+                                                $<?= formatearMoneda($totalConIVA) ?>
                                             </h4>
                                         </div>
                                     </div>
@@ -507,26 +645,26 @@ if ($billingId) {
                                           </div>";
                                         echo "<div class='table-responsive' style='overflow-x: auto; max-width: 100%; font-size: 0.85rem;'>";
                                         echo "
-<table class='table table-bordered table-striped'>
-    <thead class='table-dark'>
-    <tr>
-        <th># Expediente</th>
-        <th>Cédula</th>
-        <th>Apellidos</th>
-        <th>Nombre</th>
-        <th>Fecha Ingreso</th>
-        <th>Fecha Egreso</th>
-        <th>CIE10</th>
-        <th>Médico</th>
-        <th># Hist. C.</th>
-        <th>Edad</th>
-        <th>Ge</th>
-        <th>Monto Sol.</th>
-        <th>Cod. Derivacion</th>
-        <th>Acción</th>
-    </tr>
-    </thead>
-    <tbody>";
+                                        <table class='table table-bordered table-striped'>
+                                            <thead class='table-dark'>
+                                            <tr>
+                                                <th># Expediente</th>
+                                                <th>Cédula</th>
+                                                <th>Apellidos</th>
+                                                <th>Nombre</th>
+                                                <th>Fecha Ingreso</th>
+                                                <th>Fecha Egreso</th>
+                                                <th>CIE10</th>
+                                                <th>Médico</th>
+                                                <th># Hist. C.</th>
+                                                <th>Edad</th>
+                                                <th>Ge</th>
+                                                <th>Monto Sol.</th>
+                                                <th>Cod. Derivacion</th>
+                                                <th>Acción</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>";
                                         $n = 1;
                                         foreach ($pacientes as $p) {
                                             $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];

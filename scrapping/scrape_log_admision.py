@@ -75,6 +75,13 @@ def iniciar_sesion_y_extraer_log():
     r = session.get(update_url, headers=headers)
     soup = BeautifulSoup(r.text, "html.parser")
 
+    # Extraer Sede (solo nombre) y Parentesco (solo nombre)
+    sede_option = soup.select_one("select#docsolicitudpaciente-sede_id option[selected]")
+    sede_text = sede_option.get_text(strip=True) if sede_option else ""
+
+    parentesco_option = soup.select_one("select#docsolicitudpaciente-parentescoid option[selected]")
+    parentesco_text = parentesco_option.get_text(strip=True) if parentesco_option else ""
+
     procedimientos = []
     filas = soup.select("tr.multiple-input-list__item")
     # Iteramos sobre cada fila de la tabla de procedimientos proyectados
@@ -160,6 +167,8 @@ def iniciar_sesion_y_extraer_log():
         "identificacion": hc_number,
         "diagnostico": "; ".join(diagnosticos),
         "referido": referido_text,
+        "sede": sede_text,
+        "parentesco": parentesco_text,
         "procedimientos": procedimientos
     }]
 
@@ -201,6 +210,8 @@ if __name__ == "__main__":
                     "fecha_vigencia": vigencia,
                     "referido": referido,
                     "diagnostico": diagnostico,
+                    "sede": r.get("sede", ""),
+                    "parentesco": r.get("parentesco", ""),
                     "procedimientos": r.get("procedimientos", [])
                 }
 
@@ -210,6 +221,8 @@ if __name__ == "__main__":
                     print(f"📌 Código Derivación: {codigo}")
                     print(f"📌 Medico: {referido}")
                     print(f"📌 Diagnostico: {diagnostico}")
+                    print(f"📌 Sede: {r.get('sede', '')}")
+                    print(f"📌 Parentesco: {r.get('parentesco', '')}")
                     print(f"Fecha de registro: {registro}")
                     print(f"Fecha de Vigencia: {vigencia}")
                     print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))

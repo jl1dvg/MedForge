@@ -13,21 +13,44 @@ class DerivacionController
         $this->db = $pdo;
     }
 
-    public function guardarDerivacion($codDerivacion, $formId, $hcNumber = null, $fechaRegistro = null, $fechaVigencia = null, $referido = null, $diagnostico = null)
-
-
+    public function guardarDerivacion(
+        $codDerivacion,
+        $formId,
+        $hcNumber = null,
+        $fechaRegistro = null,
+        $fechaVigencia = null,
+        $referido = null,
+        $diagnostico = null,
+        $sede = null,
+        $parentesco = null
+    )
     {
         $stmt = $this->db->prepare("
-            INSERT INTO derivaciones_form_id (cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
-                fecha_registro = VALUES(fecha_registro),
-                fecha_vigencia = VALUES(fecha_vigencia),
-                cod_derivacion = VALUES(cod_derivacion),
-                referido = VALUES(referido),
-                diagnostico = VALUES(diagnostico)
-        ");
-        return $stmt->execute([$codDerivacion, $formId, $hcNumber, $fechaRegistro, $fechaVigencia, $referido, $diagnostico]);
+        INSERT INTO derivaciones_form_id (
+            cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico, sede, parentesco
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            fecha_registro = VALUES(fecha_registro),
+            fecha_vigencia = VALUES(fecha_vigencia),
+            cod_derivacion = VALUES(cod_derivacion),
+            referido = VALUES(referido),
+            diagnostico = VALUES(diagnostico),
+            sede = VALUES(sede),
+            parentesco = VALUES(parentesco)
+    ");
+
+        return $stmt->execute([
+            $codDerivacion,
+            $formId,
+            $hcNumber,
+            $fechaRegistro,
+            $fechaVigencia,
+            $referido,
+            $diagnostico,
+            $sede,
+            $parentesco
+        ]);
     }
 
     public function verificarFormIds(array $form_ids): array
