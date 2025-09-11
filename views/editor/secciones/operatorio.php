@@ -17,7 +17,7 @@
     <!-- Texto Operatorio -->
     <input type="hidden" name="operatorio" id="operatorioInput" value="<?= htmlspecialchars($protocolo['operatorio']) ?>">    <div class="form-group">
         <label for="operatorio">Descripción Operatorio</label>
-        <div id="operatorio" class="form-control operatorio-editor" contenteditable="true"
+        <div id="operatorio" class="form-control operatorio-editor" contenteditable="true" style="white-space: pre-wrap;"
              placeholder="Describir aquí los pasos operatorios"><?= htmlspecialchars($protocolo['operatorio']) ?></div>
         <div id="autocomplete-insumos"
              class="autocomplete-box"></div>

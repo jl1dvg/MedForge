@@ -3,6 +3,12 @@
 namespace Controllers;
 
 use PDO;
+use Models\BillingMainModel;
+use Models\BillingProcedimientosModel;
+use Models\BillingDerechosModel;
+use Models\BillingInsumosModel;
+use Models\BillingOxigenoModel;
+use Models\BillingAnestesiaModel;
 use Exception;
 use Models\ProtocoloModel;
 
@@ -10,11 +16,23 @@ class BillingController
 {
     private $db;
     private ProtocoloModel $protocoloModel;
+    private BillingMainModel $billingMainModel;
+    private BillingProcedimientosModel $billingProcedimientosModel;
+    private BillingDerechosModel $billingDerechosModel;
+    private BillingInsumosModel $billingInsumosModel;
+    private BillingOxigenoModel $billingOxigenoModel;
+    private BillingAnestesiaModel $billingAnestesiaModel;
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
         $this->protocoloModel = new ProtocoloModel($pdo);
+        $this->billingMainModel = new BillingMainModel($pdo);
+        $this->billingProcedimientosModel = new BillingProcedimientosModel($pdo);
+        $this->billingDerechosModel = new BillingDerechosModel($pdo);
+        $this->billingInsumosModel = new BillingInsumosModel($pdo);
+        $this->billingOxigenoModel = new BillingOxigenoModel($pdo);
+        $this->billingAnestesiaModel = new BillingAnestesiaModel($pdo);
     }
 
     public function guardar(array $data): array
@@ -22,62 +40,41 @@ class BillingController
         try {
             $this->db->beginTransaction();
 
-            // Verifica si ya existe billing_main
-            $stmt = $this->db->prepare("SELECT id FROM billing_main WHERE form_id = ?");
-            $stmt->execute([$data['form_id']]);
-            $billingId = $stmt->fetchColumn();
+            $billing = $this->billingMainModel->findByFormId($data['form_id']);
 
-            if ($billingId) {
-                // Si ya existe, eliminamos detalles previos
+            if ($billing) {
+                $billingId = $billing['id'];
                 $this->borrarDetalles($billingId);
-
-                // Y actualizamos datos generales
-                $stmt = $this->db->prepare("UPDATE billing_main SET hc_number = ?, updated_at = NOW() WHERE id = ?");
-                $stmt->execute([$data['hcNumber'], $billingId]);
+                $this->billingMainModel->update($data['hcNumber'], $billingId);
             } else {
-                // Insertamos nueva fila principal
-                $stmt = $this->db->prepare("INSERT INTO billing_main (hc_number, form_id) VALUES (?, ?)");
-                $stmt->execute([$data['hcNumber'], $data['form_id']]);
-                $billingId = $this->db->lastInsertId();
+                $billingId = $this->billingMainModel->insert($data['hcNumber'], $data['form_id']);
             }
 
-            // Establecer la fecha del billing según el protocolo
             $stmt = $this->db->prepare("SELECT fecha_inicio FROM protocolo_data WHERE form_id = ?");
             $stmt->execute([$data['form_id']]);
             $fechaInicio = $stmt->fetchColumn();
             if ($fechaInicio) {
-                $stmt = $this->db->prepare("UPDATE billing_main SET created_at = ? WHERE id = ?");
-                $stmt->execute([$fechaInicio, $billingId]);
+                $this->billingMainModel->updateFechaCreacion($billingId, $fechaInicio);
             }
 
-            // Insertar procedimientos
             foreach ($data['procedimientos'] as $p) {
-                $stmt = $this->db->prepare("INSERT INTO billing_procedimientos (billing_id, procedimiento_id, proc_codigo, proc_detalle, proc_precio) VALUES (?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $p['id'], $p['procCodigo'], $p['procDetalle'], $p['procPrecio']]);
+                $this->billingProcedimientosModel->insertar($billingId, $p);
             }
 
-            // Insertar derechos
             foreach ($data['derechos'] as $d) {
-                $stmt = $this->db->prepare("INSERT INTO billing_derechos (billing_id, derecho_id, codigo, detalle, cantidad, iva, precio_afiliacion) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $d['id'], $d['codigo'], $d['detalle'], $d['cantidad'], $d['iva'], $d['precioAfiliacion']]);
+                $this->billingDerechosModel->insertar($billingId, $d);
             }
 
-            // Insertar insumos
             foreach ($data['insumos'] as $i) {
-                $stmt = $this->db->prepare("INSERT INTO billing_insumos (billing_id, insumo_id, codigo, nombre, cantidad, precio, iva) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $i['id'], $i['codigo'], $i['nombre'], $i['cantidad'], $i['precio'], $i['iva']]);
+                $this->billingInsumosModel->insertar($billingId, $i);
             }
 
-            // Insertar oxígeno
             foreach ($data['oxigeno'] as $o) {
-                $stmt = $this->db->prepare("INSERT INTO billing_oxigeno (billing_id, codigo, nombre, tiempo, litros, valor1, valor2, precio) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $o['codigo'], $o['nombre'], $o['tiempo'], $o['litros'], $o['valor1'], $o['valor2'], $o['precio']]);
+                $this->billingOxigenoModel->insertar($billingId, $o);
             }
 
-            // Insertar anestesia
             foreach ($data['anestesiaTiempo'] as $a) {
-                $stmt = $this->db->prepare("INSERT INTO billing_anestesia (billing_id, codigo, nombre, tiempo, valor2, precio) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$billingId, $a['codigo'], $a['nombre'], $a['tiempo'], $a['valor2'], $a['precio']]);
+                $this->billingAnestesiaModel->insertar($billingId, $a);
             }
 
             $this->db->commit();
@@ -114,19 +111,13 @@ class BillingController
         $protocoloExtendido = $this->protocoloModel->obtenerProtocolo($formId, $billing['hc_number']);
 
         // Obtener procedimientos
-        $stmt = $this->db->prepare("SELECT * FROM billing_procedimientos WHERE billing_id = ?");
-        $stmt->execute([$billingId]);
-        $procedimientos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
 
         // Obtener derechos
-        $stmt = $this->db->prepare("SELECT * FROM billing_derechos WHERE billing_id = ?");
-        $stmt->execute([$billingId]);
-        $derechos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $derechos = $this->billingDerechosModel->obtenerPorBillingId($billingId);
 
         // Obtener insumos
-        $stmt = $this->db->prepare("SELECT * FROM billing_insumos WHERE billing_id = ?");
-        $stmt->execute([$billingId]);
-        $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $insumos = $this->billingInsumosModel->obtenerPorBillingId($billingId);
 
         $insumosConIVA = array_filter($insumos, fn($i) => isset($i['iva']) && (int)$i['iva'] === 1);
 
@@ -157,14 +148,10 @@ class BillingController
         }
 
         // Obtener oxigeno
-        $stmt = $this->db->prepare("SELECT * FROM billing_oxigeno WHERE billing_id = ?");
-        $stmt->execute([$billingId]);
-        $oxigeno = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $oxigeno = $this->billingOxigenoModel->obtenerPorBillingId($billingId);
 
         // Obtener anestesia
-        $stmt = $this->db->prepare("SELECT * FROM billing_anestesia WHERE billing_id = ?");
-        $stmt->execute([$billingId]);
-        $anestesia = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $anestesia = $this->billingAnestesiaModel->obtenerPorBillingId($billingId);
 
         return [
             'billing' => $billing,
@@ -563,6 +550,81 @@ class BillingController
         return [
             'ingreso' => $fechas[0],
             'egreso' => end($fechas),
+        ];
+    }
+
+    public function procedimientosNoFacturadosClasificados()
+    {
+        // Unifica quirúrgicos (con protocolo_data) y no quirúrgicos (sin protocolo_data)
+        $afiliaciones = [
+            'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
+            'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
+            'seguro general por montepío', 'seguro general tiempo parcial', 'iess'
+        ];
+        // 1. Procedimientos quirúrgicos (con protocolo_data)
+        $queryQuirurgicos = "
+            SELECT 
+                pr.form_id,
+                pr.hc_number,
+                pd.fecha_inicio AS fecha,
+                pd.status,
+                pr.procedimiento_proyectado AS nombre_procedimiento,
+                pa.afiliacion,
+                pa.fname,
+                pa.mname,
+                pa.lname,
+                pa.lname2
+            FROM protocolo_data pd
+            JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
+            JOIN patient_data pa ON pa.hc_number = pd.hc_number
+            WHERE pd.form_id NOT IN (
+                SELECT form_id FROM billing_main
+            )
+            AND pd.fecha_inicio >= '2024-11-01'
+            AND LOWER(pa.afiliacion) IN (" . implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones)) . ")
+        ";
+        // 2. Procedimientos NO quirúrgicos (sin protocolo_data)
+        $queryNoQuirurgicos = "
+            SELECT 
+                pr.form_id,
+                pr.hc_number,
+                pr.fecha AS fecha,
+                pr.procedimiento_proyectado AS nombre_procedimiento,
+                pa.afiliacion,
+                pa.fname,
+                pa.mname,
+                pa.lname,
+                pa.lname2
+            FROM procedimiento_proyectado pr
+            LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
+            JOIN patient_data pa ON pa.hc_number = pr.hc_number
+            WHERE pr.form_id NOT IN (
+                SELECT form_id FROM billing_main
+            )
+            AND pd.form_id IS NULL
+            AND pr.fecha >= '2024-11-01'
+            AND LOWER(pa.afiliacion) IN (" . implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones)) . ")
+        ";
+        // Ejecutar ambos y unificar
+        $quirurgicosRaw = $this->db->query($queryQuirurgicos)->fetchAll(PDO::FETCH_ASSOC);
+        $noQuirurgicosRaw = $this->db->query($queryNoQuirurgicos)->fetchAll(PDO::FETCH_ASSOC);
+        $todos = array_merge($quirurgicosRaw, $noQuirurgicosRaw);
+        // Clasificar según si el texto inicia con "CIRUGIAS -"
+        $quirurgicos = [];
+        $noQuirurgicos = [];
+        foreach ($todos as $r) {
+            if (stripos(trim($r['nombre_procedimiento']), 'CIRUGIAS -') === 0) {
+                $quirurgicos[] = $r;
+            } else {
+                $noQuirurgicos[] = $r;
+            }
+        }
+        // Ordenar por fecha descendente
+        usort($quirurgicos, fn($a, $b) => strtotime($b['fecha'] ?? '1970-01-01') <=> strtotime($a['fecha'] ?? '1970-01-01'));
+        usort($noQuirurgicos, fn($a, $b) => strtotime($b['fecha'] ?? '1970-01-01') <=> strtotime($a['fecha'] ?? '1970-01-01'));
+        return [
+            'quirurgicos' => $quirurgicos,
+            'no_quirurgicos' => $noQuirurgicos
         ];
     }
 

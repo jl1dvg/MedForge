@@ -10,12 +10,16 @@ $fechaRegistro = $data['fecha_registro'] ?? null;
 $fechaVigencia = $data['fecha_vigencia'] ?? null;
 $referido = $data['referido'] ?? null;
 $diagnostico = $data['diagnostico'] ?? null;
+$sedeNombre = $data['sede'] ?? null;
+$parentescoNombre = $data['parentesco'] ?? null;
 
 if ($formId && $codigo) {
     $controller = new DerivacionController($pdo);
-    $resultado = $controller->guardarDerivacion($codigo, $formId, $hcNumber, $fechaRegistro, $fechaVigencia, $referido, $diagnostico);
+    $resultado = $controller->guardarDerivacion($codigo, $formId, $hcNumber, $fechaRegistro, $fechaVigencia, $referido, $diagnostico, $sedeNombre, $parentescoNombre);
     if ($resultado) {
-        echo json_encode(["success" => true]);
+        echo json_encode([
+            "success" => true,
+        ]);
     } else {
         error_log("❌ Falló el guardado de derivación: $codigo - $formId");
         echo json_encode(["success" => false]);

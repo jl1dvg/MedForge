@@ -203,8 +203,11 @@ class DashboardController
     {
         $sql = "SELECT sp.id, sp.fecha, sp.procedimiento, p.fname, p.lname, p.hc_number
                 FROM solicitud_procedimiento sp
-                JOIN patient_data p ON sp.hc_number = p.hc_number
-                WHERE sp.procedimiento IS NOT NULL AND sp.procedimiento != '' AND sp.procedimiento != 'SELECCIONE'
+                JOIN patient_data p 
+                  ON sp.hc_number COLLATE utf8mb4_unicode_ci = p.hc_number COLLATE utf8mb4_unicode_ci
+                WHERE sp.procedimiento IS NOT NULL 
+                  AND sp.procedimiento != '' 
+                  AND sp.procedimiento != 'SELECCIONE'
                 ORDER BY sp.fecha DESC
                 LIMIT :limit";
 
