@@ -628,4 +628,204 @@ class BillingController
         ];
     }
 
+    public function prepararPreviewFacturacion(string $formId, string $hcNumber): array
+    {
+        $preview = [
+            'procedimientos' => [],
+            'insumos' => [],
+            'derechos' => [],
+            'oxigeno' => [],
+            'anestesia' => []
+        ];
+
+        // 1. Procedimientos
+        $stmt = $this->db->prepare("SELECT procedimientos FROM protocolo_data WHERE form_id = ?");
+        $stmt->execute([$formId]);
+        $json = $stmt->fetchColumn();
+
+        if ($json) {
+            $procedimientos = json_decode($json, true);
+            if (is_array($procedimientos)) {
+                $tarifarioStmt = $this->db->prepare("
+                SELECT valor_facturar_nivel3, descripcion 
+                FROM tarifario_2014 
+                WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
+            ");
+
+                foreach ($procedimientos as $p) {
+                    if (isset($p['procInterno']) && preg_match('/- (\d{5}) - (.+)$/', $p['procInterno'], $matches)) {
+                        $codigo = $matches[1];
+                        $detalle = $matches[2];
+
+                        $tarifarioStmt->execute([
+                            'codigo' => $codigo,
+                            'codigo_sin_0' => ltrim($codigo, '0')
+                        ]);
+                        $row = $tarifarioStmt->fetch(PDO::FETCH_ASSOC);
+                        $precio = $row ? (float)$row['valor_facturar_nivel3'] : 0;
+
+                        $preview['procedimientos'][] = [
+                            'procCodigo' => $codigo,
+                            'procDetalle' => $detalle,
+                            'procPrecio' => $precio
+                        ];
+                    }
+                }
+            }
+        }
+
+        // 2. Insumos y derechos (desde API)
+        $opts = [
+            "http" => [
+                "method" => "POST",
+                "header" => "Content-Type: application/json",
+                "content" => json_encode(["hcNumber" => $hcNumber, "form_id" => $formId])
+            ]
+        ];
+        $context = stream_context_create($opts);
+        $result = file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
+        $responseData = json_decode($result, true);
+
+        if (!empty($responseData['insumos'])) {
+            $insumosDecodificados = $responseData['insumos'];
+
+            // Obtener afiliación desde la respuesta del API
+            $afiliacion = strtoupper(trim($responseData['afiliacion'] ?? ''));
+
+            foreach (['quirurgicos', 'anestesia'] as $categoria) {
+                if (!empty($insumosDecodificados[$categoria])) {
+                    foreach ($insumosDecodificados[$categoria] as $i) {
+                        if (!empty($i['codigo'])) {
+                            // 👉 Resolver precio real según afiliación
+                            $precio = null;
+                            try {
+                                if (!empty($i['id']) || !empty($i['codigo'])) {
+                                    $precio = $this->billingInsumosModel->obtenerPrecioPorAfiliacion(
+                                        $i['codigo'] ?? '',
+                                        $afiliacion,
+                                        !empty($i['id']) ? (int)$i['id'] : null
+                                    );
+                                }
+                            } catch (\Throwable $e) {
+                                // Log de error para depuración
+                                error_log("❌ Error obteniendo precio por afiliación: " . $e->getMessage());
+                            }
+
+                            // Fallback seguro
+                            if ($precio === null) {
+                                $precio = $i['precio'] ?? 0;
+                            }
+
+                            $preview['insumos'][] = [
+                                'id' => $i['id'],
+                                'codigo' => $i['codigo'],
+                                'nombre' => $i['nombre'],
+                                'cantidad' => $i['cantidad'],
+                                'precio' => $precio,
+                                'iva' => $i['iva'] ?? 1
+                            ];
+                        }
+                    }
+                }
+            }
+
+            if (!empty($insumosDecodificados['equipos'])) {
+                foreach ($insumosDecodificados['equipos'] as $equipo) {
+                    if (!empty($equipo['codigo'])) {
+                        $precio = null;
+                        try {
+                            if (!empty($equipo['id']) || !empty($equipo['codigo'])) {
+                                $precio = $this->billingInsumosModel->obtenerPrecioPorAfiliacion(
+                                    $equipo['codigo'] ?? '',
+                                    $afiliacion,
+                                    !empty($equipo['id']) ? (int)$equipo['id'] : null
+                                );
+                            }
+                        } catch (\Throwable $e) {
+                            error_log("❌ Error obteniendo precio por afiliación: " . $e->getMessage());
+                        }
+
+                        if ($precio === null) {
+                            $precio = $equipo['precio'] ?? 0;
+                        }
+
+                        $preview['derechos'][] = [
+                            'id' => (int)$equipo['id'],
+                            'codigo' => $equipo['codigo'],
+                            'detalle' => $equipo['nombre'],
+                            'cantidad' => (int)$equipo['cantidad'],
+                            'iva' => 0,
+                            'precioAfiliacion' => $precio
+                        ];
+                    }
+                }
+            }
+        }
+
+        // 3. Oxígeno
+        if (!empty($responseData['duracion'])) {
+            [$h, $m] = explode(':', $responseData['duracion']);
+            $tiempo = (float)$h + ((int)$m / 60);
+
+            $preview['oxigeno'][] = [
+                'codigo' => '911111',
+                'nombre' => 'OXIGENO',
+                'tiempo' => $tiempo,
+                'litros' => 3,
+                'valor1' => 60.00,
+                'valor2' => 0.01,
+                'precio' => round($tiempo * 3 * 60.00 * 0.01, 2)
+            ];
+        }
+
+        // 4. Anestesia
+        $afiliacion = strtoupper(trim($responseData['afiliacion'] ?? ''));
+        $codigoCirugia = $preview['procedimientos'][0]['procCodigo'] ?? '';
+        $duracion = $responseData['duracion'] ?? '01:00';
+        [$h, $m] = explode(':', $duracion);
+        $cuartos = ceil(((int)$h * 60 + (int)$m) / 15);
+
+        if ($afiliacion === "ISSFA" && $codigoCirugia === "66984") {
+            $preview['anestesia'][] = [
+                'codigo' => '999999',
+                'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
+                'tiempo' => $cuartos,
+                'valor2' => 13.34,
+                'precio' => round($cuartos * 13.34, 2)
+            ];
+        } elseif ($afiliacion === "ISSFA") {
+            $cantidad99149 = ($cuartos >= 2) ? 1 : $cuartos;
+            $cantidad99150 = ($cuartos > 2) ? $cuartos - 2 : 0;
+
+            if ($cantidad99149 > 0) {
+                $preview['anestesia'][] = [
+                    'codigo' => '99149',
+                    'nombre' => 'SEDACIÓN INICIAL 30 MIN',
+                    'tiempo' => $cantidad99149,
+                    'valor2' => 13.34,
+                    'precio' => round($cantidad99149 * 13.34, 2)
+                ];
+            }
+            if ($cantidad99150 > 0) {
+                $preview['anestesia'][] = [
+                    'codigo' => '99150',
+                    'nombre' => 'SEDACIÓN ADICIONAL 15 MIN',
+                    'tiempo' => $cantidad99150,
+                    'valor2' => 13.34,
+                    'precio' => round($cantidad99150 * 13.34, 2)
+                ];
+            }
+        } else {
+            $preview['anestesia'][] = [
+                'codigo' => '999999',
+                'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
+                'tiempo' => $cuartos,
+                'valor2' => 13.34,
+                'precio' => round($cuartos * 13.34, 2)
+            ];
+        }
+
+        return $preview;
+    }
+
 }

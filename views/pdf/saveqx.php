@@ -847,7 +847,7 @@
         Cuáles:</td>
     </tr>
     <tr>
-        <td class="blanco" colspan="15"></td>
+        <td class="blanco" colspan="15">LIC. <?php echo strtoupper($ayudante_anestesia_data['nombre']); ?></td>
         <td class="blanco" colspan="16">MD. <?php echo strtoupper($cirujano_data['nombre']); ?>
         <td class="blanco" colspan="15">MD. <?php echo strtoupper($anestesiologo_data['nombre']); ?></td>
         <td class="blanco_unbordered" colspan="24"></td>
@@ -862,8 +862,8 @@
     </tr>
     <tr>
         <td class="blanco" colspan="15"
-            rowspan="5"><img src="<?php echo asset('assets/firmas/baquejenniffer.png'); ?>" alt="Imagen de la firma"
-                             style="max-height: 70px;">
+            rowspan="5"><?php echo "<img src='" . htmlspecialchars($ayudante_anestesia_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+            ?>
         </td>
         <td class="blanco" colspan="16"
             rowspan="5"><?php echo "<img src='" . htmlspecialchars($cirujano_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
