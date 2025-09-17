@@ -62,7 +62,9 @@ class PdfController
             $previosFmt[] = $ciePad . ' - ' . $desc;
         }
         // Garantizar 3 entradas (la vista espera 3)
-        while (count($previosFmt) < 3) { $previosFmt[] = ''; }
+        while (count($previosFmt) < 3) {
+            $previosFmt[] = '';
+        }
         // Reemplazar para que la vista siga usando $diagnosticos_previos[0..2]
         $datos['diagnosticos_previos'] = [
             $previosFmt[0] ?? '',
@@ -78,6 +80,9 @@ class PdfController
             : null;
         $datos['anestesiologo_data'] = isset($datos['anestesiologo']) && $datos['anestesiologo'] !== ''
             ? ProtocoloHelper::buscarUsuarioPorNombre($this->db, $datos['anestesiologo'])
+            : null;
+        $datos['ayudante_anestesia_data'] = isset($datos['ayudante_anestesia']) && $datos['ayudante_anestesia'] !== ''
+            ? ProtocoloHelper::buscarUsuarioPorNombre($this->db, $datos['ayudante_anestesia'])
             : null;
         if (!empty($datos['procedimiento_id'])) {
             $datos['id_procedimiento'] = $datos['procedimiento_id'];

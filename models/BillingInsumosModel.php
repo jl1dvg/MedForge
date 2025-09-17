@@ -43,4 +43,44 @@ class BillingInsumosModel
         $stmt = $this->db->prepare("DELETE FROM billing_insumos WHERE billing_id = ?");
         $stmt->execute([$billingId]);
     }
+
+    public function obtenerPrecioPorAfiliacion(string $codigo, string $afiliacion, ?int $id = null): ?float
+    {
+        $afiliacionUpper = strtoupper($afiliacion);
+        $iessVariants = [
+            'IESS',
+            'CONTRIBUYENTE VOLUNTARIO',
+            'CONYUGE',
+            'CONYUGE PENSIONISTA',
+            'SEGURO CAMPESINO',
+            'SEGURO CAMPESINO JUBILADO',
+            'SEGURO GENERAL',
+            'SEGURO GENERAL JUBILADO',
+            'SEGURO GENERAL POR MONTEPÍO',
+            'SEGURO GENERAL TIEMPO PARCIAL',
+        ];
+
+        if (in_array($afiliacionUpper, $iessVariants, true)) {
+            $campoPrecio = 'precio_iess';
+        } else {
+            $campoPrecio = match ($afiliacionUpper) {
+                'ISSPOL' => 'precio_isspol',
+                'ISSFA' => 'precio_issfa',
+                'MSP' => 'precio_msp',
+                default => 'precio_base',
+            };
+        }
+
+        if ($id) {
+            $stmt = $this->db->prepare("SELECT {$campoPrecio} FROM insumos WHERE id = :id LIMIT 1");
+            $stmt->execute(['id' => $id]);
+        } else {
+            $stmt = $this->db->prepare("SELECT {$campoPrecio} FROM insumos WHERE codigo_isspol = :codigo OR codigo_issfa = :codigo OR codigo_iess = :codigo OR codigo_msp = :codigo LIMIT 1");
+            $stmt->execute(['codigo' => $codigo]);
+        }
+
+        $precio = $stmt->fetchColumn();
+
+        return $precio !== false ? (float)$precio : null;
+    }
 }

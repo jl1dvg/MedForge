@@ -19,9 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Usar BillingController para preparar la preview y luego insertar cada detalle
     $billingId = $billingModel->insert($hcNumber, $formId);
 
-    // Corregir fecha de creación con fecha del protocolo
+    // Corregir fecha de creación con fecha del protocolo (mantener esta lógica)
     $stmtFecha = $pdo->prepare("SELECT fecha_inicio FROM protocolo_data WHERE form_id = ?");
     $stmtFecha->execute([$formId]);
     $fechaInicio = $stmtFecha->fetchColumn();
@@ -29,64 +30,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $billingModel->updateFechaCreacion($billingId, $fechaInicio);
     }
 
-    // Obtener procedimientos del protocolo
-    $stmt = $pdo->prepare("SELECT procedimientos FROM protocolo_data WHERE form_id = ?");
-    $stmt->execute([$formId]);
-    $json = $stmt->fetchColumn();
+    // Preparar los datos a insertar usando BillingController
+    $billingController = new BillingController($pdo);
+    $preview = $billingController->prepararPreviewFacturacion($formId, $hcNumber);
 
-    if ($json) {
-        $procedimientos = json_decode($json, true);
-        if (is_array($procedimientos)) {
-            $tarifarioStmt = $pdo->prepare("SELECT valor_facturar_nivel3, descripcion FROM tarifario_2014 WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1");
+    // Insertar procedimientos
+    $procedimientosModel = new \Models\BillingProcedimientosModel($pdo);
+    foreach ($preview['procedimientos'] as $p) {
+        $procedimientosModel->insertar($billingId, [
+            'id' => null,
+            'procCodigo' => $p['procCodigo'],
+            'procDetalle' => $p['procDetalle'],
+            'procPrecio' => $p['procPrecio']
+        ]);
+    }
 
-            $procedimientosModel = new \Models\BillingProcedimientosModel($pdo);
-            foreach ($procedimientos as $p) {
-                if (isset($p['procInterno']) && preg_match('/- (\d{5}) - (.+)$/', $p['procInterno'], $matches)) {
-                    $codigo = $matches[1];
-                    $detalle = $matches[2];
+    // Insertar insumos
+    // Insertar insumos
+    $insumosModel = new \Models\BillingInsumosModel($pdo);
+    foreach ($preview['insumos'] as $i) {
+        $insumosModel->insertar($billingId, [
+            'id' => $i['id'] ?? null,
+            'codigo' => $i['codigo'],
+            'nombre' => $i['nombre'],
+            'cantidad' => $i['cantidad'],
+            'precio' => $i['precio'] ?? 0, // 👈 usar directamente el precio calculado en el preview
+            'iva' => $i['iva'] ?? 1
+        ]);
+    }
 
-                    $tarifarioStmt->execute([
-                        'codigo' => $codigo,
-                        'codigo_sin_0' => ltrim($codigo, '0')
-                    ]);
-                    $row = $tarifarioStmt->fetch(PDO::FETCH_ASSOC);
-                    $precio = $row ? (float)$row['valor_facturar_nivel3'] : 0;
+    // Insertar derechos
+    $derechosModel = new \Models\BillingDerechosModel($pdo);
+    foreach ($preview['derechos'] as $d) {
+        $derechosModel->insertar($billingId, [
+            'id' => $d['id'] ?? null,
+            'codigo' => $d['codigo'],
+            'detalle' => $d['detalle'],
+            'cantidad' => $d['cantidad'],
+            'iva' => $d['iva'] ?? 0,
+            'precioAfiliacion' => $d['precioAfiliacion'] ?? 0
+        ]);
+    }
 
-                    $procedimientosModel->insertar($billingId, [
-                        'id' => null,
-                        'procCodigo' => $codigo,
-                        'procDetalle' => $detalle,
-                        'procPrecio' => $precio
-                    ]);
+    // Insertar oxígeno
+    $oxigenoModel = new \Models\BillingOxigenoModel($pdo);
+    foreach ($preview['oxigeno'] as $o) {
+        $oxigenoModel->insertar($billingId, [
+            'codigo' => $o['codigo'],
+            'nombre' => $o['nombre'],
+            'tiempo' => $o['tiempo'],
+            'litros' => $o['litros'],
+            'valor1' => $o['valor1'],
+            'valor2' => $o['valor2'],
+            'precio' => $o['precio']
+        ]);
+    }
 
-                    // Obtener insumos del protocolo
-                    $stmtInsumos = $pdo->prepare("SELECT insumos FROM protocolo_data WHERE form_id = ?");
-                    $stmtInsumos->execute([$formId]);
-                    $jsonInsumos = $stmtInsumos->fetchColumn();
-
-                    if ($jsonInsumos) {
-                        $insumosDecodificados = json_decode($jsonInsumos, true);
-                        if (is_array($insumosDecodificados)) {
-                            $insumosModel = new \Models\BillingInsumosModel($pdo);
-                            foreach ($insumosDecodificados as $grupo) {
-                                foreach ($grupo as $i) {
-                                    if (isset($i['id'], $i['codigo'], $i['nombre'], $i['cantidad'])) {
-                                        $insumosModel->insertar($billingId, [
-                                            'id' => $i['id'],
-                                            'codigo' => $i['codigo'],
-                                            'nombre' => $i['nombre'],
-                                            'cantidad' => $i['cantidad'],
-                                            'precio' => $i['precio'] ?? 0,
-                                            'iva' => $i['iva'] ?? 1
-                                        ]);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    // Insertar anestesia
+    $anestesiaModel = new \Models\BillingAnestesiaModel($pdo);
+    foreach ($preview['anestesia'] as $a) {
+        $anestesiaModel->insertar($billingId, [
+            'codigo' => $a['codigo'],
+            'nombre' => $a['nombre'],
+            'tiempo' => $a['tiempo'],
+            'valor2' => $a['valor2'],
+            'precio' => $a['precio']
+        ]);
     }
     header("Location: /views/billing/no_facturado.php?form_id=" . urlencode($formId));
     exit;
