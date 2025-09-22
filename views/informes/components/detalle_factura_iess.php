@@ -1,6 +1,15 @@
+<div class="mb-2">
+    <span class="badge bg-primary">Procedimientos (Cirujano)</span>
+    <span class="badge bg-info text-dark">Ayudante</span>
+    <span class="badge bg-danger">Anestesia</span>
+    <span class="badge bg-success">Farmacia (por mL)</span>
+    <span class="badge bg-warning text-dark">Farmacia</span>
+    <span class="badge bg-light text-dark border">Insumos</span>
+    <span class="badge bg-secondary">Servicios Institucionales</span>
+</div>
 <div class="col-12 table-responsive">
     <table class="table table-bordered align-middle">
-        <thead class="table-primary">
+        <thead class="table-dark">
         <tr>
             <th class="text-center">#</th>
             <th class="text-center">Código</th>
@@ -19,42 +28,98 @@
         <?php
         $total = 0;
         $n = 1;
+        $has67036 = false;
 
-        // Procedimientos
+        // Check if any procedimiento has codigo 67036
+        foreach ($datos['procedimientos'] as $p) {
+            if (($p['proc_codigo'] ?? '') === '67036') {
+                $has67036 = true;
+                break;
+            }
+        }
+
+        // Procedimientos (Cirujano)
         foreach ($datos['procedimientos'] as $index => $p) {
             $codigo = $p['proc_codigo'] ?? '';
             $descripcion = $p['proc_detalle'] ?? '';
             $valorUnitario = (float)($p['proc_precio'] ?? 0);
             $cantidad = 1;
-            $porcentaje = ($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5;
-            if ($codigo === '67036') $porcentaje = 0.625;
-            $subtotal = $valorUnitario * $cantidad * $porcentaje;
-            $total += $subtotal;
-
             $anestesia = 'NO';
-            $porcentajePago = $porcentaje * 100;
             $bodega = 0;
             $iva = 0;
-            $montoTotal = $subtotal;
 
-            echo "<tr style='font-size: 12.5px;'>
-                                                        <td class='text-center'>{$n}</td>
-                                                        <td class='text-center'>{$codigo}</td>
-                                                        <td>{$descripcion}</td>
-                                                        <td class='text-center'>{$anestesia}</td>
-                                                        <td class='text-center'>{$porcentajePago}</td>
-                                                        <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                                                        <td class='text-center'>{$bodega}</td>
-                                                        <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                    </tr>";
-            $n++;
+            if ($codigo === '67036') {
+                // Double row logic for 67036
+                // First row 62.5%
+                $porcentaje1 = 0.625;
+                $subtotal1 = $valorUnitario * $cantidad * $porcentaje1;
+                $total += $subtotal1;
+                $porcentajePago1 = $porcentaje1 * 100;
+                $montoTotal1 = $subtotal1;
+
+                echo "<tr class='table-primary' style='font-size: 12.5px;'>
+                    <td class='text-center'>{$n}</td>
+                    <td class='text-center'>{$codigo}</td>
+                    <td>{$descripcion} (Parte 1)</td>
+                    <td class='text-center'>{$anestesia}</td>
+                    <td class='text-center'>{$porcentajePago1}</td>
+                    <td class='text-end'>{$cantidad}</td>
+                    <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                    <td class='text-end'>" . number_format($subtotal1, 2) . "</td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-end'>" . number_format($montoTotal1, 2) . "</td>
+                </tr>";
+                $n++;
+
+                // Second row 37.5%
+                $porcentaje2 = 0.375;
+                $subtotal2 = $valorUnitario * $cantidad * $porcentaje2;
+                $total += $subtotal2;
+                $porcentajePago2 = $porcentaje2 * 100;
+                $montoTotal2 = $subtotal2;
+
+                echo "<tr class='table-primary' style='font-size: 12.5px;'>
+                    <td class='text-center'>{$n}</td>
+                    <td class='text-center'>{$codigo}</td>
+                    <td>{$descripcion} (Parte 2)</td>
+                    <td class='text-center'>{$anestesia}</td>
+                    <td class='text-center'>{$porcentajePago2}</td>
+                    <td class='text-end'>{$cantidad}</td>
+                    <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                    <td class='text-end'>" . number_format($subtotal2, 2) . "</td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-end'>" . number_format($montoTotal2, 2) . "</td>
+                </tr>";
+                $n++;
+            } else {
+                // Normal procedimiento logic
+                $porcentaje = ($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5;
+                $subtotal = $valorUnitario * $cantidad * $porcentaje;
+                $total += $subtotal;
+                $porcentajePago = $porcentaje * 100;
+                $montoTotal = $subtotal;
+
+                echo "<tr class='table-primary' style='font-size: 12.5px;'>
+                    <td class='text-center'>{$n}</td>
+                    <td class='text-center'>{$codigo}</td>
+                    <td>{$descripcion}</td>
+                    <td class='text-center'>{$anestesia}</td>
+                    <td class='text-center'>{$porcentajePago}</td>
+                    <td class='text-end'>{$cantidad}</td>
+                    <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                    <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                </tr>";
+                $n++;
+            }
         }
 
-        // AYUDANTE
-        if (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante'])) {
+        // AYUDANTE - omit if 67036 present
+        if (!$has67036 && (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante']))) {
             foreach ($datos['procedimientos'] as $index => $p) {
                 $codigo = $p['proc_codigo'] ?? '';
                 $descripcion = $p['proc_detalle'] ?? '';
@@ -63,26 +128,25 @@
                 $porcentaje = ($index === 0) ? 0.2 : 0.1;
                 $subtotal = $valorUnitario * $cantidad * $porcentaje;
                 $total += $subtotal;
-
                 $anestesia = 'NO';
                 $porcentajePago = $porcentaje * 100;
                 $bodega = 0;
                 $iva = 0;
                 $montoTotal = $subtotal;
 
-                echo "<tr style='font-size: 12.5px;'>
-                                                            <td class='text-center'>{$n}</td>
-                                                            <td class='text-center'>{$codigo}</td>
-                                                            <td>{$descripcion}</td>
-                                                            <td class='text-center'>{$anestesia}</td>
-                                                            <td class='text-center'>{$porcentajePago}</td>
-                                                            <td class='text-end'>{$cantidad}</td>
-                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                                                            <td class='text-center'>{$bodega}</td>
-                                                            <td class='text-center'>{$iva}</td>
-                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                        </tr>";
+                echo "<tr class='table-info' style='font-size: 12.5px;'>
+                    <td class='text-center'>{$n}</td>
+                    <td class='text-center'>{$codigo}</td>
+                    <td>{$descripcion}</td>
+                    <td class='text-center'>{$anestesia}</td>
+                    <td class='text-center'>{$porcentajePago}</td>
+                    <td class='text-end'>{$cantidad}</td>
+                    <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                    <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                    <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                </tr>";
                 $n++;
             }
         }
@@ -101,19 +165,19 @@
             $iva = 0;
             $montoTotal = $subtotal;
 
-            echo "<tr style='font-size: 12.5px;'>
-                                                        <td class='text-center'>{$n}</td>
-                                                        <td class='text-center'>{$codigo}</td>
-                                                        <td>{$descripcion}</td>
-                                                        <td class='text-center'>{$anestesia}</td>
-                                                        <td class='text-center'>{$porcentajePago}</td>
-                                                        <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                                                        <td class='text-center'>{$bodega}</td>
-                                                        <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                    </tr>";
+            echo "<tr class='table-danger' style='font-size: 12.5px;'>
+                <td class='text-center'>{$n}</td>
+                <td class='text-center'>{$codigo}</td>
+                <td>{$descripcion}</td>
+                <td class='text-center'>{$anestesia}</td>
+                <td class='text-center'>{$porcentajePago}</td>
+                <td class='text-end'>{$cantidad}</td>
+                <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+            </tr>";
             $n++;
         }
 
@@ -128,35 +192,82 @@
             foreach ($bloque['items'] as $item) {
                 $descripcion = $item['nombre'] ?? $item['detalle'] ?? '';
                 $codigo = $item['codigo'] ?? '';
-                if (isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2'])) {
-                    $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
-                    $valorUnitario = (float)$item['valor2'];
-                } else {
-                    $cantidad = $item['cantidad'] ?? 1;
-                    $valorUnitario = $item['precio'] ?? 0;
-                }
-                $subtotal = $valorUnitario * $cantidad;
                 $bodega = 1;
                 $iva = ($grupo === 'FARMACIA') ? 0 : 1;
-                $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
-                $total += $montoTotal;
-                $anestesia = 'NO';
-                $porcentajePago = 100;
 
-                echo "<tr style='font-size: 12.5px;'>
-                                                            <td class='text-center'>{$n}</td>
-                                                            <td class='text-center'>{$codigo}</td>
-                                                            <td>{$descripcion}</td>
-                                                            <td class='text-center'>{$anestesia}</td>
-                                                            <td class='text-center'>{$porcentajePago}</td>
-                                                            <td class='text-end'>{$cantidad}</td>
-                                                            <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                            <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                                                            <td class='text-center'>{$bodega}</td>
-                                                            <td class='text-center'>{$iva}</td>
-                                                            <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                        </tr>";
-                $n++;
+                if ($grupo === 'FARMACIA' && isset($item['litros']) && isset($item['tiempo']) && isset($item['valor2'])) {
+                    // Farmacia por mL (por mL logic)
+                    $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
+                    $valorUnitario = (float)$item['valor2'];
+                    $subtotal = $valorUnitario * $cantidad;
+                    $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                    $total += $montoTotal;
+                    $anestesia = 'NO';
+                    $porcentajePago = 100;
+
+                    echo "<tr class='table-success' style='font-size: 12.5px;'>
+                        <td class='text-center'>{$n}</td>
+                        <td class='text-center'>{$codigo}</td>
+                        <td>{$descripcion}</td>
+                        <td class='text-center'>{$anestesia}</td>
+                        <td class='text-center'>{$porcentajePago}</td>
+                        <td class='text-end'>" . number_format($cantidad, 2) . "</td>
+                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                        <td class='text-center'><span class='badge bg-success'>1</span></td>
+                        <td class='text-center'><span class='badge bg-success'>0</span></td>
+                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                    </tr>";
+                    $n++;
+                } elseif ($grupo === 'FARMACIA') {
+                    // Farmacia normal
+                    $cantidad = $item['cantidad'] ?? 1;
+                    $valorUnitario = $item['precio'] ?? 0;
+                    $subtotal = $valorUnitario * $cantidad;
+                    $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                    $total += $montoTotal;
+                    $anestesia = 'NO';
+                    $porcentajePago = 100;
+
+                    echo "<tr class='table-warning' style='font-size: 12.5px;'>
+                        <td class='text-center'>{$n}</td>
+                        <td class='text-center'>{$codigo}</td>
+                        <td>{$descripcion}</td>
+                        <td class='text-center'>{$anestesia}</td>
+                        <td class='text-center'>{$porcentajePago}</td>
+                        <td class='text-end'>" . number_format($cantidad, 2) . "</td>
+                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                        <td class='text-center'><span class='badge bg-warning text-dark'>1</span></td>
+                        <td class='text-center'><span class='badge bg-warning text-dark'>0</span></td>
+                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                    </tr>";
+                    $n++;
+                } else {
+                    // Insumos
+                    $cantidad = $item['cantidad'] ?? 1;
+                    $valorUnitario = $item['precio'] ?? 0;
+                    $subtotal = $valorUnitario * $cantidad;
+                    $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                    $total += $montoTotal;
+                    $anestesia = 'NO';
+                    $porcentajePago = 100;
+
+                    echo "<tr class='table-light' style='font-size: 12.5px;'>
+                        <td class='text-center'>{$n}</td>
+                        <td class='text-center'>{$codigo}</td>
+                        <td>{$descripcion}</td>
+                        <td class='text-center'>{$anestesia}</td>
+                        <td class='text-center'>{$porcentajePago}</td>
+                        <td class='text-end'>" . number_format($cantidad, 2) . "</td>
+                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                        <td class='text-center'><span class='badge bg-light text-dark border'>1</span></td>
+                        <td class='text-center'><span class='badge bg-light text-dark border'>1</span></td>
+                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+                    </tr>";
+                    $n++;
+                }
             }
         }
 
@@ -174,19 +285,19 @@
             $anestesia = 'NO';
             $porcentajePago = 100;
 
-            echo "<tr style='font-size: 12.5px;'>
-                                                        <td class='text-center'>{$n}</td>
-                                                        <td class='text-center'>{$codigo}</td>
-                                                        <td>{$descripcion}</td>
-                                                        <td class='text-center'>{$anestesia}</td>
-                                                        <td class='text-center'>{$porcentajePago}</td>
-                                                        <td class='text-end'>{$cantidad}</td>
-                                                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                                                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                                                        <td class='text-center'>{$bodega}</td>
-                                                        <td class='text-center'>{$iva}</td>
-                                                        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-                                                    </tr>";
+            echo "<tr class='table-secondary' style='font-size: 12.5px;'>
+                <td class='text-center'>{$n}</td>
+                <td class='text-center'>{$codigo}</td>
+                <td>{$descripcion}</td>
+                <td class='text-center'>{$anestesia}</td>
+                <td class='text-center'>{$porcentajePago}</td>
+                <td class='text-end'>{$cantidad}</td>
+                <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+            </tr>";
             $n++;
         }
         ?>
@@ -216,4 +327,3 @@
         </div>
     </div>
 </div>
-

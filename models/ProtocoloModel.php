@@ -34,6 +34,23 @@ class ProtocoloModel
         return $data ?: null;
     }
 
+    public function obtenerProtocoloTiny(string $form_id, string $hc_number): ?array
+    {
+        $sql = "SELECT pr.hc_number, pr.form_id, pr.fecha_inicio, pr.hora_inicio, pr.cirujano_1, pr.instrumentista,
+                       pr.cirujano_2, pr.primer_ayudante, pr.anestesiologo, pr.membrete, pr.procedimientos, pr.lateralidad,
+                       pr.tipo_anestesia, pr.diagnosticos, pp.procedimiento_proyectado, pr.procedimiento_id
+                FROM protocolo_data pr
+                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                WHERE pr.form_id = ? AND pr.hc_number = ?
+                LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$form_id, $hc_number]);
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $data ?: null;
+    }
+
     public function obtenerNombreProcedimientoProyectado(?string $texto): string
     {
         if (!$texto) return '';

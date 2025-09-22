@@ -28,7 +28,7 @@ $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
 // Paso 1: Obtener todas las facturas disponibles
 $username = $dashboardController->getAuthenticatedUser();
-$facturas = $billingController->obtenerFacturasDisponibles();
+$facturas = $billingController->obtenerFacturasDisponibles($mesSeleccionado);
 
 // Agrupar facturas por código de derivación
 $grupos = [];
@@ -51,18 +51,26 @@ foreach ($facturas as $factura) {
 
 // Precargar datos agrupados por mes para evitar llamadas repetidas durante la creación del dropdown
 $cachePorMes = [];
-foreach ($facturas as $factura) {
-    $fechaInicio = $factura['fecha_inicio'] ?? null;
-    $mes = $fechaInicio ? date('Y-m', strtotime($fechaInicio)) : '';
-    $hc = $factura['hc_number'];
-    $formId = $factura['form_id'];
 
-    if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
-    }
+// Solo construir el cache del mes seleccionado
+if (!empty($mesSeleccionado)) {
+    foreach ($facturas as $factura) {
+        $fechaInicio = $factura['fecha_inicio'] ?? null;
+        $mes = $fechaInicio ? date('Y-m', strtotime($fechaInicio)) : '';
+        if ($mes !== $mesSeleccionado) {
+            continue;
+        }
 
-    if (!isset($cachePorMes[$mes]['datos'][$formId])) {
-        $cachePorMes[$mes]['datos'][$formId] = $billingController->obtenerDatos($formId);
+        $hc = $factura['hc_number'];
+        $formId = $factura['form_id'];
+
+        if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
+            $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+        }
+
+        if (!isset($cachePorMes[$mes]['datos'][$formId])) {
+            $cachePorMes[$mes]['datos'][$formId] = $billingController->obtenerDatos($formId);
+        }
     }
 }
 // Obtener modo de informe
@@ -262,7 +270,14 @@ if (!empty($billingIds)) {
                                            class="btn btn-success btn-lg me-2">
                                             <i class="fa fa-file-excel-o"></i> Descargar Excel
                                         </a>
-                                        <a href="/views/informes/informe_iess.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
+                                        <?php
+                                        // Conservar todos los filtros actuales en la URL excepto 'billing_id'
+                                        $filtrosParaRegresar = $_GET;
+                                        unset($filtrosParaRegresar['billing_id']); // quitamos el detalle
+                                        $filtrosParaRegresar['modo'] = 'consolidado'; // aseguramos modo consolidado
+                                        $queryString = http_build_query($filtrosParaRegresar);
+                                        ?>
+                                        <a href="/views/informes/informe_iess.php?<?= htmlspecialchars($queryString) ?>"
                                            class="btn btn-outline-secondary btn-lg">
                                             <i class="fa fa-arrow-left"></i> Regresar al consolidado
                                         </a>
@@ -273,184 +288,190 @@ if (!empty($billingIds)) {
                                 </div>
                                 </table>
                             <?php else: ?>
-                                <h4>Consolidado mensual de pacientes IESS</h4>
-                                <?php
-                                // $filtros ya está definido arriba
-                                $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
-                                $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
-                                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-                                    $facturas,
-                                    $filtros,
-                                    $billingController,
-                                    $pacienteController,
-                                    $afiliacionesIESS
-                                );
+                                <?php if (!empty($mesSeleccionado)): ?>
+                                    <h4>Consolidado mensual de pacientes IESS</h4>
+                                    <?php
+                                    // $filtros ya está definido arriba
+                                    $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
+                                    $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
+                                    $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                                        $facturas,
+                                        $filtros,
+                                        $billingController,
+                                        $pacienteController,
+                                        $afiliacionesIESS
+                                    );
 
-                                $consolidadoAgrupado = [];
-                                echo "<pre>✔️ Facturas encontradas: " . count($facturas) . "</pre>";
-                                echo "<pre>✔️ Consolidado generado: " . count($consolidado) . "</pre>";
+                                    $consolidadoAgrupado = [];
+                                    echo "<pre>✔️ Facturas encontradas: " . count($facturas) . "</pre>";
+                                    echo "<pre>✔️ Consolidado generado: " . count($consolidado) . "</pre>";
 
-                                foreach ($consolidado as $grupo) {
-                                    foreach ($grupo as $p) {
-                                        // Asegurar compatibilidad con agrupación
-                                        if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
-                                            $p['fecha_ordenada'] = $p['fecha'];
-                                        }
+                                    foreach ($consolidado as $grupo) {
+                                        foreach ($grupo as $p) {
+                                            // Asegurar compatibilidad con agrupación
+                                            if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
+                                                $p['fecha_ordenada'] = $p['fecha'];
+                                            }
 
-                                        if (empty($p['fecha_ordenada'])) {
-                                            continue;
-                                        }
+                                            if (empty($p['fecha_ordenada'])) {
+                                                continue;
+                                            }
 
-                                        $hc = $p['hc_number'];
-                                        $mesKey = date('Y-m', strtotime($p['fecha_ordenada']));
-                                        $key = $hc;
+                                            $hc = $p['hc_number'];
+                                            $mesKey = date('Y-m', strtotime($p['fecha_ordenada']));
+                                            $key = $hc;
 
-                                        if (!isset($consolidadoAgrupado[$mesKey][$key])) {
-                                            $consolidadoAgrupado[$mesKey][$key] = [
-                                                'paciente' => $p,
-                                                'form_ids' => [],
-                                                'fecha_ingreso' => $p['fecha_ordenada'],
-                                                'fecha_egreso' => $p['fecha_ordenada'],
-                                                'total' => 0,
-                                                'procedimientos' => [],
-                                                'cie10' => [],
-                                                'afiliacion' => '',
-                                            ];
-                                        }
+                                            if (!isset($consolidadoAgrupado[$mesKey][$key])) {
+                                                $consolidadoAgrupado[$mesKey][$key] = [
+                                                    'paciente' => $p,
+                                                    'form_ids' => [],
+                                                    'fecha_ingreso' => $p['fecha_ordenada'],
+                                                    'fecha_egreso' => $p['fecha_ordenada'],
+                                                    'total' => 0,
+                                                    'procedimientos' => [],
+                                                    'cie10' => [],
+                                                    'afiliacion' => '',
+                                                ];
+                                            }
 
-                                        $consolidadoAgrupado[$mesKey][$key]['form_ids'][] = $p['form_id'];
-                                        $fechaActual = $p['fecha_ordenada'];
-                                        $consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'] = min($consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'], $fechaActual);
-                                        $consolidadoAgrupado[$mesKey][$key]['fecha_egreso'] = max($consolidadoAgrupado[$mesKey][$key]['fecha_egreso'], $fechaActual);
+                                            $consolidadoAgrupado[$mesKey][$key]['form_ids'][] = $p['form_id'];
+                                            $fechaActual = $p['fecha_ordenada'];
+                                            $consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'] = min($consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'], $fechaActual);
+                                            $consolidadoAgrupado[$mesKey][$key]['fecha_egreso'] = max($consolidadoAgrupado[$mesKey][$key]['fecha_egreso'], $fechaActual);
 
-                                        $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                        $consolidadoAgrupado[$mesKey][$key]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                        $consolidadoAgrupado[$mesKey][$key]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
+                                            $datosPaciente = $datosCache[$p['form_id']] ?? [];
+                                            $consolidadoAgrupado[$mesKey][$key]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                                            $consolidadoAgrupado[$mesKey][$key]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
 
-                                        $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                                        if (!empty($derivacion['diagnostico'])) {
-                                            $consolidadoAgrupado[$mesKey][$key]['cie10'][] = $derivacion['diagnostico'];
-                                        }
-                                        if (!empty($derivacion['cod_derivacion'])) {
-                                            $consolidadoAgrupado[$mesKey][$key]['cod_derivacion'][] = $derivacion['cod_derivacion'];
-                                        }
+                                            $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                            if (!empty($derivacion['diagnostico'])) {
+                                                $consolidadoAgrupado[$mesKey][$key]['cie10'][] = $derivacion['diagnostico'];
+                                            }
+                                            if (!empty($derivacion['cod_derivacion'])) {
+                                                $consolidadoAgrupado[$mesKey][$key]['cod_derivacion'][] = $derivacion['cod_derivacion'];
+                                            }
 
-                                        $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
-                                    }
-                                }
-                                $n = 1;
-
-                                // Ejemplo de cómo iterar sobre los grupos de facturas por código de derivación:
-                                foreach ($grupos as $codigoDerivacion => $grupoFacturas):
-                                    // Insertar alerta si hay alguna factura sin código en este grupo
-                                    $tieneAlgunoSinCodigo = false;
-                                    foreach ($grupoFacturas as $item) {
-                                        if (!$item['tiene_codigo']) {
-                                            $tieneAlgunoSinCodigo = true;
-                                            break;
+                                            $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
                                         }
                                     }
-                                    if ($tieneAlgunoSinCodigo) {
-                                        echo "<div class='alert alert-warning'>⚠️ Este grupo contiene facturas sin código de derivación</div>";
-                                    }
-                                    // ... aquí se puede mostrar el contenido del grupo ...
-                                endforeach;
+                                    $n = 1;
 
-                                foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
-                                    $listaPacientes = array_values($pacientesAgrupados);
-                                    echo "<pre>📌 Pacientes agrupados para $mes: " . count($pacientesAgrupados) . "</pre>";
-                                    $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                                    $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                                    ?>
-                                    <div class="d-flex justify-content-between align-items-center mt-4">
-                                        <h5>Mes: <?= $mesFormateado ?></h5>
-                                        <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵
-                                            Monto total:
-                                            $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
-                                    </div>
+                                    // Ejemplo de cómo iterar sobre los grupos de facturas por código de derivación:
+                                    foreach ($grupos as $codigoDerivacion => $grupoFacturas):
+                                        // Insertar alerta si hay alguna factura sin código en este grupo
+                                        $tieneAlgunoSinCodigo = false;
+                                        foreach ($grupoFacturas as $item) {
+                                            if (!$item['tiene_codigo']) {
+                                                $tieneAlgunoSinCodigo = true;
+                                                break;
+                                            }
+                                        }
+                                        if ($tieneAlgunoSinCodigo) {
+                                            echo "<div class='alert alert-warning'>⚠️ Este grupo contiene facturas sin código de derivación</div>";
+                                        }
+                                        // ... aquí se puede mostrar el contenido del grupo ...
+                                    endforeach;
 
-                                    <div class="table-responsive"
-                                         style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                        <table class="table table-bordered table-striped">
-                                            <thead class="table-success text-center">
-                                            <tr>
-                                                <th>#</th>
-                                                <th>🏛️</th>
-                                                <th>🪪 Cédula</th>
-                                                <th>👤 Apellidos</th>
-                                                <th>🧍 Nombre</th>
-                                                <th>📅➕</th>
-                                                <th>📅➖</th>
-                                                <th>📝 CIE10</th>
-                                                <th>🔬 Proc</th>
-                                                <th>⏳</th>
-                                                <th>⚧️</th>
-                                                <th>💲 Total</th>
-                                                <th>🧾Fact.</th>
-                                            </tr>
-                                            </thead>
-                                            <tbody>
-                                            <?php foreach ($pacientesAgrupados as $hc => $info):
-                                                $pacienteInfo = $pacientesCache[$hc] ?? [];
-                                                $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
-                                                $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
-                                                $procedimientos = InformesHelper::formatearListaProcedimientos($info['procedimientos']);
-                                                $cie10 = InformesHelper::extraerCie10(implode('; ', array_unique($info['cie10'])));
-                                                $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
-                                                $nombre = $pacienteInfo['fname'] . ' ' . $pacienteInfo['mname'];
-                                                $apellido = $pacienteInfo['lname'] . ' ' . $pacienteInfo['lname2'];
-                                                $form_ids = implode(', ', $info['form_ids']);
-                                                ?>
-                                                <tr style='font-size: 12.5px;'>
-                                                    <td class="text-center"><?= $n ?></td>
-                                                    <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $info['afiliacion'])))) ?></td>
-                                                    <td class="text-center"><?= $pacienteInfo['hc_number'] ?></td>
-                                                    <td><?= $apellido ?></td>
-                                                    <td><?= $nombre ?></td>
-                                                    <td><?= $info['fecha_ingreso'] ?></td>
-                                                    <td><?= $info['fecha_egreso'] ?></td>
-                                                    <td><?= $cie10 ?></td>
-                                                    <td><?= $form_ids ?></td>
-                                                    <td class="text-center"><?= $edad ?></td>
-                                                    <td class="text-center"><?=
-                                                        (!empty($codigoDerivacion)
-                                                            ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"
-                                                            : "<form method='post' style='display:inline;'>
-                                                                <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($form_ids) . "'>
-                                                                <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($pacienteInfo['hc_number']) . "'>
-                                                                <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
-                                                                </form>"
-                                                        )
-                                                        ?></td>
-                                                    <td class="text-end">
-                                                        $<?= number_format($info['total'], 2) ?></td>
-                                                    <?php
-                                                    $billingIds = [];
-                                                    foreach ($info['form_ids'] as $formIdLoop) {
-                                                        $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
-                                                        if ($id) {
-                                                            $billingIds[] = $id;
-                                                        }
-                                                    }
-                                                    $billingParam = implode(',', $billingIds);
-                                                    $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($billingParam);
-                                                    ?>
-                                                    <td><a href="<?= $url ?>" class="btn btn-sm btn-info">Ver
-                                                            detalle</a></td>
+                                    foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
+                                        $listaPacientes = array_values($pacientesAgrupados);
+                                        echo "<pre>📌 Pacientes agrupados para $mes: " . count($pacientesAgrupados) . "</pre>";
+                                        $formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::LONG, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                        $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                        ?>
+                                        <div class="d-flex justify-content-between align-items-center mt-4">
+                                            <h5>Mes: <?= $mesFormateado ?></h5>
+                                            <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵
+                                                Monto total:
+                                                $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
+                                        </div>
+
+                                        <div class="table-responsive"
+                                             style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
+                                            <table class="table table-bordered table-striped">
+                                                <thead class="table-success text-center">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>🏛️</th>
+                                                    <th>🪪 Cédula</th>
+                                                    <th>👤 Apellidos</th>
+                                                    <th>🧍 Nombre</th>
+                                                    <th>📅➕</th>
+                                                    <th>📅➖</th>
+                                                    <th>📝 CIE10</th>
+                                                    <th>🔬 Proc</th>
+                                                    <th>⏳</th>
+                                                    <th>⚧️</th>
+                                                    <th>💲 Total</th>
+                                                    <th>🧾Fact.</th>
                                                 </tr>
-                                                <?php
-                                                $n++;
-                                            endforeach;
-                                            ?>
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                <?php foreach ($pacientesAgrupados as $hc => $info):
+                                                    $pacienteInfo = $pacientesCache[$hc] ?? [];
+                                                    $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
+                                                    $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
+                                                    $procedimientos = InformesHelper::formatearListaProcedimientos($info['procedimientos']);
+                                                    $cie10 = InformesHelper::extraerCie10(implode('; ', array_unique($info['cie10'])));
+                                                    $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
+                                                    $nombre = $pacienteInfo['fname'] . ' ' . $pacienteInfo['mname'];
+                                                    $apellido = $pacienteInfo['lname'] . ' ' . $pacienteInfo['lname2'];
+                                                    $form_ids = implode(', ', $info['form_ids']);
+                                                    ?>
+                                                    <tr style='font-size: 12.5px;'>
+                                                        <td class="text-center"><?= $n ?></td>
+                                                        <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $info['afiliacion'])))) ?></td>
+                                                        <td class="text-center"><?= $pacienteInfo['hc_number'] ?></td>
+                                                        <td><?= $apellido ?></td>
+                                                        <td><?= $nombre ?></td>
+                                                        <td><?= $info['fecha_ingreso'] ?></td>
+                                                        <td><?= $info['fecha_egreso'] ?></td>
+                                                        <td><?= $cie10 ?></td>
+                                                        <td><?= $form_ids ?></td>
+                                                        <td class="text-center"><?= $edad ?></td>
+                                                        <td class="text-center"><?=
+                                                            (!empty($codigoDerivacion)
+                                                                ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"
+                                                                : "<form method='post' style='display:inline;'>
+                                                                    <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($form_ids) . "'>
+                                                                    <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($pacienteInfo['hc_number']) . "'>
+                                                                    <button type='submit' name='scrape_derivacion' class='btn btn-sm btn-warning'>📌 Obtener Código Derivación</button>
+                                                                    </form>"
+                                                            )
+                                                            ?></td>
+                                                        <td class="text-end">
+                                                            $<?= number_format($info['total'], 2) ?></td>
+                                                        <?php
+                                                        $billingIds = [];
+                                                        foreach ($info['form_ids'] as $formIdLoop) {
+                                                            $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
+                                                            if ($id) {
+                                                                $billingIds[] = $id;
+                                                            }
+                                                        }
+                                                        $billingParam = implode(',', $billingIds);
+                                                        $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($billingParam);
+                                                        ?>
+                                                        <td><a href="<?= $url ?>" class="btn btn-sm btn-info">Ver
+                                                                detalle</a></td>
+                                                    </tr>
+                                                    <?php
+                                                    $n++;
+                                                endforeach;
+                                                ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <a
+                                            href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                            class="btn btn-primary mt-3">
+                                        Descargar Consolidado
+                                    </a>
+                                <?php else: ?>
+                                    <div class="alert alert-info">📅 Por favor selecciona un mes para ver el
+                                        consolidado.
                                     </div>
-                                <?php endforeach; ?>
-                                <a
-                                        href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
-                                        class="btn btn-primary mt-3">
-                                    Descargar Consolidado
-                                </a>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>

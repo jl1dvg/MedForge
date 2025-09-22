@@ -251,7 +251,7 @@ $formulario = $datos['formulario'] ?? [];
 
                             include __DIR__ . '/components/scrapping_procedimientos.php';
                             ?>
-                            <div class="row">
+                             <div class="row">
                                 <!-- Leyenda de colores -->
                                 <div class="mb-3">
                                     <strong>Leyenda de colores:</strong>
