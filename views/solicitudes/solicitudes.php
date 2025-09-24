@@ -68,9 +68,10 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
         }
 
         .kanban-column {
-            min-width: 260px;
-            max-width: 260px;
-            width: 260px;
+            flex: 1 1 0;
+            min-width: 220px;
+            /* max-width: 260px; */
+            /* width: 260px; */
             background: #f8fafc;
             border: 1px solid #eef1f5;
             border-radius: 16px;
@@ -87,6 +88,7 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
             top: 0;
             z-index: 2;
             margin-bottom: 0.2em;
+            border-top: 4px solid rgba(0,0,0,0.1); /* Light indicator strip */
         }
 
         .kanban-board {
@@ -110,9 +112,10 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
 
         @media (max-width: 900px) {
             .kanban-column {
-                min-width: 170px;
-                max-width: 170px;
-                width: 170px;
+                min-width: 160px;
+                flex: 1 1 0;
+                /* max-width: 170px; */
+                /* width: 170px; */
             }
         }
 
@@ -127,6 +130,16 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
             border: 2px dashed #007bff;
             transition: background-color 0.2s ease;
             min-height: 120px;
+        }
+
+        .kanban-card.urgente {
+            border-left: 4px solid #dc3545;
+        }
+        .kanban-card.pendiente {
+            border-left: 4px solid #ffc107;
+        }
+        .kanban-card.normal {
+            border-left: 4px solid #28a745;
         }
     </style>
 
@@ -202,9 +215,20 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
                         'Aprobación Anestesia' => 'aprobacion-anestesia',
                         'Listo para Agenda' => 'listo-para-agenda'
                     ];
+                    $colores = [
+                        'recibido' => 'primary',
+                        'revision-codigos' => 'info',
+                        'docs-completos' => 'success',
+                        'aprobacion-anestesia' => 'warning',
+                        'listo-para-agenda' => 'dark'
+                    ];
                     foreach ($estados as $estadoLabel => $estadoId) {
+                        $color = $colores[$estadoId] ?? 'secondary';
                         echo "<div class='kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-1 me-0'>";
-                        echo "<h5 class='text-center'>$estadoLabel <span class='badge bg-primary' id='count-$estadoId' aria-label='Número de solicitudes en estado $estadoLabel'>0</span></h5>";
+                        echo "<h5 class='text-center'>$estadoLabel 
+                                <span class='badge bg-$color' id='count-$estadoId' aria-label='Número de solicitudes en estado $estadoLabel'>0</span>
+                                <small class='text-muted' id='percent-$estadoId'></small>
+                              </h5>";
                         echo "<div class='kanban-items' id='kanban-$estadoId'></div>";
                         echo "</div>";
                     }
@@ -286,17 +310,6 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
         </div>
     </div>
 </div>
-<script>
-    // Función para actualizar los contadores de tarjetas Kanban por estado
-    function actualizarContadoresKanban() {
-        Object.keys(agrupadasPorEstado).forEach(estado => {
-            const contador = document.getElementById(`count-${estado}`);
-            if (contador) {
-                contador.textContent = agrupadasPorEstado[estado].length;
-            }
-        });
-    }
-</script>
 </body>
 <!-- Toast container -->
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>

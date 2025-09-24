@@ -33,7 +33,7 @@
                         <td><?= htmlspecialchars(trim(($r['fname'] ?? '') . ' ' . ($r['mname'] ?? '') . ' ' . ($r['lname'] ?? '') . ' ' . ($r['lname2'] ?? ''))) ?></td>
                         <td><?= htmlspecialchars($r['afiliacion']) ?></td>
                         <td><?= htmlspecialchars($r['fecha']) ?></td>
-                        <td><?= htmlspecialchars($r['nombre_procedimiento']) ?></td>
+                        <td><?= htmlspecialchars(($r['membrete'] ?? '') . ' ' . ($r['lateralidad'] ?? '')) ?></td>
                         <td>
                             <?php
                             $status = isset($r['status']) ? (int)$r['status'] : 0;
@@ -88,7 +88,7 @@
                         <td><?= htmlspecialchars(trim(($r['fname'] ?? '') . ' ' . ($r['mname'] ?? '') . ' ' . ($r['lname'] ?? '') . ' ' . ($r['lname2'] ?? ''))) ?></td>
                         <td><?= htmlspecialchars($r['afiliacion']) ?></td>
                         <td><?= htmlspecialchars($r['fecha']) ?></td>
-                        <td><?= htmlspecialchars($r['nombre_procedimiento']) ?></td>
+                        <td><?= htmlspecialchars(($r['membrete'] ?? '') . ' ' . ($r['lateralidad'] ?? '')) ?></td>
                         <td>
                             <?php
                             $status = isset($r['status']) ? (int)$r['status'] : 0;

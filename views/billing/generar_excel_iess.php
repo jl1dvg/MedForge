@@ -163,6 +163,14 @@ foreach ($datosFacturacionLote as $bloque) {
         return (float)$b['proc_precio'] <=> (float)$a['proc_precio'];
     });
 
+    $tiene67036 = false;
+    foreach ($data['procedimientos'] as $p) {
+        if (($p['proc_codigo'] ?? '') === '67036') {
+            $tiene67036 = true;
+            break;
+        }
+    }
+
     foreach ($data['procedimientos'] as $index => $p) {
         //echo '<pre>' . var_dump($data['visita']) . '</pre>';
         $descripcion = $p['proc_detalle'] ?? '';
@@ -194,7 +202,7 @@ foreach ($datosFacturacionLote as $bloque) {
                     $pacienteInfo['hc_number'] ?? '', // E
                     $nombrePaciente,   // F
                     $sexo,             // G
-                    $pacienteInfo['fecha_nacimiento'] ?? '', // H
+                    !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H
                     $contexto['edad'] ?? '', // I
                     $esCirugia ? 'PRO/INTERV' : 'IMAGEN',      // J
                     $codigo,           // K
@@ -236,11 +244,7 @@ foreach ($datosFacturacionLote as $bloque) {
         }
 
         // Lógica normal
-        if ($index === 0 || stripos($descripcion, 'separado') !== false) {
-            $porcentaje = 1;
-        } else {
-            $porcentaje = 0.5;
-        }
+        $porcentaje = ($tiene67036) ? 0.5 : (($index === 0 || stripos($descripcion, 'separado') !== false) ? 1 : 0.5);
         $valorUnitario = $precioBase;
         $total = $valorUnitario * $porcentaje;
 
@@ -256,7 +260,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
-            $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+            !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
             $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
             $codigo, // K: Código procedimiento
@@ -298,7 +302,7 @@ foreach ($datosFacturacionLote as $bloque) {
         $row++;
     }
 
-    if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante'])) {
+    if (!$tiene67036 && (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante']))) {
         foreach ($data['procedimientos'] as $index => $p) {
             $descripcion = $p['proc_detalle'] ?? '';
             $precio = (float)$p['proc_precio'];
@@ -314,7 +318,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
                 $nombrePaciente,     // F: Nombre completo paciente
                 $sexo,               // G: Sexo
-                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
                 $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
                 $p['proc_codigo'] ?? '', // K: Código procedimiento
@@ -383,7 +387,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
-            $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+            !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
             $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
             $p['proc_codigo'] ?? '', // K: Código procedimiento
@@ -440,7 +444,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
-            $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+            !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
             $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
             $codigo,             // K: Código procedimiento (anestesia)
@@ -495,7 +499,7 @@ foreach ($datosFacturacionLote as $bloque) {
     foreach ($fuenteDatos as $bloque) {
         $grupo = $bloque['grupo'];
         foreach ($bloque['items'] as $item) {
-            $descripcion = $item['nombre'] ?? $item['detalle'] ?? '';
+            $descripcion = str_replace(["\r", "\n"], ' ', $item['nombre'] ?? $item['detalle'] ?? '');
             $excluir = false;
             foreach ($accionesReglas as $accion) {
                 if ($accion['tipo'] === 'excluir_insumo' && stripos($descripcion, $accion['parametro']) !== false) {
@@ -529,7 +533,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
                 $nombrePaciente,     // F: Nombre completo paciente
                 $sexo,               // G: Sexo
-                $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+                !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
                 $esCirugia ? 'PRO/INTERV' : 'IMAGEN',              // J: Tipo prestación (FARMACIA/INSUMOS)
                 ltrim($codigo, '0'),   // K: Código insumo/fármaco SIN ceros a la izquierda
@@ -591,7 +595,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
             $nombrePaciente,     // F: Nombre completo paciente
             $sexo,               // G: Sexo
-            $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
+            !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
             $esCirugia ? 'PRO/INTERV' : 'IMAGEN', // J: Tipo prestación
             $codigo,             // K: Código servicio

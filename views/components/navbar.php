@@ -120,6 +120,11 @@ if (!function_exists('isActive')) {
                         <i class="mdi mdi-account-outline"></i>Particulares
                     </a>
                 </li>
+                <li class="<?= isActive('/views/billing/no_facturados.php') ?>">
+                    <a href="<?= BASE_URL . 'views/billing/no_facturados.php'; ?>">
+                        <i class="mdi mdi-account-outline"></i>No Facturado
+                    </a>
+                </li>
             </ul>
         </li>
 

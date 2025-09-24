@@ -181,6 +181,24 @@ class BillingService
         ];
     }
 
+    public function obtenerResumen(string $formId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM billing_main WHERE form_id = ?");
+        $stmt->execute([$formId]);
+        $billing = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$billing) return null;
+
+        $billingId = $billing['id'];
+
+        // Solo cargar procedimientos (sin detalles de insumos, medicamentos, etc.)
+        $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
+
+        return [
+            'billing' => $billing,
+            'procedimientos' => $procedimientos
+        ];
+    }
+
     /**
      * Ajusta código/nombre de medicamentos según afiliación
      */

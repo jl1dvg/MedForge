@@ -26,15 +26,33 @@ use Helpers\InformesHelper;
 $billingController = new BillingController($pdo);
 $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
+// Cache de derivaciones por form_id
+$cacheDerivaciones = [];
 // Paso 1: Obtener todas las facturas disponibles
 $username = $dashboardController->getAuthenticatedUser();
+
+// Obtener modo de informe
+$modo = 'consolidado';
+
+// Definir filtros centralizados
+$filtros = [
+    'modo' => $modo,
+    'billing_id' => $_GET['billing_id'] ?? null,
+    'mes' => $_GET['mes'] ?? '',
+];
+
+$mesSeleccionado = $filtros['mes'];
+
 $facturas = $billingController->obtenerFacturasDisponibles($mesSeleccionado);
 
 // Agrupar facturas por código de derivación
 $grupos = [];
 foreach ($facturas as $factura) {
     $form_id = $factura['form_id'];
-    $derivacion = $billingController->obtenerDerivacionPorFormId($form_id);
+    if (!isset($cacheDerivaciones[$form_id])) {
+        $cacheDerivaciones[$form_id] = $billingController->obtenerDerivacionPorFormId($form_id);
+    }
+    $derivacion = $cacheDerivaciones[$form_id];
     $codigo = $derivacion['codigo_derivacion'] ?? null;
 
     $keyAgrupacion = $codigo ?: 'SIN_CODIGO';
@@ -73,23 +91,9 @@ if (!empty($mesSeleccionado)) {
         }
     }
 }
-// Obtener modo de informe
-$modo = 'consolidado';
-
-// Definir filtros centralizados
-$filtros = [
-    'modo' => $modo,
-    'billing_id' => $_GET['billing_id'] ?? null,
-    'mes' => $_GET['mes'] ?? '',
-    'apellido' => $_GET['apellido'] ?? '',
-];
-
 $billingIds = isset($filtros['billing_id']) ? explode(',', $filtros['billing_id']) : [];
 $formId = null;
 $datos = [];
-
-// Filtro de mes para modo consolidado
-$mesSeleccionado = $filtros['mes'];
 
 $formIds = [];
 $datosFacturas = [];
@@ -204,14 +208,6 @@ if (!empty($billingIds)) {
                                             </select>
                                         </div>
 
-                                        <div class="col-md-4">
-                                            <label for="apellido" class="form-label fw-bold">
-                                                <i class="mdi mdi-account-search"></i> Apellido del paciente
-                                            </label>
-                                            <input type="text" name="apellido" id="apellido" class="form-control"
-                                                   value="<?= htmlspecialchars($filtros['apellido']) ?>"
-                                                   placeholder="Buscar por apellido">
-                                        </div>
 
                                         <div class="col-md-4 d-flex gap-2">
                                             <button type="submit" class="btn btn-primary">
@@ -233,7 +229,11 @@ if (!empty($billingIds)) {
                                 $afiliacion = strtoupper($paciente['afiliacion'] ?? '-');
                                 // Definir $codigoDerivacion para el detalle de la factura
                                 $codigoDerivacion = null;
-                                $derivacionData = $billingController->obtenerDerivacionPorFormId($primerDato['billing']['form_id']);
+                                $formIdPrimero = $primerDato['billing']['form_id'];
+                                if (!isset($cacheDerivaciones[$formIdPrimero])) {
+                                    $cacheDerivaciones[$formIdPrimero] = $billingController->obtenerDerivacionPorFormId($formIdPrimero);
+                                }
+                                $derivacionData = $cacheDerivaciones[$formIdPrimero];
                                 $codigoDerivacion = $derivacionData['cod_derivacion'];
                                 $doctor = $derivacionData['referido'];
                                 $fecha_registro = $derivacionData['fecha_registro'] ?? null;
@@ -343,7 +343,11 @@ if (!empty($billingIds)) {
                                             $consolidadoAgrupado[$mesKey][$key]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
                                             $consolidadoAgrupado[$mesKey][$key]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
 
-                                            $derivacion = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                                            $formIdLoop = $p['form_id'];
+                                            if (!isset($cacheDerivaciones[$formIdLoop])) {
+                                                $cacheDerivaciones[$formIdLoop] = $billingController->obtenerDerivacionPorFormId($formIdLoop);
+                                            }
+                                            $derivacion = $cacheDerivaciones[$formIdLoop];
                                             if (!empty($derivacion['diagnostico'])) {
                                                 $consolidadoAgrupado[$mesKey][$key]['cie10'][] = $derivacion['diagnostico'];
                                             }
@@ -387,14 +391,14 @@ if (!empty($billingIds)) {
 
                                         <div class="table-responsive"
                                              style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                            <table class="table table-bordered table-striped">
-                                                <thead class="table-success text-center">
+                                            <table id="example"
+                                                   class="table table-striped table-hover table-sm invoice-archive sticky-header">
+                                                <thead class="bg-success-light">
                                                 <tr>
                                                     <th>#</th>
                                                     <th>🏛️</th>
                                                     <th>🪪 Cédula</th>
-                                                    <th>👤 Apellidos</th>
-                                                    <th>🧍 Nombre</th>
+                                                    <th>👤 Nombres</th>
                                                     <th>📅➕</th>
                                                     <th>📅➖</th>
                                                     <th>📝 CIE10</th>
@@ -411,7 +415,8 @@ if (!empty($billingIds)) {
                                                     $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
                                                     $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
                                                     $procedimientos = InformesHelper::formatearListaProcedimientos($info['procedimientos']);
-                                                    $cie10 = InformesHelper::extraerCie10(implode('; ', array_unique($info['cie10'])));
+                                                    $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
+                                                    $cie10 = InformesHelper::extraerCie10($cie10);
                                                     $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
                                                     $nombre = $pacienteInfo['fname'] . ' ' . $pacienteInfo['mname'];
                                                     $apellido = $pacienteInfo['lname'] . ' ' . $pacienteInfo['lname2'];
@@ -421,10 +426,9 @@ if (!empty($billingIds)) {
                                                         <td class="text-center"><?= $n ?></td>
                                                         <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $info['afiliacion'])))) ?></td>
                                                         <td class="text-center"><?= $pacienteInfo['hc_number'] ?></td>
-                                                        <td><?= $apellido ?></td>
-                                                        <td><?= $nombre ?></td>
-                                                        <td><?= $info['fecha_ingreso'] ?></td>
-                                                        <td><?= $info['fecha_egreso'] ?></td>
+                                                        <td><?= $apellido . ' ' . $nombre ?></td>
+                                                        <td><?= date('d/m/Y', strtotime($info['fecha_ingreso'])) ?></td>
+                                                        <td><?= date('d/m/Y', strtotime($info['fecha_egreso'])) ?></td>
                                                         <td><?= $cie10 ?></td>
                                                         <td><?= $form_ids ?></td>
                                                         <td class="text-center"><?= $edad ?></td>
@@ -492,6 +496,7 @@ if (!empty($billingIds)) {
 <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
 <script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
 <script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 
@@ -499,5 +504,6 @@ if (!empty($billingIds)) {
 <script src="/public/js/jquery.smartmenus.js"></script>
 <script src="/public/js/menus.js"></script>
 <script src="/public/js/template.js"></script>
+<script src="/public/js/pages/data-table.js"></script>
 </body>
 </html>
