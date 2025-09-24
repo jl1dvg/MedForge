@@ -36,6 +36,11 @@ class BillingController
         return $this->billingService->obtenerDatos($formId);
     }
 
+    public function obtenerResumen(string $formId): ?array
+    {
+        return $this->billingService->obtenerResumen($formId);
+    }
+
     public function obtenerValorAnestesia(string $codigo): ?float
     {
         $stmt = $this->db->prepare("SELECT anestesia_nivel3 FROM tarifario_2014 WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1");
@@ -52,10 +57,34 @@ class BillingController
      * Resuelve la ruta del archivo de plantilla para generar Excel según el grupo de afiliación.
      * Intenta varias convenciones de nombre para tolerar diferencias.
      */
-    public function generarExcel(string $formId, string $grupoAfiliacion, string $modo = 'individual'): void
+    public function generarExcel(string $formIdParam, string $grupoAfiliacion, string $modo = 'individual'): void
     {
-        $datos = $this->obtenerDatos($formId);
-        $this->exportService->generarExcel($datos, $formId, $grupoAfiliacion, $modo);
+        $formIds = array_map('trim', explode(',', $formIdParam));
+
+        if (count($formIds) > 1) {
+            // Consolidado
+            $datosMultiples = [];
+            foreach ($formIds as $formId) {
+                $datos = $this->obtenerDatos($formId);
+                if ($datos) {
+                    $datosMultiples[] = $datos;
+                }
+            }
+
+            if (empty($datosMultiples)) {
+                throw new \RuntimeException("❌ No se encontraron datos para los form_id proporcionados");
+            }
+
+            $this->exportService->generarExcelMultiple($datosMultiples, $grupoAfiliacion);
+        } else {
+            // Individual
+            $formId = $formIds[0];
+            $datos = $this->obtenerDatos($formId);
+            if (!$datos) {
+                throw new \RuntimeException("❌ No se encontraron datos para form_id $formId");
+            }
+            $this->exportService->generarExcel($datos, $formId, $grupoAfiliacion, 'individual');
+        }
     }
 
     public function generarExcelAArchivo(string $formId, string $destino, string $grupoAfiliacion): bool
@@ -111,15 +140,15 @@ class BillingController
     function abreviarAfiliacion($afiliacion)
     {
         $mapa = [
-            'contribuyente voluntario' => 'CV',
+            'contribuyente voluntario' => 'SV',
             'conyuge' => 'CY',
-            'conyuge pensionista' => 'CP',
-            'seguro campesino' => 'SC',
+            'conyuge pensionista' => 'CJ',
+            'seguro campesino' => 'CA',
             'seguro campesino jubilado' => 'CJ',
             'seguro general' => 'SG',
             'seguro general jubilado' => 'JU',
             'seguro general por montepio' => 'MO',
-            'seguro general tiempo parcial' => 'TP'
+            'seguro general tiempo parcial' => 'SG'
         ];
         $normalizado = strtolower(trim($afiliacion));
         return $mapa[$normalizado] ?? strtoupper($afiliacion);
@@ -197,6 +226,8 @@ class BillingController
                 pr.hc_number,
                 pd.fecha_inicio AS fecha,
                 pd.status,
+                pd.membrete,
+                pd.lateralidad,
                 pr.procedimiento_proyectado AS nombre_procedimiento,
                 pa.afiliacion,
                 pa.fname,
@@ -243,9 +274,12 @@ class BillingController
         $quirurgicosRevisados = [];
         $quirurgicosNoRevisados = [];
         $noQuirurgicos = [];
+
         foreach ($todos as $r) {
-            if (stripos(trim($r['nombre_procedimiento']), 'CIRUGIAS -') === 0) {
-                if ((int)($r['status'] ?? 0) === 1) {
+            $tieneProtocolo = isset($r['status']);
+
+            if ($tieneProtocolo) {
+                if ((int)$r['status'] === 1) {
                     $quirurgicosRevisados[] = $r;
                 } else {
                     $quirurgicosNoRevisados[] = $r;

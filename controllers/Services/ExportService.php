@@ -52,7 +52,7 @@ class ExportService
         $GLOBALS['datos_facturacion'] = $datos;
         $GLOBALS['form_id_facturacion'] = $formId;
 
-            $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
+        $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
 
         if ($modo === 'bulk') {
             require $archivoPlantilla;
@@ -73,26 +73,59 @@ class ExportService
         }
     }
 
+    public function generarExcelMultiple(array $datosMultiples, string $grupoAfiliacion): void
+    {
+        require_once __DIR__ . '/../../vendor/autoload.php';
+        $spreadsheet = new Spreadsheet();
+        $GLOBALS['spreadsheet'] = $spreadsheet;
+
+        $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
+
+        $sheetIndex = 0;
+        foreach ($datosMultiples as $datos) {
+            $GLOBALS['datos_facturacion'] = $datos;
+            $GLOBALS['form_id_facturacion'] = $datos['paciente']['form_id'] ?? '';
+
+            if ($sheetIndex > 0) {
+                // 👇 crea hoja nueva al final
+                $spreadsheet->createSheet();
+            }
+            // 👇 activa la última hoja
+            $spreadsheet->setActiveSheetIndex($spreadsheet->getSheetCount() - 1);
+
+            require $archivoPlantilla;
+
+            $sheetIndex++;
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $filename = "facturacion_consolidada_" . date('Ymd_His') . ".xlsx";
+        header("Content-Disposition: attachment; filename=\"$filename\"");
+        $writer->save('php://output');
+        exit;
+    }
+
     /**
      * Genera un Excel en archivo físico.
      */
     public function generarExcelAArchivo(array $datos, string $formId, string $destino, string $grupoAfiliacion): bool
     {
         try {
-        $GLOBALS['datos_facturacion'] = $datos;
-        $GLOBALS['form_id_facturacion'] = $formId;
+            $GLOBALS['datos_facturacion'] = $datos;
+            $GLOBALS['form_id_facturacion'] = $formId;
 
-        require_once __DIR__ . '/../../vendor/autoload.php';
-        $spreadsheet = new Spreadsheet();
-        $GLOBALS['spreadsheet'] = $spreadsheet;
+            require_once __DIR__ . '/../../vendor/autoload.php';
+            $spreadsheet = new Spreadsheet();
+            $GLOBALS['spreadsheet'] = $spreadsheet;
 
             $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
 
-                ob_start();
+            ob_start();
             require $archivoPlantilla;
-                $error_output = ob_get_clean();
+            $error_output = ob_get_clean();
 
-                if (!empty($error_output)) {
+            if (!empty($error_output)) {
                 file_put_contents(__DIR__ . '/../../exportar_zip_log.txt', "❌ Error en $archivoPlantilla para $formId: $error_output\n", FILE_APPEND);
                 return false;
             }

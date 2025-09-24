@@ -1,5 +1,5 @@
 // js/kanban/renderer.js
-import { showToast } from './toast.js';
+import {showToast} from './toast.js';
 
 export function renderKanban(data, callbackEstadoActualizado) {
     document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
@@ -24,9 +24,13 @@ export function renderKanban(data, callbackEstadoActualizado) {
             <strong>👤 ${s.nombre}</strong><br>
             <small>🆔 ${s.hc_number}</small><br>
             <small>📅 ${fechaFormateada} <span class="badge">${semaforo}</span></small><br>
+            <small>🧑‍⚕️ ${s.doctor || 'Sin doctor'}</small><br>
             <small>🏥 ${s.afiliacion}</small><br>
             <small>🔍 <span class="text-primary fw-bold">${s.procedimiento}</span></small><br>
-            <small>👁️ ${s.ojo}</small>
+            <small>👁️ ${s.ojo}</small><br>
+            <small>💬 ${s.ultima_nota || 'Sin nota'}</small><br>
+            <small>⏱️ ${dias} día(s) en estado actual</small><br>
+            <small>📎 ${s.adjuntos || 'Sin adjuntos'}</small>
         `;
 
         const estadoId = 'kanban-' + s.estado.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');

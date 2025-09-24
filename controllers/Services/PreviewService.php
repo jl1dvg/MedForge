@@ -28,9 +28,23 @@ class PreviewService
         ];
 
         // 1. Procedimientos
-        $stmt = $this->db->prepare("SELECT procedimientos FROM protocolo_data WHERE form_id = ?");
+        $stmt = $this->db->prepare("SELECT procedimientos, fecha_inicio FROM protocolo_data WHERE form_id = ?");
         $stmt->execute([$formId]);
-        $json = $stmt->fetchColumn();
+        $rowProtocolo = $stmt->fetch(PDO::FETCH_ASSOC);
+        $json = $rowProtocolo['procedimientos'] ?? null;
+        $fechaInicio = $rowProtocolo['fecha_inicio'] ?? null;
+
+        // Obtener edad del paciente
+        $stmtEdad = $this->db->prepare("SELECT fecha_nacimiento FROM patient_data WHERE hc_number = ?");
+        $stmtEdad->execute([$hcNumber]);
+        $fechaNacimiento = $stmtEdad->fetchColumn();
+
+        $edad = null;
+        if ($fechaNacimiento && $fechaInicio) {
+            $nac = new \DateTime($fechaNacimiento);
+            $fechaReferencia = new \DateTime($fechaInicio);
+            $edad = $fechaReferencia->diff($nac)->y;
+        }
 
         if ($json) {
             $procedimientos = json_decode($json, true);
@@ -167,14 +181,27 @@ class PreviewService
             error_log("❌ Error en obtenerDerechoPorDuracion: " . $e->getMessage());
         }
 
+        // Determinar código de anestesia y agregar entradas según edad y afiliación
+        $codigoAnestesiaBase = '999999';
+
         if ($afiliacion === "ISSFA" && $codigoCirugia === "66984") {
             $preview['anestesia'][] = [
-                'codigo' => '999999',
+                'codigo' => $codigoAnestesiaBase,
                 'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
                 'tiempo' => $cuartos,
                 'valor2' => 13.34,
                 'precio' => round($cuartos * 13.34, 2)
             ];
+
+            if ($edad !== null && $edad >= 70) {
+                $preview['anestesia'][] = [
+                    'codigo' => '99100',
+                    'nombre' => 'ANESTESIA POR EDAD EXTREMA',
+                    'tiempo' => 1,
+                    'valor2' => 13.34,
+                    'precio' => round(1 * 13.34, 2)
+                ];
+            }
         } elseif ($afiliacion === "ISSFA") {
             $cantidad99149 = ($cuartos >= 2) ? 1 : $cuartos;
             $cantidad99150 = ($cuartos > 2) ? $cuartos - 2 : 0;
@@ -197,14 +224,42 @@ class PreviewService
                     'precio' => round($cantidad99150 * 13.34, 2)
                 ];
             }
-        } else {
+
             $preview['anestesia'][] = [
-                'codigo' => '999999',
+                'codigo' => $codigoAnestesiaBase,
                 'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
                 'tiempo' => $cuartos,
                 'valor2' => 13.34,
                 'precio' => round($cuartos * 13.34, 2)
             ];
+
+            if ($edad !== null && $edad >= 70) {
+                $preview['anestesia'][] = [
+                    'codigo' => '99100',
+                    'nombre' => 'ANESTESIA POR EDAD EXTREMA',
+                    'tiempo' => 1,
+                    'valor2' => 13.34,
+                    'precio' => round(1 * 13.34, 2)
+                ];
+            }
+        } else {
+            $preview['anestesia'][] = [
+                'codigo' => $codigoAnestesiaBase,
+                'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
+                'tiempo' => $cuartos,
+                'valor2' => 13.34,
+                'precio' => round($cuartos * 13.34, 2)
+            ];
+
+            if ($edad !== null && $edad >= 70) {
+                $preview['anestesia'][] = [
+                    'codigo' => '99100',
+                    'nombre' => 'ANESTESIA POR EDAD EXTREMA',
+                    'tiempo' => 1,
+                    'valor2' => 13.34,
+                    'precio' => round(1 * 13.34, 2)
+                ];
+            }
         }
 
         return $preview;
