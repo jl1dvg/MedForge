@@ -75,17 +75,6 @@ $headers = [
     'AE1' => '31',
     'AF1' => '32',
     'AG1' => '33',
-    'AH1' => '34',
-    'AI1' => '35',
-    'AJ1' => '36',
-    'AK1' => '37',
-    'AL1' => '38',
-    'AM1' => '39',
-    'AN1' => '40',
-    'AO1' => '41',
-    'AP1' => '42',
-    'AQ1' => '43',
-    'AR1' => '44',
 ];
 foreach ($headers as $cell => $value) {
     $sheet->setCellValue($cell, $value);
@@ -96,7 +85,7 @@ $row = 2;
 
 $cols = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-    'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
+    'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG'
 ];
 
 foreach ($datosFacturacionLote as $bloque) {
@@ -196,7 +185,7 @@ foreach ($datosFacturacionLote as $bloque) {
             for ($dup = 0; $dup < 2; $dup++) {
                 $colVals = [
                     '0000000135', // A
-                    '',     // B
+                    '1',     // B
                     $fechaFacturacion,
                     $abreviaturaAfiliacion, // D
                     $pacienteInfo['hc_number'] ?? '', // E
@@ -215,25 +204,15 @@ foreach ($datosFacturacionLote as $bloque) {
                     'T',               // S
                     $pacienteInfo['hc_number'] ?? '', // T
                     $nombrePaciente,   // U
-                    '',                // V
+                    'CVA',                // V
                     $codigoDerivacion ?? '', // W
                     '1',               // X
                     'D',               // Y
-                    '', '', '', '',    // Z, AA, AB, AC
+                    '0', '', '', '',    // Z, AA, AB, AC
                     '0',               // AD
                     '0',               // AE
-                    number_format($total, 2), // AF (total 62.5%)
-                    '',                // AG
-                    $fechaIngresoFormateadaGlobal,
-                    $fechaEgresoFormateadaGlobal, // AH, AI
-                    '',                // AJ
-                    'NO',              // AK
-                    '',                // AL
-                    'NO',              // AM
-                    'P',               // AN
-                    '1',               // AO
-                    '', '',            // AP, AQ
-                    'F',               // AR
+                    'F',               // AF
+                    number_format($total, 2), // AG
                 ];
                 foreach ($cols as $i => $col) {
                     $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -253,8 +232,8 @@ foreach ($datosFacturacionLote as $bloque) {
             continue;
         }
         $colVals = [
-            '0000000135',        // A: Número de protocolo/referencia
-            '',            // B: Ítem
+            '0000000135', // A
+            '1',     // B
             $fechaFacturacion,
             $abreviaturaAfiliacion, // D: Día
             $pacienteInfo['hc_number'] ?? '',      // E: Cédula paciente
@@ -274,25 +253,15 @@ foreach ($datosFacturacionLote as $bloque) {
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
             $nombrePaciente,     // U: Nombre (repetido)
-            '',                  // V: Vacío
+            'CVA',                  // V: Vacío
             $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
             '1',                 // X: Ítem adicional/fijo
             'D',                 // Y: Movimiento
-            '', '', '', '',      // Z, AA, AB, AC: vacíos
+            '0', '', '', '',      // Z, AA, AB, AC: vacíos
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
-            number_format($total, 2), // AF: Total **con porcentaje**
-            '',                  // AG: Vacío
-            $fechaIngresoFormateadaGlobal, // AH: Fecha ingreso
-            $fechaEgresoFormateadaGlobal, // AI: Fecha egreso
-            '',                  // AJ: Vacío
-            'NO',                // AK: Emergencia
-            '',                  // AL: Vacío
-            'NO',                // AM: Reingreso
-            'P',                 // AN: Estado prestación
-            '1',                 // AO: Número de medico
-            '', '',              // AP, AQ: vacíos
-            'F',                 // AR: ¿Facturado?
+            'F',                 // AF: Facturado
+            number_format($total, 2), // AG: Total **con porcentaje**
         ];
         foreach ($cols as $i => $col) {
             $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -332,25 +301,15 @@ foreach ($datosFacturacionLote as $bloque) {
                 'T',                 // S: Tipo pago
                 $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
                 $nombrePaciente,     // U: Nombre (repetido)
-                '',                  // V: Vacío
+                'CVA',                  // V: Vacío
                 $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
                 '1',                 // X: Ítem adicional/fijo
                 'D',                 // Y: Movimiento
-                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                '0', '', '', '',      // Z, AA, AB, AC: vacíos
                 '0',                 // AD: IVA
                 '0',                 // AE: Descuento
-                number_format($total, 2), // AF: Total **con porcentaje**
-                '',                  // AG: Vacío
-                $fechaIngresoFormateadaGlobal,
-                $fechaEgresoFormateadaGlobal,
-                '',                  // AJ: Vacío
-                'NO',                // AK: Emergencia
-                '',                  // AL: Vacío
-                'NO',                // AM: Reingreso
-                'P',                 // AN: Estado prestación
-                '3',                 // AO: Número de prestación
-                '', '',              // AP, AQ: vacíos
-                'F',                 // AR: ¿Facturado?
+                'F',                 // AF: Facturado
+                number_format($total, 2), // AG: Total **con porcentaje**
             ];
 
             foreach ($cols as $i => $col) {
@@ -364,7 +323,7 @@ foreach ($datosFacturacionLote as $bloque) {
 // === ANESTESIA en formato IESS 44 columnas ===
     $cols = [
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-        'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
+        'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG'
     ];
 
 // -- Anestesia por procedimiento principal (si aplica) --
@@ -401,25 +360,15 @@ foreach ($datosFacturacionLote as $bloque) {
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
             $nombrePaciente,     // U: Nombre (repetido)
-            '',                  // V: Vacío
+            'CVA',                  // V: Vacío
             $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
             '1',                 // X: Ítem adicional/fijo
             'D',                 // Y: Movimiento
-            '', '', '', '',      // Z, AA, AB, AC: vacíos
+            '0', '', '', '',      // Z, AA, AB, AC: vacíos
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
-            number_format($total, 2), // AF: Total
-            '',                  // AG: Vacío
-            $fechaIngresoFormateadaGlobal,
-            $fechaEgresoFormateadaGlobal,
-            '',                  // AJ: Vacío
-            'NO',                // AK: Emergencia
-            '',                  // AL: Vacío
-            'NO',                // AM: Reingreso
-            'P',                 // AN: Estado prestación
-            '6',                 // AO: Número de medico
-            '', '',              // AP, AQ: vacíos
-            'F',                 // AR: ¿Facturado?
+            'F',                 // AF: Facturado
+            number_format($total, 2), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {
@@ -458,25 +407,15 @@ foreach ($datosFacturacionLote as $bloque) {
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
             $nombrePaciente,     // U: Nombre (repetido)
-            '',                  // V: Vacío
+            'CVA',                  // V: Vacío
             $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
             '1',                 // X: Ítem adicional/fijo
             'D',                 // Y: Movimiento
-            '', '', '', '',      // Z, AA, AB, AC: vacíos
+            '0', '', '', '',      // Z, AA, AB, AC: vacíos
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
-            number_format($total, 2), // AF: Total
-            '',                  // AG: Vacío
-            $fechaIngresoFormateadaGlobal,
-            $fechaEgresoFormateadaGlobal,
-            '',                  // AJ: Vacío
-            'NO',                // AK: Emergencia
-            '',                  // AL: Vacío
-            'NO',                // AM: Reingreso
-            'P',                 // AN: Estado prestación
-            '6',                 // AO: Número de prestación
-            '', '',              // AP, AQ: vacíos
-            'F',                 // AR: ¿Facturado?
+            'F',                 // AF: Facturado
+            number_format($total, 2), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {
@@ -488,7 +427,7 @@ foreach ($datosFacturacionLote as $bloque) {
 // === FARMACIA E INSUMOS EN FORMATO IESS (44 COLUMNAS) ===
     $cols = [
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-        'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR'
+        'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG'
     ];
 
     $fuenteDatos = [
@@ -547,25 +486,15 @@ foreach ($datosFacturacionLote as $bloque) {
                 'T',                 // S: Tipo pago
                 $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
                 $nombrePaciente,     // U: Nombre (repetido)
-                '',                  // V: Vacío
+                'CVA',                  // V: Vacío
                 $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
                 '1',                 // X: Ítem adicional/fijo
                 'D',                 // Y: Movimiento
-                '', '', '', '',      // Z, AA, AB, AC: vacíos
+                '0', '', '', '',      // Z, AA, AB, AC: vacíos
                 $iva,                // AD: IVA
                 '0',                 // AE: Descuento
-                number_format($total, 2), // AF: Total (con IVA si aplica)
-                '',                  // AG: Vacío
-                $fechaIngresoFormateadaGlobal,
-                $fechaEgresoFormateadaGlobal,
-                '',                  // AJ: Vacío
-                'NO',                // AK: Emergencia
-                '',                  // AL: Vacío
-                'NO',                // AM: Reingreso
-                $abreviatura,                 // AN: Estado prestación
-                '',                 // AO: Número de prestación
-                '', '',              // AP, AQ: vacíos
-                'F',                 // AR: ¿Facturado?
+                'F',                 // AF: ¿Facturado?
+                number_format($total, 2), // AG: Total (con IVA si aplica)
             ];
 
             foreach ($cols as $i => $col) {
@@ -613,25 +542,15 @@ foreach ($datosFacturacionLote as $bloque) {
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
             $nombrePaciente,     // U: Nombre (repetido)
-            '',                  // V: Vacío
+            'CVA',                  // V: Vacío
             $codigoDerivacion ?? '', // W: Autorización/referencia (ajustar)
             '1',                 // X: Ítem adicional/fijo
             'D',                 // Y: Movimiento
-            '', '', '', '',      // Z, AA, AB, AC: vacíos
+            '0', '', '', '',      // Z, AA, AB, AC: vacíos
             $iva,                // AD: IVA
             '0',                 // AE: Descuento
-            number_format($total, 2), // AF: Total
-            '',                  // AG: Vacío
-            $fechaIngresoFormateadaGlobal,
-            $fechaEgresoFormateadaGlobal,
-            '',                  // AJ: Vacío
-            'NO',                // AK: Emergencia
-            '',                  // AL: Vacío
-            'NO',                // AM: Reingreso
-            'P',                 // AN: Estado prestación
-            '',                 // AO: Número de prestación
-            '', '',              // AP, AQ: vacíos
-            'F',                 // AR: ¿Facturado?
+            'F',                 // AF: ¿Facturado?
+            number_format($total, 2), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {

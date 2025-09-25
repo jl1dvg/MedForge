@@ -8,6 +8,11 @@
     <span class="badge bg-secondary">Servicios Institucionales</span>
 </div>
 <div class="col-12 table-responsive">
+    <?php if (!empty($datos['protocoloExtendido']['membrete'])): ?>
+        <h3 class="text-primary text-uppercase mb-3">
+            <?= htmlspecialchars($datos['protocoloExtendido']['membrete'] . ' ' . date('d/m/Y', strtotime($datos['protocoloExtendido']['fecha_inicio']))) ?>
+        </h3>
+    <?php endif; ?>
     <table class="table table-bordered align-middle">
         <thead class="table-dark">
         <tr>
@@ -344,12 +349,31 @@
                 $<?= number_format($total, 2) ?>
             </h4>
         </div>
-        <form method="POST" action="components/eliminar_factura.php"
-              onsubmit="return confirm('¿Estás seguro de que deseas eliminar esta factura?');">
-            <input type="hidden" name="form_id" value="<?= htmlspecialchars($datos['billing']['form_id'] ?? '') ?>">
-            <button type="submit" class="btn btn-danger mt-3">
-                🗑️ Eliminar Factura
-            </button>
-        </form>
+        <button type="button" class="btn btn-danger mt-3"
+                onclick="confirmarEliminacion('<?= $datos['billing']['form_id'] ?? '' ?>')">
+            🗑️ Eliminar Factura
+        </button>
+        <script>
+            function confirmarEliminacion(formId) {
+                Swal.fire({
+                    title: '¿Estás seguro?',
+                    text: "Esta acción eliminará la factura.",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonText: 'Sí, eliminar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = 'components/eliminar_factura.php';
+                        form.innerHTML = `<input type="hidden" name="form_id" value="${formId}">`;
+                        document.body.appendChild(form);
+                        form.submit();
+                    }
+                })
+            }
+        </script>
     </div>
 </div>

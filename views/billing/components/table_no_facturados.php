@@ -32,7 +32,7 @@
                         <td><?= htmlspecialchars($r['hc_number']) ?></td>
                         <td><?= htmlspecialchars(trim(($r['fname'] ?? '') . ' ' . ($r['mname'] ?? '') . ' ' . ($r['lname'] ?? '') . ' ' . ($r['lname2'] ?? ''))) ?></td>
                         <td><?= htmlspecialchars($r['afiliacion']) ?></td>
-                        <td><?= htmlspecialchars($r['fecha']) ?></td>
+                        <td><?= htmlspecialchars(date('d/m/Y', strtotime($r['fecha']))) ?></td>
                         <td><?= htmlspecialchars(($r['membrete'] ?? '') . ' ' . ($r['lateralidad'] ?? '')) ?></td>
                         <td>
                             <?php
@@ -87,7 +87,7 @@
                         <td><?= htmlspecialchars($r['hc_number']) ?></td>
                         <td><?= htmlspecialchars(trim(($r['fname'] ?? '') . ' ' . ($r['mname'] ?? '') . ' ' . ($r['lname'] ?? '') . ' ' . ($r['lname2'] ?? ''))) ?></td>
                         <td><?= htmlspecialchars($r['afiliacion']) ?></td>
-                        <td><?= htmlspecialchars($r['fecha']) ?></td>
+                        <td><?= htmlspecialchars(date('d/m/Y', strtotime($r['fecha']))) ?></td>
                         <td><?= htmlspecialchars(($r['membrete'] ?? '') . ' ' . ($r['lateralidad'] ?? '')) ?></td>
                         <td>
                             <?php
@@ -99,11 +99,8 @@
                             $formId = htmlspecialchars($r['form_id']);
                             $hcNumber = htmlspecialchars($r['hc_number']);
                             echo "<button 
-                                    class='btn btn-app btn-info btn-preview' 
-                                    data-form-id='$formId'
-                                    data-hc-number='$hcNumber'
-                                    data-bs-toggle='modal'
-                                    data-bs-target='#previewModal'>
+                                    class='btn btn-app btn-info'
+                                    onclick=\"window.location.href='/views/reportes/wizard_cirugia/wizard.php?form_id=$formId&hc_number=$hcNumber'\">
                                     $badge
                                     <i class='mdi mdi-file-document'></i> Protocolo
                                 </button>";
@@ -142,7 +139,7 @@
                         <td><?= htmlspecialchars($r['hc_number']) ?></td>
                         <td><?= htmlspecialchars(trim(($r['fname'] ?? '') . ' ' . ($r['mname'] ?? '') . ' ' . ($r['lname'] ?? '') . ' ' . ($r['lname2'] ?? ''))) ?></td>
                         <td><?= htmlspecialchars($r['afiliacion']) ?></td>
-                        <td><?= htmlspecialchars($r['fecha']) ?></td>
+                        <td><?= htmlspecialchars(date('d/m/Y', strtotime($r['fecha']))) ?></td>
                         <td><?= htmlspecialchars($r['nombre_procedimiento']) ?></td>
                         <td>
                             <a href="/billing/facturar.php?form_id=<?= urlencode($r['form_id']) ?>"
