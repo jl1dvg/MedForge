@@ -270,6 +270,10 @@ if (!empty($billingIds)) {
                                            class="btn btn-success btn-lg me-2">
                                             <i class="fa fa-file-excel-o"></i> Descargar Excel
                                         </a>
+                                        <a href="/public/index.php/billing/excel?form_id=<?= urlencode($formIdsParam) ?>&grupo=IESS_SOAM"
+                                           class="btn btn-outline-success btn-lg me-2">
+                                            <i class="fa fa-file-excel-o"></i> Descargar SOAM
+                                        </a>
                                         <?php
                                         // Conservar todos los filtros actuales en la URL excepto 'billing_id'
                                         $filtrosParaRegresar = $_GET;
