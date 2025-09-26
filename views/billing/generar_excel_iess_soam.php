@@ -193,13 +193,13 @@ foreach ($datosFacturacionLote as $bloque) {
                     $sexo,             // G
                     !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H
                     $contexto['edad'] ?? '', // I
-                    $esCirugia ? 'PRO/INTERV' : 'IMAGEN',      // J
+                    $esCirugia ? 'AMB' : 'IMA',      // J
                     $codigo,           // K
                     $descripcion,      // L
                     $cie10, // M
                     '', '',            // N, O
                     '1',               // P
-                    number_format($total, 2), // Q (unitario sin %)
+                    number_format($total, 2, ',', ''), // Q (unitario sin %)
                     '',                // R
                     'T',               // S
                     $pacienteInfo['hc_number'] ?? '', // T
@@ -212,7 +212,7 @@ foreach ($datosFacturacionLote as $bloque) {
                     '0',               // AD
                     '0',               // AE
                     'F',               // AF
-                    number_format($total, 2), // AG
+                    number_format($total, 2, ',', ''), // AG
                 ];
                 foreach ($cols as $i => $col) {
                     $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -241,14 +241,14 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
+            $esCirugia ? 'AMB' : 'IMA',      // J
             $codigo, // K: Código procedimiento
             $descripcion,// L: Descripción procedimiento
             $cie10,   // M: Diagnóstico principal (CIE10)
             '',                  // N: Diagnóstico secundario
             '',                  // O: Diagnóstico 3
             '1',                 // P: Cantidad
-            number_format($total, 2), // Q: Valor unitario **con porcentaje**
+            number_format($total, 2, ',', ''), // Q: Valor unitario **con porcentaje**
             '',                  // R: Vacío/fijo
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -261,7 +261,7 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
             'F',                 // AF: Facturado
-            number_format($total, 2), // AG: Total **con porcentaje**
+            number_format($total, 2, ',', ''), // AG: Total **con porcentaje**
         ];
         foreach ($cols as $i => $col) {
             $sheet->setCellValueExplicit($col . $row, $colVals[$i] ?? '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
@@ -289,14 +289,14 @@ foreach ($datosFacturacionLote as $bloque) {
                 $sexo,               // G: Sexo
                 !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
-                $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
+                $esCirugia ? 'AMB' : 'IMA',      // J
                 $p['proc_codigo'] ?? '', // K: Código procedimiento
                 $p['proc_detalle'] ?? '',// L: Descripción procedimiento
                 $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 '1',                 // P: Cantidad
-                number_format($valorUnitario, 2), // Q: Valor unitario **con porcentaje**
+                number_format($valorUnitario, 2, ',', ''), // Q: Valor unitario **con porcentaje**
                 '',                  // R: Vacío/fijo
                 'T',                 // S: Tipo pago
                 $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -309,7 +309,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 '0',                 // AD: IVA
                 '0',                 // AE: Descuento
                 'F',                 // AF: Facturado
-                number_format($total, 2), // AG: Total **con porcentaje**
+                number_format($total, 2, ',', ''), // AG: Total **con porcentaje**
             ];
 
             foreach ($cols as $i => $col) {
@@ -348,14 +348,14 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
+            $esCirugia ? 'AMB' : 'IMA',      // J
             $p['proc_codigo'] ?? '', // K: Código procedimiento
             $p['proc_detalle'] ?? '',// L: Descripción procedimiento
             $cie10,   // M: Diagnóstico principal (CIE10)
             '',                  // N: Diagnóstico secundario
             '',                  // O: Diagnóstico 3
             '1',                 // P: Cantidad
-            number_format($valorUnitario, 2), // Q: Valor unitario
+            number_format($valorUnitario, 2, ',', ''), // Q: Valor unitario
             '',                  // R: Vacío/fijo
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -368,7 +368,7 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
             'F',                 // AF: Facturado
-            number_format($total, 2), // AG: Total
+            number_format($total, 2, ',', ''), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {
@@ -395,14 +395,14 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'PRO/INTERV' : 'IMAGEN',        // J: Tipo prestación
+            'AMB',        // J: Tipo prestación
             $codigo,             // K: Código procedimiento (anestesia)
             $descripcion,        // L: Descripción procedimiento (anestesia)
             $cie10,   // M: Diagnóstico principal (CIE10)
             '',                  // N: Diagnóstico secundario
             '',                  // O: Diagnóstico 3
             $cantidad,           // P: Cantidad
-            number_format($valorUnitario, 2), // Q: Valor unitario
+            number_format($valorUnitario, 2, ',', ''), // Q: Valor unitario
             '',                  // R: Vacío/fijo
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -415,7 +415,7 @@ foreach ($datosFacturacionLote as $bloque) {
             '0',                 // AD: IVA
             '0',                 // AE: Descuento
             'F',                 // AF: Facturado
-            number_format($total, 2), // AG: Total
+            number_format($total, 2, ',', ''), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {
@@ -474,14 +474,14 @@ foreach ($datosFacturacionLote as $bloque) {
                 $sexo,               // G: Sexo
                 !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
-                $esCirugia ? 'PRO/INTERV' : 'IMAGEN',              // J: Tipo prestación (FARMACIA/INSUMOS)
+                $grupo === 'FARMACIA' ? 'FAR' : 'IMM', // J: Tipo prestación (FARMACIA/INSUMOS)
                 ltrim($codigo, '0'),   // K: Código insumo/fármaco SIN ceros a la izquierda
                 $descripcion,        // L: Descripción insumo/fármaco
                 $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
                 $cantidad,           // P: Cantidad
-                number_format($valorUnitario, 2), // Q: Valor unitario
+                number_format($valorUnitario, 2, ',', ''), // Q: Valor unitario
                 '',                  // R: Vacío/fijo
                 'T',                 // S: Tipo pago
                 $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -494,7 +494,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 $iva,                // AD: IVA
                 '0',                 // AE: Descuento
                 'F',                 // AF: ¿Facturado?
-                number_format($total, 2), // AG: Total (con IVA si aplica)
+                number_format($total, 2, ',', ''), // AG: Total (con IVA si aplica)
             ];
 
             foreach ($cols as $i => $col) {
@@ -530,14 +530,14 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'PRO/INTERV' : 'IMAGEN', // J: Tipo prestación
+            'AMB', // J: Tipo prestación
             $codigo,             // K: Código servicio
             $descripcion,        // L: Descripción servicio
             $cie10,   // M: Diagnóstico principal (CIE10)
             '',                  // N: Diagnóstico secundario
             '',                  // O: Diagnóstico 3
             $cantidad,           // P: Cantidad
-            number_format($valorUnitario, 2), // Q: Valor unitario
+            number_format($valorUnitario, 2, ',', ''), // Q: Valor unitario
             '',                  // R: Vacío/fijo
             'T',                 // S: Tipo pago
             $pacienteInfo['hc_number'] ?? '',      // T: Cédula (repetido)
@@ -550,7 +550,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $iva,                // AD: IVA
             '0',                 // AE: Descuento
             'F',                 // AF: ¿Facturado?
-            number_format($total, 2), // AG: Total
+            number_format($total, 2, ',', ''), // AG: Total
         ];
 
         foreach ($cols as $i => $col) {

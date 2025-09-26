@@ -459,7 +459,8 @@ if (!empty($billingIds)) {
                                                         $billingParam = implode(',', $billingIds);
                                                         $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($billingParam);
                                                         ?>
-                                                        <td><a href="<?= $url ?>" class="btn btn-sm btn-info">Ver
+                                                        <td><a href="<?= $url ?>" class="btn btn-sm btn-info"
+                                                               target="_blank">Ver
                                                                 detalle</a></td>
                                                     </tr>
                                                     <?php
