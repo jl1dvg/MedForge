@@ -1,3 +1,10 @@
+<?php
+function equalsIgnoreCase($a, $b)
+{
+    return strtolower(trim($a ?? '')) === strtolower(trim($b ?? ''));
+}
+
+?>
 <h6>Staff Quirúrgico</h6>
 <section>
     <div class="row">
@@ -9,7 +16,7 @@
                         data-placeholder="Escoja el Cirujano Principal">
                     <option value="" <?= empty($cirugia->cirujano_1) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Cirujano Oftalmólogo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->cirujano_1))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->cirujano_1) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -25,7 +32,7 @@
                         data-placeholder="Escoja el Cirujano 2">
                     <option value="" <?= empty($cirugia->cirujano_2) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Cirujano Oftalmólogo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->cirujano_2))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->cirujano_2) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -42,7 +49,7 @@
                 <select class="form-select" id="primerAyudante" name="primer_ayudante">
                     <option value="" <?= empty($cirugia->primer_ayudante) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Cirujano Oftalmólogo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->primer_ayudante))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->primer_ayudante) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -56,7 +63,7 @@
                 <select class="form-select" id="segundoAyudante" name="segundo_ayudante">
                     <option value="" <?= empty($cirugia->segundo_ayudante) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Cirujano Oftalmólogo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->segundo_ayudante))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->segundo_ayudante) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -73,7 +80,7 @@
                 <select class="form-select" id="tercerAyudante" name="tercer_ayudante">
                     <option value="" <?= empty($cirugia->tercer_ayudante) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Cirujano Oftalmólogo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->tercer_ayudante))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->tercer_ayudante) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -88,7 +95,7 @@
                 <select class="form-select" id="ayudanteAnestesia" name="ayudanteAnestesia">
                     <option value="" <?= empty($cirugia->ayudante_anestesia) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Asistente'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->ayudante_anestesia))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->ayudante_anestesia) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -107,7 +114,7 @@
                         data-placeholder="Escoja el anestesiologo">
                     <option value="" <?= empty($cirugia->anestesiologo) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Anestesiologo'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->anestesiologo))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->anestesiologo) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -121,7 +128,7 @@
                 <select class="form-select" id="instrumentista" name="instrumentista">
                     <option value="" <?= empty($cirugia->instrumentista) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Asistente'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->instrumentista))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->instrumentista) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>
@@ -138,7 +145,7 @@
                 <select class="form-select" id="circulante" name="circulante">
                     <option value="" <?= empty($cirugia->circulante) ? 'selected' : '' ?>></option>
                     <?php foreach ($cirujanos['Asistente'] as $nombre): ?>
-                        <option value="<?= htmlspecialchars($nombre) ?>" <?= (trim(strtolower($nombre)) === trim(strtolower($cirugia->circulante))) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($nombre) ?>" <?= equalsIgnoreCase($nombre, $cirugia->circulante) ? 'selected' : '' ?>>
                             <?= strtoupper(htmlspecialchars($nombre)) ?>
                         </option>
                     <?php endforeach; ?>

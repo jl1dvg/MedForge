@@ -9,7 +9,7 @@ $reporteCirugiasController = new ReporteCirugiasController($pdo);
 $pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
 
-$cirugias = $reporteCirugiasController->obtenerCirugias();
+$cirugias = $reporteCirugiasController->obtenerListaCirugias();
 $username = $dashboardController->getAuthenticatedUser();
 ?>
 <html lang="es">
@@ -27,6 +27,11 @@ $username = $dashboardController->getAuthenticatedUser();
     <link rel="stylesheet" href="/public/css/horizontal-menu.css">
     <link rel="stylesheet" href="/public/css/style.css">
     <link rel="stylesheet" href="/public/css/skin_color.css">
+    <style>
+        table.table td, table.table th {
+            font-size: 0.875rem; /* slightly smaller font */
+        }
+    </style>
 
 </head>
 <body class="layout-top-nav light-skin theme-primary fixed">
@@ -71,8 +76,8 @@ $username = $dashboardController->getAuthenticatedUser();
                                         <?php
                                         $mesesUnicos = [];
                                         foreach ($cirugias as $c) {
-                                            $mes = date('Y-m', strtotime($c->fecha_inicio));
-                                            $mesesUnicos[$mes] = date('F Y', strtotime($c->fecha_inicio));
+                                            $mes = substr($c->fecha_inicio, 0, 7); // formato YYYY-MM
+                                            $mesesUnicos[$mes] = date('F Y', strtotime($mes . '-01'));
                                         }
                                         krsort($mesesUnicos);
                                         foreach ($mesesUnicos as $val => $label) {
@@ -95,8 +100,6 @@ $username = $dashboardController->getAuthenticatedUser();
                                             </th>
                                             <th class="bb-2" title="Imprimir protocolo"><i class="mdi mdi-printer"></i>
                                             </th>
-                                            <th class="bb-2" title="Descargar Excel"><i class="fa fa-file-excel-o"></i>
-                                            </th>
                                         </tr>
                                         </thead>
                                         <tbody id="patientTableBody">
@@ -115,9 +118,6 @@ $username = $dashboardController->getAuthenticatedUser();
                                                 ? "togglePrintStatus(" . $cirugia->form_id . ", '" . $cirugia->hc_number . "', this, 1)"
                                                 : "Swal.fire({ icon: 'warning', title: 'Pendiente revisión', text: 'Debe revisar el protocolo antes de imprimir.' })";
                                             $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : "";
-                                            $badgeBilling = $cirugia->existeBilling
-                                                ? "<span class='badge bg-success' title='Planilla generada'><i class='fa fa-check'></i></span>"
-                                                : "<span class='badge bg-secondary' title='Sin planilla generada'><i class='fa fa-ban'></i></span>";
 
                                             echo "<tr>
                                                     <td>" . htmlspecialchars($cirugia->form_id ?? '', ENT_QUOTES, 'UTF-8') . "</td>
@@ -132,8 +132,9 @@ $username = $dashboardController->getAuthenticatedUser();
                                                            class='btn btn-app btn-info'
                                                            data-bs-toggle='modal'
                                                            data-bs-target='#resultModal'
-                                                           data-cirugia='" . htmlspecialchars(json_encode($cirugia->toArray()), ENT_QUOTES, "UTF-8") . "'
-                                                           onclick='loadResultFromElement(this)'>
+                                                           data-form-id='" . htmlspecialchars($cirugia->form_id, ENT_QUOTES, "UTF-8") . "'
+                                                           data-hc-number='" . htmlspecialchars($cirugia->hc_number, ENT_QUOTES, "UTF-8") . "'
+                                                           onclick='loadProtocolData(this)'>
                                                            $badgeEstado
                                                            <i class='mdi mdi-file-document'></i> Protocolo
                                                         </a>
@@ -144,15 +145,6 @@ $username = $dashboardController->getAuthenticatedUser();
                                                            onclick=\"" . htmlspecialchars($onclick, ENT_QUOTES, 'UTF-8') . "\">
                                                            $badgePrinted
                                                            <i class='fa fa-print'></i> Imprimir
-                                                        </a>
-                                                    </td>
-                                                    <td>
-                                                        <a class='btn btn-app btn-success'
-                                                           title='Descargar planilla Excel'
-                                                           href='/public/index.php/billing/excel?form_id=" . htmlspecialchars($cirugia->form_id, ENT_QUOTES, "UTF-8") . "'
-                                                           target='_blank'>
-                                                           $badgeBilling
-                                                           <i class='fa fa-file-excel-o'></i> Planilla
                                                         </a>
                                                     </td>
                                                 </tr>";
@@ -175,115 +167,7 @@ $username = $dashboardController->getAuthenticatedUser();
     <!-- /.content-wrapper -->
 
     <!--Model Popup Area-->
-    <!-- result modal content -->
-    <div class="modal fade" id="resultModal">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h4 class="modal-title" id="result-proyectado">Resultados</h4>
-                    <h4 class="modal-title" id="result-popup">Resultados</h4>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row justify-content-between">
-                        <div class="col-md-7 col-12">
-                            <h4 id="test-name">Diagnóstico</h4>
-                        </div>
-                        <div class="col-md-5 col-12">
-                            <h4 class="text-end" id="lab-order-id">Orden ID</h4>
-                        </div>
-                    </div>
-                    <!-- Nueva tabla para Diagnósticos -->
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-secondary">
-                            <tr>
-                                <th scope="col">CIE10</th>
-                                <th scope="col">Detalle</th>
-                            </tr>
-                            </thead>
-                            <tbody id="diagnostico-table">
-                            <!-- Se llenará dinámicamente -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <!-- Nueva tabla para Procedimientos -->
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-secondary">
-                            <tr>
-                                <th scope="col">Código</th>
-                                <th scope="col">Nombre del Procedimiento</th>
-                            </tr>
-                            </thead>
-                            <tbody id="procedimientos-table">
-                            <!-- Se llenará dinámicamente -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Nueva tabla para mostrar fecha de inicio, hora de inicio, hora de fin, y duración -->
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-secondary">
-                            <tr>
-                                <th>Fecha de Inicio</th>
-                                <th>Hora de Inicio</th>
-                                <th>Hora de Fin</th>
-                                <th>Duración</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr id="timing-row">
-                                <!-- Se llenará dinámicamente con 4 <td> -->
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-secondary">
-                            <tr>
-                                <th scope="col" colspan="2">Procedimiento</th>
-                            </tr>
-                            </thead>
-                            <tbody id="result-table">
-                            <!-- Se llenará dinámicamente -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead class="bg-secondary">
-                            <tr>
-                                <th scope="col" colspan="2">Staff Quirúrgico</th>
-                            </tr>
-                            </thead>
-                            <tbody id="staff-table">
-                            <!-- Se llenará dinámicamente -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="comment">
-                        <p><span class="fw-600">Comentario</span> : <span class="comment-here text-mute"></span></p>
-                    </div>
-                    <!-- Agregar checkbox para marcar como revisado
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="markAsReviewed">
-                        <label class="form-check-label" for="markAsReviewed">Marcar como revisado</label>
-                    </div> -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-danger pull-right" data-bs-dismiss="modal">Cerrar</button>
-                    <button type="button" class="btn btn-info pull-right" onclick="redirectToEditProtocol()">Revisar
-                        Protocolo
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- /.modal-dialog -->
+    <?php include __DIR__ . '/modal_protocolo.php'; ?>
 </div>
 
 <?php include __DIR__ . '/../components/footer.php'; ?>
@@ -351,14 +235,65 @@ $username = $dashboardController->getAuthenticatedUser();
     }
 </script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('a[data-cirugia]').forEach(link => {
-            link.addEventListener('click', function () {
-                const data = JSON.parse(this.getAttribute('data-cirugia'));
-                document.getElementById('downloadExcelBtn').setAttribute('href', `/public/index.php/billing/excel?form_id=${data.form_id}`);
+    function loadProtocolData(button) {
+        const formId = button.getAttribute('data-form-id');
+        const hcNumber = button.getAttribute('data-hc-number');
+        currentFormId = formId;
+        currentHcNumber = hcNumber;
+
+        fetch(`/public/ajax/get_protocolo.php?form_id=${formId}&hc_number=${hcNumber}`)
+            .then(response => response.json())
+            .then(data => {
+                // 🔍 Depuración: ver JSON completo en la consola
+                console.log('[DEBUG] Protocolo cargado:', data);
+
+                // Cargar diagnósticos
+                const diagTable = document.getElementById("diagnostico-table");
+                diagTable.innerHTML = '';
+                (data.diagnosticos || []).forEach(d => {
+                    diagTable.innerHTML += `<tr><td>${d.cie10}</td><td>${d.detalle}</td></tr>`;
+                });
+
+                // Cargar procedimientos
+                const procTable = document.getElementById("procedimientos-table");
+                procTable.innerHTML = '';
+                (data.procedimientos || []).forEach(p => {
+                    procTable.innerHTML += `<tr><td>${p.codigo}</td><td>${p.nombre}</td></tr>`;
+                });
+
+                // Cargar tiempos
+                const timingRow = document.getElementById("timing-row");
+                timingRow.innerHTML = `
+                    <td>${data.fecha_inicio}</td>
+                    <td>${data.hora_inicio}</td>
+                    <td>${data.hora_fin}</td>
+                    <td>${data.duracion || ''}</td>
+                `;
+
+                // Cargar detalles operatorios
+                const resultTable = document.getElementById("result-table");
+                resultTable.innerHTML = '';
+                resultTable.innerHTML += `<tr><td>Dieresis</td><td>${data.dieresis}</td></tr>`;
+                resultTable.innerHTML += `<tr><td>Exposición</td><td>${data.exposicion}</td></tr>`;
+                resultTable.innerHTML += `<tr><td>Hallazgo</td><td>${data.hallazgo}</td></tr>`;
+                resultTable.innerHTML += `<tr><td>Operatorio</td><td>${data.operatorio}</td></tr>`;
+
+                // Cargar staff (solo los que existen)
+                const staffTable = document.getElementById("staff-table");
+                staffTable.innerHTML = '';
+                Object.entries(data.staff || {}).forEach(([rol, nombre]) => {
+                    if (nombre && nombre.trim() !== '') {
+                        staffTable.innerHTML += `<tr><td>${rol}</td><td>${nombre}</td></tr>`;
+                    }
+                });
+
+                // Comentario
+                document.querySelector(".comment-here").textContent = data.comentario || '';
+            })
+            .catch(() => {
+                Swal.fire('Error', 'No se pudo cargar el protocolo.', 'error');
             });
-        });
-    });
+    }
 
     // Descargar ZIP por mes
     document.getElementById('descargarZipMes').addEventListener('change', function () {

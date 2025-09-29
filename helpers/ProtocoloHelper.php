@@ -214,4 +214,7 @@ class ProtocoloHelper
 
         return $resultado;
     }
+    function equalsIgnoreCase($a, $b) {
+        return strtolower(trim($a ?? '')) === strtolower(trim($b ?? ''));
+    }
 }

@@ -125,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
                                             <th>Código MSP</th>
                                             <th>Nombre</th>
                                             <th>Producto ISSFA</th>
+                                            <th>Es medicamento</th>
                                             <th>Precio Base</th>
                                             <th>IVA 15%</th>
                                             <th>Gestión 10%</th>
@@ -205,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
 
             const campos = [
                 "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
-                "nombre", "producto_issfa", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
+                "nombre", "producto_issfa", "es_medicamento", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
             ];
 
             campos.forEach(campo => {
@@ -266,7 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['json'])) {
             nuevaFila.setAttribute("data-id", "nuevo");
             const campos = [
                 "categoria", "codigo_isspol", "codigo_issfa", "codigo_iess", "codigo_msp",
-                "nombre", "producto_issfa", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
+                "nombre", "producto_issfa", "es_medicamento", "precio_base", "iva_15", "gestion_10", "precio_total", "precio_isspol"
             ];
 
             campos.forEach(campo => {

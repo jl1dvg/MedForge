@@ -141,8 +141,8 @@ class BillingService
         $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
         $derechos = $this->billingDerechosModel->obtenerPorBillingId($billingId);
         $insumos = $this->billingInsumosModel->obtenerPorBillingId($billingId);
-        $insumosConIVA = array_filter($insumos, fn($i) => isset($i['iva']) && (int)$i['iva'] === 1);
-        $medicamentosSinIVA = array_filter($insumos, fn($i) => isset($i['iva']) && (int)$i['iva'] === 0);
+        $insumosConIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 0);
+        $medicamentosSinIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 1);
 
         if (!empty($medicamentosSinIVA)) {
             $codigos = array_unique(array_filter(array_map(fn($m) => $m['codigo'], $medicamentosSinIVA)));
@@ -181,22 +181,45 @@ class BillingService
         ];
     }
 
-    public function obtenerResumen(string $formId): ?array
+    public function obtenerResumenConsolidado(?string $mes = null): array
     {
-        $stmt = $this->db->prepare("SELECT * FROM billing_main WHERE form_id = ?");
-        $stmt->execute([$formId]);
-        $billing = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$billing) return null;
+        $query = "
+        SELECT 
+            bm.form_id,
+            bm.hc_number,
+            COALESCE(pd.fecha_inicio, pp.fecha) AS fecha_orden,
+            CONCAT(pa.fname, ' ', pa.mname, ' ', pa.lname, ' ', pa.lname2) AS paciente,
+            pa.afiliacion,
+            d.diagnostico,
+            SUM(bp.proc_precio) AS total_facturado
+        FROM billing_main bm
+        LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
+        LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+        LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
+        LEFT JOIN derivaciones_form_id d ON d.form_id = bm.form_id
+        LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
+    ";
 
-        $billingId = $billing['id'];
+        if ($mes) {
+            $startDate = $mes . '-01';
+            $endDate = date('Y-m-t', strtotime($startDate));
+            $query .= " WHERE COALESCE(pd.fecha_inicio, pp.fecha) BETWEEN :startDate AND :endDate";
+        }
 
-        // Solo cargar procedimientos (sin detalles de insumos, medicamentos, etc.)
-        $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
+        $query .= "
+        GROUP BY bm.form_id
+        ORDER BY fecha_orden DESC
+    ";
 
-        return [
-            'billing' => $billing,
-            'procedimientos' => $procedimientos
-        ];
+        $stmt = $this->db->prepare($query);
+
+        if ($mes) {
+            $stmt->execute(['startDate' => $startDate, 'endDate' => $endDate]);
+        } else {
+            $stmt->execute();
+        }
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**

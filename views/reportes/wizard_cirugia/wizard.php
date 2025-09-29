@@ -8,6 +8,7 @@ use Controllers\DashboardController;
 use Controllers\PacienteController;
 use Controllers\ReporteCirugiasController;
 use Controllers\IplPlanificadorController;
+use Helpers\ProtocoloHelper;
 
 $reporteCirugiasController = new ReporteCirugiasController($pdo);
 $pacienteController = new PacienteController($pdo);

@@ -36,9 +36,9 @@ class BillingController
         return $this->billingService->obtenerDatos($formId);
     }
 
-    public function obtenerResumen(string $formId): ?array
+    public function obtenerResumenConsolidado(?string $mes = null): array
     {
-        return $this->billingService->obtenerResumen($formId);
+        return $this->billingService->obtenerResumenConsolidado($mes);
     }
 
     public function obtenerValorAnestesia(string $codigo): ?float
@@ -217,8 +217,10 @@ class BillingController
         $afiliaciones = [
             'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
             'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
-            'seguro general por montepío', 'seguro general tiempo parcial', 'iess'
+            'seguro general por montepio', 'seguro general tiempo parcial', 'iess'
         ];
+        $afiliacionesList = implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones));
+
         // 1. Procedimientos quirúrgicos (con protocolo_data)
         $queryQuirurgicos = "
             SELECT 
@@ -237,11 +239,11 @@ class BillingController
             FROM protocolo_data pd
             JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
             JOIN patient_data pa ON pa.hc_number = pd.hc_number
-            WHERE pd.form_id NOT IN (
-                SELECT form_id FROM billing_main
+            WHERE NOT EXISTS (
+                SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id
             )
-            AND pd.fecha_inicio >= '2024-11-01'
-            AND LOWER(pa.afiliacion) IN (" . implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones)) . ")
+            AND pd.fecha_inicio >= '2024-12-01'
+            AND LOWER(pa.afiliacion) IN ($afiliacionesList)
         ";
         // 2. Procedimientos NO quirúrgicos (sin protocolo_data)
         $queryNoQuirurgicos = "
@@ -256,14 +258,15 @@ class BillingController
                 pa.lname,
                 pa.lname2
             FROM procedimiento_proyectado pr
-            LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
             JOIN patient_data pa ON pa.hc_number = pr.hc_number
-            WHERE pr.form_id NOT IN (
-                SELECT form_id FROM billing_main
+            WHERE NOT EXISTS (
+                SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id
             )
-            AND pd.form_id IS NULL
-            AND pr.fecha >= '2024-11-01'
-            AND LOWER(pa.afiliacion) IN (" . implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones)) . ")
+            AND NOT EXISTS (
+                SELECT 1 FROM protocolo_data pd WHERE pd.form_id = pr.form_id
+            )
+            AND pr.fecha >= '2024-12-01'
+            AND LOWER(pa.afiliacion) IN ($afiliacionesList)
         ";
         // Ejecutar ambos y unificar
         $quirurgicosRaw = $this->db->query($queryQuirurgicos)->fetchAll(PDO::FETCH_ASSOC);

@@ -25,13 +25,16 @@ class Cirugia
 
     public function getEstado(): string
     {
-        if ($this->data['status'] == 1) return 'revisado';
+        if ($this->__get('status') == 1) return 'revisado';
 
         $invalid = ['CENTER', 'undefined'];
-        $required = [$this->data['membrete'], $this->data['dieresis'], $this->data['exposicion'], $this->data['hallazgo'], $this->data['operatorio'],
-            $this->data['complicaciones_operatorio'], $this->data['datos_cirugia'], $this->data['procedimientos'], $this->data['lateralidad'],
-            $this->data['tipo_anestesia'], $this->data['diagnosticos'], $this->data['procedimiento_proyectado'], $this->data['fecha_inicio'],
-            $this->data['hora_inicio'], $this->data['hora_fin']];
+        $required = [
+            $this->__get('membrete'), $this->__get('dieresis'), $this->__get('exposicion'),
+            $this->__get('hallazgo'), $this->__get('operatorio'), $this->__get('complicaciones_operatorio'),
+            $this->__get('datos_cirugia'), $this->__get('procedimientos'), $this->__get('lateralidad'),
+            $this->__get('tipo_anestesia'), $this->__get('diagnosticos'), $this->__get('procedimiento_proyectado'),
+            $this->__get('fecha_inicio'), $this->__get('hora_inicio'), $this->__get('hora_fin')
+        ];
 
         foreach ($required as $field) {
             if (!empty($field)) {
@@ -41,16 +44,18 @@ class Cirugia
             }
         }
 
-        $staff = [$this->data['cirujano_1'], $this->data['instrumentista'], $this->data['cirujano_2'], $this->data['circulante'],
-            $this->data['primer_ayudante'], $this->data['anestesiologo'], $this->data['segundo_ayudante'],
-            $this->data['ayudante_anestesia'], $this->data['tercer_ayudante']];
+        $staff = [
+            $this->__get('cirujano_1'), $this->__get('instrumentista'), $this->__get('cirujano_2'),
+            $this->__get('circulante'), $this->__get('primer_ayudante'), $this->__get('anestesiologo'),
+            $this->__get('segundo_ayudante'), $this->__get('ayudante_anestesia'), $this->__get('tercer_ayudante')
+        ];
 
         $staffCount = 0;
         foreach ($staff as $s) {
             if (!empty($s) && !in_array(strtoupper($s), $invalid)) $staffCount++;
         }
 
-        if (!empty($this->data['cirujano_1']) && $staffCount >= 5) {
+        if (!empty($this->__get('cirujano_1')) && $staffCount >= 5) {
             return 'no revisado';
         }
 

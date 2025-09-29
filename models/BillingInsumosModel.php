@@ -33,7 +33,10 @@ class BillingInsumosModel
 
     public function obtenerPorBillingId(int $billingId): array
     {
-        $stmt = $this->db->prepare("SELECT * FROM billing_insumos WHERE billing_id = ?");
+        $stmt = $this->db->prepare("SELECT bi.id, bi.insumo_id, bi.codigo, bi.nombre, bi.cantidad, bi.precio, bi.iva, i.es_medicamento 
+                                           FROM billing_insumos AS bi
+                                           LEFT JOIN insumos AS i ON bi.insumo_id = i.id 
+                                           WHERE billing_id = ?");
         $stmt->execute([$billingId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -56,7 +59,7 @@ class BillingInsumosModel
             'SEGURO CAMPESINO JUBILADO',
             'SEGURO GENERAL',
             'SEGURO GENERAL JUBILADO',
-            'SEGURO GENERAL POR MONTEPÍO',
+            'SEGURO GENERAL POR MONTEPIO',
             'SEGURO GENERAL TIEMPO PARCIAL',
         ];
 

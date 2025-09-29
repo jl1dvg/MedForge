@@ -16,7 +16,7 @@ class ReporteCirugiasController
 
     public function obtenerCirugias()
     {
-        $sql = "SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
+        $sql = "SELECT p.hc_number, p.fname, p.mname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
                        pr.fecha_inicio, pr.id, pr.membrete, pr.form_id, pr.hora_inicio, pr.hora_fin, pr.printed,
                        pr.dieresis, pr.exposicion, pr.hallazgo, pr.operatorio, pr.complicaciones_operatorio, pr.datos_cirugia, 
                        pr.procedimientos, pr.lateralidad, pr.tipo_anestesia, pr.diagnosticos, pr.diagnosticos_previos, pp.procedimiento_proyectado,
@@ -34,9 +34,36 @@ class ReporteCirugiasController
         return array_map(fn($row) => new Cirugia($row), $rows);
     }
 
+    /**
+     * Devuelve solo los campos mínimos requeridos para la vista de la tabla en cirugias.php
+     */
+    public function obtenerListaCirugias()
+    {
+        $sql = "SELECT 
+                    p.hc_number, 
+                    p.fname, 
+                    p.lname, 
+                    p.lname2, 
+                    p.afiliacion, 
+                    pr.fecha_inicio, 
+                    pr.membrete, 
+                    pr.form_id, 
+                    pr.printed, 
+                    pr.status,
+                    CASE WHEN bm.id IS NOT NULL THEN 1 ELSE 0 END AS existeBilling
+                FROM protocolo_data pr
+                INNER JOIN patient_data p ON p.hc_number = pr.hc_number
+                LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
+                ORDER BY pr.fecha_inicio DESC, pr.id DESC";
+
+        $rows = $this->db->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+        return array_map(fn($row) => new Cirugia($row), $rows);
+    }
+
     public function obtenerCirugiaPorId(string $form_id, string $hc_number): ?Cirugia
     {
-        $sql = "SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
+        $sql = "SELECT p.hc_number, p.fname, p.mname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
                    pr.fecha_inicio, pr.id, pr.membrete, pr.form_id, pr.procedimiento_id, pr.hora_inicio, pr.hora_fin, pr.printed,
                    pr.dieresis, pr.exposicion, pr.hallazgo, pr.operatorio, pr.complicaciones_operatorio, pr.datos_cirugia, 
                    pr.procedimientos, pr.lateralidad, pr.tipo_anestesia, pr.diagnosticos, pr.diagnosticos_previos, pp.procedimiento_proyectado,
