@@ -61,6 +61,7 @@ class BillingInsumosModel
             'SEGURO GENERAL JUBILADO',
             'SEGURO GENERAL POR MONTEPIO',
             'SEGURO GENERAL TIEMPO PARCIAL',
+            'HIJOS DEPENDIENTES',
         ];
 
         if (in_array($afiliacionUpper, $iessVariants, true)) {

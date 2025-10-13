@@ -2,6 +2,12 @@
 <section>
     <?php
     $insumosDisponibles = $reporteCirugiasController->obtenerInsumosDisponibles($cirugia->afiliacion);
+
+    // ✅ Ordenar insumos por nombre dentro de cada categoría
+    foreach ($insumosDisponibles as &$grupo) {
+        uasort($grupo, fn($a, $b) => strcmp($a['nombre'], $b['nombre']));
+    }
+    unset($grupo);
     $jsonInsumos = trim($cirugia->insumos ?? '');
     if ($jsonInsumos === '' || $jsonInsumos === '[]') {
         $insumos = $reporteCirugiasController->obtenerInsumosPorProtocolo($cirugia->procedimiento_id, null);
@@ -24,6 +30,8 @@
             <?php
             foreach (['equipos', 'quirurgicos', 'anestesia'] as $categoriaOrdenada):
                 if (!empty($insumos[$categoriaOrdenada])):
+                    // Ordena los insumos por nombre dentro de cada categoría
+                    usort($insumos[$categoriaOrdenada], fn($a, $b) => strcmp($insumosDisponibles[$categoriaOrdenada][$a['id']]['nombre'], $insumosDisponibles[$categoriaOrdenada][$b['id']]['nombre']));
                     foreach ($insumos[$categoriaOrdenada] as $item):
                         $idInsumo = $item['id'];
                         ?>
@@ -40,7 +48,8 @@
                             </td>
                             <td>
                                 <select class="form-control nombre-select" name="id">
-                                    <?php foreach ($insumosDisponibles[$categoriaOrdenada] as $id => $insumo): ?>
+                                    <?php
+                                    foreach ($insumosDisponibles[$categoriaOrdenada] as $id => $insumo): ?>
                                         <option value="<?= htmlspecialchars($id) ?>" <?= ($id == $idInsumo) ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($insumo['nombre']) ?>
                                         </option>
@@ -50,9 +59,9 @@
                             <td contenteditable="true"><?= htmlspecialchars($item['cantidad']) ?></td>
                             <td>
                                 <button class="delete-btn btn btn-danger"><i
-                                        class="fa fa-minus"></i></button>
+                                            class="fa fa-minus"></i></button>
                                 <button class="add-row-btn btn btn-success"><i
-                                        class="fa fa-plus"></i></button>
+                                            class="fa fa-plus"></i></button>
                             </td>
                         </tr>
                     <?php endforeach;

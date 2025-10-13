@@ -136,6 +136,29 @@ class PreviewService
                     }
                 }
             }
+
+            // 🔄 Unificar insumos duplicados por codigo
+            if (!empty($preview['insumos'])) {
+                $insumosAgrupados = [];
+                foreach ($preview['insumos'] as $insumo) {
+                    $key = $insumo['codigo']; // solo agrupamos por código
+                    if (!isset($insumosAgrupados[$key])) {
+                        $insumosAgrupados[$key] = $insumo;
+                    } else {
+                        // Sumar cantidades
+                        $insumosAgrupados[$key]['cantidad'] += $insumo['cantidad'];
+
+                        // Si el nombre del existente está vacío y este tiene, lo actualizamos
+                        if (empty($insumosAgrupados[$key]['nombre']) && !empty($insumo['nombre'])) {
+                            $insumosAgrupados[$key]['nombre'] = $insumo['nombre'];
+                        }
+                    }
+                }
+                $preview['insumos'] = array_values($insumosAgrupados);
+                usort($preview['insumos'], function ($a, $b) {
+                    return strcasecmp($a['nombre'], $b['nombre']);
+                });
+            }
         }
 
         // 3. Oxígeno

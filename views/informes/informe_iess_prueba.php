@@ -67,30 +67,6 @@ foreach ($facturas as $factura) {
     $grupos[$keyAgrupacion][] = $grupo;
 }
 
-// Precargar datos agrupados por mes para evitar llamadas repetidas durante la creación del dropdown
-$cachePorMes = [];
-
-// Solo construir el cache del mes seleccionado
-if (!empty($mesSeleccionado)) {
-    foreach ($facturas as $factura) {
-        $fechaInicio = $factura['fecha_inicio'] ?? null;
-        $mes = $fechaInicio ? date('Y-m', strtotime($fechaInicio)) : '';
-        if ($mes !== $mesSeleccionado) {
-            continue;
-        }
-
-        $hc = $factura['hc_number'];
-        $formId = $factura['form_id'];
-
-        if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-            $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
-        }
-
-        if (!isset($cachePorMes[$mes]['datos'][$formId])) {
-            $cachePorMes[$mes]['datos'][$formId] = $billingController->obtenerDatos($formId);
-        }
-    }
-}
 $billingIds = isset($filtros['billing_id']) ? explode(',', $filtros['billing_id']) : [];
 $formId = null;
 $datos = [];
@@ -107,7 +83,9 @@ if (!empty($billingIds)) {
     foreach ($rows as $row) {
         $formId = $row['form_id'];
         $formIds[] = $formId;
-        $datosFacturas[] = $billingController->obtenerDatos($formId);
+        $datosFacturas[] = [
+            'billing' => $row
+        ]; // solo guarda billing_main
     }
 }
 ?>
@@ -183,8 +161,7 @@ if (!empty($billingIds)) {
                                                     'seguro general',
                                                     'seguro general jubilado',
                                                     'seguro general por montepio',
-                                                    'seguro general tiempo parcial',
-                                                    'hijos dependientes',
+                                                    'seguro general tiempo parcial'
                                                 ];
                                                 $mesesValidos = [];
                                                 foreach ($facturas as $factura) {
@@ -214,7 +191,7 @@ if (!empty($billingIds)) {
                                             <button type="submit" class="btn btn-primary">
                                                 <i class="mdi mdi-magnify"></i> Buscar
                                             </button>
-                                            <a href="/views/informes/informe_iess.php?modo=consolidado"
+                                            <a href="/views/informes/informe_iess_prueba.php?modo=consolidado"
                                                class="btn btn-outline-secondary">
                                                 <i class="mdi mdi-filter-remove"></i> Limpiar
                                             </a>
@@ -248,7 +225,7 @@ if (!empty($billingIds)) {
 
                                 if (!empty($hcNumber)) {
                                     echo "<div class='mb-4 text-end'>
-                                        <form method='post' action='informe_iess.php?billing_id=" . htmlspecialchars($filtros['billing_id']) . "'>
+                                        <form method='post' action='informe_iess_prueba.php?billing_id=" . htmlspecialchars($filtros['billing_id']) . "'>
                                             <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($primerDato['billing']['form_id'] ?? '') . "'>
                                             <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($hcNumber) . "'>
                                             <button type='submit' name='scrape_derivacion' class='btn btn-warning'>
@@ -282,7 +259,7 @@ if (!empty($billingIds)) {
                                         $filtrosParaRegresar['modo'] = 'consolidado'; // aseguramos modo consolidado
                                         $queryString = http_build_query($filtrosParaRegresar);
                                         ?>
-                                        <a href="/views/informes/informe_iess.php?<?= htmlspecialchars($queryString) ?>"
+                                        <a href="/views/informes/informe_iess_prueba.php?<?= htmlspecialchars($queryString) ?>"
                                            class="btn btn-outline-secondary btn-lg">
                                             <i class="fa fa-arrow-left"></i> Regresar al consolidado
                                         </a>
@@ -388,7 +365,7 @@ if (!empty($billingIds)) {
                                                 Monto total:
                                                 $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
                                         </div>
-
+                                        <div id="factura-detalle-container" class="mt-4"></div>
                                         <div class="table-responsive"
                                              style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
                                             <table id="example"
@@ -412,7 +389,7 @@ if (!empty($billingIds)) {
                                                 <tbody>
                                                 <?php foreach ($pacientesAgrupados as $hc => $info):
                                                     $pacienteInfo = $pacienteController->getPatientDetails($hc);
-                                                    $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento'], $info['paciente']['fecha_ordenada']);
+                                                    $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
                                                     $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
                                                     $procedimientos = InformesHelper::formatearListaProcedimientos($info['procedimientos']);
                                                     $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
@@ -453,11 +430,18 @@ if (!empty($billingIds)) {
                                                             }
                                                         }
                                                         $billingParam = implode(',', $billingIds);
-                                                        $url = "/views/informes/informe_iess.php?billing_id=" . urlencode($billingParam);
+                                                        $primerFormId = $info['form_ids'][0] ?? null;
                                                         ?>
-                                                        <td><a href="<?= $url ?>" class="btn btn-sm btn-info"
-                                                               target="_blank">Ver
-                                                                detalle</a></td>
+                                                        <td>
+                                                            <?php if ($primerFormId): ?>
+                                                                <button class="btn btn-sm btn-info"
+                                                                        onclick="cargarDetalleFactura('<?= $primerFormId ?>')">
+                                                                    Ver detalle
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <span class="text-muted">Sin form_id</span>
+                                                            <?php endif; ?>
+                                                        </td>
                                                     </tr>
                                                     <?php
                                                     $n++;
@@ -499,6 +483,23 @@ if (!empty($billingIds)) {
 <script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
 <script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    function cargarDetalleFactura(formId) {
+        console.log("➡️ Cargando detalle para form_id:", formId); // LOG
+        const container = document.getElementById('factura-detalle-container');
+        container.innerHTML = '🔄 Cargando...';
+        fetch('./ajax/ajax_detalle_factura.php?form_id=' + encodeURIComponent(formId))
+            .then(res => res.text())
+            .then(html => {
+                console.log("🧾 Respuesta del detalle:", html); // LOG
+                container.innerHTML = html;
+            })
+            .catch((err) => {
+                console.error("❌ Error en AJAX:", err);
+                container.innerHTML = '❌ Error al cargar el detalle.';
+            });
+    }
+</script>
 
 
 <!-- Doclinic App -->

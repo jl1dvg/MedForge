@@ -85,6 +85,12 @@ $noQuirurgicos = $clasificados['no_quirurgicos'];
                     const res = await fetch(`/api/billing/billing_preview.php?form_id=${formId}&hc_number=${hcNumber}`);
                     const data = await res.json();
 
+                    // 🔍 Debug 1: API completo
+                    console.log("📦 PREVIEW JSON COMPLETO:", data);
+
+                    // 🔍 Debug 2: Insumos que vienen del PreviewService
+                    console.log("🛠 INSUMOS PROCESADOS EN PREVIEW:", data.insumos);
+
                     // Bootstrap tables and cards for each section, with total sum
                     let total = 0;
                     let html = "";

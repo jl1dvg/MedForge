@@ -182,6 +182,35 @@
                     }
                 }
 
+                // --- ANESTESIA POR PROCEDIMIENTO PRINCIPAL ---
+                $codigoAnestesia = $datos['procedimientos'][0]['proc_codigo'] ?? '';
+                $precioReal = $codigoAnestesia ? $billingController->obtenerValorAnestesia($codigoAnestesia) : null;
+                $esCirugia = $billingController->esCirugiaPorFormId($datos['billing']['form_id'] ?? null);
+
+                if ($esCirugia && !empty($datos['procedimientos']) && isset($datos['procedimientos'][0]['proc_codigo'])) {
+                    $p = $datos['procedimientos'][0];
+                    $precio = (float)($p['proc_precio'] ?? 0);
+                    $valorUnitario = $precioReal ?? $precio;
+                    $cantidad = 1;
+                    $subtotal = $valorUnitario * $cantidad;
+                    $total += $subtotal;
+
+                    echo "<tr class='table-danger' style='font-size: 12.5px;'>
+                        <td class='text-center'>{$n}</td>
+                        <td class='text-center'>{$p['proc_codigo']}</td>
+                        <td>{$p['proc_detalle']} (Anestesia Principal)</td>
+                        <td class='text-center'>SI</td>
+                        <td class='text-center'>100</td>
+                        <td class='text-end'>{$cantidad}</td>
+                        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                        <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                        <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+                        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+                    </tr>";
+                    $n++;
+                }
+
                 // ANESTESIA
                 foreach ($datos['anestesia'] as $a) {
                     $codigo = $a['codigo'] ?? '';
@@ -232,7 +261,7 @@
                             $cantidad = (float)$item['tiempo'] * (float)$item['litros'] * 60;
                             $valorUnitario = (float)$item['valor2'];
                             $subtotal = $valorUnitario * $cantidad;
-                            $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                            $montoTotal = $subtotal;
                             $total += $montoTotal;
                             $anestesia = 'NO';
                             $porcentajePago = 100;
@@ -256,7 +285,7 @@
                             $cantidad = $item['cantidad'] ?? 1;
                             $valorUnitario = $item['precio'] ?? 0;
                             $subtotal = $valorUnitario * $cantidad;
-                            $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                            $montoTotal = $subtotal;
                             $total += $montoTotal;
                             $anestesia = 'NO';
                             $porcentajePago = 100;
@@ -280,7 +309,7 @@
                             $cantidad = $item['cantidad'] ?? 1;
                             $valorUnitario = $item['precio'] ?? 0;
                             $subtotal = $valorUnitario * $cantidad;
-                            $montoTotal = $subtotal + ($iva ? $subtotal * 0.1 : 0);
+                            $montoTotal = $subtotal;
                             $total += $montoTotal;
                             $anestesia = 'NO';
                             $porcentajePago = 100;
@@ -303,35 +332,45 @@
                     }
                 }
 
-                // SERVICIOS INSTITUCIONALES (derechos)
-                foreach ($datos['derechos'] as $servicio) {
-                    $codigo = $servicio['codigo'] ?? '';
-                    $descripcion = $servicio['detalle'] ?? '';
-                    $cantidad = $servicio['cantidad'] ?? 1;
-                    $valorUnitario = $servicio['precio_afiliacion'] ?? 0;
-                    $subtotal = $valorUnitario * $cantidad;
-                    $bodega = 0;
-                    $iva = 0;
-                    $montoTotal = $subtotal;
-                    $total += $montoTotal;
-                    $anestesia = 'NO';
-                    $porcentajePago = 100;
+// SERVICIOS INSTITUCIONALES (derechos)
+foreach ($datos['derechos'] as $servicio) {
+    $codigo = $servicio['codigo'] ?? '';
+    $descripcion = $servicio['detalle'] ?? '';
+    $cantidad = $servicio['cantidad'] ?? 1;
+    $valorUnitario = $servicio['precio_afiliacion'] ?? 0;
+    // Nueva lógica para ciertos códigos
+    if (
+        ((int)$codigo >= 394200 && (int)$codigo < 394400)) {
+        $valorUnitario *= 1.02;
+        $valorUnitario -= 0.01;
+    }
+    if ($codigo === '395281') {
+        $valorUnitario *= 1.02; // Aumenta 2%
+    }
+    $subtotal = $valorUnitario * $cantidad;
+    $bodega = 0;
+    $iva = 0;
+    $montoTotal = $subtotal;
+    $total += $montoTotal;
+    $anestesia = 'NO';
+    $porcentajePago = 100;
 
-                    echo "<tr class='table-secondary' style='font-size: 12.5px;'>
-                <td class='text-center'>{$n}</td>
-                <td class='text-center'>{$codigo}</td>
-                <td>{$descripcion}</td>
-                <td class='text-center'>{$anestesia}</td>
-                <td class='text-center'>{$porcentajePago}</td>
-                <td class='text-end'>{$cantidad}</td>
-                <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
-                <td class='text-end'>" . number_format($subtotal, 2) . "</td>
-                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
-                <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
-                <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
-            </tr>";
-                    $n++;
-                }
+
+    echo "<tr class='table-secondary' style='font-size: 12.5px;'> 
+        <td class='text-center'>{$n}</td>
+        <td class='text-center'>{$codigo}</td>
+        <td>{$descripcion}</td>
+        <td class='text-center'>{$anestesia}</td>
+        <td class='text-center'>{$porcentajePago}</td>
+        <td class='text-end'>{$cantidad}</td>
+        <td class='text-end'>" . number_format($valorUnitario, 2) . "</td>
+        <td class='text-end'>" . number_format($subtotal, 2) . "</td>
+        <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+        <td class='text-center'><span class='badge bg-secondary'>0%</span></td>
+        <td class='text-end'>" . number_format($montoTotal, 2) . "</td>
+    </tr>";
+    $n++;
+}
                 ?>
                 </tbody>
             </table>

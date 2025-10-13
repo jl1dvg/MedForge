@@ -217,7 +217,7 @@ class BillingController
         $afiliaciones = [
             'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
             'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
-            'seguro general por montepio', 'seguro general tiempo parcial', 'iess'
+            'seguro general por montepio', 'seguro general tiempo parcial', 'iess', 'hijos dependientes'
         ];
         $afiliacionesList = implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones));
 

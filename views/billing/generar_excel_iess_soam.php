@@ -510,7 +510,12 @@ foreach ($datosFacturacionLote as $bloque) {
         $descripcion = $servicio['detalle'];
         $cantidad = $servicio['cantidad'];
         $valorUnitario = $servicio['precio_afiliacion'];
-        // Aplicar 2% adicional si el código es 395281
+        // Nueva lógica para ciertos códigos
+        if (
+            ((int)$codigo >= 394200 && (int)$codigo < 394400)) {
+            $valorUnitario *= 1.02;
+            $valorUnitario -= 0.01;
+        }
         if ($codigo === '395281') {
             $valorUnitario *= 1.02; // Aumenta 2%
         }

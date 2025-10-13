@@ -122,6 +122,36 @@ class GuardarSolicitudController
                 ':sesiones' => $sesiones,
                 ':detalles_json' => $detallesJson,
             ]);
+
+            // Notificar en tiempo real usando Pusher (ajusta tus credenciales)
+            try {
+                $pusher = new \Pusher\Pusher(
+                    '32ed6d21578f5bc44eef', // Reemplaza con tu KEY
+                    '21ced6d338609a441993', // Reemplaza con tu SECRET
+                    '2057442', // Reemplaza con tu APP_ID
+                    ['cluster' => 'us2', 'useTLS' => true]
+                );
+                $pusher->trigger('solicitudes-kanban', 'nueva-solicitud', [
+                    'hc_number' => $data['hcNumber'],
+                    'form_id' => $data['form_id'],
+                    'secuencia' => $secuencia,
+                    'tipo' => $tipo,
+                    'afiliacion' => $afiliacion,
+                    'procedimiento' => $procedimiento,
+                    'doctor' => $doctor,
+                    'fecha' => $fecha,
+                    'duracion' => $duracion,
+                    'ojo' => $ojoVal,
+                    'prioridad' => $prioridad,
+                    'producto' => $producto,
+                    'observacion' => $observacion,
+                    'sesiones' => $sesiones,
+                    'detalles' => $detalles
+                ]);
+            } catch (\Exception $e) {
+                // Puedes registrar el error en logs
+                error_log('Error enviando evento Pusher: ' . $e->getMessage());
+            }
         }
 
         return ["success" => true, "message" => "Solicitudes guardadas o actualizadas correctamente"];

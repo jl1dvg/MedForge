@@ -88,7 +88,7 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
             top: 0;
             z-index: 2;
             margin-bottom: 0.2em;
-            border-top: 4px solid rgba(0,0,0,0.1); /* Light indicator strip */
+            border-top: 4px solid rgba(0, 0, 0, 0.1); /* Light indicator strip */
         }
 
         .kanban-board {
@@ -135,9 +135,11 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
         .kanban-card.urgente {
             border-left: 4px solid #dc3545;
         }
+
         .kanban-card.pendiente {
             border-left: 4px solid #ffc107;
         }
+
         .kanban-card.normal {
             border-left: 4px solid #28a745;
         }
@@ -279,11 +281,44 @@ $solicitudes = $solicitudController->getSolicitudesConDetalles();
 <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
+<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+
 <script>
     window.allSolicitudes = <?php echo json_encode(SolicitudHelper::formatearParaFrontend($solicitudes), JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
 <script type="module" src="solicitudes.js"></script>
+<script>
+    // Solo para pruebas, desactiva en producción
+    Pusher.logToConsole = true;
+
+    const pusher = new Pusher('32ed6d21578f5bc44eef', {
+        cluster: 'us2',
+        encrypted: true
+    });
+
+    const channel = pusher.subscribe('solicitudes-kanban');
+
+    channel.bind('nueva-solicitud', function (data) {
+        console.log('📥 Nueva solicitud recibida:', data);
+
+        // Puedes mostrar un toast, alerta o directamente volver a aplicar los filtros
+        const toast = document.createElement('div');
+        toast.className = 'alert alert-info';
+        toast.textContent = `🆕 Nueva solicitud: ${data.nombre || 'Paciente sin nombre'}`;
+        toast.style.marginBottom = '0.5em';
+
+        const container = document.getElementById('toastContainer');
+        container.appendChild(toast);
+
+        setTimeout(() => toast.remove(), 5000);
+
+        // Opcional: volver a aplicar los filtros y actualizar el Kanban
+        if (typeof aplicarFiltros === 'function') {
+            aplicarFiltros();
+        }
+    });
+</script>
 
 <!-- Doclinic App -->
 <script src="/public/js/jquery.smartmenus.js"></script>
