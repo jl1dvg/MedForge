@@ -7,7 +7,7 @@ if (!isset($_SESSION['user_id'])) {
     header('Location: views/login.php');
     exit();
 } else {
-    // Si está autenticado, redirige al dashboard
+    // Si está autenticado, redirige al Dashboard
     header('Location: views/main.php');
     exit();
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace Models;
+namespace models;
 
 use PDO;
 use DateTime;

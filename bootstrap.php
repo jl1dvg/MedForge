@@ -16,8 +16,41 @@ if (file_exists($composerAutoload)) {
     require_once $composerAutoload;
 }
 
+// === Autocargador manual para módulos ===
+spl_autoload_register(function ($class) {
+    $prefixes = [
+        'Modules\\' => __DIR__ . '/modules/',
+        'Core\\' => __DIR__ . '/core/',
+        'Controllers\\' => __DIR__ . '/controllers/',
+        'Models\\' => __DIR__ . '/models/',
+    ];
+
+    foreach ($prefixes as $prefix => $baseDir) {
+        $len = strlen($prefix);
+        if (strncmp($prefix, $class, $len) !== 0) {
+            continue;
+        }
+        $relativeClass = substr($class, $len);
+        // Normalizamos los separadores
+        $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, $relativeClass) . '.php';
+
+        // Probamos con y sin capitalización (por compatibilidad con IONOS)
+        $file = $baseDir . $relativePath;
+        $altFile = $baseDir . strtolower($relativePath);
+
+        if (file_exists($file)) {
+            require_once $file;
+            return;
+        } elseif (file_exists($altFile)) {
+            require_once $altFile;
+            return;
+        }
+    }
+});
+
 // === Cargar variables de entorno (.env) ===
 use Dotenv\Dotenv;
+
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 

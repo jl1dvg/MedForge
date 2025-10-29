@@ -1,6 +1,6 @@
 <?php
 
-namespace Controllers;
+namespace controllers;
 
 use Models\SolicitudModel;
 use Controllers\PacienteController;
