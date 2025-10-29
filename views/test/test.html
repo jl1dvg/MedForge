@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sugerencia Diagnósticos</title>
+</head>
+<body>
+<h2>Probar sugerencia de diagnósticos</h2>
+<textarea id="examen_fisico" rows="6" cols="60">Paciente con N2, excavación y pterigion nasal</textarea><br>
+<button onclick="probar()">Enviar</button>
+
+<pre id="resultado"></pre>
+
+<script>
+    function probar() {
+        const texto = document.getElementById('examen_fisico').value;
+
+        console.log("Enviando JSON:", JSON.stringify({examen_fisico: texto}));
+
+        fetch('https://asistentecive.consulmed.me/api/sugerencia/sugerir_diagnosticos.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({examen_fisico: texto})
+        })
+            .then(response => response.text())
+            .then(data => {
+                console.log("Respuesta cruda:", data);
+                document.getElementById('resultado').textContent = data;
+            })
+            .catch(err => {
+                document.getElementById('resultado').textContent = 'Error: ' + err;
+            });
+    }
+</script>
+</body>
+</html>
