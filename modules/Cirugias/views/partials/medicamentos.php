@@ -1,25 +1,10 @@
 <h6>Medicamentos</h6>
 <section>
     <?php
-    // Obtener medicamentos desde protocolo_data o fallback desde kardex
-    $jsonMedicamentos = trim($cirugia->medicamentos ?? '');
-    if ($jsonMedicamentos === '' || $jsonMedicamentos === '[]') {
-        $stmt = $pdo->prepare("SELECT medicamentos FROM kardex WHERE procedimiento_id = ?");
-        $stmt->execute([$cirugia->procedimiento_id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $medicamentos = json_decode($row['medicamentos'] ?? '[]', true);
-    } else {
-        $medicamentos = json_decode($jsonMedicamentos, true);
-    }
-
-    $opcionesMedicamentos = [];
-    $stmtOpciones = $pdo->query("SELECT id, medicamento FROM medicamentos ORDER BY medicamento");
-    while ($op = $stmtOpciones->fetch(PDO::FETCH_ASSOC)) {
-        $opcionesMedicamentos[] = $op;
-    }
-
-    $vias = ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'];
-    $responsables = ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
+    $medicamentos = $medicamentosSeleccionados ?? [];
+    $opcionesMedicamentos = $opcionesMedicamentos ?? [];
+    $vias = $viasDisponibles ?? ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'];
+    $responsables = $responsablesMedicamentos ?? ['Asistente', 'Anestesiólogo', 'Cirujano Principal'];
     ?>
     <div class="table-responsive">
         <table id="medicamentosTable" class="table editable-table mb-0">

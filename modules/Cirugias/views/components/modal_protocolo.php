@@ -1,4 +1,3 @@
-<!-- result modal content -->
 <div class="modal fade" id="resultModal">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -16,7 +15,6 @@
                         <h4 class="text-end" id="lab-order-id">Orden ID</h4>
                     </div>
                 </div>
-                <!-- Nueva tabla para Diagnósticos -->
                 <div class="table-responsive">
                     <table class="table table-bordered">
                         <thead class="bg-secondary">
@@ -25,12 +23,9 @@
                             <th scope="col">Detalle</th>
                         </tr>
                         </thead>
-                        <tbody id="diagnostico-table">
-                        <!-- Se llenará dinámicamente -->
-                        </tbody>
+                        <tbody id="diagnostico-table"></tbody>
                     </table>
                 </div>
-                <!-- Nueva tabla para Procedimientos -->
                 <div class="table-responsive">
                     <table class="table table-bordered">
                         <thead class="bg-secondary">
@@ -39,13 +34,9 @@
                             <th scope="col">Nombre del Procedimiento</th>
                         </tr>
                         </thead>
-                        <tbody id="procedimientos-table">
-                        <!-- Se llenará dinámicamente -->
-                        </tbody>
+                        <tbody id="procedimientos-table"></tbody>
                     </table>
                 </div>
-
-                <!-- Nueva tabla para mostrar fecha de inicio, hora de inicio, hora de fin, y duración -->
                 <div class="table-responsive">
                     <table class="table table-bordered">
                         <thead class="bg-secondary">
@@ -57,9 +48,7 @@
                         </tr>
                         </thead>
                         <tbody>
-                        <tr id="timing-row">
-                            <!-- Se llenará dinámicamente con 4 <td> -->
-                        </tr>
+                        <tr id="timing-row"></tr>
                         </tbody>
                     </table>
                 </div>
@@ -70,12 +59,9 @@
                             <th scope="col" colspan="2">Procedimiento</th>
                         </tr>
                         </thead>
-                        <tbody id="result-table">
-                        <!-- Se llenará dinámicamente -->
-                        </tbody>
+                        <tbody id="result-table"></tbody>
                     </table>
                 </div>
-
                 <div class="table-responsive">
                     <table class="table table-bordered">
                         <thead class="bg-secondary">
@@ -83,27 +69,17 @@
                             <th scope="col" colspan="2">Staff Quirúrgico</th>
                         </tr>
                         </thead>
-                        <tbody id="staff-table">
-                        <!-- Se llenará dinámicamente -->
-                        </tbody>
+                        <tbody id="staff-table"></tbody>
                     </table>
                 </div>
                 <div class="comment">
                     <p><span class="fw-600">Comentario</span> : <span class="comment-here text-mute"></span></p>
                 </div>
-                <!-- Agregar checkbox para marcar como revisado
-<div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="markAsReviewed">
-                    <label class="form-check-label" for="markAsReviewed">Marcar como revisado</label>
-                </div> -->
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger pull-right" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-info pull-right" onclick="redirectToEditProtocol()">Revisar
-                    Protocolo
-                </button>
+                <button type="button" class="btn btn-info pull-right" onclick="redirectToEditProtocol()">Revisar Protocolo</button>
             </div>
         </div>
     </div>
 </div>
-<!-- /.modal-dialog -->

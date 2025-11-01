@@ -54,8 +54,8 @@ if (!function_exists('isActive')) {
                         <i class="mdi mdi-clipboard-outline"></i>Solicitudes de Cirugía
                     </a>
                 </li>
-                <li class="<?= isActive('/views/reportes/cirugias.php') ?>">
-                    <a href="<?= BASE_URL . 'views/reportes/cirugias.php'; ?>">
+                <li class="<?= isActive('/cirugias') ?>">
+                    <a href="<?= BASE_URL . 'cirugias'; ?>">
                         <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
                     </a>
                 </li>

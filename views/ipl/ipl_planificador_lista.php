@@ -317,9 +317,9 @@ $username = $dashboardController->getAuthenticatedUser();
 
         // Enviar la actualización del estado al servidor (independientemente)
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/public/update_print_status.php', true);
+        xhr.open('POST', '/cirugias/protocolo/printed', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + (isActive ? 0 : 1)); // Cambiamos el valor aquí
+        xhr.send('form_id=' + encodeURIComponent(form_id) + '&hc_number=' + encodeURIComponent(hc_number) + '&printed=' + (isActive ? 0 : 1));
         xhr.onerror = function () {
             Swal.fire('Error', 'No se pudo actualizar el estado de impresión de la sesión.', 'error');
         };
@@ -330,7 +330,7 @@ $username = $dashboardController->getAuthenticatedUser();
 
     function redirectToEditProtocol() {
         // Construir la URL de edición para la sesión IPL
-        const url = `wizard_cirugia/wizard.php?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
+        const url = `/cirugias/wizard?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
         // Redirigir al usuario
         window.location.href = url;
     }

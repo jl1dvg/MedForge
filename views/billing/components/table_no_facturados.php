@@ -100,7 +100,7 @@
                             $hcNumber = htmlspecialchars($r['hc_number']);
                             echo "<button 
                                     class='btn btn-app btn-info'
-                                    onclick=\"window.location.href='/views/reportes/wizard_cirugia/wizard.php?form_id=$formId&hc_number=$hcNumber'\">
+                                    onclick=\"window.location.href='/cirugias/wizard?form_id=$formId&hc_number=$hcNumber'\">
                                     $badge
                                     <i class='mdi mdi-file-document'></i> Protocolo
                                 </button>";

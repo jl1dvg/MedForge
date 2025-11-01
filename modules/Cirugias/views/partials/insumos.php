@@ -1,20 +1,14 @@
 <h6>Insumos</h6>
 <section>
     <?php
-    $insumosDisponibles = $reporteCirugiasController->obtenerInsumosDisponibles($cirugia->afiliacion);
-
-    // ✅ Ordenar insumos por nombre dentro de cada categoría
+    $insumosDisponibles = $insumosDisponibles ?? [];
     foreach ($insumosDisponibles as &$grupo) {
         uasort($grupo, fn($a, $b) => strcmp($a['nombre'], $b['nombre']));
     }
     unset($grupo);
-    $jsonInsumos = trim($cirugia->insumos ?? '');
-    if ($jsonInsumos === '' || $jsonInsumos === '[]') {
-        $insumos = $reporteCirugiasController->obtenerInsumosPorProtocolo($cirugia->procedimiento_id, null);
-    } else {
-        $insumos = json_decode($jsonInsumos, true);
-    }
-    $categorias = array_keys($insumosDisponibles);
+
+    $insumos = $insumosSeleccionados ?? [];
+    $categorias = $categoriasInsumos ?? array_keys($insumosDisponibles);
     ?>
     <div class="table-responsive">
         <table id="insumosTable" class="table editable-table mb-0">
@@ -30,8 +24,12 @@
             <?php
             foreach (['equipos', 'quirurgicos', 'anestesia'] as $categoriaOrdenada):
                 if (!empty($insumos[$categoriaOrdenada])):
-                    // Ordena los insumos por nombre dentro de cada categoría
-                    usort($insumos[$categoriaOrdenada], fn($a, $b) => strcmp($insumosDisponibles[$categoriaOrdenada][$a['id']]['nombre'], $insumosDisponibles[$categoriaOrdenada][$b['id']]['nombre']));
+                    if (!empty($insumosDisponibles[$categoriaOrdenada])) {
+                        usort($insumos[$categoriaOrdenada], fn($a, $b) => strcmp(
+                            $insumosDisponibles[$categoriaOrdenada][$a['id']]['nombre'] ?? '',
+                            $insumosDisponibles[$categoriaOrdenada][$b['id']]['nombre'] ?? ''
+                        ));
+                    }
                     foreach ($insumos[$categoriaOrdenada] as $item):
                         $idInsumo = $item['id'];
                         ?>
@@ -48,8 +46,7 @@
                             </td>
                             <td>
                                 <select class="form-control nombre-select" name="id">
-                                    <?php
-                                    foreach ($insumosDisponibles[$categoriaOrdenada] as $id => $insumo): ?>
+                                    <?php foreach (($insumosDisponibles[$categoriaOrdenada] ?? []) as $id => $insumo): ?>
                                         <option value="<?= htmlspecialchars($id) ?>" <?= ($id == $idInsumo) ? 'selected' : '' ?>>
                                             <?= htmlspecialchars($insumo['nombre']) ?>
                                         </option>
