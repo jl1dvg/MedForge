@@ -1,3 +1,4 @@
+<!-- Vista para mostrar cuando no se encuentra el protocolo solicitado -->
 <div class="content-header">
     <div class="alert alert-danger w-100">
         <strong>Protocolo no disponible.</strong>

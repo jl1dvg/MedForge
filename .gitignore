@@ -13,4 +13,5 @@
 /views/reportes/
 /views/test/
 /views/users/
-/vendor
+/vendor/
+/venv/
