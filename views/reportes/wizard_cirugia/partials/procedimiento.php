@@ -261,8 +261,8 @@
             $fromHistory = [];
             $hc_plain = isset($_POST['hc_number_scrape']) ? trim($_POST['hc_number_scrape'], "'") : '';
             try {
-                if (!empty($hc_plain) && isset($pacienteController) && method_exists($pacienteController, 'getDiagnosticosPorPaciente')) {
-                    $hist = $pacienteController->getDiagnosticosPorPaciente($hc_plain);
+                if (!empty($hc_plain) && isset($pacienteService) && method_exists($pacienteService, 'getDiagnosticosPorPaciente')) {
+                    $hist = $pacienteService->getDiagnosticosPorPaciente($hc_plain);
                     // $hist es un mapa idDiagnostico => ['idDiagnostico'=>..., 'fecha'=>...]
                     foreach ($hist as $item) {
                         $raw = trim($item['idDiagnostico'] ?? '');

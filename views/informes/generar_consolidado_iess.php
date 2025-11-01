@@ -3,14 +3,14 @@ require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\ReglaController;
 use Helpers\InformesHelper;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 
 $mes = $_GET['mes'] ?? null;
 $facturas = $billingController->obtenerFacturasDisponibles();
@@ -20,7 +20,7 @@ $pacientesCache = [];
 $datosCache = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteController, $pacientesCache, $datosCache);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, $pacientesCache, $datosCache);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();

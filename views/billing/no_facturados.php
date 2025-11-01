@@ -2,11 +2,11 @@
 require_once __DIR__ . '/../../bootstrap.php';
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\DashboardController;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $dashboardController = new DashboardController($pdo);
 // Paso 1: Obtener todas las facturas disponibles
 $username = $dashboardController->getAuthenticatedUser();

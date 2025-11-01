@@ -3,16 +3,16 @@ require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\DashboardController;
 use Helpers\InformesHelper;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 
 $fechaInicio = date('Y-m-01', strtotime('-5 months')); // últimos 6 meses incluyendo el actual
 $fechaFin = date('Y-m-d');
-$atenciones = $pacienteController->getAtencionesParticularesPorSemana($fechaInicio, $fechaFin);
+$atenciones = $pacienteService->getAtencionesParticularesPorSemana($fechaInicio, $fechaFin);
 
 // Filtrado por mes, afiliación y tipo
 $filtroMes = $_GET['mes'] ?? '';

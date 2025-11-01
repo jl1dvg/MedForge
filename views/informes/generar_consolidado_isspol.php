@@ -3,13 +3,13 @@ require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Helpers\InformesHelper;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 
 $mes = $_GET['mes'] ?? null;
 $facturas = $billingController->obtenerFacturasDisponibles();
@@ -18,7 +18,7 @@ $pacientesCache = [];
 $datosCache = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteController, $pacientesCache, $datosCache);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, $pacientesCache, $datosCache);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
@@ -33,11 +33,11 @@ $n = 1;
 foreach ($consolidado as $mes => $pacientes) {
     foreach ($pacientes as $p) {
         // Fetch patient details from DB
-        $paciente = $pacienteController->getPatientDetails($p['hc_number']);
+        $paciente = $pacienteService->getPatientDetails($p['hc_number']);
         $apellido = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? ''));
         $nombre = trim(($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
         $cedula = $paciente['cedula'] ?? '';
-        $edad = $pacienteController->calcularEdad($paciente['fecha_nacimiento'] ?? null);
+        $edad = $pacienteService->calcularEdad($paciente['fecha_nacimiento'] ?? null);
         $genero = isset($paciente['sexo']) && $paciente['sexo'] ? strtoupper(substr($paciente['sexo'], 0, 1)) : '--';
 
         $sheet->setCellValue("A$row", "ISSPOL-{$n}");

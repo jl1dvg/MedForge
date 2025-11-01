@@ -71,12 +71,12 @@ if (!function_exists('extraerMlDeDescripcion')) {
 }
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\DashboardController;
 use Helpers\InformesHelper;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $dashboardController = new DashboardController($pdo);
 // Paso 1: Obtener todas las facturas disponibles
 $username = $dashboardController->getAuthenticatedUser();
@@ -91,7 +91,7 @@ foreach ($facturas as $factura) {
     $formId = $factura['form_id'];
 
     if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
     }
 
     if (!isset($cachePorMes[$mes]['datos'][$formId])) {
@@ -197,7 +197,7 @@ if ($billingId) {
                                                     $hc = $factura['hc_number'];
                                                     // Precargar detalles si no existen en cache
                                                     if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-                                                        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+                                                        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
                                                     }
                                                     $afiliacion = strtolower(trim($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? ''));
                                                     if (in_array($afiliacion, $afiliacionesISSPOL, true)) {
@@ -665,13 +665,13 @@ if ($billingId) {
                                         $facturas,
                                         $filtros,
                                         $billingController,
-                                        $pacienteController,
+                                        $pacienteService,
                                         $afiliacionesISSPOL
                                     );
                                     foreach ($consolidado as $mes => $pacientes) {
                                         // Aplicar filtros de apellido usando helper
                                         $apellidoFiltro = strtolower(trim($filtros['apellido']));
-                                        $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteController, $billingController, $apellidoFiltro);
+                                        $pacientes = InformesHelper::filtrarPacientes($pacientes, $pacientesCache, $datosCache, $pacienteService, $billingController, $apellidoFiltro);
 
                                         // Calcular totales del mes
                                         $totalMes = 0;
@@ -715,7 +715,7 @@ if ($billingId) {
                                         foreach ($pacientes as $p) {
                                             $pacienteInfo = $pacientesCache[$p['hc_number']] ?? [];
                                             $datosPaciente = $datosCache[$p['form_id']] ?? [];
-                                            $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento']);
+                                            $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento']);
                                             $genero = isset($pacienteInfo['sexo']) && $pacienteInfo['sexo'] ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
                                             $url = "/views/informes/informe_isspol.php?billing_id=" . urlencode($p['id']);
                                             $afiliacion = strtoupper($pacienteInfo['afiliacion'] ?? '');

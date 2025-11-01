@@ -1,5 +1,6 @@
 <?php
-use Helpers\PacientesHelper;
+
+use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 
 /** @var array $patientData */
 /** @var string $hc_number */
@@ -10,9 +11,17 @@ use Helpers\PacientesHelper;
 /** @var array $eventos */
 /** @var array $documentos */
 /** @var array $estadisticas */
+/** @var int|null $patientAge */
 
-$nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lname'] ?? '') . ' ' . ($patientData['lname2'] ?? ''));
+$nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['mname'] ?? '') . ' ' . ($patientData['lname'] ?? '') . ' ' . ($patientData['lname2'] ?? ''));
+$timelineColorMap = [
+    'solicitud' => 'bg-primary',
+    'prefactura' => 'bg-info',
+    'cirugia' => 'bg-danger',
+    'interconsulta' => 'bg-warning',
+];
 ?>
+
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -20,7 +29,8 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="/pacientes"><i class="mdi mdi-account-multiple"></i></a></li>
+                        <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
+                        <li class="breadcrumb-item"><a href="/pacientes">Pacientes</a></li>
                         <li class="breadcrumb-item active" aria-current="page">HC <?= PacientesHelper::safe($hc_number) ?></li>
                     </ol>
                 </nav>
@@ -38,9 +48,26 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
                         <div class="col-12">
                             <div>
                                 <p>Nombre completo:<span class="text-gray ps-10"><?= PacientesHelper::safe($nombrePaciente) ?></span></p>
-                                <p>Fecha de nacimiento:<span class="text-gray ps-10"><?= PacientesHelper::safe($patientData['fecha_nacimiento'] ?? '—') ?></span></p>
+                                <p>Fecha de Nacimiento:<span class="text-gray ps-10"><?= PacientesHelper::formatDateSafe($patientData['fecha_nacimiento'] ?? null) ?></span></p>
+                                <p>Edad:<span class="text-gray ps-10"><?= $patientAge !== null ? PacientesHelper::safe((string) $patientAge . ' años') : '—' ?></span></p>
                                 <p>Celular:<span class="text-gray ps-10"><?= PacientesHelper::safe($patientData['celular'] ?? '—') ?></span></p>
                                 <p>Dirección:<span class="text-gray ps-10"><?= PacientesHelper::safe($patientData['ciudad'] ?? '—') ?></span></p>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-20">
+                            <div class="pb-15">
+                                <p class="mb-10">Social Profile</p>
+                                <div class="user-social-acount">
+                                    <button class="btn btn-circle btn-social-icon btn-facebook"><i class="fa fa-facebook"></i></button>
+                                    <button class="btn btn-circle btn-social-icon btn-twitter"><i class="fa fa-twitter"></i></button>
+                                    <button class="btn btn-circle btn-social-icon btn-instagram"><i class="fa fa-instagram"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="map-box">
+                                <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2805244.1745767146!2d-86.32675167439648!3d29.383165774894163!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x88c1766591562abf%3A0xf72e13d35bc74ed0!2sFlorida%2C+USA!5e0!3m2!1sen!2sin!4v1501665415329"
+                                        width="100%" height="175" frameborder="0" style="border:0" allowfullscreen></iframe>
                             </div>
                         </div>
                     </div>
@@ -58,10 +85,10 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
                                 <?php foreach ($diagnosticos as $diagnosis): ?>
                                     <li>
                                         <div class="icon bg-primary fa fa-heart-o"></div>
-                                        <div class="timeline-panel text-muted">
+                                        <a class="timeline-panel text-muted" href="#">
                                             <h4 class="mb-2 mt-1"><?= PacientesHelper::safe($diagnosis['idDiagnostico'] ?? '') ?></h4>
                                             <p class="fs-15 mb-0 "><?= PacientesHelper::safe($diagnosis['fecha'] ?? '') ?></p>
-                                        </div>
+                                        </a>
                                     </li>
                                 <?php endforeach; ?>
                             <?php else: ?>
@@ -74,37 +101,89 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
 
             <div class="box">
                 <div class="box-header with-border">
+                    <h4 class="box-title">Solicitudes</h4>
+                    <ul class="box-controls pull-right d-md-flex d-none">
+                        <li class="dropdown">
+                            <button class="btn btn-primary dropdown-toggle px-10" data-bs-toggle="dropdown" href="#">Crear</button>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#"><i class="ti-import"></i> Import</a>
+                                <a class="dropdown-item" href="#"><i class="ti-export"></i> Export</a>
+                                <a class="dropdown-item" href="#"><i class="ti-printer"></i> Print</a>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item" href="#"><i class="ti-settings"></i> Settings</a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+                <div class="box-body">
+                    <?php foreach ($timelineItems as $procedimientoData):
+                        $bulletColor = $timelineColorMap[$procedimientoData['tipo'] ?? '']
+                            ?? $timelineColorMap[strtolower($procedimientoData['origen'] ?? '')] ?? 'bg-secondary';
+                        $checkboxId = 'md_checkbox_' . uniqid();
+                        ?>
+                        <div class="d-flex align-items-center mb-25">
+                            <span class="bullet bullet-bar <?= $bulletColor ?> align-self-stretch"></span>
+                            <div class="h-20 mx-20 flex-shrink-0">
+                                <input type="checkbox" id="<?= $checkboxId ?>" class="filled-in chk-col-<?= $bulletColor ?>">
+                                <label for="<?= $checkboxId ?>" class="h-20 p-10 mb-0"></label>
+                            </div>
+                            <div class="d-flex flex-column flex-grow-1">
+                                <a href="#" class="text-dark fw-500 fs-16">
+                                    <?= nl2br(PacientesHelper::safe($procedimientoData['nombre'] ?? '')) ?>
+                                </a>
+                                <span class="text-fade fw-500">
+                                    <?= ucfirst(strtolower($procedimientoData['origen'] ?? '')) ?> creado el <?= PacientesHelper::formatDateSafe($procedimientoData['fecha'] ?? '') ?>
+                                </span>
+                            </div>
+                            <?php if (($procedimientoData['origen'] ?? '') === 'Solicitud'): ?>
+                                <div class="dropdown">
+                                    <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="ti-more-alt"></i></a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item flexbox" href="#" data-bs-toggle="modal"
+                                           data-bs-target="#modalSolicitud"
+                                           data-form-id="<?= PacientesHelper::safe((string) ($procedimientoData['form_id'] ?? '')) ?>"
+                                           data-hc="<?= PacientesHelper::safe($hc_number) ?>">
+                                            <span>Ver Detalles</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($timelineItems)): ?>
+                        <p class="text-muted mb-0">Sin solicitudes registradas.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="box">
+                <div class="box-header with-border">
                     <h4 class="box-title">Actualizar datos del paciente</h4>
                 </div>
                 <div class="box-body">
                     <form method="POST" action="/pacientes/detalles?hc_number=<?= urlencode($hc_number) ?>">
                         <input type="hidden" name="actualizar_paciente" value="1">
                         <div class="form-group">
-                            <label for="fname">Nombre</label>
-                            <input type="text" id="fname" name="fname" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['fname'] ?? '') ?>">
+                            <label for="fname">Primer nombre</label>
+                            <input type="text" id="fname" name="fname" class="form-control" value="<?= PacientesHelper::safe($patientData['fname'] ?? '') ?>">
                         </div>
                         <div class="form-group">
                             <label for="mname">Segundo nombre</label>
-                            <input type="text" id="mname" name="mname" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['mname'] ?? '') ?>">
+                            <input type="text" id="mname" name="mname" class="form-control" value="<?= PacientesHelper::safe($patientData['mname'] ?? '') ?>">
                         </div>
                         <div class="form-group">
-                            <label for="lname">Apellido</label>
-                            <input type="text" id="lname" name="lname" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['lname'] ?? '') ?>">
+                            <label for="lname">Primer apellido</label>
+                            <input type="text" id="lname" name="lname" class="form-control" value="<?= PacientesHelper::safe($patientData['lname'] ?? '') ?>">
                         </div>
                         <div class="form-group">
                             <label for="lname2">Segundo apellido</label>
-                            <input type="text" id="lname2" name="lname2" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['lname2'] ?? '') ?>">
+                            <input type="text" id="lname2" name="lname2" class="form-control" value="<?= PacientesHelper::safe($patientData['lname2'] ?? '') ?>">
                         </div>
                         <div class="form-group">
                             <label for="afiliacion">Afiliación</label>
                             <select id="afiliacion" name="afiliacion" class="form-control">
                                 <?php foreach ($afiliacionesDisponibles as $afiliacion): ?>
-                                    <option value="<?= PacientesHelper::safe($afiliacion) ?>"
-                                        <?= (($patientData['afiliacion'] ?? '') === $afiliacion) ? 'selected' : '' ?>>
+                                    <option value="<?= PacientesHelper::safe($afiliacion) ?>" <?= strtolower($afiliacion) === strtolower($patientData['afiliacion'] ?? '') ? 'selected' : '' ?>>
                                         <?= PacientesHelper::safe($afiliacion) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -112,20 +191,18 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
                         </div>
                         <div class="form-group">
                             <label for="fecha_nacimiento">Fecha de nacimiento</label>
-                            <input type="date" id="fecha_nacimiento" name="fecha_nacimiento" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['fecha_nacimiento'] ?? '') ?>">
+                            <input type="date" id="fecha_nacimiento" name="fecha_nacimiento" class="form-control" value="<?= PacientesHelper::safe($patientData['fecha_nacimiento'] ?? '') ?>">
                         </div>
                         <div class="form-group">
                             <label for="sexo">Sexo</label>
                             <select id="sexo" name="sexo" class="form-control">
-                                <option value="M" <?= (($patientData['sexo'] ?? '') === 'M') ? 'selected' : '' ?>>Masculino</option>
-                                <option value="F" <?= (($patientData['sexo'] ?? '') === 'F') ? 'selected' : '' ?>>Femenino</option>
+                                <option value="Masculino" <?= strtolower($patientData['sexo'] ?? '') === 'masculino' ? 'selected' : '' ?>>Masculino</option>
+                                <option value="Femenino" <?= strtolower($patientData['sexo'] ?? '') === 'femenino' ? 'selected' : '' ?>>Femenino</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="celular">Celular</label>
-                            <input type="text" id="celular" name="celular" class="form-control"
-                                   value="<?= PacientesHelper::safe($patientData['celular'] ?? '') ?>">
+                            <input type="text" id="celular" name="celular" class="form-control" value="<?= PacientesHelper::safe($patientData['celular'] ?? '') ?>">
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Guardar cambios</button>
                     </form>
@@ -134,136 +211,109 @@ $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['lnam
         </div>
 
         <div class="col-xl-8 col-12">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Médicos asignados</h4>
-                </div>
-                <div class="box-body">
-                    <div class="row">
-                        <?php if (!empty($medicos)): ?>
-                            <?php foreach ($medicos as $doctor => $info): ?>
-                                <div class="col-md-6 col-12">
-                                    <div class="box box-inverse box-primary">
-                                        <div class="box-body">
-                                            <div class="flexbox align-items-center">
-                                                <div>
-                                                    <h5 class="text-white mb-5"><?= PacientesHelper::safe($doctor) ?></h5>
-                                                    <span class="badge bg-success-light">Form ID: <?= PacientesHelper::safe($info['form_id'] ?? '-') ?></span>
-                                                </div>
-                                                <div class="text-white-50"><i class="fa fa-user-md fa-2x"></i></div>
-                                            </div>
-                                        </div>
-                                    </div>
+            <?php include __DIR__ . '/components/tarjeta_paciente.php'; ?>
+
+            <div class="row">
+                <div class="col-xl-6 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h4 class="box-title">Descargar Archivos</h4>
+                            <div class="dropdown pull-right">
+                                <h6 class="dropdown-toggle mb-0" data-bs-toggle="dropdown">Filtro</h6>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item" href="#" onclick="filterDocuments('todos'); return false;">Todos</a>
+                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimo_mes'); return false;">Último Mes</a>
+                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimos_3_meses'); return false;">Últimos 3 Meses</a>
+                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimos_6_meses'); return false;">Últimos 6 Meses</a>
                                 </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <p class="text-muted">No hay médicos asignados para este paciente.</p>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Historial de solicitudes y prefacturas</h4>
-                </div>
-                <div class="box-body">
-                    <div class="timeline">
-                        <?php if (!empty($timelineItems)): ?>
-                            <?php foreach ($timelineItems as $item): ?>
-                                <div class="timeline-item">
-                                    <span class="time"><i class="fa fa-clock-o"></i> <?= PacientesHelper::formatDateSafe($item['fecha'] ?? '') ?></span>
-                                    <h3 class="timeline-header">
-                                        <span class="badge bg-info"><?= PacientesHelper::safe($item['origen'] ?? '') ?></span>
-                                        <?= PacientesHelper::safe($item['nombre'] ?? '') ?>
-                                    </h3>
-                                    <div class="timeline-body">
-                                        <?php if (!empty($item['form_id'])): ?>
-                                            <a href="/modules/solicitudes/views/solicitudes.php?form_id=<?= urlencode($item['form_id']) ?>" class="btn btn-sm btn-primary">Ver detalle</a>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <p class="text-muted">Sin registros en el historial.</p>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Eventos del timeline</h4>
-                </div>
-                <div class="box-body">
-                    <?php if (!empty($eventos)): ?>
-                        <ul class="list-unstyled">
-                            <?php foreach ($eventos as $evento): ?>
-                                <li class="mb-15">
-                                    <strong><?= PacientesHelper::formatDateSafe($evento['fecha'] ?? '') ?>:</strong>
-                                    <?= PacientesHelper::safe($evento['procedimiento_proyectado'] ?? ($evento['contenido'] ?? '')) ?>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <p class="text-muted">No hay eventos registrados.</p>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Documentos disponibles</h4>
-                </div>
-                <div class="box-body">
-                    <?php if (!empty($documentos)): ?>
-                        <ul class="list-unstyled">
-                            <?php foreach ($documentos as $doc): ?>
-                                <li class="mb-10">
-                                    <strong><?= PacientesHelper::safe($doc['procedimiento'] ?? $doc['membrete'] ?? 'Documento') ?></strong>
-                                    <span class="text-muted ms-5"><?= PacientesHelper::formatDateSafe($doc['fecha_inicio'] ?? ($doc['created_at'] ?? '')) ?></span>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <p class="text-muted">No hay documentos para mostrar.</p>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Estadísticas de procedimientos</h4>
-                </div>
-                <div class="box-body">
-                    <?php if (!empty($estadisticas)): ?>
-                        <div class="row">
-                            <?php foreach ($estadisticas as $nombre => $cantidad): ?>
-                                <div class="col-md-4 col-12">
-                                    <div class="box pull-up">
-                                        <div class="box-body text-center">
-                                            <h5 class="fw-600"><?= PacientesHelper::safe($nombre) ?></h5>
-                                            <p class="fs-24 mb-0 text-primary"><?= (int) $cantidad ?></p>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                            </div>
                         </div>
-                    <?php else: ?>
-                        <p class="text-muted">No hay estadísticas disponibles.</p>
-                    <?php endif; ?>
+                        <div class="box-body">
+                            <div class="media-list media-list-divided">
+                                <?php foreach ($documentos as $documento): ?>
+                                    <?php $isProtocolo = isset($documento['membrete']); ?>
+                                    <div class="media media-single px-0">
+                                        <div class="ms-0 me-15 bg-<?= $isProtocolo ? 'success' : 'primary' ?>-light h-50 w-50 l-h-50 rounded text-center d-flex align-items-center justify-content-center">
+                                            <span class="fs-24 text-<?= $isProtocolo ? 'success' : 'primary' ?>">
+                                                <i class="fa fa-file-<?= $isProtocolo ? 'pdf' : 'text' ?>-o"></i>
+                                            </span>
+                                        </div>
+                                        <div class="d-flex flex-column flex-grow-1">
+                                            <span class="title fw-500 fs-16 text-truncate" style="max-width: 200px;">
+                                                <?= PacientesHelper::safe($documento['membrete'] ?? $documento['procedimiento'] ?? 'Documento') ?>
+                                            </span>
+                                            <span class="text-fade fw-500 fs-12">
+                                                <?= PacientesHelper::formatDateSafe($documento['fecha_inicio'] ?? ($documento['created_at'] ?? '')) ?>
+                                            </span>
+                                        </div>
+                                        <a class="fs-18 text-gray hover-info" href="#"
+                                           onclick="<?php if ($isProtocolo): ?>descargarPDFsSeparados('<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>')<?php else: ?>window.open('../reports/solicitud_quirurgica/solicitud_qx_pdf.php?hc_number=<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>&form_id=<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '_blank')<?php endif; ?>">
+                                            <i class="fa fa-download"></i>
+                                        </a>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($documentos)): ?>
+                                    <p class="text-muted mb-0">No hay documentos disponibles.</p>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-6 col-12">
+                    <div class="box">
+                        <div class="box-header no-border">
+                            <h4 class="box-title">Estadísticas de Citas</h4>
+                        </div>
+                        <div class="box-body">
+                            <div id="chart123"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
+<?php include __DIR__ . '/components/modal_editar_paciente.php'; ?>
 
-<!-- Doclinic App -->
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        filterDocuments('ultimos_3_meses');
+    });
+
+    function filterDocuments(filter) {
+        const items = document.querySelectorAll('.media-list .media');
+        const now = new Date();
+
+        items.forEach(item => {
+            const dateElement = item.querySelector('.text-fade');
+            const dateText = dateElement ? dateElement.textContent.trim() : '';
+            const itemDate = dateText ? new Date(dateText) : null;
+            let showItem = true;
+
+            if (itemDate instanceof Date && !isNaN(itemDate)) {
+                switch (filter) {
+                    case 'ultimo_mes':
+                        const lastMonth = new Date(now);
+                        lastMonth.setMonth(now.getMonth() - 1);
+                        showItem = itemDate >= lastMonth;
+                        break;
+                    case 'ultimos_3_meses':
+                        const last3Months = new Date(now);
+                        last3Months.setMonth(now.getMonth() - 3);
+                        showItem = itemDate >= last3Months;
+                        break;
+                    case 'ultimos_6_meses':
+                        const last6Months = new Date(now);
+                        last6Months.setMonth(now.getMonth() - 6);
+                        showItem = itemDate >= last6Months;
+                        break;
+                    default:
+                        showItem = true;
+                }
+            }
+
+            item.style.display = showItem ? 'flex' : 'none';
+        });
+    }
+</script>

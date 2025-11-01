@@ -1,13 +1,12 @@
 <?php
-require_once __DIR__ . '/../../../bootstrap.php';
 
-use Helpers\PacientesHelper;
+use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 
 ?>
 <div class="box">
     <?php
     // Determinar la imagen de fondo en función del seguro
-    $insurance = strtolower($patientData['afiliacion']);
+    $insurance = strtolower($patientData['afiliacion'] ?? '');
     $backgroundImage = '/public/assets/logos_seguros/5.png'; // Imagen predeterminada
 
     $generalInsurances = [
@@ -31,7 +30,7 @@ use Helpers\PacientesHelper;
     }
 
     // Determinar la imagen del avatar en función del sexo
-    $gender = strtolower($patientData['sexo']);
+    $gender = strtolower($patientData['sexo'] ?? '');
     $avatarImage = '/public/images/avatar/female.png'; // Imagen predeterminada
 
     if (strpos($gender, 'masculino') !== false) {
@@ -53,7 +52,7 @@ use Helpers\PacientesHelper;
                      alt=""/>
                 <div class="text-center my-10">
                     <p class="mb-0">Afiliación</p>
-                    <h4><?php echo $patientData['afiliacion']; ?></h4>
+                    <h4><?= PacientesHelper::safe($patientData['afiliacion'] ?? '') ?></h4>
                 </div>
             </div>
             <div class="mt-40">
@@ -61,9 +60,7 @@ use Helpers\PacientesHelper;
                     echo PacientesHelper::safe($patientData['fname']) . " " . PacientesHelper::safe($patientData['mname']) . " " . PacientesHelper::safe($patientData['lname']) . " " . PacientesHelper::safe($patientData['lname2']);
                     ?></h4>
                 <h5 class="fw-500 mb-5"><?php echo "C. I.: " . PacientesHelper::safe($patientData['hc_number']); ?></h5>
-                <p><i class="fa fa-clock-o"></i> Edad: <?
-                    echo $pacienteController->calcularEdad($patientData['fecha_nacimiento']) . " años";
-                    ?></p>
+                <p><i class="fa fa-clock-o"></i> Edad: <?= $patientAge !== null ? PacientesHelper::safe($patientAge . ' años') : '—' ?></p>
             </div>
         </div>
     </div>

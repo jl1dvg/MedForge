@@ -4,12 +4,10 @@ ob_start();
 require_once __DIR__ . '/../../bootstrap.php';
 
 use Controllers\DashboardController;
-use Controllers\PacienteController;
 use Controllers\IplPlanificadorController;
 use Helpers\IplHelper;
 
 $iplPlanificadorController = new IplPlanificadorController($pdo);
-$pacienteController = new PacienteController($pdo);
 $dashboardController = new DashboardController($pdo);
 
 $cirugias = $iplPlanificadorController->obtenerCirugias();

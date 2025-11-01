@@ -5,13 +5,13 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/../../../bootstrap.php';
 
 use Controllers\DashboardController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\ReporteCirugiasController;
 use Controllers\IplPlanificadorController;
 use Helpers\ProtocoloHelper;
 
 $reporteCirugiasController = new ReporteCirugiasController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $dashboardController = new DashboardController($pdo);
 $verificacionController = new IplPlanificadorController($pdo);
 
@@ -21,7 +21,7 @@ $form_id = $_GET['form_id'] ?? null;
 $hc_number = $_GET['hc_number'] ?? null;
 $cirugia = $reporteCirugiasController->obtenerCirugiaPorId($form_id, $hc_number);
 $username = $dashboardController->getAuthenticatedUser();
-$cirujanos = $pacienteController->obtenerStaffPorEspecialidad();
+$cirujanos = $pacienteService->obtenerStaffPorEspecialidad();
 ?>
 <html lang="es">
 <head>

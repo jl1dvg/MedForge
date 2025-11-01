@@ -19,12 +19,12 @@ require_once __DIR__ . '/../../bootstrap.php';
 require_once __DIR__ . '/../../helpers/InformesHelper.php';
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\DashboardController;
 use Helpers\InformesHelper;
 
 $billingController = new BillingController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $dashboardController = new DashboardController($pdo);
 // Cache de derivaciones por form_id
 $cacheDerivaciones = [];
@@ -83,7 +83,7 @@ if (!empty($mesSeleccionado)) {
         $formId = $factura['form_id'];
 
         if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-            $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+            $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
         }
 
         if (!isset($cachePorMes[$mes]['datos'][$formId])) {
@@ -192,7 +192,7 @@ if (!empty($billingIds)) {
                                                     $hc = $factura['hc_number'];
                                                     // Precargar detalles si no existen en cache
                                                     if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-                                                        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteController->getPatientDetails($hc);
+                                                        $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
                                                     }
                                                     $afiliacion = strtolower(trim($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? ''));
                                                     if (in_array($afiliacion, $afiliacionesIESS, true)) {
@@ -301,7 +301,7 @@ if (!empty($billingIds)) {
                                         $facturas,
                                         $filtros,
                                         $billingController,
-                                        $pacienteController,
+                                        $pacienteService,
                                         $afiliacionesIESS
                                     );
 
@@ -411,8 +411,8 @@ if (!empty($billingIds)) {
                                                 </thead>
                                                 <tbody>
                                                 <?php foreach ($pacientesAgrupados as $hc => $info):
-                                                    $pacienteInfo = $pacienteController->getPatientDetails($hc);
-                                                    $edad = $pacienteController->calcularEdad($pacienteInfo['fecha_nacimiento'], $info['paciente']['fecha_ordenada']);
+                                                    $pacienteInfo = $pacienteService->getPatientDetails($hc);
+                                                    $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'], $info['paciente']['fecha_ordenada']);
                                                     $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
                                                     $procedimientos = InformesHelper::formatearListaProcedimientos($info['procedimientos']);
                                                     $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));

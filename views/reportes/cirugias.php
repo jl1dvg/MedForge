@@ -2,11 +2,11 @@
 require_once __DIR__ . '/../../bootstrap.php';
 
 use Controllers\DashboardController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\ReporteCirugiasController;
 
 $reporteCirugiasController = new ReporteCirugiasController($pdo);
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $dashboardController = new DashboardController($pdo);
 
 $cirugias = $reporteCirugiasController->obtenerListaCirugias();
