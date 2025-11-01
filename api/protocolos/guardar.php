@@ -18,7 +18,7 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-use Controllers\GuardarProtocoloController;
+use Modules\Cirugias\Services\CirugiaService;
 
 try {
     $data = json_decode(file_get_contents('php://input'), true);
@@ -27,8 +27,8 @@ try {
         throw new Exception("JSON mal formado");
     }
 
-    $controller = new GuardarProtocoloController($pdo);
-    $response = $controller->api($data);
+    $service = new CirugiaService($pdo);
+    $response = $service->guardarDesdeApi($data);
     echo json_encode($response);
 } catch (Throwable $e) {
     http_response_code(500);

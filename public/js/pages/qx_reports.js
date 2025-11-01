@@ -14,7 +14,7 @@ function togglePrintStatus(form_id, hc_number, button, currentStatus) {
 
     // Realizar la petición AJAX para actualizar el estado en la base de datos
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', 'update_print_status.php', true);
+    xhr.open('POST', '/cirugias/protocolo/printed', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + newStatus);
 
@@ -179,7 +179,7 @@ function updateProtocolStatus() {
 
     // Realizar la petición AJAX para actualizar el campo "status" en la base de datos
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', 'update_protocol_status.php', true);  // Archivo PHP para manejar la actualización
+    xhr.open('POST', '/cirugias/protocolo/status', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && xhr.status === 200) {

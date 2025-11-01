@@ -775,35 +775,26 @@ $stmt->close();
 <!-- Page Content overlay -->
 <script>
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
-        // Verificar si el botón está activo
         var isActive = button.classList.contains('active');
-        var newStatus = isActive ? 1 : 0;  // Si el botón está activo (on), el nuevo estado será 0 (off); si no, será 1 (on)
+        var newStatus = isActive ? 0 : 1;
 
-        // Cambiar visualmente el estado del botón
-        if (isActive) {
-            button.classList.add('active');
-            button.setAttribute('aria-pressed', 'true');
-        } else {
-            button.classList.remove('active');
-            button.setAttribute('aria-pressed', 'false');
+        if (!isActive) {
+            window.open('../../generate_pdf.php?form_id=' + form_id + '&hc_number=' + hc_number, '_blank');
         }
 
-        // Realizar la petición AJAX para actualizar el estado en la base de datos
+        button.classList.toggle('active');
+        button.setAttribute('aria-pressed', button.classList.contains('active'));
+
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', 'update_print_status.php', true);
+        xhr.open('POST', '/cirugias/protocolo/printed', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        xhr.send('form_id=' + form_id + '&hc_number=' + hc_number + '&printed=' + newStatus);
+        xhr.send('form_id=' + encodeURIComponent(form_id) + '&hc_number=' + encodeURIComponent(hc_number) + '&printed=' + (button.classList.contains('active') ? 1 : 0));
 
         xhr.onload = function () {
-            if (xhr.status === 200 && xhr.responseText === 'success') {
-                console.log('Estado actualizado en la base de datos');
-
-                // Solo si el nuevo estado es "on" (printed = 1), generamos el PDF
-                if (newStatus === 1) {
-                    window.open('../../generate_pdf.php?form_id=' + form_id + '&hc_number=' + hc_number, '_blank');
-                }
-            } else {
+            if (xhr.status !== 200) {
                 console.log('Error al actualizar el estado');
+                button.classList.toggle('active');
+                button.setAttribute('aria-pressed', button.classList.contains('active'));
             }
         };
     }
@@ -812,10 +803,7 @@ $stmt->close();
     let currentHcNumber;  // Variable para almacenar el hc_number actual
 
     function redirectToEditProtocol() {
-        // Construir la URL de edición
-        const url = `../edit_protocol.php?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
-
-        // Redirigir al usuario
+        const url = `/cirugias/wizard?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
         window.location.href = url;
     }
 
@@ -825,14 +813,14 @@ $stmt->close();
 
         // Realizar la petición AJAX para actualizar el campo "status" en la base de datos
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', 'update_protocol_status.php', true);  // Archivo PHP para manejar la actualización
+        xhr.open('POST', '/cirugias/protocolo/status', true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         xhr.onreadystatechange = function () {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 console.log(xhr.responseText);  // Ver la respuesta del servidor
 
                 // Verificamos si la respuesta contiene 'success'
-                if (xhr.status === 200 && xhr.responseText.trim().includes('success')) {
+                if (xhr.status === 200 && xhr.responseText.trim().includes('"success":true')) {
                     console.log('Estado del protocolo actualizado correctamente');
 
                     // Cerrar el modal sin usar jQuery
