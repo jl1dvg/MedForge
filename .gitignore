@@ -1,2 +1,17 @@
 .env
 .env
+/views/pacientes/
+/views/billing/
+/views/codes/
+/views/components/
+/views/editor/
+/views/informes/
+/views/insumos/
+/views/ipl/
+/views/pdf/
+/views/recetas/
+/views/reglas/
+/views/reportes/
+/views/test/
+/views/users/
+/controllers/PacienteController.php
