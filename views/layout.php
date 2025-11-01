@@ -9,7 +9,12 @@
     <meta name="author" content="">
     <link rel="icon" href="<?= asset('images/favicon.ico') ?>">
 
-    <title>MedForge - Log in </title>
+    <?php
+    $titleSuffix = isset($pageTitle) && $pageTitle ? ' - ' . htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') : '';
+    $defaultBodyClass = 'hold-transition light-skin sidebar-mini theme-primary fixed';
+    $bodyClassAttr = htmlspecialchars($bodyClass ?? $defaultBodyClass, ENT_QUOTES, 'UTF-8');
+    ?>
+    <title>MedForge<?= $titleSuffix ?></title>
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="<?= asset('/css/vendors_css.css') ?>">
@@ -22,16 +27,15 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 
-<body class="hold-transition light-skin sidebar-mini theme-primary fixed">
+<body class="<?= $bodyClassAttr ?>">
 <div class="wrapper">
 
     <?php
     // Detectar si estamos en el login o cualquier página pública
-    $isAuthView = str_contains($viewPath, '/modules/Auth/views/login.php');
+    $isAuthView = isset($viewPath) && stripos($viewPath, '/modules/auth/views/login.php') !== false;
     ?>
 
     <?php if (!$isAuthView): ?>
-
 
         <!-- Encabezado -->
         <?php include __DIR__ . '/partials/header.php'; ?>
@@ -43,7 +47,9 @@
         <div class="content-wrapper">
             <div class="container-full">
                 <!-- Main content -->
-                <?php include $viewPath; ?>
+                <?php if (isset($viewPath) && is_file($viewPath)): ?>
+                    <?php include $viewPath; ?>
+                <?php endif; ?>
                 <!-- /.content -->
             </div>
         </div>
@@ -52,7 +58,9 @@
         <?php include __DIR__ . '/partials/footer.php'; ?>
     <?php else: ?>
         <!-- Vista de login sin layout completo -->
-        <?php include $viewPath; ?>
+        <?php if (isset($viewPath) && is_file($viewPath)): ?>
+            <?php include $viewPath; ?>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 </body>

@@ -1,7 +1,7 @@
 <header class="main-header">
     <div class="d-flex align-items-center logo-box justify-content-start">
         <!-- Logo -->
-        <a href="<?php echo BASE_URL; ?>views/main.php" class="logo">
+        <a href="/dashboard" class="logo">
             <!-- logo-->
             <div class="logo-mini w-50">
                 <span class="light-logo"><img src="<?= img('logo-light-text.png') ?>" alt="logo"></span>

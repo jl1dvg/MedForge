@@ -1,10 +1,18 @@
 <?php
-// Rutas del módulo Pacientes
-return [
-    // GET /pacientes  -> vista (tabla)
-    ['GET', '/pacientes', ['Modules\Pacientes\Controllers\Pacientes', 'index']],
-    // GET /pacientes/datatable -> JSON para DataTables (server-side)
-    ['GET', '/pacientes/datatable', ['Modules\Pacientes\Controllers\Pacientes', 'datatable']],
-    // GET /pacientes/detalle/{hc} -> ejemplo de detalle (opcional)
-    ['GET', '/pacientes/detalle/([A-Za-z0-9\-\.]+)', ['Modules\Pacientes\Controllers\Pacientes', 'detalle']],
-];
+
+use Core\Router;
+use Modules\Pacientes\Controllers\PacientesController;
+
+return function (Router $router) {
+    $router->get('/pacientes', function (\PDO $pdo) {
+        (new PacientesController($pdo))->index();
+    });
+
+    $router->post('/pacientes/datatable', function (\PDO $pdo) {
+        (new PacientesController($pdo))->datatable();
+    });
+
+    $router->match(['GET', 'POST'], '/pacientes/detalles', function (\PDO $pdo) {
+        (new PacientesController($pdo))->detalles();
+    });
+};

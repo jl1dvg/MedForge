@@ -2,27 +2,51 @@
 
 namespace Core;
 
+use PDO;
+
 class BaseController
 {
-    protected $pdo;
+    protected PDO $pdo;
 
-    public function __construct($pdo)
+    public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
     }
 
-    protected function render($viewPath, $data = [], $title = 'Panel')
+    protected function isAuthenticated(): bool
     {
-        // Variables compartidas para el layout/partials
-        $username = $_SESSION['username'] ?? 'Invitado';
+        return isset($_SESSION['user_id']);
+    }
 
-        // Variables específicas de la vista
-        extract($data);
+    protected function requireAuth(string $redirect = '/auth/login'): void
+    {
+        if ($this->isAuthenticated()) {
+            return;
+        }
 
-        // 🔍 depuración temporal
-        file_put_contents(__DIR__ . '/../debug_render.log', $viewPath . PHP_EOL, FILE_APPEND);
+        header('Location: ' . $redirect);
+        exit;
+    }
 
-        $layout = __DIR__ . '/../views/layout.php';
-        include $layout;
+    protected function render(string $viewPath, array $data = [], string|false|null $layout = null): void
+    {
+        $shared = array_merge(
+            [
+                'username' => $_SESSION['username'] ?? 'Invitado',
+            ],
+            $data
+        );
+
+        View::render($viewPath, $shared, $layout);
+    }
+
+    protected function json(array $data, int $status = 200): void
+    {
+        if (!headers_sent()) {
+            http_response_code($status);
+            header('Content-Type: application/json');
+        }
+
+        echo json_encode($data, JSON_UNESCAPED_UNICODE);
     }
 }

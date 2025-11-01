@@ -4,7 +4,7 @@ namespace Core;
 
 class Router
 {
-    private $routes = [];
+    private array $routes = [];
     private $pdo;
 
     public function __construct($pdo)
@@ -20,6 +20,15 @@ class Router
     public function post($path, $callback)
     {
         $this->routes['POST'][$path] = $callback;
+    }
+
+    public function match($methods, $path, $callback): void
+    {
+        $methods = (array) $methods;
+        foreach ($methods as $method) {
+            $method = strtoupper(ltrim($method, '/'));
+            $this->routes[$method][$path] = $callback;
+        }
     }
 
     public function dispatch($method, $uri, $silent = false)

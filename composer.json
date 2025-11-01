@@ -4,7 +4,8 @@
       "Controllers\\": "controllers/",
       "Models\\": "models/",
       "Helpers\\": "helpers/",
-      "Services\\": "controllers/Services/"
+      "Services\\": "controllers/Services/",
+      "Modules\\": "modules/"
     }
   },
   "require": {

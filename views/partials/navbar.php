@@ -1,12 +1,10 @@
 <?php
-require_once __DIR__ . '/../../bootstrap.php';
-
 // Helper para marcar el item activo según la URL actual
 if (!function_exists('isActive')) {
     function isActive(string $path): string
     {
         $current = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-        return str_ends_with($current, $path) ? ' is-active' : '';
+        return rtrim($current, '/') === rtrim($path, '/') ? ' is-active' : '';
     }
 }
 ?>
@@ -18,21 +16,21 @@ if (!function_exists('isActive')) {
 
                 <!-- sidebar menu-->
                 <ul class="sidebar-menu" data-widget="tree">
-                    <li class="<?= isActive('/views/main.php') ?>">
-                        <a href="<?= BASE_URL . 'views/main.php'; ?>">
+                    <li class="<?= isActive('/dashboard') ?>">
+                        <a href="/dashboard">
                             <i class="mdi mdi-view-dashboard"></i>Inicio
                         </a>
                     </li>
 
-                    <li class="treeview">
+                    <li class="treeview<?= str_starts_with(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '', '/pacientes') ? ' menu-open' : '' ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Pacientes</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/views/pacientes/lista.php') ?>">
-                                <a href="<?= BASE_URL . 'views/pacientes/lista.php'; ?>">
+                            <li class="<?= isActive('/pacientes') ?>">
+                                <a href="/pacientes">
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
                                 </a>
                             </li>
