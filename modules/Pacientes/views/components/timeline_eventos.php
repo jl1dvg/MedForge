@@ -1,7 +1,6 @@
 <?php
-require_once __DIR__ . '/../../../bootstrap.php';
 
-use Helpers\PacientesHelper;
+use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 
 if (!empty($eventos)): ?>
     <section class="cd-horizontal-timeline">
@@ -12,9 +11,10 @@ if (!empty($eventos)): ?>
                         <?php foreach ($eventos as $index => $row): ?>
                             <li style="min-width: 80px; text-align: center;">
                                 <?php
-                                $fecha_raw = $row['fecha'];
-                                $fecha_valida = strtotime($fecha_raw) ? date('d/m/Y', strtotime($fecha_raw)) : '01/01/2000';
-                                $texto_fecha = strtotime($fecha_raw) ? date('d M', strtotime($fecha_raw)) : '01 Jan';
+                                $fecha_raw = $row['fecha'] ?? '';
+                                $timestamp = $fecha_raw && strtotime($fecha_raw) ? strtotime($fecha_raw) : null;
+                                $fecha_valida = $timestamp ? date('d/m/Y', $timestamp) : '01/01/2000';
+                                $texto_fecha = $timestamp ? date('d M', $timestamp) : '01 Jan';
                                 ?>
                                 <a href="#0" style="display: inline-block; padding: 6px 10px;"
                                    data-date="<?php echo $fecha_valida; ?>"
@@ -39,15 +39,16 @@ if (!empty($eventos)): ?>
         <div class="events-content">
             <ol>
                 <?php foreach ($eventos as $index => $row):
-                    $procedimiento_parts = explode(' - ', $row['procedimiento_proyectado']);
+                    $procedimiento = $row['procedimiento_proyectado'] ?? '';
+                    $procedimiento_parts = explode(' - ', $procedimiento);
                     $nombre_procedimiento = implode(' - ', array_slice($procedimiento_parts, 2));
                     ?>
-                    <li data-date="<?php echo PacientesHelper::formatDateSafe($row['fecha']); ?>"
+                    <li data-date="<?php echo PacientesHelper::formatDateSafe($row['fecha'] ?? null); ?>"
                         class="<?php echo $index === 0 ? 'selected' : ''; ?>">
                         <h2><?php echo PacientesHelper::safe($nombre_procedimiento); ?></h2>
-                        <small><?php echo PacientesHelper::formatDateSafe($row['fecha'], 'F jS, Y'); ?></small>
+                        <small><?php echo PacientesHelper::formatDateSafe($row['fecha'] ?? null, 'F jS, Y'); ?></small>
                         <hr class="my-30">
-                        <p class="pb-30"><?php echo nl2br(PacientesHelper::safe($row['contenido'])); ?></p>
+                        <p class="pb-30"><?php echo nl2br(PacientesHelper::safe($row['contenido'] ?? '')); ?></p>
                     </li>
                 <?php endforeach; ?>
             </ol>

@@ -4,7 +4,7 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 require_once __DIR__ . '/../../bootstrap.php';
 
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 
 header('Content-Type: application/json');
 
@@ -16,7 +16,7 @@ if (!$hc || !$form_id) {
     exit;
 }
 
-$controller = new PacienteController($pdo);
+$controller = new PacienteService($pdo);
 $data = $controller->getDetalleSolicitud($hc, $form_id);
 
 echo json_encode($data);

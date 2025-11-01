@@ -3,19 +3,19 @@
 namespace controllers;
 
 use Models\SolicitudModel;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 
 class SolicitudController
 {
     protected $pdo;
     protected $solicitudModel;
-    protected $pacienteController;
+    protected PacienteService $pacienteService;
 
 
     public function __construct($pdo)
     {
         $this->solicitudModel = new SolicitudModel($pdo);
-        $this->pacienteController = new PacienteController($pdo);
+        $this->pacienteService = new PacienteService($pdo);
     }
 
     public function getSolicitudesConDetalles(array $filtros = []): array
@@ -27,7 +27,7 @@ class SolicitudController
     {
         $data = $this->solicitudModel->obtenerDerivacionPorFormId($form_id);
         $solicitud = $this->solicitudModel->obtenerDatosYCirujanoSolicitud($form_id, $hc);
-        $paciente = $this->pacienteController->getPatientDetails($hc);
+        $paciente = $this->pacienteService->getPatientDetails($hc);
         $diagnostico = $this->solicitudModel->obtenerDxDeSolicitud($form_id);
         $consulta = $this->solicitudModel->obtenerConsultaDeSolicitud($form_id);
         return [
