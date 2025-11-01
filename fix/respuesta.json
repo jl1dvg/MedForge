@@ -1,0 +1,679 @@
+{
+  "success": true,
+  "message": "Insumos encontrados",
+  "insumos": {
+    "equipos": [
+      {
+        "id": 5,
+        "nombre": "BOMBA DE IRRIGACION Y ASPIRACION",
+        "cantidad": 1,
+        "codigo": "700003"
+      },
+      {
+        "id": 6,
+        "nombre": "MICROSCOPIO QUIRURGICO-MICROCIRUGIA",
+        "cantidad": 1,
+        "codigo": "800014"
+      },
+      {
+        "id": 1,
+        "nombre": "SISTEMA VISUALIZACI\u00d3N (OFTALMOLOG\u00cdA)",
+        "cantidad": 1,
+        "codigo": "700027"
+      },
+      {
+        "id": 7,
+        "nombre": "VITRECTOR",
+        "cantidad": 1,
+        "codigo": "800016"
+      }
+    ],
+    "anestesia": [
+      {
+        "id": 26,
+        "nombre": "AGUJA 18",
+        "cantidad": 2,
+        "codigo": null
+      },
+      {
+        "id": 27,
+        "nombre": "AGUJA 23G",
+        "cantidad": 1,
+        "codigo": null
+      },
+      {
+        "id": 28,
+        "nombre": "AGUJA 25 x5\/8",
+        "cantidad": 1,
+        "codigo": null
+      },
+      {
+        "id": 38,
+        "nombre": "APLICADORES",
+        "cantidad": 6,
+        "codigo": ""
+      },
+      {
+        "id": 35,
+        "codigo": "000273",
+        "nombre": "ATROPINA\n  LIQUIDO OFTALMICO\u00a0 1 % (5ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 94,
+        "codigo": "000345",
+        "nombre": "BUPIVACAINA\n  (SIN EPINEFRINA) LIQUIDO PARENTERAL 0.5 % (20ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 14,
+        "codigo": "18-331-005",
+        "nombre": "CATETER I.V. 22G DESCARTABLE",
+        "cantidad": 2
+      },
+      {
+        "id": 31,
+        "codigo": "000426",
+        "nombre": "CEFTRIAXONA\n  SOLIDO PARENTERAL 1000 MG",
+        "cantidad": 1
+      },
+      {
+        "id": 161,
+        "codigo": "000540",
+        "nombre": "CLORURO\n  DE SODIO 0.9% LIQUIDO PARENTERAL (1000ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 29,
+        "codigo": "000611",
+        "nombre": "DEXAMETASONA\n  LIQUIDO PARENTERAL 4MG\/ML (2ML)",
+        "cantidad": 2
+      },
+      {
+        "id": 34,
+        "codigo": "000640",
+        "nombre": "DICLOFENACO\n  LIQUIDO OFTALMICO 0.1% (5ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 30,
+        "codigo": "000626",
+        "nombre": "DICLOFENACO LIQUIDO PARENTERAL 25MG\/ML (3ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 18,
+        "codigo": "18-331-010",
+        "nombre": "ELECTRODOS EKG DESCARTABLE",
+        "cantidad": 3
+      },
+      {
+        "id": 17,
+        "codigo": "16-649-001",
+        "nombre": "EQUIPO DE VENOCLISIS DESCARTABLE",
+        "cantidad": 2
+      },
+      {
+        "id": 22,
+        "codigo": "000825",
+        "nombre": "FENTANILO\n  LIQUIDO PARENTERAL\u00a0 0.05MG\/ML ( 10ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 37,
+        "nombre": "GASAS",
+        "cantidad": 20,
+        "codigo": null
+      },
+      {
+        "id": 19,
+        "codigo": "11-883-002",
+        "nombre": "GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE",
+        "cantidad": 2
+      },
+      {
+        "id": 20,
+        "nombre": "GUANTES DE MANEJO",
+        "cantidad": 6,
+        "codigo": null
+      },
+      {
+        "id": 10,
+        "nombre": "JERINGUILLA 10CC",
+        "cantidad": 4,
+        "codigo": null
+      },
+      {
+        "id": 13,
+        "nombre": "JERINGUILLA 20CC",
+        "cantidad": 2,
+        "codigo": null
+      },
+      {
+        "id": 12,
+        "nombre": "JERINGUILLA 3CC",
+        "cantidad": 2,
+        "codigo": null
+      },
+      {
+        "id": 11,
+        "nombre": "JERINGUILLA 5CC",
+        "cantidad": 3,
+        "codigo": null
+      },
+      {
+        "id": 36,
+        "codigo": "001140",
+        "nombre": "LATANOPROST\n  LIQUIDO OFTALMICO 0.005%\u00a0 (3ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 23,
+        "codigo": "001200",
+        "nombre": "LIDOCAINA\n  SIN EPINEFRINA LIQUIDO PARENTERAL 2 % (50 ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 15,
+        "codigo": "13-803-001",
+        "nombre": "LLAVE DE TRES VIAS CON TUBO DE EXTENSION DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 184,
+        "codigo": "001308",
+        "nombre": "MIDAZOLAM LIQUIDO PARENTEAL 1 MG\/ML (5ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 25,
+        "codigo": "001528",
+        "nombre": "PROPOFOL\n  LIQUIDO PARENTERAL 10MG\/ML ( 20 ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 32,
+        "nombre": "PROXIMETACAINA 0,5% 1ML",
+        "cantidad": 1,
+        "codigo": ""
+      },
+      {
+        "id": 16,
+        "codigo": "17-428-023",
+        "nombre": "TEGADERM IV( APOSITO TRANSPARENTE )DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 33,
+        "codigo": "001756",
+        "nombre": "TROPICAMIDA\n  LIQUIDO OFTALMICO 1% (15ML)",
+        "cantidad": 1
+      }
+    ],
+    "quirurgicos": [
+      {
+        "id": 47,
+        "nombre": "AGUJA 30 GAUGE",
+        "cantidad": 3,
+        "codigo": null
+      },
+      {
+        "id": 48,
+        "codigo": "45-180-001",
+        "nombre": "AZUL DE TRIPANO (ES UN INSUMO) DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 39,
+        "nombre": "BATAS QUIRURGICAS",
+        "cantidad": 3,
+        "codigo": null
+      },
+      {
+        "id": 51,
+        "codigo": "27-559-007",
+        "nombre": "CUCHILLETE 15 MM DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 53,
+        "codigo": "27-559-003",
+        "nombre": "CUCHILLETE 2.75 MM DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 62,
+        "codigo": "000613",
+        "nombre": "DEXAMETASONA + TOBRAMICINA - LIQUIDO OFTALMICO 0.1%+0.3%(5ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 59,
+        "codigo": "000932",
+        "nombre": "GENTAMICINA\n  LIQUIDO PARENTERAL 80 MG\/ML ( 2ML)",
+        "cantidad": 1
+      },
+      {
+        "id": 40,
+        "codigo": "11-883-002",
+        "nombre": "GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE",
+        "cantidad": 3
+      },
+      {
+        "id": 127,
+        "codigo": "17-544-001",
+        "nombre": "INYECTOR LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 42,
+        "nombre": "JERINGUILLA DE 10CC",
+        "cantidad": 1,
+        "codigo": null
+      },
+      {
+        "id": 45,
+        "nombre": "JERINGUILLA DE 1CC",
+        "cantidad": 4,
+        "codigo": null
+      },
+      {
+        "id": 44,
+        "nombre": "JERINGUILLA DE 3CC",
+        "cantidad": 2,
+        "codigo": null
+      },
+      {
+        "id": 43,
+        "nombre": "JERINGUILLA DE 5CC",
+        "cantidad": 2,
+        "codigo": null
+      },
+      {
+        "id": 54,
+        "codigo": "40200026",
+        "nombre": "LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 3,
+        "codigo": "17-596-003",
+        "nombre": "PAK ANTERIOR DE CONSTELLATION DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 41,
+        "codigo": "5539051",
+        "nombre": "SOLUCION SALINA BALANCEADA BSS DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 50,
+        "nombre": "STERI STRIP 1\/4 IN X 4 DESCARTABLE",
+        "cantidad": 1,
+        "codigo": ""
+      },
+      {
+        "id": 124,
+        "codigo": "16-844-001",
+        "nombre": "SUSTANCIA VISCOELASTICA HIALURONATO DE SODIO (ES UN INSUMO) DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 58,
+        "codigo": "16-844-002",
+        "nombre": "SUSTANCIA VISCOELASTICA METILCELULOSA (ES UN INSUMO) DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 49,
+        "codigo": "17-428-015",
+        "nombre": "TEGADERM FILM 10X12 (APOSITO TRANSPARENTE) DESCARTABLE",
+        "cantidad": 1
+      },
+      {
+        "id": 222,
+        "codigo": "17-596-001",
+        "nombre": "TIPS DE\n  PHACO 09 DESCARTABLE",
+        "cantidad": 1
+      }
+    ]
+  },
+  "duracion": "02:00",
+  "status": 1,
+  "afiliacion": "SEGURO GENERAL JUBILADO",
+  "debug": {
+    "inputs": {
+      "hcNumber": "0900233347",
+      "form_id": "155217"
+    },
+    "sql_row": {
+      "insumos": "{\"equipos\": [{\"id\": 5, \"nombre\": \"BOMBA DE IRRIGACION Y ASPIRACION\", \"cantidad\": 1}, {\"id\": 6, \"nombre\": \"MICROSCOPIO QUIRURGICO-MICROCIRUGIA\", \"cantidad\": 1}, {\"id\": 1, \"nombre\": \"SISTEMA VISUALIZACI\u00d3N (OFTALMOLOG\u00cdA)\", \"cantidad\": 1}, {\"id\": 7, \"nombre\": \"VITRECTOR\", \"cantidad\": 1}], \"anestesia\": [{\"id\": 26, \"nombre\": \"AGUJA 18\", \"cantidad\": 2}, {\"id\": 27, \"nombre\": \"AGUJA 23G\", \"cantidad\": 1}, {\"id\": 28, \"nombre\": \"AGUJA 25 x5\/8\", \"cantidad\": 1}, {\"id\": 38, \"nombre\": \"APLICADORES\", \"cantidad\": 6}, {\"id\": 35, \"codigo\": \"S01FA01\", \"nombre\": \"ATROPINA\\n  LIQUIDO OFTALMICO\u00a0 1 % (5ML)\", \"cantidad\": 1}, {\"id\": 94, \"codigo\": \"N01BB01\", \"nombre\": \"BUPIVACAINA\\n  (SIN EPINEFRINA) LIQUIDO PARENTERAL 0.5 % (20ML)\", \"cantidad\": 1}, {\"id\": 14, \"codigo\": \"INM-15\", \"nombre\": \"CATETER I.V. 22G DESCARTABLE\", \"cantidad\": 2}, {\"id\": 31, \"codigo\": \"J01DD04\", \"nombre\": \"CEFTRIAXONA\\n  SOLIDO PARENTERAL 1000 MG\", \"cantidad\": 1}, {\"id\": 161, \"codigo\": \"B05CB01\", \"nombre\": \"CLORURO\\n  DE SODIO 0.9% LIQUIDO PARENTERAL (1000ML)\", \"cantidad\": 1}, {\"id\": 29, \"codigo\": \"H02AB02\", \"nombre\": \"DEXAMETASONA\\n  LIQUIDO PARENTERAL 4MG\/ML (2ML)\", \"cantidad\": 2}, {\"id\": 34, \"codigo\": \"S01BC03\", \"nombre\": \"DICLOFENACO\\n  LIQUIDO OFTALMICO 0.1% (5ML)\", \"cantidad\": 1}, {\"id\": 30, \"codigo\": \"M01AB05\", \"nombre\": \"DICLOFENACO LIQUIDO PARENTERAL 25MG\/ML (3ML)\", \"cantidad\": 1}, {\"id\": 18, \"codigo\": \"INM-27\", \"nombre\": \"ELECTRODOS EKG DESCARTABLE\", \"cantidad\": 3}, {\"id\": 17, \"codigo\": \"INM-28\", \"nombre\": \"EQUIPO DE VENOCLISIS DESCARTABLE\", \"cantidad\": 2}, {\"id\": 22, \"codigo\": \"N01AH01\", \"nombre\": \"FENTANILO\\n  LIQUIDO PARENTERAL\u00a0 0.05MG\/ML ( 10ML)\", \"cantidad\": 1}, {\"id\": 37, \"nombre\": \"GASAS\", \"cantidad\": 20}, {\"id\": 19, \"codigo\": \"INM-38\", \"nombre\": \"GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE\", \"cantidad\": 2}, {\"id\": 20, \"nombre\": \"GUANTES DE MANEJO\", \"cantidad\": 6}, {\"id\": 10, \"nombre\": \"JERINGUILLA 10CC\", \"cantidad\": 4}, {\"id\": 13, \"nombre\": \"JERINGUILLA 20CC\", \"cantidad\": 2}, {\"id\": 12, \"nombre\": \"JERINGUILLA 3CC\", \"cantidad\": 2}, {\"id\": 11, \"nombre\": \"JERINGUILLA 5CC\", \"cantidad\": 3}, {\"id\": 36, \"codigo\": \"S01EE01\", \"nombre\": \"LATANOPROST\\n  LIQUIDO OFTALMICO 0.005%\u00a0 (3ML)\", \"cantidad\": 1}, {\"id\": 23, \"codigo\": \"N01BB02\", \"nombre\": \"LIDOCAINA\\n  SIN EPINEFRINA LIQUIDO PARENTERAL 2 % (50 ML)\", \"cantidad\": 1}, {\"id\": 15, \"codigo\": \"INM-57\", \"nombre\": \"LLAVE DE TRES VIAS CON TUBO DE EXTENSION DESCARTABLE\", \"cantidad\": 1}, {\"id\": 184, \"codigo\": \"N05CD08\", \"nombre\": \"MIDAZOLAM LIQUIDO PARENTEAL 1 MG\/ML (5ML)\", \"cantidad\": 1}, {\"id\": 25, \"codigo\": \"N01AX10\", \"nombre\": \"PROPOFOL\\n  LIQUIDO PARENTERAL 10MG\/ML ( 20 ML)\", \"cantidad\": 1}, {\"id\": 32, \"nombre\": \"PROXIMETACAINA 0,5% 1ML\", \"cantidad\": 1}, {\"id\": 16, \"codigo\": \"INM-103\", \"nombre\": \"TEGADERM IV( APOSITO TRANSPARENTE )DESCARTABLE\", \"cantidad\": 1}, {\"id\": 33, \"codigo\": \"S01FA06\", \"nombre\": \"TROPICAMIDA\\n  LIQUIDO OFTALMICO 1% (15ML)\", \"cantidad\": 1}], \"quirurgicos\": [{\"id\": 47, \"nombre\": \"AGUJA 30 GAUGE\", \"cantidad\": 3}, {\"id\": 48, \"codigo\": \"INM-11\", \"nombre\": \"AZUL DE TRIPANO (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 39, \"nombre\": \"BATAS QUIRURGICAS\", \"cantidad\": 3}, {\"id\": 51, \"codigo\": \"INM-21\", \"nombre\": \"CUCHILLETE 15 MM DESCARTABLE\", \"cantidad\": 1}, {\"id\": 53, \"codigo\": \"INM-22\", \"nombre\": \"CUCHILLETE 2.75 MM DESCARTABLE\", \"cantidad\": 1}, {\"id\": 62, \"codigo\": \"S01CA01\", \"nombre\": \"DEXAMETASONA + TOBRAMICINA - LIQUIDO OFTALMICO 0.1%+0.3%(5ML)\", \"cantidad\": 1}, {\"id\": 59, \"codigo\": \"J01GB03\", \"nombre\": \"GENTAMICINA\\n  LIQUIDO PARENTERAL 80 MG\/ML ( 2ML)\", \"cantidad\": 1}, {\"id\": 40, \"codigo\": \"INM-38\", \"nombre\": \"GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE\", \"cantidad\": 3}, {\"id\": 127, \"codigo\": \"INM-44\", \"nombre\": \"INYECTOR LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE\", \"cantidad\": 1}, {\"id\": 42, \"nombre\": \"JERINGUILLA DE 10CC\", \"cantidad\": 1}, {\"id\": 45, \"nombre\": \"JERINGUILLA DE 1CC\", \"cantidad\": 4}, {\"id\": 44, \"nombre\": \"JERINGUILLA DE 3CC\", \"cantidad\": 2}, {\"id\": 43, \"nombre\": \"JERINGUILLA DE 5CC\", \"cantidad\": 2}, {\"id\": 54, \"codigo\": \"INM-52\", \"nombre\": \"LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE\", \"cantidad\": 1}, {\"id\": 3, \"codigo\": \"INM-9\", \"nombre\": \"PAK ANTERIOR DE CONSTELLATION DESCARTABLE\", \"cantidad\": 1}, {\"id\": 41, \"codigo\": \"INM-84\", \"nombre\": \"SOLUCION SALINA BALANCEADA BSS DESCARTABLE\", \"cantidad\": 1}, {\"id\": 50, \"nombre\": \"STERI STRIP 1\/4 IN X 4 DESCARTABLE\", \"cantidad\": 1}, {\"id\": 124, \"codigo\": \"INM-41\", \"nombre\": \"SUSTANCIA VISCOELASTICA HIALURONATO DE SODIO (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 58, \"codigo\": \"INM-58\", \"nombre\": \"SUSTANCIA VISCOELASTICA METILCELULOSA (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 49, \"codigo\": \"INM-102\", \"nombre\": \"TEGADERM FILM 10X12 (APOSITO TRANSPARENTE) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 222, \"codigo\": \"INM-105\", \"nombre\": \"TIPS DE\\n  PHACO 09 DESCARTABLE\", \"cantidad\": 1}]}",
+      "hora_inicio": "07:40:00",
+      "hora_fin": "09:40:00",
+      "status": 1
+    },
+    "pdo_error": [
+      "00000",
+      null,
+      null
+    ],
+    "raw_insumos": "{\"equipos\": [{\"id\": 5, \"nombre\": \"BOMBA DE IRRIGACION Y ASPIRACION\", \"cantidad\": 1}, {\"id\": 6, \"nombre\": \"MICROSCOPIO QUIRURGICO-MICROCIRUGIA\", \"cantidad\": 1}, {\"id\": 1, \"nombre\": \"SISTEMA VISUALIZACI\u00d3N (OFTALMOLOG\u00cdA)\", \"cantidad\": 1}, {\"id\": 7, \"nombre\": \"VITRECTOR\", \"cantidad\": 1}], \"anestesia\": [{\"id\": 26, \"nombre\": \"AGUJA 18\", \"cantidad\": 2}, {\"id\": 27, \"nombre\": \"AGUJA 23G\", \"cantidad\": 1}, {\"id\": 28, \"nombre\": \"AGUJA 25 x5\/8\", \"cantidad\": 1}, {\"id\": 38, \"nombre\": \"APLICADORES\", \"cantidad\": 6}, {\"id\": 35, \"codigo\": \"S01FA01\", \"nombre\": \"ATROPINA\\n  LIQUIDO OFTALMICO\u00a0 1 % (5ML)\", \"cantidad\": 1}, {\"id\": 94, \"codigo\": \"N01BB01\", \"nombre\": \"BUPIVACAINA\\n  (SIN EPINEFRINA) LIQUIDO PARENTERAL 0.5 % (20ML)\", \"cantidad\": 1}, {\"id\": 14, \"codigo\": \"INM-15\", \"nombre\": \"CATETER I.V. 22G DESCARTABLE\", \"cantidad\": 2}, {\"id\": 31, \"codigo\": \"J01DD04\", \"nombre\": \"CEFTRIAXONA\\n  SOLIDO PARENTERAL 1000 MG\", \"cantidad\": 1}, {\"id\": 161, \"codigo\": \"B05CB01\", \"nombre\": \"CLORURO\\n  DE SODIO 0.9% LIQUIDO PARENTERAL (1000ML)\", \"cantidad\": 1}, {\"id\": 29, \"codigo\": \"H02AB02\", \"nombre\": \"DEXAMETASONA\\n  LIQUIDO PARENTERAL 4MG\/ML (2ML)\", \"cantidad\": 2}, {\"id\": 34, \"codigo\": \"S01BC03\", \"nombre\": \"DICLOFENACO\\n  LIQUIDO OFTALMICO 0.1% (5ML)\", \"cantidad\": 1}, {\"id\": 30, \"codigo\": \"M01AB05\", \"nombre\": \"DICLOFENACO LIQUIDO PARENTERAL 25MG\/ML (3ML)\", \"cantidad\": 1}, {\"id\": 18, \"codigo\": \"INM-27\", \"nombre\": \"ELECTRODOS EKG DESCARTABLE\", \"cantidad\": 3}, {\"id\": 17, \"codigo\": \"INM-28\", \"nombre\": \"EQUIPO DE VENOCLISIS DESCARTABLE\", \"cantidad\": 2}, {\"id\": 22, \"codigo\": \"N01AH01\", \"nombre\": \"FENTANILO\\n  LIQUIDO PARENTERAL\u00a0 0.05MG\/ML ( 10ML)\", \"cantidad\": 1}, {\"id\": 37, \"nombre\": \"GASAS\", \"cantidad\": 20}, {\"id\": 19, \"codigo\": \"INM-38\", \"nombre\": \"GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE\", \"cantidad\": 2}, {\"id\": 20, \"nombre\": \"GUANTES DE MANEJO\", \"cantidad\": 6}, {\"id\": 10, \"nombre\": \"JERINGUILLA 10CC\", \"cantidad\": 4}, {\"id\": 13, \"nombre\": \"JERINGUILLA 20CC\", \"cantidad\": 2}, {\"id\": 12, \"nombre\": \"JERINGUILLA 3CC\", \"cantidad\": 2}, {\"id\": 11, \"nombre\": \"JERINGUILLA 5CC\", \"cantidad\": 3}, {\"id\": 36, \"codigo\": \"S01EE01\", \"nombre\": \"LATANOPROST\\n  LIQUIDO OFTALMICO 0.005%\u00a0 (3ML)\", \"cantidad\": 1}, {\"id\": 23, \"codigo\": \"N01BB02\", \"nombre\": \"LIDOCAINA\\n  SIN EPINEFRINA LIQUIDO PARENTERAL 2 % (50 ML)\", \"cantidad\": 1}, {\"id\": 15, \"codigo\": \"INM-57\", \"nombre\": \"LLAVE DE TRES VIAS CON TUBO DE EXTENSION DESCARTABLE\", \"cantidad\": 1}, {\"id\": 184, \"codigo\": \"N05CD08\", \"nombre\": \"MIDAZOLAM LIQUIDO PARENTEAL 1 MG\/ML (5ML)\", \"cantidad\": 1}, {\"id\": 25, \"codigo\": \"N01AX10\", \"nombre\": \"PROPOFOL\\n  LIQUIDO PARENTERAL 10MG\/ML ( 20 ML)\", \"cantidad\": 1}, {\"id\": 32, \"nombre\": \"PROXIMETACAINA 0,5% 1ML\", \"cantidad\": 1}, {\"id\": 16, \"codigo\": \"INM-103\", \"nombre\": \"TEGADERM IV( APOSITO TRANSPARENTE )DESCARTABLE\", \"cantidad\": 1}, {\"id\": 33, \"codigo\": \"S01FA06\", \"nombre\": \"TROPICAMIDA\\n  LIQUIDO OFTALMICO 1% (15ML)\", \"cantidad\": 1}], \"quirurgicos\": [{\"id\": 47, \"nombre\": \"AGUJA 30 GAUGE\", \"cantidad\": 3}, {\"id\": 48, \"codigo\": \"INM-11\", \"nombre\": \"AZUL DE TRIPANO (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 39, \"nombre\": \"BATAS QUIRURGICAS\", \"cantidad\": 3}, {\"id\": 51, \"codigo\": \"INM-21\", \"nombre\": \"CUCHILLETE 15 MM DESCARTABLE\", \"cantidad\": 1}, {\"id\": 53, \"codigo\": \"INM-22\", \"nombre\": \"CUCHILLETE 2.75 MM DESCARTABLE\", \"cantidad\": 1}, {\"id\": 62, \"codigo\": \"S01CA01\", \"nombre\": \"DEXAMETASONA + TOBRAMICINA - LIQUIDO OFTALMICO 0.1%+0.3%(5ML)\", \"cantidad\": 1}, {\"id\": 59, \"codigo\": \"J01GB03\", \"nombre\": \"GENTAMICINA\\n  LIQUIDO PARENTERAL 80 MG\/ML ( 2ML)\", \"cantidad\": 1}, {\"id\": 40, \"codigo\": \"INM-38\", \"nombre\": \"GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE\", \"cantidad\": 3}, {\"id\": 127, \"codigo\": \"INM-44\", \"nombre\": \"INYECTOR LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE\", \"cantidad\": 1}, {\"id\": 42, \"nombre\": \"JERINGUILLA DE 10CC\", \"cantidad\": 1}, {\"id\": 45, \"nombre\": \"JERINGUILLA DE 1CC\", \"cantidad\": 4}, {\"id\": 44, \"nombre\": \"JERINGUILLA DE 3CC\", \"cantidad\": 2}, {\"id\": 43, \"nombre\": \"JERINGUILLA DE 5CC\", \"cantidad\": 2}, {\"id\": 54, \"codigo\": \"INM-52\", \"nombre\": \"LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE\", \"cantidad\": 1}, {\"id\": 3, \"codigo\": \"INM-9\", \"nombre\": \"PAK ANTERIOR DE CONSTELLATION DESCARTABLE\", \"cantidad\": 1}, {\"id\": 41, \"codigo\": \"INM-84\", \"nombre\": \"SOLUCION SALINA BALANCEADA BSS DESCARTABLE\", \"cantidad\": 1}, {\"id\": 50, \"nombre\": \"STERI STRIP 1\/4 IN X 4 DESCARTABLE\", \"cantidad\": 1}, {\"id\": 124, \"codigo\": \"INM-41\", \"nombre\": \"SUSTANCIA VISCOELASTICA HIALURONATO DE SODIO (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 58, \"codigo\": \"INM-58\", \"nombre\": \"SUSTANCIA VISCOELASTICA METILCELULOSA (ES UN INSUMO) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 49, \"codigo\": \"INM-102\", \"nombre\": \"TEGADERM FILM 10X12 (APOSITO TRANSPARENTE) DESCARTABLE\", \"cantidad\": 1}, {\"id\": 222, \"codigo\": \"INM-105\", \"nombre\": \"TIPS DE\\n  PHACO 09 DESCARTABLE\", \"cantidad\": 1}]}",
+    "parsed_insumos": {
+      "equipos": [
+        {
+          "id": 5,
+          "nombre": "BOMBA DE IRRIGACION Y ASPIRACION",
+          "cantidad": 1
+        },
+        {
+          "id": 6,
+          "nombre": "MICROSCOPIO QUIRURGICO-MICROCIRUGIA",
+          "cantidad": 1
+        },
+        {
+          "id": 1,
+          "nombre": "SISTEMA VISUALIZACI\u00d3N (OFTALMOLOG\u00cdA)",
+          "cantidad": 1
+        },
+        {
+          "id": 7,
+          "nombre": "VITRECTOR",
+          "cantidad": 1
+        }
+      ],
+      "anestesia": [
+        {
+          "id": 26,
+          "nombre": "AGUJA 18",
+          "cantidad": 2
+        },
+        {
+          "id": 27,
+          "nombre": "AGUJA 23G",
+          "cantidad": 1
+        },
+        {
+          "id": 28,
+          "nombre": "AGUJA 25 x5\/8",
+          "cantidad": 1
+        },
+        {
+          "id": 38,
+          "nombre": "APLICADORES",
+          "cantidad": 6
+        },
+        {
+          "id": 35,
+          "codigo": "S01FA01",
+          "nombre": "ATROPINA\n  LIQUIDO OFTALMICO\u00a0 1 % (5ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 94,
+          "codigo": "N01BB01",
+          "nombre": "BUPIVACAINA\n  (SIN EPINEFRINA) LIQUIDO PARENTERAL 0.5 % (20ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 14,
+          "codigo": "INM-15",
+          "nombre": "CATETER I.V. 22G DESCARTABLE",
+          "cantidad": 2
+        },
+        {
+          "id": 31,
+          "codigo": "J01DD04",
+          "nombre": "CEFTRIAXONA\n  SOLIDO PARENTERAL 1000 MG",
+          "cantidad": 1
+        },
+        {
+          "id": 161,
+          "codigo": "B05CB01",
+          "nombre": "CLORURO\n  DE SODIO 0.9% LIQUIDO PARENTERAL (1000ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 29,
+          "codigo": "H02AB02",
+          "nombre": "DEXAMETASONA\n  LIQUIDO PARENTERAL 4MG\/ML (2ML)",
+          "cantidad": 2
+        },
+        {
+          "id": 34,
+          "codigo": "S01BC03",
+          "nombre": "DICLOFENACO\n  LIQUIDO OFTALMICO 0.1% (5ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 30,
+          "codigo": "M01AB05",
+          "nombre": "DICLOFENACO LIQUIDO PARENTERAL 25MG\/ML (3ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 18,
+          "codigo": "INM-27",
+          "nombre": "ELECTRODOS EKG DESCARTABLE",
+          "cantidad": 3
+        },
+        {
+          "id": 17,
+          "codigo": "INM-28",
+          "nombre": "EQUIPO DE VENOCLISIS DESCARTABLE",
+          "cantidad": 2
+        },
+        {
+          "id": 22,
+          "codigo": "N01AH01",
+          "nombre": "FENTANILO\n  LIQUIDO PARENTERAL\u00a0 0.05MG\/ML ( 10ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 37,
+          "nombre": "GASAS",
+          "cantidad": 20
+        },
+        {
+          "id": 19,
+          "codigo": "INM-38",
+          "nombre": "GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE",
+          "cantidad": 2
+        },
+        {
+          "id": 20,
+          "nombre": "GUANTES DE MANEJO",
+          "cantidad": 6
+        },
+        {
+          "id": 10,
+          "nombre": "JERINGUILLA 10CC",
+          "cantidad": 4
+        },
+        {
+          "id": 13,
+          "nombre": "JERINGUILLA 20CC",
+          "cantidad": 2
+        },
+        {
+          "id": 12,
+          "nombre": "JERINGUILLA 3CC",
+          "cantidad": 2
+        },
+        {
+          "id": 11,
+          "nombre": "JERINGUILLA 5CC",
+          "cantidad": 3
+        },
+        {
+          "id": 36,
+          "codigo": "S01EE01",
+          "nombre": "LATANOPROST\n  LIQUIDO OFTALMICO 0.005%\u00a0 (3ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 23,
+          "codigo": "N01BB02",
+          "nombre": "LIDOCAINA\n  SIN EPINEFRINA LIQUIDO PARENTERAL 2 % (50 ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 15,
+          "codigo": "INM-57",
+          "nombre": "LLAVE DE TRES VIAS CON TUBO DE EXTENSION DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 184,
+          "codigo": "N05CD08",
+          "nombre": "MIDAZOLAM LIQUIDO PARENTEAL 1 MG\/ML (5ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 25,
+          "codigo": "N01AX10",
+          "nombre": "PROPOFOL\n  LIQUIDO PARENTERAL 10MG\/ML ( 20 ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 32,
+          "nombre": "PROXIMETACAINA 0,5% 1ML",
+          "cantidad": 1
+        },
+        {
+          "id": 16,
+          "codigo": "INM-103",
+          "nombre": "TEGADERM IV( APOSITO TRANSPARENTE )DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 33,
+          "codigo": "S01FA06",
+          "nombre": "TROPICAMIDA\n  LIQUIDO OFTALMICO 1% (15ML)",
+          "cantidad": 1
+        }
+      ],
+      "quirurgicos": [
+        {
+          "id": 47,
+          "nombre": "AGUJA 30 GAUGE",
+          "cantidad": 3
+        },
+        {
+          "id": 48,
+          "codigo": "INM-11",
+          "nombre": "AZUL DE TRIPANO (ES UN INSUMO) DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 39,
+          "nombre": "BATAS QUIRURGICAS",
+          "cantidad": 3
+        },
+        {
+          "id": 51,
+          "codigo": "INM-21",
+          "nombre": "CUCHILLETE 15 MM DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 53,
+          "codigo": "INM-22",
+          "nombre": "CUCHILLETE 2.75 MM DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 62,
+          "codigo": "S01CA01",
+          "nombre": "DEXAMETASONA + TOBRAMICINA - LIQUIDO OFTALMICO 0.1%+0.3%(5ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 59,
+          "codigo": "J01GB03",
+          "nombre": "GENTAMICINA\n  LIQUIDO PARENTERAL 80 MG\/ML ( 2ML)",
+          "cantidad": 1
+        },
+        {
+          "id": 40,
+          "codigo": "INM-38",
+          "nombre": "GUANTE QUIRURGICO LATEX TALLA 7 DESCARTABLE",
+          "cantidad": 3
+        },
+        {
+          "id": 127,
+          "codigo": "INM-44",
+          "nombre": "INYECTOR LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 42,
+          "nombre": "JERINGUILLA DE 10CC",
+          "cantidad": 1
+        },
+        {
+          "id": 45,
+          "nombre": "JERINGUILLA DE 1CC",
+          "cantidad": 4
+        },
+        {
+          "id": 44,
+          "nombre": "JERINGUILLA DE 3CC",
+          "cantidad": 2
+        },
+        {
+          "id": 43,
+          "nombre": "JERINGUILLA DE 5CC",
+          "cantidad": 2
+        },
+        {
+          "id": 54,
+          "codigo": "INM-52",
+          "nombre": "LENTE INTRAOCULAR PLEGABLE MONOFOCAL DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 3,
+          "codigo": "INM-9",
+          "nombre": "PAK ANTERIOR DE CONSTELLATION DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 41,
+          "codigo": "INM-84",
+          "nombre": "SOLUCION SALINA BALANCEADA BSS DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 50,
+          "nombre": "STERI STRIP 1\/4 IN X 4 DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 124,
+          "codigo": "INM-41",
+          "nombre": "SUSTANCIA VISCOELASTICA HIALURONATO DE SODIO (ES UN INSUMO) DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 58,
+          "codigo": "INM-58",
+          "nombre": "SUSTANCIA VISCOELASTICA METILCELULOSA (ES UN INSUMO) DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 49,
+          "codigo": "INM-102",
+          "nombre": "TEGADERM FILM 10X12 (APOSITO TRANSPARENTE) DESCARTABLE",
+          "cantidad": 1
+        },
+        {
+          "id": 222,
+          "codigo": "INM-105",
+          "nombre": "TIPS DE\n  PHACO 09 DESCARTABLE",
+          "cantidad": 1
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="8bf43557-4c1e-4f36-aab1-7c2c3a654009" name="MedForge">
+        <fileTransfer rootFolder="/cive/public" accessType="SFTP" host="access793096920.webspace-data.io" port="22" sshConfigId="abd10fac-89d7-4127-a6de-00d5ff01e8f1" sshConfig="u98115706@access793096920.webspace-data.io:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
