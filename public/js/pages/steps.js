@@ -18,7 +18,7 @@ $(document).ready(function () {
                 const form = document.querySelector('.tab-wizard');
                 const formData = new FormData(form);
 
-                fetch('/views/reportes/wizard_cirugia/guardar.php', {
+                fetch('/cirugias/wizard/guardar', {
                     method: 'POST',
                     body: formData
                 })
