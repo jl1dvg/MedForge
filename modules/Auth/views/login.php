@@ -29,7 +29,9 @@ error_reporting(E_ALL);
                             <p class="mb-0">Inicia sesión para continuar a MedForge.</p>
                         </div>
                         <div class="p-40">
-                            <?php if (isset($_GET['error'])): ?>
+                            <?php if (!empty($error ?? null)): ?>
+                                <div class="alert alert-danger text-center"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+                            <?php elseif (isset($_GET['error'])): ?>
                                 <div class="alert alert-danger text-center">Credenciales incorrectas.</div>
                             <?php endif; ?>
                             <form action="/auth/login" method="post">

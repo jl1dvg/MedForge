@@ -2,11 +2,11 @@ $(function () {
     'use strict';
 
     // Inicializar DataTable con configuración serverSide
-    const table = $('#example1').DataTable({
+    const table = $('#pacientes-table').DataTable({
         serverSide: true,
         processing: true,
         ajax: {
-            url: '/views/pacientes/pacientes_datatable.php', // Ajusta esta ruta a la correcta en tu backend
+            url: '/pacientes/datatable',
             type: 'POST'
         },
         columns: [
