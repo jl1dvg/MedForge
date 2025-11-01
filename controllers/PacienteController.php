@@ -441,7 +441,7 @@ WHERE pd.fecha_inicio BETWEEN :inicio2 AND :fin2
                 'estado_html' => $estado === 'Con Cobertura'
                     ? "<span class='badge bg-success'>Con Cobertura</span>"
                     : "<span class='badge bg-danger'>Sin Cobertura</span>",
-                'acciones_html' => "<a href='/views/pacientes/detalles.php?hc_number={$row['hc_number']}' class='btn btn-sm btn-primary'>Ver</a>"
+                'acciones_html' => "<a href='/pacientes/detalles?hc_number={$row['hc_number']}' class='btn btn-sm btn-primary'>Ver</a>"
             ];
         }
 

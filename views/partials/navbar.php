@@ -31,8 +31,8 @@ if (!function_exists('isActive')) {
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/views/pacientes/lista.php') ?>">
-                                <a href="<?= BASE_URL . 'views/pacientes/lista.php'; ?>">
+                            <li class="<?= isActive('/pacientes') ?>">
+                                <a href="<?= BASE_URL . 'pacientes'; ?>">
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
                                 </a>
                             </li>
