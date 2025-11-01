@@ -1,6 +1,4 @@
 <?php
-require_once __DIR__ . '/../../bootstrap.php';
-
 // Helper para marcar el item activo según la URL actual
 if (!function_exists('isActive')) {
     function isActive(string $path): string

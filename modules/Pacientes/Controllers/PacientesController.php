@@ -3,50 +3,47 @@
 namespace Modules\Pacientes\Controllers;
 
 use Controllers\PacienteController as LegacyPacienteController;
-use Core\View;
-use Modules\Dashboard\Controllers\DashboardController;
+use Core\BaseController;
 use PDO;
 use Throwable;
 
-class PacientesController
+class PacientesController extends BaseController
 {
-    private PDO $pdo;
+    private LegacyPacienteController $legacyController;
 
     public function __construct(PDO $pdo)
     {
-        $this->pdo = $pdo;
-    }
-
-    private function ensureAuthenticated(): void
-    {
-        if (!isset($_SESSION['user_id'])) {
-            header('Location: /auth/login');
-            exit;
-        }
+        parent::__construct($pdo);
+        $this->legacyController = new LegacyPacienteController($pdo);
     }
 
     public function index(): void
     {
-        $this->ensureAuthenticated();
+        $this->requireAuth();
 
-        $dashboardController = new DashboardController($this->pdo);
-
-        View::render(
+        $this->render(
             __DIR__ . '/../views/index.php',
             [
-                'username' => $dashboardController->getAuthenticatedUser(),
                 'pageTitle' => 'Pacientes',
+                'showNotFoundAlert' => isset($_GET['not_found']),
             ]
         );
     }
 
     public function datatable(): void
     {
-        header('Content-Type: application/json');
+        if (!$this->isAuthenticated()) {
+            $this->json([
+                'draw' => isset($_POST['draw']) ? (int) $_POST['draw'] : 1,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => 'Sesión expirada',
+            ], 401);
+            return;
+        }
 
         try {
-            $controller = new LegacyPacienteController($this->pdo);
-
             $draw = isset($_POST['draw']) ? (int) $_POST['draw'] : 1;
             $start = isset($_POST['start']) ? (int) $_POST['start'] : 0;
             $length = isset($_POST['length']) ? (int) $_POST['length'] : 10;
@@ -57,7 +54,7 @@ class PacientesController
             $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
             $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-            $response = $controller->obtenerPacientesPaginados(
+            $response = $this->legacyController->obtenerPacientesPaginados(
                 $start,
                 $length,
                 $search,
@@ -65,23 +62,21 @@ class PacientesController
                 strtoupper($orderDir)
             );
             $response['draw'] = $draw;
-
-            echo json_encode($response);
+            $this->json($response);
         } catch (Throwable $e) {
-            http_response_code(500);
-            echo json_encode([
+            $this->json([
                 'draw' => isset($_POST['draw']) ? (int) $_POST['draw'] : 1,
                 'recordsTotal' => 0,
                 'recordsFiltered' => 0,
                 'data' => [],
-                'error' => $e->getMessage(),
-            ]);
+                'error' => 'No se pudo cargar la tabla de pacientes',
+            ], 500);
         }
     }
 
     public function detalles(): void
     {
-        $this->ensureAuthenticated();
+        $this->requireAuth();
 
         $hcNumber = $_GET['hc_number'] ?? null;
         if (!$hcNumber) {
@@ -89,10 +84,8 @@ class PacientesController
             exit;
         }
 
-        $pacienteController = new LegacyPacienteController($this->pdo);
-
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_paciente'])) {
-            $pacienteController->actualizarPaciente(
+            $this->legacyController->actualizarPaciente(
                 $hcNumber,
                 $_POST['fname'] ?? '',
                 $_POST['mname'] ?? '',
@@ -108,12 +101,17 @@ class PacientesController
             exit;
         }
 
-        $dashboardController = new DashboardController($this->pdo);
+        $patientData = $this->legacyController->getPatientDetails($hcNumber);
 
-        $diagnosticos = $pacienteController->getDiagnosticosPorPaciente($hcNumber);
-        $medicos = $pacienteController->getDoctoresAsignados($hcNumber);
-        $solicitudes = $pacienteController->getSolicitudesPorPaciente($hcNumber);
-        $prefacturas = $pacienteController->getPrefacturasPorPaciente($hcNumber);
+        if (empty($patientData)) {
+            header('Location: /pacientes?not_found=1');
+            exit;
+        }
+
+        $diagnosticos = $this->legacyController->getDiagnosticosPorPaciente($hcNumber);
+        $medicos = $this->legacyController->getDoctoresAsignados($hcNumber);
+        $solicitudes = $this->legacyController->getSolicitudesPorPaciente($hcNumber);
+        $prefacturas = $this->legacyController->getPrefacturasPorPaciente($hcNumber);
 
         foreach ($solicitudes as &$item) {
             $item['origen'] = 'Solicitud';
@@ -130,20 +128,19 @@ class PacientesController
             return strtotime($b['fecha']) <=> strtotime($a['fecha']);
         });
 
-        View::render(
+        $this->render(
             __DIR__ . '/../views/detalles.php',
             [
-                'username' => $dashboardController->getAuthenticatedUser(),
                 'pageTitle' => 'Paciente ' . $hcNumber,
                 'hc_number' => $hcNumber,
-                'patientData' => $pacienteController->getPatientDetails($hcNumber),
-                'afiliacionesDisponibles' => $pacienteController->getAfiliacionesDisponibles(),
+                'patientData' => $patientData,
+                'afiliacionesDisponibles' => $this->legacyController->getAfiliacionesDisponibles(),
                 'diagnosticos' => $diagnosticos,
                 'medicos' => $medicos,
                 'timelineItems' => $timelineItems,
-                'eventos' => $pacienteController->getEventosTimeline($hcNumber),
-                'documentos' => $pacienteController->getDocumentosDescargables($hcNumber),
-                'estadisticas' => $pacienteController->getEstadisticasProcedimientos($hcNumber),
+                'eventos' => $this->legacyController->getEventosTimeline($hcNumber),
+                'documentos' => $this->legacyController->getDocumentosDescargables($hcNumber),
+                'estadisticas' => $this->legacyController->getEstadisticasProcedimientos($hcNumber),
             ]
         );
     }

@@ -17,7 +17,10 @@ class AuthController extends BaseController
 
     public function loginForm()
     {
-        $this->render($this->loginViewPath(), ['title' => 'Iniciar sesión']);
+        $this->render($this->loginViewPath(), [
+            'title' => 'Iniciar sesión',
+            'bodyClass' => 'hold-transition theme-primary bg-img',
+        ]);
     }
 
     public function login()
@@ -44,13 +47,15 @@ class AuthController extends BaseController
             } else {
                 $this->render($this->loginViewPath(), [
                     'title' => 'Iniciar sesión',
-                    'error' => 'Credenciales incorrectas'
+                    'error' => 'Credenciales incorrectas',
+                    'bodyClass' => 'hold-transition theme-primary bg-img',
                 ]);
             }
         } catch (PDOException $e) {
             $this->render($this->loginViewPath(), [
                 'title' => 'Error de conexión',
-                'error' => 'Error: ' . $e->getMessage()
+                'error' => 'Error: ' . $e->getMessage(),
+                'bodyClass' => 'hold-transition theme-primary bg-img',
             ]);
         }
     }

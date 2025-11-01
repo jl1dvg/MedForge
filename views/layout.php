@@ -11,6 +11,8 @@
 
     <?php
     $titleSuffix = isset($pageTitle) && $pageTitle ? ' - ' . htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') : '';
+    $defaultBodyClass = 'hold-transition light-skin sidebar-mini theme-primary fixed';
+    $bodyClassAttr = htmlspecialchars($bodyClass ?? $defaultBodyClass, ENT_QUOTES, 'UTF-8');
     ?>
     <title>MedForge<?= $titleSuffix ?></title>
 
@@ -25,12 +27,12 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 
-<body class="hold-transition light-skin sidebar-mini theme-primary fixed">
+<body class="<?= $bodyClassAttr ?>">
 <div class="wrapper">
 
     <?php
     // Detectar si estamos en el login o cualquier página pública
-    $isAuthView = isset($viewPath) && str_contains($viewPath, '/modules/Auth/views/login.php');
+    $isAuthView = isset($viewPath) && stripos($viewPath, '/modules/auth/views/login.php') !== false;
     ?>
 
     <?php if (!$isAuthView): ?>
