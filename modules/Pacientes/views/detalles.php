@@ -20,6 +20,8 @@ $timelineColorMap = [
     'cirugia' => 'bg-danger',
     'interconsulta' => 'bg-warning',
 ];
+$solicitudPdfBaseUrl = rtrim(BASE_URL, '/') . '/views/reports/solicitud_quirurgica/solicitud_qx_pdf.php';
+$solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES, 'UTF-8');
 ?>
 
 <div class="content-header">
@@ -246,10 +248,22 @@ $timelineColorMap = [
                                                 <?= PacientesHelper::formatDateSafe($documento['fecha_inicio'] ?? ($documento['created_at'] ?? '')) ?>
                                             </span>
                                         </div>
-                                        <a class="fs-18 text-gray hover-info" href="#"
-                                           onclick="<?php if ($isProtocolo): ?>descargarPDFsSeparados('<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>')<?php else: ?>window.open('../reports/solicitud_quirurgica/solicitud_qx_pdf.php?hc_number=<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>&form_id=<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '_blank')<?php endif; ?>">
-                                            <i class="fa fa-download"></i>
-                                        </a>
+                                        <?php if ($isProtocolo): ?>
+                                            <a class="fs-18 text-gray hover-info" href="#"
+                                               onclick="window.descargarPDFsSeparados('<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>'); return false;">
+                                                <i class="fa fa-download"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <?php
+                                            $hcQuery = htmlspecialchars(urlencode($documento['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8');
+                                            $formIdQuery = htmlspecialchars(urlencode((string) ($documento['form_id'] ?? '')), ENT_QUOTES, 'UTF-8');
+                                            ?>
+                                            <a class="fs-18 text-gray hover-info"
+                                               href="<?= $solicitudPdfBaseUrlEscaped ?>?hc_number=<?= $hcQuery ?>&amp;form_id=<?= $formIdQuery ?>"
+                                               target="_blank" rel="noopener noreferrer">
+                                                <i class="fa fa-download"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
                                 <?php if (empty($documentos)): ?>
@@ -274,46 +288,111 @@ $timelineColorMap = [
     </div>
 </section>
 
+<div class="modal fade" id="modalSolicitud" tabindex="-1" aria-labelledby="modalSolicitudLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalSolicitudLabel">Detalle de la Solicitud</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 p-3 rounded" id="solicitudContainer" style="background-color: #e9f5ff;">
+                    <p class="mb-1"><strong>Fecha:</strong> <span id="modalFecha"
+                                                                  class="float-end badge bg-light text-dark"></span></p>
+                    <p class="mb-1"><strong>Procedimiento:</strong>
+                        <span id="modalProcedimiento"></span></p>
+                    <p class="mb-1"><strong>Ojo:</strong>
+                        <span id="modalOjo"></span></p>
+                    <p class="mb-1"><strong>Diagnóstico:</strong>
+                        <span id="modalDiagnostico"></span></p>
+                    <p class="mb-1"><strong>Doctor:</strong>
+                        <span id="modalDoctor"></span>
+                    </p>
+                    <p class="mb-1"><strong>Estado:</strong>
+                        <span id="modalEstado" class="float-end badge bg-secondary"></span>
+                        <span id="modalSemaforo" class="float-end me-2 badge"
+                              style="width: 16px; height: 16px; border-radius: 50%;"></span>
+                    </p>
+                </div>
+                <p><strong>Motivo:</strong> <span id="modalMotivo"></span></p>
+                <p><strong>Enfermedad Actual:</strong> <span id="modalEnfermedad"></span></p>
+                <p><strong>Plan:</strong> <span id="modalDescripcion"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include __DIR__ . '/components/modal_editar_paciente.php'; ?>
+
+<!-- Vendor JS -->
+<script src="<?= asset('js/vendors.min.js') ?>"></script>
+<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
+<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
+<script src="<?= asset('assets/vendor_components/apexcharts-bundle/dist/apexcharts.js') ?>"></script>
+<script src="<?= asset('assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js') ?>"></script>
+
+<!-- Doclinic App -->
+<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
+<script src="<?= asset('js/menus.js') ?>"></script>
+<script src="<?= asset('js/template.js') ?>"></script>
+<script src="<?= asset('js/pages/patient-detail.js') ?>"></script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        filterDocuments('ultimos_3_meses');
-    });
+        const chartContainer = document.querySelector('#chart123');
+        if (!chartContainer) {
+            return;
+        }
 
-    function filterDocuments(filter) {
-        const items = document.querySelectorAll('.media-list .media');
-        const now = new Date();
+        const series = <?= json_encode(array_values($estadisticas), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        const labels = <?= json_encode(array_keys($estadisticas), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
-        items.forEach(item => {
-            const dateElement = item.querySelector('.text-fade');
-            const dateText = dateElement ? dateElement.textContent.trim() : '';
-            const itemDate = dateText ? new Date(dateText) : null;
-            let showItem = true;
+        if (typeof ApexCharts === 'undefined' || !Array.isArray(series) || series.length === 0) {
+            chartContainer.innerHTML = '<p class="text-muted mb-0">Sin datos suficientes para mostrar estadísticas.</p>';
+            return;
+        }
 
-            if (itemDate instanceof Date && !isNaN(itemDate)) {
-                switch (filter) {
-                    case 'ultimo_mes':
-                        const lastMonth = new Date(now);
-                        lastMonth.setMonth(now.getMonth() - 1);
-                        showItem = itemDate >= lastMonth;
-                        break;
-                    case 'ultimos_3_meses':
-                        const last3Months = new Date(now);
-                        last3Months.setMonth(now.getMonth() - 3);
-                        showItem = itemDate >= last3Months;
-                        break;
-                    case 'ultimos_6_meses':
-                        const last6Months = new Date(now);
-                        last6Months.setMonth(now.getMonth() - 6);
-                        showItem = itemDate >= last6Months;
-                        break;
-                    default:
-                        showItem = true;
+        const options = {
+            series: series,
+            chart: {
+                type: 'donut'
+            },
+            colors: ['#3246D3', '#00D0FF', '#ee3158', '#ffa800', '#05825f'],
+            legend: {
+                position: 'bottom'
+            },
+            plotOptions: {
+                pie: {
+                    donut: {
+                        size: '45%'
+                    }
                 }
-            }
+            },
+            labels: labels,
+            responsive: [
+                {
+                    breakpoint: 1600,
+                    options: {
+                        chart: {
+                            width: 330
+                        }
+                    }
+                },
+                {
+                    breakpoint: 500,
+                    options: {
+                        chart: {
+                            width: 280
+                        }
+                    }
+                }
+            ]
+        };
 
-            item.style.display = showItem ? 'flex' : 'none';
-        });
-    }
+        const chart = new ApexCharts(chartContainer, options);
+        chart.render();
+    });
 </script>

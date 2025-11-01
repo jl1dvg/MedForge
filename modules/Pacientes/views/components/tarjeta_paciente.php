@@ -7,7 +7,7 @@ use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
     <?php
     // Determinar la imagen de fondo en función del seguro
     $insurance = strtolower($patientData['afiliacion'] ?? '');
-    $backgroundImage = '/public/assets/logos_seguros/5.png'; // Imagen predeterminada
+    $backgroundImage = asset('assets/logos_seguros/5.png'); // Imagen predeterminada
 
     $generalInsurances = [
         'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino', 'seguro campesino jubilado',
@@ -16,30 +16,32 @@ use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 
     foreach ($generalInsurances as $generalInsurance) {
         if (strpos($insurance, $generalInsurance) !== false) {
-            $backgroundImage = '/public/assets/logos_seguros/1.png';
+            $backgroundImage = asset('assets/logos_seguros/1.png');
             break;
         }
     }
 
     if (strpos($insurance, 'issfa') !== false) {
-        $backgroundImage = '/public/assets/logos_seguros/2.png';
+        $backgroundImage = asset('assets/logos_seguros/2.png');
     } elseif (strpos($insurance, 'isspol') !== false) {
-        $backgroundImage = '/public/assets/logos_seguros/3.png';
+        $backgroundImage = asset('assets/logos_seguros/3.png');
     } elseif (strpos($insurance, 'msp') !== false) {
-        $backgroundImage = '/public/assets/logos_seguros/4.png';
+        $backgroundImage = asset('assets/logos_seguros/4.png');
     }
 
     // Determinar la imagen del avatar en función del sexo
     $gender = strtolower($patientData['sexo'] ?? '');
-    $avatarImage = '/public/images/avatar/female.png'; // Imagen predeterminada
+    $avatarImage = asset('images/avatar/female.png'); // Imagen predeterminada
 
     if (strpos($gender, 'masculino') !== false) {
-        $avatarImage = '/public/images/avatar/male.png';
+        $avatarImage = asset('images/avatar/male.png');
     }
+    $backgroundImageUrl = htmlspecialchars($backgroundImage, ENT_QUOTES, 'UTF-8');
+    $avatarImageUrl = htmlspecialchars($avatarImage, ENT_QUOTES, 'UTF-8');
     ?>
 
     <div class="box-body text-end min-h-150"
-         style="background-image:url(<?php echo $backgroundImage; ?>); background-repeat: no-repeat; background-position: center; background-size: cover;">
+         style="background-image:url('<?= $backgroundImageUrl; ?>'); background-repeat: no-repeat; background-position: center; background-size: cover;">
     </div>
     <div class="box-body wed-up position-relative">
         <button class="btn btn-warning mb-3" data-bs-toggle="modal"
@@ -47,7 +49,7 @@ use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
         </button>
         <div class="d-md-flex align-items-center">
             <div class=" me-20 text-center text-md-start">
-                <img src="<?php echo $avatarImage; ?>" style="height: 150px"
+                <img src="<?= $avatarImageUrl; ?>" style="height: 150px"
                      class="bg-success-light rounded10"
                      alt=""/>
                 <div class="text-center my-10">
