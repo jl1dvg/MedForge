@@ -1,6 +1,81 @@
 $(function () {
     "use strict";
 
+    const formIdInput = document.querySelector('input[name="form_id"]');
+    const hcNumberInput = document.querySelector('input[name="hc_number"]');
+    const autosaveEnabled = !!(formIdInput && hcNumberInput);
+
+    const lastAutosavePayload = {
+        insumos: null,
+        medicamentos: null
+    };
+
+    const debouncedAutosave = debounce(() => {
+        if (!autosaveEnabled) {
+            return;
+        }
+
+        const payload = new FormData();
+        payload.append('form_id', formIdInput.value);
+        payload.append('hc_number', hcNumberInput.value);
+
+        const insumosValue = $('#insumosInput').val() || '';
+        const medicamentosValue = $('#medicamentosInput').val() || '';
+
+        if (insumosValue !== '') {
+            payload.append('insumos', insumosValue);
+        }
+
+        if (medicamentosValue !== '') {
+            payload.append('medicamentos', medicamentosValue);
+        }
+
+        fetch('/cirugias/wizard/autosave', {
+            method: 'POST',
+            body: payload,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Respuesta no válida del servidor');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.success) {
+                    console.warn('⚠️ Autosave de protocolo no confirmado', data);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Error en autosave de protocolo', error);
+            });
+    }, 1000);
+
+    function scheduleAutosave() {
+        if (!autosaveEnabled) {
+            return;
+        }
+
+        const currentPayload = {
+            insumos: $('#insumosInput').val() || '',
+            medicamentos: $('#medicamentosInput').val() || ''
+        };
+
+        if (
+            currentPayload.insumos === lastAutosavePayload.insumos &&
+            currentPayload.medicamentos === lastAutosavePayload.medicamentos
+        ) {
+            return;
+        }
+
+        lastAutosavePayload.insumos = currentPayload.insumos;
+        lastAutosavePayload.medicamentos = currentPayload.medicamentos;
+
+        debouncedAutosave();
+    }
+
     inicializarInsumos();
     inicializarMedicamentos();
 
@@ -114,6 +189,7 @@ $(function () {
 
             $('#insumosInput').val(JSON.stringify(insumosObject));
             console.log("Actualizado JSON insumos con códigos:", insumosObject);
+            scheduleAutosave();
         }
 
         $('#insumosTable').on('change', 'select', function () {
@@ -176,6 +252,7 @@ $(function () {
             });
             $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
             console.log("✅ JSON medicamentos:", medicamentosArray);
+            scheduleAutosave();
         }
 
         function cambiarColorFilaMedicamentos() {
@@ -199,5 +276,15 @@ $(function () {
 
         cambiarColorFilaMedicamentos();
         actualizarMedicamentos();
+    }
+
+    function debounce(fn, delay) {
+        let timer = null;
+        return function (...args) {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            timer = setTimeout(() => fn.apply(this, args), delay);
+        };
     }
 });
