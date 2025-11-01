@@ -39,7 +39,7 @@ class AuthController extends BaseController
                 $_SESSION['session_start_time'] = time();
                 $_SESSION['last_activity_time'] = time();
 
-                header('Location: /Dashboard');
+                header('Location: /dashboard');
                 exit;
             } else {
                 $this->render($this->loginViewPath(), [

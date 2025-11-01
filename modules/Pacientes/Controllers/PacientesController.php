@@ -3,12 +3,20 @@
 namespace Modules\Pacientes\Controllers;
 
 use Controllers\PacienteController as LegacyPacienteController;
+use Core\View;
 use Modules\Dashboard\Controllers\DashboardController;
 use PDO;
 use Throwable;
 
 class PacientesController
 {
+    private PDO $pdo;
+
+    public function __construct(PDO $pdo)
+    {
+        $this->pdo = $pdo;
+    }
+
     private function ensureAuthenticated(): void
     {
         if (!isset($_SESSION['user_id'])) {
@@ -17,27 +25,27 @@ class PacientesController
         }
     }
 
-    public function index(PDO $pdo): void
+    public function index(): void
     {
         $this->ensureAuthenticated();
 
-        $dashboardController = new DashboardController($pdo);
+        $dashboardController = new DashboardController($this->pdo);
 
-        $data = [
-            'username' => $dashboardController->getAuthenticatedUser(),
-            'viewPath' => __DIR__ . '/../views/index.php',
-        ];
-
-        extract($data);
-        include __DIR__ . '/../../../views/layout.php';
+        View::render(
+            __DIR__ . '/../views/index.php',
+            [
+                'username' => $dashboardController->getAuthenticatedUser(),
+                'pageTitle' => 'Pacientes',
+            ]
+        );
     }
 
-    public function datatable(PDO $pdo): void
+    public function datatable(): void
     {
         header('Content-Type: application/json');
 
         try {
-            $controller = new LegacyPacienteController($pdo);
+            $controller = new LegacyPacienteController($this->pdo);
 
             $draw = isset($_POST['draw']) ? (int) $_POST['draw'] : 1;
             $start = isset($_POST['start']) ? (int) $_POST['start'] : 0;
@@ -49,7 +57,13 @@ class PacientesController
             $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
             $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-            $response = $controller->obtenerPacientesPaginados($start, $length, $search, $orderColumn, strtoupper($orderDir));
+            $response = $controller->obtenerPacientesPaginados(
+                $start,
+                $length,
+                $search,
+                $orderColumn,
+                strtoupper($orderDir)
+            );
             $response['draw'] = $draw;
 
             echo json_encode($response);
@@ -65,7 +79,7 @@ class PacientesController
         }
     }
 
-    public function detalles(PDO $pdo): void
+    public function detalles(): void
     {
         $this->ensureAuthenticated();
 
@@ -75,7 +89,7 @@ class PacientesController
             exit;
         }
 
-        $pacienteController = new LegacyPacienteController($pdo);
+        $pacienteController = new LegacyPacienteController($this->pdo);
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_paciente'])) {
             $pacienteController->actualizarPaciente(
@@ -94,7 +108,7 @@ class PacientesController
             exit;
         }
 
-        $dashboardController = new DashboardController($pdo);
+        $dashboardController = new DashboardController($this->pdo);
 
         $diagnosticos = $pacienteController->getDiagnosticosPorPaciente($hcNumber);
         $medicos = $pacienteController->getDoctoresAsignados($hcNumber);
@@ -116,21 +130,21 @@ class PacientesController
             return strtotime($b['fecha']) <=> strtotime($a['fecha']);
         });
 
-        $data = [
-            'username' => $dashboardController->getAuthenticatedUser(),
-            'viewPath' => __DIR__ . '/../views/detalles.php',
-            'hc_number' => $hcNumber,
-            'patientData' => $pacienteController->getPatientDetails($hcNumber),
-            'afiliacionesDisponibles' => $pacienteController->getAfiliacionesDisponibles(),
-            'diagnosticos' => $diagnosticos,
-            'medicos' => $medicos,
-            'timelineItems' => $timelineItems,
-            'eventos' => $pacienteController->getEventosTimeline($hcNumber),
-            'documentos' => $pacienteController->getDocumentosDescargables($hcNumber),
-            'estadisticas' => $pacienteController->getEstadisticasProcedimientos($hcNumber),
-        ];
-
-        extract($data);
-        include __DIR__ . '/../../../views/layout.php';
+        View::render(
+            __DIR__ . '/../views/detalles.php',
+            [
+                'username' => $dashboardController->getAuthenticatedUser(),
+                'pageTitle' => 'Paciente ' . $hcNumber,
+                'hc_number' => $hcNumber,
+                'patientData' => $pacienteController->getPatientDetails($hcNumber),
+                'afiliacionesDisponibles' => $pacienteController->getAfiliacionesDisponibles(),
+                'diagnosticos' => $diagnosticos,
+                'medicos' => $medicos,
+                'timelineItems' => $timelineItems,
+                'eventos' => $pacienteController->getEventosTimeline($hcNumber),
+                'documentos' => $pacienteController->getDocumentosDescargables($hcNumber),
+                'estadisticas' => $pacienteController->getEstadisticasProcedimientos($hcNumber),
+            ]
+        );
     }
 }

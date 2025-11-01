@@ -2,6 +2,7 @@
 
 namespace Modules\Dashboard\Controllers;
 
+use Core\View;
 use PDO;
 use Throwable;
 
@@ -59,9 +60,12 @@ class DashboardController
                 'revision_estados' => $this->getEstadosRevisionProtocolos(),
             ];
 
-            $viewPath = dirname(__DIR__) . '/views/index.php';
-            extract($data);
-            include __DIR__ . '/../../../views/layout.php';
+            View::render(
+                dirname(__DIR__) . '/views/index.php',
+                array_merge($data, [
+                    'pageTitle' => 'Dashboard',
+                ])
+            );
 
         } catch (Throwable $e) {
             file_put_contents(__DIR__ . '/error_dashboard.log', $e->getMessage() . "\n" . $e->getTraceAsString(), FILE_APPEND);

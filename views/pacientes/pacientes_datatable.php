@@ -3,5 +3,5 @@ require_once __DIR__ . '/../../bootstrap.php';
 
 use Modules\Pacientes\Controllers\PacientesController;
 
-$controller = new PacientesController();
-$controller->datatable($pdo);
+$controller = new PacientesController($pdo);
+$controller->datatable();

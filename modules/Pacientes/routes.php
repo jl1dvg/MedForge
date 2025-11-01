@@ -5,14 +5,14 @@ use Modules\Pacientes\Controllers\PacientesController;
 
 return function (Router $router) {
     $router->get('/pacientes', function (\PDO $pdo) {
-        (new PacientesController())->index($pdo);
+        (new PacientesController($pdo))->index();
     });
 
     $router->post('/pacientes/datatable', function (\PDO $pdo) {
-        (new PacientesController())->datatable($pdo);
+        (new PacientesController($pdo))->datatable();
     });
 
-    $router->get('/pacientes/detalles', function (\PDO $pdo) {
-        (new PacientesController())->detalles($pdo);
+    $router->match(['GET', 'POST'], '/pacientes/detalles', function (\PDO $pdo) {
+        (new PacientesController($pdo))->detalles();
     });
 };

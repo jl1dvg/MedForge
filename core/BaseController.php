@@ -2,27 +2,26 @@
 
 namespace Core;
 
+use PDO;
+
 class BaseController
 {
-    protected $pdo;
+    protected PDO $pdo;
 
-    public function __construct($pdo)
+    public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
     }
 
-    protected function render($viewPath, $data = [], $title = 'Panel')
+    protected function render(string $viewPath, array $data = []): void
     {
-        // Variables compartidas para el layout/partials
-        $username = $_SESSION['username'] ?? 'Invitado';
+        $shared = array_merge(
+            [
+                'username' => $_SESSION['username'] ?? 'Invitado',
+            ],
+            $data
+        );
 
-        // Variables específicas de la vista
-        extract($data);
-
-        // 🔍 depuración temporal
-        file_put_contents(__DIR__ . '/../debug_render.log', $viewPath . PHP_EOL, FILE_APPEND);
-
-        $layout = __DIR__ . '/../views/layout.php';
-        include $layout;
+        View::render($viewPath, $shared);
     }
 }
