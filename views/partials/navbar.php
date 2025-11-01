@@ -79,17 +79,17 @@ if (!function_exists('isActive')) {
                     </li>
 
                     <li>
-                        <a href="<?= BASE_URL . 'views/insumos/insumos.php'; ?>">
+                        <a href="<?= BASE_URL . 'insumos'; ?>">
                             <i class="mdi mdi-medical-bag"></i>Gestión de Insumos
                         </a>
                         <ul>
-                            <li class="<?= isActive('/views/insumos/insumos.php') ?>">
-                                <a href="<?= BASE_URL . 'views/insumos/insumos.php'; ?>">
+                            <li class="<?= isActive('/insumos') ?>">
+                                <a href="<?= BASE_URL . 'insumos'; ?>">
                                     <i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/insumos/medicamentos.php') ?>">
-                                <a href="<?= BASE_URL . 'views/insumos/medicamentos.php'; ?>">
+                            <li class="<?= isActive('/insumos/medicamentos') ?>">
+                                <a href="<?= BASE_URL . 'insumos/medicamentos'; ?>">
                                     <i class="mdi mdi-pill"></i>Lista de Medicamentos
                                 </a>
                             </li>

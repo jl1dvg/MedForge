@@ -2,115 +2,115 @@
 
 namespace Modules\Insumos\Controllers;
 
+use Core\BaseController;
+use Modules\Insumos\Services\InsumoService;
 use PDO;
 
-class InsumosController
+class InsumosController extends BaseController
 {
-    private $db;
+    private InsumoService $service;
 
     public function __construct(PDO $pdo)
     {
-        $this->db = $pdo;
+        parent::__construct($pdo);
+        $this->service = new InsumoService($pdo);
     }
 
-    public function guardar($data)
+    public function index(): void
     {
-        $campos = [
-            'nombre', 'categoria', 'codigo_issfa', 'codigo_isspol', 'codigo_iess', 'codigo_msp',
-            'producto_issfa', 'es_medicamento', 'precio_base', 'iva_15', 'gestion_10', 'precio_total', 'precio_isspol'
-        ];
+        $this->requireAuth();
 
-        // Validación básica
-        foreach ($campos as $campo) {
-            if (!isset($data[$campo])) {
-                return ['success' => false, 'message' => "Campo faltante: $campo"];
-            }
-        }
-
-        foreach (['precio_base', 'iva_15', 'gestion_10', 'precio_total', 'precio_isspol'] as $campo) {
-            $data[$campo] = $data[$campo] === '' ? null : $data[$campo];
-        }
-
-        $id = $data['id'] ?? null;
-
-        if ($id) {
-            $sql = "UPDATE insumos SET nombre=?, categoria=?, codigo_issfa=?, codigo_isspol=?, codigo_iess=?, codigo_msp=?, 
-                    producto_issfa=?, es_medicamento=?, precio_base=?, iva_15=?, gestion_10=?, precio_total=?, precio_isspol=? WHERE id=?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([
-                $data['nombre'], $data['categoria'], $data['codigo_issfa'], $data['codigo_isspol'], $data['codigo_iess'], $data['codigo_msp'],
-                $data['producto_issfa'], $data['es_medicamento'], $data['precio_base'], $data['iva_15'], $data['gestion_10'], $data['precio_total'], $data['precio_isspol'],
-                $id
-            ]);
-        } else {
-            $sql = "INSERT INTO insumos (
-                        nombre, categoria, codigo_issfa, codigo_isspol, codigo_iess, codigo_msp,
-                    producto_issfa, es_medicamento, precio_base, iva_15, gestion_10, precio_total, precio_isspol)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([
-                $data['nombre'], $data['categoria'], $data['codigo_issfa'], $data['codigo_isspol'], $data['codigo_iess'], $data['codigo_msp'],
-                $data['producto_issfa'], $data['es_medicamento'], $data['precio_base'], $data['iva_15'], $data['gestion_10'], $data['precio_total'], $data['precio_isspol']
-            ]);
-            $id = $this->db->lastInsertId();
-        }
-
-        return ['success' => true, 'message' => 'Insumo guardado correctamente.', 'id' => $id];
+        $this->render(
+            __DIR__ . '/../views/index.php',
+            [
+                'pageTitle' => 'Insumos',
+            ]
+        );
     }
 
-    public function guardarMedicamento($data)
+    public function medicamentos(): void
     {
-        $campos = [
-            'medicamento', 'via_administracion'
-        ];
+        $this->requireAuth();
 
-        // Validación básica
-        foreach ($campos as $campo) {
-            if (empty($data[$campo])) {
-                return ['success' => false, 'message' => "El campo '$campo' es obligatorio."];
-            }
-        }
-
-        // Sanitización
-        $data['medicamento'] = trim($data['medicamento']);
-        $data['via_administracion'] = trim($data['via_administracion']);
-
-        $id = $data['id'] ?? null;
-
-        try {
-            if ($id) {
-                $sql = "UPDATE medicamentos SET medicamento=?, via_administracion=? WHERE id=?";
-                $stmt = $this->db->prepare($sql);
-                $stmt->execute([
-                    $data['medicamento'], $data['via_administracion'], $id
-                ]);
-            } else {
-                $sql = "INSERT INTO medicamentos (
-                        medicamento, via_administracion)
-                    VALUES (?, ?)";
-                $stmt = $this->db->prepare($sql);
-                $stmt->execute([
-                    $data['medicamento'], $data['via_administracion']
-                ]);
-                $id = $this->db->lastInsertId();
-            }
-
-            return ['success' => true, 'message' => 'Insumo guardado correctamente.', 'id' => $id];
-        } catch (\PDOException $e) {
-            return ['success' => false, 'message' => 'Error al guardar el insumo: ' . $e->getMessage()];
-        }
+        $this->render(
+            __DIR__ . '/../views/medicamentos.php',
+            [
+                'pageTitle' => 'Medicamentos',
+            ]
+        );
     }
 
-    public function listarTodos()
+    public function listar(): void
     {
-        $stmt = $this->db->query("SELECT * FROM insumos ORDER BY categoria, nombre");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada.'], 401);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'insumos' => $this->service->listarInsumos(),
+        ]);
     }
 
-    public function listarMedicamentos()
+    public function listarMedicamentos(): void
     {
-        $stmt = $this->db->query("SELECT * FROM medicamentos ORDER BY medicamento");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada.'], 401);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'medicamentos' => $this->service->listarMedicamentos(),
+        ]);
+    }
+
+    public function guardar(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada.'], 401);
+            return;
+        }
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            $this->json(['success' => false, 'message' => 'JSON inválido.'], 400);
+            return;
+        }
+
+        $resultado = $this->service->guardar($payload);
+        $this->json($resultado, $resultado['success'] ? 200 : 422);
+    }
+
+    public function guardarMedicamento(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada.'], 401);
+            return;
+        }
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            $this->json(['success' => false, 'message' => 'JSON inválido.'], 400);
+            return;
+        }
+
+        $resultado = $this->service->guardarMedicamento($payload);
+        $this->json($resultado, $resultado['success'] ? 200 : 422);
+    }
+
+    public function eliminarMedicamento(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada.'], 401);
+            return;
+        }
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        $id = is_array($payload) && isset($payload['id']) ? (int) $payload['id'] : 0;
+
+        $resultado = $this->service->eliminarMedicamento($id);
+        $this->json($resultado, $resultado['success'] ? 200 : 422);
     }
 }
-

@@ -4,13 +4,13 @@
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Medicamentos</h3>
+            <h3 class="page-title">Insumos</h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
                         <li class="breadcrumb-item" aria-current="page">Inventario</li>
-                        <li class="breadcrumb-item active" aria-current="page">Medicamentos</li>
+                        <li class="breadcrumb-item active" aria-current="page">Insumos</li>
                     </ol>
                 </nav>
             </div>
@@ -24,26 +24,37 @@
             <div class="box">
                 <div class="box-header d-flex justify-content-between align-items-center">
                     <div>
-                        <h4 class="box-title">📋 <strong>Listado editable de medicamentos</strong></h4>
+                        <h4 class="box-title">📋 <strong>Listado editable de insumos</strong></h4>
                         <h6 class="subtitle">
-                            Administra los medicamentos disponibles seleccionando su vía de administración y actualizando sus datos al vuelo.
+                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los botones de acciones.
                         </h6>
                     </div>
-                    <button id="agregarMedicamentoBtn" class="waves-effect waves-light btn btn-primary mb-5">
-                        <i class="mdi mdi-plus-circle-outline"></i> Nuevo Medicamento
+                    <button id="agregarInsumoBtn" class="waves-effect waves-light btn btn-primary mb-5">
+                        <i class="mdi mdi-plus-circle-outline"></i> Nuevo Insumo
                     </button>
                 </div>
                 <div class="box-body">
                     <div class="table-responsive">
-                        <table id="MedicamentosEditable" class="table table-bordered table-striped table-hover table-sm align-middle">
+                        <table id="insumosEditable" class="table table-bordered table-striped table-hover table-sm align-middle">
                             <thead class="table-primary text-dark fw-semibold">
                                 <tr>
-                                    <th>Medicamento</th>
-                                    <th>Vía de administración</th>
+                                    <th>Categoría</th>
+                                    <th>Código ISSPOL</th>
+                                    <th>Código ISSFA</th>
+                                    <th>Código IESS</th>
+                                    <th>Código MSP</th>
+                                    <th>Nombre</th>
+                                    <th>Producto ISSFA</th>
+                                    <th>Es medicamento</th>
+                                    <th>Precio Base</th>
+                                    <th>IVA 15%</th>
+                                    <th>Gestión 10%</th>
+                                    <th>Precio Total</th>
+                                    <th>Precio ISSPOL</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody id="tablaMedicamentosBody"></tbody>
+                            <tbody id="tablaInsumosBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -53,13 +64,13 @@
 </section>
 
 <style>
-    table#MedicamentosEditable td,
-    table#MedicamentosEditable th {
+    table#insumosEditable td,
+    table#insumosEditable th {
         font-size: 0.85rem;
         padding: 0.45rem 0.5rem;
     }
 
-    table#MedicamentosEditable th {
+    table#insumosEditable th {
         text-transform: uppercase;
         letter-spacing: 0.03em;
     }
@@ -73,10 +84,6 @@
     td.editable:focus {
         background-color: #e9f7ef;
         outline: none;
-    }
-
-    #MedicamentosEditable select {
-        min-width: 180px;
     }
 </style>
 
@@ -93,4 +100,4 @@
 <script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
 <script src="<?= asset('js/menus.js') ?>"></script>
 <script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/medicamentos.js') ?>"></script>
+<script src="<?= asset('js/pages/insumos.js') ?>"></script>
