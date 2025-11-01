@@ -1,6 +1,5 @@
 .env
 .env
-/views/pacientes/
 /views/billing/
 /views/codes/
 /views/components/
