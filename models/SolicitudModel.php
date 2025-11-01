@@ -28,7 +28,13 @@ class SolicitudModel
                 sp.estado,
                 cd.fecha,
                 sp.duracion,
-                sp.ojo,
+                CASE 
+                    WHEN TRIM(COALESCE(sp.ojo, '')) <> '' THEN sp.ojo
+                    WHEN JSON_EXTRACT(sp.detalles_json, '$[0].lateralidad') IS NOT NULL
+                         AND JSON_UNQUOTE(JSON_EXTRACT(sp.detalles_json, '$[0].lateralidad')) <> ''
+                    THEN JSON_UNQUOTE(JSON_EXTRACT(sp.detalles_json, '$[0].lateralidad'))
+                    ELSE NULL
+                END AS ojo,
                 sp.prioridad,
                 sp.producto,
                 sp.observacion,
@@ -73,7 +79,7 @@ class SolicitudModel
             $params[] = $fin;
         }
 
-        $sql .= " ORDER BY cd.fecha DESC";
+        $sql .= " ORDER BY COALESCE(cd.fecha, sp.created_at) DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);

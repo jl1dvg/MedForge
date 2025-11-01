@@ -68,12 +68,17 @@ define('VIEW_PATH', BASE_PATH . '/views');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 
 // URL base del sitio
-define('BASE_URL', 'https://asistentecive.consulmed.me/');
+define('BASE_URL', 'https://django.consulmed.me/');
 
 // Helper para generar URLs públicas
 function asset($path)
 {
-    return BASE_URL . 'public/' . ltrim($path, '/');
+    return BASE_URL . ltrim($path, '/');
+}
+
+function img($path)
+{
+    return BASE_URL . 'images/' . ltrim($path, '/');
 }
 
 // Expiración automática de sesión tras 1 hora de inactividad

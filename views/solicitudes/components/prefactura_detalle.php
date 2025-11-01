@@ -17,7 +17,7 @@ if (!empty($solicitud) && is_array($solicitud)):
         }
     }
     echo "<pre>";
-    print_r($data);
+    //print_r($data);
     echo "</pre>";
     $solicitud_valor = $consulta['fecha'] ?? null;
     $solicitud_dt = new DateTime($solicitud_valor);
