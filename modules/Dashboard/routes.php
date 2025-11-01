@@ -1,8 +1,11 @@
 <?php
 
+use Core\Router;
 use Modules\Dashboard\Controllers\DashboardController;
 
-$router->get('/Dashboard', function ($pdo) {
-    $controller = new DashboardController($pdo);
-    $controller->index();
-});
+return function (Router $router) {
+    $router->get('/dashboard', function (\PDO $pdo) {
+        $controller = new DashboardController($pdo);
+        $controller->index();
+    });
+};
