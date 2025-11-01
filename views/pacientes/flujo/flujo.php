@@ -2,15 +2,15 @@
 require_once __DIR__ . '/../../../bootstrap.php';
 
 use Controllers\DashboardController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 use Controllers\GuardarProyeccionController;
 
-$pacienteController = new PacienteController($pdo);
+$pacienteService = new PacienteService($pdo);
 $procedimientoController = new GuardarProyeccionController($pdo);
 $dashboardController = new DashboardController($pdo);
 
 $username = $dashboardController->getAuthenticatedUser();
-$pacientes = $pacienteController->obtenerPacientesConUltimaConsulta();
+$pacientes = $pacienteService->obtenerPacientesConUltimaConsulta();
 $flujoPacientes = $procedimientoController->obtenerFlujoPacientes(); // devuelve todas las solicitudes con estado 'Agendado'
 
 ?>

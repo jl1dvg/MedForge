@@ -12,6 +12,7 @@ use Models\BillingOxigenoModel;
 use Models\BillingAnestesiaModel;
 use Models\ProtocoloModel;
 use Helpers\FacturacionHelper;
+use Modules\Pacientes\Services\PacienteService;
 
 class BillingService
 {
@@ -23,6 +24,7 @@ class BillingService
     private BillingOxigenoModel $billingOxigenoModel;
     private BillingAnestesiaModel $billingAnestesiaModel;
     private ProtocoloModel $protocoloModel;
+    private PacienteService $pacienteService;
 
     public function __construct(PDO $pdo)
     {
@@ -34,6 +36,7 @@ class BillingService
         $this->billingOxigenoModel = new BillingOxigenoModel($pdo);
         $this->billingAnestesiaModel = new BillingAnestesiaModel($pdo);
         $this->protocoloModel = new ProtocoloModel($pdo);
+        $this->pacienteService = new PacienteService($pdo);
     }
 
     /**
@@ -127,13 +130,11 @@ class BillingService
         $billingId = $billing['id'];
 
         // Dependencias
-        require_once __DIR__ . '/../PacienteController.php';
         require_once __DIR__ . '/../GuardarProyeccionController.php';
-        $pacienteController = new \Controllers\PacienteController($this->db);
         $guardarProyeccionController = new \Controllers\GuardarProyeccionController($this->db);
 
-        $pacienteInfo = $pacienteController->getPatientDetails($billing['hc_number']);
-        $formDetails = $pacienteController->getDetalleSolicitud($billing['hc_number'], $formId);
+        $pacienteInfo = $this->pacienteService->getPatientDetails($billing['hc_number']);
+        $formDetails = $this->pacienteService->getDetalleSolicitud($billing['hc_number'], $formId);
         $visita = $guardarProyeccionController->obtenerDatosPacientePorFormId($formId);
         $protocoloExtendido = $this->protocoloModel->obtenerProtocoloTiny($formId, $billing['hc_number']);
 

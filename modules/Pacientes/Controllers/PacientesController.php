@@ -2,19 +2,19 @@
 
 namespace Modules\Pacientes\Controllers;
 
-use Controllers\PacienteController as LegacyPacienteController;
 use Core\BaseController;
+use Modules\Pacientes\Services\PacienteService;
 use PDO;
 use Throwable;
 
 class PacientesController extends BaseController
 {
-    private LegacyPacienteController $legacyController;
+    private PacienteService $service;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
-        $this->legacyController = new LegacyPacienteController($pdo);
+        $this->service = new PacienteService($pdo);
     }
 
     public function index(): void
@@ -54,7 +54,7 @@ class PacientesController extends BaseController
             $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
             $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-            $response = $this->legacyController->obtenerPacientesPaginados(
+            $response = $this->service->obtenerPacientesPaginados(
                 $start,
                 $length,
                 $search,
@@ -85,7 +85,7 @@ class PacientesController extends BaseController
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_paciente'])) {
-            $this->legacyController->actualizarPaciente(
+            $this->service->actualizarPaciente(
                 $hcNumber,
                 $_POST['fname'] ?? '',
                 $_POST['mname'] ?? '',
@@ -101,17 +101,17 @@ class PacientesController extends BaseController
             exit;
         }
 
-        $patientData = $this->legacyController->getPatientDetails($hcNumber);
+        $patientData = $this->service->getPatientDetails($hcNumber);
 
         if (empty($patientData)) {
             header('Location: /pacientes?not_found=1');
             exit;
         }
 
-        $diagnosticos = $this->legacyController->getDiagnosticosPorPaciente($hcNumber);
-        $medicos = $this->legacyController->getDoctoresAsignados($hcNumber);
-        $solicitudes = $this->legacyController->getSolicitudesPorPaciente($hcNumber);
-        $prefacturas = $this->legacyController->getPrefacturasPorPaciente($hcNumber);
+        $diagnosticos = $this->service->getDiagnosticosPorPaciente($hcNumber);
+        $medicos = $this->service->getDoctoresAsignados($hcNumber);
+        $solicitudes = $this->service->getSolicitudesPorPaciente($hcNumber);
+        $prefacturas = $this->service->getPrefacturasPorPaciente($hcNumber);
 
         foreach ($solicitudes as &$item) {
             $item['origen'] = 'Solicitud';
@@ -134,13 +134,14 @@ class PacientesController extends BaseController
                 'pageTitle' => 'Paciente ' . $hcNumber,
                 'hc_number' => $hcNumber,
                 'patientData' => $patientData,
-                'afiliacionesDisponibles' => $this->legacyController->getAfiliacionesDisponibles(),
+                'afiliacionesDisponibles' => $this->service->getAfiliacionesDisponibles(),
                 'diagnosticos' => $diagnosticos,
                 'medicos' => $medicos,
                 'timelineItems' => $timelineItems,
-                'eventos' => $this->legacyController->getEventosTimeline($hcNumber),
-                'documentos' => $this->legacyController->getDocumentosDescargables($hcNumber),
-                'estadisticas' => $this->legacyController->getEstadisticasProcedimientos($hcNumber),
+                'eventos' => $this->service->getEventosTimeline($hcNumber),
+                'documentos' => $this->service->getDocumentosDescargables($hcNumber),
+                'estadisticas' => $this->service->getEstadisticasProcedimientos($hcNumber),
+                'patientAge' => $this->service->calcularEdad($patientData['fecha_nacimiento'] ?? null),
             ]
         );
     }

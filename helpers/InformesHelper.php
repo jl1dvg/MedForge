@@ -3,7 +3,7 @@
 namespace Helpers;
 
 use Controllers\BillingController;
-use Controllers\PacienteController;
+use Modules\Pacientes\Services\PacienteService;
 
 class InformesHelper
 {
@@ -183,17 +183,17 @@ class InformesHelper
     }
 
     public static function obtenerConsolidadoFiltrado(
-        array              $facturas,
-        array              $filtros,
-        BillingController  $billingController,
-        PacienteController $pacienteController,
-        array              $afiliacionesPermitidas = []
+        array             $facturas,
+        array             $filtros,
+        BillingController $billingController,
+        PacienteService   $pacienteService,
+        array             $afiliacionesPermitidas = []
     ): array
     {
         $consolidado = [];
 
         foreach ($facturas as $factura) {
-            $pacienteInfo = $pacienteController->getPatientDetails($factura['hc_number']);
+            $pacienteInfo = $pacienteService->getPatientDetails($factura['hc_number']);
             if (!is_array($pacienteInfo)) {
                 continue;
             }
@@ -239,14 +239,14 @@ class InformesHelper
         return $str;
     }
 
-    public static function filtrarPacientes(array $pacientes, array &$pacientesCache, array &$datosCache, $pacienteController, $billingController, string $apellidoFiltro): array
+    public static function filtrarPacientes(array $pacientes, array &$pacientesCache, array &$datosCache, PacienteService $pacienteService, $billingController, string $apellidoFiltro): array
     {
-        return array_filter($pacientes, function ($p) use (&$pacientesCache, &$datosCache, $pacienteController, $billingController, $apellidoFiltro) {
+        return array_filter($pacientes, function ($p) use (&$pacientesCache, &$datosCache, $pacienteService, $billingController, $apellidoFiltro) {
             $hc = $p['hc_number'];
             $fid = $p['form_id'];
 
             if (!isset($pacientesCache[$hc])) {
-                $pacientesCache[$hc] = $pacienteController->getPatientDetails($hc);
+                $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
             }
 
             if (!isset($datosCache[$fid])) {
