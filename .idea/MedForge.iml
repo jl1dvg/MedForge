@@ -6,6 +6,7 @@
       <sourceFolder url="file://$MODULE_DIR$/models" isTestSource="false" packagePrefix="Models\" />
       <sourceFolder url="file://$MODULE_DIR$/helpers" isTestSource="false" packagePrefix="Helpers\" />
       <sourceFolder url="file://$MODULE_DIR$/controllers/Services" isTestSource="false" packagePrefix="Services\" />
+      <sourceFolder url="file://$MODULE_DIR$/modules" isTestSource="false" packagePrefix="Modules\" />
       <excludeFolder url="file://$MODULE_DIR$/vendor/composer" />
       <excludeFolder url="file://$MODULE_DIR$/vendor/mpdf/mpdf" />
       <excludeFolder url="file://$MODULE_DIR$/vendor/mpdf/psr-http-message-shim" />
