@@ -1,4 +1,6 @@
 <?php
+//jl1dvg
+
 require_once __DIR__ . '/../../bootstrap.php';
 
 use Controllers\EstadisticaFlujoController;
