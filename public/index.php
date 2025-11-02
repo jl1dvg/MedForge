@@ -55,6 +55,23 @@ try {
 
         $method = $_SERVER['REQUEST_METHOD'];
 
+        // Intentar despachar archivos legacy ubicados directamente en /public
+        $relativePath = ltrim($path, '/');
+        if (strpos($relativePath, 'public/') === 0) {
+            $relativePath = substr($relativePath, strlen('public/'));
+        }
+
+        if ($relativePath !== '') {
+            $candidate = PUBLIC_PATH . '/' . $relativePath;
+            $publicRealPath = realpath(PUBLIC_PATH);
+            $candidateRealPath = $candidate && file_exists($candidate) ? realpath($candidate) : false;
+
+            if ($candidateRealPath && $publicRealPath && strpos($candidateRealPath, $publicRealPath) === 0 && is_file($candidateRealPath)) {
+                require $candidateRealPath;
+                exit;
+            }
+        }
+
         // === Rutas legacy ===
         if ($path === '/billing/excel' && $method === 'GET') {
             $formId = $_GET['form_id'] ?? null;
