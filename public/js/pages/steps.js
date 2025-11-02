@@ -18,7 +18,7 @@ $(document).ready(function () {
                 const form = document.querySelector('.tab-wizard');
                 const formData = new FormData(form);
 
-                fetch('/cirugias/wizard/guardar', {
+                fetch('/modules/Cirugias/wizard/guardar', {
                     method: 'POST',
                     body: formData
                 })
@@ -39,11 +39,11 @@ $(document).ready(function () {
                         }
 
                         if (data.success) {
-                            const revisado = document.getElementById('statusCheckbox')?.checked;
+                        const revisado = document.getElementById('statusCheckbox')?.checked;
 
-                            Swal.fire({
-                                title: 'Datos actualizados',
-                                text: revisado ? data.message + ' ¿Desea imprimir el PDF?' : data.message,
+                        Swal.fire({
+                            title: 'Datos actualizados',
+                            text: revisado ? data.message + ' ¿Desea imprimir el PDF?' : data.message,
                                 icon: 'success',
                                 showCancelButton: revisado,
                                 confirmButtonText: revisado ? 'Imprimir PDF' : 'OK',
