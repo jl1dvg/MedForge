@@ -1,4 +1,6 @@
 <?php
+use Core\Permissions;
+
 // Helpers para resaltar elementos activos y abrir treeviews según la URL actual
 if (!function_exists('currentPath')) {
     function currentPath(): string
@@ -183,8 +185,13 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>
-                        <li class="treeview<?= isTreeOpen(['/views/users', '/views/codes']) ?>">
+                    <?php
+                    $rawPermissions = $_SESSION['permisos'] ?? [];
+                    $normalizedPermissions = Permissions::normalize($rawPermissions);
+                    $canManage = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios', 'admin.roles']);
+                    ?>
+                    <?php if ($canManage): ?>
+                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
                                             class="path3"></span></i>
@@ -192,9 +199,14 @@ if (!function_exists('isTreeOpen')) {
                                 <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                             </a>
                             <ul class="treeview-menu">
-                                <li class="<?= isActive('/views/users/index.php') ?>">
-                                    <a href="<?= BASE_URL . 'views/users/index.php'; ?>">
+                                <li class="<?= isActive('/usuarios') ?>">
+                                    <a href="<?= BASE_URL . 'usuarios'; ?>">
                                         <i class="mdi mdi-account-key"></i>Usuarios
+                                    </a>
+                                </li>
+                                <li class="<?= isActive('/roles') ?>">
+                                    <a href="<?= BASE_URL . 'roles'; ?>">
+                                        <i class="mdi mdi-security"></i>Roles
                                     </a>
                                 </li>
                                 <li class="<?= isActive('/views/codes/index.php') ?>">

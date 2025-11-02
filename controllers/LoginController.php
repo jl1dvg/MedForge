@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../bootstrap.php';
 
+use Core\Permissions;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
@@ -12,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($user && password_verify($password, $user['password'])) {
             $_SESSION['user_id'] = $user['id'];
-            $_SESSION['permisos'] = $user['permisos'];
+            $_SESSION['permisos'] = Permissions::normalize($user['permisos'] ?? []);
             $_SESSION['session_active'] = true;
             $_SESSION['session_start_time'] = time();
             $_SESSION['last_activity_time'] = time();
