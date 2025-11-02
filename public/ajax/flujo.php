@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
 
+use Controllers\DashboardController;
+use Controllers\PacienteController;
 use Controllers\GuardarProyeccionController;
 
 header('Content-Type: application/json');
