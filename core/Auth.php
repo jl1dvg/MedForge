@@ -12,9 +12,7 @@ class Auth
     public static function login($userId, $permisos = null): void
     {
         $_SESSION['user_id'] = $userId;
-        if ($permisos !== null) {
-            $_SESSION['permisos'] = $permisos;
-        }
+        $_SESSION['permisos'] = Permissions::normalize($permisos);
         $_SESSION['session_active'] = true;
         $_SESSION['session_start_time'] = time();
         $_SESSION['last_activity_time'] = time();
@@ -39,7 +37,7 @@ class Auth
         if (self::check()) {
             return [
                 'id' => $_SESSION['user_id'] ?? null,
-                'permisos' => $_SESSION['permisos'] ?? null,
+                'permisos' => Permissions::normalize($_SESSION['permisos'] ?? null),
                 'session_active' => $_SESSION['session_active'] ?? false,
                 'session_start_time' => $_SESSION['session_start_time'] ?? null,
             ];

@@ -35,9 +35,9 @@ class AuthController extends BaseController
 
             if ($user && password_verify($password, $user['password'])) {
                 // Guardar sesión usando tu estructura anterior
-                Auth::login($user['id']);
+                Auth::login($user['id'], $user['permisos'] ?? []);
                 $_SESSION['username'] = $user['username'] ?? $username; // ← importante para el header
-                $_SESSION['permisos'] = $user['permisos'] ?? null;
+                $_SESSION['permisos'] = $_SESSION['permisos'] ?? [];
                 $_SESSION['session_active'] = true;
                 $_SESSION['session_start_time'] = time();
                 $_SESSION['last_activity_time'] = time();
