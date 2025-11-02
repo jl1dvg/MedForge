@@ -102,20 +102,19 @@ class CirugiasController extends BaseController
             return;
         }
 
-        $ok = $this->service->guardar($_POST);
+        $resultado = $this->service->guardar($_POST);
 
-        if ($ok) {
-            $this->json([
-                'success' => true,
-                'message' => 'Los datos se han actualizado correctamente.',
-            ]);
-            return;
+        $statusCode = $resultado['success'] ? 200 : 500;
+        $response = [
+            'success' => $resultado['success'],
+            'message' => $resultado['message'] ?? ($resultado['success'] ? 'Operación completada.' : 'No se pudo guardar la información del protocolo.'),
+        ];
+
+        if (!empty($resultado['protocolo_id'])) {
+            $response['protocolo_id'] = $resultado['protocolo_id'];
         }
 
-        $this->json([
-            'success' => false,
-            'message' => $this->service->getLastError() ?? 'No se pudo guardar la información del protocolo.',
-        ], 500);
+        $this->json($response, $statusCode);
     }
 
     public function autosave(): void
