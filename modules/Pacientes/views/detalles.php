@@ -13,6 +13,14 @@ use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 /** @var array $estadisticas */
 /** @var int|null $patientAge */
 
+$diagnosticos = $diagnosticos ?? [];
+$medicos = $medicos ?? [];
+$timelineItems = $timelineItems ?? [];
+$eventos = $eventos ?? [];
+$documentos = $documentos ?? [];
+$estadisticas = $estadisticas ?? [];
+$patientAge = $patientAge ?? null;
+
 $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['mname'] ?? '') . ' ' . ($patientData['lname'] ?? '') . ' ' . ($patientData['lname2'] ?? ''));
 $timelineColorMap = [
     'solicitud' => 'bg-primary',
@@ -282,6 +290,15 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                             <div id="chart123"></div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="box">
+                <div class="box-header with-border">
+                    <h4 class="box-title">Línea de tiempo clínica</h4>
+                </div>
+                <div class="box-body">
+                    <?php include __DIR__ . '/components/timeline_eventos.php'; ?>
                 </div>
             </div>
         </div>

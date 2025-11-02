@@ -101,48 +101,22 @@ class PacientesController extends BaseController
             exit;
         }
 
-        $patientData = $this->service->getPatientDetails($hcNumber);
+        $context = $this->service->obtenerContextoPaciente($hcNumber);
 
-        if (empty($patientData)) {
+        if (empty($context)) {
             header('Location: /pacientes?not_found=1');
             exit;
         }
 
-        $diagnosticos = $this->service->getDiagnosticosPorPaciente($hcNumber);
-        $medicos = $this->service->getDoctoresAsignados($hcNumber);
-        $solicitudes = $this->service->getSolicitudesPorPaciente($hcNumber);
-        $prefacturas = $this->service->getPrefacturasPorPaciente($hcNumber);
-
-        foreach ($solicitudes as &$item) {
-            $item['origen'] = 'Solicitud';
-        }
-        unset($item);
-
-        foreach ($prefacturas as &$item) {
-            $item['origen'] = 'Prefactura';
-        }
-        unset($item);
-
-        $timelineItems = array_merge($solicitudes, $prefacturas);
-        usort($timelineItems, static function (array $a, array $b): int {
-            return strtotime($b['fecha']) <=> strtotime($a['fecha']);
-        });
-
         $this->render(
             __DIR__ . '/../views/detalles.php',
-            [
-                'pageTitle' => 'Paciente ' . $hcNumber,
-                'hc_number' => $hcNumber,
-                'patientData' => $patientData,
-                'afiliacionesDisponibles' => $this->service->getAfiliacionesDisponibles(),
-                'diagnosticos' => $diagnosticos,
-                'medicos' => $medicos,
-                'timelineItems' => $timelineItems,
-                'eventos' => $this->service->getEventosTimeline($hcNumber),
-                'documentos' => $this->service->getDocumentosDescargables($hcNumber),
-                'estadisticas' => $this->service->getEstadisticasProcedimientos($hcNumber),
-                'patientAge' => $this->service->calcularEdad($patientData['fecha_nacimiento'] ?? null),
-            ]
+            array_merge(
+                [
+                    'pageTitle' => 'Paciente ' . $hcNumber,
+                    'hc_number' => $hcNumber,
+                ],
+                $context
+            )
         );
     }
 }
