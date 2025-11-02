@@ -22,14 +22,10 @@ $(document).ready(function () {
                     method: 'POST',
                     body: formData
                 })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Error en la respuesta de la red');
-                        }
-                        return response.text();
-                    })
-                    .then(text => {
+                    .then(async (response) => {
+                        const text = await response.text();
                         console.log("🔍 Respuesta cruda del servidor:", text);
+
                         let data;
                         try {
                             data = JSON.parse(text);
@@ -38,12 +34,21 @@ $(document).ready(function () {
                             throw new Error("Respuesta no válida del servidor");
                         }
 
-                        if (data.success) {
-                            const revisado = document.getElementById('statusCheckbox')?.checked;
+                        if (!response.ok || !data.success) {
+                            const message = data.message || 'No se pudo guardar el protocolo quirúrgico.';
+                            const error = new Error(message);
+                            error.payload = data;
+                            throw error;
+                        }
 
-                            Swal.fire({
-                                title: 'Datos actualizados',
-                                text: revisado ? data.message + ' ¿Desea imprimir el PDF?' : data.message,
+                        return data;
+                    })
+                    .then(data => {
+                        const revisado = document.getElementById('statusCheckbox')?.checked;
+
+                        Swal.fire({
+                            title: 'Datos actualizados',
+                            text: revisado ? data.message + ' ¿Desea imprimir el PDF?' : data.message,
                                 icon: 'success',
                                 showCancelButton: revisado,
                                 confirmButtonText: revisado ? 'Imprimir PDF' : 'OK',
@@ -55,13 +60,11 @@ $(document).ready(function () {
                                     window.open('/public/ajax/generate_protocolo_pdf.php?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
                                 }
                             });
-                        } else {
-                            Swal.fire("Error", data.message, "error");
-                        }
                     })
                     .catch(error => {
                         console.error('Error al actualizar los datos:', error);
-                        swal("Error", "Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.", "error");
+                        const message = error.message || 'Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.';
+                        swal("Error", message, "error");
                     });
             } else {
                 swal("Error", "Por favor, completa los campos obligatorios.", "error");

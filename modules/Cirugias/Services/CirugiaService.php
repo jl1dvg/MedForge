@@ -7,8 +7,71 @@ use PDO;
 
 class CirugiaService
 {
+    private ?string $lastError = null;
+
     public function __construct(private PDO $db)
     {
+    }
+
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    private function resetError(): void
+    {
+        $this->lastError = null;
+    }
+
+    private function normalizeNullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_array($value)) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    private function normalizeJson(mixed $value, bool $allowNull = false, string $fallback = '[]'): ?string
+    {
+        if ($value === null) {
+            return $allowNull ? null : $fallback;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return $allowNull ? null : $fallback;
+            }
+
+            json_decode($value);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $value;
+            }
+
+            $this->lastError = 'Formato JSON inválido recibido.';
+            return $allowNull ? null : $fallback;
+        }
+
+        if (is_array($value)) {
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE);
+
+            if ($encoded !== false) {
+                return $encoded;
+            }
+
+            $this->lastError = 'No se pudo codificar la información en formato JSON: ' . json_last_error_msg();
+            return $allowNull ? null : $fallback;
+        }
+
+        return $allowNull ? null : $fallback;
     }
 
     /**
@@ -173,6 +236,8 @@ class CirugiaService
 
     public function guardar(array $data): bool
     {
+        $this->resetError();
+
         try {
             $existeStmt = $this->db->prepare("SELECT procedimiento_id FROM protocolo_data WHERE form_id = :form_id");
             $existeStmt->execute([':form_id' => $data['form_id']]);
@@ -180,6 +245,16 @@ class CirugiaService
 
             if (isset($procedimientoIdExistente) && empty($data['procedimiento_id'])) {
                 $data['procedimiento_id'] = $procedimientoIdExistente;
+            }
+
+            $procedimientos = $this->normalizeJson($data['procedimientos'] ?? null);
+            $diagnosticos = $this->normalizeJson($data['diagnosticos'] ?? null);
+            $diagnosticosPrevios = $this->normalizeJson($data['diagnosticos_previos'] ?? null, true);
+            $insumos = $this->normalizeJson($data['insumos'] ?? null);
+            $medicamentos = $this->normalizeJson($data['medicamentos'] ?? null);
+
+            if ($this->lastError !== null) {
+                return false;
             }
 
             $sql = "INSERT INTO protocolo_data (
@@ -230,35 +305,35 @@ class CirugiaService
 
             $stmt = $this->db->prepare($sql);
             if ($stmt->execute([
-                'procedimiento_id' => $data['procedimiento_id'] ?? '',
-                'membrete' => $data['membrete'] ?? '',
-                'dieresis' => $data['dieresis'] ?? '',
-                'exposicion' => $data['exposicion'] ?? '',
-                'hallazgo' => $data['hallazgo'] ?? '',
-                'operatorio' => $data['operatorio'] ?? '',
-                'complicaciones_operatorio' => $data['complicaciones_operatorio'] ?? '',
-                'datos_cirugia' => $data['datos_cirugia'] ?? '',
-                'procedimientos' => json_encode($data['procedimientos'] ?? '[]'),
-                'diagnosticos' => json_encode($data['diagnosticos'] ?? '[]'),
-                'diagnosticos_previos' => is_string($data['diagnosticos_previos'] ?? null) ? ($data['diagnosticos_previos'] ?? null) : json_encode($data['diagnosticos_previos'] ?? []),
-                'lateralidad' => $data['lateralidad'] ?? '',
-                'tipo_anestesia' => $data['tipo_anestesia'] ?? '',
-                'hora_inicio' => $data['hora_inicio'] ?? '',
-                'hora_fin' => $data['hora_fin'] ?? '',
-                'fecha_inicio' => $data['fecha_inicio'] ?? '',
-                'fecha_fin' => $data['fecha_fin'] ?? '',
-                'cirujano_1' => $data['cirujano_1'] ?? '',
-                'cirujano_2' => $data['cirujano_2'] ?? '',
-                'primer_ayudante' => $data['primer_ayudante'] ?? '',
-                'segundo_ayudante' => $data['segundo_ayudante'] ?? '',
-                'tercer_ayudante' => $data['tercer_ayudante'] ?? '',
-                'ayudante_anestesia' => $data['ayudanteAnestesia'] ?? '',
-                'anestesiologo' => $data['anestesiologo'] ?? '',
-                'instrumentista' => $data['instrumentista'] ?? '',
-                'circulante' => $data['circulante'] ?? '',
-                'insumos' => is_string($data['insumos']) ? $data['insumos'] : json_encode($data['insumos'] ?? []),
-                'medicamentos' => is_string($data['medicamentos']) ? $data['medicamentos'] : json_encode($data['medicamentos'] ?? []),
-                'status' => $data['status'] ?? 0,
+                'procedimiento_id' => $this->normalizeNullableString($data['procedimiento_id'] ?? null),
+                'membrete' => $this->normalizeNullableString($data['membrete'] ?? null),
+                'dieresis' => $this->normalizeNullableString($data['dieresis'] ?? null),
+                'exposicion' => $this->normalizeNullableString($data['exposicion'] ?? null),
+                'hallazgo' => $this->normalizeNullableString($data['hallazgo'] ?? null),
+                'operatorio' => $this->normalizeNullableString($data['operatorio'] ?? null),
+                'complicaciones_operatorio' => $this->normalizeNullableString($data['complicaciones_operatorio'] ?? null),
+                'datos_cirugia' => $this->normalizeNullableString($data['datos_cirugia'] ?? null),
+                'procedimientos' => $procedimientos,
+                'diagnosticos' => $diagnosticos,
+                'diagnosticos_previos' => $diagnosticosPrevios,
+                'lateralidad' => $this->normalizeNullableString($data['lateralidad'] ?? null),
+                'tipo_anestesia' => $this->normalizeNullableString($data['tipo_anestesia'] ?? null),
+                'hora_inicio' => $this->normalizeNullableString($data['hora_inicio'] ?? null),
+                'hora_fin' => $this->normalizeNullableString($data['hora_fin'] ?? null),
+                'fecha_inicio' => $this->normalizeNullableString($data['fecha_inicio'] ?? null),
+                'fecha_fin' => $this->normalizeNullableString($data['fecha_fin'] ?? null),
+                'cirujano_1' => $this->normalizeNullableString($data['cirujano_1'] ?? null),
+                'cirujano_2' => $this->normalizeNullableString($data['cirujano_2'] ?? null),
+                'primer_ayudante' => $this->normalizeNullableString($data['primer_ayudante'] ?? null),
+                'segundo_ayudante' => $this->normalizeNullableString($data['segundo_ayudante'] ?? null),
+                'tercer_ayudante' => $this->normalizeNullableString($data['tercer_ayudante'] ?? null),
+                'ayudante_anestesia' => $this->normalizeNullableString($data['ayudanteAnestesia'] ?? null),
+                'anestesiologo' => $this->normalizeNullableString($data['anestesiologo'] ?? null),
+                'instrumentista' => $this->normalizeNullableString($data['instrumentista'] ?? null),
+                'circulante' => $this->normalizeNullableString($data['circulante'] ?? null),
+                'insumos' => $insumos,
+                'medicamentos' => $medicamentos,
+                'status' => !empty($data['status']) ? 1 : 0,
                 'form_id' => $data['form_id'],
                 'hc_number' => $data['hc_number'],
             ])) {
@@ -278,7 +353,7 @@ class CirugiaService
                     VALUES (:protocolo_id, :insumo_id, :nombre, :cantidad, :categoria)
                 ");
 
-                $insumos = is_string($data['insumos']) ? json_decode($data['insumos'], true) : $data['insumos'];
+                $insumos = is_string($insumos) ? json_decode($insumos, true) : $data['insumos'];
 
                 if (is_array($insumos)) {
                     foreach (['equipos', 'anestesia', 'quirurgicos'] as $categoria) {
@@ -309,7 +384,7 @@ class CirugiaService
                 $nuevosDx = [];
                 $dxCodigosNuevos = [];
 
-                $diagnosticos = is_string($data['diagnosticos']) ? json_decode($data['diagnosticos'], true) : $data['diagnosticos'];
+                $diagnosticos = is_string($diagnosticos) ? json_decode($diagnosticos, true) : $data['diagnosticos'];
                 foreach ($diagnosticos as $dx) {
                     if (!isset($dx['idDiagnostico']) || $dx['idDiagnostico'] === 'SELECCIONE') {
                         continue;
@@ -369,8 +444,12 @@ class CirugiaService
                 return true;
             }
 
+            $errorInfo = $stmt->errorInfo();
+            $this->lastError = $errorInfo[2] ?? 'No se pudo guardar la información del protocolo.';
+
             return false;
         } catch (\Throwable $e) {
+            $this->lastError = $e->getMessage();
             error_log('❌ Error al guardar protocolo: ' . $e->getMessage());
             return false;
         }
@@ -407,7 +486,7 @@ class CirugiaService
             return ['success' => true, 'message' => 'Datos guardados correctamente', 'protocolo_id' => $protocoloId];
         }
 
-        return ['success' => false, 'message' => 'Error al guardar el protocolo'];
+        return ['success' => false, 'message' => $this->lastError ?? 'Error al guardar el protocolo'];
     }
 
     public function actualizarPrinted(string $formId, string $hcNumber, int $printed): bool
@@ -432,6 +511,8 @@ class CirugiaService
 
     public function guardarAutosave(string $formId, string $hcNumber, ?string $insumos, ?string $medicamentos): bool
     {
+        $this->resetError();
+
         $sets = [];
         $params = [
             ':form_id' => $formId,
@@ -440,12 +521,12 @@ class CirugiaService
 
         if ($insumos !== null) {
             $sets[] = 'insumos = :insumos';
-            $params[':insumos'] = $insumos;
+            $params[':insumos'] = $this->normalizeJson($insumos) ?? '[]';
         }
 
         if ($medicamentos !== null) {
             $sets[] = 'medicamentos = :medicamentos';
-            $params[':medicamentos'] = $medicamentos;
+            $params[':medicamentos'] = $this->normalizeJson($medicamentos) ?? '[]';
         }
 
         if (empty($sets)) {
@@ -455,6 +536,13 @@ class CirugiaService
         $sql = 'UPDATE protocolo_data SET ' . implode(', ', $sets) . ' WHERE form_id = :form_id AND hc_number = :hc_number';
         $stmt = $this->db->prepare($sql);
 
-        return $stmt->execute($params);
+        if ($stmt->execute($params)) {
+            return true;
+        }
+
+        $errorInfo = $stmt->errorInfo();
+        $this->lastError = $errorInfo[2] ?? 'No se pudo actualizar el autosave.';
+
+        return false;
     }
 }
