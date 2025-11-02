@@ -290,7 +290,7 @@ $(function () {
                     Swal.fire({
                         icon: 'success', title: 'Datos Actualizados!', text: data.message, confirmButtonText: 'Ok'
                     }).then(() => {
-                        window.location.href = '/views/editor/lista_protocolos.php';
+                        window.location.href = '/protocolos?saved=1';
                     });
                 } else {
                     Swal.fire({
@@ -315,6 +315,14 @@ $(function () {
         `;
         $('#tablaCodigos tbody').append(fila);
     }
+
+    $('#agregar-codigo').on('click', function () {
+        agregarFilaCodigo();
+    });
+
+    $('#tablaCodigos').on('click', '.remove-codigo', function () {
+        $(this).closest('tr').remove();
+    });
 
     // Permite agregar filas de staff quirúrgico dinámicamente
     function agregarFilaStaff(funcion = '', trabajador = '', nombre = '', selector = '') {
