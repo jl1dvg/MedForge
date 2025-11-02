@@ -1,10 +1,45 @@
 <?php
-// Helper para marcar el item activo según la URL actual
+// Helpers para resaltar elementos activos y abrir treeviews según la URL actual
+if (!function_exists('currentPath')) {
+    function currentPath(): string
+    {
+        return rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '', '/');
+    }
+}
+
 if (!function_exists('isActive')) {
     function isActive(string $path): string
     {
-        $current = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-        return rtrim($current, '/') === rtrim($path, '/') ? ' is-active' : '';
+        $current = currentPath();
+        return $current === rtrim($path, '/') ? ' is-active' : '';
+    }
+}
+
+if (!function_exists('isActivePrefix')) {
+    // Activo si la ruta actual comienza con el prefijo dado
+    function isActivePrefix(string $prefix): string
+    {
+        $current = currentPath() . '/';
+        $pref = rtrim($prefix, '/') . '/';
+        return str_starts_with($current, $pref) ? ' is-active' : '';
+    }
+}
+
+if (!function_exists('isTreeOpen')) {
+    /**
+     * Retorna ' menu-open' si la ruta actual empieza con alguno de los prefijos.
+     * @param array $prefixes Prefijos de rutas, p.ej. ['/pacientes', '/solicitudes']
+     */
+    function isTreeOpen(array $prefixes): string
+    {
+        $current = currentPath() . '/';
+        foreach ($prefixes as $p) {
+            $pref = rtrim($p, '/') . '/';
+            if (str_starts_with($current, $pref)) {
+                return ' menu-open';
+            }
+        }
+        return '';
     }
 }
 ?>
@@ -18,11 +53,12 @@ if (!function_exists('isActive')) {
                 <ul class="sidebar-menu" data-widget="tree">
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
-                            <i class="mdi mdi-view-dashboard"></i>Inicio
+                            <i class="mdi mdi-view-dashboard"><span class="path1"></span><span class="path2"></span></i>
+                            <span>Inicio</span>
                         </a>
                     </li>
 
-                    <li class="treeview<?= str_starts_with(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '', '/pacientes') ? ' menu-open' : '' ?>">
+                    <li class="treeview<?= isTreeOpen(['/pacientes']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Pacientes</span>
@@ -34,7 +70,7 @@ if (!function_exists('isActive')) {
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/pacientes/flujo/flujo.php') ?>">
+                            <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
                                 <a href="<?= BASE_URL . 'views/pacientes/flujo/flujo.php'; ?>">
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
                                 </a>
@@ -42,7 +78,7 @@ if (!function_exists('isActive')) {
                         </ul>
                     </li>
 
-                    <li class="treeview">
+                    <li class="treeview<?= isTreeOpen(['/cirugias', '/solicitudes', '/views/ipl', '/ipl', '/views/editor']) ?>">
                         <a href="#">
                             <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
@@ -50,9 +86,9 @@ if (!function_exists('isActive')) {
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/views/editor/lista_protocolos.php') ?>">
-                                <a href="<?= BASE_URL . 'views/editor/lista_protocolos.php'; ?>">
-                                    <i class="mdi mdi-clipboard-outline"></i>Solicitudes de Cirugía
+                            <li class="<?= isActive('/solicitudes') ?: isActive('/views/solicitudes/solicitudes.php') ?>">
+                                <a href="<?= BASE_URL . 'solicitudes'; ?>">
+                                    <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>
                             </li>
                             <li class="<?= isActive('/cirugias') ?>">
@@ -60,29 +96,27 @@ if (!function_exists('isActive')) {
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/ipl/ipl_planificador_lista.php') ?>">
-                                <a href="<?= BASE_URL . 'views/ipl/ipl_planificador_lista.php'; ?>">
+                            <li class="<?= isActive('/ipl') ?: isActive('/views/ipl/ipl_planificador_lista.php') ?>">
+                                <a href="<?= BASE_URL . 'ipl'; ?>">
                                     <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/editor/lista_protocolos.php') ?>">
+                            <li class="<?= isActivePrefix('/editor') ?: isActive('/views/editor/lista_protocolos.php') ?>">
                                 <a href="<?= BASE_URL . 'views/editor/lista_protocolos.php'; ?>">
                                     <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/views/solicitudes/solicitudes.php') ?>">
-                                <a href="<?= BASE_URL . 'views/solicitudes/solicitudes.php'; ?>">
-                                    <i class="mdi mdi-file-document"></i>Solicitudes
                                 </a>
                             </li>
                         </ul>
                     </li>
 
-                    <li>
-                        <a href="<?= BASE_URL . 'insumos'; ?>">
-                            <i class="mdi mdi-medical-bag"></i>Gestión de Insumos
+                    <li class="treeview<?= isTreeOpen(['/insumos', '/insumos/medicamentos']) ?>">
+                        <a href="#">
+                            <i class="mdi mdi-medical-bag"><span class="path1"></span><span class="path2"></span><span
+                                        class="path3"></span></i>
+                            <span>Gestión de Insumos</span>
+                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
-                        <ul>
+                        <ul class="treeview-menu">
                             <li class="<?= isActive('/insumos') ?>">
                                 <a href="<?= BASE_URL . 'insumos'; ?>">
                                     <i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos
@@ -96,11 +130,14 @@ if (!function_exists('isActive')) {
                         </ul>
                     </li>
 
-                    <li>
+                    <li class="treeview<?= isTreeOpen(['/views/informes', '/views/billing']) ?>">
                         <a href="#">
-                            <i class="mdi mdi-file-chart"></i>Facturación por Afiliación
+                            <i class="mdi mdi-file-chart"><span class="path1"></span><span class="path2"></span><span
+                                        class="path3"></span></i>
+                            <span>Facturación por Afiliación</span>
+                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
-                        <ul>
+                        <ul class="treeview-menu">
                             <li class="<?= isActive('/views/informes/informe_isspol.php') ?>">
                                 <a href="<?= BASE_URL . 'views/informes/informe_isspol.php'; ?>">
                                     <i class="mdi mdi-shield"></i>ISSPOL
@@ -129,11 +166,15 @@ if (!function_exists('isActive')) {
                         </ul>
                     </li>
 
-                    <li>
+                    <li class="treeview<?= isTreeOpen(['/views/reportes']) ?>">
                         <a href="#">
-                            <i class="mdi mdi-chart-areaspline"></i>Estadísticas
+                            <i class="mdi mdi-chart-areaspline"><span class="path1"></span><span
+                                        class="path2"></span><span
+                                        class="path3"></span></i>
+                            <span>Estadísticas</span>
+                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
-                        <ul>
+                        <ul class="treeview-menu">
                             <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
                                 <a href="<?= BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>">
                                     <i class="mdi mdi-chart-line"></i>Flujo de Pacientes
@@ -143,11 +184,14 @@ if (!function_exists('isActive')) {
                     </li>
 
                     <?php if (in_array($_SESSION['permisos'] ?? '', ['administrativo', 'superuser'])): ?>
-                        <li>
+                        <li class="treeview<?= isTreeOpen(['/views/users', '/views/codes']) ?>">
                             <a href="#">
-                                <i class="mdi mdi-settings"></i>Administración
+                                <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
+                                            class="path3"></span></i>
+                                <span>Administración</span>
+                                <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                             </a>
-                            <ul>
+                            <ul class="treeview-menu">
                                 <li class="<?= isActive('/views/users/index.php') ?>">
                                     <a href="<?= BASE_URL . 'views/users/index.php'; ?>">
                                         <i class="mdi mdi-account-key"></i>Usuarios
