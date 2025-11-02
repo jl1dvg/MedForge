@@ -37,15 +37,21 @@ $(function () {
                 'X-Requested-With': 'XMLHttpRequest'
             }
         })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Respuesta no válida del servidor');
+            .then(async (response) => {
+                const text = await response.text();
+                let data = {};
+
+                if (text) {
+                    try {
+                        data = JSON.parse(text);
+                    } catch (error) {
+                        console.warn('⚠️ Respuesta de autosave no es JSON válido', error, text);
+                    }
                 }
-                return response.json();
-            })
-            .then(data => {
-                if (!data.success) {
-                    console.warn('⚠️ Autosave de protocolo no confirmado', data);
+
+                if (!response.ok || data.success === false) {
+                    const message = data.message || 'No se pudo completar el autosave del protocolo.';
+                    throw new Error(message);
                 }
             })
             .catch(error => {
