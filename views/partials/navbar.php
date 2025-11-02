@@ -80,7 +80,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/cirugias', '/solicitudes', '/views/ipl', '/ipl', '/views/editor']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/cirugias', '/solicitudes', '/views/ipl', '/ipl', '/protocolos']) ?>">
                         <a href="#">
                             <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
@@ -103,8 +103,8 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
                                 </a>
                             </li>
-                            <li class="<?= isActivePrefix('/editor') ?: isActive('/views/editor/lista_protocolos.php') ?>">
-                                <a href="<?= BASE_URL . 'views/editor/lista_protocolos.php'; ?>">
+                            <li class="<?= isActive('/protocolos') ?>">
+                                <a href="<?= BASE_URL . 'protocolos'; ?>">
                                     <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
                                 </a>
                             </li>
