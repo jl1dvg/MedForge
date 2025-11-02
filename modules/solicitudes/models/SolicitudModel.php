@@ -1,6 +1,6 @@
 <?php
 
-namespace models;
+namespace Models;
 
 use PDO;
 use DateTime;
@@ -66,11 +66,14 @@ class SolicitudModel
 
         if (!empty($filtros['fechaTexto']) && str_contains($filtros['fechaTexto'], ' - ')) {
             [$inicio, $fin] = explode(' - ', $filtros['fechaTexto']);
-            $inicio = DateTime::createFromFormat('d-m-Y', trim($inicio))->format('Y-m-d');
-            $fin = DateTime::createFromFormat('d-m-Y', trim($fin))->format('Y-m-d');
-            $sql .= " AND DATE(cd.fecha) BETWEEN ? AND ?";
-            $params[] = $inicio;
-            $params[] = $fin;
+            $inicioDate = DateTime::createFromFormat('d-m-Y', trim($inicio));
+            $finDate = DateTime::createFromFormat('d-m-Y', trim($fin));
+
+            if ($inicioDate && $finDate) {
+                $sql .= " AND DATE(cd.fecha) BETWEEN ? AND ?";
+                $params[] = $inicioDate->format('Y-m-d');
+                $params[] = $finDate->format('Y-m-d');
+            }
         }
 
         $sql .= " ORDER BY cd.fecha DESC";
