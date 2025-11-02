@@ -13,5 +13,7 @@
 /views/reportes/
 /views/test/
 /views/users/
+/views/pacientes/
+/views/solicitudes/
 /vendor/
 /venv/
