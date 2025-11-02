@@ -1,4 +1,4 @@
-<!-- modal content -->
+<!-- result modal content -->
 <div class="modal fade" id="resultModal">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">

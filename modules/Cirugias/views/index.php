@@ -1,4 +1,3 @@
-<!-- Content Header (Page header) -->
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
