@@ -103,6 +103,7 @@ class PacienteService
                 'fecha' => $row['created_at'],
                 'tipo' => strtolower($row['tipo'] ?? 'otro'),
                 'form_id' => $row['form_id'],
+                'origen' => 'Solicitud',
             ];
         }
 
@@ -308,10 +309,44 @@ class PacienteService
                 'tipo' => 'prefactura',
                 'form_id' => $row['form_id'] ?? null,
                 'detalle' => $row,
+                'origen' => 'Prefactura',
             ];
         }
 
         return $prefacturas;
+    }
+
+    public function obtenerContextoPaciente(string $hcNumber): array
+    {
+        $patientData = $this->getPatientDetails($hcNumber);
+
+        if (empty($patientData)) {
+            return [];
+        }
+
+        $solicitudes = $this->getSolicitudesPorPaciente($hcNumber);
+        $prefacturas = $this->getPrefacturasPorPaciente($hcNumber);
+
+        return [
+            'patientData' => $patientData,
+            'afiliacionesDisponibles' => $this->getAfiliacionesDisponibles(),
+            'diagnosticos' => $this->getDiagnosticosPorPaciente($hcNumber),
+            'medicos' => $this->getDoctoresAsignados($hcNumber),
+            'timelineItems' => $this->ordenarTimeline(array_merge($solicitudes, $prefacturas)),
+            'eventos' => $this->getEventosTimeline($hcNumber),
+            'documentos' => $this->getDocumentosDescargables($hcNumber),
+            'estadisticas' => $this->getEstadisticasProcedimientos($hcNumber),
+            'patientAge' => $this->calcularEdad($patientData['fecha_nacimiento'] ?? null),
+        ];
+    }
+
+    private function ordenarTimeline(array $items): array
+    {
+        usort($items, static function (array $a, array $b): int {
+            return strtotime($b['fecha'] ?? '') <=> strtotime($a['fecha'] ?? '');
+        });
+
+        return $items;
     }
 
     public function obtenerStaffPorEspecialidad(): array
