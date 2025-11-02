@@ -13,6 +13,14 @@ use Modules\Pacientes\Support\ViewHelper as PacientesHelper;
 /** @var array $estadisticas */
 /** @var int|null $patientAge */
 
+$diagnosticos = $diagnosticos ?? [];
+$medicos = $medicos ?? [];
+$timelineItems = $timelineItems ?? [];
+$eventos = $eventos ?? [];
+$documentos = $documentos ?? [];
+$estadisticas = $estadisticas ?? [];
+$patientAge = $patientAge ?? null;
+
 $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['mname'] ?? '') . ' ' . ($patientData['lname'] ?? '') . ' ' . ($patientData['lname2'] ?? ''));
 $timelineColorMap = [
     'solicitud' => 'bg-primary',
@@ -33,7 +41,8 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
                         <li class="breadcrumb-item"><a href="/pacientes">Pacientes</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">HC <?= PacientesHelper::safe($hc_number) ?></li>
+                        <li class="breadcrumb-item active" aria-current="page">
+                            HC <?= PacientesHelper::safe($hc_number) ?></li>
                     </ol>
                 </nav>
             </div>
@@ -49,27 +58,41 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                     <div class="row">
                         <div class="col-12">
                             <div>
-                                <p>Nombre completo:<span class="text-gray ps-10"><?= PacientesHelper::safe($nombrePaciente) ?></span></p>
-                                <p>Fecha de Nacimiento:<span class="text-gray ps-10"><?= PacientesHelper::formatDateSafe($patientData['fecha_nacimiento'] ?? null) ?></span></p>
-                                <p>Edad:<span class="text-gray ps-10"><?= $patientAge !== null ? PacientesHelper::safe((string) $patientAge . ' años') : '—' ?></span></p>
-                                <p>Celular:<span class="text-gray ps-10"><?= PacientesHelper::safe($patientData['celular'] ?? '—') ?></span></p>
-                                <p>Dirección:<span class="text-gray ps-10"><?= PacientesHelper::safe($patientData['ciudad'] ?? '—') ?></span></p>
+                                <p>Nombre completo:<span
+                                            class="text-gray ps-10"><?= PacientesHelper::safe($nombrePaciente) ?></span>
+                                </p>
+                                <p>Fecha de Nacimiento:<span
+                                            class="text-gray ps-10"><?= PacientesHelper::formatDateSafe($patientData['fecha_nacimiento'] ?? null) ?></span>
+                                </p>
+                                <p>Edad:<span
+                                            class="text-gray ps-10"><?= $patientAge !== null ? PacientesHelper::safe((string)$patientAge . ' años') : '—' ?></span>
+                                </p>
+                                <p>Celular:<span
+                                            class="text-gray ps-10"><?= PacientesHelper::safe($patientData['celular'] ?? '—') ?></span>
+                                </p>
+                                <p>Dirección:<span
+                                            class="text-gray ps-10"><?= PacientesHelper::safe($patientData['ciudad'] ?? '—') ?></span>
+                                </p>
                             </div>
                         </div>
                         <div class="col-12 mt-20">
                             <div class="pb-15">
                                 <p class="mb-10">Social Profile</p>
                                 <div class="user-social-acount">
-                                    <button class="btn btn-circle btn-social-icon btn-facebook"><i class="fa fa-facebook"></i></button>
-                                    <button class="btn btn-circle btn-social-icon btn-twitter"><i class="fa fa-twitter"></i></button>
-                                    <button class="btn btn-circle btn-social-icon btn-instagram"><i class="fa fa-instagram"></i></button>
+                                    <button class="btn btn-circle btn-social-icon btn-facebook"><i
+                                                class="fa fa-facebook"></i></button>
+                                    <button class="btn btn-circle btn-social-icon btn-twitter"><i
+                                                class="fa fa-twitter"></i></button>
+                                    <button class="btn btn-circle btn-social-icon btn-instagram"><i
+                                                class="fa fa-instagram"></i></button>
                                 </div>
                             </div>
                         </div>
                         <div class="col-12">
                             <div class="map-box">
                                 <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2805244.1745767146!2d-86.32675167439648!3d29.383165774894163!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x88c1766591562abf%3A0xf72e13d35bc74ed0!2sFlorida%2C+USA!5e0!3m2!1sen!2sin!4v1501665415329"
-                                        width="100%" height="175" frameborder="0" style="border:0" allowfullscreen></iframe>
+                                        width="100%" height="175" frameborder="0" style="border:0"
+                                        allowfullscreen></iframe>
                             </div>
                         </div>
                     </div>
@@ -106,7 +129,9 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                     <h4 class="box-title">Solicitudes</h4>
                     <ul class="box-controls pull-right d-md-flex d-none">
                         <li class="dropdown">
-                            <button class="btn btn-primary dropdown-toggle px-10" data-bs-toggle="dropdown" href="#">Crear</button>
+                            <button class="btn btn-primary dropdown-toggle px-10" data-bs-toggle="dropdown" href="#">
+                                Crear
+                            </button>
                             <div class="dropdown-menu dropdown-menu-end">
                                 <a class="dropdown-item" href="#"><i class="ti-import"></i> Import</a>
                                 <a class="dropdown-item" href="#"><i class="ti-export"></i> Export</a>
@@ -126,7 +151,8 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                         <div class="d-flex align-items-center mb-25">
                             <span class="bullet bullet-bar <?= $bulletColor ?> align-self-stretch"></span>
                             <div class="h-20 mx-20 flex-shrink-0">
-                                <input type="checkbox" id="<?= $checkboxId ?>" class="filled-in chk-col-<?= $bulletColor ?>">
+                                <input type="checkbox" id="<?= $checkboxId ?>"
+                                       class="filled-in chk-col-<?= $bulletColor ?>">
                                 <label for="<?= $checkboxId ?>" class="h-20 p-10 mb-0"></label>
                             </div>
                             <div class="d-flex flex-column flex-grow-1">
@@ -143,7 +169,7 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                                     <div class="dropdown-menu dropdown-menu-end">
                                         <a class="dropdown-item flexbox" href="#" data-bs-toggle="modal"
                                            data-bs-target="#modalSolicitud"
-                                           data-form-id="<?= PacientesHelper::safe((string) ($procedimientoData['form_id'] ?? '')) ?>"
+                                           data-form-id="<?= PacientesHelper::safe((string)($procedimientoData['form_id'] ?? '')) ?>"
                                            data-hc="<?= PacientesHelper::safe($hc_number) ?>">
                                             <span>Ver Detalles</span>
                                         </a>
@@ -155,59 +181,6 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                     <?php if (empty($timelineItems)): ?>
                         <p class="text-muted mb-0">Sin solicitudes registradas.</p>
                     <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Actualizar datos del paciente</h4>
-                </div>
-                <div class="box-body">
-                    <form method="POST" action="/pacientes/detalles?hc_number=<?= urlencode($hc_number) ?>">
-                        <input type="hidden" name="actualizar_paciente" value="1">
-                        <div class="form-group">
-                            <label for="fname">Primer nombre</label>
-                            <input type="text" id="fname" name="fname" class="form-control" value="<?= PacientesHelper::safe($patientData['fname'] ?? '') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="mname">Segundo nombre</label>
-                            <input type="text" id="mname" name="mname" class="form-control" value="<?= PacientesHelper::safe($patientData['mname'] ?? '') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="lname">Primer apellido</label>
-                            <input type="text" id="lname" name="lname" class="form-control" value="<?= PacientesHelper::safe($patientData['lname'] ?? '') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="lname2">Segundo apellido</label>
-                            <input type="text" id="lname2" name="lname2" class="form-control" value="<?= PacientesHelper::safe($patientData['lname2'] ?? '') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="afiliacion">Afiliación</label>
-                            <select id="afiliacion" name="afiliacion" class="form-control">
-                                <?php foreach ($afiliacionesDisponibles as $afiliacion): ?>
-                                    <option value="<?= PacientesHelper::safe($afiliacion) ?>" <?= strtolower($afiliacion) === strtolower($patientData['afiliacion'] ?? '') ? 'selected' : '' ?>>
-                                        <?= PacientesHelper::safe($afiliacion) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="fecha_nacimiento">Fecha de nacimiento</label>
-                            <input type="date" id="fecha_nacimiento" name="fecha_nacimiento" class="form-control" value="<?= PacientesHelper::safe($patientData['fecha_nacimiento'] ?? '') ?>">
-                        </div>
-                        <div class="form-group">
-                            <label for="sexo">Sexo</label>
-                            <select id="sexo" name="sexo" class="form-control">
-                                <option value="Masculino" <?= strtolower($patientData['sexo'] ?? '') === 'masculino' ? 'selected' : '' ?>>Masculino</option>
-                                <option value="Femenino" <?= strtolower($patientData['sexo'] ?? '') === 'femenino' ? 'selected' : '' ?>>Femenino</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="celular">Celular</label>
-                            <input type="text" id="celular" name="celular" class="form-control" value="<?= PacientesHelper::safe($patientData['celular'] ?? '') ?>">
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">Guardar cambios</button>
-                    </form>
                 </div>
             </div>
         </div>
@@ -224,9 +197,12 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                                 <h6 class="dropdown-toggle mb-0" data-bs-toggle="dropdown">Filtro</h6>
                                 <div class="dropdown-menu">
                                     <a class="dropdown-item" href="#" onclick="filterDocuments('todos'); return false;">Todos</a>
-                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimo_mes'); return false;">Último Mes</a>
-                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimos_3_meses'); return false;">Últimos 3 Meses</a>
-                                    <a class="dropdown-item" href="#" onclick="filterDocuments('ultimos_6_meses'); return false;">Últimos 6 Meses</a>
+                                    <a class="dropdown-item" href="#"
+                                       onclick="filterDocuments('ultimo_mes'); return false;">Último Mes</a>
+                                    <a class="dropdown-item" href="#"
+                                       onclick="filterDocuments('ultimos_3_meses'); return false;">Últimos 3 Meses</a>
+                                    <a class="dropdown-item" href="#"
+                                       onclick="filterDocuments('ultimos_6_meses'); return false;">Últimos 6 Meses</a>
                                 </div>
                             </div>
                         </div>
@@ -250,13 +226,13 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
                                         </div>
                                         <?php if ($isProtocolo): ?>
                                             <a class="fs-18 text-gray hover-info" href="#"
-                                               onclick="window.descargarPDFsSeparados('<?= PacientesHelper::safe((string) ($documento['form_id'] ?? '')) ?>', '<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>'); return false;">
+                                               onclick="window.descargarPDFsSeparados('<?= PacientesHelper::safe((string)($documento['form_id'] ?? '')) ?>', '<?= PacientesHelper::safe($documento['hc_number'] ?? '') ?>'); return false;">
                                                 <i class="fa fa-download"></i>
                                             </a>
                                         <?php else: ?>
                                             <?php
                                             $hcQuery = htmlspecialchars(urlencode($documento['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8');
-                                            $formIdQuery = htmlspecialchars(urlencode((string) ($documento['form_id'] ?? '')), ENT_QUOTES, 'UTF-8');
+                                            $formIdQuery = htmlspecialchars(urlencode((string)($documento['form_id'] ?? '')), ENT_QUOTES, 'UTF-8');
                                             ?>
                                             <a class="fs-18 text-gray hover-info"
                                                href="<?= $solicitudPdfBaseUrlEscaped ?>?hc_number=<?= $hcQuery ?>&amp;form_id=<?= $formIdQuery ?>"
