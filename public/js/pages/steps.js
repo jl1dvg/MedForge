@@ -18,18 +18,14 @@ $(document).ready(function () {
                 const form = document.querySelector('.tab-wizard');
                 const formData = new FormData(form);
 
-                fetch('/modules/cirugias/wizard/guardar', {
+                fetch('/cirugias/wizard/guardar', {
                     method: 'POST',
                     body: formData
                 })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Error en la respuesta de la red');
-                        }
-                        return response.text();
-                    })
-                    .then(text => {
+                    .then(async (response) => {
+                        const text = await response.text();
                         console.log("🔍 Respuesta cruda del servidor:", text);
+
                         let data;
                         try {
                             data = JSON.parse(text);
@@ -38,7 +34,16 @@ $(document).ready(function () {
                             throw new Error("Respuesta no válida del servidor");
                         }
 
-                        if (data.success) {
+                        if (!response.ok || !data.success) {
+                            const message = data.message || 'No se pudo guardar el protocolo quirúrgico.';
+                            const error = new Error(message);
+                            error.payload = data;
+                            throw error;
+                        }
+
+                        return data;
+                    })
+                    .then(data => {
                         const revisado = document.getElementById('statusCheckbox')?.checked;
 
                         Swal.fire({
@@ -55,13 +60,11 @@ $(document).ready(function () {
                                     window.open('/public/ajax/generate_protocolo_pdf.php?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
                                 }
                             });
-                        } else {
-                            Swal.fire("Error", data.message, "error");
-                        }
                     })
                     .catch(error => {
                         console.error('Error al actualizar los datos:', error);
-                        swal("Error", "Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.", "error");
+                        const message = error.message || 'Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.';
+                        swal("Error", message, "error");
                     });
             } else {
                 swal("Error", "Por favor, completa los campos obligatorios.", "error");

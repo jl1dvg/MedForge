@@ -45,7 +45,7 @@
                             <tbody id="patientTableBody">
                             <?php foreach ($cirugias as $cirugia): ?>
                                 <?php
-                                /** @var Modules\Cirugias\Models\Cirugia $cirugia */
+                                /** @var \Modules\Cirugias\Models\Cirugia $cirugia */
                                 $printed = (int)($cirugia->printed ?? 0);
                                 $estado = $cirugia->getEstado();
                                 $badgeEstado = match ($estado) {
