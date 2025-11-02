@@ -51,8 +51,15 @@ spl_autoload_register(function ($class) {
 // === Cargar variables de entorno (.env) ===
 use Dotenv\Dotenv;
 
-$dotenv = Dotenv::createImmutable(__DIR__);
-$dotenv->load();
+if (class_exists(Dotenv::class)) {
+    $dotenv = Dotenv::createImmutable(__DIR__);
+
+    if (method_exists($dotenv, 'safeLoad')) {
+        $dotenv->safeLoad();
+    } else {
+        $dotenv->load();
+    }
+}
 
 // Ahora puedes usar $_ENV['OPENAI_API_KEY'] o getenv('OPENAI_API_KEY')
 
