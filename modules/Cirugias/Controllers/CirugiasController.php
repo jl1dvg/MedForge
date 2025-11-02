@@ -114,7 +114,7 @@ class CirugiasController extends BaseController
 
         $this->json([
             'success' => false,
-            'message' => 'No se pudo guardar la información del protocolo.',
+            'message' => $this->service->getLastError() ?? 'No se pudo guardar la información del protocolo.',
         ], 500);
     }
 
@@ -140,7 +140,15 @@ class CirugiasController extends BaseController
 
         $success = $this->service->guardarAutosave($formId, $hcNumber, $insumos, $medicamentos);
 
-        $this->json(['success' => $success]);
+        if (!$success) {
+            $this->json([
+                'success' => false,
+                'message' => $this->service->getLastError() ?? 'No se pudo guardar el autosave.',
+            ], 500);
+            return;
+        }
+
+        $this->json(['success' => true]);
     }
 
     public function protocolo(): void
