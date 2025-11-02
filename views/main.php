@@ -193,14 +193,14 @@ $doctores_top = $controller->getTopDoctores();
                                                             <h4><?= $row['membrete'] ?></h4>
                                                             <p class="text-fade mb-5"><?= $row['cirugia'] ?></p>
                                                             <div class="d-flex align-items-center">
-                                                                <a href="editors/protocolos_editors_templates.php?id=<?= $row['id'] ?>"
+                                                                <a href="/protocolos/editar?id=<?= urlencode($row['id']) ?>"
                                                                    class="waves-effect waves-light btn me-10 btn-xs btn-primary-light">Ver</a>
                                                                 <a href="../generate_pdf.php?id=<?= $row['id'] ?>"
                                                                    class="waves-effect waves-light btn btn-xs btn-primary-light">PDF</a>
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <a href="edit_protocol.php?id=<?= $row['id'] ?>"
+                                                            <a href="/protocolos/editar?id=<?= urlencode($row['id']) ?>"
                                                                class="waves-effect waves-circle btn btn-circle btn-outline btn-light btn-lg"><i
                                                                         class="fa fa-pencil"></i></a>
                                                         </div>
