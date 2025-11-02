@@ -5,16 +5,18 @@ use Core\Router;
 
 return function (Router $router) {
     $router->get('/solicitudes', function (\PDO $pdo) {
-        $controller = new SolicitudController($pdo);
-        $data = $controller->index();
-
-        $viewPath = __DIR__ . '/views/solicitudes.php';
-        $title = 'Solicitudes Quirúrgicas';
-        include __DIR__ . '/../../views/layout.php';
+        (new SolicitudController($pdo))->index();
     });
 
-    $router->post('/solicitudes/kanban_data', function (\PDO $pdo) {
-        $controller = new SolicitudController($pdo);
-        $controller->kanbanData($_POST);
+    $router->post('/solicitudes/kanban-data', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->kanbanData();
+    });
+
+    $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->actualizarEstado();
+    });
+
+    $router->get('/solicitudes/prefactura', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->prefactura();
     });
 };
