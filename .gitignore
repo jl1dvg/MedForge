@@ -1,9 +1,7 @@
 .env
 .env
-/views/billing/
 /views/codes/
 /views/components/
-/views/informes/
 /views/insumos/
 /views/ipl/
 /views/pdf/
