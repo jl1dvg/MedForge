@@ -136,4 +136,85 @@ class InformesController extends BaseController
             'datosCache' => $datosCache,
         ]);
     }
+
+    public function informeIsspol(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_isspol.php');
+    }
+
+    public function informeIssfa(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_issfa.php');
+    }
+
+    public function informeParticulares(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_particulares.php');
+    }
+
+    public function informeIessPrueba(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_iess_prueba.php');
+    }
+
+    public function generarConsolidadoIess(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_iess.php');
+    }
+
+    public function generarConsolidadoIsspol(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_isspol.php');
+    }
+
+    public function generarConsolidadoIssfa(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_issfa.php');
+    }
+
+    public function generarExcelIessLote(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_excel_iess_lote.php');
+    }
+
+    public function ajaxDetalleFactura(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('ajax/ajax_detalle_factura.php');
+    }
+
+    public function ajaxEliminarFactura(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('components/eliminar_factura.php');
+    }
+
+    public function ajaxScrapearCodigoDerivacion(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('ajax/scrapear_codigo_derivacion.php');
+    }
+
+    private function includeLegacyView(string $relativePath): void
+    {
+        $pdo = $this->pdo;
+        $username = $_SESSION['username'] ?? 'Invitado';
+        $path = BASE_PATH . '/modules/Billing/views/informes/' . ltrim($relativePath, '/');
+
+        if (!is_file($path)) {
+            http_response_code(404);
+            echo 'Vista legacy no encontrada';
+            return;
+        }
+
+        include $path;
+    }
 }

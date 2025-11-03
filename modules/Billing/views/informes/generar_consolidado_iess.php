@@ -1,6 +1,8 @@
 <?php
-require_once __DIR__ . '/../../bootstrap.php';
-require_once __DIR__ . '/../../helpers/InformesHelper.php';
+if (!defined('BASE_PATH')) {
+    require_once dirname(__DIR__, 4) . '/bootstrap.php';
+}
+require_once BASE_PATH . '/helpers/InformesHelper.php';
 
 use Controllers\BillingController;
 use Modules\Pacientes\Services\PacienteService;

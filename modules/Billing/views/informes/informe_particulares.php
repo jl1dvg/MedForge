@@ -1,6 +1,8 @@
 <?php
-require_once __DIR__ . '/../../bootstrap.php';
-require_once __DIR__ . '/../../helpers/InformesHelper.php';
+if (!defined('BASE_PATH')) {
+    require_once dirname(__DIR__, 4) . '/bootstrap.php';
+}
+require_once BASE_PATH . '/helpers/InformesHelper.php';
 
 use Controllers\BillingController;
 use Modules\Pacientes\Services\PacienteService;
@@ -76,7 +78,7 @@ $username = $dashboardController->getAuthenticatedUser();
 
 <div class="wrapper">
 
-    <?php include __DIR__ . '/../components/header.php'; ?>
+    <?php include BASE_PATH . '/views/partials/header.php'; ?>
 
     <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
@@ -188,7 +190,7 @@ $username = $dashboardController->getAuthenticatedUser();
                                 </div>
 
                                 <div class="col-md-3">
-                                    <a href="/views/informes/informe_particulares.php"
+                                    <a href="/informes/particulares"
                                        class="btn btn-secondary btn-sm w-100">Limpiar</a>
                                 </div>
                             </div>
@@ -316,7 +318,7 @@ $username = $dashboardController->getAuthenticatedUser();
     </div>
     <!-- /.content-wrapper -->
 </div>
-<?php include __DIR__ . '/../components/footer.php'; ?>
+<?php include BASE_PATH . '/views/partials/footer.php'; ?>
 
 <!-- Vendor JS -->
 <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
