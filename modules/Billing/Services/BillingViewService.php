@@ -137,6 +137,17 @@ class BillingViewService
         ];
     }
 
+    public function obtenerProcedimientosNoFacturados(): array
+    {
+        $clasificados = $this->billingController->procedimientosNoFacturadosClasificados();
+
+        return [
+            'quirurgicosRevisados' => $clasificados['quirurgicos_revisados'] ?? [],
+            'quirurgicosNoRevisados' => $clasificados['quirurgicos_no_revisados'] ?? [],
+            'noQuirurgicos' => $clasificados['no_quirurgicos'] ?? [],
+        ];
+    }
+
     private function formatearNombrePaciente(array $paciente): string
     {
         $partes = array_filter([
