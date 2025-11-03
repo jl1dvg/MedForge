@@ -9,14 +9,22 @@ $hc_number = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
 $scrapingOutput = null;
 
 if (isset($_POST['scrape_derivacion']) && !empty($form_id) && !empty($hc_number)) {
-    $command = "/usr/bin/python3 /homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py " . escapeshellarg($form_id) . " " . escapeshellarg($hc_number);
+    $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
+    $command = sprintf(
+        '/usr/bin/python3 %s %s %s',
+        escapeshellarg($script),
+        escapeshellarg((string)$form_id),
+        escapeshellarg((string)$hc_number)
+    );
     $scrapingOutput = shell_exec($command);
 }
 
 $safe_hc_number = escapeshellarg($hc_number);
 
-require_once __DIR__ . '/../../bootstrap.php';
-require_once __DIR__ . '/../../helpers/InformesHelper.php';
+if (!defined('BASE_PATH')) {
+    require_once dirname(__DIR__, 4) . '/bootstrap.php';
+}
+require_once BASE_PATH . '/helpers/InformesHelper.php';
 
 use Controllers\BillingController;
 use Modules\Pacientes\Services\PacienteService;
@@ -109,7 +117,7 @@ if (!empty($billingIds)) {
 
 <div class="wrapper">
 
-    <?php include __DIR__ . '/../components/header.php'; ?>
+    <?php include BASE_PATH . '/views/partials/header.php'; ?>
 
     <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
@@ -191,7 +199,7 @@ if (!empty($billingIds)) {
                                             <button type="submit" class="btn btn-primary">
                                                 <i class="mdi mdi-magnify"></i> Buscar
                                             </button>
-                                            <a href="/views/informes/informe_iess_prueba.php?modo=consolidado"
+                                            <a href="/informes/iess/prueba?modo=consolidado"
                                                class="btn btn-outline-secondary">
                                                 <i class="mdi mdi-filter-remove"></i> Limpiar
                                             </a>
@@ -225,7 +233,7 @@ if (!empty($billingIds)) {
 
                                 if (!empty($hcNumber)) {
                                     echo "<div class='mb-4 text-end'>
-                                        <form method='post' action='informe_iess_prueba.php?billing_id=" . htmlspecialchars($filtros['billing_id']) . "'>
+                                        <form method='post' action='/informes/iess/prueba?billing_id=" . htmlspecialchars($filtros['billing_id']) . "'>
                                             <input type='hidden' name='form_id_scrape' value='" . htmlspecialchars($primerDato['billing']['form_id'] ?? '') . "'>
                                             <input type='hidden' name='hc_number_scrape' value='" . htmlspecialchars($hcNumber) . "'>
                                             <button type='submit' name='scrape_derivacion' class='btn btn-warning'>
@@ -259,7 +267,7 @@ if (!empty($billingIds)) {
                                         $filtrosParaRegresar['modo'] = 'consolidado'; // aseguramos modo consolidado
                                         $queryString = http_build_query($filtrosParaRegresar);
                                         ?>
-                                        <a href="/views/informes/informe_iess_prueba.php?<?= htmlspecialchars($queryString) ?>"
+                                        <a href="/informes/iess/prueba?<?= htmlspecialchars($queryString) ?>"
                                            class="btn btn-outline-secondary btn-lg">
                                             <i class="fa fa-arrow-left"></i> Regresar al consolidado
                                         </a>
@@ -452,7 +460,7 @@ if (!empty($billingIds)) {
                                         </div>
                                     <?php endforeach; ?>
                                     <a
-                                            href="/views/informes/generar_consolidado_iess.php<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
+                                            href="/informes/iess/consolidado<?= isset($mesSeleccionado) && $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>"
                                             class="btn btn-primary mt-3">
                                         Descargar Consolidado
                                     </a>
@@ -472,7 +480,7 @@ if (!empty($billingIds)) {
     </div>
     <!-- /.content-wrapper -->
 </div>
-<?php include __DIR__ . '/../components/footer.php'; ?>
+<?php include BASE_PATH . '/views/partials/footer.php'; ?>
 
 <!-- Vendor JS -->
 <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
@@ -488,7 +496,7 @@ if (!empty($billingIds)) {
         console.log("➡️ Cargando detalle para form_id:", formId); // LOG
         const container = document.getElementById('factura-detalle-container');
         container.innerHTML = '🔄 Cargando...';
-        fetch('./ajax/ajax_detalle_factura.php?form_id=' + encodeURIComponent(formId))
+        fetch('/informes/api/detalle-factura?form_id=' + encodeURIComponent(formId))
             .then(res => res.text())
             .then(html => {
                 console.log("🧾 Respuesta del detalle:", html); // LOG
