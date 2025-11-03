@@ -82,10 +82,12 @@ class Pacientes
         return $doctores;
     }
 
-    public function getSolicitudesPorPaciente($hc_number)
+    public function getSolicitudesPorPaciente($hc_number, int $limit = 50)
     {
-        $stmt = $this->db->prepare("SELECT procedimiento, created_at, tipo, form_id FROM solicitud_procedimiento WHERE hc_number = ? AND procedimiento != '' AND procedimiento != 'SELECCIONE' ORDER BY created_at DESC");
-        $stmt->execute([$hc_number]);
+        $stmt = $this->db->prepare("SELECT procedimiento, created_at, tipo, form_id FROM solicitud_procedimiento WHERE hc_number = ? AND procedimiento != '' AND procedimiento != 'SELECCIONE' ORDER BY created_at DESC LIMIT ?");
+        $stmt->bindValue(1, $hc_number);
+        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->execute();
 
         $solicitudes = [];
 
@@ -239,10 +241,12 @@ class Pacientes
         return $fechaVigencia >= $fechaActual ? 'Con Cobertura' : 'Sin Cobertura';
     }
 
-    public function getPrefacturasPorPaciente($hc_number)
+    public function getPrefacturasPorPaciente($hc_number, int $limit = 50)
     {
-        $stmt = $this->db->prepare("SELECT * FROM prefactura_paciente WHERE hc_number = ? AND cod_derivacion IS NOT NULL AND cod_derivacion != '' ORDER BY fecha_creacion DESC");
-        $stmt->execute([$hc_number]);
+        $stmt = $this->db->prepare("SELECT * FROM prefactura_paciente WHERE hc_number = ? AND cod_derivacion IS NOT NULL AND cod_derivacion != '' ORDER BY fecha_creacion DESC LIMIT ?");
+        $stmt->bindValue(1, $hc_number);
+        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->execute();
 
         $prefacturas = [];
 
@@ -379,69 +383,90 @@ WHERE pd.fecha_inicio BETWEEN :inicio2 AND :fin2
 
     public function obtenerPacientesPaginados($start, $length, $search = '', $orderColumn = 'hc_number', $orderDir = 'ASC')
     {
+        $start = max(0, (int)$start);
+        $length = max(1, (int)$length);
+
         $columns = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
-        $orderBy = in_array($orderColumn, $columns) ? $orderColumn : 'hc_number';
+        $orderBy = in_array($orderColumn, $columns, true) ? $orderColumn : 'hc_number';
+        $orderDirection = strtoupper($orderDir) === 'DESC' ? 'DESC' : 'ASC';
 
         $searchSql = '';
         $params = [];
 
         if (!empty($search)) {
-            $searchSql = "WHERE p.hc_number LIKE :search1 OR p.fname LIKE :search2 OR p.lname LIKE :search3 OR p.afiliacion LIKE :search4";
+            $searchSql = "WHERE (p.hc_number LIKE :search1 OR p.fname LIKE :search2 OR p.lname LIKE :search3 OR p.afiliacion LIKE :search4)";
             $params[':search1'] = "%$search%";
             $params[':search2'] = "%$search%";
             $params[':search3'] = "%$search%";
             $params[':search4'] = "%$search%";
         }
 
-        $countTotal = $this->db->query("SELECT COUNT(*) FROM patient_data")->fetchColumn();
+        $countTotal = (int)$this->db->query("SELECT COUNT(*) FROM patient_data")->fetchColumn();
 
-        $stmtFiltered = $this->db->prepare("
-            SELECT COUNT(*) 
-            FROM patient_data p
-            $searchSql
-        ");
-        if (!empty($params)) {
-            $stmtFiltered->execute($params);
+        if ($searchSql === '') {
+            $countFiltered = $countTotal;
         } else {
-            $stmtFiltered->execute();
+            $stmtFiltered = $this->db->prepare("SELECT COUNT(*) FROM patient_data p $searchSql");
+            $stmtFiltered->execute($params);
+            $countFiltered = (int)$stmtFiltered->fetchColumn();
         }
-        $countFiltered = $stmtFiltered->fetchColumn();
 
-        $sql = "
-            SELECT 
+        $sql = <<<'SQL'
+            SELECT
                 p.hc_number,
                 CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS full_name,
-                (SELECT MAX(fecha) FROM consulta_data WHERE hc_number = p.hc_number) AS ultima_fecha,
-                p.afiliacion
+                ultima.ultima_fecha,
+                p.afiliacion,
+                CASE
+                    WHEN cobertura.fecha_vigencia IS NULL THEN 'N/A'
+                    WHEN cobertura.fecha_vigencia >= CURRENT_DATE THEN 'Con Cobertura'
+                    ELSE 'Sin Cobertura'
+                END AS estado_cobertura
             FROM patient_data p
+            LEFT JOIN (
+                SELECT hc_number, MAX(fecha) AS ultima_fecha
+                FROM consulta_data
+                GROUP BY hc_number
+            ) AS ultima ON ultima.hc_number = p.hc_number
+            LEFT JOIN (
+                SELECT base.hc_number, base.cod_derivacion, base.fecha_vigencia
+                FROM prefactura_paciente base
+                INNER JOIN (
+                    SELECT hc_number, MAX(fecha_vigencia) AS max_fecha
+                    FROM prefactura_paciente
+                    WHERE cod_derivacion IS NOT NULL AND cod_derivacion != ''
+                    GROUP BY hc_number
+                ) AS ult ON ult.hc_number = base.hc_number AND ult.max_fecha = base.fecha_vigencia
+                WHERE base.cod_derivacion IS NOT NULL AND base.cod_derivacion != ''
+            ) AS cobertura ON cobertura.hc_number = p.hc_number
             $searchSql
-            ORDER BY $orderBy $orderDir
-            LIMIT :start, :length
-        ";
+            ORDER BY $orderBy $orderDirection
+            LIMIT $start, $length
+        SQL;
 
         $stmt = $this->db->prepare($sql);
-        if (!empty($params)) {
-            foreach ($params as $key => $val) {
-                $stmt->bindValue($key, $val);
-            }
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
         }
-        $stmt->bindValue(':start', (int)$start, PDO::PARAM_INT);
-        $stmt->bindValue(':length', (int)$length, PDO::PARAM_INT);
         $stmt->execute();
 
         $data = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $estado = $this->verificarCoberturaPaciente($row['hc_number']);
+            $ultimaFecha = $row['ultima_fecha'] ? date('d/m/Y', strtotime($row['ultima_fecha'])) : '';
+            $estado = $row['estado_cobertura'] ?? 'N/A';
+            $badgeClass = match ($estado) {
+                'Con Cobertura' => 'bg-success',
+                'Sin Cobertura' => 'bg-danger',
+                default => 'bg-secondary',
+            };
+
             $data[] = [
                 'hc_number' => $row['hc_number'],
-                'ultima_fecha' => $row['ultima_fecha']
-                    ? date('d/m/Y', strtotime($row['ultima_fecha']))
-                    : '', 'full_name' => $row['full_name'],
+                'ultima_fecha' => $ultimaFecha,
+                'full_name' => $row['full_name'],
                 'afiliacion' => $row['afiliacion'],
-                'estado_html' => $estado === 'Con Cobertura'
-                    ? "<span class='badge bg-success'>Con Cobertura</span>"
-                    : "<span class='badge bg-danger'>Sin Cobertura</span>",
-                'acciones_html' => "<a href='/views/pacientes/detalles.php?hc_number={$row['hc_number']}' class='btn btn-sm btn-primary'>Ver</a>"
+                'estado_html' => sprintf("<span class='badge %s'>%s</span>", $badgeClass, htmlspecialchars($estado, ENT_QUOTES, 'UTF-8')),
+                'acciones_html' => "<a href='/pacientes/detalles?hc_number=" . urlencode($row['hc_number']) . "' class='btn btn-sm btn-primary'>Ver</a>",
             ];
         }
 

@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['session_start_time'] = time();
             $_SESSION['last_activity_time'] = time();
 
-            header('Location: ../views/main.php');
+            header('Location: /dashboard');
             exit;
         } else {
             echo 'Credenciales incorrectas';

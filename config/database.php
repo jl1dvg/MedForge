@@ -1,13 +1,20 @@
 <?php
 // config/database.php
 
-$host = 'db5016222976.hosting-data.io';  // O localhost
-$db = 'dbs13202800';
-$user = 'dbu365135';
-$pass = 'JorgeAMI2018';
-$charset = 'utf8mb4';
+static $pdo = null;
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+if ($pdo instanceof PDO) {
+    return $pdo;
+}
+
+$host = getenv('DB_HOST') ?: 'db5016222976.hosting-data.io';
+$db = getenv('DB_NAME') ?: 'dbs13202800';
+$user = getenv('DB_USER') ?: 'dbu365135';
+$pass = getenv('DB_PASSWORD') ?: 'JorgeAMI2018';
+$charset = getenv('DB_CHARSET') ?: 'utf8mb4';
+$timezone = getenv('DB_TIMEZONE') ?: '-05:00';
+
+$dsn = sprintf('mysql:host=%s;dbname=%s;charset=%s', $host, $db, $charset);
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -17,8 +24,9 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $user, $pass, $options);
-    $pdo->exec("SET time_zone = '-05:00'");
+    $pdo->exec("SET time_zone = '" . addslashes($timezone) . "'");
 } catch (PDOException $e) {
-    die("Error en la conexión a la base de datos: " . $e->getMessage());
+    die('Error en la conexión a la base de datos: ' . $e->getMessage());
 }
+
 return $pdo;

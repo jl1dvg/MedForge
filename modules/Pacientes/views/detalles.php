@@ -20,6 +20,11 @@ $eventos = $eventos ?? [];
 $documentos = $documentos ?? [];
 $estadisticas = $estadisticas ?? [];
 $patientAge = $patientAge ?? null;
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js',
+    'js/pages/patient-detail.js',
+]);
 
 $nombrePaciente = trim(($patientData['fname'] ?? '') . ' ' . ($patientData['mname'] ?? '') . ' ' . ($patientData['lname'] ?? '') . ' ' . ($patientData['lname2'] ?? ''));
 $timelineColorMap = [
@@ -302,19 +307,6 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
 </div>
 
 <?php include __DIR__ . '/components/modal_editar_paciente.php'; ?>
-
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/apexcharts-bundle/dist/apexcharts.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js') ?>"></script>
-
-<!-- Doclinic App -->
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/patient-detail.js') ?>"></script>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
