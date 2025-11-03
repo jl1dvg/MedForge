@@ -1,6 +1,8 @@
 <?php
 // Función para visualizar eventos quirúrgicos de manera uniforme
-require_once '../../../bootstrap.php'; // Aquí debes conectar PDO a $db
+if (!defined('BASE_PATH')) {
+    require_once dirname(__DIR__, 5) . '/bootstrap.php';
+} // Aquí debes conectar PDO a $db
 require_once '../../../helpers/trazabilidad_helpers.php';
 
 use Controllers\TrazabilidadController;

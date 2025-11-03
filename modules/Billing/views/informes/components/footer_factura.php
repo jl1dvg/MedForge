@@ -4,7 +4,7 @@
            class="btn btn-success btn-lg me-2">
             <i class="fa fa-file-excel-o"></i> Descargar Excel
         </a>
-        <a href="/views/informes/informe_iess.php?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
+        <a href="/informes/iess?modo=consolidado<?= $filtros['mes'] ? '&mes=' . urlencode($filtros['mes']) : '' ?>"
            class="btn btn-outline-secondary btn-lg">
             <i class="fa fa-arrow-left"></i> Regresar al consolidado
         </a>

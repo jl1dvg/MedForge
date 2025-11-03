@@ -325,7 +325,7 @@ $afiliacionesIESS = [
                                 </table>
                             </div>
                         <?php endforeach; ?>
-                        <a href="/views/informes/generar_consolidado_iess.php<?= $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>" class="btn btn-primary mt-3">
+                        <a href="/informes/iess/consolidado<?= $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>" class="btn btn-primary mt-3">
                             Descargar Consolidado
                         </a>
                     <?php else: ?>

@@ -132,7 +132,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/views/informes', '/views/billing']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/informes', '/views/billing']) ?>">
                         <a href="#">
                             <i class="mdi mdi-file-chart"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
@@ -140,23 +140,23 @@ if (!function_exists('isTreeOpen')) {
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/views/informes/informe_isspol.php') ?>">
-                                <a href="<?= BASE_URL . 'views/informes/informe_isspol.php'; ?>">
+                            <li class="<?= isActive('/informes/isspol') ?>">
+                                <a href="<?= BASE_URL . 'informes/isspol'; ?>">
                                     <i class="mdi mdi-shield"></i>ISSPOL
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/informes/informe_issfa.php') ?>">
-                                <a href="<?= BASE_URL . 'views/informes/informe_issfa.php'; ?>">
+                            <li class="<?= isActive('/informes/issfa') ?>">
+                                <a href="<?= BASE_URL . 'informes/issfa'; ?>">
                                     <i class="mdi mdi-star"></i>ISSFA
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/informes/informe_iess.php') ?>">
-                                <a href="<?= BASE_URL . 'views/informes/informe_iess.php'; ?>">
+                            <li class="<?= isActive('/informes/iess') ?>">
+                                <a href="<?= BASE_URL . 'informes/iess'; ?>">
                                     <i class="mdi mdi-account"></i>IESS
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/informes/informe_particulares.php') ?>">
-                                <a href="<?= BASE_URL . 'views/informes/informe_particulares.php'; ?>">
+                            <li class="<?= isActive('/informes/particulares') ?>">
+                                <a href="<?= BASE_URL . 'informes/particulares'; ?>">
                                     <i class="mdi mdi-account-outline"></i>Particulares
                                 </a>
                             </li>

@@ -410,7 +410,7 @@ foreach ($datos['derechos'] as $servicio) {
                     confirmButtonText: 'Sí, eliminar'
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        fetch('/views/informes/components/eliminar_factura.php', {
+                        fetch('/informes/api/eliminar-factura', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded'
