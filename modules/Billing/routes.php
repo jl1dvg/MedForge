@@ -13,6 +13,15 @@ return function (Router $router) {
         (new BillingController($pdo))->detalle();
     });
 
+    $router->get('/billing/no-facturados', function (\PDO $pdo) {
+        (new BillingController($pdo))->noFacturados();
+    });
+
+    $router->get('/views/billing/no_facturados.php', function () {
+        header('Location: /billing/no-facturados', true, 302);
+        exit;
+    });
+
     $router->match(['GET', 'POST'], '/informes/iess', function (\PDO $pdo) {
         (new InformesController($pdo))->informeIess();
     });

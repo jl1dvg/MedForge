@@ -132,7 +132,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/informes', '/views/billing']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/views/informes', '/views/billing']) ?>">
                         <a href="#">
                             <i class="mdi mdi-file-chart"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
@@ -160,8 +160,8 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-account-outline"></i>Particulares
                                 </a>
                             </li>
-                            <li class="<?= isActive('/views/billing/no_facturados.php') ?>">
-                                <a href="<?= BASE_URL . 'views/billing/no_facturados.php'; ?>">
+                            <li class="<?= isActive('/billing/no-facturados') ?>">
+                                <a href="<?= BASE_URL . 'billing/no-facturados'; ?>">
                                     <i class="mdi mdi-account-outline"></i>No Facturado
                                 </a>
                             </li>

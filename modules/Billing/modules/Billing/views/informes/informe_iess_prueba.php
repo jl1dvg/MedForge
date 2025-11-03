@@ -19,8 +19,6 @@ if (isset($_POST['scrape_derivacion']) && !empty($form_id) && !empty($hc_number)
     $scrapingOutput = shell_exec($command);
 }
 
-$safe_hc_number = escapeshellarg($hc_number);
-
 if (!defined('BASE_PATH')) {
     require_once dirname(__DIR__, 4) . '/bootstrap.php';
 }
@@ -118,6 +116,7 @@ if (!empty($billingIds)) {
 <div class="wrapper">
 
     <?php include BASE_PATH . '/views/partials/header.php'; ?>
+    <?php include BASE_PATH . '/views/partials/navbar.php'; ?>
 
     <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
