@@ -1,3 +1,78 @@
+<?php
+/** @var array $scripts */
+/** @var array $inlineScripts */
+/** @var string $fechas_json */
+/** @var string $procedimientos_dia_json */
+/** @var string $membretes_json */
+/** @var string $procedimientos_membrete_json */
+/** @var array $estadisticas_afiliacion */
+/** @var array $revision_estados */
+
+$afiliaciones_json = json_encode($estadisticas_afiliacion['afiliaciones']);
+$procedimientos_por_afiliacion_json = json_encode($estadisticas_afiliacion['totales']);
+
+$incompletos_json = json_encode($revision_estados['incompletos']);
+$revisados_json = json_encode($revision_estados['revisados']);
+$no_revisados_json = json_encode($revision_estados['no_revisados']);
+
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'assets/vendor_components/OwlCarousel2/dist/owl.carousel.js',
+    'js/pages/dashboard.js',
+    'js/pages/dashboard3.js?v=' . time(),
+]);
+
+$inlineScripts = array_merge($inlineScripts ?? [], [
+    <<<JS
+var fechas = {$fechas_json};
+var procedimientos_dia = {$procedimientos_dia_json};
+var membretes = {$membretes_json};
+var procedimientos_membrete = {$procedimientos_membrete_json};
+var afiliaciones = {$afiliaciones_json};
+var procedimientos_por_afiliacion = {$procedimientos_por_afiliacion_json};
+var incompletos = {$incompletos_json};
+var revisados = {$revisados_json};
+var no_revisados = {$no_revisados_json};
+JS,
+    <<<'JS'
+document.addEventListener("DOMContentLoaded", function () {
+    const filterButtons = document.querySelectorAll('.btn-filter');
+    const cards = document.querySelectorAll('.plantilla-card');
+    const countSpan = document.getElementById('plantilla-count');
+
+    function updateCount() {
+        const visibles = [...cards].filter(c => c.style.display !== 'none').length;
+        countSpan.textContent = `Mostrando ${visibles} plantilla${visibles !== 1 ? 's' : ''}`;
+    }
+
+    function filterCards(type) {
+        cards.forEach(card => {
+            const tipo = card.dataset.tipo.toLowerCase();
+            if (type === 'all' || tipo === type) {
+                card.style.display = '';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        updateCount();
+    }
+
+    filterButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            filterButtons.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+
+            const filterType = this.dataset.filter;
+            filterCards(filterType);
+        });
+    });
+
+    filterCards('all');
+});
+JS,
+]);
+?>
+
 <!-- Main content -->
 <section class="content">
     <div class="row">
@@ -277,72 +352,3 @@
         </div>
     </div>
 </section>
-<?php
-$afiliaciones_json = json_encode($estadisticas_afiliacion['afiliaciones']);
-$procedimientos_por_afiliacion_json = json_encode($estadisticas_afiliacion['totales']);
-
-$incompletos_json = json_encode($revision_estados['incompletos']);
-$revisados_json = json_encode($revision_estados['revisados']);
-$no_revisados_json = json_encode($revision_estados['no_revisados']);
-?>
-
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-
-<script src="<?= asset('assets/vendor_components/apexcharts-bundle/dist/apexcharts.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/OwlCarousel2/dist/owl.carousel.js') ?>"></script>
-
-<!-- Doclinic App -->
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/dashboard.js') ?>"></script>
-
-<script>
-    var fechas = <?php echo $fechas_json; ?>;
-    var procedimientos_dia = <?php echo $procedimientos_dia_json; ?>;  // Usar nombre único
-    var membretes = <?php echo $membretes_json; ?>;
-    var procedimientos_membrete = <?php echo $procedimientos_membrete_json; ?>;  // Usar nombre único
-    var afiliaciones = <?php echo $afiliaciones_json; ?>;
-    var procedimientos_por_afiliacion = <?php echo $procedimientos_por_afiliacion_json; ?>;
-    // Datos desde PHP
-    var incompletos = <?php echo $incompletos_json; ?>;
-    var revisados = <?php echo $revisados_json; ?>;
-    var no_revisados = <?php echo $no_revisados_json; ?>;
-</script>
-<script src="<?= asset('js/pages/dashboard3.js?v=' . time()) ?>"></script>
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const filterButtons = document.querySelectorAll('.btn-filter');
-        const cards = document.querySelectorAll('.plantilla-card');
-        const countSpan = document.getElementById('plantilla-count');
-
-        function updateCount() {
-            const visibles = [...cards].filter(c => c.style.display !== 'none').length;
-            countSpan.textContent = `Mostrando ${visibles} plantilla${visibles !== 1 ? 's' : ''}`;
-        }
-
-        function filterCards(type) {
-            cards.forEach(card => {
-                const tipo = card.dataset.tipo.toLowerCase();
-                if (type === 'all' || tipo === type) {
-                    card.style.display = '';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-            updateCount();
-        }
-
-        filterButtons.forEach(button => {
-            button.addEventListener('click', function () {
-                filterButtons.forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                const type = this.dataset.filter;
-                filterCards(type);
-            });
-        });
-
-        updateCount(); // Inicial
-    });
-</script>
