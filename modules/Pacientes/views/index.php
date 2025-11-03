@@ -1,7 +1,12 @@
 <?php
 /** @var string $username */
 /** @var bool $showNotFoundAlert */
+/** @var array $scripts */
 $showNotFoundAlert = !empty($showNotFoundAlert);
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'js/pages/patients.js',
+]);
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -52,14 +57,3 @@ $showNotFoundAlert = !empty($showNotFoundAlert);
     </div>
 </section>
 
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/datatable/datatables.min.js') ?>"></script>
-
-<!-- Doclinic App -->
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/patients.js') ?>"></script>

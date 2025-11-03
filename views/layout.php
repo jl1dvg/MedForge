@@ -43,6 +43,15 @@
         <!-- Sidebar -->
         <?php include __DIR__ . '/partials/navbar.php'; ?>
 
+        <?php
+        if (!isset($scripts) || !is_array($scripts)) {
+            $scripts = [];
+        }
+        if (!isset($inlineScripts) || !is_array($inlineScripts)) {
+            $inlineScripts = [];
+        }
+        ?>
+
         <!-- Contenido dinámico -->
         <div class="content-wrapper">
             <div class="container-full">
@@ -63,5 +72,40 @@
         <?php endif; ?>
     <?php endif; ?>
 </div>
+
+<?php
+$defaultScripts = [
+    'js/vendors.min.js',
+    'js/pages/chat-popup.js',
+    'assets/icons/feather-icons/feather.min.js',
+    'js/jquery.smartmenus.js',
+    'js/menus.js',
+    'js/template.js',
+];
+
+$scriptStack = [];
+foreach (array_merge($defaultScripts, $scripts) as $script) {
+    if (!is_string($script) || $script === '') {
+        continue;
+    }
+    $scriptStack[] = $script;
+}
+$scriptStack = array_values(array_unique($scriptStack));
+?>
+
+<?php foreach ($scriptStack as $script): ?>
+    <?php
+    $isAbsolute = preg_match('#^(?:https?:)?//#', $script) === 1;
+    $src = $isAbsolute ? $script : asset($script);
+    ?>
+    <script src="<?= htmlspecialchars($src, ENT_QUOTES, 'UTF-8') ?>"></script>
+<?php endforeach; ?>
+
+<?php foreach ($inlineScripts as $inlineScript): ?>
+    <?php if (is_string($inlineScript) && $inlineScript !== ''): ?>
+        <script><?= $inlineScript ?></script>
+    <?php endif; ?>
+<?php endforeach; ?>
+
 </body>
 </html>
