@@ -1,5 +1,7 @@
 <?php
-require_once __DIR__ . '/../../../bootstrap.php';
+if (!defined('BASE_PATH')) {
+    require_once dirname(__DIR__, 5) . '/bootstrap.php';
+}
 
 $form_id = $_POST['form_id'] ?? null;
 $hc_number = $_POST['hc_number'] ?? null;
@@ -10,7 +12,13 @@ if (!$form_id || !$hc_number) {
     exit;
 }
 
-$command = "/usr/bin/python3 /homepages/26/d793096920/htdocs/cive/public/scrapping/scrape_log_admision.py " . escapeshellarg($form_id) . " " . escapeshellarg($hc_number);
+$script = BASE_PATH . '/scrapping/scrape_log_admision.py';
+$command = sprintf(
+    '/usr/bin/python3 %s %s %s',
+    escapeshellarg($script),
+    escapeshellarg((string)$form_id),
+    escapeshellarg((string)$hc_number)
+);
 $output = shell_exec($command);
 
 echo json_encode(['success' => true, 'output' => $output]);
