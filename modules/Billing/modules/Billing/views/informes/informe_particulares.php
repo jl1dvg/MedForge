@@ -79,6 +79,7 @@ $username = $dashboardController->getAuthenticatedUser();
 <div class="wrapper">
 
     <?php include BASE_PATH . '/views/partials/header.php'; ?>
+    <?php include BASE_PATH . '/views/partials/navbar.php'; ?>
 
     <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
@@ -318,7 +319,7 @@ $username = $dashboardController->getAuthenticatedUser();
     </div>
     <!-- /.content-wrapper -->
 </div>
-<?php include BASE_PATH . '/views/partials/footer.php'; ?>
+<?php include __DIR__ . '/../components/footer.php'; ?>
 
 <!-- Vendor JS -->
 <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->

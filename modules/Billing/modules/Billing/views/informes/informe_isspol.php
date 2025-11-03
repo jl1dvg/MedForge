@@ -23,8 +23,6 @@ if (isset($_POST['scrape_derivacion']) || (isset($_POST['form_id_scrape']) && is
     exit;
 }
 
-$safe_hc_number = escapeshellarg($hc_number);
-
 if (!defined('BASE_PATH')) {
     require_once dirname(__DIR__, 4) . '/bootstrap.php';
 }
@@ -156,6 +154,7 @@ if ($billingId) {
 <div class="wrapper">
 
     <?php include BASE_PATH . '/views/partials/header.php'; ?>
+    <?php include BASE_PATH . '/views/partials/navbar.php'; ?>
 
     <!-- Content Wrapper. Contains page content -->
     <div class="content-wrapper">
