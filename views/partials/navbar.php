@@ -132,7 +132,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/views/informes', '/views/billing']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/informes', '/billing/no-facturados', '/views/billing']) ?>">
                         <a href="#">
                             <i class="mdi mdi-file-chart"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
