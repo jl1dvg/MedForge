@@ -194,7 +194,8 @@ if (!function_exists('isTreeOpen')) {
                     <?php
                     $rawPermissions = $_SESSION['permisos'] ?? [];
                     $normalizedPermissions = Permissions::normalize($rawPermissions);
-                    $canManage = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios', 'admin.roles']);
+                    $canManage = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios', 'admin.roles', 'settings.manage']);
+                    $canManageSettings = Permissions::containsAny($normalizedPermissions, ['settings.manage', 'administrativo']);
                     ?>
                     <?php if ($canManage): ?>
                         <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
@@ -215,11 +216,13 @@ if (!function_exists('isTreeOpen')) {
                                         <i class="mdi mdi-security"></i>Roles
                                     </a>
                                 </li>
-                                <li class="<?= isActive('/settings') ?>">
-                                    <a href="<?= BASE_URL . 'settings'; ?>">
-                                        <i class="mdi mdi-cog-outline"></i>Ajustes
-                                    </a>
-                                </li>
+                                <?php if ($canManageSettings): ?>
+                                    <li class="<?= isActive('/settings') ?>">
+                                        <a href="<?= BASE_URL . 'settings'; ?>">
+                                            <i class="mdi mdi-cog-outline"></i>Ajustes
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
                                 <li class="<?= isActive('/views/codes/index.php') ?>">
                                     <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
                                         <i class="mdi mdi-tag-text-outline"></i>Codificación

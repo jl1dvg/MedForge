@@ -4,6 +4,7 @@ namespace Modules\Auth\Controllers;
 
 use Core\Auth;
 use Core\BaseController;
+use Core\Permissions;
 use PDO;
 use PDOException;
 
@@ -29,18 +30,22 @@ class AuthController extends BaseController
         $password = $_POST['password'] ?? '';
 
         try {
-            $stmt = $this->pdo->prepare("SELECT id, username, password, permisos FROM users WHERE username = :username LIMIT 1");
+            $stmt = $this->pdo->prepare(
+                "SELECT u.id, u.username, u.password, u.permisos, u.role_id, r.permissions AS role_permissions
+                 FROM users u
+                 LEFT JOIN roles r ON r.id = u.role_id
+                 WHERE u.username = :username
+                 LIMIT 1"
+            );
             $stmt->execute(['username' => $username]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($user && password_verify($password, $user['password'])) {
-                // Guardar sesión usando tu estructura anterior
-                Auth::login($user['id'], $user['permisos'] ?? []);
+                $permissions = Permissions::merge($user['permisos'] ?? [], $user['role_permissions'] ?? []);
+                $roleId = isset($user['role_id']) ? (int) $user['role_id'] : null;
+
+                Auth::login($user['id'], $permissions, $roleId);
                 $_SESSION['username'] = $user['username'] ?? $username; // ← importante para el header
-                $_SESSION['permisos'] = $_SESSION['permisos'] ?? [];
-                $_SESSION['session_active'] = true;
-                $_SESSION['session_start_time'] = time();
-                $_SESSION['last_activity_time'] = time();
 
                 header('Location: /dashboard');
                 exit;

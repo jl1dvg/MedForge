@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../bootstrap.php';
 
+use Core\Auth;
 use Core\Permissions;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -8,16 +9,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
 
     try {
-        $stmt = $pdo->prepare("SELECT id, password, permisos FROM users WHERE username = :username LIMIT 1");
+        $stmt = $pdo->prepare(
+            "SELECT u.id, u.username, u.password, u.permisos, u.role_id, r.permissions AS role_permissions
+             FROM users u
+             LEFT JOIN roles r ON r.id = u.role_id
+             WHERE u.username = :username
+             LIMIT 1"
+        );
         $stmt->execute(['username' => $username]);
         $user = $stmt->fetch();
 
         if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['permisos'] = Permissions::normalize($user['permisos'] ?? []);
-            $_SESSION['session_active'] = true;
-            $_SESSION['session_start_time'] = time();
-            $_SESSION['last_activity_time'] = time();
+            $permissions = Permissions::merge($user['permisos'] ?? [], $user['role_permissions'] ?? []);
+            $roleId = isset($user['role_id']) ? (int) $user['role_id'] : null;
+
+            Auth::login($user['id'], $permissions, $roleId);
+            $_SESSION['username'] = $user['username'] ?? $username;
 
             header('Location: /dashboard');
             exit;

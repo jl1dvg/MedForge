@@ -2,6 +2,7 @@
 
 namespace Models;
 
+use Core\Permissions;
 use PDO;
 
 class UserModel
@@ -28,9 +29,12 @@ class UserModel
 
     public function createUser($data)
     {
+        $permissions = $this->encodePermissions($data['permisos'] ?? []);
+        $roleId = $this->normalizeRoleId($data['role_id'] ?? null);
+
         $stmt = $this->db->prepare("
-            INSERT INTO users (username, password, email, is_subscribed, is_approved, nombre, cedula, registro, sede, firma, especialidad, subespecialidad, permisos)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, password, email, is_subscribed, is_approved, nombre, cedula, registro, sede, firma, especialidad, subespecialidad, permisos, role_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         return $stmt->execute([
             $data['username'],
@@ -45,7 +49,8 @@ class UserModel
             $data['firma'],
             $data['especialidad'],
             $data['subespecialidad'],
-            $data['permisos']
+            $permissions,
+            $roleId,
         ]);
     }
 
@@ -54,6 +59,8 @@ class UserModel
         // Normalizar flags por si vienen como string/checkbox
         $is_subscribed = isset($data['is_subscribed']) ? (int)!!$data['is_subscribed'] : 0;
         $is_approved = isset($data['is_approved']) ? (int)!!$data['is_approved'] : 0;
+        $encodedPermissions = $this->encodePermissions($data['permisos'] ?? []);
+        $roleId = $this->normalizeRoleId($data['role_id'] ?? null);
 
         $fields = [
             'username = ?',
@@ -66,7 +73,8 @@ class UserModel
             'sede = ?',
             'especialidad = ?',
             'subespecialidad = ?',
-            'permisos = ?'
+            'permisos = ?',
+            'role_id = ?',
         ];
 
         $params = [
@@ -80,7 +88,8 @@ class UserModel
             $data['sede'],
             $data['especialidad'],
             $data['subespecialidad'],
-            $data['permisos']
+            $encodedPermissions,
+            $roleId,
         ];
 
         // Incluir firma solo si viene en $data (permite setear vacía para borrar)
@@ -100,5 +109,23 @@ class UserModel
 
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
+    }
+
+    private function encodePermissions(mixed $permisos): string
+    {
+        $normalized = Permissions::normalize($permisos);
+
+        return json_encode($normalized, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function normalizeRoleId(mixed $roleId): ?int
+    {
+        if ($roleId === null || $roleId === '') {
+            return null;
+        }
+
+        $value = (int) $roleId;
+
+        return $value > 0 ? $value : null;
     }
 }

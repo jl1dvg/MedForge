@@ -49,4 +49,38 @@ class BaseController
 
         echo json_encode($data, JSON_UNESCAPED_UNICODE);
     }
+
+    protected function currentPermissions(): array
+    {
+        return Permissions::normalize($_SESSION['permisos'] ?? []);
+    }
+
+    protected function hasPermission(string|array $permissions): bool
+    {
+        $current = $this->currentPermissions();
+
+        if (is_array($permissions)) {
+            return Permissions::containsAny($current, $permissions);
+        }
+
+        return Permissions::contains($current, $permissions);
+    }
+
+    protected function requirePermission(string|array $permissions): void
+    {
+        if ($this->hasPermission($permissions)) {
+            return;
+        }
+
+        if (!headers_sent()) {
+            http_response_code(403);
+        }
+
+        $this->render(BASE_PATH . '/views/errors/forbidden.php', [
+            'pageTitle' => 'Acceso denegado',
+            'requiredPermissions' => (array) $permissions,
+        ]);
+
+        exit;
+    }
 }

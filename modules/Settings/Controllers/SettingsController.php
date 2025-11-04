@@ -24,6 +24,7 @@ class SettingsController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['settings.manage', 'administrativo']);
 
         $status = $_GET['status'] ?? null;
         $active = $_GET['section'] ?? array_key_first($this->definitions);
