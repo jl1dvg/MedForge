@@ -9,6 +9,8 @@ use Helpers\ProtocoloHelper;
 use Helpers\SolicitudHelper;
 use PdfGenerator;
 use Controllers\SolicitudController;
+use Modules\Reporting\Controllers\ReportController as ReportingReportController;
+use Modules\Reporting\Services\ReportService;
 
 class PdfController
 {
@@ -16,6 +18,7 @@ class PdfController
     private ProtocoloModel $protocoloModel;
     private SolicitudModel $solicitudModel;
     private SolicitudController $solicitudController; // ✅ nueva propiedad
+    private ReportingReportController $reportController;
 
 
     public function __construct(PDO $pdo)
@@ -24,6 +27,8 @@ class PdfController
         $this->protocoloModel = new ProtocoloModel($pdo);
         $this->solicitudModel = new SolicitudModel($pdo);
         $this->solicitudController = new SolicitudController($this->db);
+        $reportService = new ReportService();
+        $this->reportController = new ReportingReportController($this->db, $reportService);
     }
 
     public function generarProtocolo(string $form_id, string $hc_number, bool $soloDatos = false, string $modo = 'completo')
@@ -185,14 +190,17 @@ class PdfController
             $paginaSolicitada = $_GET['pagina'] ?? null;
 
             if ($paginaSolicitada) {
-                ob_start();
-                extract($datos);
-                $orientation = ($paginaSolicitada === 'transanestesico') ? 'L' : 'P';
+                $slugPagina = pathinfo($paginaSolicitada, PATHINFO_FILENAME);
+                $orientation = ($slugPagina === 'transanestesico') ? 'L' : 'P';
+                $html = $this->renderReportSegment($paginaSolicitada, $datos);
 
-                include __DIR__ . '/../views/pdf/' . $paginaSolicitada . 'RelatedCode.php';
-                $html = ob_get_clean();  // ✅ NO uses pagebreak en HTML
+                if ($html === null) {
+                    http_response_code(404);
+                    echo 'Plantilla no encontrada';
+                    return;
+                }
 
-                $nombrePdf = "{$paginaSolicitada}_{$form_id}_{$hc_number}.pdf";
+                $nombrePdf = "{$slugPagina}_{$form_id}_{$hc_number}.pdf";
                 PdfGenerator::generarDesdeHtml(
                     $html,
                     $nombrePdf,
@@ -207,21 +215,23 @@ class PdfController
             $htmlTotal = '';
 
             foreach ($paginas as $index => $pagina) {
-                ob_start();
-                extract($datos);
-                include __DIR__ . '/../views/pdf/' . $pagina;
-                $htmlTotal .= ob_get_clean();
+                $segment = $this->renderReportSegment($pagina, $datos);
+
+                if ($segment === null) {
+                    continue;
+                }
+
+                $htmlTotal .= $segment;
 
                 if ($index < count($paginas) - 1) {
                     $htmlTotal .= '<pagebreak>';
                 }
             }
 
-            $htmlTotal .= '<pagebreak orientation="L">';
-            ob_start();
-            extract($datos);
-            include __DIR__ . '/../views/pdf/transanestesico.php';
-            $htmlTotal .= ob_get_clean();
+            $transanestesico = $this->renderReportSegment('transanestesico', $datos);
+            if ($transanestesico !== null) {
+                $htmlTotal .= '<pagebreak orientation="L">' . $transanestesico;
+            }
 
             PdfGenerator::generarDesdeHtml(
                 $htmlTotal,
@@ -253,21 +263,23 @@ class PdfController
         $htmlTotal = '';
 
         foreach ($paginas as $index => $pagina) {
-            ob_start();
-            extract($datos);
-            include dirname(__DIR__) . '/views/pdf/' . $pagina;
-            $htmlTotal .= ob_get_clean();
+            $segment = $this->renderReportSegment($pagina, $datos);
+
+            if ($segment === null) {
+                continue;
+            }
+
+            $htmlTotal .= $segment;
 
             if ($index < count($paginas) - 1) {
                 $htmlTotal .= '<pagebreak>';
             }
         }
 
-        $htmlTotal .= '<pagebreak orientation="P">';
-        ob_start();
-        extract($datos);
-        include dirname(__DIR__) . '/views/pdf/referencia.php';
-        $htmlTotal .= ob_get_clean();
+        $referencia = $this->renderReportSegment('referencia', $datos);
+        if ($referencia !== null) {
+            $htmlTotal .= '<pagebreak orientation="P">' . $referencia;
+        }
 
         PdfGenerator::generarDesdeHtml(
             $htmlTotal,
@@ -275,6 +287,14 @@ class PdfController
             dirname(__DIR__) . '/public/css/pdf/referencia.css');
     }
 
+    private function renderReportSegment(string $identifier, array $data): ?string
+    {
+        $slug = pathinfo($identifier, PATHINFO_FILENAME);
+
+        return $this->reportController->renderIfExists($slug, $data);
+    }
+
 }
 
 ?>
+

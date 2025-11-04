@@ -2,14 +2,15 @@
 require_once __DIR__ . '/../bootstrap.php';
 
 use Mpdf\Mpdf;
+use Modules\Reporting\Services\ReportService;
 
 class PdfGenerator
 {
     private static function cargarHTML($archivo)
     {
-        ob_start();
-        include __DIR__ . '/../views/pdf/' . $archivo;
-        return ob_get_clean();
+        $service = new ReportService();
+
+        return $service->render($archivo);
     }
 
     public static function generarDesdeHtml(string $html, string $finalName = 'documento.pdf', string $cssPath = null, string $modoSalida = 'I', string $orientation = 'P')

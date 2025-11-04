@@ -40,6 +40,23 @@ class Router
             return true;
         }
 
+        if (isset($this->routes[$method])) {
+            foreach ($this->routes[$method] as $routePath => $callback) {
+                if (strpos($routePath, '{') === false) {
+                    continue;
+                }
+
+                $pattern = preg_replace('#\{[^/]+\}#', '([^/]+)', $routePath);
+                $pattern = '#^' . $pattern . '$#';
+
+                if (preg_match($pattern, $path, $matches)) {
+                    array_shift($matches);
+                    call_user_func_array($callback, array_merge([$this->pdo], $matches));
+                    return true;
+                }
+            }
+        }
+
         if (!$silent) {
             http_response_code(404);
             echo "Ruta no encontrada: $path";
