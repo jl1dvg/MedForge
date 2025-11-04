@@ -28,6 +28,7 @@ class PermissionRegistry
             'Administración' => [
                 'admin.usuarios' => 'Gestionar usuarios',
                 'admin.roles' => 'Gestionar roles',
+                'settings.manage' => 'Administrar configuración del sistema',
                 'codes.manage' => 'Administrar codificación',
             ],
             'Compatibilidad' => [

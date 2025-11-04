@@ -56,4 +56,22 @@ class Permissions
 
         return false;
     }
+
+    /**
+     * Fusiona múltiples colecciones de permisos en una lista única normalizada.
+     */
+    public static function merge(mixed ...$groups): array
+    {
+        $merged = [];
+
+        foreach ($groups as $group) {
+            foreach (self::normalize($group) as $permission) {
+                if (!in_array($permission, $merged, true)) {
+                    $merged[] = $permission;
+                }
+            }
+        }
+
+        return $merged;
+    }
 }
