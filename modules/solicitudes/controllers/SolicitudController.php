@@ -28,7 +28,6 @@ class SolicitudController extends BaseController
             __DIR__ . '/../views/solicitudes.php',
             [
                 'pageTitle' => 'Solicitudes Quirúrgicas',
-                'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             ]
         );
     }

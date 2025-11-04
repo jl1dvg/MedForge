@@ -119,7 +119,6 @@ class InformesController extends BaseController
 
         $this->render('modules/Billing/views/informe_iess.php', [
             'pageTitle' => 'Informe IESS',
-            'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             'scrapingOutput' => $scrapingOutput,
             'filtros' => $filtros,
             'mesSeleccionado' => $mesSeleccionado,

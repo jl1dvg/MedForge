@@ -72,7 +72,6 @@ class BillingController extends BaseController
 
         $this->render('modules/Billing/views/no_facturados.php', [
             'pageTitle' => 'Procedimientos no facturados',
-            'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             'quirurgicosRevisados' => $clasificados['quirurgicosRevisados'],
             'quirurgicosNoRevisados' => $clasificados['quirurgicosNoRevisados'],
             'noQuirurgicos' => $clasificados['noQuirurgicos'],
