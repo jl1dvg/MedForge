@@ -12,6 +12,48 @@ use Controllers\SolicitudController;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ReportService;
 
+// En entornos legacy aún se puede ejecutar este controlador directamente sin pasar por
+// bootstrap.php, por lo que el autocargador de Composer/PSR-4 no siempre está
+// disponible. Estos requires condicionales garantizan que las clases del módulo de
+// reportería se carguen incluso en esos contextos.
+if (!function_exists('reporting_require_once')) {
+    /**
+     * Attempt to include a file from a list of candidate paths.
+     *
+     * @param array<int, string> $candidates
+     * @return void
+     */
+    function reporting_require_once(array $candidates): void
+    {
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) || $candidate === '') {
+                continue;
+            }
+
+            $path = realpath($candidate) ?: $candidate;
+
+            if (is_file($path)) {
+                require_once $path;
+                return;
+            }
+        }
+    }
+}
+
+if (!class_exists(ReportService::class, false)) {
+    reporting_require_once([
+        __DIR__ . '/../modules/Reporting/Services/ReportService.php',
+        dirname(__DIR__, 2) . '/modules/Reporting/Services/ReportService.php',
+    ]);
+}
+
+if (!class_exists(ReportingReportController::class, false)) {
+    reporting_require_once([
+        __DIR__ . '/../modules/Reporting/Controllers/ReportController.php',
+        dirname(__DIR__, 2) . '/modules/Reporting/Controllers/ReportController.php',
+    ]);
+}
+
 class PdfController
 {
     private PDO $db;
@@ -204,7 +246,7 @@ class PdfController
                 PdfGenerator::generarDesdeHtml(
                     $html,
                     $nombrePdf,
-                    __DIR__ . '/../public/css/pdf/styles.css',
+                    dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css',
                     'D',
                     $orientation
                 );
@@ -236,7 +278,7 @@ class PdfController
             PdfGenerator::generarDesdeHtml(
                 $htmlTotal,
                 'protocolo_' . $form_id . '_' . $hc_number . '.pdf',
-                __DIR__ . '/../public/css/pdf/styles.css'
+                dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css'
             );
         }
     }
@@ -284,7 +326,7 @@ class PdfController
         PdfGenerator::generarDesdeHtml(
             $htmlTotal,
             'cobertura_' . $form_id . '_' . $hc_number . '.pdf',
-            dirname(__DIR__) . '/public/css/pdf/referencia.css');
+            dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css');
     }
 
     private function renderReportSegment(string $identifier, array $data): ?string
