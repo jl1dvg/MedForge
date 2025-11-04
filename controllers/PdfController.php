@@ -12,6 +12,24 @@ use Controllers\SolicitudController;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ReportService;
 
+// En entornos legacy aún se puede ejecutar este controlador directamente sin pasar por
+// bootstrap.php, por lo que el autocargador de Composer/PSR-4 no siempre está
+// disponible. Estos requires condicionales garantizan que las clases del módulo de
+// reportería se carguen incluso en esos contextos.
+if (!class_exists(ReportService::class, false)) {
+    $reportServicePath = dirname(__DIR__) . '/modules/Reporting/Services/ReportService.php';
+    if (is_file($reportServicePath)) {
+        require_once $reportServicePath;
+    }
+}
+
+if (!class_exists(ReportingReportController::class, false)) {
+    $reportControllerPath = dirname(__DIR__) . '/modules/Reporting/Controllers/ReportController.php';
+    if (is_file($reportControllerPath)) {
+        require_once $reportControllerPath;
+    }
+}
+
 class PdfController
 {
     private PDO $db;
