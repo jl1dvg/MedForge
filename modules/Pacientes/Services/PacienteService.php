@@ -552,11 +552,13 @@ class PacienteService
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $ultimaFecha = $row['ultima_fecha'] ? date('d/m/Y', strtotime($row['ultima_fecha'])) : '';
             $estado = $row['estado_cobertura'] ?? 'N/A';
-            $badgeClass = match ($estado) {
-                'Con Cobertura' => 'bg-success',
-                'Sin Cobertura' => 'bg-danger',
-                default => 'bg-secondary',
-            };
+            if ($estado === 'Con Cobertura') {
+                $badgeClass = 'bg-success';
+            } elseif ($estado === 'Sin Cobertura') {
+                $badgeClass = 'bg-danger';
+            } else {
+                $badgeClass = 'bg-secondary';
+            }
 
             $data[] = [
                 'hc_number' => $row['hc_number'],
