@@ -15,6 +15,11 @@ class TaskModel
         $this->pdo = $pdo;
     }
 
+    public function getStatuses(): array
+    {
+        return self::STATUSES;
+    }
+
     public function list(array $filters = []): array
     {
         $sql = "
