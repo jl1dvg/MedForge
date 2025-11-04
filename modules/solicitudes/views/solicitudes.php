@@ -15,6 +15,11 @@
                 </nav>
             </div>
         </div>
+        <div class="ms-auto d-flex align-items-center">
+            <a class="btn btn-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
+                <i class="mdi mdi-monitor"></i> Abrir turnero
+            </a>
+        </div>
     </div>
 </div>
 
