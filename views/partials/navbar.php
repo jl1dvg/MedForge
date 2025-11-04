@@ -66,6 +66,13 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                     </li>
 
+                    <li class="<?= isActive('/crm') ?>">
+                        <a href="<?= BASE_URL . 'crm'; ?>">
+                            <i class="mdi mdi-account-group-outline"><span class="path1"></span><span class="path2"></span></i>
+                            <span>CRM</span>
+                        </a>
+                    </li>
+
                     <li class="treeview<?= isTreeOpen(['/pacientes']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
