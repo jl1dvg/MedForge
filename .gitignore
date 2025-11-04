@@ -1,6 +1,6 @@
 .env
 .env
-/application/vendror/
+/application/vendor/
 /views/codes/
 /views/components/
 /views/insumos/
