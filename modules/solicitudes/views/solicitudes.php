@@ -1,6 +1,11 @@
 <?php
 /** @var string $username */
 /** @var string $pageTitle */
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'js/pages/solicitudes/index.js',
+]);
+
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -193,15 +198,8 @@
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script type="module" src="<?= asset('js/pages/solicitudes/index.js') ?>"></script>

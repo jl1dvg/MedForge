@@ -1,6 +1,12 @@
 <?php
 /** @var string $username */
-?>
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
+    'assets/vendor_components/tiny-editable/numeric-input-example.js',
+    'js/pages/medicamentos.js',
+]); ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -79,18 +85,4 @@
         min-width: 180px;
     }
 </style>
-
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="<?= asset('assets/vendor_components/datatable/datatables.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/mindmup-editabletable.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/numeric-input-example.js') ?>"></script>
-
-<!-- Doclinic App -->
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/medicamentos.js') ?>"></script>
