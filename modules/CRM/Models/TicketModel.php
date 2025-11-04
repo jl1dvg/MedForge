@@ -43,12 +43,12 @@ class TicketModel
                 t.updated_at,
                 reporter.nombre AS reporter_name,
                 assignee.nombre AS assigned_name,
-                lead.name AS lead_name,
+                l.name AS lead_name,
                 project.title AS project_title
             FROM crm_tickets t
             LEFT JOIN users reporter ON t.reporter_id = reporter.id
             LEFT JOIN users assignee ON t.assigned_to = assignee.id
-            LEFT JOIN crm_leads lead ON t.related_lead_id = lead.id
+            LEFT JOIN crm_leads l ON t.related_lead_id = l.id
             LEFT JOIN crm_projects project ON t.related_project_id = project.id
             WHERE 1 = 1
         ";
@@ -115,12 +115,12 @@ class TicketModel
                 t.updated_at,
                 reporter.nombre AS reporter_name,
                 assignee.nombre AS assigned_name,
-                lead.name AS lead_name,
+                l.name AS lead_name,
                 project.title AS project_title
             FROM crm_tickets t
             LEFT JOIN users reporter ON t.reporter_id = reporter.id
             LEFT JOIN users assignee ON t.assigned_to = assignee.id
-            LEFT JOIN crm_leads lead ON t.related_lead_id = lead.id
+            LEFT JOIN crm_leads l ON t.related_lead_id = l.id
             LEFT JOIN crm_projects project ON t.related_project_id = project.id
             WHERE t.id = :id
             LIMIT 1

@@ -37,11 +37,11 @@ class ProjectModel
                 p.created_at,
                 p.updated_at,
                 owner.nombre AS owner_name,
-                lead.name AS lead_name,
+                l.name AS lead_name,
                 customer.name AS customer_name
             FROM crm_projects p
             LEFT JOIN users owner ON p.owner_id = owner.id
-            LEFT JOIN crm_leads lead ON p.lead_id = lead.id
+            LEFT JOIN crm_leads l ON p.lead_id = l.id
             LEFT JOIN crm_customers customer ON p.customer_id = customer.id
             WHERE 1 = 1
         ";
@@ -102,11 +102,11 @@ class ProjectModel
                 p.created_at,
                 p.updated_at,
                 owner.nombre AS owner_name,
-                lead.name AS lead_name,
+                l.name AS lead_name,
                 customer.name AS customer_name
             FROM crm_projects p
             LEFT JOIN users owner ON p.owner_id = owner.id
-            LEFT JOIN crm_leads lead ON p.lead_id = lead.id
+            LEFT JOIN crm_leads l ON p.lead_id = l.id
             LEFT JOIN crm_customers customer ON p.customer_id = customer.id
             WHERE p.id = :id
             LIMIT 1
