@@ -2,6 +2,11 @@
 /** @var array $procedimientosPorCategoria */
 /** @var string|null $mensajeExito */
 /** @var string|null $mensajeError */
+/** @var string $username */
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'js/pages/list.js',
+]);
 ?>
 
 <div class="content-header">
@@ -43,7 +48,8 @@
                     <div>
                         <h4 class="box-title">📋 <strong>Listado de plantillas de Protocolos Quirúrgicos</strong></h4>
                         <h6 class="subtitle">
-                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los botones de acciones.
+                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los
+                            botones de acciones.
                         </h6>
                     </div>
                     <div>
@@ -136,13 +142,7 @@
         </div>
 </section>
 
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/list.js') ?>"></script>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));

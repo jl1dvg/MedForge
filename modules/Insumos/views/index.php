@@ -1,6 +1,12 @@
 <?php
 /** @var string $username */
-?>
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
+    'assets/vendor_components/tiny-editable/numeric-input-example.js',
+    'js/pages/insumos.js',
+]); ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -26,7 +32,8 @@
                     <div>
                         <h4 class="box-title">📋 <strong>Listado editable de insumos</strong></h4>
                         <h6 class="subtitle">
-                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los botones de acciones.
+                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los
+                            botones de acciones.
                         </h6>
                     </div>
                     <button id="agregarInsumoBtn" class="waves-effect waves-light btn btn-primary mb-5">
@@ -35,24 +42,25 @@
                 </div>
                 <div class="box-body">
                     <div class="table-responsive">
-                        <table id="insumosEditable" class="table table-bordered table-striped table-hover table-sm align-middle">
+                        <table id="insumosEditable"
+                               class="table table-bordered table-striped table-hover table-sm align-middle">
                             <thead class="table-primary text-dark fw-semibold">
-                                <tr>
-                                    <th>Categoría</th>
-                                    <th>Código ISSPOL</th>
-                                    <th>Código ISSFA</th>
-                                    <th>Código IESS</th>
-                                    <th>Código MSP</th>
-                                    <th>Nombre</th>
-                                    <th>Producto ISSFA</th>
-                                    <th>Es medicamento</th>
-                                    <th>Precio Base</th>
-                                    <th>IVA 15%</th>
-                                    <th>Gestión 10%</th>
-                                    <th>Precio Total</th>
-                                    <th>Precio ISSPOL</th>
-                                    <th>Acciones</th>
-                                </tr>
+                            <tr>
+                                <th>Categoría</th>
+                                <th>Código ISSPOL</th>
+                                <th>Código ISSFA</th>
+                                <th>Código IESS</th>
+                                <th>Código MSP</th>
+                                <th>Nombre</th>
+                                <th>Producto ISSFA</th>
+                                <th>Es medicamento</th>
+                                <th>Precio Base</th>
+                                <th>IVA 15%</th>
+                                <th>Gestión 10%</th>
+                                <th>Precio Total</th>
+                                <th>Precio ISSPOL</th>
+                                <th>Acciones</th>
+                            </tr>
                             </thead>
                             <tbody id="tablaInsumosBody"></tbody>
                         </table>
@@ -87,17 +95,4 @@
     }
 </style>
 
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="<?= asset('assets/vendor_components/datatable/datatables.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/mindmup-editabletable.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/numeric-input-example.js') ?>"></script>
-
-<!-- Doclinic App -->
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/insumos.js') ?>"></script>

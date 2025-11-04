@@ -1,3 +1,12 @@
+<?php
+/** @var string $username */
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'js/pages/cirugias.js',
+    'js/modules/cirugias_modal.js',
+]);
+?>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -21,12 +30,6 @@
                 <div class="box-body">
                     <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                         <h4 class="box-title mb-0">Cirugías realizadas</h4>
-                        <select id="descargarZipMes" class="form-select w-auto">
-                            <option value="">Descargar planillas del mes...</option>
-                            <?php foreach ($mesesDisponibles as $valor => $label): ?>
-                                <option value="<?= htmlspecialchars($valor) ?>"><?= htmlspecialchars($label) ?></option>
-                            <?php endforeach; ?>
-                        </select>
                     </div>
                     <div class="table-responsive">
                         <table id="surgeryTable" class="table table-striped table-hover">
@@ -100,17 +103,6 @@
 <?php include __DIR__ . '/components/modal_protocolo.php'; ?>
 
 <script>
-    const descargarZipSelect = document.getElementById('descargarZipMes');
-    if (descargarZipSelect) {
-        descargarZipSelect.addEventListener('change', function () {
-            const mes = this.value;
-            if (mes) {
-                window.open(`/public/index.php/billing/exportar_mes?mes=${mes}`, '_blank');
-                this.value = '';
-            }
-        });
-    }
-
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
         const isActive = button.classList.contains('active');
         const newStatus = isActive ? 0 : 1;
@@ -221,115 +213,6 @@
                 Swal.fire('Error', 'No se pudo cargar el protocolo.', 'error');
             });
     }
-
-    document.addEventListener('DOMContentLoaded', function () {
-        $.fn.dataTable.ext.type.order['dd-mm-yyyy-pre'] = function (d) {
-            if (!d) {
-                return 0;
-            }
-            var parts = d.split('/');
-            return new Date(parts[2], parts[1] - 1, parts[0]).getTime();
-        };
-
-        const table = $('#surgeryTable').DataTable({
-            paging: true,
-            lengthChange: true,
-            searching: true,
-            ordering: true,
-            info: true,
-            autoWidth: false,
-            pageLength: 25,
-            order: [[4, 'desc']],
-            columnDefs: [
-                {
-                    targets: 4,
-                    type: 'dd-mm-yyyy'
-                }
-            ],
-            rowGroup: {
-                dataSrc: function (row) {
-                    let fecha = row[4];
-                    if (!fecha) return 'Sin fecha';
-                    const partes = fecha.split('/');
-                    const mes = partes[1];
-                    const anio = partes[2];
-                    const nombreMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-                    return `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
-                }
-            },
-            dom: 'Bfrtip',
-            buttons: [
-                {
-                    extend: 'excelHtml5',
-                    text: 'Exportar a Excel',
-                    title: 'Reporte de Cirugías Agrupado',
-                    exportOptions: {
-                        columns: ':visible'
-                    }
-                }
-            ],
-            initComplete: function () {
-                this.api().columns([3]).every(function () {
-                    var column = this;
-                    var select = $('<select><option value="">Filtrar</option></select>')
-                        .appendTo($(column.header()).empty())
-                        .on('change', function () {
-                            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                            column.search(val ? '^' + val + '$' : '', true, false).draw();
-                        });
-                    column.data().unique().sort().each(function (d) {
-                        select.append('<option value="' + d + '">' + d + '</option>')
-                    });
-                });
-            }
-        });
-
-        const grupos = new Set();
-        table.rows().data().each(function (row) {
-            let fecha = row[4];
-            if (!fecha) return;
-            const partes = fecha.split('/');
-            const mes = partes[1];
-            const anio = partes[2];
-            const nombreMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-            const grupo = `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
-            grupos.add(grupo);
-        });
-
-        const filtroGrupo = $('<select id="filtroGrupo" class="form-select mb-2"><option value="">Todos los meses</option></select>');
-        grupos.forEach(grupo => filtroGrupo.append(`<option value="${grupo}">${grupo}</option>`));
-        $('#surgeryTable_wrapper').prepend(filtroGrupo);
-
-        filtroGrupo.on('change', function () {
-            const valor = this.value;
-            $.fn.dataTable.ext.search.push(function (settings, data) {
-                let fecha = data[4];
-                if (!fecha) return false;
-                const partes = fecha.split('/');
-                const mes = partes[1];
-                const anio = partes[2];
-                const nombreMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-                const grupo = `${nombreMeses[parseInt(mes, 10) - 1]} ${anio}`;
-                return valor === '' || grupo === valor;
-            });
-            table.draw();
-        });
-    });
 </script>
 
-<!-- Vendor JS -->
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/datatable/datatables.min.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
-<script src="https://cdn.datatables.net/rowgroup/1.3.1/js/dataTables.rowGroup.min.js"></script>
-<link rel="stylesheet" href="https://cdn.datatables.net/rowgroup/1.3.1/css/rowGroup.dataTables.min.css">
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/modules/cirugias_modal.js') ?>"></script>

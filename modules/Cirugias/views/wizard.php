@@ -1,5 +1,16 @@
 <?php
 /** @var Modules\Cirugias\Models\Cirugia $cirugia */
+/** @var string $username */
+/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
+    'assets/vendor_components/tiny-editable/numeric-input-example.js',
+    'assets/vendor_components/jquery-steps-master/build/jquery.steps.js',
+    'assets/vendor_components/jquery-validation-1.17.0/dist/jquery.validate.min.js',
+    'js/pages/steps.js',
+    'js/modules/cirugias_wizard.js',
+]);
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -55,17 +66,5 @@
     const responsableOptionsHTML = `<?= addslashes(implode('', array_map(fn($r) => "<option value='{$r}'>" . htmlspecialchars($r) . "</option>", $responsablesMedicamentos))) ?>`;
 </script>
 
-<script src="<?= asset('js/vendors.min.js') ?>"></script>
-<script src="<?= asset('js/pages/chat-popup.js') ?>"></script>
-<script src="<?= asset('assets/icons/feather-icons/feather.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/jquery-steps-master/build/jquery.steps.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/jquery-validation-1.17.0/dist/jquery.validate.min.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="<?= asset('assets/vendor_components/datatable/datatables.min.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/mindmup-editabletable.js') ?>"></script>
-<script src="<?= asset('assets/vendor_components/tiny-editable/numeric-input-example.js') ?>"></script>
-<script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
-<script src="<?= asset('js/menus.js') ?>"></script>
-<script src="<?= asset('js/template.js') ?>"></script>
-<script src="<?= asset('js/pages/steps.js') ?>"></script>
-<script src="<?= asset('js/modules/cirugias_wizard.js') ?>"></script>
+
