@@ -132,6 +132,9 @@ JS;
                             case 'color':
                                 $columnClass = 'col-md-4 col-sm-6';
                                 break;
+                            case 'checkbox':
+                                $columnClass = 'col-md-6 col-sm-12';
+                                break;
                             default:
                                 $columnClass = 'col-md-6 col-sm-12';
                                 break;
@@ -166,6 +169,18 @@ JS;
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>
+                                                    <?php elseif ($type === 'checkbox'): ?>
+                                                        <?php $isChecked = in_array($displayValue, ['1', 1, true, 'true'], true); ?>
+                                                        <div class="form-check form-switch">
+                                                            <input
+                                                                class="form-check-input"
+                                                                type="checkbox"
+                                                                role="switch"
+                                                                name="<?= htmlspecialchars($field['key'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                id="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                value="1"
+                                                                <?= $isChecked ? 'checked' : ''; ?>>
+                                                        </div>
                                                     <?php else: ?>
                                                         <?php
                                                         $valueAttribute = $type === 'password' ? '' : $displayValue;

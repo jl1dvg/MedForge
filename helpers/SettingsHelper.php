@@ -108,6 +108,30 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'notifications' => [
+                'title' => 'Notificaciones',
+                'icon' => 'fa-solid fa-bell',
+                'description' => 'Controla los canales y resúmenes automáticos enviados al equipo.',
+                'groups' => [
+                    [
+                        'id' => 'channels',
+                        'title' => 'Canales disponibles',
+                        'description' => 'Activa o desactiva los canales soportados por la plataforma.',
+                        'fields' => [
+                            self::checkboxField('notifications_email_enabled', 'Alertas por correo electrónico', true),
+                            self::checkboxField('notifications_sms_enabled', 'Alertas por SMS'),
+                        ],
+                    ],
+                    [
+                        'id' => 'summaries',
+                        'title' => 'Resúmenes automáticos',
+                        'description' => 'Define si deseas recibir un resumen diario consolidado.',
+                        'fields' => [
+                            self::checkboxField('notifications_daily_summary', 'Enviar resumen diario a administradores'),
+                        ],
+                    ],
+                ],
+            ],
             'localization' => [
                 'title' => 'Localización',
                 'icon' => 'fa-solid fa-earth-americas',
@@ -278,6 +302,17 @@ class SettingsHelper
             'key' => $key,
             'label' => $label,
             'sensitive' => true,
+        ];
+    }
+
+    private static function checkboxField(string $key, string $label, bool $default = false, ?string $help = null): array
+    {
+        return [
+            'type' => 'checkbox',
+            'key' => $key,
+            'label' => $label,
+            'default' => $default ? '1' : '0',
+            'help' => $help,
         ];
     }
 

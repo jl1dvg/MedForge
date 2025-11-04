@@ -4,7 +4,7 @@ namespace Modules\Settings\Controllers;
 
 use Core\BaseController;
 use Helpers\SettingsHelper;
-use Models\SettingsRepository;
+use Models\SettingsModel;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -13,7 +13,7 @@ use Throwable;
 class SettingsController extends BaseController
 {
     private array $definitions;
-    private ?SettingsRepository $repository = null;
+    private ?SettingsModel $settingsModel = null;
 
     public function __construct(PDO $pdo)
     {
@@ -34,7 +34,7 @@ class SettingsController extends BaseController
         $error = null;
         $repository = null;
         try {
-            $repository = $this->repository();
+            $repository = $this->settings();
         } catch (RuntimeException $exception) {
             $error = $exception->getMessage();
         }
@@ -43,10 +43,10 @@ class SettingsController extends BaseController
             $postedSection = $_POST['section'] ?? $active;
             if (isset($this->definitions[$postedSection])) {
                 $active = $postedSection;
-                if ($repository instanceof SettingsRepository) {
+                if ($repository instanceof SettingsModel) {
                     $payload = SettingsHelper::extractSectionPayload($this->definitions[$postedSection], $_POST);
                     try {
-                        $affected = $repository->updateOptions($payload);
+                        $affected = $repository->updateOptions($payload, $postedSection);
                         $status = $affected > 0 ? 'updated' : 'unchanged';
                     } catch (PDOException $exception) {
                         $status = 'error';
@@ -63,7 +63,7 @@ class SettingsController extends BaseController
         }
 
         $options = [];
-        if ($repository instanceof SettingsRepository) {
+        if ($repository instanceof SettingsModel) {
             try {
                 $keys = SettingsHelper::collectOptionKeys($this->definitions);
                 $options = $repository->getOptions($keys);
@@ -85,12 +85,12 @@ class SettingsController extends BaseController
         ]);
     }
 
-    private function repository(): SettingsRepository
+    private function settings(): SettingsModel
     {
-        if (!($this->repository instanceof SettingsRepository)) {
-            $this->repository = new SettingsRepository($this->pdo);
+        if (!($this->settingsModel instanceof SettingsModel)) {
+            $this->settingsModel = new SettingsModel($this->pdo);
         }
 
-        return $this->repository;
+        return $this->settingsModel;
     }
 }
