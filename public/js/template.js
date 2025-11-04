@@ -1551,25 +1551,33 @@ function w3_close() {
 		
 	var loader;
 
-	function loadNow(opacity) {
-		if (opacity <= 0) {
-			displayContent();
-		} else {
-			loader.style.opacity = opacity;
-			window.setTimeout(function() {
-				loadNow(opacity - 0.05);
-			}, 50);
-		}
-	}
+        function loadNow(opacity) {
+                if (!loader) {
+                        return;
+                }
 
-	function displayContent() {
-		loader.style.display = 'none';
-	}
+                if (opacity <= 0) {
+                        displayContent();
+                } else {
+                        loader.style.opacity = opacity;
+                        window.setTimeout(function() {
+                                loadNow(opacity - 0.05);
+                        }, 50);
+                }
+        }
 
-	document.addEventListener("DOMContentLoaded", function() {
-		loader = document.getElementById('loader');
-		loadNow(1);
-	});
+        function displayContent() {
+                if (loader) {
+                        loader.style.display = 'none';
+                }
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+                loader = document.getElementById('loader');
+                if (loader) {
+                        loadNow(1);
+                }
+        });
 
 
 
