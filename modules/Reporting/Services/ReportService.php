@@ -17,7 +17,8 @@ class ReportService
 
     public function __construct(?string $templatesPath = null)
     {
-        $basePath = $templatesPath ?? dirname(__DIR__) . '/Templates';
+        $defaultPath = dirname(__DIR__) . '/Templates/reports';
+        $basePath = $templatesPath ?? $defaultPath;
         $this->templatesPath = rtrim($basePath, DIRECTORY_SEPARATOR);
     }
 

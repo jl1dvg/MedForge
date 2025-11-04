@@ -1,55 +1,24 @@
-<body>
-<TABLE>
-    <tr>
-        <td colspan='71' class='morado'>A. DATOS DEL ESTABLECIMIENTO
-            Y USUARIO / PACIENTE
-        </td>
-    </tr>
-    <tr>
-        <td colspan='15' height='27' class='verde'>INSTITUCIÓN DEL SISTEMA</td>
-        <td colspan='6' class='verde'>UNICÓDIGO</td>
-        <td colspan='18' class='verde'>ESTABLECIMIENTO DE SALUD</td>
-        <td colspan='18' class='verde'>NÚMERO DE HISTORIA CLÍNICA ÚNICA</td>
-        <td colspan='14' class='verde' style='border-right: none'>NÚMERO DE ARCHIVO</td>
-    </tr>
-    <tr>
-        <td colspan='15' height='27' class='blanco'><?php echo $afiliacion; ?></td>
-        <td colspan='6' class='blanco'>&nbsp;</td>
-        <td colspan='18' class='blanco'>CIVE</td>
-        <td colspan='18' class='blanco'><?php echo $hc_number; ?></td>
-        <td colspan='14' class='blanco' style='border-right: none'><?php echo $hc_number; ?></td>
-    </tr>
-    <tr>
-        <td colspan='15' rowspan='2' height='41' class='verde' style='height:31.0pt;'>PRIMER APELLIDO</td>
-        <td colspan='13' rowspan='2' class='verde'>SEGUNDO APELLIDO</td>
-        <td colspan='13' rowspan='2' class='verde'>PRIMER NOMBRE</td>
-        <td colspan='10' rowspan='2' class='verde'>SEGUNDO NOMBRE</td>
-        <td colspan='3' rowspan='2' class='verde'>SEXO</td>
-        <td colspan='6' rowspan='2' class='verde'>FECHA NACIMIENTO</td>
-        <td colspan='3' rowspan='2' class='verde'>EDAD</td>
-        <td colspan='8' class='verde' style='border-right: none; border-bottom: none'>CONDICIÓN EDAD <font
-                    class='font7'>(MARCAR)</font></td>
-    </tr>
-    <tr>
-        <td colspan='2' height='17' class='verde'>H</td>
-        <td colspan='2' class='verde'>D</td>
-        <td colspan='2' class='verde'>M</td>
-        <td colspan='2' class='verde' style='border-right: none'>A</td>
-    </tr>
-    <tr>
-        <td colspan='15' height='27' class='blanco'><?php echo $lname; ?></td>
-        <td colspan='13' class='blanco'><?php echo $lname2; ?></td>
-        <td colspan='13' class='blanco'><?php echo $fname; ?></td>
-        <td colspan='10' class='blanco'><?php echo $mname; ?></td>
-        <td colspan='3' class='blanco'><?php echo $sexo; ?></td>
-        <td colspan='6' class='blanco'><?php echo $fecha_nacimiento; ?></td>
-        <td colspan='3' class='blanco'><?php echo $edadPaciente; ?></td>
-        <td colspan='2' class='blanco'>&nbsp;</td>
-        <td colspan='2' class='blanco'>&nbsp;</td>
-        <td colspan='2' class='blanco'>&nbsp;</td>
-        <td colspan='2' class='blanco' style='border-right: none'>&nbsp;</td>
-    </tr>
-</TABLE>
+<?php
+$layout = __DIR__ . '/../layouts/base.php';
+$patient = [
+    'afiliacion' => $afiliacion ?? '',
+    'hc_number' => $hc_number ?? '',
+    'archive_number' => $hc_number ?? '',
+    'lname' => $lname ?? '',
+    'lname2' => $lname2 ?? '',
+    'fname' => $fname ?? '',
+    'mname' => $mname ?? '',
+    'sexo' => $sexo ?? '',
+    'fecha_nacimiento' => $fecha_nacimiento ?? '',
+    'edad' => $edadPaciente ?? '',
+];
+
+ob_start();
+include __DIR__ . '/../partials/patient_header.php';
+$header = ob_get_clean();
+
+ob_start();
+?>
 <table>
     <tr>
         <td class='morado' colspan='26' style='border-bottom: 1px solid #808080;'>B. EVOLUCIÓN Y
@@ -234,5 +203,8 @@
         </TD>
     </TR>
 </table>
-</body>
-</file>
+<?php
+$content = ob_get_clean();
+$title = 'Formulario 005 - Evolución y Prescripciones';
+
+include $layout;
