@@ -8,7 +8,10 @@ use PDOException;
 
 class PacienteService
 {
-    private PDO $db;
+    /**
+     * @var PDO
+     */
+    private $db;
 
     public function __construct(PDO $pdo)
     {
@@ -509,54 +512,56 @@ class PacienteService
             $countFiltered = (int) $stmtFiltered->fetchColumn();
         }
 
-        $sql = <<<'SQL'
-            SELECT
-                p.hc_number,
-                CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS full_name,
-                ultima.ultima_fecha,
-                p.afiliacion,
-                CASE
-                    WHEN cobertura.fecha_vigencia IS NULL THEN 'N/A'
-                    WHEN cobertura.fecha_vigencia >= CURRENT_DATE THEN 'Con Cobertura'
-                    ELSE 'Sin Cobertura'
-                END AS estado_cobertura
-            FROM patient_data p
-            LEFT JOIN (
-                SELECT hc_number, MAX(fecha) AS ultima_fecha
-                FROM consulta_data
-                GROUP BY hc_number
-            ) AS ultima ON ultima.hc_number = p.hc_number
-            LEFT JOIN (
-                SELECT base.hc_number, base.cod_derivacion, base.fecha_vigencia
-                FROM prefactura_paciente base
-                INNER JOIN (
-                    SELECT hc_number, MAX(fecha_vigencia) AS max_fecha
-                    FROM prefactura_paciente
-                    WHERE cod_derivacion IS NOT NULL AND cod_derivacion != ''
-                    GROUP BY hc_number
-                ) AS ult ON ult.hc_number = base.hc_number AND ult.max_fecha = base.fecha_vigencia
-                WHERE base.cod_derivacion IS NOT NULL AND base.cod_derivacion != ''
-            ) AS cobertura ON cobertura.hc_number = p.hc_number
-            $searchSql
-            ORDER BY $orderBy $orderDirection
-            LIMIT $start, $length
-        SQL;
+        $stmt = null;
+        $rows = [];
+        $coverageAvailable = false;
 
-        $stmt = $this->db->prepare($sql);
-        foreach ($params as $key => $val) {
-            $stmt->bindValue($key, $val);
+        foreach ([true, false] as $withCoverage) {
+            try {
+                $sql = $this->buildPacientesQuery(
+                    $searchSql,
+                    $orderBy,
+                    $orderDirection,
+                    $start,
+                    $length,
+                    $withCoverage
+                );
+
+                $stmt = $this->db->prepare($sql);
+                foreach ($params as $key => $val) {
+                    $stmt->bindValue($key, $val);
+                }
+
+                $stmt->execute();
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $coverageAvailable = $withCoverage;
+                break;
+            } catch (PDOException $e) {
+                if (!$withCoverage) {
+                    throw $e;
+                }
+            }
         }
-        $stmt->execute();
+
+        if ($stmt === null) {
+            throw new PDOException('No se pudo preparar la consulta de pacientes.');
+        }
 
         $data = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $ultimaFecha = $row['ultima_fecha'] ? date('d/m/Y', strtotime($row['ultima_fecha'])) : '';
             $estado = $row['estado_cobertura'] ?? 'N/A';
-            $badgeClass = match ($estado) {
-                'Con Cobertura' => 'bg-success',
-                'Sin Cobertura' => 'bg-danger',
-                default => 'bg-secondary',
-            };
+
+            if (!$coverageAvailable && ($estado === '' || $estado === null)) {
+                $estado = 'N/A';
+            }
+            if ($estado === 'Con Cobertura') {
+                $badgeClass = 'bg-success';
+            } elseif ($estado === 'Sin Cobertura') {
+                $badgeClass = 'bg-danger';
+            } else {
+                $badgeClass = 'bg-secondary';
+            }
 
             $data[] = [
                 'hc_number' => $row['hc_number'],
@@ -573,5 +578,69 @@ class PacienteService
             'recordsFiltered' => $countFiltered,
             'data' => $data,
         ];
+    }
+
+    private function buildPacientesQuery(
+        string $searchSql,
+        string $orderBy,
+        string $orderDirection,
+        int $start,
+        int $length,
+        bool $withCoverage
+    ): string {
+        $coverageSelect = "'N/A' AS estado_cobertura";
+        $coverageJoin = '';
+
+        if ($withCoverage) {
+            $coverageSelect = <<<'SQL'
+                CASE
+                    WHEN cobertura.fecha_vigencia IS NULL THEN 'N/A'
+                    WHEN cobertura.fecha_vigencia >= CURDATE() THEN 'Con Cobertura'
+                    ELSE 'Sin Cobertura'
+                END AS estado_cobertura
+            SQL;
+
+            $coverageJoin = <<<'SQL'
+                LEFT JOIN (
+                    SELECT base.hc_number, base.cod_derivacion, base.fecha_vigencia
+                    FROM prefactura_paciente base
+                    INNER JOIN (
+                        SELECT hc_number, MAX(fecha_vigencia) AS max_fecha
+                        FROM prefactura_paciente
+                        WHERE cod_derivacion IS NOT NULL AND cod_derivacion != ''
+                        GROUP BY hc_number
+                    ) AS ult ON ult.hc_number = base.hc_number AND ult.max_fecha = base.fecha_vigencia
+                    WHERE base.cod_derivacion IS NOT NULL AND base.cod_derivacion != ''
+                ) AS cobertura ON cobertura.hc_number = p.hc_number
+            SQL;
+        }
+
+        return sprintf(
+            <<<'SQL'
+                SELECT
+                    p.hc_number,
+                    CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS full_name,
+                    ultima.ultima_fecha,
+                    p.afiliacion,
+                    %s
+                FROM patient_data p
+                LEFT JOIN (
+                    SELECT hc_number, MAX(fecha) AS ultima_fecha
+                    FROM consulta_data
+                    GROUP BY hc_number
+                ) AS ultima ON ultima.hc_number = p.hc_number
+                %s
+                %s
+                ORDER BY %s %s
+                LIMIT %d, %d
+            SQL,
+            $coverageSelect,
+            $coverageJoin,
+            $searchSql,
+            $orderBy,
+            $orderDirection,
+            $start,
+            $length
+        );
     }
 }
