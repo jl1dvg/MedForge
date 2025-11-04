@@ -41,7 +41,6 @@ class EditorController extends BaseController
 
         $this->render('modules/EditorProtocolos/views/index.php', [
             'pageTitle' => 'Editor de Protocolos',
-            'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             'procedimientosPorCategoria' => $procedimientos,
             'mensajeExito' => $mensajeExito,
             'mensajeError' => $mensajeError,
@@ -173,7 +172,6 @@ class EditorController extends BaseController
     private function renderFormulario(array $protocolo, array $contexto = []): void
     {
         $this->render('modules/EditorProtocolos/views/edit.php', array_merge([
-            'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             'pageTitle' => $contexto['pageTitle'] ?? 'Editor de protocolos',
             'protocolo' => $protocolo,
             'medicamentos' => $protocolo['medicamentos'] ?? [],

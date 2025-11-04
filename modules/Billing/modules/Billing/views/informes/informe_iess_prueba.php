@@ -111,7 +111,7 @@ if (!empty($billingIds)) {
     <link rel="stylesheet" href="/public/css/style.css">
     <link rel="stylesheet" href="/public/css/skin_color.css">
 </head>
-<body class="layout-top-nav light-skin theme-primary fixed">
+<body class="hold-transition light-skin sidebar-mini theme-primary fixed">
 
 <div class="wrapper">
 

@@ -78,7 +78,6 @@ class CirugiasController extends BaseController
 
         $this->render('modules/Cirugias/views/wizard.php', [
             'pageTitle' => 'Editar protocolo quirúrgico',
-            'bodyClass' => 'layout-top-nav light-skin theme-primary fixed',
             'cirugia' => $cirugia,
             'insumosDisponibles' => $insumosDisponibles,
             'insumosSeleccionados' => $insumosSeleccionados,

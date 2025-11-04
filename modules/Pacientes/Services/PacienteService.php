@@ -480,6 +480,9 @@ class PacienteService
         string $orderColumn = 'hc_number',
         string $orderDir = 'ASC'
     ): array {
+        $start = max(0, $start);
+        $length = max(1, $length);
+
         $columns = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
         $orderBy = in_array($orderColumn, $columns, true) ? $orderColumn : 'hc_number';
         $orderDirection = strtoupper($orderDir) === 'DESC' ? 'DESC' : 'ASC';
@@ -496,11 +499,15 @@ class PacienteService
 
         $countTotal = (int) $this->db->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
 
-        $stmtFiltered = $this->db->prepare(
-            "SELECT COUNT(*) FROM patient_data p $searchSql"
-        );
-        $stmtFiltered->execute($params);
-        $countFiltered = (int) $stmtFiltered->fetchColumn();
+        if ($searchSql === '') {
+            $countFiltered = $countTotal;
+        } else {
+            $stmtFiltered = $this->db->prepare(
+                "SELECT COUNT(*) FROM patient_data p $searchSql"
+            );
+            $stmtFiltered->execute($params);
+            $countFiltered = (int) $stmtFiltered->fetchColumn();
+        }
 
         $sql = <<<'SQL'
             SELECT
@@ -532,15 +539,13 @@ class PacienteService
             ) AS cobertura ON cobertura.hc_number = p.hc_number
             $searchSql
             ORDER BY $orderBy $orderDirection
-            LIMIT :start, :length
+            LIMIT $start, $length
         SQL;
 
         $stmt = $this->db->prepare($sql);
         foreach ($params as $key => $val) {
             $stmt->bindValue($key, $val);
         }
-        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
-        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
         $stmt->execute();
 
         $data = [];
