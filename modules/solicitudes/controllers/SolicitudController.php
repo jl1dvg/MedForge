@@ -32,6 +32,18 @@ class SolicitudController extends BaseController
         );
     }
 
+    public function turnero(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/turnero.php',
+            [
+                'pageTitle' => 'Turnero Coordinación Quirúrgica',
+            ]
+        );
+    }
+
     public function kanbanData(): void
     {
         if (!$this->isAuthenticated()) {
@@ -123,6 +135,46 @@ class SolicitudController extends BaseController
             $this->json(['success' => true]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
+        }
+    }
+
+    public function turneroData(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['data' => [], 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $estados = [];
+        if (!empty($_GET['estado'])) {
+            $estados = array_values(array_filter(array_map('trim', explode(',', (string) $_GET['estado']))));
+        }
+
+        try {
+            $solicitudes = $this->solicitudModel->fetchTurneroSolicitudes($estados);
+
+            $turno = 1;
+            foreach ($solicitudes as &$solicitud) {
+                $nombreCompleto = trim((string) ($solicitud['full_name'] ?? ''));
+                $solicitud['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
+                $solicitud['turno'] = $turno++;
+
+                $solicitud['hora'] = null;
+                $solicitud['fecha'] = null;
+
+                if (!empty($solicitud['created_at'])) {
+                    $timestamp = strtotime((string) $solicitud['created_at']);
+                    if ($timestamp !== false) {
+                        $solicitud['hora'] = date('H:i', $timestamp);
+                        $solicitud['fecha'] = date('d/m/Y', $timestamp);
+                    }
+                }
+            }
+            unset($solicitud);
+
+            $this->json(['data' => $solicitudes]);
+        } catch (Throwable $e) {
+            $this->json(['data' => [], 'error' => 'No se pudo cargar el turnero'], 500);
         }
     }
 
