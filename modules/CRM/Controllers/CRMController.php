@@ -27,6 +27,30 @@ class CRMController extends BaseController
         $this->tickets = new TicketModel($pdo);
     }
 
+    public function index(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/index.php',
+            [
+                'pageTitle' => 'CRM',
+                'leadStatuses' => $this->leads->getStatuses(),
+                'leadSources' => $this->leads->getSources(),
+                'projectStatuses' => $this->projects->getStatuses(),
+                'taskStatuses' => $this->tasks->getStatuses(),
+                'ticketStatuses' => $this->tickets->getStatuses(),
+                'ticketPriorities' => $this->tickets->getPriorities(),
+                'assignableUsers' => $this->getAssignableUsers(),
+                'initialLeads' => $this->leads->list(['limit' => 50]),
+                'initialProjects' => $this->projects->list(['limit' => 50]),
+                'initialTasks' => $this->tasks->list(['limit' => 50]),
+                'initialTickets' => $this->tickets->list(['limit' => 50]),
+                'scripts' => ['js/pages/crm.js'],
+            ]
+        );
+    }
+
     public function listLeads(): void
     {
         $this->requireAuth();
@@ -198,6 +222,32 @@ class CRMController extends BaseController
             $this->json(['ok' => true, 'data' => $project], 201);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear el proyecto'], 500);
+        }
+    }
+
+    public function updateProjectStatus(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getBody();
+        $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
+        $status = isset($payload['status']) ? (string) $payload['status'] : '';
+
+        if ($projectId <= 0 || $status === '') {
+            $this->json(['ok' => false, 'error' => 'project_id y status son requeridos'], 422);
+            return;
+        }
+
+        try {
+            $project = $this->projects->updateStatus($projectId, $status);
+            if (!$project) {
+                $this->json(['ok' => false, 'error' => 'Proyecto no encontrado'], 404);
+                return;
+            }
+
+            $this->json(['ok' => true, 'data' => $project]);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el proyecto'], 500);
         }
     }
 
@@ -414,6 +464,13 @@ class CRMController extends BaseController
     private function getCurrentUserId(): ?int
     {
         return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    }
+
+    private function getAssignableUsers(): array
+    {
+        $stmt = $this->pdo->query('SELECT id, nombre FROM users ORDER BY nombre');
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     private function getQuery(string $key): ?string

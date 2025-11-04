@@ -16,6 +16,16 @@ class TicketModel
         $this->pdo = $pdo;
     }
 
+    public function getStatuses(): array
+    {
+        return self::STATUSES;
+    }
+
+    public function getPriorities(): array
+    {
+        return self::PRIORITIES;
+    }
+
     public function list(array $filters = []): array
     {
         $sql = "

@@ -15,6 +15,18 @@ class LeadModel
         $this->pdo = $pdo;
     }
 
+    public function getStatuses(): array
+    {
+        return self::STATUSES;
+    }
+
+    public function getSources(): array
+    {
+        $stmt = $this->pdo->query("SELECT DISTINCT source FROM crm_leads WHERE source IS NOT NULL AND source <> '' ORDER BY source");
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
     public function list(array $filters = []): array
     {
         $sql = "
