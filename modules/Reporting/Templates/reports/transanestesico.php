@@ -1,4 +1,9 @@
-<body>
+<?php
+$layout = __DIR__ . '/../layouts/base.php';
+$header = '';
+
+ob_start();
+?>
 <table class="trans">
     <tr style="height: 18px">
         <td class="morado_tr" colspan="138">A. DATOS DEL ESTABLECIMIENTO Y USUARIO</td>
@@ -6546,4 +6551,8 @@
         </tr>
     </table>
 </pagebreak>
-</body>
+<?php
+$content = ob_get_clean();
+$title = 'Registro Transanestésico';
+
+include $layout;

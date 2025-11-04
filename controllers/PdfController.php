@@ -204,7 +204,7 @@ class PdfController
                 PdfGenerator::generarDesdeHtml(
                     $html,
                     $nombrePdf,
-                    __DIR__ . '/../public/css/pdf/styles.css',
+                    dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css',
                     'D',
                     $orientation
                 );
@@ -236,7 +236,7 @@ class PdfController
             PdfGenerator::generarDesdeHtml(
                 $htmlTotal,
                 'protocolo_' . $form_id . '_' . $hc_number . '.pdf',
-                __DIR__ . '/../public/css/pdf/styles.css'
+                dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css'
             );
         }
     }
@@ -284,7 +284,7 @@ class PdfController
         PdfGenerator::generarDesdeHtml(
             $htmlTotal,
             'cobertura_' . $form_id . '_' . $hc_number . '.pdf',
-            dirname(__DIR__) . '/public/css/pdf/referencia.css');
+            dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css');
     }
 
     private function renderReportSegment(string $identifier, array $data): ?string

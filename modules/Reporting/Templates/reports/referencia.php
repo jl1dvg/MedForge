@@ -1,8 +1,9 @@
 <?php
 // Datos para depuración AI
+$layout = __DIR__ . '/../layouts/base.php';
+
+ob_start();
 ?>
-<HTML>
-<BODY>
 <table>
     <TR>
         <TD class="morado" colspan="12">l. DATOS DEL USARIO</TD>
@@ -424,7 +425,10 @@
                     - REFERENCIA INVERSA</FONT></B>
         </TD>
     </TR>
-    ]
 </TABLE>
-</BODY>
-</HTML>
+<?php
+$content = ob_get_clean();
+$title = 'Formulario de Referencia';
+$header = '';
+
+include $layout;
