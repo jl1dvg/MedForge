@@ -11,6 +11,29 @@ const elements = {
 const defaultEmptyMessage = elements.empty ? elements.empty.textContent : '';
 
 const padTurn = turno => String(turno).padStart(2, '0');
+const formatTurno = turno => {
+    const numero = Number.parseInt(turno, 10);
+    if (Number.isNaN(numero) || numero <= 0) {
+        return '--';
+    }
+    return padTurn(numero);
+};
+
+const estadoClases = new Map([
+    ['recibido', 'recibido'],
+    ['llamado', 'llamado'],
+    ['en atencion', 'en-atencion'],
+    ['en atención', 'en-atencion'],
+    ['atendido', 'atendido'],
+]);
+
+const getEstadoClass = estado => {
+    if (!estado) {
+        return '';
+    }
+    const key = String(estado).toLowerCase().trim();
+    return estadoClases.get(key) ?? '';
+};
 
 const renderClock = () => {
     if (!elements.clock) {
@@ -48,16 +71,19 @@ const renderTurnos = turnos => {
         col.className = 'col-12 col-lg-6 col-xxl-4';
 
         const prioridad = item.prioridad ? String(item.prioridad).toUpperCase() : '';
+        const estado = item.estado ? String(item.estado) : '';
+        const estadoClass = getEstadoClass(estado);
         const fecha = item.fecha ? `Registrado el ${item.fecha}` : '';
         const hora = item.hora ? `• ${item.hora}` : '';
 
         col.innerHTML = `
             <div class="turno-card">
-                <div class="turno-numero">#${padTurn(item.turno ?? 0)}</div>
+                <div class="turno-numero">#${formatTurno(item.turno)}</div>
                 <div class="flex-grow-1">
                     <div class="turno-nombre">${item.full_name ?? 'Paciente sin nombre'}</div>
                     <div class="turno-meta mt-2">
                         ${prioridad ? `<span class="turno-badge" title="Prioridad">${prioridad}</span>` : ''}
+                        ${estado ? `<span class="turno-estado ${estadoClass}">${estado}</span>` : ''}
                         ${(fecha || hora) ? `<span class="turno-detalle">${fecha} ${hora}</span>` : ''}
                     </div>
                 </div>

@@ -27,4 +27,8 @@ return function (Router $router) {
     $router->get('/solicitudes/turnero-data', function (\PDO $pdo) {
         (new SolicitudController($pdo))->turneroData();
     });
+
+    $router->post('/solicitudes/turnero-llamar', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->turneroLlamar();
+    });
 };

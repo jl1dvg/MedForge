@@ -98,6 +98,36 @@
             text-transform: uppercase;
         }
 
+        .turno-estado {
+            border-radius: 999px;
+            padding: 0.35rem 0.9rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: rgba(148, 163, 184, 0.25);
+            color: #e2e8f0;
+        }
+
+        .turno-estado.recibido {
+            background: rgba(59, 130, 246, 0.25);
+            color: #60a5fa;
+        }
+
+        .turno-estado.llamado {
+            background: rgba(245, 158, 11, 0.25);
+            color: #fbbf24;
+        }
+
+        .turno-estado.en-atencion {
+            background: rgba(52, 211, 153, 0.25);
+            color: #34d399;
+        }
+
+        .turno-estado.atendido {
+            background: rgba(148, 163, 184, 0.35);
+            color: #cbd5f5;
+        }
+
         .turno-meta {
             display: flex;
             flex-wrap: wrap;
