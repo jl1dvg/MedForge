@@ -215,6 +215,11 @@ if (!function_exists('isTreeOpen')) {
                                         <i class="mdi mdi-security"></i>Roles
                                     </a>
                                 </li>
+                                <li class="<?= isActive('/settings') ?>">
+                                    <a href="<?= BASE_URL . 'settings'; ?>">
+                                        <i class="mdi mdi-cog-outline"></i>Ajustes
+                                    </a>
+                                </li>
                                 <li class="<?= isActive('/views/codes/index.php') ?>">
                                     <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
                                         <i class="mdi mdi-tag-text-outline"></i>Codificación
