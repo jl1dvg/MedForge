@@ -16,9 +16,9 @@ class SolicitudModel
 
     public function fetchSolicitudesConDetallesFiltrado(array $filtros = []): array
     {
-        $sql = "SELECT 
+        $sql = "SELECT
                 sp.id,
-                sp.hc_number, 
+                sp.hc_number,
                 sp.form_id,
                 CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name, 
                 sp.tipo,
@@ -80,6 +80,34 @@ class SolicitudModel
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function fetchTurneroSolicitudes(array $estados = []): array
+    {
+        $estados = array_values(array_filter(array_map('trim', $estados)));
+        if (empty($estados)) {
+            $estados = ['Listo para Agenda'];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($estados), '?'));
+
+        $sql = "SELECT
+                sp.id,
+                sp.hc_number,
+                sp.form_id,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                sp.estado,
+                sp.prioridad,
+                sp.created_at
+            FROM solicitud_procedimiento sp
+            INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+            WHERE sp.estado IN ($placeholders)
+            ORDER BY sp.created_at ASC, sp.id ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($estados);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
