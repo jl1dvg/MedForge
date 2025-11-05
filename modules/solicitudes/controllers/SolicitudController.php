@@ -5,6 +5,7 @@ namespace Controllers;
 use Core\BaseController;
 use Models\SolicitudModel;
 use Modules\Pacientes\Services\PacienteService;
+use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
 use Throwable;
 
@@ -12,12 +13,15 @@ class SolicitudController extends BaseController
 {
     private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
+    private SolicitudCrmService $crmService;
+    private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->solicitudModel = new SolicitudModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
+        $this->crmService = new SolicitudCrmService($pdo);
     }
 
     public function index(): void
@@ -96,6 +100,11 @@ class SolicitudController extends BaseController
                 'options' => [
                     'afiliaciones' => $afiliaciones,
                     'doctores' => $doctores,
+                    'crm' => [
+                        'responsables' => $this->solicitudModel->listarUsuariosAsignables(),
+                        'etapas' => SolicitudCrmService::getPipelineStages(),
+                        'fuentes' => $this->solicitudModel->obtenerFuentesCrm(),
+                    ],
                 ],
             ]);
         } catch (Throwable $e) {
@@ -104,10 +113,208 @@ class SolicitudController extends BaseController
                 'options' => [
                     'afiliaciones' => [],
                     'doctores' => [],
+                    'crm' => [
+                        'responsables' => [],
+                        'etapas' => SolicitudCrmService::getPipelineStages(),
+                        'fuentes' => [],
+                    ],
                 ],
                 'error' => 'No se pudo cargar la información de solicitudes',
             ], 500);
         }
+    }
+
+    public function crmResumen(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        try {
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo cargar el detalle CRM'], 500);
+        }
+    }
+
+    public function crmGuardarDetalles(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+
+        try {
+            $this->crmService->guardarDetalles($solicitudId, $payload);
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudieron guardar los cambios'], 500);
+        }
+    }
+
+    public function crmAgregarNota(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $nota = trim((string) ($payload['nota'] ?? ''));
+
+        if ($nota === '') {
+            $this->json(['success' => false, 'error' => 'La nota no puede estar vacía'], 422);
+            return;
+        }
+
+        try {
+            $this->crmService->registrarNota($solicitudId, $nota, $this->getCurrentUserId());
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo registrar la nota'], 500);
+        }
+    }
+
+    public function crmGuardarTarea(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+
+        try {
+            $this->crmService->registrarTarea($solicitudId, $payload, $this->getCurrentUserId());
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'error' => $e->getMessage() ?: 'No se pudo crear la tarea'], 500);
+        }
+    }
+
+    public function crmActualizarTarea(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
+        $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
+
+        if ($tareaId <= 0 || $estado === '') {
+            $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
+            return;
+        }
+
+        try {
+            $this->crmService->actualizarEstadoTarea($solicitudId, $tareaId, $estado);
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo actualizar la tarea'], 500);
+        }
+    }
+
+    public function crmSubirAdjunto(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        if (!isset($_FILES['archivo']) || !is_array($_FILES['archivo'])) {
+            $this->json(['success' => false, 'error' => 'No se recibió el archivo'], 422);
+            return;
+        }
+
+        $archivo = $_FILES['archivo'];
+        if ((int) ($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
+            $this->json(['success' => false, 'error' => 'El archivo es inválido'], 422);
+            return;
+        }
+
+        $descripcion = isset($_POST['descripcion']) ? trim((string) $_POST['descripcion']) : null;
+        $nombreOriginal = (string) ($archivo['name'] ?? 'adjunto');
+        $mimeType = isset($archivo['type']) ? (string) $archivo['type'] : null;
+        $tamano = isset($archivo['size']) ? (int) $archivo['size'] : null;
+
+        $carpetaBase = rtrim(PUBLIC_PATH . '/uploads/solicitudes/' . $solicitudId, '/');
+        if (!is_dir($carpetaBase) && !mkdir($carpetaBase, 0775, true) && !is_dir($carpetaBase)) {
+            $this->json(['success' => false, 'error' => 'No se pudo preparar la carpeta de adjuntos'], 500);
+            return;
+        }
+
+        $nombreLimpio = preg_replace('/[^A-Za-z0-9_\.-]+/', '_', $nombreOriginal);
+        $nombreLimpio = trim($nombreLimpio, '_');
+        if ($nombreLimpio === '') {
+            $nombreLimpio = 'adjunto';
+        }
+
+        $destinoNombre = uniqid('crm_', true) . '_' . $nombreLimpio;
+        $destinoRuta = $carpetaBase . '/' . $destinoNombre;
+
+        if (!move_uploaded_file($archivo['tmp_name'], $destinoRuta)) {
+            $this->json(['success' => false, 'error' => 'No se pudo guardar el archivo'], 500);
+            return;
+        }
+
+        $rutaRelativa = 'uploads/solicitudes/' . $solicitudId . '/' . $destinoNombre;
+
+        try {
+            $this->crmService->registrarAdjunto(
+                $solicitudId,
+                $nombreOriginal,
+                $rutaRelativa,
+                $mimeType,
+                $tamano,
+                $this->getCurrentUserId(),
+                $descripcion !== '' ? $descripcion : null
+            );
+
+            $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $this->json(['success' => true, 'data' => $resumen]);
+        } catch (\Throwable $e) {
+            @unlink($destinoRuta);
+            $this->json(['success' => false, 'error' => 'No se pudo registrar el adjunto'], 500);
+        }
+    }
+
+    private function getRequestBody(): array
+    {
+        if ($this->bodyCache !== null) {
+            return $this->bodyCache;
+        }
+
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        if (stripos($contentType, 'application/json') !== false) {
+            $decoded = json_decode(file_get_contents('php://input'), true);
+            $this->bodyCache = is_array($decoded) ? $decoded : [];
+            return $this->bodyCache;
+        }
+
+        if (!empty($_POST)) {
+            $this->bodyCache = $_POST;
+            return $this->bodyCache;
+        }
+
+        $decoded = json_decode(file_get_contents('php://input'), true);
+        $this->bodyCache = is_array($decoded) ? $decoded : [];
+
+        return $this->bodyCache;
+    }
+
+    private function getCurrentUserId(): ?int
+    {
+        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     }
 
     public function actualizarEstado(): void

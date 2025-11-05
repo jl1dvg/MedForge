@@ -1,5 +1,6 @@
 import { poblarAfiliacionesUnicas, poblarDoctoresUnicos } from './kanban/filtros.js';
 import { initKanban } from './kanban/index.js';
+import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -39,6 +40,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     poblarDoctoresUnicos(options.doctores);
                 } else {
                     poblarDoctoresUnicos(window.__solicitudesKanban);
+                }
+
+                if (options.crm) {
+                    setCrmOptions(options.crm);
+                } else {
+                    setCrmOptions({});
                 }
 
                 initKanban(window.__solicitudesKanban);

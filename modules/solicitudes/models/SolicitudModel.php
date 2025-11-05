@@ -20,9 +20,10 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
-                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name, 
+                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name,
                 sp.tipo,
                 pd.afiliacion,
+                pd.celular AS paciente_celular,
                 sp.procedimiento,
                 sp.doctor,
                 sp.estado,
@@ -36,13 +37,44 @@ class SolicitudModel
                 sp.created_at,
                 pd.fecha_caducidad,
                 cd.diagnosticos,
-                sp.turno
+                sp.turno,
+                detalles.pipeline_stage AS crm_pipeline_stage,
+                detalles.fuente AS crm_fuente,
+                detalles.contacto_email AS crm_contacto_email,
+                detalles.contacto_telefono AS crm_contacto_telefono,
+                detalles.responsable_id AS crm_responsable_id,
+                responsable.nombre AS crm_responsable_nombre,
+                COALESCE(notas.total_notas, 0) AS crm_total_notas,
+                COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
+                COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
+                COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
+                tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
-            WHERE sp.procedimiento IS NOT NULL 
-              AND TRIM(sp.procedimiento) != '' 
-              AND sp.procedimiento != 'SELECCIONE' 
+            LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
+            LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+            LEFT JOIN (
+                SELECT solicitud_id, COUNT(*) AS total_notas
+                FROM solicitud_crm_notas
+                GROUP BY solicitud_id
+            ) notas ON notas.solicitud_id = sp.id
+            LEFT JOIN (
+                SELECT solicitud_id, COUNT(*) AS total_adjuntos
+                FROM solicitud_crm_adjuntos
+                GROUP BY solicitud_id
+            ) adjuntos ON adjuntos.solicitud_id = sp.id
+            LEFT JOIN (
+                SELECT solicitud_id,
+                       COUNT(*) AS tareas_total,
+                       SUM(CASE WHEN estado IN ('pendiente','en_progreso') THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN estado IN ('pendiente','en_progreso') THEN due_date END) AS proximo_vencimiento
+                FROM solicitud_crm_tareas
+                GROUP BY solicitud_id
+            ) tareas ON tareas.solicitud_id = sp.id
+            WHERE sp.procedimiento IS NOT NULL
+              AND TRIM(sp.procedimiento) != ''
+              AND sp.procedimiento != 'SELECCIONE'
               AND sp.doctor != 'SELECCIONE'";
 
 
@@ -319,5 +351,41 @@ class SolicitudModel
         }
 
         return $siguiente;
+    }
+
+    public function listarUsuariosAsignables(): array
+    {
+        $stmt = $this->db->query('SELECT id, nombre, email FROM users ORDER BY nombre');
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function obtenerFuentesCrm(): array
+    {
+        $fuentes = [];
+
+        $stmt = $this->db->query("SELECT DISTINCT fuente FROM solicitud_crm_detalles WHERE fuente IS NOT NULL AND fuente <> ''");
+        if ($stmt) {
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
+                $fuente = trim((string) $fuente);
+                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
+                    $fuentes[] = $fuente;
+                }
+            }
+        }
+
+        $stmtLeads = $this->db->query("SELECT DISTINCT source FROM crm_leads WHERE source IS NOT NULL AND source <> ''");
+        if ($stmtLeads) {
+            foreach ($stmtLeads->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
+                $fuente = trim((string) $fuente);
+                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
+                    $fuentes[] = $fuente;
+                }
+            }
+        }
+
+        sort($fuentes, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $fuentes;
     }
 }
