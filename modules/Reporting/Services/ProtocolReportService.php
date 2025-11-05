@@ -35,11 +35,12 @@ class ProtocolReportService
     private ReportController $reportController;
 
     public function __construct(
-        PDO $db,
-        ReportController $reportController,
-        ?ProtocoloModel $protocoloModel = null,
+        PDO                  $db,
+        ReportController     $reportController,
+        ?ProtocoloModel      $protocoloModel = null,
         ?SolicitudController $solicitudController = null
-    ) {
+    )
+    {
         $this->db = $db;
         $this->reportController = $reportController;
         $this->protocoloModel = $protocoloModel ?? new ProtocoloModel($db);
@@ -74,7 +75,7 @@ class ProtocolReportService
         $datos['edadPaciente'] = $datos['edad'];
 
         $datos['nombre_procedimiento_proyectado'] = $this->protocoloModel->obtenerNombreProcedimientoProyectado(
-            (string) ($datos['procedimiento_proyectado'] ?? '')
+            (string)($datos['procedimiento_proyectado'] ?? '')
         );
         $datos['codigos_concatenados'] = $this->protocoloModel->obtenerCodigosProcedimientos($datos['procedimientos'] ?? []);
 
@@ -92,28 +93,49 @@ class ProtocolReportService
 
         $procedureId = $datos['procedimiento_id'] ?? null;
         if (empty($procedureId)) {
-            $procedureId = ProtocoloHelper::obtenerIdProcedimiento($this->db, (string) ($datos['membrete'] ?? ''));
+            $procedureId = ProtocoloHelper::obtenerIdProcedimiento($this->db, (string)($datos['membrete'] ?? ''));
         }
-        $procedureId = $procedureId !== null ? (string) $procedureId : '';
+        $procedureId = $procedureId !== null ? (string)$procedureId : '';
 
-        $datos['procedimiento_id'] = $procedureId;
-        $datos['id_procedimiento'] = $procedureId;
         $datos['imagen_link'] = $procedureId !== ''
             ? ProtocoloHelper::mostrarImagenProcedimiento($this->db, $procedureId)
             : null;
 
-        $diagnosesArray = json_decode((string) ($datos['diagnosticos'] ?? '[]'), true) ?? [];
+        $diagnosesArray = json_decode((string)($datos['diagnosticos'] ?? '[]'), true) ?? [];
         $datos['diagnostic1'] = $diagnosesArray[0]['idDiagnostico'] ?? '';
         $datos['diagnostic2'] = $diagnosesArray[1]['idDiagnostico'] ?? '';
         $datos['diagnostic3'] = $diagnosesArray[2]['idDiagnostico'] ?? '';
 
-        $datos['realizedProcedure'] = (string) ($datos['membrete'] ?? '');
-        $datos['codes_concatenados'] = (string) ($datos['codigos_concatenados'] ?? '');
-        $datos['mainSurgeon'] = (string) ($datos['cirujano_1'] ?? '');
-        $datos['assistantSurgeon1'] = (string) ($datos['cirujano_2'] ?? '');
-        $datos['ayudante'] = (string) ($datos['primer_ayudante'] ?? '');
+        $datos['realizedProcedure'] = (string)($datos['membrete'] ?? '');
+        $datos['codes_concatenados'] = (string)($datos['codigos_concatenados'] ?? '');
+        $datos['mainSurgeon'] = (string)($datos['cirujano_1'] ?? '');
+        $datos['assistantSurgeon1'] = (string)($datos['cirujano_2'] ?? '');
+        $datos['ayudante'] = (string)($datos['primer_ayudante'] ?? '');
 
-        $datos['evolucion005'] = $this->protocoloModel->obtenerEvolucion005($procedureId);
+        $evo = $this->protocoloModel->obtenerEvolucion005($procedureId);
+
+        $signos = ProtocoloHelper::obtenerSignosVitalesYEdad(
+            $datos['edadPaciente'],
+            trim(implode(', ', $datos['diagnosticos_previos'] ?? [])),
+            $datos['realizedProcedure']
+        );
+
+        $datos['evolucion005'] = [
+            'pre_evolucion' => !empty($evo['pre_evolucion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['pre_evolucion'], 70, $signos) : [],
+            'pre_indicacion' => !empty($evo['pre_indicacion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['pre_indicacion'], 80, $signos) : [],
+            'post_evolucion' => !empty($evo['post_evolucion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['post_evolucion'], 70, $signos) : [],
+            'post_indicacion' => !empty($evo['post_indicacion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['post_indicacion'], 80, $signos) : [],
+            'alta_evolucion' => !empty($evo['alta_evolucion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['alta_evolucion'], 70, $signos) : [],
+            'alta_indicacion' => !empty($evo['alta_indicacion']) ? ProtocoloHelper::procesarEvolucionConVariables($evo['alta_indicacion'], 80, $signos) : [],
+        ];
+
+        // Variables planas para la vista 005.php
+        $datos['preEvolucion'] = $datos['evolucion005']['pre_evolucion'];
+        $datos['preIndicacion'] = $datos['evolucion005']['pre_indicacion'];
+        $datos['postEvolucion'] = $datos['evolucion005']['post_evolucion'];
+        $datos['postIndicacion'] = $datos['evolucion005']['post_indicacion'];
+        $datos['altaEvolucion'] = $datos['evolucion005']['alta_evolucion'];
+        $datos['altaIndicacion'] = $datos['evolucion005']['alta_indicacion'];
 
         [$horaInicioModificada, $horaFinModificada] = $this->ajustarHoras(
             $datos['hora_inicio'] ?? null,
@@ -131,8 +153,8 @@ class ProtocolReportService
             $medicamentosArray,
             $horaInicioModificada,
             $datos['mainSurgeon'],
-            (string) ($datos['anestesiologo'] ?? ''),
-            (string) ($datos['ayudante_anestesia'] ?? '')
+            (string)($datos['anestesiologo'] ?? ''),
+            (string)($datos['ayudante_anestesia'] ?? '')
         );
 
         $datos['insumos'] = (is_string($datos['insumos'] ?? null) && $datos['insumos'] !== '')
@@ -295,8 +317,8 @@ class ProtocolReportService
         $resultado = [];
 
         foreach ($lista as $diagnostico) {
-            $cie = strtoupper(trim((string) ($diagnostico['cie10'] ?? '')));
-            $descripcion = strtoupper(trim((string) ($diagnostico['descripcion'] ?? '')));
+            $cie = strtoupper(trim((string)($diagnostico['cie10'] ?? '')));
+            $descripcion = strtoupper(trim((string)($diagnostico['descripcion'] ?? '')));
             $ciePad = str_pad($cie, 4, ' ', STR_PAD_RIGHT);
             $resultado[] = $ciePad . ' - ' . $descripcion;
         }
