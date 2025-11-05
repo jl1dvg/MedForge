@@ -3,6 +3,7 @@
 namespace Modules\Reporting\Controllers;
 
 use Modules\Reporting\Services\ReportService;
+use Modules\Reporting\Support\RenderContext;
 use PDO;
 
 class ReportController
@@ -47,13 +48,21 @@ class ReportController
         ], self::JSON_FLAGS);
     }
 
-    public function render(string $slug, array $data = []): string
+    public function render(string $slug, array $data = [], bool $asFragment = false): string
     {
-        return $this->service->render($slug, $data);
+        if (!$asFragment) {
+            return $this->service->render($slug, $data);
+        }
+
+        return RenderContext::withFragment(fn () => $this->service->render($slug, $data));
     }
 
-    public function renderIfExists(string $slug, array $data = []): ?string
+    public function renderIfExists(string $slug, array $data = [], bool $asFragment = false): ?string
     {
-        return $this->service->renderIfExists($slug, $data);
+        if (!$asFragment) {
+            return $this->service->renderIfExists($slug, $data);
+        }
+
+        return RenderContext::withFragment(fn () => $this->service->renderIfExists($slug, $data));
     }
 }

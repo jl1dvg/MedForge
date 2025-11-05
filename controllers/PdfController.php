@@ -195,7 +195,7 @@ class PdfController
             if ($paginaSolicitada) {
                 $slugPagina = pathinfo($paginaSolicitada, PATHINFO_FILENAME);
                 $orientation = ($slugPagina === 'transanestesico') ? 'L' : 'P';
-                $html = $this->renderReportSegment($paginaSolicitada, $datos);
+                $html = $this->renderReportSegment($paginaSolicitada, $datos, false);
 
                 if ($html === null) {
                     http_response_code(404);
@@ -290,11 +290,11 @@ class PdfController
             dirname(__DIR__) . '/modules/Reporting/Templates/assets/pdf.css');
     }
 
-    private function renderReportSegment(string $identifier, array $data): ?string
+    private function renderReportSegment(string $identifier, array $data, bool $asFragment = true): ?string
     {
         $slug = pathinfo($identifier, PATHINFO_FILENAME);
 
-        return $this->reportController->renderIfExists($slug, $data);
+        return $this->reportController->renderIfExists($slug, $data, $asFragment);
     }
 
 }

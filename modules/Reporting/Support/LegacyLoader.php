@@ -135,6 +135,10 @@ if (!function_exists('reporting_bootstrap_legacy')) {
             reporting_require_module_file('Services/ReportService.php');
         }
 
+        if (!class_exists(\Modules\Reporting\Support\RenderContext::class, false)) {
+            reporting_require_module_file('Support/RenderContext.php');
+        }
+
         if (!class_exists(\Modules\Reporting\Controllers\ReportController::class, false)) {
             reporting_require_module_file('Controllers/ReportController.php');
         }
