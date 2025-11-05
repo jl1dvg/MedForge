@@ -64,10 +64,18 @@ $(document).ready(function () {
                     .catch(error => {
                         console.error('Error al actualizar los datos:', error);
                         const message = error.message || 'Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.';
-                        swal("Error", message, "error");
+                        Swal.fire({
+                            title: 'Error',
+                            text: message,
+                            icon: 'error'
+                        });
                     });
             } else {
-                swal("Error", "Por favor, completa los campos obligatorios.", "error");
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Por favor, completa los campos obligatorios.',
+                    icon: 'error'
+                });
             }
         }
     });

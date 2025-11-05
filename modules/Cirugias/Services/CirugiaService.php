@@ -149,6 +149,25 @@ class CirugiaService
         return $result ? new Cirugia($result) : null;
     }
 
+    public function obtenerProtocoloIdPorFormulario(string $formId, ?string $hcNumber = null): ?int
+    {
+        $sql = 'SELECT id FROM protocolo_data WHERE form_id = :form_id';
+        $params = [':form_id' => $formId];
+
+        if ($hcNumber !== null && $hcNumber !== '') {
+            $sql .= ' AND hc_number = :hc_number';
+            $params[':hc_number'] = $hcNumber;
+        }
+
+        $sql .= ' LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $id = $stmt->fetchColumn();
+
+        return $id !== false ? (int) $id : null;
+    }
+
     public function obtenerInsumosDisponibles(string $afiliacion): array
     {
         $afiliacion = strtolower($afiliacion);
