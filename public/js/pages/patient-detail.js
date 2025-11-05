@@ -114,7 +114,7 @@
             }
 
             var pagina = paginas[index];
-            var url = '/public/ajax/generate_protocolo_pdf.php?form_id=' + encodeURIComponent(formId)
+            var url = '/reports/protocolo/pdf?form_id=' + encodeURIComponent(formId)
                 + '&hc_number=' + encodeURIComponent(hcNumber)
                 + '&modo=separado&pagina=' + encodeURIComponent(pagina);
 

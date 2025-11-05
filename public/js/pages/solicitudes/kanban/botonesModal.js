@@ -51,7 +51,7 @@ export function inicializarBotonesModal() {
             const hcNumber = tarjeta.dataset.hc;
 
             if (formId && hcNumber) {
-                const url = `/public/ajax/generate_cobertura.php?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
+                const url = `/reports/cobertura/pdf?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
                 window.open(url, '_blank');
             }
 
