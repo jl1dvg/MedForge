@@ -1,17 +1,13 @@
 <?php
 
+require_once __DIR__ . '/Support/LegacyLoader.php';
+
 use Core\Router;
 use Controllers\PdfController;
 use Modules\Reporting\Controllers\ReportController;
 use Modules\Reporting\Services\ReportService;
 
-if (!class_exists(ReportService::class, false)) {
-    require_once __DIR__ . '/Services/ReportService.php';
-}
-
-if (!class_exists(ReportController::class, false)) {
-    require_once __DIR__ . '/Controllers/ReportController.php';
-}
+reporting_bootstrap_legacy();
 
 return static function (Router $router, \PDO $pdo): void {
     $router->get('/reports', static function (\PDO $pdo): void {
