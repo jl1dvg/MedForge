@@ -57,6 +57,68 @@ class PdfGenerator
         $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY); // ✅ Esta es la línea corregida
         $mpdf->Output($finalName, $modoSalida);
     }
+
+    /**
+     * Genera un PDF a partir de un slug del módulo Reporting, soportando plantillas PDF.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $options
+     */
+    public static function generarReporte(string $slug, array $data = [], array $options = []): void
+    {
+        $service = new ReportService();
+
+        if ($service->hasPdfTemplate($slug)) {
+            $document = $service->renderDocument($slug, $data, [
+                'filename' => $options['finalName'] ?? $slug . '.pdf',
+                'destination' => 'S',
+                'font_family' => $options['font_family'] ?? null,
+                'font_size' => $options['font_size'] ?? null,
+                'line_height' => $options['line_height'] ?? null,
+                'text_color' => $options['text_color'] ?? null,
+                'overrides' => $options['overrides'] ?? null,
+            ]);
+
+            $filename = $options['finalName'] ?? $document['filename'];
+            $modoSalida = $options['modoSalida'] ?? 'I';
+            $filePath = $options['filePath'] ?? null;
+
+            self::emitirPdfBinario($document['content'], $filename, $modoSalida, $filePath);
+            return;
+        }
+
+        $html = $service->render($slug, $data);
+
+        self::generarDesdeHtml(
+            $html,
+            $options['finalName'] ?? ($slug . '.pdf'),
+            $options['css'] ?? null,
+            $options['modoSalida'] ?? 'I',
+            $options['orientation'] ?? 'P'
+        );
+    }
+
+    private static function emitirPdfBinario(string $contenido, string $nombreArchivo, string $modoSalida, ?string $filePath = null): void
+    {
+        $modo = strtoupper($modoSalida);
+
+        if ($modo === 'F') {
+            $destino = $filePath ?? $nombreArchivo;
+            file_put_contents($destino, $contenido);
+            return;
+        }
+
+        if ($modo === 'S') {
+            echo $contenido;
+            return;
+        }
+
+        $disposition = $modo === 'D' ? 'attachment' : 'inline';
+        header('Content-Type: application/pdf');
+        header(sprintf('Content-Disposition: %s; filename="%s"', $disposition, $nombreArchivo));
+        header('Content-Length: ' . strlen($contenido));
+        echo $contenido;
+    }
 }
 
 \class_alias(__NAMESPACE__ . '\\PdfGenerator', 'PdfGenerator');

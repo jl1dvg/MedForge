@@ -31,20 +31,34 @@ class ReportController
     {
         $template = $this->service->resolveTemplate($slug);
 
-        if ($template === null) {
-            http_response_code(404);
+        if ($template !== null) {
             header('Content-Type: application/json');
             echo json_encode([
-                'error' => 'Reporte no encontrado',
                 'slug' => $slug,
+                'template' => $template,
+                'type' => 'html',
             ], self::JSON_FLAGS);
             return;
         }
 
+        $definition = $this->service->getPdfTemplate($slug);
+
+        if ($definition !== null) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'slug' => $slug,
+                'template' => $definition->getTemplatePath(),
+                'type' => 'pdf-template',
+                'fields' => array_keys($definition->getFieldMap()),
+            ], self::JSON_FLAGS);
+            return;
+        }
+
+        http_response_code(404);
         header('Content-Type: application/json');
         echo json_encode([
+            'error' => 'Reporte no encontrado',
             'slug' => $slug,
-            'template' => $template,
         ], self::JSON_FLAGS);
     }
 
@@ -64,5 +78,24 @@ class ReportController
         }
 
         return RenderContext::withFragment(fn () => $this->service->renderIfExists($slug, $data));
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $options
+     * @return array<string, mixed>
+     */
+    public function renderDocument(string $slug, array $data = [], array $options = []): array
+    {
+        return $this->service->renderDocument($slug, $data, $options);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $options
+     */
+    public function renderPdf(string $slug, array $data = [], array $options = []): string
+    {
+        return $this->service->renderPdf($slug, $data, $options);
     }
 }
