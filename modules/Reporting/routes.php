@@ -5,7 +5,15 @@ use Controllers\PdfController;
 use Modules\Reporting\Controllers\ReportController;
 use Modules\Reporting\Services\ReportService;
 
-return static function (Router $router): void {
+if (!class_exists(ReportService::class, false)) {
+    require_once __DIR__ . '/Services/ReportService.php';
+}
+
+if (!class_exists(ReportController::class, false)) {
+    require_once __DIR__ . '/Controllers/ReportController.php';
+}
+
+return static function (Router $router, \PDO $pdo): void {
     $router->get('/reports', static function (\PDO $pdo): void {
         $controller = new ReportController($pdo, new ReportService());
         $controller->index();
