@@ -1,6 +1,10 @@
 <?php
+
+namespace Helpers;
+
 require_once __DIR__ . '/../bootstrap.php';
 
+use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use Modules\Reporting\Services\ReportService;
 
@@ -13,9 +17,14 @@ class PdfGenerator
         return $service->render($archivo);
     }
 
-    public static function generarDesdeHtml(string $html, string $finalName = 'documento.pdf', string $cssPath = null, string $modoSalida = 'I', string $orientation = 'P')
-    {
-        $mpdf = new \Mpdf\Mpdf([
+    public static function generarDesdeHtml(
+        string $html,
+        string $finalName = 'documento.pdf',
+        ?string $cssPath = null,
+        string $modoSalida = 'I',
+        string $orientation = 'P'
+    ): void {
+        $mpdf = new Mpdf([
             'default_font_size' => 8,
             'default_font' => 'dejavusans',
             'margin_left' => 5,
@@ -42,10 +51,12 @@ class PdfGenerator
                 die('El CSS existe, pero está vacío o no se pudo leer.');
             }
 
-            $mpdf->WriteHTML($stylesheet, \Mpdf\HTMLParserMode::HEADER_CSS); // ✅ Aquí sí cargamos el CSS
+            $mpdf->WriteHTML($stylesheet, HTMLParserMode::HEADER_CSS); // ✅ Aquí sí cargamos el CSS
         }
 
-        $mpdf->WriteHTML($html, \Mpdf\HTMLParserMode::HTML_BODY); // ✅ Esta es la línea corregida
+        $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY); // ✅ Esta es la línea corregida
         $mpdf->Output($finalName, $modoSalida);
     }
 }
+
+\class_alias(__NAMESPACE__ . '\\PdfGenerator', 'PdfGenerator');
