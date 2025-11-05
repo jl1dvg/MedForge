@@ -32,6 +32,18 @@ class SolicitudController extends BaseController
         );
     }
 
+    public function turnero(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/turnero.php',
+            [
+                'pageTitle' => 'Turnero Coordinación Quirúrgica',
+            ]
+        );
+    }
+
     public function kanbanData(): void
     {
         if (!$this->isAuthenticated()) {
@@ -119,11 +131,150 @@ class SolicitudController extends BaseController
         }
 
         try {
-            $this->solicitudModel->actualizarEstado($id, $estado);
-            $this->json(['success' => true]);
+            $resultado = $this->solicitudModel->actualizarEstado($id, $estado);
+            $this->json([
+                'success' => true,
+                'estado' => $resultado['estado'] ?? $estado,
+                'turno' => $resultado['turno'] ?? null,
+            ]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
+    }
+
+    public function turneroData(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['data' => [], 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $estados = [];
+        if (!empty($_GET['estado'])) {
+            $estados = array_values(array_filter(array_map('trim', explode(',', (string) $_GET['estado']))));
+        }
+
+        try {
+            $solicitudes = $this->solicitudModel->fetchTurneroSolicitudes($estados);
+
+            foreach ($solicitudes as &$solicitud) {
+                $nombreCompleto = trim((string) ($solicitud['full_name'] ?? ''));
+                $solicitud['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
+                $solicitud['turno'] = isset($solicitud['turno']) ? (int) $solicitud['turno'] : null;
+                $estadoNormalizado = $this->normalizarEstadoTurnero((string) ($solicitud['estado'] ?? ''));
+                $solicitud['estado'] = $estadoNormalizado ?? ($solicitud['estado'] ?? null);
+
+                $solicitud['hora'] = null;
+                $solicitud['fecha'] = null;
+
+                if (!empty($solicitud['created_at'])) {
+                    $timestamp = strtotime((string) $solicitud['created_at']);
+                    if ($timestamp !== false) {
+                        $solicitud['hora'] = date('H:i', $timestamp);
+                        $solicitud['fecha'] = date('d/m/Y', $timestamp);
+                    }
+                }
+            }
+            unset($solicitud);
+
+            $this->json(['data' => $solicitudes]);
+        } catch (Throwable $e) {
+            $this->json(['data' => [], 'error' => 'No se pudo cargar el turnero'], 500);
+        }
+    }
+
+    public function turneroLlamar(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            $payload = $_POST;
+        }
+
+        $id = isset($payload['id']) ? (int) $payload['id'] : null;
+        $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
+        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
+
+        if ($estadoNormalizado === null) {
+            $this->json(['success' => false, 'error' => 'Estado no permitido para el turnero'], 422);
+            return;
+        }
+
+        if ((!$id || $id <= 0) && (!$turno || $turno <= 0)) {
+            $this->json(['success' => false, 'error' => 'Debe especificar un ID o número de turno'], 422);
+            return;
+        }
+
+        try {
+            $registro = $this->solicitudModel->llamarTurno($id, $turno, $estadoNormalizado);
+
+            if (!$registro) {
+                $this->json(['success' => false, 'error' => 'No se encontró la solicitud indicada'], 404);
+                return;
+            }
+
+            $nombreCompleto = trim((string) ($registro['full_name'] ?? ''));
+            $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
+            $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
+
+            $this->json([
+                'success' => true,
+                'data' => $registro,
+            ]);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo llamar el turno solicitado'], 500);
+        }
+    }
+
+    public function turneroLlamarSiguiente(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        try {
+            $registro = $this->solicitudModel->llamarSiguiente();
+
+            if (!$registro) {
+                $this->json(['success' => false, 'error' => 'No hay turnos pendientes en la cola']);
+                return;
+            }
+
+            $nombreCompleto = trim((string) ($registro['full_name'] ?? ''));
+            $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
+            $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
+
+            $this->json([
+                'success' => true,
+                'data' => $registro,
+            ]);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo llamar al siguiente turno'], 500);
+        }
+    }
+
+    private function normalizarEstadoTurnero(string $estado): ?string
+    {
+        $mapa = [
+            'recibido' => 'Recibido',
+            'llamado' => 'Llamado',
+            'en atencion' => 'En atención',
+            'en atención' => 'En atención',
+            'atendido' => 'Atendido',
+        ];
+
+        $estadoLimpio = trim($estado);
+        $clave = function_exists('mb_strtolower')
+            ? mb_strtolower($estadoLimpio, 'UTF-8')
+            : strtolower($estadoLimpio);
+
+        return $mapa[$clave] ?? null;
     }
 
     public function prefactura(): void
