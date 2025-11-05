@@ -23,16 +23,46 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const dias = fecha ? Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24)) : 0;
         const semaforo = dias <= 3 ? '🟢 Normal' : dias <= 7 ? '🟡 Pendiente' : '🔴 Urgente';
 
+        const pipelineStage = solicitud.crm_pipeline_stage || 'Recibido';
+        const responsable = solicitud.crm_responsable_nombre || 'Sin responsable asignado';
+        const contactoTelefono = solicitud.crm_contacto_telefono || solicitud.paciente_celular || 'Sin teléfono';
+        const contactoCorreo = solicitud.crm_contacto_email || 'Sin correo';
+        const fuente = solicitud.crm_fuente || '';
+        const totalNotas = Number.parseInt(solicitud.crm_total_notas ?? 0, 10);
+        const totalAdjuntos = Number.parseInt(solicitud.crm_total_adjuntos ?? 0, 10);
+        const tareasPendientes = Number.parseInt(solicitud.crm_tareas_pendientes ?? 0, 10);
+        const tareasTotal = Number.parseInt(solicitud.crm_tareas_total ?? 0, 10);
+        const proximoVencimiento = solicitud.crm_proximo_vencimiento
+            ? moment(solicitud.crm_proximo_vencimiento).format('DD-MM-YYYY')
+            : 'Sin vencimiento';
+
         tarjeta.innerHTML = `
-            <strong>👤 ${solicitud.full_name ?? 'Paciente sin nombre'}</strong><br>
-            <small>🆔 ${solicitud.hc_number ?? '—'}</small><br>
-            <small>📅 ${fechaFormateada} <span class="badge">${semaforo}</span></small><br>
-            <small>🧑‍⚕️ ${solicitud.doctor || 'Sin doctor'}</small><br>
-            <small>🏥 ${solicitud.afiliacion || 'Sin afiliación'}</small><br>
-            <small>🔍 <span class="text-primary fw-bold">${solicitud.procedimiento || 'Sin procedimiento'}</span></small><br>
-            <small>👁️ ${solicitud.ojo || '—'}</small><br>
-            <small>💬 ${(solicitud.observacion || 'Sin nota')}</small><br>
-            <small>⏱️ ${dias} día(s) en estado actual</small><br>
+            <div class="d-flex flex-column gap-1">
+                <strong>👤 ${solicitud.full_name ?? 'Paciente sin nombre'}</strong>
+                <small>🆔 ${solicitud.hc_number ?? '—'}</small>
+                <small>📅 ${fechaFormateada} <span class="badge">${semaforo}</span></small>
+                <small>🧑‍⚕️ ${solicitud.doctor || 'Sin doctor'}</small>
+                <small>🏥 ${solicitud.afiliacion || 'Sin afiliación'}</small>
+                <small>🔍 <span class="text-primary fw-bold">${solicitud.procedimiento || 'Sin procedimiento'}</span></small>
+                <small>👁️ ${solicitud.ojo || '—'}</small>
+                <small>💬 ${(solicitud.observacion || 'Sin nota')}</small>
+                <small>⏱️ ${dias} día(s) en estado actual</small>
+            </div>
+            <div class="kanban-card-crm mt-2">
+                <span class="crm-pill"><i class="mdi mdi-progress-check"></i>${pipelineStage}</span>
+                <div class="crm-meta">
+                    <span><i class="mdi mdi-account-tie-outline"></i>${responsable}</span>
+                    <span><i class="mdi mdi-phone"></i>${contactoTelefono}</span>
+                    <span><i class="mdi mdi-email-outline"></i>${contactoCorreo}</span>
+                    ${fuente ? `<span><i class="mdi mdi-source-branch"></i>${fuente}</span>` : ''}
+                </div>
+                <div class="crm-badges">
+                    <span class="badge"><i class="mdi mdi-note-text-outline"></i>${totalNotas}</span>
+                    <span class="badge"><i class="mdi mdi-paperclip"></i>${totalAdjuntos}</span>
+                    <span class="badge"><i class="mdi mdi-format-list-checks"></i>${tareasPendientes}/${tareasTotal}</span>
+                    <span class="badge"><i class="mdi mdi-calendar-clock"></i>${proximoVencimiento}</span>
+                </div>
+            </div>
         `;
 
         const turnoAsignado = formatTurno(solicitud.turno);
@@ -109,6 +139,14 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
         acciones.appendChild(botonLlamar);
         tarjeta.appendChild(acciones);
+
+        const crmButton = document.createElement('button');
+        crmButton.type = 'button';
+        crmButton.className = 'btn btn-sm btn-outline-secondary w-100 mt-2 btn-open-crm';
+        crmButton.innerHTML = '<i class="mdi mdi-account-box-outline"></i> Gestionar CRM';
+        crmButton.dataset.solicitudId = solicitud.id ?? '';
+        crmButton.dataset.pacienteNombre = solicitud.full_name ?? '';
+        tarjeta.appendChild(crmButton);
 
         const estadoId = 'kanban-' + (solicitud.estado || '')
             .normalize('NFD')

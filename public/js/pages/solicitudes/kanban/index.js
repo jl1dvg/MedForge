@@ -2,6 +2,7 @@ import { renderKanban } from './renderer.js';
 import { actualizarEstadoSolicitud } from './estado.js';
 import { inicializarModalDetalles } from './modalDetalles.js';
 import { inicializarBotonesModal } from './botonesModal.js';
+import { initCrmInteractions } from './crmPanel.js';
 
 const NORMALIZE = {
     estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
@@ -46,4 +47,5 @@ export function initKanban(data = []) {
 
     inicializarModalDetalles();
     inicializarBotonesModal();
+    initCrmInteractions();
 }
