@@ -7,7 +7,7 @@ use Models\ProtocoloModel;
 use Models\SolicitudModel;
 use Helpers\ProtocoloHelper;
 use Helpers\SolicitudHelper;
-use PdfGenerator;
+use Helpers\PdfGenerator;
 use Controllers\SolicitudController;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ReportService;

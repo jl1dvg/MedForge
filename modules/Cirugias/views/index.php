@@ -108,7 +108,7 @@ $scripts = array_merge($scripts ?? [], [
         const newStatus = isActive ? 0 : 1;
 
         if (!isActive) {
-            window.open(`/public/ajax/generate_protocolo_pdf.php?form_id=${form_id}&hc_number=${hc_number}`, '_blank');
+            window.open(`/reports/protocolo/pdf?form_id=${form_id}&hc_number=${hc_number}`, '_blank');
         }
 
         button.classList.toggle('active');
