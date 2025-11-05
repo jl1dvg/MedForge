@@ -15,6 +15,11 @@
                 </nav>
             </div>
         </div>
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <a class="btn btn-outline-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
+                <i class="mdi mdi-monitor"></i> Turnero (sala de espera)
+            </a>
+        </div>
     </div>
 </div>
 

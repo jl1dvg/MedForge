@@ -11,7 +11,10 @@ function agruparPorEstado(solicitudes) {
     const agrupadas = {};
 
     solicitudes.forEach(item => {
-        const estado = NORMALIZE.estado(item.estado);
+        let estado = NORMALIZE.estado(item.estado);
+        if (!estado || ['llamado', 'en-atencion', 'atendido'].includes(estado)) {
+            estado = 'recibido';
+        }
         if (!agrupadas[estado]) {
             agrupadas[estado] = [];
         }
