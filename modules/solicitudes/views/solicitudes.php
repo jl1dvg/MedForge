@@ -88,6 +88,28 @@
             transition: background-color 0.2s ease;
         }
 
+        .kanban-card-actions {
+            border-top: 1px solid rgba(148, 163, 184, 0.3);
+            padding-top: 0.75rem;
+        }
+
+        .kanban-card-actions .badge-estado {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-size: 0.75rem;
+        }
+
+        .kanban-card-actions .badge-turno {
+            background-color: rgba(56, 189, 248, 0.18);
+            color: #0c4a6e;
+            font-weight: 600;
+            font-size: 0.8rem;
+        }
+
+        .kanban-card-actions .llamar-turno-btn[aria-busy="true"] {
+            pointer-events: none;
+        }
+
         @media (max-width: 900px) {
             .kanban-column {
                 min-width: 160px;
@@ -130,6 +152,8 @@
         <?php
         $estados = [
             'Recibido' => 'recibido',
+            'Llamado' => 'llamado',
+            'En atención' => 'en-atencion',
             'Revisión Códigos' => 'revision-codigos',
             'Docs Completos' => 'docs-completos',
             'Aprobación Anestesia' => 'aprobacion-anestesia',
@@ -137,6 +161,8 @@
         ];
         $colores = [
             'recibido' => 'primary',
+            'llamado' => 'warning',
+            'en-atencion' => 'success',
             'revision-codigos' => 'info',
             'docs-completos' => 'success',
             'aprobacion-anestesia' => 'warning',

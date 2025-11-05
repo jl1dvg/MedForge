@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { llamarTurnoSolicitud, formatTurno } from './turnero.js';
 
 export function renderKanban(data, callbackEstadoActualizado) {
     document.querySelectorAll('.kanban-items').forEach(col => {
@@ -33,6 +34,81 @@ export function renderKanban(data, callbackEstadoActualizado) {
             <small>💬 ${(solicitud.observacion || 'Sin nota')}</small><br>
             <small>⏱️ ${dias} día(s) en estado actual</small><br>
         `;
+
+        const turnoAsignado = formatTurno(solicitud.turno);
+        const estadoActual = (solicitud.estado ?? '').toString();
+
+        const acciones = document.createElement('div');
+        acciones.className = 'kanban-card-actions d-flex align-items-center justify-content-between gap-2 flex-wrap mt-2';
+
+        const resumenEstado = document.createElement('span');
+        resumenEstado.className = 'badge badge-estado text-bg-light text-wrap';
+        resumenEstado.textContent = estadoActual !== '' ? estadoActual : 'Sin estado';
+        acciones.appendChild(resumenEstado);
+
+        const badgeTurno = document.createElement('span');
+        badgeTurno.className = 'badge badge-turno';
+        badgeTurno.textContent = turnoAsignado ? `Turno #${turnoAsignado}` : 'Sin turno asignado';
+        acciones.appendChild(badgeTurno);
+
+        const botonLlamar = document.createElement('button');
+        botonLlamar.type = 'button';
+        botonLlamar.className = 'btn btn-sm btn-outline-primary llamar-turno-btn';
+        botonLlamar.innerHTML = turnoAsignado ? '<i class="mdi mdi-phone-incoming"></i> Volver a llamar' : '<i class="mdi mdi-bell-ring-outline"></i> Generar turno';
+
+        botonLlamar.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (botonLlamar.disabled) {
+                return;
+            }
+
+            botonLlamar.disabled = true;
+            botonLlamar.setAttribute('aria-busy', 'true');
+            const textoOriginal = botonLlamar.innerHTML;
+            botonLlamar.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando';
+
+            llamarTurnoSolicitud({ id: solicitud.id })
+                .then(data => {
+                    const turno = formatTurno(data?.turno);
+                    const nombre = data?.full_name ?? solicitud.full_name ?? 'Paciente sin nombre';
+
+                    if (turno) {
+                        badgeTurno.textContent = `Turno #${turno}`;
+                    }
+
+                    if (data?.estado) {
+                        resumenEstado.textContent = data.estado;
+                    }
+
+                    showToast(`🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ''}`);
+
+                    if (Array.isArray(window.__solicitudesKanban)) {
+                        const item = window.__solicitudesKanban.find(s => String(s.id) === String(solicitud.id));
+                        if (item) {
+                            item.turno = data?.turno ?? item.turno;
+                            item.estado = data?.estado ?? item.estado;
+                        }
+                    }
+
+                    if (typeof window.aplicarFiltros === 'function') {
+                        window.aplicarFiltros();
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error al llamar el turno:', error);
+                    showToast(error?.message ?? 'No se pudo asignar el turno', false);
+                })
+                .finally(() => {
+                    botonLlamar.disabled = false;
+                    botonLlamar.removeAttribute('aria-busy');
+                    botonLlamar.innerHTML = textoOriginal;
+                });
+        });
+
+        acciones.appendChild(botonLlamar);
+        tarjeta.appendChild(acciones);
 
         const estadoId = 'kanban-' + (solicitud.estado || '')
             .normalize('NFD')
