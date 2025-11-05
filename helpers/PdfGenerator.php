@@ -20,7 +20,7 @@ class PdfGenerator
     public static function generarDesdeHtml(
         string $html,
         string $finalName = 'documento.pdf',
-        ?string $cssPath = null,
+        string $cssPath = null,
         string $modoSalida = 'I',
         string $orientation = 'P'
     ): void {

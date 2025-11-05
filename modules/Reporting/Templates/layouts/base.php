@@ -7,36 +7,7 @@
  * - string|null $bodyClass
  * - string|null $header
  * - string|null $content
- * - array<int, string>|null $stylesheets Additional absolute paths to CSS files.
  */
-
-$stylesheets = $stylesheets ?? [];
-$inlineStyles = [];
-
-$baseCssPath = __DIR__ . '/../assets/pdf.css';
-if (is_file($baseCssPath)) {
-    $baseCss = file_get_contents($baseCssPath);
-    if ($baseCss !== false && $baseCss !== '') {
-        $inlineStyles[] = $baseCss;
-    }
-}
-
-foreach ($stylesheets as $stylesheet) {
-    if (!is_string($stylesheet) || $stylesheet === '') {
-        continue;
-    }
-
-    if (!is_file($stylesheet)) {
-        continue;
-    }
-
-    $cssContent = file_get_contents($stylesheet);
-    if ($cssContent === false || $cssContent === '') {
-        continue;
-    }
-
-    $inlineStyles[] = $cssContent;
-}
 
 $title = $title ?? 'Reporte PDF';
 $bodyClassAttribute = isset($bodyClass) && $bodyClass !== ''
@@ -47,12 +18,8 @@ $bodyClassAttribute = isset($bodyClass) && $bodyClass !== ''
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title><?= htmlspecialchars((string) $title, ENT_QUOTES, 'UTF-8') ?></title>
-    <?php foreach ($inlineStyles as $style): ?>
-        <style>
-            <?= $style ?>
-        </style>
-    <?php endforeach; ?>
+    <!--<title><?= htmlspecialchars((string) $title, ENT_QUOTES, 'UTF-8') ?></title>
+     Los estilos se cargan en PdfGenerator::generarDesdeHtml() -->
 </head>
 <body<?= $bodyClassAttribute ?>>
 <?php if (!empty($header)): ?>
