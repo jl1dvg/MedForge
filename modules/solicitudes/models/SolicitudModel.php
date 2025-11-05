@@ -35,7 +35,8 @@ class SolicitudModel
                 sp.secuencia,
                 sp.created_at,
                 pd.fecha_caducidad,
-                cd.diagnosticos
+                cd.diagnosticos,
+                sp.turno
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
@@ -88,7 +89,7 @@ class SolicitudModel
     {
         $estados = array_values(array_filter(array_map('trim', $estados)));
         if (empty($estados)) {
-            $estados = ['Recibido', 'Llamado', 'En atención'];
+            $estados = ['Llamado', 'En atención'];
         }
 
         $placeholders = implode(', ', array_fill(0, count($estados), '?'));
