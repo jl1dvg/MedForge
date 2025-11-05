@@ -2,78 +2,19 @@
 
 namespace Controllers;
 
+require_once dirname(__DIR__) . '/modules/Reporting/Support/LegacyLoader.php';
+
 use PDO;
 use Models\ProtocoloModel;
 use Models\SolicitudModel;
 use Helpers\ProtocoloHelper;
 use Helpers\SolicitudHelper;
-use PdfGenerator;
+use Helpers\PdfGenerator;
 use Controllers\SolicitudController;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ReportService;
 
-// En entornos legacy aún se puede ejecutar este controlador directamente sin pasar por
-// bootstrap.php, por lo que el autocargador de Composer/PSR-4 no siempre está
-// disponible. Estos requires condicionales garantizan que las clases del módulo de
-// reportería se carguen incluso en esos contextos.
-if (!function_exists('reporting_modules_path')) {
-    /**
-     * Locate the absolute path to the modules directory, even when the
-     * controller is executed from legacy entrypoints located under /public.
-     */
-    function reporting_modules_path(): ?string
-    {
-        $candidates = [
-            __DIR__ . '/../modules',
-            dirname(__DIR__) . '/modules',
-            dirname(__DIR__, 2) . '/modules',
-            dirname(__DIR__, 3) . '/modules',
-        ];
-
-        foreach ($candidates as $candidate) {
-            if (!is_string($candidate) || $candidate === '') {
-                continue;
-            }
-
-            $real = realpath($candidate);
-            if ($real !== false && is_dir($real . '/Reporting')) {
-                return $real;
-            }
-        }
-
-        return null;
-    }
-}
-
-if (!function_exists('reporting_require_once')) {
-    /**
-     * Attempt to include a file from the resolved modules directory.
-     *
-     * @param string $relativePath Path relative to the modules directory.
-     */
-    function reporting_require_once(string $relativePath): void
-    {
-        $modulesPath = reporting_modules_path();
-        if ($modulesPath === null) {
-            return;
-        }
-
-        $candidate = $modulesPath . '/' . ltrim($relativePath, '/');
-        $path = realpath($candidate) ?: $candidate;
-
-        if (is_file($path)) {
-            require_once $path;
-        }
-    }
-}
-
-if (!class_exists(ReportService::class, false)) {
-    reporting_require_once('Reporting/Services/ReportService.php');
-}
-
-if (!class_exists(ReportingReportController::class, false)) {
-    reporting_require_once('Reporting/Controllers/ReportController.php');
-}
+reporting_bootstrap_legacy();
 
 class PdfController
 {
@@ -82,7 +23,6 @@ class PdfController
     private SolicitudModel $solicitudModel;
     private SolicitudController $solicitudController; // ✅ nueva propiedad
     private ReportingReportController $reportController;
-
 
     public function __construct(PDO $pdo)
     {

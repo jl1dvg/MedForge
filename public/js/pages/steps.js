@@ -57,7 +57,7 @@ $(document).ready(function () {
                                 if (resultSwal.isConfirmed && revisado) {
                                     const formId = form.querySelector('input[name="form_id"]').value;
                                     const hcNumber = form.querySelector('input[name="hc_number"]').value;
-                                    window.open('/public/ajax/generate_protocolo_pdf.php?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
+                                    window.open('/reports/protocolo/pdf?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
                                 }
                             });
                     })
