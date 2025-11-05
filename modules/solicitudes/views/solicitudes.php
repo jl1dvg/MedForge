@@ -15,9 +15,12 @@
                 </nav>
             </div>
         </div>
-        <div class="ms-auto d-flex align-items-center">
-            <a class="btn btn-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
-                <i class="mdi mdi-monitor"></i> Abrir turnero
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <a class="btn btn-outline-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
+                <i class="mdi mdi-monitor"></i> Turnero (sala de espera)
+            </a>
+            <a class="btn btn-primary" href="/solicitudes/turnero-operador" target="_blank" rel="noopener">
+                <i class="mdi mdi-account-voice"></i> Panel de coordinación
             </a>
         </div>
     </div>

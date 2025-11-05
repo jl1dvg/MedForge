@@ -39,7 +39,19 @@ class SolicitudController extends BaseController
         $this->render(
             __DIR__ . '/../views/turnero.php',
             [
-                'pageTitle' => 'Turnero Coordinación Quirúrgica',
+                'pageTitle' => 'Turnero · Sala de espera',
+            ]
+        );
+    }
+
+    public function turneroOperador(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/turnero_operador.php',
+            [
+                'pageTitle' => 'Turnero · Coordinación quirúrgica',
             ]
         );
     }

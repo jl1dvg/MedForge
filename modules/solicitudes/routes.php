@@ -12,6 +12,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->turnero();
     });
 
+    $router->get('/solicitudes/turnero-operador', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->turneroOperador();
+    });
+
     $router->post('/solicitudes/kanban-data', function (\PDO $pdo) {
         (new SolicitudController($pdo))->kanbanData();
     });
