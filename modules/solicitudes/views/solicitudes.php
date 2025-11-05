@@ -152,6 +152,16 @@
             gap: 0.3rem;
         }
 
+        #crmOffcanvas {
+            --bs-offcanvas-width: min(100vw, 480px);
+            --bs-offcanvas-zindex: 2050;
+        }
+
+        .crm-offcanvas-backdrop {
+            z-index: 2040 !important;
+            background-color: rgba(15, 23, 42, 0.45);
+        }
+
         #crmCamposContainer .crm-campo {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

@@ -370,7 +370,9 @@ function openCrmPanel(solicitudId, nombrePaciente) {
     }
 
     if (!offcanvasInstance && typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
-        offcanvasInstance = new bootstrap.Offcanvas(element);
+        offcanvasInstance = new bootstrap.Offcanvas(element, { backdrop: true, scroll: true });
+        element.addEventListener('shown.bs.offcanvas', () => syncBackdrop(true));
+        element.addEventListener('hidden.bs.offcanvas', () => syncBackdrop(false));
     }
 
     currentSolicitudId = solicitudId;
@@ -389,6 +391,7 @@ function openCrmPanel(solicitudId, nombrePaciente) {
 
     if (offcanvasInstance) {
         offcanvasInstance.show();
+        syncBackdrop(true);
     }
 
     loadCrmData(solicitudId);
@@ -844,6 +847,17 @@ function setFormsDisabled(disabled) {
             return;
         }
         element.disabled = disabled;
+    });
+}
+
+function syncBackdrop(apply) {
+    const backdrops = document.querySelectorAll('.offcanvas-backdrop');
+    if (!backdrops.length) {
+        return;
+    }
+
+    backdrops.forEach(backdrop => {
+        backdrop.classList.toggle('crm-offcanvas-backdrop', apply);
     });
 }
 
