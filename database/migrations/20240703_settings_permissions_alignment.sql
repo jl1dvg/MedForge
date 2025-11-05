@@ -95,15 +95,15 @@ SET @sql_migrate_options := IF(
     'INSERT INTO app_settings (category, name, value, type, autoload)
      SELECT
          CASE
-             WHEN name IN (''companyname'',''company_legal_name'',''companyaddress'',''company_city'',''company_country'',''company_vat'',''companyphone'',''companyemail'',''companywebsite'') THEN ''general''
-             WHEN name LIKE ''company_logo%'' OR name IN (''companysignature'',''pdf_text_color'',''pdf_table_heading_color'',''admin_default_theme'') THEN ''branding''
-             WHEN name LIKE ''smtp_%'' OR name IN (''mail_engine'',''email_header'',''email_footer'',''email_signature'',''email_from_name'',''email_from_address'') THEN ''email''
-             WHEN name IN (''default_language'',''timezone'',''dateformat'',''time_format'',''default_currency'') THEN ''localization''
-             WHEN name LIKE ''notifications_%'' THEN ''notifications''
+             WHEN latest.name IN (''companyname'',''company_legal_name'',''companyaddress'',''company_city'',''company_country'',''company_vat'',''companyphone'',''companyemail'',''companywebsite'') THEN ''general''
+             WHEN latest.name LIKE ''company_logo%'' OR latest.name IN (''companysignature'',''pdf_text_color'',''pdf_table_heading_color'',''admin_default_theme'') THEN ''branding''
+             WHEN latest.name LIKE ''smtp_%'' OR latest.name IN (''mail_engine'',''email_header'',''email_footer'',''email_signature'',''email_from_name'',''email_from_address'') THEN ''email''
+             WHEN latest.name IN (''default_language'',''timezone'',''dateformat'',''time_format'',''default_currency'') THEN ''localization''
+             WHEN latest.name LIKE ''notifications_%'' THEN ''notifications''
              ELSE ''legacy''
          END AS category,
-         name,
-         value,
+         latest.name,
+         latest.value,
          ''text'' AS type,
          CASE
              WHEN EXISTS (
@@ -112,10 +112,18 @@ SET @sql_migrate_options := IF(
                  WHERE TABLE_SCHEMA = DATABASE()
                    AND TABLE_NAME = ''tbloptions''
                    AND COLUMN_NAME = ''autoload''
-             ) THEN COALESCE(tbloptions.autoload, 0)
+             ) THEN COALESCE(latest.autoload, 0)
              ELSE 0
          END AS autoload
-     FROM tbloptions
+     FROM (
+         SELECT t.name, t.value, t.autoload
+         FROM tbloptions t
+         JOIN (
+             SELECT name, MAX(id) AS max_id
+             FROM tbloptions
+             GROUP BY name
+         ) AS grouped ON grouped.name = t.name AND grouped.max_id = t.id
+     ) AS latest
      ON DUPLICATE KEY UPDATE
          value = VALUES(value),
          category = CASE
