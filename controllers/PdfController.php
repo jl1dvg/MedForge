@@ -157,8 +157,11 @@ class PdfController
         } else {
             $datos['id_procedimiento'] = ProtocoloHelper::obtenerIdProcedimiento($this->db, $datos['membrete']);
         }
-        $datos['imagen_link'] = ProtocoloHelper::mostrarImagenProcedimiento($this->db, $datos['procedimiento_id']);
 
+        // Solo llamar al helper si tenemos un nombre no vacío
+        $datos['imagen_link'] = $datos['id_procedimiento'] !== ''
+            ? ProtocoloHelper::mostrarImagenProcedimiento($this->db, $datos['id_procedimiento'])
+            : null;
         // Add edadPaciente and diagnostics before extracting $datos for view
         $datos['edadPaciente'] = $datos['edad'] ?? null;
 
