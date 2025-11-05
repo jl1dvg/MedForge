@@ -32149,3 +32149,14 @@ img.away, img.busy, img.offline, img.online {
   z-index: -1; }
 
 /*# sourceMappingURL=style.css.map */
+.fila-equipos{background-color:#cce5ff;}
+.fila-anestesia{background-color:#f8d7da;}
+.fila-quirurgicos{background-color:#d4edda;}
+.fila-anestesiologo{background-color:#f8d7da;}
+.fila-cirujano{background-color:#cce5ff;}
+.fila-asistente{background-color:#d4edda;}
+#autosaveEstado{
+  position:fixed; right:12px; bottom:12px; z-index:9999;
+  background:#222; color:#fff; padding:6px 10px; border-radius:6px;
+  font-size:12px; opacity:.85;
+}

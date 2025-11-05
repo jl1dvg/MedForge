@@ -1,6 +1,56 @@
 $(function () {
     "use strict";
 
+    // === Helpers & Styles ===
+    const normalizar = s => (s || '')
+        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        .toLowerCase().trim();
+
+    function getCodigoPorAfiliacion(afiliacionRaw, insumo) {
+        const a = normalizar(afiliacionRaw);
+
+        if (a.includes('issfa') && insumo.codigo_issfa) return insumo.codigo_issfa;
+        if (a.includes('isspol') && insumo.codigo_isspol) return insumo.codigo_isspol;
+        if (a.includes('msp') && insumo.codigo_msp) return insumo.codigo_msp;
+
+        const palabrasIESS = [
+            'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
+            'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
+            'seguro general por montepío', 'seguro general tiempo parcial', 'iess'
+        ];
+        if (palabrasIESS.some(p => a.includes(p)) && insumo.codigo_iess) return insumo.codigo_iess;
+
+        // Por defecto: ISSPOL
+        return insumo.codigo_isspol || '';
+    }
+
+    // Badge de estado de autosave + inyección de estilos de filas
+    function injectWizardStyles() {
+        if (!document.getElementById('wizardInjectedStyles')) {
+            const style = document.createElement('style');
+            style.id = 'wizardInjectedStyles';
+            style.textContent = `
+                .fila-equipos{background-color:#cce5ff;}
+                .fila-anestesia{background-color:#f8d7da;}
+                .fila-quirurgicos{background-color:#d4edda;}
+                .fila-anestesiologo{background-color:#f8d7da;}
+                .fila-cirujano{background-color:#cce5ff;}
+                .fila-asistente{background-color:#d4edda;}
+                #autosaveEstado{
+                    position:fixed; right:12px; bottom:12px; z-index:9999;
+                    background:#222; color:#fff; padding:6px 10px; border-radius:6px;
+                    font-size:12px; opacity:.85;
+                }`;
+            document.head.appendChild(style);
+        }
+        if (!document.getElementById('autosaveEstado')) {
+            const badge = document.createElement('span');
+            badge.id = 'autosaveEstado';
+            badge.textContent = '';
+            document.body.appendChild(badge);
+        }
+    }
+
     const formIdInput = document.querySelector('input[name="form_id"]');
     const hcNumberInput = document.querySelector('input[name="hc_number"]');
     const autosaveEnabled = !!(formIdInput && hcNumberInput);
@@ -11,9 +61,7 @@ $(function () {
     };
 
     const debouncedAutosave = debounce(() => {
-        if (!autosaveEnabled) {
-            return;
-        }
+        if (!autosaveEnabled) return;
 
         const payload = new FormData();
         payload.append('form_id', formIdInput.value);
@@ -22,42 +70,46 @@ $(function () {
         const insumosValue = $('#insumosInput').val() || '';
         const medicamentosValue = $('#medicamentosInput').val() || '';
 
-        if (insumosValue !== '') {
-            payload.append('insumos', insumosValue);
-        }
+        if (insumosValue !== '') payload.append('insumos', insumosValue);
+        if (medicamentosValue !== '') payload.append('medicamentos', medicamentosValue);
 
-        if (medicamentosValue !== '') {
-            payload.append('medicamentos', medicamentosValue);
-        }
+        autosave(payload);
+    }, 1000);
 
-        fetch('/cirugias/wizard/autosave', {
-            method: 'POST',
-            body: payload,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-            .then(async (response) => {
-                const text = await response.text();
+    async function autosave(payload) {
+        if (typeof window.csrfToken === 'string' && window.csrfToken) {
+            payload.append('_token', window.csrfToken);
+        }
+        const $badge = $('#autosaveEstado');
+        if ($badge.length) $badge.text('Guardando…');
+        for (let intento = 1; intento <= 3; intento++) {
+            try {
+                const resp = await fetch('/cirugias/wizard/autosave', {
+                    method: 'POST',
+                    body: payload,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                });
+                const text = await resp.text();
                 let data = {};
-
                 if (text) {
                     try {
                         data = JSON.parse(text);
-                    } catch (error) {
-                        console.warn('⚠️ Respuesta de autosave no es JSON válido', error, text);
+                    } catch (e) { /* no-op */
                     }
                 }
-
-                if (!response.ok || data.success === false) {
-                    const message = data.message || 'No se pudo completar el autosave del protocolo.';
-                    throw new Error(message);
+                if (!resp.ok || data.success === false) throw new Error(data.message || 'Error en autosave');
+                if ($badge.length) $badge.text('Guardado ' + new Date().toLocaleTimeString());
+                return;
+            } catch (e) {
+                if (intento === 3) {
+                    console.error('❌ Autosave falló', e);
+                    if ($badge.length) $badge.text('Error al guardar');
+                } else {
+                    await new Promise(r => setTimeout(r, intento * 1000));
                 }
-            })
-            .catch(error => {
-                console.error('❌ Error en autosave de protocolo', error);
-            });
-    }, 1000);
+            }
+        }
+    }
 
     function scheduleAutosave() {
         if (!autosaveEnabled) {
@@ -83,6 +135,7 @@ $(function () {
     }
 
     inicializarInsumos();
+    injectWizardStyles();
     inicializarMedicamentos();
 
     function inicializarInsumos() {
@@ -90,7 +143,9 @@ $(function () {
         var insumosDisponibles = insumosDisponiblesJSON;
         var categorias = categoriasInsumos;
 
-        var table = $('#insumosTable').DataTable({"paging": false});
+        var table = $('#insumosTable').DataTable({
+            paging: false, searching: false, ordering: false, info: false, autoWidth: false
+        });
         $('#insumosTable').editableTableWidget().on('change', function () {
             actualizarInsumos();
         });
@@ -106,7 +161,7 @@ $(function () {
             var newRowHtml = [
                 '<select class="form-control categoria-select" name="categoria">' + categoriaOptionsHTML + '</select>',
                 '<select class="form-control nombre-select" name="id"><option value="">Seleccione una categoría primero</option></select>',
-                '<td contenteditable="true">1</td>',
+                '<td class="cantidad-cell" contenteditable="true">1</td>',
                 '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'
             ];
 
@@ -145,73 +200,98 @@ $(function () {
         function pintarFilas() {
             $('#insumosTable tbody tr').each(function () {
                 const categoria = $(this).find('select.categoria-select').val();
-                $(this).removeClass('categoria-equipos categoria-anestesia categoria-quirurgicos');
-                switch (categoria) {
-                    case 'equipos':
-                        $(this).addClass('categoria-equipos');
-                        break;
-                    case 'anestesia':
-                        $(this).addClass('categoria-anestesia');
-                        break;
-                    case 'quirurgicos':
-                        $(this).addClass('categoria-quirurgicos');
-                        break;
-                }
+                $(this).removeClass('fila-equipos fila-anestesia fila-quirurgicos');
+                if (categoria === 'equipos') $(this).addClass('fila-equipos');
+                else if (categoria === 'anestesia') $(this).addClass('fila-anestesia');
+                else if (categoria === 'quirurgicos') $(this).addClass('fila-quirurgicos');
             });
         }
 
         function actualizarInsumos() {
-            const insumosObject = {equipos: [], anestesia: [], quirurgicos: []};
+            const acumulado = {equipos: {}, anestesia: {}, quirurgicos: {}};
+
+            function pushInsumo(cat, id, nombre, cantidad, codigo) {
+                if (!acumulado[cat][id]) {
+                    acumulado[cat][id] = {id: Number(id), nombre, cantidad: 0};
+                    if (codigo) acumulado[cat][id].codigo = codigo;
+                }
+                acumulado[cat][id].cantidad += cantidad;
+            }
 
             $('#insumosTable tbody tr').each(function () {
-                const categoria = $(this).find('.categoria-select').val().toLowerCase();
+                const categoria = (($(this).find('.categoria-select').val() || '').toLowerCase());
                 const id = $(this).find('.nombre-select').val();
                 const nombre = $(this).find('.nombre-select option:selected').text().trim();
-                const cantidad = parseInt($(this).find('td:eq(2)').text()) || 0;
+                const cantidad = Math.max(0, Number($(this).find('.cantidad-cell').text().trim()) || 0);
+                if (!categoria || !id || cantidad <= 0) return;
 
-                if (categoria && id && cantidad > 0) {
-                    const insumo = insumosDisponibles[categoria][id];
-                    let codigo = "";
-
-                    if (afiliacion.includes('issfa') && insumo.codigo_issfa) {
-                        codigo = insumo.codigo_issfa;
-                    } else if (afiliacion.includes('isspol') && insumo.codigo_isspol) {
-                        codigo = insumo.codigo_isspol;
-                    } else if (afiliacion.includes('msp') && insumo.codigo_msp) {
-                        codigo = insumo.codigo_msp;
-                    } else if ([
-                        'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
-                        'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
-                        'seguro general por montepío', 'seguro general tiempo parcial', 'iess'
-                    ].some(iess => afiliacion.includes(iess)) && insumo.codigo_iess) {
-                        codigo = insumo.codigo_iess;
-                    }
-
-                    const obj = {id: parseInt(id), nombre, cantidad};
-                    if (codigo) obj.codigo = codigo;
-                    insumosObject[categoria].push(obj);
+                const pool = (insumosDisponibles[categoria] || {});
+                const insumo = pool[id];
+                if (!insumo) {
+                    console.warn('⚠️ Insumo no encontrado', {categoria, id});
+                    return;
                 }
+                const codigo = getCodigoPorAfiliacion(afiliacion, insumo);
+                pushInsumo(categoria, id, nombre, cantidad, codigo);
             });
 
-            $('#insumosInput').val(JSON.stringify(insumosObject));
-            console.log("Actualizado JSON insumos con códigos:", insumosObject);
+            const insumosObject = {
+                equipos: Object.values(acumulado.equipos),
+                anestesia: Object.values(acumulado.anestesia),
+                quirurgicos: Object.values(acumulado.quirurgicos)
+            };
+
+            const isEmptyInsumos =
+                insumosObject.equipos.length === 0 &&
+                insumosObject.anestesia.length === 0 &&
+                insumosObject.quirurgicos.length === 0;
+
+            if (isEmptyInsumos) {
+                $('#insumosInput').val('NULL');
+                console.log("✅ JSON insumos: NULL (sin datos)");
+            } else {
+                $('#insumosInput').val(JSON.stringify(insumosObject));
+                console.log("✅ JSON insumos:", insumosObject);
+            }
             scheduleAutosave();
         }
 
-        $('#insumosTable').on('change', 'select', function () {
-            actualizarInsumos();
-            pintarFilas();
-        });
-        $('#insumosTable').on('blur', 'td', function () {
-            actualizarInsumos();
-            pintarFilas();
+        function cambiarColorFilaInsumos() {
+            $('#insumosTable tbody tr').each(function () {
+                $(this).removeClass('fila-equipos fila-anestesia fila-quirurgicos');
+                const categoria = $(this).find('select.categoria-select').val();
+                if (categoria === 'equipos') $(this).addClass('fila-equipos');
+                else if (categoria === 'anestesia') $(this).addClass('fila-anestesia');
+                else if (categoria === 'quirurgicos') $(this).addClass('fila-quirurgicos');
+            });
+        }
+
+        // Solo números en cantidad
+        $('#insumosTable').on('input', '.cantidad-cell', function () {
+            const limpio = this.innerText.replace(/[^\d]/g, '');
+            if (this.innerText !== limpio) this.innerText = limpio;
         });
 
-        pintarFilas();
+        function refrescarInsumosUI() {
+            pintarFilas();
+            cambiarColorFilaInsumos();
+            actualizarInsumos();
+        }
+
+        $('#insumosTable').on('change blur input', 'select, .cantidad-cell', refrescarInsumosUI);
+        refrescarInsumosUI();
     }
 
     function inicializarMedicamentos() {
-        var medicamentosTable = $('#medicamentosTable').DataTable({paging: false});
+        var medicamentosTable = $('#medicamentosTable').DataTable({
+            paging: false,
+            searching: false,
+            ordering: false,
+            info: false,
+            autoWidth: false
+        });
+
+        injectWizardStyles();
 
         $('#medicamentosTable').on('click', '.delete-btn', function () {
             medicamentosTable.row($(this).parents('tr')).remove().draw();
@@ -256,18 +336,23 @@ $(function () {
                     });
                 }
             });
-            $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
-            console.log("✅ JSON medicamentos:", medicamentosArray);
+            if (medicamentosArray.length === 0) {
+                $('#medicamentosInput').val('NULL');
+                console.log("✅ JSON medicamentos: NULL (sin datos)");
+            } else {
+                $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
+                console.log("✅ JSON medicamentos:", medicamentosArray);
+            }
             scheduleAutosave();
         }
 
         function cambiarColorFilaMedicamentos() {
             $('#medicamentosTable tbody tr').each(function () {
                 const responsable = $(this).find('select[name="responsable[]"]').val();
-                $(this).css('background-color', '');
-                if (responsable === 'Anestesiólogo') $(this).css('background-color', '#f8d7da');
-                else if (responsable === 'Cirujano Principal') $(this).css('background-color', '#cce5ff');
-                else if (responsable === 'Asistente') $(this).css('background-color', '#d4edda');
+                $(this).removeClass('fila-anestesiologo fila-cirujano fila-asistente');
+                if (responsable === 'Anestesiólogo') $(this).addClass('fila-anestesiologo');
+                else if (responsable === 'Cirujano Principal') $(this).addClass('fila-cirujano');
+                else if (responsable === 'Asistente') $(this).addClass('fila-asistente');
             });
         }
 
