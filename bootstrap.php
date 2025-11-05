@@ -34,15 +34,26 @@ spl_autoload_register(function ($class) {
         // Normalizamos los separadores
         $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, $relativeClass) . '.php';
 
-        // Probamos con y sin capitalización (por compatibilidad con IONOS)
+        // Probamos con diferentes capitalizaciones (por compatibilidad con servidores sensibles a mayúsculas)
         $file = $baseDir . $relativePath;
-        $altFile = $baseDir . strtolower($relativePath);
-
         if (file_exists($file)) {
             require_once $file;
             return;
-        } elseif (file_exists($altFile)) {
+        }
+
+        $altFile = $baseDir . strtolower($relativePath);
+        if (file_exists($altFile)) {
             require_once $altFile;
+            return;
+        }
+
+        $segments = explode(DIRECTORY_SEPARATOR, $relativePath);
+        $fileName = array_pop($segments);
+        $lowerDirPath = implode(DIRECTORY_SEPARATOR, array_map('strtolower', $segments));
+        $normalizedPath = rtrim($baseDir . $lowerDirPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
+
+        if ($lowerDirPath !== '' && file_exists($normalizedPath)) {
+            require_once $normalizedPath;
             return;
         }
     }
