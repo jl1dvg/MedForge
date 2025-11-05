@@ -101,16 +101,21 @@ class CirugiasController extends BaseController
             return;
         }
 
-        $resultado = $this->service->guardar($_POST);
+        $exito = $this->service->guardar($_POST);
 
-        $statusCode = $resultado['success'] ? 200 : 500;
+        $statusCode = $exito ? 200 : 500;
         $response = [
-            'success' => $resultado['success'],
-            'message' => $resultado['message'] ?? ($resultado['success'] ? 'Operación completada.' : 'No se pudo guardar la información del protocolo.'),
+            'success' => $exito,
+            'message' => $exito
+                ? 'Operación completada.'
+                : ($this->service->getLastError() ?? 'No se pudo guardar la información del protocolo.'),
         ];
 
-        if (!empty($resultado['protocolo_id'])) {
-            $response['protocolo_id'] = $resultado['protocolo_id'];
+        if ($exito && !empty($_POST['form_id'])) {
+            $protocoloId = $this->service->obtenerProtocoloIdPorFormulario($_POST['form_id'], $_POST['hc_number'] ?? null);
+            if ($protocoloId !== null) {
+                $response['protocolo_id'] = $protocoloId;
+            }
         }
 
         $this->json($response, $statusCode);
