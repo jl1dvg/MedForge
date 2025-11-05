@@ -75,7 +75,7 @@ define('VIEW_PATH', BASE_PATH . '/views');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 
 // URL base del sitio
-define('BASE_URL', 'https://asistentecive.consulmed.me/');
+define('BASE_URL', 'https://cive.consulmed.me/');
 
 // Helper para generar URLs públicas
 function asset($path)

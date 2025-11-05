@@ -86,7 +86,7 @@ class PreviewService
             ]
         ];
         $context = stream_context_create($opts);
-        $result = file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
+        $result = file_get_contents("https://cive.consulmed.me/api/insumos/obtener.php", false, $context);
         $responseData = json_decode($result, true);
 
         if (!empty($responseData['insumos'])) {

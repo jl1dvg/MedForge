@@ -100,7 +100,7 @@ def limpiar_nulos(data):
 
 
 def enviar_a_api(datos):
-    url = "https://asistentecive.consulmed.me/api/proyecciones/guardar.php"
+    url = "https://cive.consulmed.me/api/proyecciones/guardar.php"
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json"
