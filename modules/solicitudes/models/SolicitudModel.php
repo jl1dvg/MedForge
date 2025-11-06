@@ -4,6 +4,7 @@ namespace Models;
 
 use PDO;
 use DateTime;
+use Modules\CRM\Services\LeadConfigurationService;
 
 class SolicitudModel
 {
@@ -355,37 +356,15 @@ class SolicitudModel
 
     public function listarUsuariosAsignables(): array
     {
-        $stmt = $this->db->query('SELECT id, nombre, email FROM users ORDER BY nombre');
+        $service = new LeadConfigurationService($this->db);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $service->getAssignableUsers();
     }
 
     public function obtenerFuentesCrm(): array
     {
-        $fuentes = [];
+        $service = new LeadConfigurationService($this->db);
 
-        $stmt = $this->db->query("SELECT DISTINCT fuente FROM solicitud_crm_detalles WHERE fuente IS NOT NULL AND fuente <> ''");
-        if ($stmt) {
-            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
-                $fuente = trim((string) $fuente);
-                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
-                    $fuentes[] = $fuente;
-                }
-            }
-        }
-
-        $stmtLeads = $this->db->query("SELECT DISTINCT source FROM crm_leads WHERE source IS NOT NULL AND source <> ''");
-        if ($stmtLeads) {
-            foreach ($stmtLeads->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
-                $fuente = trim((string) $fuente);
-                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
-                    $fuentes[] = $fuente;
-                }
-            }
-        }
-
-        sort($fuentes, SORT_NATURAL | SORT_FLAG_CASE);
-
-        return $fuentes;
+        return $service->getSources();
     }
 }
