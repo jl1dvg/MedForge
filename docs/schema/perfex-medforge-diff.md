@@ -27,7 +27,7 @@ Este documento resume los cambios realizados para adaptar las tablas de ajustes 
 
 | Concepto | Perfex | MedForge |
 | --- | --- | --- |
-| Catálogo de permisos | `tblpermissions` y `tblstaffpermissions` almacenan permisos atómicos con flags `can_view`, `can_edit`, etc. | Los permisos se modelan como cadenas simbólicas (`dashboard.view`, `pacientes.manage`, etc.) y se agrupan por rol. |
+| Catálogo de permisos | `tblpermissions` y `tblstaffpermissions` almacenan permisos atómicos con flags `can_view`, `can_edit`, etc. | Los permisos se modelan como cadenas simbólicas (`dashboard.view`, `pacientes.view`, `pacientes.edit`, etc.) y se agrupan por rol. |
 | Asignación a usuarios | `tblstaffpermissions` (por usuario) y `tblrolepermissions` + `tblroles` (por rol). | Columna `users.permisos` con JSON y referencia `users.role_id` a la tabla `roles`. |
 | Superusuario | Flag `tblstaff.admin`. | Permiso especial `superuser` almacenado en la lista JSON. |
 | Compatibilidad | Estructura orientada a módulos de Perfex (clientes, proyectos, etc.). | Permisos específicos para MedForge (pacientes, cirugías, insumos, administración). |
@@ -36,10 +36,10 @@ Este documento resume los cambios realizados para adaptar las tablas de ajustes 
 
 1. Crear la tabla `roles` y agregar las columnas/relaciones necesarias en `users` (`permisos`, `role_id`, FK e índice auxiliar).
 2. Construir un mapa de equivalencias entre los `shortname` de Perfex y los permisos actuales:
-   - `customers`, `leads` → `pacientes.view` y `pacientes.manage`.
-   - `projects`, `tasks` → `cirugias.manage`.
-   - `items`, `expenses` → `insumos.manage`.
-   - `staff` → `admin.usuarios`; `roles` → `admin.roles`; `settings` → `settings.manage`; `reports` → `reportes.view`.
+   - `customers`, `leads` → `pacientes.view`, `pacientes.create`, `pacientes.edit` y `pacientes.delete` según corresponda.
+   - `projects`, `tasks` → `cirugias.view`, `cirugias.create`, `cirugias.edit` y `cirugias.delete`.
+   - `items`, `expenses` → `insumos.view`, `insumos.create`, `insumos.edit` y `insumos.delete`.
+   - `staff` → `admin.usuarios.view`/`admin.usuarios.manage`; `roles` → `admin.roles.view`/`admin.roles.manage`; `settings` → `settings.view`/`settings.manage`; `reports` → `reportes.view`.
    - Permisos sin correspondencia directa se etiquetan como `legacy.<shortname>` para que el equipo los revise manualmente.
 3. Agregar permisos agregados por usuario a partir de `tblstaffpermissions`, agrupándolos por correo electrónico (clave compartida entre `tblstaff` y `users`).
 4. Migrar roles existentes desde `tblroles`, preservando el identificador original y adjuntando el conjunto de permisos traducidos.

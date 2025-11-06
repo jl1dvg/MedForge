@@ -5,6 +5,15 @@ namespace Core;
 class Permissions
 {
     public const SUPERUSER = 'superuser';
+    private const LEGACY_PERMISSION_MAP = [
+        'pacientes.manage' => ['pacientes.view', 'pacientes.create', 'pacientes.edit', 'pacientes.delete'],
+        'cirugias.manage' => ['cirugias.view', 'cirugias.create', 'cirugias.edit', 'cirugias.delete'],
+        'insumos.manage' => ['insumos.view', 'insumos.create', 'insumos.edit', 'insumos.delete'],
+        'admin.usuarios' => ['admin.usuarios.view', 'admin.usuarios.manage'],
+        'admin.roles' => ['admin.roles.view', 'admin.roles.manage'],
+        'settings.manage' => ['settings.view', 'settings.manage'],
+        'codes.manage' => ['codes.view', 'codes.manage'],
+    ];
 
     /**
      * Normaliza cualquier representación de permisos a un arreglo de strings.
@@ -16,19 +25,34 @@ class Permissions
         }
 
         if (is_array($value)) {
-            return array_values(array_unique(array_filter(array_map(static fn($item) => is_string($item) ? trim($item) : '', $value), static fn($item) => $item !== '')));
-        }
-
-        if (is_string($value) && $value !== '') {
+            $normalized = array_values(array_unique(array_filter(array_map(static fn($item) => is_string($item) ? trim($item) : '', $value), static fn($item) => $item !== '')));
+        } elseif (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
             if (is_array($decoded)) {
-                return self::normalize($decoded);
+                $normalized = self::normalize($decoded);
+            } else {
+                $normalized = [$value];
             }
-
-            return [$value];
+        } else {
+            $normalized = [];
         }
 
-        return [];
+        $expanded = [];
+        foreach ($normalized as $permission) {
+            if (!in_array($permission, $expanded, true)) {
+                $expanded[] = $permission;
+            }
+
+            if (isset(self::LEGACY_PERMISSION_MAP[$permission])) {
+                foreach (self::LEGACY_PERMISSION_MAP[$permission] as $alias) {
+                    if (!in_array($alias, $expanded, true)) {
+                        $expanded[] = $alias;
+                    }
+                }
+            }
+        }
+
+        return $expanded;
     }
 
     public static function contains(mixed $value, string $permission): bool
@@ -38,7 +62,19 @@ class Permissions
             return true;
         }
 
-        return in_array($permission, $normalized, true);
+        if (in_array($permission, $normalized, true)) {
+            return true;
+        }
+
+        if (isset(self::LEGACY_PERMISSION_MAP[$permission])) {
+            foreach (self::LEGACY_PERMISSION_MAP[$permission] as $alias) {
+                if (in_array($alias, $normalized, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public static function containsAny(mixed $value, array $permissions): bool
@@ -51,6 +87,14 @@ class Permissions
         foreach ($permissions as $permission) {
             if (in_array($permission, $normalized, true)) {
                 return true;
+            }
+
+            if (isset(self::LEGACY_PERMISSION_MAP[$permission])) {
+                foreach (self::LEGACY_PERMISSION_MAP[$permission] as $alias) {
+                    if (in_array($alias, $normalized, true)) {
+                        return true;
+                    }
+                }
             }
         }
 

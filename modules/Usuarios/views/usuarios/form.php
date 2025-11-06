@@ -59,7 +59,7 @@ if (!function_exists('usuarios_permission_id')) {
                     <h4 class="box-title">Datos del usuario</h4>
                 </div>
                 <div class="box-body">
-                    <form action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8'); ?>" method="POST">
+                    <form action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8'); ?>" method="POST" enctype="multipart/form-data">
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Nombre de usuario *</label>
@@ -99,9 +99,51 @@ if (!function_exists('usuarios_permission_id')) {
                                 <label class="form-label">Subespecialidad</label>
                                 <input type="text" name="subespecialidad" class="form-control" value="<?= usuarios_form_old($usuario, 'subespecialidad'); ?>">
                             </div>
-                            <div class="col-12">
+                            <div class="col-md-6">
                                 <label class="form-label">Firma</label>
-                                <textarea name="firma" rows="3" class="form-control"><?= usuarios_form_old($usuario, 'firma'); ?></textarea>
+                                <?php
+                                $firmaPath = $usuario['firma'] ?? null;
+                                if ($firmaPath && !preg_match('/^https?:/i', $firmaPath)) {
+                                    $firmaPath = rtrim(BASE_URL, '/') . '/' . ltrim($firmaPath, '/');
+                                }
+                                ?>
+                                <?php if (!empty($usuario['firma'])): ?>
+                                    <div class="mb-2">
+                                        <img src="<?= htmlspecialchars($firmaPath, ENT_QUOTES, 'UTF-8'); ?>" alt="Firma actual" class="img-fluid border rounded" style="max-height: 120px;">
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="remove_firma" id="remove_firma" value="1">
+                                        <label class="form-check-label" for="remove_firma">Eliminar firma actual</label>
+                                    </div>
+                                <?php endif; ?>
+                                <input type="file" name="firma_file" class="form-control" accept="image/png,image/jpeg,image/webp">
+                                <small class="text-muted">Formatos permitidos: PNG, JPG o WEBP. Tamaño máximo 2&nbsp;MB.</small>
+                                <?php if (!empty($errors['firma_file'])): ?>
+                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['firma_file'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Foto de perfil</label>
+                                <?php
+                                $fotoPath = $usuario['profile_photo'] ?? null;
+                                if ($fotoPath && !preg_match('/^https?:/i', $fotoPath)) {
+                                    $fotoPath = rtrim(BASE_URL, '/') . '/' . ltrim($fotoPath, '/');
+                                }
+                                ?>
+                                <?php if (!empty($usuario['profile_photo'])): ?>
+                                    <div class="mb-2">
+                                        <img src="<?= htmlspecialchars($fotoPath, ENT_QUOTES, 'UTF-8'); ?>" alt="Foto de perfil actual" class="img-thumbnail" style="max-height: 120px;">
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="remove_profile_photo" id="remove_profile_photo" value="1">
+                                        <label class="form-check-label" for="remove_profile_photo">Eliminar foto actual</label>
+                                    </div>
+                                <?php endif; ?>
+                                <input type="file" name="profile_photo_file" class="form-control" accept="image/png,image/jpeg,image/webp">
+                                <small class="text-muted">Recomendado 400x400px. Tamaño máximo 2&nbsp;MB.</small>
+                                <?php if (!empty($errors['profile_photo_file'])): ?>
+                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['profile_photo_file'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Contraseña <?= isset($usuario['id']) ? '(dejar en blanco para mantener)' : '*'; ?></label>

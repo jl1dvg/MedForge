@@ -4,8 +4,12 @@
 /** @var string|null $status */
 /** @var string|null $error */
 
+use Core\Permissions;
+
 $status = $status ?? null;
 $error = $error ?? null;
+$sessionPermissions = Permissions::normalize($_SESSION['permisos'] ?? []);
+$canCreateRoles = Permissions::containsAny($sessionPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles']);
 ?>
 
 <div class="content-header">
@@ -22,7 +26,9 @@ $error = $error ?? null;
                 </nav>
             </div>
         </div>
-        <a href="/roles/create" class="btn btn-primary"><i class="mdi mdi-shield-plus"></i> Nuevo rol</a>
+        <?php if ($canCreateRoles): ?>
+            <a href="/roles/create" class="btn btn-primary"><i class="mdi mdi-shield-plus"></i> Nuevo rol</a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -80,15 +86,19 @@ $error = $error ?? null;
                                                 <span class="badge bg-info text-dark"><?= (int) ($rol['users_count'] ?? 0); ?></span>
                                             </td>
                                             <td class="text-end">
-                                                <a href="/roles/edit?id=<?= (int) $rol['id']; ?>" class="btn btn-sm btn-outline-primary me-1">
-                                                    <i class="mdi mdi-pencil"></i> Editar
-                                                </a>
-                                                <form action="/roles/delete" method="POST" class="d-inline-block" onsubmit="return confirm('¿Eliminar el rol <?= htmlspecialchars($rol['name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>?');">
-                                                    <input type="hidden" name="id" value="<?= (int) $rol['id']; ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                        <i class="mdi mdi-delete"></i> Eliminar
-                                                    </button>
-                                                </form>
+                                                <?php if ($canCreateRoles): ?>
+                                                    <a href="/roles/edit?id=<?= (int) $rol['id']; ?>" class="btn btn-sm btn-outline-primary me-1">
+                                                        <i class="mdi mdi-pencil"></i> Editar
+                                                    </a>
+                                                    <form action="/roles/delete" method="POST" class="d-inline-block" onsubmit="return confirm('¿Eliminar el rol <?= htmlspecialchars($rol['name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>?');">
+                                                        <input type="hidden" name="id" value="<?= (int) $rol['id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                            <i class="mdi mdi-delete"></i> Eliminar
+                                                        </button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <span class="text-muted small">Solo lectura</span>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
