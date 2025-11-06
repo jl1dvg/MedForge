@@ -58,32 +58,47 @@ ob_start();
         <td class="verde" colspan="6">HORA</td>
         <td class="verde" colspan="9">RESPONSABLE</td>
     </tr>
-    <?php foreach ($datos['medicamentos'] as $medicamento): ?>
+    <?php
+    // Resolver lista de medicamentos independientemente de cómo llegue
+    $medicamentosList = [];
+    if (isset($medicamentos) && is_array($medicamentos)) {
+        $medicamentosList = $medicamentos;
+    } elseif (isset($datos) && is_array($datos) && isset($datos['medicamentos']) && is_array($datos['medicamentos'])) {
+        $medicamentosList = $datos['medicamentos'];
+    } elseif (isset($datos) && is_array($datos) && isset($datos['medicamentos']) && is_string($datos['medicamentos'])) {
+        $raw = trim((string)$datos['medicamentos']);
+        if ($raw !== '' && strtoupper($raw) !== 'NULL' && $raw !== '[]') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $medicamentosList = $decoded;
+            }
+        }
+    }
+    ?>
+    <?php if (!empty($medicamentosList)): ?>
+        <?php foreach ($medicamentosList as $medicamento): ?>
+            <tr>
+                <td class="blanco_left" colspan="17">
+                    <?= htmlspecialchars((string)($medicamento['medicamento'] ?? '')) ?>,
+                    <?= htmlspecialchars((string)($medicamento['dosis'] ?? '')) ?>,
+                    <?= htmlspecialchars((string)($medicamento['via'] ?? '')) ?>,
+                    <?= htmlspecialchars((string)($medicamento['frecuencia'] ?? '')) ?>
+                </td>
+                <td class="blanco" colspan="6"><?= htmlspecialchars((string)($medicamento['hora'] ?? '')) ?></td>
+                <td class="blanco" colspan="9"><?= htmlspecialchars((string)($medicamento['responsable'] ?? '')) ?></td>
+                <td class="blanco" colspan="6"></td>
+                <td class="blanco" colspan="9"></td>
+                <td class="blanco" colspan="6"></td>
+                <td class="blanco" colspan="9"></td>
+                <td class="blanco" colspan="6"></td>
+                <td class="blanco" colspan="9"></td>
+            </tr>
+        <?php endforeach; ?>
+    <?php else: ?>
         <tr>
-            <td class="blanco_left" colspan="17" rowspan="2">
-                <?= htmlspecialchars($medicamento['medicamento']) ?>, <?= htmlspecialchars($medicamento['dosis']) ?>
-                , <?= htmlspecialchars($medicamento['via']) ?>, <?= htmlspecialchars($medicamento['frecuencia']) ?>
-            </td>
-            <td class="blanco" colspan="6"><?= $medicamento['hora'] ?></td>
-            <td class="blanco" colspan="9"><?= htmlspecialchars($medicamento['responsable']) ?></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
+            <td colspan="2">No se encontraron medicamentos para mostrar.</td>
         </tr>
-        <tr>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-            <td class="blanco" colspan="6"></td>
-            <td class="blanco" colspan="9"></td>
-        </tr>
-    <?php endforeach; ?>
+    <?php endif; ?>
 </table>
 <table style="border: none">
     <TR>
@@ -95,3 +110,9 @@ ob_start();
         </TD>
     </TR>
 </table>
+<?php
+$content = ob_get_clean();
+$title = 'Formulario Medicamentos';
+
+include $layout;
+?>
