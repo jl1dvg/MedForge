@@ -3,21 +3,22 @@
 namespace Modules\CRM\Models;
 
 use PDO;
+use Modules\CRM\Services\LeadConfigurationService;
 
 class LeadModel
 {
     private PDO $pdo;
-
-    private const STATUSES = ['nuevo', 'en_proceso', 'convertido', 'perdido'];
+    private LeadConfigurationService $configService;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
+        $this->configService = new LeadConfigurationService($pdo);
     }
 
     public function getStatuses(): array
     {
-        return self::STATUSES;
+        return $this->configService->getPipelineStages();
     }
 
     public function getSources(): array
@@ -53,9 +54,12 @@ class LeadModel
 
         $params = [];
 
-        if (!empty($filters['status']) && in_array($filters['status'], self::STATUSES, true)) {
-            $sql .= " AND l.status = :status";
-            $params[':status'] = $filters['status'];
+        if (!empty($filters['status'])) {
+            $status = $this->configService->normalizeStage($filters['status'], false);
+            if ($status !== '') {
+                $sql .= " AND l.status = :status";
+                $params[':status'] = $status;
+            }
         }
 
         if (!empty($filters['assigned_to'])) {
@@ -264,7 +268,7 @@ class LeadModel
 
         $customerId = $lead['customer_id'] ? (int) $lead['customer_id'] : $this->upsertCustomer($lead, $customerPayload);
         $this->attachCustomer($id, $customerId);
-        $this->updateStatus($id, 'convertido');
+        $this->updateStatus($id, $this->configService->getWonStage());
 
         return $this->find($id);
     }
@@ -343,16 +347,7 @@ class LeadModel
 
     private function sanitizeStatus(?string $status): string
     {
-        if (!$status) {
-            return 'nuevo';
-        }
-
-        $status = strtolower(trim($status));
-        if (!in_array($status, self::STATUSES, true)) {
-            return 'nuevo';
-        }
-
-        return $status;
+        return $this->configService->normalizeStage($status);
     }
 
     private function nullableString($value): ?string

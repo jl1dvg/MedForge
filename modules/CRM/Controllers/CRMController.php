@@ -7,6 +7,7 @@ use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Models\ProjectModel;
 use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
+use Modules\CRM\Services\LeadConfigurationService;
 use PDO;
 use Throwable;
 
@@ -16,6 +17,7 @@ class CRMController extends BaseController
     private ProjectModel $projects;
     private TaskModel $tasks;
     private TicketModel $tickets;
+    private LeadConfigurationService $leadConfig;
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -25,6 +27,7 @@ class CRMController extends BaseController
         $this->projects = new ProjectModel($pdo);
         $this->tasks = new TaskModel($pdo);
         $this->tickets = new TicketModel($pdo);
+        $this->leadConfig = new LeadConfigurationService($pdo);
     }
 
     public function index(): void
@@ -468,9 +471,7 @@ class CRMController extends BaseController
 
     private function getAssignableUsers(): array
     {
-        $stmt = $this->pdo->query('SELECT id, nombre FROM users ORDER BY nombre');
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $this->leadConfig->getAssignableUsers();
     }
 
     private function getQuery(string $key): ?string

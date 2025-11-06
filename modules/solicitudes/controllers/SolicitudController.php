@@ -4,6 +4,7 @@ namespace Controllers;
 
 use Core\BaseController;
 use Models\SolicitudModel;
+use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
@@ -14,6 +15,7 @@ class SolicitudController extends BaseController
     private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
     private SolicitudCrmService $crmService;
+    private LeadConfigurationService $leadConfig;
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -22,6 +24,7 @@ class SolicitudController extends BaseController
         $this->solicitudModel = new SolicitudModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new SolicitudCrmService($pdo);
+        $this->leadConfig = new LeadConfigurationService($pdo);
     }
 
     public function index(): void
@@ -80,8 +83,16 @@ class SolicitudController extends BaseController
             'fechaTexto' => trim($payload['fechaTexto'] ?? ''),
         ];
 
+        $kanbanPreferences = $this->leadConfig->getKanbanPreferences();
+        $pipelineStages = $this->leadConfig->getPipelineStages();
+
         try {
             $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filtros);
+            $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
+            $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
+
+            $responsables = $this->leadConfig->getAssignableUsers();
+            $fuentes = $this->leadConfig->getSources();
 
             $afiliaciones = array_values(array_unique(array_filter(array_map(
                 static fn($row) => $row['afiliacion'] ?? null,
@@ -101,9 +112,10 @@ class SolicitudController extends BaseController
                     'afiliaciones' => $afiliaciones,
                     'doctores' => $doctores,
                     'crm' => [
-                        'responsables' => $this->solicitudModel->listarUsuariosAsignables(),
-                        'etapas' => SolicitudCrmService::getPipelineStages(),
-                        'fuentes' => $this->solicitudModel->obtenerFuentesCrm(),
+                        'responsables' => $responsables,
+                        'etapas' => $pipelineStages,
+                        'fuentes' => $fuentes,
+                        'kanban' => $kanbanPreferences,
                     ],
                 ],
             ]);
@@ -115,8 +127,9 @@ class SolicitudController extends BaseController
                     'doctores' => [],
                     'crm' => [
                         'responsables' => [],
-                        'etapas' => SolicitudCrmService::getPipelineStages(),
+                        'etapas' => $pipelineStages,
                         'fuentes' => [],
+                        'kanban' => $kanbanPreferences,
                     ],
                 ],
                 'error' => 'No se pudo cargar la información de solicitudes',
@@ -502,5 +515,91 @@ class SolicitudController extends BaseController
             'diagnostico' => $diagnostico,
             'consulta' => $consulta,
         ];
+    }
+
+    private function ordenarSolicitudes(array $solicitudes, string $criterio): array
+    {
+        $criterio = strtolower(trim($criterio));
+
+        $comparador = match ($criterio) {
+            'fecha_asc' => fn($a, $b) => $this->compararPorFecha($a, $b, 'fecha', true),
+            'creado_desc' => fn($a, $b) => $this->compararPorFecha($a, $b, 'created_at', false),
+            'creado_asc' => fn($a, $b) => $this->compararPorFecha($a, $b, 'created_at', true),
+            default => fn($a, $b) => $this->compararPorFecha($a, $b, 'fecha', false),
+        };
+
+        usort($solicitudes, $comparador);
+
+        return $solicitudes;
+    }
+
+    private function compararPorFecha(array $a, array $b, string $campo, bool $ascendente): int
+    {
+        $valorA = $this->parseFecha($a[$campo] ?? null);
+        $valorB = $this->parseFecha($b[$campo] ?? null);
+
+        if ($valorA === $valorB) {
+            return 0;
+        }
+
+        if ($ascendente) {
+            return $valorA <=> $valorB;
+        }
+
+        return $valorB <=> $valorA;
+    }
+
+    private function parseFecha($valor): int
+    {
+        if ($valor === null) {
+            return 0;
+        }
+
+        $timestamp = strtotime((string) $valor);
+
+        return $timestamp ?: 0;
+    }
+
+    private function limitarSolicitudesPorEstado(array $solicitudes, int $limite): array
+    {
+        if ($limite <= 0) {
+            return $solicitudes;
+        }
+
+        $contador = [];
+        $filtradas = [];
+
+        foreach ($solicitudes as $solicitud) {
+            $estado = $this->normalizarEstadoKanban($solicitud['estado'] ?? '');
+            $contador[$estado] = ($contador[$estado] ?? 0);
+
+            if ($contador[$estado] >= $limite) {
+                continue;
+            }
+
+            $filtradas[] = $solicitud;
+            $contador[$estado]++;
+        }
+
+        return $filtradas;
+    }
+
+    private function normalizarEstadoKanban(string $estado): string
+    {
+        $estado = trim($estado);
+
+        if ($estado === '') {
+            return 'sin-estado';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            $estado = mb_strtolower($estado, 'UTF-8');
+        } else {
+            $estado = strtolower($estado);
+        }
+
+        $estado = preg_replace('/\s+/', '-', $estado) ?? $estado;
+
+        return $estado;
     }
 }

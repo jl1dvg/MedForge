@@ -1,0 +1,266 @@
+<?php
+
+namespace Modules\CRM\Services;
+
+use Models\SettingsModel;
+use PDO;
+use PDOException;
+use RuntimeException;
+
+class LeadConfigurationService
+{
+    private const DEFAULT_PIPELINE = [
+        'Recibido',
+        'Contacto inicial',
+        'Seguimiento',
+        'Docs completos',
+        'Autorizado',
+        'Agendado',
+        'Cerrado',
+        'Perdido',
+    ];
+
+    private const DEFAULT_SORT = 'fecha_desc';
+
+    private PDO $pdo;
+    private ?SettingsModel $settingsModel = null;
+    private ?array $cachedPipeline = null;
+    private ?array $cachedKanbanPreferences = null;
+
+    public function __construct(PDO $pdo)
+    {
+        $this->pdo = $pdo;
+
+        try {
+            $this->settingsModel = new SettingsModel($pdo);
+        } catch (RuntimeException $exception) {
+            $this->settingsModel = null;
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getPipelineStages(): array
+    {
+        if ($this->cachedPipeline !== null) {
+            return $this->cachedPipeline;
+        }
+
+        $stages = $this->loadPipelineStagesFromSettings();
+        if (empty($stages)) {
+            $stages = self::DEFAULT_PIPELINE;
+        }
+
+        $this->cachedPipeline = $stages;
+
+        return $this->cachedPipeline;
+    }
+
+    public function getInitialStage(): string
+    {
+        $pipeline = $this->getPipelineStages();
+
+        return $pipeline[0] ?? self::DEFAULT_PIPELINE[0];
+    }
+
+    public function getWonStage(): string
+    {
+        $pipeline = $this->getPipelineStages();
+        foreach ($pipeline as $stage) {
+            $normalized = $this->normalizeText($stage);
+            if (str_contains($normalized, 'cerrad') || str_contains($normalized, 'ganad') || str_contains($normalized, 'convert')) {
+                return $stage;
+            }
+        }
+
+        $lastIndex = count($pipeline) - 1;
+        if ($lastIndex < 0) {
+            return self::DEFAULT_PIPELINE[6];
+        }
+
+        $lastStage = $pipeline[$lastIndex];
+        $lostStage = $this->getLostStage();
+        if ($lostStage !== null && strcasecmp($lastStage, $lostStage) === 0 && $lastIndex > 0) {
+            return $pipeline[$lastIndex - 1];
+        }
+
+        return $lastStage;
+    }
+
+    public function getLostStage(): ?string
+    {
+        $pipeline = $this->getPipelineStages();
+        foreach ($pipeline as $stage) {
+            $normalized = $this->normalizeText($stage);
+            if (str_contains($normalized, 'perd') || str_contains($normalized, 'lost') || str_contains($normalized, 'cancel')) {
+                return $stage;
+            }
+        }
+
+        return null;
+    }
+
+    public function normalizeStage(?string $stage, bool $fallbackToFirst = true): string
+    {
+        $stage = trim((string) $stage);
+        $pipeline = $this->getPipelineStages();
+
+        if ($stage === '') {
+            return $fallbackToFirst ? ($pipeline[0] ?? self::DEFAULT_PIPELINE[0]) : '';
+        }
+
+        foreach ($pipeline as $candidate) {
+            if (strcasecmp($candidate, $stage) === 0) {
+                return $candidate;
+            }
+        }
+
+        if ($fallbackToFirst) {
+            return $pipeline[0] ?? $stage;
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getKanbanPreferences(): array
+    {
+        if ($this->cachedKanbanPreferences !== null) {
+            return $this->cachedKanbanPreferences;
+        }
+
+        $sort = self::DEFAULT_SORT;
+        $columnLimit = 0;
+
+        if ($this->settingsModel instanceof SettingsModel) {
+            try {
+                $options = $this->settingsModel->getOptions([
+                    'crm_kanban_sort',
+                    'crm_kanban_column_limit',
+                ]);
+
+                if (!empty($options['crm_kanban_sort'])) {
+                    $sort = $this->sanitizeSort($options['crm_kanban_sort']);
+                }
+
+                if (isset($options['crm_kanban_column_limit'])) {
+                    $columnLimit = max(0, (int) $options['crm_kanban_column_limit']);
+                }
+            } catch (PDOException $exception) {
+                // Ignorar y usar valores por defecto
+            }
+        }
+
+        $this->cachedKanbanPreferences = [
+            'sort' => $sort,
+            'column_limit' => $columnLimit,
+        ];
+
+        return $this->cachedKanbanPreferences;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAssignableUsers(): array
+    {
+        $stmt = $this->pdo->query('SELECT id, nombre, email FROM users ORDER BY nombre');
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getSources(): array
+    {
+        $sources = [];
+
+        $stmtDetalles = $this->pdo->query("SELECT DISTINCT fuente FROM solicitud_crm_detalles WHERE fuente IS NOT NULL AND fuente <> ''");
+        if ($stmtDetalles) {
+            foreach ($stmtDetalles->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
+                $this->appendSource($sources, $fuente);
+            }
+        }
+
+        $stmtLeads = $this->pdo->query("SELECT DISTINCT source FROM crm_leads WHERE source IS NOT NULL AND source <> ''");
+        if ($stmtLeads) {
+            foreach ($stmtLeads->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
+                $this->appendSource($sources, $fuente);
+            }
+        }
+
+        sort($sources, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $sources;
+    }
+
+    private function appendSource(array &$sources, $candidate): void
+    {
+        $candidate = trim((string) $candidate);
+        if ($candidate === '') {
+            return;
+        }
+
+        if (!in_array($candidate, $sources, true)) {
+            $sources[] = $candidate;
+        }
+    }
+
+    /**
+     * @return string[]
+     */
+    private function loadPipelineStagesFromSettings(): array
+    {
+        if (!($this->settingsModel instanceof SettingsModel)) {
+            return [];
+        }
+
+        try {
+            $raw = $this->settingsModel->getOption('crm_pipeline_stages');
+        } catch (PDOException $exception) {
+            return [];
+        }
+
+        if ($raw === null || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $stages = array_map(static fn($value) => trim((string) $value), $decoded);
+        } else {
+            $stages = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+            $stages = array_map(static fn($value) => trim($value), $stages);
+        }
+
+        $stages = array_values(array_filter($stages, static fn($value) => $value !== ''));
+
+        return $stages;
+    }
+
+    private function sanitizeSort(string $sort): string
+    {
+        $sort = strtolower(trim($sort));
+        $allowed = ['fecha_desc', 'fecha_asc', 'creado_desc', 'creado_asc'];
+
+        if (!in_array($sort, $allowed, true)) {
+            return self::DEFAULT_SORT;
+        }
+
+        return $sort;
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = trim($value);
+        if (function_exists('mb_strtolower')) {
+            return mb_strtolower($value, 'UTF-8');
+        }
+
+        return strtolower($value);
+    }
+}
