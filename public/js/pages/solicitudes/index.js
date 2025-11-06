@@ -14,20 +14,43 @@ document.addEventListener('DOMContentLoaded', () => {
             ? 0
             : autoDismissSeconds * 1000;
 
-    const notificationPanel = createNotificationPanel({
-        panelId: 'kanbanNotificationPanel',
-        backdropId: 'notificationPanelBackdrop',
-        toggleSelector: '[data-notification-panel-toggle]',
-    });
+    const ensureNotificationPanel = () => {
+        if (window.MEDF?.notificationPanel) {
+            return window.MEDF.notificationPanel;
+        }
 
-    const globalChannels = realtimeConfig.channels || {};
-    notificationPanel.setChannelPreferences(globalChannels);
+        const instance = createNotificationPanel({
+            panelId: 'kanbanNotificationPanel',
+            backdropId: 'notificationPanelBackdrop',
+            toggleSelector: '[data-notification-panel-toggle]',
+        });
+
+        window.MEDF = window.MEDF || {};
+        window.MEDF.notificationPanel = instance;
+        return instance;
+    };
+
+    const notificationPanel = ensureNotificationPanel();
+
+    const defaultChannels = {
+        ...(window.MEDF?.defaultNotificationChannels || {}),
+        ...(realtimeConfig.channels || {}),
+    };
+
+    window.MEDF = window.MEDF || {};
+    window.MEDF.defaultNotificationChannels = defaultChannels;
+    window.MEDF.pusherIntegration = {
+        enabled: Boolean(realtimeConfig.enabled),
+        hasKey: Boolean(realtimeConfig.key),
+    };
+
+    notificationPanel.setChannelPreferences(defaultChannels);
 
     const mapChannels = (channels = {}) => {
         const merged = {
-            email: channels.email ?? globalChannels.email ?? false,
-            sms: channels.sms ?? globalChannels.sms ?? false,
-            daily_summary: channels.daily_summary ?? globalChannels.daily_summary ?? false,
+            email: channels.email ?? defaultChannels.email ?? false,
+            sms: channels.sms ?? defaultChannels.sms ?? false,
+            daily_summary: channels.daily_summary ?? defaultChannels.daily_summary ?? false,
         };
 
         const labels = [];

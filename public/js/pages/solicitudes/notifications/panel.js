@@ -186,6 +186,10 @@ export function createNotificationPanel(options = {}) {
         };
     }
 
+    if (panel.__notificationController) {
+        return panel.__notificationController;
+    }
+
     const realtimeList = panel.querySelector('[data-panel-list="realtime"]');
     const pendingList = panel.querySelector('[data-panel-list="pending"]');
     const realtimeCounter = panel.querySelector('[data-count="realtime"]');
@@ -369,7 +373,7 @@ export function createNotificationPanel(options = {}) {
     renderRealtime();
     renderPending();
 
-    return {
+    const api = {
         pushRealtime,
         pushPending,
         setChannelPreferences,
@@ -377,4 +381,8 @@ export function createNotificationPanel(options = {}) {
         open,
         close,
     };
+
+    panel.__notificationController = api;
+
+    return api;
 }
