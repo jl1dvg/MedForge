@@ -227,6 +227,10 @@ class SettingsModel
         $affected = $updateStmt->rowCount();
 
         if ($affected === 0) {
+            if ($this->optionExists($name)) {
+                return 0;
+            }
+
             $insertStmt = $this->pdo->prepare($insertSql);
             $insertStmt->execute($params);
             $affected = $insertStmt->rowCount();
@@ -268,6 +272,15 @@ class SettingsModel
         }
 
         return [$columns, $placeholders, $params];
+    }
+
+    private function optionExists(string $name): bool
+    {
+        $sql  = sprintf('SELECT 1 FROM %s WHERE %s = :name LIMIT 1', $this->table, $this->nameColumn);
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':name' => $name]);
+
+        return (bool) $stmt->fetchColumn();
     }
 
     private function resolveTable(): string
