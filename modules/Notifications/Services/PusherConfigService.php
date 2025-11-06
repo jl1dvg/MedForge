@@ -9,8 +9,18 @@ use Throwable;
 
 class PusherConfigService
 {
+    public const EVENT_NEW_REQUEST = 'new_request';
+    public const EVENT_STATUS_UPDATED = 'status_updated';
+    public const EVENT_CRM_UPDATED = 'crm_updated';
+    public const EVENT_SURGERY_REMINDER = 'surgery_reminder';
+
     private const DEFAULT_CHANNEL = 'solicitudes-kanban';
-    private const DEFAULT_EVENT = 'nueva-solicitud';
+    private const DEFAULT_EVENTS = [
+        self::EVENT_NEW_REQUEST => 'nueva-solicitud',
+        self::EVENT_STATUS_UPDATED => 'solicitud-actualizada',
+        self::EVENT_CRM_UPDATED => 'crm-actualizado',
+        self::EVENT_SURGERY_REMINDER => 'recordatorio-cirugia',
+    ];
 
     private ?SettingsModel $settingsModel = null;
     private ?array $configCache = null;
@@ -34,7 +44,9 @@ class PusherConfigService
      *     channel: string,
      *     event: string,
      *     desktop_notifications: bool,
-     *     auto_dismiss_seconds: int
+     *     auto_dismiss_seconds: int,
+     *     events: array<string, string>,
+     *     channels: array{email: bool, sms: bool, daily_summary: bool}
      * }
      */
     public function getConfig(): array
@@ -50,9 +62,15 @@ class PusherConfigService
             'secret' => '',
             'cluster' => '',
             'channel' => self::DEFAULT_CHANNEL,
-            'event' => self::DEFAULT_EVENT,
+            'event' => self::DEFAULT_EVENTS[self::EVENT_NEW_REQUEST],
             'desktop_notifications' => false,
             'auto_dismiss_seconds' => 0,
+            'events' => self::DEFAULT_EVENTS,
+            'channels' => [
+                'email' => false,
+                'sms' => false,
+                'daily_summary' => false,
+            ],
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -65,6 +83,9 @@ class PusherConfigService
                     'pusher_realtime_notifications',
                     'desktop_notifications',
                     'auto_dismiss_desktop_notifications_after',
+                    'notifications_email_enabled',
+                    'notifications_sms_enabled',
+                    'notifications_daily_summary',
                 ]);
 
                 $config['app_id'] = trim((string) ($options['pusher_app_id'] ?? ''));
@@ -74,6 +95,11 @@ class PusherConfigService
                 $config['desktop_notifications'] = ($options['desktop_notifications'] ?? '0') === '1';
                 $config['auto_dismiss_seconds'] = max(0, (int) ($options['auto_dismiss_desktop_notifications_after'] ?? 0));
                 $config['enabled'] = ($options['pusher_realtime_notifications'] ?? '0') === '1';
+                $config['channels'] = [
+                    'email' => ($options['notifications_email_enabled'] ?? '0') === '1',
+                    'sms' => ($options['notifications_sms_enabled'] ?? '0') === '1',
+                    'daily_summary' => ($options['notifications_daily_summary'] ?? '0') === '1',
+                ];
             } catch (Throwable $exception) {
                 error_log('No fue posible cargar la configuración de Pusher: ' . $exception->getMessage());
             }
@@ -97,7 +123,9 @@ class PusherConfigService
      *     channel: string,
      *     event: string,
      *     desktop_notifications: bool,
-     *     auto_dismiss_seconds: int
+     *     auto_dismiss_seconds: int,
+     *     events: array<string, string>,
+     *     channels: array{email: bool, sms: bool, daily_summary: bool}
      * }
      */
     public function getPublicConfig(): array
@@ -112,6 +140,8 @@ class PusherConfigService
             'event' => $config['event'],
             'desktop_notifications' => $config['desktop_notifications'],
             'auto_dismiss_seconds' => $config['auto_dismiss_seconds'],
+            'events' => $config['events'],
+            'channels' => $config['channels'],
         ];
     }
 
@@ -129,9 +159,9 @@ class PusherConfigService
         }
 
         $channel = $channel ?: $config['channel'];
-        $event = $event ?: $config['event'];
+        $eventName = $this->resolveEventName($event, $config);
 
-        if ($channel === '' || $event === '') {
+        if ($channel === '' || $eventName === '') {
             return false;
         }
 
@@ -148,7 +178,7 @@ class PusherConfigService
                 $options
             );
 
-            $pusher->trigger($channel, $event, $payload);
+            $pusher->trigger($channel, $eventName, $payload);
 
             return true;
         } catch (Throwable $exception) {
@@ -156,5 +186,42 @@ class PusherConfigService
 
             return false;
         }
+    }
+
+    public function getEventName(string $alias): string
+    {
+        $config = $this->getConfig();
+
+        return $this->resolveEventName($alias, $config);
+    }
+
+    public function getNotificationChannels(): array
+    {
+        $config = $this->getConfig();
+
+        return $config['channels'];
+    }
+
+    /**
+     * @param array{events: array<string, string>, event: string} $config
+     */
+    private function resolveEventName(?string $event, array $config): string
+    {
+        $events = $config['events'] ?? self::DEFAULT_EVENTS;
+
+        if ($event === null || $event === '') {
+            return $config['event'] ?? $events[self::EVENT_NEW_REQUEST];
+        }
+
+        if (isset($events[$event])) {
+            return (string) $events[$event];
+        }
+
+        // Allow passing the raw event name already resolved.
+        if (in_array($event, $events, true)) {
+            return $event;
+        }
+
+        return $event;
     }
 }

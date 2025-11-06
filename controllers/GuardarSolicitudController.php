@@ -142,6 +142,7 @@ class GuardarSolicitudController
                 'observacion' => $observacion,
                 'sesiones' => $sesiones,
                 'detalles' => $detalles,
+                'channels' => $this->pusherConfigService->getNotificationChannels(),
             ]);
         }
 
