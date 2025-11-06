@@ -169,6 +169,80 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'integrations' => [
+                'title' => 'Integraciones',
+                'icon' => 'fa-solid fa-plug',
+                'description' => 'Conecta servicios externos como Pusher y Google para ampliar las capacidades del sistema.',
+                'groups' => [
+                    [
+                        'id' => 'pusher',
+                        'title' => 'Pusher.com',
+                        'description' => 'Configura las credenciales para habilitar notificaciones en tiempo real similares a Perfex.',
+                        'fields' => [
+                            self::checkboxField(
+                                'pusher_realtime_notifications',
+                                'Habilitar notificaciones en tiempo real',
+                                false,
+                                'Activa el disparo de eventos en vivo para usuarios conectados.'
+                            ),
+                            self::textField('pusher_app_id', 'App ID de Pusher'),
+                            self::textField('pusher_app_key', 'App Key de Pusher'),
+                            self::passwordField('pusher_app_secret', 'App Secret de Pusher'),
+                            self::textField(
+                                'pusher_cluster',
+                                'Cluster de Pusher',
+                                false,
+                                'Deja en blanco para utilizar el cluster predeterminado proporcionado por Pusher.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'google',
+                        'title' => 'Google Workspace',
+                        'description' => 'Integra Google Calendar, Drive y servicios relacionados.',
+                        'fields' => [
+                            self::textField(
+                                'google_api_key',
+                                'Clave API de Google',
+                                false,
+                                'Utilizada para Google Maps, Calendar y el selector de archivos.'
+                            ),
+                            self::textField(
+                                'google_client_id',
+                                'ID de cliente OAuth',
+                                false,
+                                'Formato habitual: xxxxx.apps.googleusercontent.com'
+                            ),
+                            self::textField(
+                                'google_calendar_main_calendar',
+                                'ID de calendario principal',
+                                false,
+                                'Define el calendario predeterminado a sincronizar con Google Calendar.'
+                            ),
+                            self::checkboxField(
+                                'enable_google_picker',
+                                'Habilitar Google Drive Picker',
+                                false,
+                                'Permite adjuntar archivos desde Google Drive en el selector de documentos.'
+                            ),
+                            self::textField(
+                                'recaptcha_site_key',
+                                'Clave de sitio reCAPTCHA'
+                            ),
+                            self::passwordField('recaptcha_secret_key', 'Clave secreta reCAPTCHA'),
+                            self::checkboxField(
+                                'use_recaptcha_customers_area',
+                                'Aplicar reCAPTCHA en el portal de pacientes/cliente'
+                            ),
+                            self::textareaField(
+                                'recaptcha_ignore_ips',
+                                'IPs excluidas de reCAPTCHA',
+                                'Introduce una IP por línea para saltar la verificación.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'localization' => [
                 'title' => 'Localización',
                 'icon' => 'fa-solid fa-earth-americas',
