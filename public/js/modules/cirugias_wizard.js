@@ -51,6 +51,42 @@ $(function () {
         }
     }
 
+    // === Detectores de vacío para entradas persistidas ===
+    function isInsumosVacioValue(raw) {
+        if (raw === undefined || raw === null) return true;
+        if (typeof raw !== 'string') return true;
+        const v = raw.trim();
+        if (v === '' || v.toUpperCase() === 'NULL') return true;
+        try {
+            const parsed = JSON.parse(v);
+            if (Array.isArray(parsed)) {
+                // Caso legado: "[]"
+                return parsed.length === 0;
+            }
+            if (parsed && typeof parsed === 'object') {
+                const keys = ['equipos', 'anestesia', 'quirurgicos'];
+                return keys.every(k => Array.isArray(parsed[k]) && parsed[k].length === 0);
+            }
+            return true;
+        } catch (e) {
+            // Si no es JSON válido, trátalo como vacío para evitar bloquear plantillas
+            return true;
+        }
+    }
+
+    function isMedicamentosVacioValue(raw) {
+        if (raw === undefined || raw === null) return true;
+        if (typeof raw !== 'string') return true;
+        const v = raw.trim();
+        if (v === '' || v.toUpperCase() === 'NULL') return true;
+        try {
+            const parsed = JSON.parse(v);
+            return Array.isArray(parsed) ? parsed.length === 0 : true;
+        } catch (e) {
+            return true;
+        }
+    }
+
     const formIdInput = document.querySelector('input[name="form_id"]');
     const hcNumberInput = document.querySelector('input[name="hc_number"]');
     const autosaveEnabled = !!(formIdInput && hcNumberInput);
@@ -138,6 +174,21 @@ $(function () {
     injectWizardStyles();
     inicializarMedicamentos();
 
+    // Intentar cargar plantillas por defecto si no hay datos persistidos (incluye casos "[]")
+    try {
+        const insumosRaw = ($('#insumosInput').val() || '').trim();
+        const medsRaw = ($('#medicamentosInput').val() || '').trim();
+
+        if (isInsumosVacioValue(insumosRaw) && typeof window.cargarPlantillaInsumos === 'function') {
+            window.cargarPlantillaInsumos(); // opcionalmente acepta procedimientoId si tu implementación lo requiere
+        }
+        if (isMedicamentosVacioValue(medsRaw) && typeof window.cargarPlantillaMedicamentos === 'function') {
+            window.cargarPlantillaMedicamentos();
+        }
+    } catch (e) {
+        console.warn('No se pudo evaluar/cargar plantillas por defecto:', e);
+    }
+
     function inicializarInsumos() {
         var afiliacion = afiliacionCirugia;
         var insumosDisponibles = insumosDisponiblesJSON;
@@ -148,6 +199,13 @@ $(function () {
         });
         $('#insumosTable').editableTableWidget().on('change', function () {
             actualizarInsumos();
+        });
+        // Asegurar que todas las filas existentes marquen la celda de cantidad
+        $('#insumosTable tbody tr').each(function () {
+            const $td = $(this).find('td').eq(2);
+            if ($td.length && !$td.hasClass('cantidad-cell')) {
+                $td.addClass('cantidad-cell');
+            }
         });
 
         $('#insumosTable').on('click', '.delete-btn', function () {
@@ -222,7 +280,10 @@ $(function () {
                 const categoria = (($(this).find('.categoria-select').val() || '').toLowerCase());
                 const id = $(this).find('.nombre-select').val();
                 const nombre = $(this).find('.nombre-select option:selected').text().trim();
-                const cantidad = Math.max(0, Number($(this).find('.cantidad-cell').text().trim()) || 0);
+                // Fallback: si la fila aún no tenía la clase, usar la tercera celda
+                const $cantidadCell = $(this).find('.cantidad-cell');
+                const cantidadText = ($cantidadCell.length ? $cantidadCell.text() : $(this).find('td').eq(2).text()).trim();
+                const cantidad = Math.max(0, Number(cantidadText) || 0);
                 if (!categoria || !id || cantidad <= 0) return;
 
                 const pool = (insumosDisponibles[categoria] || {});
@@ -336,13 +397,8 @@ $(function () {
                     });
                 }
             });
-            if (medicamentosArray.length === 0) {
-                $('#medicamentosInput').val('NULL');
-                console.log("✅ JSON medicamentos: NULL (sin datos)");
-            } else {
-                $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
-                console.log("✅ JSON medicamentos:", medicamentosArray);
-            }
+            $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
+            console.log("✅ JSON medicamentos:", medicamentosArray);
             scheduleAutosave();
         }
 

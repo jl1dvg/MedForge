@@ -35,6 +35,11 @@ interface SolicitudTemplateDefinitionInterface
     public function getReportOptions(): array;
 
     /**
+     * @return list<string>
+     */
+    public function getAppendViews(): array;
+
+    /**
      * Determina si la definición aplica para los datos proporcionados.
      *
      * @param array<string, mixed> $data

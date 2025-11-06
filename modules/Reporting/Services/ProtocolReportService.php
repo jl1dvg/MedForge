@@ -32,10 +32,10 @@ class ProtocolReportService
     private SolicitudTemplateRegistry $solicitudTemplateRegistry;
 
     public function __construct(
-        PDO                  $db,
-        ReportController     $reportController,
-        ?ProtocoloModel      $protocoloModel = null,
-        ?SolicitudController $solicitudController = null,
+        PDO                        $db,
+        ReportController           $reportController,
+        ?ProtocoloModel            $protocoloModel = null,
+        ?SolicitudController       $solicitudController = null,
         ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null
     )
     {
@@ -156,9 +156,21 @@ class ProtocolReportService
             (string)($datos['ayudante_anestesia'] ?? '')
         );
 
-        $datos['insumos'] = (is_string($datos['insumos'] ?? null) && $datos['insumos'] !== '')
-            ? ProtocoloHelper::procesarInsumos($datos['insumos'])
-            : [];
+        // Insumos pueden venir como JSON (string) o como arreglo ya procesado.
+        $rawInsumos = $datos['insumos'] ?? null;
+        if (is_array($rawInsumos) && !empty($rawInsumos)) {
+            // Ya vienen procesados
+            $datos['insumos'] = $rawInsumos;
+        } elseif (is_string($rawInsumos)) {
+            $trim = trim($rawInsumos);
+            if ($trim !== '' && strtoupper($trim) !== 'NULL' && $trim !== '[]') {
+                $datos['insumos'] = ProtocoloHelper::procesarInsumos($rawInsumos);
+            } else {
+                $datos['insumos'] = [];
+            }
+        } else {
+            $datos['insumos'] = [];
+        }
 
         [$totalHoras, $totalHorasConDescuento] = $this->calcularDuraciones(
             $datos['hora_inicio'] ?? null,
@@ -221,12 +233,29 @@ class ProtocolReportService
 
         $reportSlug = $definition->getReportSlug();
         if ($reportSlug !== null) {
+            $appendViews = $definition->getAppendViews();
+            $appendix = null;
+
+            if ($appendViews !== []) {
+                $appendHtml = $this->renderSegments($appendViews, $datos, $definition->getOrientations());
+
+                if ($appendHtml !== '') {
+                    $appendix = [
+                        'html' => $appendHtml,
+                        'css' => $definition->getCss() ?? $this->getStylesheetPath(),
+                        'orientation' => $definition->getDefaultOrientation(),
+                        'mpdf' => $definition->getMpdfOptions(),
+                    ];
+                }
+            }
+
             return [
                 'mode' => 'report',
                 'slug' => $reportSlug,
                 'data' => $datos,
                 'filename' => $definition->buildFilename($formId, $hcNumber),
                 'options' => $definition->getReportOptions(),
+                'append' => $appendix,
             ];
         }
 
