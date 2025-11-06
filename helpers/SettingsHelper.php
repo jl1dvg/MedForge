@@ -160,11 +160,133 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'realtime',
+                        'title' => 'Notificaciones en tiempo real (Pusher.com)',
+                        'description' => 'Configura las credenciales necesarias para habilitar actualizaciones instantáneas en el tablero Kanban y módulos CRM.',
+                        'fields' => [
+                            self::textField('pusher_app_id', 'Pusher APP ID', true),
+                            self::textField('pusher_app_key', 'Pusher APP Key', true),
+                            self::passwordField('pusher_app_secret', 'Pusher APP Secret'),
+                            self::textField('pusher_cluster', 'Cluster', false, 'Consulta https://pusher.com/docs/clusters'),
+                            self::checkboxField('pusher_realtime_notifications', 'Habilitar notificaciones en tiempo real'),
+                            self::checkboxField('desktop_notifications', 'Habilitar notificaciones de escritorio'),
+                            self::numberField(
+                                'auto_dismiss_desktop_notifications_after',
+                                'Cerrar notificaciones de escritorio después de (segundos)',
+                                0,
+                                'Usa 0 para mantener la notificación visible hasta que el usuario la cierre.'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'summaries',
                         'title' => 'Resúmenes automáticos',
                         'description' => 'Define si deseas recibir un resumen diario consolidado.',
                         'fields' => [
                             self::checkboxField('notifications_daily_summary', 'Enviar resumen diario a administradores'),
+                        ],
+                    ],
+                    [
+                        'id' => 'realtime',
+                        'title' => 'Pusher.com',
+                        'description' => 'Configura credenciales y opciones para notificaciones en tiempo real y de escritorio.',
+                        'fields' => [
+                            self::textField('pusher_app_id', 'Pusher APP ID'),
+                            self::textField('pusher_app_key', 'Pusher APP Key'),
+                            self::textField('pusher_app_secret', 'Pusher APP Secret'),
+                            self::textField(
+                                'pusher_cluster',
+                                'Pusher Cluster',
+                                false,
+                                'Consulta los clústeres disponibles en https://pusher.com/docs/clusters'
+                            ),
+                            self::checkboxField('pusher_realtime_notifications', 'Enable Real Time Notifications'),
+                            self::checkboxField(
+                                'desktop_notifications',
+                                'Enable Desktop Notifications',
+                                false,
+                                'Requiere que el navegador esté servido sobre HTTPS para funcionar.'
+                            ),
+                            self::numberField(
+                                'auto_dismiss_desktop_notifications_after',
+                                'Auto Dismiss Desktop Notifications After X Seconds (0 to disable)',
+                                0,
+                                'Establece 0 para mantener las alertas visibles hasta cerrarlas manualmente.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
+            'integrations' => [
+                'title' => 'Integraciones',
+                'icon' => 'fa-solid fa-plug',
+                'description' => 'Conecta servicios externos como Pusher y Google para ampliar las capacidades del sistema.',
+                'groups' => [
+                    [
+                        'id' => 'pusher',
+                        'title' => 'Pusher.com',
+                        'description' => 'Configura las credenciales para habilitar notificaciones en tiempo real similares a Perfex.',
+                        'fields' => [
+                            self::checkboxField(
+                                'pusher_realtime_notifications',
+                                'Habilitar notificaciones en tiempo real',
+                                false,
+                                'Activa el disparo de eventos en vivo para usuarios conectados.'
+                            ),
+                            self::textField('pusher_app_id', 'App ID de Pusher'),
+                            self::textField('pusher_app_key', 'App Key de Pusher'),
+                            self::passwordField('pusher_app_secret', 'App Secret de Pusher'),
+                            self::textField(
+                                'pusher_cluster',
+                                'Cluster de Pusher',
+                                false,
+                                'Deja en blanco para utilizar el cluster predeterminado proporcionado por Pusher.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'google',
+                        'title' => 'Google Workspace',
+                        'description' => 'Integra Google Calendar, Drive y servicios relacionados.',
+                        'fields' => [
+                            self::textField(
+                                'google_api_key',
+                                'Clave API de Google',
+                                false,
+                                'Utilizada para Google Maps, Calendar y el selector de archivos.'
+                            ),
+                            self::textField(
+                                'google_client_id',
+                                'ID de cliente OAuth',
+                                false,
+                                'Formato habitual: xxxxx.apps.googleusercontent.com'
+                            ),
+                            self::textField(
+                                'google_calendar_main_calendar',
+                                'ID de calendario principal',
+                                false,
+                                'Define el calendario predeterminado a sincronizar con Google Calendar.'
+                            ),
+                            self::checkboxField(
+                                'enable_google_picker',
+                                'Habilitar Google Drive Picker',
+                                false,
+                                'Permite adjuntar archivos desde Google Drive en el selector de documentos.'
+                            ),
+                            self::textField(
+                                'recaptcha_site_key',
+                                'Clave de sitio reCAPTCHA'
+                            ),
+                            self::passwordField('recaptcha_secret_key', 'Clave secreta reCAPTCHA'),
+                            self::checkboxField(
+                                'use_recaptcha_customers_area',
+                                'Aplicar reCAPTCHA en el portal de pacientes/cliente'
+                            ),
+                            self::textareaField(
+                                'recaptcha_ignore_ips',
+                                'IPs excluidas de reCAPTCHA',
+                                'Introduce una IP por línea para saltar la verificación.'
+                            ),
                         ],
                     ],
                 ],
