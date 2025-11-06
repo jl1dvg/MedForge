@@ -29,13 +29,13 @@ class PdfRenderer
         $this->basePath = $basePath ?? BASE_PATH;
     }
 
-    public function render(string $template, array $data, array $options = []): void
+    public function render(string $template, array $data, array $options = []): string
     {
         $html = $this->renderTemplate($template, $data);
-        $this->outputPdf($html, $options);
+        return $this->outputPdf($html, $options);
     }
 
-    public function renderMany(array $pages, array $options = []): void
+    public function renderMany(array $pages, array $options = []): string
     {
         if (empty($pages)) {
             throw new InvalidArgumentException('No se proporcionaron páginas para el PDF.');
@@ -62,7 +62,12 @@ class PdfRenderer
             $html .= $this->renderTemplate($page['template'], $page['data']);
         }
 
-        $this->outputPdf($html, $options);
+        return $this->outputPdf($html, $options);
+    }
+
+    public function renderHtml(string $html, array $options = []): string
+    {
+        return $this->outputPdf($html, $options);
     }
 
     private function renderTemplate(string $template, array $data): string
@@ -93,7 +98,7 @@ class PdfRenderer
         return rtrim($this->basePath, '/\\') . '/' . ltrim($template, '/');
     }
 
-    private function outputPdf(string $html, array $options): void
+    private function outputPdf(string $html, array $options): string
     {
         $config = self::DEFAULT_CONFIG;
         if (isset($options['mpdf']) && is_array($options['mpdf'])) {
@@ -121,6 +126,6 @@ class PdfRenderer
         $filename = $options['filename'] ?? 'documento.pdf';
         $destination = $options['destination'] ?? 'I';
 
-        $mpdf->Output($filename, $destination);
+        return $mpdf->Output($filename, $destination);
     }
 }

@@ -206,6 +206,92 @@
             min-height: 0;
         }
 
+        .kanban-card .crm-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background-color: rgba(14, 165, 233, 0.12);
+            color: #075985;
+        }
+
+        .kanban-card .crm-meta {
+            display: grid;
+            gap: 0.1rem;
+            margin-top: 0.5rem;
+            font-size: 0.78rem;
+            color: #475569;
+        }
+
+        .kanban-card .crm-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .kanban-card .crm-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-top: 0.5rem;
+        }
+
+        .kanban-card .crm-badges .badge {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        #crmCamposContainer .crm-campo {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        #crmCamposContainer .crm-campo input,
+        #crmCamposContainer .crm-campo select {
+            width: 100%;
+        }
+
+        .crm-list-empty {
+            font-size: 0.85rem;
+            color: #64748b;
+            background: #f8fafc;
+            border: 1px dashed #cbd5f5;
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+
+        .crm-offcanvas-section + .crm-offcanvas-section {
+            border-top: 1px solid rgba(226, 232, 240, 0.8);
+            padding-top: 1.25rem;
+            margin-top: 1.25rem;
+        }
+
+        .crm-note-item small {
+            color: #64748b;
+        }
+
+        .crm-task-item .badge {
+            font-size: 0.7rem;
+        }
+
+        .crm-task-item button {
+            white-space: nowrap;
+        }
+
+        .crm-scrollable {
+            min-height: 0;
+        }
+
         @media (max-width: 900px) {
             .kanban-column {
                 min-width: 160px;
@@ -388,6 +474,164 @@
                     </div>
                 </div>
             </div>
+            <div class="crm-scrollable flex-grow-1 overflow-auto">
+                <section class="crm-offcanvas-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Notas internas</h6>
+                        <small class="text-muted" id="crmNotasResumen"></small>
+                    </div>
+                    <div id="crmNotasList" class="list-group mb-3"></div>
+                    <form id="crmNotaForm">
+                        <label for="crmNotaTexto" class="form-label">Agregar nota</label>
+                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3" placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
+                            </button>
+                        </div>
+                    </form>
+                </section>
+                <section class="crm-offcanvas-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Documentos adjuntos</h6>
+                        <small class="text-muted" id="crmAdjuntosResumen"></small>
+                    </div>
+                    <div id="crmAdjuntosList" class="list-group mb-3"></div>
+                    <form id="crmAdjuntoForm" class="row g-2 align-items-end" enctype="multipart/form-data">
+                        <div class="col-sm-7">
+                            <label for="crmAdjuntoArchivo" class="form-label">Archivo</label>
+                            <input type="file" id="crmAdjuntoArchivo" name="archivo" class="form-control" required>
+                        </div>
+                        <div class="col-sm-5">
+                            <label for="crmAdjuntoDescripcion" class="form-label">Descripción</label>
+                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control" placeholder="Consentimiento, póliza, etc.">
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="mdi mdi-upload me-1"></i>Subir documento
+                            </button>
+                        </div>
+                    </form>
+                </section>
+                <section class="crm-offcanvas-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Tareas y recordatorios</h6>
+                        <small class="text-muted" id="crmTareasResumen"></small>
+                    </div>
+                    <div id="crmTareasList" class="list-group mb-3"></div>
+                    <form id="crmTareaForm" class="row g-2">
+                        <div class="col-md-6">
+                            <label for="crmTareaTitulo" class="form-label">Título</label>
+                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmTareaAsignado" class="form-label">Responsable</label>
+                            <select id="crmTareaAsignado" class="form-select">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmTareaFecha" class="form-label">Fecha límite</label>
+                            <input type="date" id="crmTareaFecha" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmTareaRecordatorio" class="form-label">Recordatorio</label>
+                            <input type="datetime-local" id="crmTareaRecordatorio" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label for="crmTareaDescripcion" class="form-label">Descripción</label>
+                            <textarea id="crmTareaDescripcion" class="form-control" rows="2" placeholder="Detalles de la tarea"></textarea>
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-outline-success">
+                                <i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
+        <div class="offcanvas-header">
+            <div>
+                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
+                <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column gap-3">
+            <div id="crmLoading" class="alert alert-info d-none" role="status">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                    <span>Cargando información CRM...</span>
+                </div>
+            </div>
+            <div id="crmError" class="alert alert-danger d-none" role="alert"></div>
+            <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
+            <form id="crmDetalleForm" class="border rounded p-3">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="crmPipeline" class="form-label">Etapa CRM</label>
+                        <select id="crmPipeline" name="pipeline_stage" class="form-select">
+                            <option value="">Recibido</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmResponsable" class="form-label">Responsable principal</label>
+                        <select id="crmResponsable" name="responsable_id" class="form-select">
+                            <option value="">Sin asignar</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmLeadIdInput" class="form-label">Lead CRM vinculado</label>
+                        <div class="input-group">
+                            <input type="number" min="1" id="crmLeadIdInput" class="form-control" placeholder="Se asigna automáticamente">
+                            <button type="button" class="btn btn-outline-secondary" id="crmLeadOpen" title="Abrir lead en CRM">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="crmLeadUnlink" title="Desvincular lead">
+                                <i class="mdi mdi-link-off"></i>
+                            </button>
+                        </div>
+                        <input type="hidden" id="crmLeadId" name="crm_lead_id">
+                        <small class="form-text text-muted" id="crmLeadHelp">Sin lead vinculado. Al guardar se creará automáticamente.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmFuente" class="form-label">Fuente / convenio</label>
+                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
+                        <datalist id="crmFuenteOptions"></datalist>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmSeguidores" class="form-label">Seguidores</label>
+                        <select id="crmSeguidores" name="seguidores[]" class="form-select" multiple></select>
+                        <small class="text-muted">Usuarios que acompañan el caso y reciben alertas.</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
+                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
+                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Campos personalizados</label>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo">
+                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
+                        </button>
+                    </div>
+                    <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
+                </div>
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
+                    </button>
+                </div>
+            </form>
             <div class="crm-scrollable flex-grow-1 overflow-auto">
                 <section class="crm-offcanvas-section">
                     <div class="d-flex justify-content-between align-items-center mb-2">

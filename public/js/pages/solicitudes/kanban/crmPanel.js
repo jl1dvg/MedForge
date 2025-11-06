@@ -10,6 +10,8 @@ let currentSolicitudId = null;
 let offcanvasInstance = null;
 let formsBound = false;
 let currentData = null;
+let currentLead = null;
+let currentDetalle = null;
 
 export function setCrmOptions(options = {}) {
     crmOptions = {
@@ -23,6 +25,9 @@ export function setCrmOptions(options = {}) {
 
 export function initCrmInteractions() {
     const buttons = document.querySelectorAll('.btn-open-crm');
+    if (!buttons.length) {
+        console.warn('CRM ▶ No se encontraron botones .btn-open-crm en el DOM');
+    }
     buttons.forEach(button => {
         if (button.dataset.crmBound === '1') {
             return;
@@ -35,6 +40,7 @@ export function initCrmInteractions() {
 
             const solicitudId = Number.parseInt(button.dataset.solicitudId ?? button.dataset.id ?? '', 10);
             if (!Number.isFinite(solicitudId) || solicitudId <= 0) {
+                console.error('CRM ▶ ID de solicitud inválido en el botón', button);
                 showToast('No se pudo identificar la solicitud seleccionada', false);
                 return;
             }
@@ -154,6 +160,8 @@ function bindForms() {
         });
     }
 
+    bindLeadControls();
+
     const notaForm = document.getElementById('crmNotaForm');
     if (notaForm) {
         notaForm.addEventListener('submit', async event => {
@@ -244,6 +252,7 @@ function collectDetallePayload(form) {
     const fuente = document.getElementById('crmFuente')?.value ?? '';
     const correo = document.getElementById('crmContactoEmail')?.value ?? '';
     const telefono = document.getElementById('crmContactoTelefono')?.value ?? '';
+    const leadId = document.getElementById('crmLeadId')?.value ?? '';
     const seguidoresSelect = document.getElementById('crmSeguidores');
 
     const seguidores = seguidoresSelect
@@ -257,6 +266,7 @@ function collectDetallePayload(form) {
         contacto_email: correo,
         contacto_telefono: telefono,
         seguidores,
+        crm_lead_id: leadId,
         custom_fields: collectCamposPersonalizados(),
     };
 }
@@ -298,18 +308,147 @@ function collectTareaPayload(form) {
     };
 }
 
+function bindLeadControls() {
+    const leadInput = document.getElementById('crmLeadIdInput');
+    const leadHidden = document.getElementById('crmLeadId');
+    const openButton = document.getElementById('crmLeadOpen');
+    const unlinkButton = document.getElementById('crmLeadUnlink');
+
+    if (leadInput && leadHidden) {
+        leadInput.addEventListener('input', () => {
+            const sanitized = leadInput.value.trim();
+            leadHidden.value = sanitized;
+
+            if (sanitized === '') {
+                currentLead = null;
+            }
+
+            updateLeadControls(currentDetalle, sanitized ? currentLead : null, sanitized || null);
+        });
+    }
+
+    if (openButton) {
+        openButton.addEventListener('click', () => {
+            if (openButton.disabled) {
+                return;
+            }
+
+            const url = openButton.dataset.leadUrl;
+            if (url) {
+                window.open(url, '_blank', 'noopener');
+            }
+        });
+    }
+
+    if (unlinkButton && leadHidden) {
+        unlinkButton.addEventListener('click', () => {
+            leadHidden.value = '';
+            if (leadInput) {
+                leadInput.value = '';
+            }
+
+            currentLead = null;
+            updateLeadControls(currentDetalle, null, null);
+        });
+    }
+}
+
+function updateLeadControls(detalle, lead, overrideId = null) {
+    const leadInput = document.getElementById('crmLeadIdInput');
+    const leadHidden = document.getElementById('crmLeadId');
+    const leadHelp = document.getElementById('crmLeadHelp');
+    const openButton = document.getElementById('crmLeadOpen');
+    const unlinkButton = document.getElementById('crmLeadUnlink');
+
+    const leadIdCandidate = overrideId !== null && overrideId !== undefined
+        ? overrideId
+        : lead?.id ?? detalle?.crm_lead_id ?? '';
+
+    const leadId = leadIdCandidate !== null && leadIdCandidate !== undefined
+        ? String(leadIdCandidate).trim()
+        : '';
+
+    if (leadInput) {
+        leadInput.value = leadId;
+    }
+
+    if (leadHidden) {
+        leadHidden.value = leadId;
+    }
+
+    let helpText = 'Sin lead vinculado. Al guardar se creará automáticamente.';
+    let leadUrl = '';
+
+    const leadMatchesDetalle = leadId && detalle?.crm_lead_id && String(detalle.crm_lead_id) === leadId;
+    const leadData = lead && leadId && String(lead.id) === leadId ? lead : null;
+
+    if (leadId) {
+        const status = leadData?.status ?? (leadMatchesDetalle ? detalle?.crm_lead_status : null) ?? 'sin estado';
+        const source = leadData?.source ?? (leadMatchesDetalle ? detalle?.crm_lead_source : null) ?? '';
+
+        if (leadData || leadMatchesDetalle) {
+            helpText = `Lead #${leadId} · Estado: ${status}${source ? ` · Fuente: ${source}` : ''}`;
+            leadUrl = leadData?.url ?? `/crm?lead=${leadId}`;
+        } else {
+            helpText = `Lead #${leadId}. Se vinculará cuando guardes los cambios.`;
+            leadUrl = `/crm?lead=${leadId}`;
+        }
+    }
+
+    if (leadHelp) {
+        leadHelp.textContent = helpText;
+    }
+
+    if (openButton) {
+        if (leadId) {
+            openButton.disabled = false;
+            openButton.dataset.leadUrl = leadUrl;
+        } else {
+            openButton.disabled = true;
+            openButton.dataset.leadUrl = '';
+        }
+    }
+
+    if (unlinkButton) {
+        unlinkButton.disabled = !leadId;
+    }
+
+    if (currentDetalle) {
+        currentDetalle.crm_lead_id = leadId ? Number.parseInt(leadId, 10) || leadId : null;
+        if (leadData) {
+            currentDetalle.crm_lead_status = leadData.status ?? currentDetalle.crm_lead_status;
+            currentDetalle.crm_lead_source = leadData.source ?? currentDetalle.crm_lead_source;
+        } else if (!leadId) {
+            currentDetalle.crm_lead_status = null;
+            currentDetalle.crm_lead_source = null;
+        }
+    }
+}
+
 async function submitJson(url, payload, successMessage) {
     try {
         toggleLoading(true);
         const response = await fetch(url, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(payload),
         });
 
-        const data = await response.json();
+        let data;
+        let rawText = '';
+        try {
+            data = await response.json();
+        } catch {
+            try {
+                rawText = await response.text();
+            } catch {}
+            const preview = rawText ? ` (preview: ${rawText.slice(0, 160)}...)` : '';
+            throw new Error('Respuesta no válida del servidor (no JSON)' + preview);
+        }
+
         if (!response.ok || data.success === false) {
             throw new Error(data.error || 'Operación no disponible');
         }
@@ -337,9 +476,22 @@ async function submitFormData(url, formData, successMessage) {
         toggleLoading(true);
         const response = await fetch(url, {
             method: 'POST',
+            credentials: 'same-origin',
             body: formData,
         });
-        const data = await response.json();
+
+        let data;
+        let rawText = '';
+        try {
+            data = await response.json();
+        } catch {
+            try {
+                rawText = await response.text();
+            } catch {}
+            const preview = rawText ? ` (preview: ${rawText.slice(0, 160)}...)` : '';
+            throw new Error('Respuesta no válida del servidor (no JSON)' + preview);
+        }
+
         if (!response.ok || data.success === false) {
             throw new Error(data.error || 'No se pudo subir el adjunto');
         }
@@ -370,9 +522,7 @@ function openCrmPanel(solicitudId, nombrePaciente) {
     }
 
     if (!offcanvasInstance && typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
-        offcanvasInstance = new bootstrap.Offcanvas(element, { backdrop: true, scroll: true });
-        element.addEventListener('shown.bs.offcanvas', () => syncBackdrop(true));
-        element.addEventListener('hidden.bs.offcanvas', () => syncBackdrop(false));
+        offcanvasInstance = new bootstrap.Offcanvas(element);
     }
 
     currentSolicitudId = solicitudId;
@@ -391,7 +541,6 @@ function openCrmPanel(solicitudId, nombrePaciente) {
 
     if (offcanvasInstance) {
         offcanvasInstance.show();
-        syncBackdrop(true);
     }
 
     loadCrmData(solicitudId);
@@ -399,8 +548,21 @@ function openCrmPanel(solicitudId, nombrePaciente) {
 
 async function loadCrmData(solicitudId) {
     try {
-        const response = await fetch(`/solicitudes/${solicitudId}/crm`);
-        const data = await response.json();
+        const response = await fetch(`/solicitudes/${solicitudId}/crm`, { credentials: 'same-origin' });
+
+        // Intenta parsear JSON; si falla, intenta leer texto para mostrar un error útil
+        let data;
+        let rawText = '';
+        try {
+            data = await response.json();
+        } catch {
+            try {
+                rawText = await response.text();
+            } catch {}
+            const preview = rawText ? ` (preview: ${rawText.slice(0, 160)}...)` : '';
+            throw new Error('Respuesta no válida del servidor (no JSON)' + preview);
+        }
+
         if (!response.ok || data.success === false) {
             throw new Error(data.error || 'No se pudo cargar la información CRM');
         }
@@ -416,21 +578,24 @@ async function loadCrmData(solicitudId) {
 }
 
 function renderCrmData(data) {
-    if (!data || !data.detalle) {
+    if (!data || !data.detalle || typeof data.detalle !== 'object') {
         toggleError('No se encontró información CRM para esta solicitud');
         return;
     }
 
     currentData = data;
+    currentDetalle = data.detalle;
+    currentLead = data.lead ?? null;
 
-    renderResumen(data.detalle);
+    updateLeadControls(currentDetalle, currentLead);
+    renderResumen(data.detalle, currentLead);
     renderNotas(data.notas ?? []);
     renderAdjuntos(data.adjuntos ?? []);
     renderTareas(data.tareas ?? []);
     renderCampos(data.campos_personalizados ?? []);
 }
 
-function renderResumen(detalle) {
+function renderResumen(detalle, lead) {
     const header = document.getElementById('crmResumenCabecera');
     if (!header) {
         return;
@@ -452,6 +617,13 @@ function renderResumen(detalle) {
     const telefono = detalle.crm_contacto_telefono || detalle.paciente_celular || 'Sin teléfono';
     const correo = detalle.crm_contacto_email || 'Sin correo registrado';
     const dias = Number.isFinite(detalle.dias_en_estado) ? `${detalle.dias_en_estado} día(s) en el estado actual` : 'Tiempo en estado no disponible';
+    const leadId = lead?.id ?? detalle.crm_lead_id ?? null;
+    const leadStatus = lead?.status ?? detalle.crm_lead_status ?? 'Sin estado';
+    const leadSource = lead?.source ?? detalle.crm_lead_source ?? 'Sin fuente';
+    const leadUrl = lead?.url ?? (leadId ? `/crm?lead=${leadId}` : null);
+    const leadInfo = leadId
+        ? `Lead #${escapeHtml(String(leadId))} · ${escapeHtml(leadStatus)} · ${escapeHtml(leadSource)}`
+        : 'Sin lead vinculado aún';
 
     header.innerHTML = `
         <div class="d-flex flex-column gap-2">
@@ -459,6 +631,7 @@ function renderResumen(detalle) {
                 <span class="badge text-bg-secondary">HC ${escapeHtml(String(hc))}</span>
                 <span class="badge text-bg-info">${escapeHtml(pipeline)}</span>
                 <span class="badge text-bg-light text-dark">${escapeHtml(prioridad)}</span>
+                ${leadId ? `<span class="badge text-bg-primary">Lead #${escapeHtml(String(leadId))}</span>` : ''}
             </div>
             <div>
                 <h5 class="mb-1">${escapeHtml(nombre)}</h5>
@@ -474,6 +647,7 @@ function renderResumen(detalle) {
                 <div class="col-6"><strong>Tareas activas:</strong> ${tareasPendientes}/${tareasTotales}</div>
                 <div class="col-6"><strong>Próx. vencimiento:</strong> ${escapeHtml(proximoVencimiento)}</div>
                 <div class="col-12"><strong>Seguimiento:</strong> ${escapeHtml(dias)}</div>
+                <div class="col-12"><strong>Lead CRM:</strong> ${leadUrl ? `<a href="${escapeHtml(leadUrl)}" target="_blank" rel="noopener">${leadInfo}</a>` : escapeHtml(leadInfo)}</div>
             </div>
         </div>
     `;
@@ -847,17 +1021,6 @@ function setFormsDisabled(disabled) {
             return;
         }
         element.disabled = disabled;
-    });
-}
-
-function syncBackdrop(apply) {
-    const backdrops = document.querySelectorAll('.offcanvas-backdrop');
-    if (!backdrops.length) {
-        return;
-    }
-
-    backdrops.forEach(backdrop => {
-        backdrop.classList.toggle('crm-offcanvas-backdrop', apply);
     });
 }
 

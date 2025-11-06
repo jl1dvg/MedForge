@@ -286,7 +286,7 @@ class SolicitudController extends BaseController
             @unlink($destinoRuta);
             $this->json(['success' => false, 'error' => 'No se pudo registrar el adjunto'], 500);
         }
-    }
+            }
 
     private function getRequestBody(): array
     {

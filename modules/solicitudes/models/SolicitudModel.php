@@ -20,7 +20,7 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
-                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name,
+                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name, 
                 sp.tipo,
                 pd.afiliacion,
                 pd.celular AS paciente_celular,
@@ -72,9 +72,9 @@ class SolicitudModel
                 FROM solicitud_crm_tareas
                 GROUP BY solicitud_id
             ) tareas ON tareas.solicitud_id = sp.id
-            WHERE sp.procedimiento IS NOT NULL
-              AND TRIM(sp.procedimiento) != ''
-              AND sp.procedimiento != 'SELECCIONE'
+            WHERE sp.procedimiento IS NOT NULL 
+              AND TRIM(sp.procedimiento) != '' 
+              AND sp.procedimiento != 'SELECCIONE' 
               AND sp.doctor != 'SELECCIONE'";
 
 

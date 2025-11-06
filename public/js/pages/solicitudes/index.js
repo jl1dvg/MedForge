@@ -21,9 +21,17 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),
         })
-            .then(response => {
+            .then(async (response) => {
                 if (!response.ok) {
-                    throw new Error('No se pudo cargar el tablero');
+                    let serverMsg = '';
+                    try {
+                        const data = await response.json();
+                        serverMsg = data?.error || JSON.stringify(data);
+                    } catch (_) {
+                        serverMsg = await response.text();
+                    }
+                    const msg = serverMsg ? `No se pudo cargar el tablero. Servidor: ${serverMsg}` : 'No se pudo cargar el tablero';
+                    throw new Error(msg);
                 }
                 return response.json();
             })
@@ -52,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(error => {
                 console.error('❌ Error cargando Kanban:', error);
-                showToast('No se pudo cargar el tablero de solicitudes', false);
+                showToast(error?.message || 'No se pudo cargar el tablero de solicitudes', false);
             });
     };
 

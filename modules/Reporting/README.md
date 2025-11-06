@@ -65,3 +65,61 @@ por lo que basta un único archivo para todos los reportes.
 
 Con esta estructura basta con duplicar un reporte existente, ajustar los datos y
 mantener la cabecera/estilos centralizados.
+
+## Plantillas PDF fijas (aseguradoras)
+
+Algunas aseguradoras entregan formularios predefinidos en PDF. Para reutilizar
+esos archivos como fondo y sobreimprimir los datos:
+
+1. **Guardar la plantilla** dentro de `storage/reporting/templates/` (el archivo
+   puede versionarse o copiarse en el despliegue).
+2. **Registrar la definición** en `modules/Reporting/Services/Definitions/pdf-templates.php`
+   utilizando `ArrayPdfTemplateDefinition` u otra implementación del contrato
+   `PdfTemplateDefinitionInterface`.
+
+   ```php
+   use Modules\Reporting\Services\Definitions\ArrayPdfTemplateDefinition;
+
+   return [
+       new ArrayPdfTemplateDefinition(
+           'aseguradora_demo',               // slug del reporte
+           'aseguradora_demo.pdf',           // ruta relativa al directorio storage/reporting/templates
+           [
+               'numero_poliza' => ['x' => 42, 'y' => 65],
+               'fecha_emision' => [
+                   'x' => 110,
+                   'y' => 65,
+                   'width' => 35,
+                   'align' => 'C',
+               ],
+               'diagnostico' => [
+                   'x' => 20,
+                   'y' => 110,
+                   'width' => 170,
+                   'line_height' => 4.5,
+                   'multiline' => true,
+               ],
+           ],
+           [
+               'font_family' => 'helvetica',
+               'font_size' => 9,
+           ]
+       ),
+   ];
+   ```
+
+   Cada entrada del mapa de campos acepta las llaves `x` y `y` (coordenadas en
+   milímetros), opcionalmente `width`, `height`, `align`, `line_height`, `page`
+   (para PDFs multipágina) y `multiline` cuando se espera más de una línea.
+
+3. **Consumir el reporte** mediante `ReportService::renderDocument()` o el
+   helper `PdfGenerator::generarReporte()`. El servicio detecta el slug y
+   delega en `PdfTemplateRenderer` cuando existe una definición PDF; en caso
+   contrario continúa con el flujo HTML + MPDF de siempre.
+
+### Ajustes disponibles
+
+* `font_family`, `font_size`, `line_height` y `text_color` pueden definirse por
+  plantilla o sobrescribirse al llamar a `renderDocument()`/`generarReporte()`.
+* La clave `overrides` permite inyectar valores puntuales sin modificar los
+  datos originales.

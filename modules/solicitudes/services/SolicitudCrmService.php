@@ -3,6 +3,7 @@
 namespace Modules\Solicitudes\Services;
 
 use DateTimeImmutable;
+use Modules\CRM\Models\LeadModel;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -22,10 +23,12 @@ class SolicitudCrmService
     ];
 
     private PDO $pdo;
+    private LeadModel $leadModel;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
+        $this->leadModel = new LeadModel($pdo);
     }
 
     /**
@@ -88,17 +91,31 @@ class SolicitudCrmService
             $detalle['seguidores'] = [];
         }
 
+        $lead = null;
+        if (!empty($detalle['crm_lead_id'])) {
+            $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
+            if ($lead) {
+                $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
+            }
+        }
+
         return [
             'detalle' => $detalle,
             'notas' => $this->obtenerNotas($solicitudId),
             'adjuntos' => $this->obtenerAdjuntos($solicitudId),
             'tareas' => $this->obtenerTareas($solicitudId),
             'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
+            'lead' => $lead,
         ];
     }
 
-    public function guardarDetalles(int $solicitudId, array $data): void
+    public function guardarDetalles(int $solicitudId, array $data, ?int $usuarioId = null): void
     {
+        $detalleActual = $this->obtenerDetalleSolicitud($solicitudId);
+        if (!$detalleActual) {
+            throw new RuntimeException('Solicitud no encontrada');
+        }
+
         $responsableId = isset($data['responsable_id']) && $data['responsable_id'] !== ''
             ? (int) $data['responsable_id']
             : null;
@@ -109,15 +126,30 @@ class SolicitudCrmService
         $contactoTelefono = $this->normalizarTexto($data['contacto_telefono'] ?? null);
         $seguidores = $this->normalizarSeguidores($data['seguidores'] ?? []);
 
+        $crmLeadId = $this->sincronizarLead(
+            $solicitudId,
+            $detalleActual,
+            [
+                'crm_lead_id' => $data['crm_lead_id'] ?? null,
+                'responsable_id' => $responsableId,
+                'fuente' => $fuente,
+                'contacto_email' => $contactoEmail,
+                'contacto_telefono' => $contactoTelefono,
+                'etapa' => $etapa,
+            ],
+            $usuarioId
+        );
+
         $jsonSeguidores = !empty($seguidores) ? json_encode($seguidores, JSON_UNESCAPED_UNICODE) : null;
 
         $this->pdo->beginTransaction();
 
         try {
             $stmt = $this->pdo->prepare(
-                'INSERT INTO solicitud_crm_detalles (solicitud_id, responsable_id, pipeline_stage, fuente, contacto_email, contacto_telefono, followers)
-                 VALUES (:solicitud_id, :responsable_id, :pipeline_stage, :fuente, :contacto_email, :contacto_telefono, :followers)
+                'INSERT INTO solicitud_crm_detalles (solicitud_id, crm_lead_id, responsable_id, pipeline_stage, fuente, contacto_email, contacto_telefono, followers)
+                 VALUES (:solicitud_id, :crm_lead_id, :responsable_id, :pipeline_stage, :fuente, :contacto_email, :contacto_telefono, :followers)
                  ON DUPLICATE KEY UPDATE
+                    crm_lead_id = VALUES(crm_lead_id),
                     responsable_id = VALUES(responsable_id),
                     pipeline_stage = VALUES(pipeline_stage),
                     fuente = VALUES(fuente),
@@ -127,6 +159,7 @@ class SolicitudCrmService
             );
 
             $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+            $stmt->bindValue(':crm_lead_id', $crmLeadId, $crmLeadId ? PDO::PARAM_INT : PDO::PARAM_NULL);
             $stmt->bindValue(':responsable_id', $responsableId, $responsableId ? PDO::PARAM_INT : PDO::PARAM_NULL);
             $stmt->bindValue(':pipeline_stage', $etapa);
             $stmt->bindValue(':fuente', $fuente, $fuente !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
@@ -250,6 +283,7 @@ class SolicitudCrmService
                 pd.afiliacion,
                 pd.celular AS paciente_celular,
                 CONCAT(TRIM(pd.fname), ' ', TRIM(pd.mname), ' ', TRIM(pd.lname), ' ', TRIM(pd.lname2)) AS paciente_nombre,
+                detalles.crm_lead_id AS crm_lead_id,
                 detalles.pipeline_stage AS crm_pipeline_stage,
                 detalles.fuente AS crm_fuente,
                 detalles.contacto_email AS crm_contacto_email,
@@ -258,6 +292,9 @@ class SolicitudCrmService
                 detalles.followers AS crm_followers,
                 responsable.nombre AS crm_responsable_nombre,
                 responsable.email AS crm_responsable_email,
+                cl.status  AS crm_lead_status,
+                cl.source  AS crm_lead_source,
+                cl.updated_at AS crm_lead_updated_at,
                 COALESCE(notas.total_notas, 0) AS crm_total_notas,
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
@@ -268,6 +305,7 @@ class SolicitudCrmService
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+            LEFT JOIN crm_leads cl ON detalles.crm_lead_id = cl.id
             LEFT JOIN (
                 SELECT solicitud_id, COUNT(*) AS total_notas
                 FROM solicitud_crm_notas
@@ -306,6 +344,60 @@ class SolicitudCrmService
         $row['dias_en_estado'] = $this->calcularDiasEnEstado($row['created_at'] ?? null);
 
         return $row;
+    }
+
+    private function sincronizarLead(int $solicitudId, array $detalle, array $payload, ?int $usuarioId): ?int
+    {
+        $leadId = null;
+
+        if (!empty($payload['crm_lead_id'])) {
+            $leadId = (int) $payload['crm_lead_id'];
+        } elseif (!empty($detalle['crm_lead_id'])) {
+            $leadId = (int) $detalle['crm_lead_id'];
+        }
+
+        $nombre = trim((string) ($detalle['paciente_nombre'] ?? ''));
+        if ($nombre === '') {
+            $nombre = 'Solicitud #' . $solicitudId;
+        }
+
+        $leadData = [
+            'name' => $nombre,
+            'email' => $payload['contacto_email'] ?? ($detalle['crm_contacto_email'] ?? null),
+            'phone' => $payload['contacto_telefono'] ?? ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? null),
+            'source' => $payload['fuente'] ?? ($detalle['crm_fuente'] ?? null),
+            'assigned_to' => $payload['responsable_id'] ?? ($detalle['crm_responsable_id'] ?? null),
+            'status' => $this->mapearEtapaALeadStatus($payload['etapa'] ?? ($detalle['crm_pipeline_stage'] ?? null)),
+            'notes' => $detalle['observacion'] ?? null,
+        ];
+
+        if ($leadId) {
+            $actualizado = $this->leadModel->update($leadId, $leadData);
+            if ($actualizado) {
+                return (int) $actualizado['id'];
+            }
+            $leadId = null;
+        }
+
+        $creado = $this->leadModel->create($leadData, (int) ($usuarioId ?? 0));
+        return $creado ? (int) $creado['id'] : null;
+    }
+
+    private function buildLeadUrl(int $leadId): string
+    {
+        return '/crm?lead=' . $leadId;
+    }
+
+    private function mapearEtapaALeadStatus(?string $etapa): string
+    {
+        $etapaNormalizada = $this->normalizarEtapa($etapa);
+
+        return match ($etapaNormalizada) {
+            'Recibido' => 'nuevo',
+            'Contacto inicial', 'Seguimiento', 'Docs completos', 'Autorizado', 'Agendado' => 'en_proceso',
+            'Cerrado' => 'convertido',
+            default => 'en_proceso',
+        };
     }
 
     private function obtenerUsuariosPorIds(array $ids): array
