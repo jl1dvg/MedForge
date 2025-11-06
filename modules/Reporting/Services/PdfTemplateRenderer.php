@@ -4,6 +4,7 @@ namespace Modules\Reporting\Services;
 
 use InvalidArgumentException;
 use Modules\Reporting\Services\Definitions\PdfTemplateDefinitionInterface;
+use Modules\Reporting\Support\PdfDestinationNormalizer;
 use setasign\Fpdi\Tcpdf\Fpdi;
 
 class PdfTemplateRenderer
@@ -141,7 +142,7 @@ class PdfTemplateRenderer
         }
 
         $filename = (string) ($options['filename'] ?? $definition->getIdentifier() . '.pdf');
-        $destination = (string) ($options['destination'] ?? 'S');
+        $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'S');
 
         return $pdf->Output($filename, $destination);
     }
