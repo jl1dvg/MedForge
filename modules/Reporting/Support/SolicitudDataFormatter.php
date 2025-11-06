@@ -24,6 +24,22 @@ class SolicitudDataFormatter
         $consulta = self::ensureArray($data['consulta'] ?? []);
         $derivacion = self::ensureArray($data['derivacion'] ?? []);
 
+        self::normalizeScalarField($paciente, 'afiliacion');
+        self::normalizeScalarField($paciente, 'hc_number');
+        self::normalizeScalarField($paciente, 'archive_number');
+        self::normalizeScalarField($paciente, 'fname');
+        self::normalizeScalarField($paciente, 'mname');
+        self::normalizeScalarField($paciente, 'lname');
+        self::normalizeScalarField($paciente, 'lname2');
+        self::normalizeScalarField($paciente, 'sexo');
+        self::normalizeScalarField($paciente, 'fecha_nacimiento');
+
+        self::normalizeScalarField($solicitud, 'doctor');
+        self::normalizeScalarField($solicitud, 'cedula');
+        self::normalizeScalarField($solicitud, 'firma');
+        self::normalizeScalarField($solicitud, 'procedimiento');
+        self::normalizeScalarField($solicitud, 'ojo');
+
         $normalized['paciente'] = $paciente;
         $normalized['solicitud'] = $solicitud;
         $normalized['diagnostico'] = $diagnostico;
@@ -331,14 +347,82 @@ class SolicitudDataFormatter
     private static function firstNonEmpty(array $candidates): ?string
     {
         foreach ($candidates as $candidate) {
-            if ($candidate === null) {
+            $value = self::stringifyValue($candidate);
+
+            if ($value === null) {
                 continue;
             }
 
-            $value = trim((string) $candidate);
             if ($value !== '') {
                 return $value;
             }
+        }
+
+        return null;
+    }
+
+    private static function normalizeScalarField(array &$values, string $key): void
+    {
+        if (!array_key_exists($key, $values)) {
+            return;
+        }
+
+        $normalized = self::stringifyValue($values[$key]);
+
+        if ($normalized === null) {
+            unset($values[$key]);
+            return;
+        }
+
+        $values[$key] = $normalized;
+    }
+
+    private static function stringifyValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+
+            return $trimmed === '' ? null : $trimmed;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_array($value)) {
+            $parts = [];
+
+            foreach ($value as $item) {
+                $string = self::stringifyValue($item);
+
+                if ($string === null) {
+                    continue;
+                }
+
+                $parts[] = $string;
+            }
+
+            if ($parts === []) {
+                return null;
+            }
+
+            $parts = array_values(array_unique($parts));
+
+            return implode(' ', $parts);
+        }
+
+        if (is_object($value) && method_exists($value, '__toString')) {
+            $string = trim((string) $value);
+
+            return $string === '' ? null : $string;
         }
 
         return null;
