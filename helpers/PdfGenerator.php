@@ -7,6 +7,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use Modules\Reporting\Services\ReportService;
+use Stringable;
 
 class PdfGenerator
 {
@@ -28,6 +29,8 @@ class PdfGenerator
         string $orientation = 'P',
         array $mpdfOptions = []
     ): void {
+        $modoSalida = self::normalizarModoSalida($modoSalida);
+
         $options = [
             'default_font_size' => 8,
             'default_font' => 'dejavusans',
@@ -90,7 +93,7 @@ class PdfGenerator
             ]);
 
             $filename = $options['finalName'] ?? $document['filename'];
-            $modoSalida = $options['modoSalida'] ?? 'I';
+            $modoSalida = self::normalizarModoSalida($options['modoSalida'] ?? 'I');
             $filePath = $options['filePath'] ?? null;
 
             self::emitirPdfBinario($document['content'], $filename, $modoSalida, $filePath);
@@ -103,14 +106,17 @@ class PdfGenerator
             $html,
             $options['finalName'] ?? ($slug . '.pdf'),
             $options['css'] ?? null,
-            $options['modoSalida'] ?? 'I',
+            self::normalizarModoSalida($options['modoSalida'] ?? 'I'),
             $options['orientation'] ?? 'P'
         );
     }
 
-    private static function emitirPdfBinario(string $contenido, string $nombreArchivo, string $modoSalida, ?string $filePath = null): void
+    /**
+     * @param mixed $modoSalida
+     */
+    private static function emitirPdfBinario(string $contenido, string $nombreArchivo, $modoSalida, ?string $filePath = null): void
     {
-        $modo = strtoupper($modoSalida);
+        $modo = strtoupper(self::normalizarModoSalida($modoSalida));
 
         if ($modo === 'F') {
             $destino = $filePath ?? $nombreArchivo;
@@ -128,6 +134,41 @@ class PdfGenerator
         header(sprintf('Content-Disposition: %s; filename="%s"', $disposition, $nombreArchivo));
         header('Content-Length: ' . strlen($contenido));
         echo $contenido;
+    }
+
+    /**
+     * @param mixed $modoSalida
+     */
+    public static function normalizarModoSalida($modoSalida): string
+    {
+        while (is_array($modoSalida)) {
+            $next = reset($modoSalida);
+
+            if ($next === false && $next !== 0) {
+                $modoSalida = null;
+                break;
+            }
+
+            $modoSalida = $next;
+        }
+
+        if ($modoSalida instanceof Stringable) {
+            $modoSalida = (string) $modoSalida;
+        }
+
+        if (is_string($modoSalida)) {
+            $modoSalida = trim($modoSalida);
+            if ($modoSalida !== '') {
+                return $modoSalida;
+            }
+        } elseif (is_scalar($modoSalida) && $modoSalida !== null) {
+            $modoSalida = trim((string) $modoSalida);
+            if ($modoSalida !== '') {
+                return $modoSalida;
+            }
+        }
+
+        return 'I';
     }
 }
 

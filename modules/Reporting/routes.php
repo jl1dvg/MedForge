@@ -56,4 +56,40 @@ return static function (Router $router, \PDO $pdo): void {
         $controller = new PdfController($pdo);
         $controller->generateCobertura($formId, $hcNumber);
     });
+
+    $router->get('/reports/cobertura/pdf-template', static function (\PDO $pdo): void {
+        $formId = $_GET['form_id'] ?? null;
+        $hcNumber = $_GET['hc_number'] ?? null;
+
+        if (!$formId || !$hcNumber) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'Faltan parámetros obligatorios.',
+                'required' => ['form_id', 'hc_number'],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
+        $controller = new PdfController($pdo);
+        $controller->generateCobertura($formId, $hcNumber, 'template');
+    });
+
+    $router->get('/reports/cobertura/pdf-html', static function (\PDO $pdo): void {
+        $formId = $_GET['form_id'] ?? null;
+        $hcNumber = $_GET['hc_number'] ?? null;
+
+        if (!$formId || !$hcNumber) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'Faltan parámetros obligatorios.',
+                'required' => ['form_id', 'hc_number'],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
+        $controller = new PdfController($pdo);
+        $controller->generateCobertura($formId, $hcNumber, 'appendix');
+    });
 };

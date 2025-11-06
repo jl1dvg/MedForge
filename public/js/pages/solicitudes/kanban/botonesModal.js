@@ -51,8 +51,20 @@ export function inicializarBotonesModal() {
             const hcNumber = tarjeta.dataset.hc;
 
             if (formId && hcNumber) {
-                const url = `/reports/cobertura/pdf?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
-                window.open(url, '_blank');
+                const afiliacion = (tarjeta.dataset.afiliacion || '').toLowerCase();
+                const aseguradorasConPlantilla = ['ecuasanitas'];
+                const params = `form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
+
+                if (aseguradorasConPlantilla.some(nombre => afiliacion.includes(nombre))) {
+                    const templateUrl = `/reports/cobertura/pdf-template?${params}`;
+                    const htmlUrl = `/reports/cobertura/pdf-html?${params}`;
+
+                    window.open(templateUrl, '_blank');
+                    window.open(htmlUrl, '_blank');
+                } else {
+                    const url = `/reports/cobertura/pdf?${params}`;
+                    window.open(url, '_blank');
+                }
             }
 
             const estado = coberturaBtn.dataset.estado || 'Docs Completos';
