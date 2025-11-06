@@ -6,6 +6,9 @@ use Controllers\SolicitudController;
 use Helpers\ProtocoloHelper;
 use Models\ProtocoloModel;
 use Modules\Reporting\Controllers\ReportController;
+use Modules\Reporting\Services\Definitions\SolicitudTemplateDefinitionInterface;
+use Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
+use Modules\Reporting\Support\SolicitudDataFormatter;
 use PDO;
 use RuntimeException;
 
@@ -22,29 +25,25 @@ class ProtocolReportService
 
     private const PROTOCOL_LANDSCAPE_PAGE = 'transanestesico';
 
-    private const COBERTURA_PAGES = [
-        '007',
-        '010',
-    ];
-
-    private const COBERTURA_EXTRA_PAGE = 'referencia';
-
     private PDO $db;
     private ProtocoloModel $protocoloModel;
     private SolicitudController $solicitudController;
     private ReportController $reportController;
+    private SolicitudTemplateRegistry $solicitudTemplateRegistry;
 
     public function __construct(
         PDO                  $db,
         ReportController     $reportController,
         ?ProtocoloModel      $protocoloModel = null,
-        ?SolicitudController $solicitudController = null
+        ?SolicitudController $solicitudController = null,
+        ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null
     )
     {
         $this->db = $db;
         $this->reportController = $reportController;
         $this->protocoloModel = $protocoloModel ?? new ProtocoloModel($db);
         $this->solicitudController = $solicitudController ?? new SolicitudController($db);
+        $this->solicitudTemplateRegistry = $solicitudTemplateRegistry ?? SolicitudTemplateRegistry::fromConfig();
     }
 
     /**
@@ -213,19 +212,39 @@ class ProtocolReportService
     }
 
     /**
-     * @return array{html: string, filename: string, css: string}
+     * @return array{html: string, filename: string, css: string, orientation: string, mpdf: array<string, mixed>}
      */
     public function generateCoberturaDocument(string $formId, string $hcNumber): array
     {
         $datos = $this->buildCoberturaData($formId, $hcNumber);
-        $pages = array_merge(self::COBERTURA_PAGES, [self::COBERTURA_EXTRA_PAGE]);
+        $definition = $this->resolveSolicitudTemplate($datos);
 
-        $html = $this->renderSegments($pages, $datos, [self::COBERTURA_EXTRA_PAGE => 'P']);
+        $reportSlug = $definition->getReportSlug();
+        if ($reportSlug !== null) {
+            return [
+                'mode' => 'report',
+                'slug' => $reportSlug,
+                'data' => $datos,
+                'filename' => $definition->buildFilename($formId, $hcNumber),
+                'options' => $definition->getReportOptions(),
+            ];
+        }
+
+        $pages = $definition->getPages();
+
+        if ($pages === []) {
+            throw new RuntimeException(sprintf('La plantilla "%s" no tiene páginas configuradas.', $definition->getIdentifier()));
+        }
+
+        $html = $this->renderSegments($pages, $datos, $definition->getOrientations());
 
         return [
+            'mode' => 'html',
             'html' => $html,
-            'filename' => sprintf('cobertura_%s_%s.pdf', $formId, $hcNumber),
-            'css' => $this->getStylesheetPath(),
+            'filename' => $definition->buildFilename($formId, $hcNumber),
+            'css' => $definition->getCss() ?? $this->getStylesheetPath(),
+            'orientation' => $definition->getDefaultOrientation(),
+            'mpdf' => $definition->getMpdfOptions(),
         ];
     }
 
@@ -236,11 +255,25 @@ class ProtocolReportService
     {
         $datos = $this->solicitudController->obtenerDatosParaVista($hcNumber, $formId);
 
-        $fechaNacimiento = $datos['paciente']['fecha_nacimiento'] ?? null;
-        $fechaSolicitud = $datos['solicitud']['created_at'] ?? null;
-        $datos['edadPaciente'] = $this->calcularEdad($fechaNacimiento, $fechaSolicitud);
+        return SolicitudDataFormatter::enrich($datos, $formId, $hcNumber);
+    }
 
-        return $datos;
+    /**
+     * @param array<string, mixed> $datos
+     */
+    private function resolveSolicitudTemplate(array $datos): SolicitudTemplateDefinitionInterface
+    {
+        $definition = $this->solicitudTemplateRegistry->resolve($datos);
+
+        if ($definition === null) {
+            $definition = $this->solicitudTemplateRegistry->get('cobertura');
+        }
+
+        if ($definition === null) {
+            throw new RuntimeException('No existe una plantilla configurada para la aseguradora seleccionada.');
+        }
+
+        return $definition;
     }
 
     /**

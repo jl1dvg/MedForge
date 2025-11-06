@@ -79,10 +79,37 @@ class PdfController
     {
         $documento = $this->protocolReportService->generateCoberturaDocument($form_id, $hc_number);
 
+        if (($documento['mode'] ?? null) === 'report') {
+            $options = isset($documento['options']) && is_array($documento['options'])
+                ? $documento['options']
+                : [];
+
+            $options['finalName'] = $documento['filename'];
+            $options['modoSalida'] = $options['modoSalida'] ?? 'I';
+
+            PdfGenerator::generarReporte(
+                (string) $documento['slug'],
+                isset($documento['data']) && is_array($documento['data']) ? $documento['data'] : [],
+                $options
+            );
+
+            return;
+        }
+
+        $orientation = isset($documento['orientation']) ? (string) $documento['orientation'] : 'P';
+        $mpdfOptions = isset($documento['mpdf']) && is_array($documento['mpdf']) ? $documento['mpdf'] : [];
+
+        if (!isset($mpdfOptions['orientation'])) {
+            $mpdfOptions['orientation'] = $orientation;
+        }
+
         PdfGenerator::generarDesdeHtml(
             $documento['html'],
             $documento['filename'],
-            $documento['css']
+            $documento['css'],
+            'I',
+            $orientation,
+            $mpdfOptions
         );
     }
 

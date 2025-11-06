@@ -185,20 +185,26 @@ echo "</table>";
             // Texto base para diagnóstico (prioriza un campo específico si existiera)
             $textoDiag = $consulta['diagnostico_plan'] ?? ($consulta['plan'] ?? '');
 
-            // Normaliza/convierte los estudios del formulario a array
             $estudiosExplicitos = null;
-            $examenes = $solicitud['examenes'] ?? null; // puede venir como array, JSON o string separado por comas
-            if (is_array($examenes)) {
-                $estudiosExplicitos = array_values(array_filter(array_map('strval', $examenes), fn($s) => trim($s) !== ''));
-            } elseif (is_string($examenes) && trim($examenes) !== '') {
-                // Intenta JSON primero
-                $decoded = json_decode($examenes, true);
-                if (is_array($decoded)) {
-                    $estudiosExplicitos = array_values(array_filter(array_map('strval', $decoded), fn($s) => trim($s) !== ''));
-                } else {
-                    // Split por separadores comunes
-                    $parts = preg_split('/[,;\|\n]+/', $examenes);
-                    $estudiosExplicitos = array_values(array_filter(array_map('trim', $parts), fn($s) => $s !== ''));
+            if (isset($solicitud['examenes_list']) && is_array($solicitud['examenes_list'])) {
+                $estudiosExplicitos = array_values(array_filter(
+                    array_map('strval', $solicitud['examenes_list']),
+                    static fn($s) => trim($s) !== ''
+                ));
+            }
+
+            if ($estudiosExplicitos === null) {
+                $examenes = $solicitud['examenes'] ?? null; // retrocompatibilidad para datos sin normalizar
+                if (is_array($examenes)) {
+                    $estudiosExplicitos = array_values(array_filter(array_map('strval', $examenes), fn($s) => trim($s) !== ''));
+                } elseif (is_string($examenes) && trim($examenes) !== '') {
+                    $decoded = json_decode($examenes, true);
+                    if (is_array($decoded)) {
+                        $estudiosExplicitos = array_values(array_filter(array_map('strval', $decoded), fn($s) => trim($s) !== ''));
+                    } else {
+                        $parts = preg_split('/[,;\|\n]+/', $examenes);
+                        $estudiosExplicitos = array_values(array_filter(array_map('trim', $parts), fn($s) => $s !== ''));
+                    }
                 }
             }
 

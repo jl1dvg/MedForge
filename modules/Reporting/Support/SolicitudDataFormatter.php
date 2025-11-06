@@ -1,0 +1,347 @@
+<?php
+
+namespace Modules\Reporting\Support;
+
+use DateTimeImmutable;
+
+/**
+ * Normaliza y enriquece los datos provenientes de SolicitudController para que todas las
+ * plantillas PDF dispongan del mismo contrato de información.
+ */
+class SolicitudDataFormatter
+{
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public static function enrich(array $data, string $formId, string $hcNumber): array
+    {
+        $normalized = $data;
+
+        $paciente = self::ensureArray($data['paciente'] ?? []);
+        $solicitud = self::ensureArray($data['solicitud'] ?? []);
+        $diagnostico = self::ensureList($data['diagnostico'] ?? []);
+        $consulta = self::ensureArray($data['consulta'] ?? []);
+        $derivacion = self::ensureArray($data['derivacion'] ?? []);
+
+        $normalized['paciente'] = $paciente;
+        $normalized['solicitud'] = $solicitud;
+        $normalized['diagnostico'] = $diagnostico;
+        $normalized['consulta'] = $consulta;
+        $normalized['derivacion'] = $derivacion;
+
+        $normalized['form_id'] = $formId;
+        $normalized['hc_number'] = $hcNumber;
+        $normalized['pacienteHistoriaClinica'] = $hcNumber;
+
+        $normalized['edadPaciente'] = self::calculateAge(
+            $paciente['fecha_nacimiento'] ?? null,
+            $solicitud['created_at'] ?? null
+        );
+
+        $fullName = self::buildFullName($paciente);
+        if ($fullName !== null) {
+            $normalized['paciente']['full_name'] = $fullName;
+            $normalized['pacienteNombreCompleto'] = $fullName;
+        }
+
+        $normalized['paciente']['edad_formateada'] = self::formatAge($normalized['edadPaciente']);
+        $normalized['pacienteEdad'] = $normalized['edadPaciente'];
+        $normalized['pacienteEdadTexto'] = $normalized['paciente']['edad_formateada'];
+        $normalized['paciente']['sexo_normalizado'] = self::normalizeGender($paciente['sexo'] ?? null);
+        $normalized['paciente']['documento'] = self::firstNonEmpty([
+            $paciente['documento'] ?? null,
+            $paciente['cedula'] ?? null,
+            $paciente['ci'] ?? null,
+            $paciente['identificacion'] ?? null,
+        ]);
+
+        $fechaNacimiento = $paciente['fecha_nacimiento'] ?? null;
+        $normalized['paciente']['fecha_nacimiento_formateada'] = self::formatDate($fechaNacimiento);
+        $normalized['pacienteFechaNacimiento'] = $fechaNacimiento;
+        $normalized['pacienteFechaNacimientoFormateada'] = $normalized['paciente']['fecha_nacimiento_formateada'];
+
+        $normalized['solicitud']['created_at_date'] = self::formatDate($solicitud['created_at'] ?? null);
+        $normalized['solicitud']['created_at_time'] = self::formatTime($solicitud['created_at'] ?? null);
+        $normalized['solicitud']['examenes_list'] = self::normalizeList($solicitud['examenes'] ?? null);
+        $normalized['solicitud']['procedimientos_list'] = self::normalizeList($solicitud['procedimientos'] ?? null);
+        $normalized['solicitud']['procedimiento_slug'] = self::slugify($solicitud['procedimiento'] ?? null);
+
+        $normalized['diagnosticoLista'] = self::buildDiagnosticoList($diagnostico);
+        $normalized['diagnosticoPrincipal'] = $normalized['diagnosticoLista'][0] ?? null;
+        $normalized['diagnosticoListaTexto'] = $normalized['diagnosticoLista'] === []
+            ? null
+            : implode(PHP_EOL, $normalized['diagnosticoLista']);
+
+        $insurerName = self::firstNonEmpty([
+            $solicitud['aseguradora'] ?? null,
+            $solicitud['aseguradora_nombre'] ?? null,
+            $solicitud['aseguradoraName'] ?? null,
+            $paciente['aseguradora'] ?? null,
+            $paciente['afiliacion'] ?? null,
+            $derivacion['aseguradora'] ?? null,
+        ]);
+
+        $insurerSlug = self::slugify($insurerName);
+        $insurerCode = self::firstNonEmpty([
+            $solicitud['codigo_aseguradora'] ?? null,
+            $solicitud['numero_seguro'] ?? null,
+            $solicitud['numero_afiliacion'] ?? null,
+            $paciente['numero_seguro'] ?? null,
+            $paciente['num_afiliacion'] ?? null,
+        ]);
+
+        $normalized['aseguradora'] = [
+            'nombre' => $insurerName,
+            'slug' => $insurerSlug,
+            'codigo' => $insurerCode,
+        ];
+        $normalized['aseguradoraNombre'] = $insurerName;
+        $normalized['aseguradoraSlug'] = $insurerSlug;
+        $normalized['aseguradoraCodigo'] = $insurerCode;
+
+        $normalized['timestamp_generado'] = (new DateTimeImmutable())->format(DATE_ATOM);
+
+        return $normalized;
+    }
+
+    public static function slugify(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $trimmed);
+        if ($transliterated === false) {
+            $transliterated = $trimmed;
+        }
+
+        $lower = strtolower($transliterated);
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $lower) ?? '';
+        $slug = trim($slug, '-');
+
+        return $slug !== '' ? $slug : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function normalizeList(mixed $value): array
+    {
+        if (is_array($value)) {
+            $items = [];
+            foreach ($value as $item) {
+                $string = is_scalar($item) ? trim((string) $item) : null;
+                if ($string !== null && $string !== '') {
+                    $items[] = $string;
+                }
+            }
+
+            return $items;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return [];
+            }
+
+            $decoded = json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                return self::normalizeList($decoded);
+            }
+
+            $parts = preg_split('/[,;|\n]+/', $trimmed) ?: [];
+
+            return array_values(array_filter(array_map('trim', $parts), static fn ($item) => $item !== ''));
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $diagnostico
+     * @return list<string>
+     */
+    private static function buildDiagnosticoList(array $diagnostico): array
+    {
+        $lista = [];
+
+        foreach ($diagnostico as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $codigo = trim((string) ($item['dx_code'] ?? ''));
+            $descripcion = trim((string) ($item['descripcion'] ?? ''));
+
+            if ($codigo !== '' && $descripcion !== '') {
+                $lista[] = sprintf('%s - %s', $codigo, $descripcion);
+                continue;
+            }
+
+            if ($descripcion !== '') {
+                $lista[] = $descripcion;
+                continue;
+            }
+
+            if ($codigo !== '') {
+                $lista[] = $codigo;
+            }
+        }
+
+        return $lista;
+    }
+
+    private static function ensureArray(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, array<string, mixed>>
+     */
+    private static function ensureList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+
+        foreach ($value as $item) {
+            if (is_array($item)) {
+                $result[] = $item;
+            }
+        }
+
+        return $result;
+    }
+
+    private static function calculateAge(?string $birthDate, ?string $referenceDate): ?int
+    {
+        $birth = self::createDate($birthDate);
+        if ($birth === null) {
+            return null;
+        }
+
+        $reference = self::createDate($referenceDate) ?? new DateTimeImmutable();
+
+        return $birth->diff($reference)->y;
+    }
+
+    private static function formatAge(?int $age): ?string
+    {
+        if ($age === null) {
+            return null;
+        }
+
+        return $age . ' años';
+    }
+
+    private static function buildFullName(array $paciente): ?string
+    {
+        $parts = array_filter([
+            $paciente['fname'] ?? null,
+            $paciente['mname'] ?? null,
+            $paciente['lname'] ?? null,
+            $paciente['lname2'] ?? null,
+        ], static fn ($value) => is_string($value) && trim($value) !== '');
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(' ', array_map(static fn ($value) => trim((string) $value), $parts));
+    }
+
+    private static function normalizeGender(?string $gender): ?string
+    {
+        if ($gender === null) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($gender));
+
+        return match ($normalized) {
+            'm', 'masculino', 'hombre' => 'Masculino',
+            'f', 'femenino', 'mujer' => 'Femenino',
+            default => $normalized !== '' ? ucfirst($normalized) : null,
+        };
+    }
+
+    private static function formatDate(?string $date): ?string
+    {
+        $dt = self::createDate($date);
+
+        return $dt?->format('d/m/Y');
+    }
+
+    private static function formatTime(?string $date): ?string
+    {
+        $dt = self::createDate($date);
+
+        return $dt?->format('H:i');
+    }
+
+    private static function createDate(?string $value): ?DateTimeImmutable
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $formats = [
+            'Y-m-d H:i:s',
+            'Y-m-d',
+            'd-m-Y H:i:s',
+            'd-m-Y',
+            'd/m/Y H:i:s',
+            'd/m/Y',
+        ];
+
+        foreach ($formats as $format) {
+            $dt = DateTimeImmutable::createFromFormat($format, $trimmed);
+            if ($dt instanceof DateTimeImmutable) {
+                return $dt;
+            }
+        }
+
+        $timestamp = strtotime($trimmed);
+        if ($timestamp !== false) {
+            return (new DateTimeImmutable())->setTimestamp($timestamp);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, ?string> $candidates
+     */
+    private static function firstNonEmpty(array $candidates): ?string
+    {
+        foreach ($candidates as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            $value = trim((string) $candidate);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+}
+

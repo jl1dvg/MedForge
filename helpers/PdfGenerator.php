@@ -17,14 +17,18 @@ class PdfGenerator
         return $service->render($archivo);
     }
 
+    /**
+     * @param array<string, mixed> $mpdfOptions
+     */
     public static function generarDesdeHtml(
         string $html,
         string $finalName = 'documento.pdf',
         ?string $cssPath = null,
         string $modoSalida = 'I',
-        string $orientation = 'P'
+        string $orientation = 'P',
+        array $mpdfOptions = []
     ): void {
-        $mpdf = new Mpdf([
+        $options = [
             'default_font_size' => 8,
             'default_font' => 'dejavusans',
             'margin_left' => 5,
@@ -38,7 +42,13 @@ class PdfGenerator
             'keep_table_proportions' => true,
             'allow_url_fopen' => true,
             'curlAllowUnsafeSslRequests' => true,
-        ]);
+        ];
+
+        if ($mpdfOptions !== []) {
+            $options = array_merge($options, $mpdfOptions);
+        }
+
+        $mpdf = new Mpdf($options);
 
         if ($cssPath) {
             if (!file_exists($cssPath)) {
