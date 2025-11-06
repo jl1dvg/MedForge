@@ -278,6 +278,48 @@ class ProtocolReportService
     }
 
     /**
+     * @param array<string, mixed>|null $datos
+     * @return array<string, mixed>|null
+     */
+    public function generateCoberturaAppendixDocument(string $formId, string $hcNumber, ?array $datos = null): ?array
+    {
+        $datos = $datos ?? $this->buildCoberturaData($formId, $hcNumber);
+        $definition = $this->resolveSolicitudTemplate($datos);
+
+        $segments = $definition->getAppendViews();
+        if ($segments === []) {
+            $segments = $definition->getPages();
+        }
+
+        if ($segments === []) {
+            $fallback = $this->solicitudTemplateRegistry->get('cobertura');
+            if ($fallback !== null) {
+                $definition = $fallback;
+                $segments = $definition->getPages();
+            }
+        }
+
+        if ($segments === []) {
+            return null;
+        }
+
+        $html = $this->renderSegments($segments, $datos, $definition->getOrientations());
+
+        if ($html === '') {
+            return null;
+        }
+
+        return [
+            'mode' => 'html',
+            'html' => $html,
+            'filename' => $definition->buildFilename($formId, $hcNumber),
+            'css' => $definition->getCss() ?? $this->getStylesheetPath(),
+            'orientation' => $definition->getDefaultOrientation(),
+            'mpdf' => $definition->getMpdfOptions(),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildCoberturaData(string $formId, string $hcNumber): array
