@@ -84,16 +84,61 @@ class PdfController
         $documento = $this->protocolReportService->generateCoberturaDocument($form_id, $hc_number);
 
         if (($documento['mode'] ?? null) === 'report') {
+            $variant = $this->resolveCoberturaVariant();
             $options = isset($documento['options']) && is_array($documento['options'])
                 ? $documento['options']
                 : [];
 
             $options['finalName'] = $documento['filename'];
-            $options['modoSalida'] = $options['modoSalida'] ?? 'I';
+            $options['modoSalida'] = PdfGenerator::normalizarModoSalida($options['modoSalida'] ?? 'I');
+
+            if ($variant === 'template') {
+                PdfGenerator::generarReporte(
+                    (string) $documento['slug'],
+                    isset($documento['data']) && is_array($documento['data']) ? $documento['data'] : [],
+                    $options
+                );
+
+                return;
+            }
 
             $appendix = isset($documento['append']) && is_array($documento['append'])
                 ? $documento['append']
                 : null;
+
+            if ($variant === 'appendix') {
+                if ($appendix === null || !isset($appendix['html']) || !is_string($appendix['html']) || $appendix['html'] === '') {
+                    PdfGenerator::generarReporte(
+                        (string) $documento['slug'],
+                        isset($documento['data']) && is_array($documento['data']) ? $documento['data'] : [],
+                        $options
+                    );
+
+                    return;
+                }
+
+                $appendixOptions = [
+                    'css' => isset($appendix['css']) && is_string($appendix['css']) ? $appendix['css'] : null,
+                    'orientation' => isset($appendix['orientation']) ? (string) $appendix['orientation'] : 'P',
+                    'mpdf' => isset($appendix['mpdf']) && is_array($appendix['mpdf']) ? $appendix['mpdf'] : [],
+                ];
+
+                $orientation = strtoupper($appendixOptions['orientation']);
+                if ($orientation !== 'P' && $orientation !== 'L') {
+                    $orientation = 'P';
+                }
+
+                PdfGenerator::generarDesdeHtml(
+                    $appendix['html'],
+                    $this->buildCoberturaAppendixFilename($documento['filename']),
+                    $appendixOptions['css'],
+                    $options['modoSalida'],
+                    $orientation,
+                    $appendixOptions['mpdf']
+                );
+
+                return;
+            }
 
             if ($appendix !== null && isset($appendix['html']) && is_string($appendix['html']) && $appendix['html'] !== '') {
                 $baseDocument = $this->reportService->renderDocument(
@@ -124,7 +169,7 @@ class PdfController
                     $this->emitPdf(
                         $mergedPdf,
                         $documento['filename'],
-                        (string) $options['modoSalida'],
+                        $options['modoSalida'],
                         isset($options['filePath']) && is_string($options['filePath']) ? $options['filePath'] : null
                     );
 
@@ -225,7 +270,7 @@ class PdfController
 
     private function emitPdf(string $content, string $filename, string $mode, ?string $filePath = null): void
     {
-        $mode = strtoupper($mode);
+        $mode = strtoupper(PdfGenerator::normalizarModoSalida($mode));
 
         if ($mode === 'F') {
             $target = $filePath ?? $filename;
@@ -243,6 +288,31 @@ class PdfController
         header(sprintf('Content-Disposition: %s; filename="%s"', $disposition, $filename));
         header('Content-Length: ' . strlen($content));
         echo $content;
+    }
+
+    private function resolveCoberturaVariant(): string
+    {
+        $raw = $_GET['variant'] ?? $_GET['document'] ?? $_GET['tipo'] ?? null;
+        $value = is_string($raw) ? strtolower(trim($raw)) : '';
+
+        return match ($value) {
+            'template', 'form', 'fijo', 'plantilla' => 'template',
+            'appendix', 'html', 'classic', 'anexo', '007' => 'appendix',
+            default => 'combined',
+        };
+    }
+
+    private function buildCoberturaAppendixFilename(string $filename): string
+    {
+        if ($filename === '') {
+            return 'cobertura_appendix.pdf';
+        }
+
+        if (preg_match('/\.pdf$/i', $filename) === 1) {
+            return preg_replace('/\.pdf$/i', '_anexo.pdf', $filename) ?? ($filename . '_anexo.pdf');
+        }
+
+        return $filename . '_anexo.pdf';
     }
 
 }
