@@ -51,6 +51,10 @@ class CirugiaService
                 return $allowNull ? null : $fallback;
             }
 
+            if (strcasecmp($value, 'null') === 0) {
+                return $allowNull ? null : $fallback;
+            }
+
             json_decode($value);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $value;
