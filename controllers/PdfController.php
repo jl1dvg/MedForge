@@ -89,7 +89,7 @@ class PdfController
                 : [];
 
             $options['finalName'] = $documento['filename'];
-            $options['modoSalida'] = $options['modoSalida'] ?? 'I';
+            $options['modoSalida'] = PdfGenerator::normalizarModoSalida($options['modoSalida'] ?? 'I');
 
             $appendix = isset($documento['append']) && is_array($documento['append'])
                 ? $documento['append']
@@ -124,7 +124,7 @@ class PdfController
                     $this->emitPdf(
                         $mergedPdf,
                         $documento['filename'],
-                        (string) $options['modoSalida'],
+                        $options['modoSalida'],
                         isset($options['filePath']) && is_string($options['filePath']) ? $options['filePath'] : null
                     );
 
@@ -225,7 +225,7 @@ class PdfController
 
     private function emitPdf(string $content, string $filename, string $mode, ?string $filePath = null): void
     {
-        $mode = strtoupper($mode);
+        $mode = strtoupper(PdfGenerator::normalizarModoSalida($mode));
 
         if ($mode === 'F') {
             $target = $filePath ?? $filename;
