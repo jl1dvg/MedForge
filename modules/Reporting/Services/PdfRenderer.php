@@ -5,6 +5,7 @@ namespace Modules\Reporting\Services;
 use InvalidArgumentException;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
+use Modules\Reporting\Support\PdfDestinationNormalizer;
 
 class PdfRenderer
 {
@@ -124,7 +125,7 @@ class PdfRenderer
         $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY);
 
         $filename = $options['filename'] ?? 'documento.pdf';
-        $destination = $options['destination'] ?? 'I';
+        $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'I');
 
         return $mpdf->Output($filename, $destination);
     }

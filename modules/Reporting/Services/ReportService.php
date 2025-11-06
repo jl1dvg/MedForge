@@ -5,6 +5,7 @@ namespace Modules\Reporting\Services;
 use InvalidArgumentException;
 use Modules\Reporting\Services\Definitions\PdfTemplateDefinitionInterface;
 use Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
+use Modules\Reporting\Support\PdfDestinationNormalizer;
 
 /**
  * @psalm-type RenderedDocument = array{
@@ -133,7 +134,7 @@ class ReportService
         $slug = $this->normalizeIdentifier($identifier);
         $definition = $this->pdfTemplateRegistry->get($slug);
 
-        $destination = $options['destination'] ?? 'S';
+        $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'S');
         $filename = $options['filename'] ?? ($slug !== '' ? $slug . '.pdf' : 'documento.pdf');
 
         if ($definition !== null) {
@@ -186,7 +187,7 @@ class ReportService
      */
     public function renderPdf(string $identifier, array $data = [], array $options = []): string
     {
-        $options['destination'] = $options['destination'] ?? 'S';
+        $options['destination'] = PdfDestinationNormalizer::normalize($options['destination'] ?? 'S');
 
         $document = $this->renderDocument($identifier, $data, $options);
 
