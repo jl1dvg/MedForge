@@ -24,6 +24,7 @@ class RolesController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.view', 'admin.roles.manage', 'admin.roles']);
         $roles = $this->roles->all();
 
         foreach ($roles as &$role) {
@@ -44,6 +45,7 @@ class RolesController extends BaseController
     public function create(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.manage', 'admin.roles']);
         $this->render(BASE_PATH . '/modules/Usuarios/views/roles/form.php', [
             'pageTitle' => 'Nuevo rol',
             'formAction' => '/roles/create',
@@ -58,6 +60,7 @@ class RolesController extends BaseController
     public function store(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.manage', 'admin.roles']);
         $data = $this->collectInput();
         $errors = $this->validate($data);
 
@@ -82,6 +85,7 @@ class RolesController extends BaseController
     public function edit(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.manage', 'admin.roles']);
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         if ($id <= 0) {
             header('Location: /roles?error=not_found');
@@ -110,6 +114,7 @@ class RolesController extends BaseController
     public function update(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.manage', 'admin.roles']);
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         if ($id <= 0) {
             header('Location: /roles?error=not_found');
@@ -145,6 +150,7 @@ class RolesController extends BaseController
     public function destroy(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'admin.roles.manage', 'admin.roles']);
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         if ($id <= 0) {
             header('Location: /roles?error=not_found');

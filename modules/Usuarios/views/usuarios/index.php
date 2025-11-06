@@ -4,8 +4,14 @@
 /** @var array $permissionLabels */
 /** @var string|null $status */
 /** @var string|null $error */
+
+use Core\Permissions;
+
 $status = $status ?? null;
 $error = $error ?? null;
+$sessionPermissions = Permissions::normalize($_SESSION['permisos'] ?? []);
+$canCreateUsers = Permissions::containsAny($sessionPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios']);
+$canEditUsers = $canCreateUsers;
 ?>
 
 <div class="content-header">
@@ -21,7 +27,9 @@ $error = $error ?? null;
                 </nav>
             </div>
         </div>
-        <a href="/usuarios/create" class="btn btn-primary"><i class="mdi mdi-account-plus"></i> Nuevo usuario</a>
+        <?php if ($canCreateUsers): ?>
+            <a href="/usuarios/create" class="btn btn-primary"><i class="mdi mdi-account-plus"></i> Nuevo usuario</a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -89,15 +97,19 @@ $error = $error ?? null;
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end">
-                                                <a href="/usuarios/edit?id=<?= (int) $usuario['id']; ?>" class="btn btn-sm btn-outline-primary me-1">
-                                                    <i class="mdi mdi-pencil"></i> Editar
-                                                </a>
-                                                <form action="/usuarios/delete" method="POST" class="d-inline-block" onsubmit="return confirm('¿Deseas eliminar a <?= htmlspecialchars($usuario['username'] ?? 'este usuario', ENT_QUOTES, 'UTF-8'); ?>?');">
-                                                    <input type="hidden" name="id" value="<?= (int) $usuario['id']; ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                        <i class="mdi mdi-delete"></i> Eliminar
-                                                    </button>
-                                                </form>
+                                                <?php if ($canEditUsers): ?>
+                                                    <a href="/usuarios/edit?id=<?= (int) $usuario['id']; ?>" class="btn btn-sm btn-outline-primary me-1">
+                                                        <i class="mdi mdi-pencil"></i> Editar
+                                                    </a>
+                                                    <form action="/usuarios/delete" method="POST" class="d-inline-block" onsubmit="return confirm('¿Deseas eliminar a <?= htmlspecialchars($usuario['username'] ?? 'este usuario', ENT_QUOTES, 'UTF-8'); ?>?');">
+                                                        <input type="hidden" name="id" value="<?= (int) $usuario['id']; ?>">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                            <i class="mdi mdi-delete"></i> Eliminar
+                                                        </button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <span class="text-muted small">Sin permisos de edición</span>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>

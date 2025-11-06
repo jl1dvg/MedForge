@@ -88,6 +88,7 @@ class UsuarioModel
             'registro' => '',
             'sede' => '',
             'firma' => null,
+            'profile_photo' => null,
             'especialidad' => '',
             'subespecialidad' => '',
             'permisos' => '[]',

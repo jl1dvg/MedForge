@@ -194,10 +194,13 @@ if (!function_exists('isTreeOpen')) {
                     <?php
                     $rawPermissions = $_SESSION['permisos'] ?? [];
                     $normalizedPermissions = Permissions::normalize($rawPermissions);
-                    $canManage = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios', 'admin.roles', 'settings.manage']);
-                    $canManageSettings = Permissions::containsAny($normalizedPermissions, ['settings.manage', 'administrativo']);
+                    $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
+                    $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
+                    $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
+                    $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
+                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes;
                     ?>
-                    <?php if ($canManage): ?>
+                    <?php if ($showAdmin): ?>
                         <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
@@ -206,28 +209,34 @@ if (!function_exists('isTreeOpen')) {
                                 <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                             </a>
                             <ul class="treeview-menu">
-                                <li class="<?= isActive('/usuarios') ?>">
-                                    <a href="<?= BASE_URL . 'usuarios'; ?>">
-                                        <i class="mdi mdi-account-key"></i>Usuarios
-                                    </a>
-                                </li>
-                                <li class="<?= isActive('/roles') ?>">
-                                    <a href="<?= BASE_URL . 'roles'; ?>">
-                                        <i class="mdi mdi-security"></i>Roles
-                                    </a>
-                                </li>
-                                <?php if ($canManageSettings): ?>
+                                <?php if ($canAccessUsers): ?>
+                                    <li class="<?= isActive('/usuarios') ?>">
+                                        <a href="<?= BASE_URL . 'usuarios'; ?>">
+                                            <i class="mdi mdi-account-key"></i>Usuarios
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+                                <?php if ($canAccessRoles): ?>
+                                    <li class="<?= isActive('/roles') ?>">
+                                        <a href="<?= BASE_URL . 'roles'; ?>">
+                                            <i class="mdi mdi-security"></i>Roles
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+                                <?php if ($canAccessSettings): ?>
                                     <li class="<?= isActive('/settings') ?>">
                                         <a href="<?= BASE_URL . 'settings'; ?>">
                                             <i class="mdi mdi-cog-outline"></i>Ajustes
                                         </a>
                                     </li>
                                 <?php endif; ?>
-                                <li class="<?= isActive('/views/codes/index.php') ?>">
-                                    <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
-                                        <i class="mdi mdi-tag-text-outline"></i>Codificación
-                                    </a>
-                                </li>
+                                <?php if ($canAccessCodes): ?>
+                                    <li class="<?= isActive('/views/codes/index.php') ?>">
+                                        <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
+                                            <i class="mdi mdi-tag-text-outline"></i>Codificación
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
                             </ul>
                         </li>
                     <?php endif; ?>
