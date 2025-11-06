@@ -23,7 +23,11 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const dias = fecha ? Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24)) : 0;
         const semaforo = dias <= 3 ? '🟢 Normal' : dias <= 7 ? '🟡 Pendiente' : '🔴 Urgente';
 
-        const pipelineStage = solicitud.crm_pipeline_stage || 'Recibido';
+        const kanbanPrefs = window.__crmKanbanPreferences ?? {};
+        const defaultPipelineStage = Array.isArray(kanbanPrefs.pipelineStages) && kanbanPrefs.pipelineStages.length
+            ? kanbanPrefs.pipelineStages[0]
+            : 'Recibido';
+        const pipelineStage = solicitud.crm_pipeline_stage || defaultPipelineStage;
         const responsable = solicitud.crm_responsable_nombre || 'Sin responsable asignado';
         const contactoTelefono = solicitud.crm_contacto_telefono || solicitud.paciente_celular || 'Sin teléfono';
         const contactoCorreo = solicitud.crm_contacto_email || 'Sin correo';

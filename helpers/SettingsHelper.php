@@ -108,6 +108,43 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'crm' => [
+                'title' => 'CRM y Pipeline',
+                'icon' => 'fa-solid fa-diagram-project',
+                'description' => 'Configura etapas y comportamiento del tablero Kanban inspirado en Perfex.',
+                'groups' => [
+                    [
+                        'id' => 'pipeline',
+                        'title' => 'Pipeline de oportunidades',
+                        'description' => 'Define las etapas disponibles y preferencias del tablero clínico/CRM.',
+                        'fields' => [
+                            self::textareaField(
+                                'crm_pipeline_stages',
+                                'Etapas del pipeline',
+                                'Ingresa una etapa por línea en el orden de tu pipeline.',
+                                "Recibido\nContacto inicial\nSeguimiento\nDocs completos\nAutorizado\nAgendado\nCerrado\nPerdido"
+                            ),
+                            self::selectField(
+                                'crm_kanban_sort',
+                                'Orden predeterminado del Kanban',
+                                [
+                                    'fecha_desc' => 'Fecha del procedimiento (más recientes primero)',
+                                    'fecha_asc' => 'Fecha del procedimiento (más antiguos primero)',
+                                    'creado_desc' => 'Fecha de creación (más recientes primero)',
+                                    'creado_asc' => 'Fecha de creación (más antiguos primero)',
+                                ],
+                                'fecha_desc'
+                            ),
+                            self::numberField(
+                                'crm_kanban_column_limit',
+                                'Límite de tarjetas por columna',
+                                0,
+                                '0 desactiva el límite por columna.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'notifications' => [
                 'title' => 'Notificaciones',
                 'icon' => 'fa-solid fa-bell',
@@ -253,14 +290,23 @@ class SettingsHelper
         ];
     }
 
-    private static function textareaField(string $key, string $label, ?string $help = null): array
+    private static function textareaField(string $key, string $label, ?string $help = null, ?string $default = null): array
     {
-        return [
+        $field = [
             'type' => 'textarea',
             'key' => $key,
             'label' => $label,
-            'help' => $help,
         ];
+
+        if ($help !== null) {
+            $field['help'] = $help;
+        }
+
+        if ($default !== null) {
+            $field['default'] = $default;
+        }
+
+        return $field;
     }
 
     private static function numberField(string $key, string $label, int $default = 0, ?string $help = null): array

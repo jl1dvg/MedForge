@@ -4,6 +4,7 @@ namespace Modules\Solicitudes\Services;
 
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
+use Modules\CRM\Services\LeadConfigurationService;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -12,67 +13,25 @@ class SolicitudCrmService
 {
     private const ESTADOS_TAREA_VALIDOS = ['pendiente', 'en_progreso', 'completada', 'cancelada'];
 
-    private const ETAPAS_PIPELINE = [
-        'Recibido',
-        'Contacto inicial',
-        'Seguimiento',
-        'Docs completos',
-        'Autorizado',
-        'Agendado',
-        'Cerrado',
-    ];
-
     private PDO $pdo;
     private LeadModel $leadModel;
+    private LeadConfigurationService $leadConfig;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
-    }
-
-    /**
-     * @return string[]
-     */
-    public static function getPipelineStages(): array
-    {
-        return self::ETAPAS_PIPELINE;
+        $this->leadConfig = new LeadConfigurationService($pdo);
     }
 
     public function obtenerResponsables(): array
     {
-        $stmt = $this->pdo->query('SELECT id, nombre, email FROM users ORDER BY nombre');
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $this->leadConfig->getAssignableUsers();
     }
 
     public function obtenerFuentes(): array
     {
-        $fuentes = [];
-
-        $stmtDetalles = $this->pdo->query("SELECT DISTINCT fuente FROM solicitud_crm_detalles WHERE fuente IS NOT NULL AND fuente <> ''");
-        if ($stmtDetalles) {
-            foreach ($stmtDetalles->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
-                $fuente = trim((string) $fuente);
-                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
-                    $fuentes[] = $fuente;
-                }
-            }
-        }
-
-        $stmtLeads = $this->pdo->query("SELECT DISTINCT source FROM crm_leads WHERE source IS NOT NULL AND source <> ''");
-        if ($stmtLeads) {
-            foreach ($stmtLeads->fetchAll(PDO::FETCH_COLUMN) as $fuente) {
-                $fuente = trim((string) $fuente);
-                if ($fuente !== '' && !in_array($fuente, $fuentes, true)) {
-                    $fuentes[] = $fuente;
-                }
-            }
-        }
-
-        sort($fuentes, SORT_NATURAL | SORT_FLAG_CASE);
-
-        return $fuentes;
+        return $this->leadConfig->getSources();
     }
 
     public function obtenerResumen(int $solicitudId): array
@@ -390,14 +349,7 @@ class SolicitudCrmService
 
     private function mapearEtapaALeadStatus(?string $etapa): string
     {
-        $etapaNormalizada = $this->normalizarEtapa($etapa);
-
-        return match ($etapaNormalizada) {
-            'Recibido' => 'nuevo',
-            'Contacto inicial', 'Seguimiento', 'Docs completos', 'Autorizado', 'Agendado' => 'en_proceso',
-            'Cerrado' => 'convertido',
-            default => 'en_proceso',
-        };
+        return $this->leadConfig->normalizeStage($etapa);
     }
 
     private function obtenerUsuariosPorIds(array $ids): array
@@ -546,18 +498,7 @@ class SolicitudCrmService
 
     private function normalizarEtapa(?string $etapa): string
     {
-        $etapa = trim((string) $etapa);
-        if ($etapa === '') {
-            return self::ETAPAS_PIPELINE[0];
-        }
-
-        foreach (self::ETAPAS_PIPELINE as $opcion) {
-            if (strcasecmp($opcion, $etapa) === 0) {
-                return $opcion;
-            }
-        }
-
-        return $etapa;
+        return $this->leadConfig->normalizeStage($etapa);
     }
 
     private function normalizarTexto(?string $valor): ?string

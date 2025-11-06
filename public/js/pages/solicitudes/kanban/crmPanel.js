@@ -6,6 +6,16 @@ let crmOptions = {
     fuentes: [],
 };
 
+let kanbanPreferences = {
+    columnLimit: 0,
+    sort: 'fecha_desc',
+    pipelineStages: [],
+};
+
+if (typeof window !== 'undefined') {
+    window.__crmKanbanPreferences = { ...kanbanPreferences };
+}
+
 let currentSolicitudId = null;
 let offcanvasInstance = null;
 let formsBound = false;
@@ -20,7 +30,20 @@ export function setCrmOptions(options = {}) {
         fuentes: Array.isArray(options.fuentes) ? options.fuentes : [],
     };
 
+    const kanban = options.kanban ?? {};
+    kanbanPreferences = {
+        columnLimit: Number.parseInt(kanban.column_limit ?? kanban.columnLimit ?? 0, 10) || 0,
+        sort: typeof kanban.sort === 'string' ? kanban.sort : 'fecha_desc',
+        pipelineStages: Array.isArray(crmOptions.etapas) ? [...crmOptions.etapas] : [],
+    };
+
+    window.__crmKanbanPreferences = { ...kanbanPreferences };
+
     populateStaticOptions();
+}
+
+export function getCrmKanbanPreferences() {
+    return { ...kanbanPreferences };
 }
 
 export function initCrmInteractions() {
@@ -73,8 +96,9 @@ function populateStaticOptions() {
 
         if (!crmOptions.etapas.length) {
             const option = document.createElement('option');
-            option.value = 'Recibido';
-            option.textContent = 'Recibido';
+            const defaultStage = kanbanPreferences.pipelineStages[0] ?? 'Recibido';
+            option.value = defaultStage;
+            option.textContent = defaultStage;
             pipelineSelect.appendChild(option);
         }
 
