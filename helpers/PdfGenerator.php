@@ -28,6 +28,8 @@ class PdfGenerator
         string $orientation = 'P',
         array $mpdfOptions = []
     ): void {
+        $modoSalida = self::normalizarModoSalida($modoSalida);
+
         $options = [
             'default_font_size' => 8,
             'default_font' => 'dejavusans',
@@ -90,7 +92,7 @@ class PdfGenerator
             ]);
 
             $filename = $options['finalName'] ?? $document['filename'];
-            $modoSalida = $options['modoSalida'] ?? 'I';
+            $modoSalida = self::normalizarModoSalida($options['modoSalida'] ?? 'I');
             $filePath = $options['filePath'] ?? null;
 
             self::emitirPdfBinario($document['content'], $filename, $modoSalida, $filePath);
@@ -103,7 +105,7 @@ class PdfGenerator
             $html,
             $options['finalName'] ?? ($slug . '.pdf'),
             $options['css'] ?? null,
-            $options['modoSalida'] ?? 'I',
+            self::normalizarModoSalida($options['modoSalida'] ?? 'I'),
             $options['orientation'] ?? 'P'
         );
     }
@@ -128,6 +130,29 @@ class PdfGenerator
         header(sprintf('Content-Disposition: %s; filename="%s"', $disposition, $nombreArchivo));
         header('Content-Length: ' . strlen($contenido));
         echo $contenido;
+    }
+
+    /**
+     * @param mixed $modoSalida
+     */
+    private static function normalizarModoSalida($modoSalida): string
+    {
+        if (is_array($modoSalida)) {
+            $modoSalida = reset($modoSalida);
+        }
+
+        if (is_string($modoSalida) && $modoSalida !== '') {
+            return $modoSalida;
+        }
+
+        if (is_scalar($modoSalida) && $modoSalida !== null) {
+            $modoSalida = (string) $modoSalida;
+            if ($modoSalida !== '') {
+                return $modoSalida;
+            }
+        }
+
+        return 'I';
     }
 }
 
