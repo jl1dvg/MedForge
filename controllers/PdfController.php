@@ -189,7 +189,6 @@ class PdfController
         }
 
         $mpdf = new Mpdf($defaultOptions);
-        $mpdf->SetImportUse();
 
         $tempFile = tempnam(sys_get_temp_dir(), 'cov');
         if ($tempFile === false) {
