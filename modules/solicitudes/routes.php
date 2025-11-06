@@ -20,6 +20,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->actualizarEstado();
     });
 
+    $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->enviarRecordatorios();
+    });
+
     $router->get('/solicitudes/prefactura', function (\PDO $pdo) {
         (new SolicitudController($pdo))->prefactura();
     });

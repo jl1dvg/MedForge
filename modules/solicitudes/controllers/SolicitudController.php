@@ -8,6 +8,7 @@ use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
+use Modules\Solicitudes\Services\SolicitudReminderService;
 use PDO;
 use Throwable;
 
@@ -166,8 +167,31 @@ class SolicitudController extends BaseController
         $payload = $this->getRequestBody();
 
         try {
-            $this->crmService->guardarDetalles($solicitudId, $payload);
+            $this->crmService->guardarDetalles($solicitudId, $payload, $this->getCurrentUserId());
             $resumen = $this->crmService->obtenerResumen($solicitudId);
+            $detalle = $resumen['detalle'] ?? [];
+
+            $this->pusherConfig->trigger(
+                [
+                    'solicitud_id' => $solicitudId,
+                    'crm_lead_id' => $detalle['crm_lead_id'] ?? null,
+                    'pipeline_stage' => $detalle['crm_pipeline_stage'] ?? null,
+                    'responsable_id' => $detalle['crm_responsable_id'] ?? null,
+                    'responsable_nombre' => $detalle['crm_responsable_nombre'] ?? null,
+                    'fuente' => $detalle['crm_fuente'] ?? null,
+                    'contacto_email' => $detalle['crm_contacto_email'] ?? null,
+                    'contacto_telefono' => $detalle['crm_contacto_telefono'] ?? null,
+                    'paciente_nombre' => $detalle['paciente_nombre'] ?? null,
+                    'procedimiento' => $detalle['procedimiento'] ?? null,
+                    'doctor' => $detalle['doctor'] ?? null,
+                    'prioridad' => $detalle['prioridad'] ?? null,
+                    'kanban_estado' => $detalle['estado'] ?? null,
+                    'channels' => $this->pusherConfig->getNotificationChannels(),
+                ],
+                null,
+                PusherConfigService::EVENT_CRM_UPDATED
+            );
+
             $this->json(['success' => true, 'data' => $resumen]);
         } catch (\Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudieron guardar los cambios'], 500);
@@ -356,14 +380,44 @@ class SolicitudController extends BaseController
 
         try {
             $resultado = $this->solicitudModel->actualizarEstado($id, $estado);
+
+            $this->pusherConfig->trigger(
+                $resultado + [
+                    'channels' => $this->pusherConfig->getNotificationChannels(),
+                ],
+                null,
+                PusherConfigService::EVENT_STATUS_UPDATED
+            );
+
             $this->json([
                 'success' => true,
                 'estado' => $resultado['estado'] ?? $estado,
                 'turno' => $resultado['turno'] ?? null,
+                'estado_anterior' => $resultado['estado_anterior'] ?? null,
             ]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
+    }
+
+    public function enviarRecordatorios(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
+
+        $scheduler = new SolicitudReminderService($this->pdo, $this->pusherConfig);
+        $enviados = $scheduler->dispatchUpcoming($horas);
+
+        $this->json([
+            'success' => true,
+            'dispatched' => $enviados,
+            'count' => count($enviados),
+        ]);
     }
 
     public function turneroData(): void
