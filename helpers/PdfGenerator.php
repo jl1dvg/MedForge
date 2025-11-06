@@ -7,6 +7,7 @@ require_once __DIR__ . '/../bootstrap.php';
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use Modules\Reporting\Services\ReportService;
+use Stringable;
 
 class PdfGenerator
 {
@@ -140,16 +141,28 @@ class PdfGenerator
      */
     public static function normalizarModoSalida($modoSalida): string
     {
-        if (is_array($modoSalida)) {
-            $modoSalida = reset($modoSalida);
+        while (is_array($modoSalida)) {
+            $next = reset($modoSalida);
+
+            if ($next === false && $next !== 0) {
+                $modoSalida = null;
+                break;
+            }
+
+            $modoSalida = $next;
         }
 
-        if (is_string($modoSalida) && $modoSalida !== '') {
-            return $modoSalida;
-        }
-
-        if (is_scalar($modoSalida) && $modoSalida !== null) {
+        if ($modoSalida instanceof Stringable) {
             $modoSalida = (string) $modoSalida;
+        }
+
+        if (is_string($modoSalida)) {
+            $modoSalida = trim($modoSalida);
+            if ($modoSalida !== '') {
+                return $modoSalida;
+            }
+        } elseif (is_scalar($modoSalida) && $modoSalida !== null) {
+            $modoSalida = trim((string) $modoSalida);
             if ($modoSalida !== '') {
                 return $modoSalida;
             }
