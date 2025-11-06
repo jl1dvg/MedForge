@@ -211,6 +211,24 @@
                 min-width: 160px;
             }
         }
+
+        /* --- CRM Offcanvas layout helpers --- */
+        .offcanvas-body {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .crm-fixed-top {
+            flex: 0 0 auto; /* no grow */
+        }
+        .crm-scrollable {
+            flex: 1 1 auto; /* take remaining height */
+            min-height: 0;  /* allow child overflow */
+            overflow: auto;
+        }
+        .accordion-button[data-preserve-disabled="true"] {
+            pointer-events: auto !important;
+        }
     </style>
     <div class="box">
         <div class="box-body">
@@ -287,62 +305,89 @@
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column gap-3">
-            <div id="crmLoading" class="alert alert-info d-none" role="status">
+            <div id="crmLoading" class="alert alert-info d-none crm-fixed-top" role="status">
                 <div class="d-flex align-items-center gap-2">
                     <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
                     <span>Cargando información CRM...</span>
                 </div>
             </div>
-            <div id="crmError" class="alert alert-danger d-none" role="alert"></div>
-            <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
-            <form id="crmDetalleForm" class="border rounded p-3">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="crmPipeline" class="form-label">Etapa CRM</label>
-                        <select id="crmPipeline" name="pipeline_stage" class="form-select">
-                            <option value="">Recibido</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmResponsable" class="form-label">Responsable principal</label>
-                        <select id="crmResponsable" name="responsable_id" class="form-select">
-                            <option value="">Sin asignar</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmFuente" class="form-label">Fuente / convenio</label>
-                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
-                        <datalist id="crmFuenteOptions"></datalist>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmSeguidores" class="form-label">Seguidores</label>
-                        <select id="crmSeguidores" name="seguidores[]" class="form-select" multiple></select>
-                        <small class="text-muted">Usuarios que acompañan el caso y reciben alertas.</small>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
-                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
-                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Campos personalizados</label>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo">
-                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
+            <div id="crmError" class="alert alert-danger d-none crm-fixed-top" role="alert"></div>
+
+            <!-- Top controls collapsed by default to save vertical space -->
+            <div class="accordion crm-fixed-top" id="crmAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="acc-head-resumen">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-resumen" aria-expanded="false" aria-controls="acc-resumen" data-preserve-disabled="true">
+                            <i class="mdi mdi-information-outline me-2"></i> Resumen de la solicitud
                         </button>
+                    </h2>
+                    <div id="acc-resumen" class="accordion-collapse collapse" aria-labelledby="acc-head-resumen" data-bs-parent="#crmAccordion">
+                        <div class="accordion-body">
+                            <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
+                        </div>
                     </div>
-                    <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
                 </div>
-                <div class="d-flex justify-content-end mt-3">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
-                    </button>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="acc-head-detalles">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-detalles" aria-expanded="false" aria-controls="acc-detalles" data-preserve-disabled="true">
+                            <i class="mdi mdi-tune me-2"></i> Detalles CRM
+                        </button>
+                    </h2>
+                    <div id="acc-detalles" class="accordion-collapse collapse" aria-labelledby="acc-head-detalles" data-bs-parent="#crmAccordion">
+                        <div class="accordion-body">
+                            <form id="crmDetalleForm" class="border rounded p-3">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label for="crmPipeline" class="form-label">Etapa CRM</label>
+                                        <select id="crmPipeline" name="pipeline_stage" class="form-select">
+                                            <option value="">Recibido</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmResponsable" class="form-label">Responsable principal</label>
+                                        <select id="crmResponsable" name="responsable_id" class="form-select">
+                                            <option value="">Sin asignar</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmFuente" class="form-label">Fuente / convenio</label>
+                                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
+                                        <datalist id="crmFuenteOptions"></datalist>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmSeguidores" class="form-label">Seguidores</label>
+                                        <select id="crmSeguidores" name="seguidores[]" class="form-select" multiple></select>
+                                        <small class="text-muted">Usuarios que acompañan el caso y reciben alertas.</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
+                                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
+                                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label mb-0">Campos personalizados</label>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo" data-preserve-disabled="true">
+                                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
+                                        </button>
+                                    </div>
+                                    <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
+                                </div>
+                                <div class="d-flex justify-content-end mt-3">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
             <div class="crm-scrollable flex-grow-1 overflow-auto">
                 <section class="crm-offcanvas-section">
                     <div class="d-flex justify-content-between align-items-center mb-2">
