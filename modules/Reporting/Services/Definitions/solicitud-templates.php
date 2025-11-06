@@ -10,11 +10,11 @@ return [
             'css' => dirname(__DIR__, 2) . '/Templates/assets/pdf.css',
             'orientation' => 'P',
             'filename_pattern' => 'cobertura_ecuasanitas_%2$s_%3$s.pdf',
-            'report' => [
-                'slug' => 'cobertura-ecuasanitas-form',
-            ],
+            'report' => ['slug' => 'cobertura-ecuasanitas-form',],
+            // 👇 NUEVO: vistas a anexar luego del PDF fijo
+            'append_views' => ['007'],
         ],
-        ['ecuasanitas']
+        ['ecuasanitas', 'ECUASANITAS', 'Ecuasanitas'] // palabras clave de coincidencia
     ),
     new ArraySolicitudTemplateDefinition(
         'cobertura',

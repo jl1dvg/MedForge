@@ -161,6 +161,67 @@ const init = () => {
             });
         });
     }
+
+    const parseUserId = value => {
+        const num = Number.parseInt(value, 10);
+        return Number.isNaN(num) ? null : num;
+    };
+
+    const currentUserId = parseUserId(window?.app?.user_id);
+    const realtimeKey = typeof window?.app?.options?.pusher_app_key === 'string'
+        ? window.app.options.pusher_app_key.trim()
+        : '';
+    const realtimeCluster = typeof window?.app?.options?.pusher_cluster === 'string'
+        ? window.app.options.pusher_cluster.trim()
+        : '';
+    const realtimeEnabled = typeof window?.app?.options?.pusher_realtime_notifications !== 'undefined'
+        && String(window.app.options.pusher_realtime_notifications).trim() === '1'
+        && realtimeKey !== '';
+
+    const shouldIgnoreEvent = payload => {
+        const triggered = parseUserId(payload?.triggered_by ?? payload?.user_id ?? payload?.staff_id);
+        return triggered !== null && currentUserId !== null && triggered === currentUserId;
+    };
+
+    let realtimeRefreshTimeout = null;
+    const scheduleRealtimeRefresh = () => {
+        if (realtimeRefreshTimeout) {
+            clearTimeout(realtimeRefreshTimeout);
+        }
+        realtimeRefreshTimeout = setTimeout(() => {
+            fetchTurnero();
+        }, 750);
+    };
+
+    if (typeof Pusher !== 'undefined' && realtimeEnabled) {
+        const options = { forceTLS: true };
+        if (realtimeCluster !== '') {
+            options.cluster = realtimeCluster;
+        }
+
+        const pusher = new Pusher(realtimeKey, options);
+        const channel = pusher.subscribe('solicitudes-kanban');
+
+        const bindings = [
+            'kanban.nueva-solicitud',
+            'kanban.estado-actualizado',
+            'crm.detalles-actualizados',
+            'crm.nota-registrada',
+            'crm.tarea-creada',
+            'crm.tarea-actualizada',
+            'crm.adjunto-subido',
+            'turnero.turno-actualizado',
+        ];
+
+        bindings.forEach(eventName => {
+            channel.bind(eventName, data => {
+                if (shouldIgnoreEvent(data)) {
+                    return;
+                }
+                scheduleRealtimeRefresh();
+            });
+        });
+    }
 };
 
 document.addEventListener('DOMContentLoaded', init);

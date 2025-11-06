@@ -42,6 +42,19 @@ export function setCrmOptions(options = {}) {
     populateStaticOptions();
 }
 
+export function refreshCrmPanelIfActive(solicitudId) {
+    if (!solicitudId || !currentSolicitudId) {
+        return false;
+    }
+
+    if (String(currentSolicitudId) !== String(solicitudId)) {
+        return false;
+    }
+
+    loadCrmData(currentSolicitudId);
+    return true;
+}
+
 export function getCrmKanbanPreferences() {
     return { ...kanbanPreferences };
 }

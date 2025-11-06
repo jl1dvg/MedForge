@@ -1,4 +1,4 @@
-export function showToast(message, isSuccess = true) {
+export function showToast(message, isSuccess = true, timeoutMs = 4000) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
@@ -15,5 +15,7 @@ export function showToast(message, isSuccess = true) {
     `;
 
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+        setTimeout(() => toast.remove(), timeoutMs);
+    }
 }

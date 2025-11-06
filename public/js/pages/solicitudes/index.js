@@ -4,6 +4,34 @@ import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+    const realtimeConfig = window.MEDF_PusherConfig || {};
+    const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
+    const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
+    const toastDurationMs = autoDismissSeconds === null
+        ? 4000
+        : autoDismissSeconds === 0
+            ? 0
+            : autoDismissSeconds * 1000;
+
+    const maybeShowDesktopNotification = (title, body) => {
+        if (!realtimeConfig.desktop_notifications || typeof window === 'undefined' || !('Notification' in window)) {
+            return;
+        }
+
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
+
+        if (Notification.permission !== 'granted') {
+            return;
+        }
+
+        const notification = new Notification(title, { body });
+        if (autoDismissSeconds && autoDismissSeconds > 0) {
+            setTimeout(() => notification.close(), autoDismissSeconds * 1000);
+        }
+    };
+
     const obtenerFiltros = () => ({
         afiliacion: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
         doctor: document.getElementById('kanbanDoctorFilter')?.value ?? '',
@@ -93,18 +121,30 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    if (typeof Pusher !== 'undefined') {
-        const pusher = new Pusher('32ed6d21578f5bc44eef', {
-            cluster: 'us2',
-            encrypted: true,
-        });
+    if (realtimeConfig.enabled) {
+        if (typeof Pusher === 'undefined') {
+            console.warn('Pusher no está disponible. Verifica que el script se haya cargado correctamente.');
+        } else if (!realtimeConfig.key) {
+            console.warn('No se configuró la APP Key de Pusher.');
+        } else {
+            const options = { forceTLS: true };
+            if (realtimeConfig.cluster) {
+                options.cluster = realtimeConfig.cluster;
+            }
 
-        const channel = pusher.subscribe('solicitudes-kanban');
-        channel.bind('nueva-solicitud', data => {
-            const nombre = data?.nombre || 'Paciente sin nombre';
-            showToast(`🆕 Nueva solicitud: ${nombre}`);
-            window.aplicarFiltros();
-        });
+            const pusher = new Pusher(realtimeConfig.key, options);
+            const channelName = realtimeConfig.channel || 'solicitudes-kanban';
+            const eventName = realtimeConfig.event || 'nueva-solicitud';
+
+            const channel = pusher.subscribe(channelName);
+            channel.bind(eventName, data => {
+                const nombre = data?.nombre || data?.hc_number || 'Paciente sin nombre';
+                const mensaje = `🆕 Nueva solicitud: ${nombre}`;
+                showToast(mensaje, true, toastDurationMs);
+                maybeShowDesktopNotification('Nueva solicitud', mensaje);
+                window.aplicarFiltros();
+            });
+        }
     }
 
     cargarKanban();

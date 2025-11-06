@@ -179,4 +179,9 @@
     </div>
 </section>
 
+<?php if (function_exists('get_option')
+    && get_option('pusher_realtime_notifications') == '1'
+    && get_option('pusher_app_key') !== ''): ?>
+<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+<?php endif; ?>
 <script type="module" src="<?= asset('js/pages/solicitudes/turnero.js') ?>"></script>

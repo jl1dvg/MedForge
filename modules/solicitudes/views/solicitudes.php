@@ -1,6 +1,20 @@
 <?php
 /** @var string $username */
 /** @var string $pageTitle */
+/** @var array $realtime */
+
+$realtime = array_merge(
+    [
+        'enabled' => false,
+        'key' => '',
+        'cluster' => '',
+        'channel' => 'solicitudes-kanban',
+        'event' => 'nueva-solicitud',
+        'desktop_notifications' => false,
+        'auto_dismiss_seconds' => 0,
+    ],
+    $realtime ?? []
+);
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -760,7 +774,12 @@
 <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
-<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+<script>
+    window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+</script>
+<?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
+    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+<?php endif; ?>
 <script src="<?= asset('js/jquery.smartmenus.js') ?>"></script>
 <script src="<?= asset('js/menus.js') ?>"></script>
 <script src="<?= asset('js/template.js') ?>"></script>

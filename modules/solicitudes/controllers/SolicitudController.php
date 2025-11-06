@@ -5,6 +5,7 @@ namespace Controllers;
 use Core\BaseController;
 use Models\SolicitudModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
@@ -16,6 +17,7 @@ class SolicitudController extends BaseController
     private PacienteService $pacienteService;
     private SolicitudCrmService $crmService;
     private LeadConfigurationService $leadConfig;
+    private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -25,6 +27,7 @@ class SolicitudController extends BaseController
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new SolicitudCrmService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
+        $this->pusherConfig = new PusherConfigService($pdo);
     }
 
     public function index(): void
@@ -35,6 +38,7 @@ class SolicitudController extends BaseController
             __DIR__ . '/../views/solicitudes.php',
             [
                 'pageTitle' => 'Solicitudes Quirúrgicas',
+                'realtime' => $this->pusherConfig->getPublicConfig(),
             ]
         );
     }

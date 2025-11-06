@@ -224,7 +224,18 @@ class SolicitudModel
                 $turno = $this->asignarTurnoSiNecesario($id);
             }
 
-            $datosStmt = $this->db->prepare('SELECT estado, turno FROM solicitud_procedimiento WHERE id = :id');
+            $datosStmt = $this->db->prepare("SELECT
+                    sp.id,
+                    sp.form_id,
+                    sp.estado,
+                    sp.turno,
+                    sp.hc_number,
+                    sp.procedimiento,
+                    sp.prioridad,
+                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                FROM solicitud_procedimiento sp
+                LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+                WHERE sp.id = :id");
             $datosStmt->bindParam(':id', $id, \PDO::PARAM_INT);
             $datosStmt->execute();
             $datos = $datosStmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -232,9 +243,16 @@ class SolicitudModel
             $this->db->commit();
 
             return [
-                'id' => $id,
-                'estado' => $datos['estado'] ?? $estado,
-                'turno' => $datos['turno'] ?? $turno,
+                'id'           => $id,
+                'form_id'      => $datos['form_id'] ?? null,
+                'hc_number'    => $datos['hc_number'] ?? null,
+                'estado'       => $datos['estado'] ?? $estado,
+                'turno'        => $datos['turno'] ?? $turno,
+                'full_name'    => isset($datos['full_name']) && trim((string) $datos['full_name']) !== ''
+                    ? trim((string) $datos['full_name'])
+                    : null,
+                'procedimiento' => $datos['procedimiento'] ?? null,
+                'prioridad'     => $datos['prioridad'] ?? null,
             ];
         } catch (\Throwable $e) {
             $this->db->rollBack();
