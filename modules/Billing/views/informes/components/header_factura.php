@@ -1,3 +1,4 @@
+<!-- Legacy billing report view relocated under modules/Billing/views/informes. -->
 <div class="col-md-6 invoice-col">
     <strong>Desde</strong>
     <address>

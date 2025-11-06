@@ -1,4 +1,5 @@
 <?php
+// Legacy billing report view relocated under modules/Billing/views/informes.
 // Configuración de clases CSS por grupo para filas de la tabla
 $grupoClases = [
     'CIRUJANO' => 'table-primary',

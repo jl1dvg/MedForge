@@ -1,4 +1,5 @@
 <?php
+// Legacy billing report view relocated under modules/Billing/views/informes.
 $codigoDerivacionPrincipal = $codigoDerivacion;
 $fecha_registroPrincipal = $fecha_registro;
 if (!empty($scrapingOutput)):
