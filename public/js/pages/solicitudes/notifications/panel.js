@@ -186,6 +186,10 @@ export function createNotificationPanel(options = {}) {
         };
     }
 
+    if (panel.__notificationController) {
+        return panel.__notificationController;
+    }
+
     const realtimeList = panel.querySelector('[data-panel-list="realtime"]');
     const pendingList = panel.querySelector('[data-panel-list="pending"]');
     const realtimeCounter = panel.querySelector('[data-count="realtime"]');
@@ -205,18 +209,34 @@ export function createNotificationPanel(options = {}) {
 
     const open = () => {
         panel.classList.add('is-open');
-        backdrop.classList.add('is-visible');
+        panel.classList.add('control-sidebar-open');
+        if (document && document.body) {
+            document.body.classList.add('control-sidebar-open');
+        }
+        if (backdrop) {
+            backdrop.classList.add('is-visible');
+        }
         panel.setAttribute('aria-hidden', 'false');
     };
 
     const close = () => {
         panel.classList.remove('is-open');
-        backdrop.classList.remove('is-visible');
+        panel.classList.remove('control-sidebar-open');
+        if (document && document.body) {
+            document.body.classList.remove('control-sidebar-open');
+        }
+        if (backdrop) {
+            backdrop.classList.remove('is-visible');
+        }
         panel.setAttribute('aria-hidden', 'true');
     };
 
     toggleButtons.forEach(button => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', event => {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
             if (panel.classList.contains('is-open')) {
                 close();
             } else {
@@ -227,6 +247,12 @@ export function createNotificationPanel(options = {}) {
 
     panel.querySelectorAll('[data-action="close-panel"]').forEach(element => {
         element.addEventListener('click', close);
+        element.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                close();
+            }
+        });
     });
 
     backdrop.addEventListener('click', close);
@@ -347,7 +373,7 @@ export function createNotificationPanel(options = {}) {
     renderRealtime();
     renderPending();
 
-    return {
+    const api = {
         pushRealtime,
         pushPending,
         setChannelPreferences,
@@ -355,4 +381,8 @@ export function createNotificationPanel(options = {}) {
         open,
         close,
     };
+
+    panel.__notificationController = api;
+
+    return api;
 }

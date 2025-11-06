@@ -79,12 +79,12 @@ class PdfController
         );
     }
 
-    public function generateCobertura(string $form_id, string $hc_number)
+    public function generateCobertura(string $form_id, string $hc_number, ?string $variantOverride = null)
     {
         $documento = $this->protocolReportService->generateCoberturaDocument($form_id, $hc_number);
 
         if (($documento['mode'] ?? null) === 'report') {
-            $variant = $this->resolveCoberturaVariant();
+            $variant = $this->resolveCoberturaVariant($variantOverride);
             $options = isset($documento['options']) && is_array($documento['options'])
                 ? $documento['options']
                 : [];
@@ -290,14 +290,28 @@ class PdfController
         echo $content;
     }
 
-    private function resolveCoberturaVariant(): string
+    private function resolveCoberturaVariant(?string $override = null): string
     {
-        $raw = $_GET['variant'] ?? $_GET['document'] ?? $_GET['tipo'] ?? null;
-        $value = is_string($raw) ? strtolower(trim($raw)) : '';
+        if ($override !== null) {
+            return $this->normalizeCoberturaVariant($override);
+        }
 
-        return match ($value) {
+        $raw = $_GET['variant'] ?? $_GET['document'] ?? $_GET['tipo'] ?? null;
+
+        return $this->normalizeCoberturaVariant($raw);
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function normalizeCoberturaVariant($value): string
+    {
+        $normalized = is_string($value) ? strtolower(trim($value)) : '';
+
+        return match ($normalized) {
             'template', 'form', 'fijo', 'plantilla' => 'template',
             'appendix', 'html', 'classic', 'anexo', '007' => 'appendix',
+            'combined', 'merge', 'todo', 'ambos' => 'combined',
             default => 'combined',
         };
     }
