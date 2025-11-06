@@ -18,6 +18,9 @@ class ArraySolicitudTemplateDefinition implements SolicitudTemplateDefinitionInt
     /** @var list<string> */
     private array $matchers;
 
+    /** @var list<string> */
+    private array $appendViews;
+
     private ?string $css;
 
     private string $defaultOrientation;
@@ -79,6 +82,23 @@ class ArraySolicitudTemplateDefinition implements SolicitudTemplateDefinitionInt
         $this->matchers = array_values(array_map('strval', $matchers));
         $this->fallback = $fallback;
 
+        $appendViews = $options['append_views'] ?? [];
+        $this->appendViews = [];
+        if (is_array($appendViews)) {
+            foreach ($appendViews as $view) {
+                if (!is_string($view)) {
+                    continue;
+                }
+
+                $view = trim($view);
+                if ($view === '') {
+                    continue;
+                }
+
+                $this->appendViews[] = $view;
+            }
+        }
+
         $report = $options['report'] ?? null;
         if (is_string($report) && $report !== '') {
             $this->reportSlug = $report;
@@ -137,6 +157,11 @@ class ArraySolicitudTemplateDefinition implements SolicitudTemplateDefinitionInt
     public function getReportOptions(): array
     {
         return $this->reportOptions;
+    }
+
+    public function getAppendViews(): array
+    {
+        return $this->appendViews;
     }
 
     public function matches(array $data): bool

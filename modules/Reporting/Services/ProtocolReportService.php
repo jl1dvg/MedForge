@@ -221,12 +221,29 @@ class ProtocolReportService
 
         $reportSlug = $definition->getReportSlug();
         if ($reportSlug !== null) {
+            $appendViews = $definition->getAppendViews();
+            $appendix = null;
+
+            if ($appendViews !== []) {
+                $appendHtml = $this->renderSegments($appendViews, $datos, $definition->getOrientations());
+
+                if ($appendHtml !== '') {
+                    $appendix = [
+                        'html' => $appendHtml,
+                        'css' => $definition->getCss() ?? $this->getStylesheetPath(),
+                        'orientation' => $definition->getDefaultOrientation(),
+                        'mpdf' => $definition->getMpdfOptions(),
+                    ];
+                }
+            }
+
             return [
                 'mode' => 'report',
                 'slug' => $reportSlug,
                 'data' => $datos,
                 'filename' => $definition->buildFilename($formId, $hcNumber),
                 'options' => $definition->getReportOptions(),
+                'append' => $appendix,
             ];
         }
 

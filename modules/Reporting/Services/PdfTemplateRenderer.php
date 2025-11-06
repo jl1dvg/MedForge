@@ -42,7 +42,7 @@ class PdfTemplateRenderer
 
         $totalPages = $pdf->setSourceFile($pdfPath);
         $fieldMap = $definition->getFieldMap();
-        $pages = $this->collectPages($fieldMap, $totalPages);
+        $pages = $this->collectPages($fieldMap, $totalPages, $definition->getTemplatePages());
 
         $pageIndexMap = [];
         foreach ($pages as $pageNumber) {
@@ -150,9 +150,25 @@ class PdfTemplateRenderer
      * @param array<string, array<string, mixed>> $fieldMap
      * @return list<int>
      */
-    private function collectPages(array $fieldMap, int $totalPages): array
+    private function collectPages(array $fieldMap, int $totalPages, array $extraPages = []): array
     {
-        $pages = [1];
+        $pages = [];
+
+        foreach ($extraPages as $page) {
+            if (!is_int($page)) {
+                continue;
+            }
+
+            if ($page < 1) {
+                continue;
+            }
+
+            if ($totalPages > 0 && $page > $totalPages) {
+                continue;
+            }
+
+            $pages[] = $page;
+        }
 
         foreach ($fieldMap as $position) {
             $page = isset($position['page']) && is_numeric($position['page'])
@@ -170,6 +186,7 @@ class PdfTemplateRenderer
             $pages[] = $page;
         }
 
+        $pages[] = 1;
         $pages = array_values(array_unique($pages));
         sort($pages);
 

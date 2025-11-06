@@ -10,7 +10,7 @@ return [
             // Página 1
             'hc_number' => ['x' => 140, 'y' => 96, 'page' => 1],
             'pacienteNombreCompleto' => ['x' => 50, 'y' => 88, 'width' => 100, 'multiline' => true, 'page' => 1],
-            'pacienteNombreCompleto' => ['x' => 50, 'y' => 96, 'width' => 100, 'multiline' => true, 'page' => 1],
+            'pacienteNombreCompletoLinea2' => ['x' => 50, 'y' => 96, 'width' => 100, 'multiline' => true, 'page' => 1],
             'pacienteFechaNacimientoFormateada' => ['x' => 125, 'y' => 126, 'page' => 1],
             'diagnosticoListaTexto' => ['x' => 45, 'y' => 160, 'width' => 140, 'multiline' => true, 'line_height' => 4.5, 'page' => 1],
             'diagnosticoLista' => [
@@ -33,6 +33,9 @@ return [
             'line_height' => 5,
             // 👇 Hace que el renderer importe todas las páginas, aunque no tengan campos
             'template_pages' => 2,
+            'aliases' => [
+                'pacienteNombreCompletoLinea2' => 'pacienteNombreCompleto',
+            ],
             'defaults' => [
                 'diagnosticoLista' => [],
             ],

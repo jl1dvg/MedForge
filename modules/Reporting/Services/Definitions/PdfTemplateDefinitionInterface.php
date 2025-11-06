@@ -28,6 +28,13 @@ interface PdfTemplateDefinitionInterface
     public function getFieldMap(): array;
 
     /**
+     * Lista de páginas que deben importarse del PDF base, incluso si no poseen campos.
+     *
+     * @return list<int>
+     */
+    public function getTemplatePages(): array;
+
+    /**
      * Permite transformar o enriquecer los datos previos a la escritura.
      *
      * @param array<string, mixed> $data
