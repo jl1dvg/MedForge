@@ -14,8 +14,8 @@ class Migration_Version_200 extends CI_Migration
         $this->db->where('name', 'clients_default_theme');
         $theme = $this->db->get(db_prefix().'options')->row()->value;
 
-        if ($theme != 'perfex') {
-            $defPath         = APPPATH . 'views/themes/perfex/';
+        if ($theme != 'application') {
+            $defPath         = APPPATH . 'views/themes/application/';
             $activeThemePath = APPPATH . 'views/themes/' . $theme . '/';
             if (is_dir($defPath)) {
                 @copy($defPath . 'views/contracthtml.php', $activeThemePath . 'views/contracthtml.php');

@@ -10,7 +10,7 @@ class Utilities extends AdminController
         $this->load->model('utilities_model');
     }
 
-    /* All perfex activity log */
+    /* All application activity log */
     public function activity_log()
     {
         // Only full admin have permission to activity log
@@ -24,7 +24,7 @@ class Utilities extends AdminController
         $this->load->view('admin/utilities/activity_log', $data);
     }
 
-    /* All perfex activity log */
+    /* All application activity log */
     public function pipe_log()
     {
         // Only full admin have permission to activity log

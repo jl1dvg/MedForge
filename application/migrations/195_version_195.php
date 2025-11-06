@@ -10,8 +10,8 @@ class Migration_Version_195 extends CI_Migration
 
     public function up()
     {
-        if (active_clients_theme() != 'perfex') {
-            xcopy(VIEWPATH.'themes/perfex/views/credit_note_pdf.php', VIEWPATH.'themes/'.active_clients_theme().'/views/credit_note_pdf.php');
+        if (active_clients_theme() != 'application') {
+            xcopy(VIEWPATH.'themes/application/views/credit_note_pdf.php', VIEWPATH.'themes/'.active_clients_theme().'/views/credit_note_pdf.php');
         }
 
         $this->db->query("ALTER TABLE `tblitemstax` ADD INDEX(`itemid`);");
