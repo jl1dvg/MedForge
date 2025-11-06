@@ -1,4 +1,5 @@
 <?php
+// Legacy billing report view relocated under modules/Billing/views/informes.
 ob_start();
 
 // Manejo de parámetros para scraping derivación

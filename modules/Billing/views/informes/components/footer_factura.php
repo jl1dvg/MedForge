@@ -1,3 +1,4 @@
+<!-- Legacy billing report view relocated under modules/Billing/views/informes. -->
 <div class="row mt-4">
     <div class="col-12 text-end">
         <a href="/public/index.php/billing/excel?form_id=<?= $formId ?>&grupo=IESS"

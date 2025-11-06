@@ -1,4 +1,5 @@
 <?php
+// Legacy billing report view relocated under modules/Billing/views/informes.
 // Función para visualizar eventos quirúrgicos de manera uniforme
 if (!defined('BASE_PATH')) {
     require_once dirname(__DIR__, 5) . '/bootstrap.php';

@@ -1,3 +1,4 @@
+<!-- Legacy billing report view relocated under modules/Billing/views/informes. -->
 <div class="mb-2">
     <span class="badge bg-primary">Procedimientos (Cirujano)</span>
     <span class="badge bg-info text-dark">Ayudante</span>
