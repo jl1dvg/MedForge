@@ -160,6 +160,25 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'realtime',
+                        'title' => 'Notificaciones en tiempo real (Pusher.com)',
+                        'description' => 'Configura las credenciales necesarias para habilitar actualizaciones instantáneas en el tablero Kanban y módulos CRM.',
+                        'fields' => [
+                            self::textField('pusher_app_id', 'Pusher APP ID', true),
+                            self::textField('pusher_app_key', 'Pusher APP Key', true),
+                            self::passwordField('pusher_app_secret', 'Pusher APP Secret'),
+                            self::textField('pusher_cluster', 'Cluster', false, 'Consulta https://pusher.com/docs/clusters'),
+                            self::checkboxField('pusher_realtime_notifications', 'Habilitar notificaciones en tiempo real'),
+                            self::checkboxField('desktop_notifications', 'Habilitar notificaciones de escritorio'),
+                            self::numberField(
+                                'auto_dismiss_desktop_notifications_after',
+                                'Cerrar notificaciones de escritorio después de (segundos)',
+                                0,
+                                'Usa 0 para mantener la notificación visible hasta que el usuario la cierre.'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'summaries',
                         'title' => 'Resúmenes automáticos',
                         'description' => 'Define si deseas recibir un resumen diario consolidado.',
