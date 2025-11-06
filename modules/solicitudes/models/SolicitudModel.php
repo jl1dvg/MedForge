@@ -4,6 +4,7 @@ namespace Models;
 
 use PDO;
 use DateTime;
+use DateTimeImmutable;
 use Modules\CRM\Services\LeadConfigurationService;
 
 class SolicitudModel
@@ -205,6 +206,28 @@ class SolicitudModel
         $this->db->beginTransaction();
 
         try {
+            $datosPreviosStmt = $this->db->prepare("SELECT
+                    sp.id,
+                    sp.form_id,
+                    sp.estado,
+                    sp.turno,
+                    sp.hc_number,
+                    sp.procedimiento,
+                    sp.prioridad,
+                    sp.doctor,
+                    sp.tipo,
+                    sp.afiliacion,
+                    COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
+                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                FROM solicitud_procedimiento sp
+                LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+                LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+                WHERE sp.id = :id
+                FOR UPDATE");
+            $datosPreviosStmt->bindParam(':id', $id, \PDO::PARAM_INT);
+            $datosPreviosStmt->execute();
+            $datosPrevios = $datosPreviosStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
             $sql = "UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id";
             $stmt = $this->db->prepare($sql);
 
@@ -232,9 +255,14 @@ class SolicitudModel
                     sp.hc_number,
                     sp.procedimiento,
                     sp.prioridad,
+                    sp.doctor,
+                    sp.tipo,
+                    sp.afiliacion,
+                    COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
                     CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
                 FROM solicitud_procedimiento sp
                 LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+                LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
                 WHERE sp.id = :id");
             $datosStmt->bindParam(':id', $id, \PDO::PARAM_INT);
             $datosStmt->execute();
@@ -253,11 +281,95 @@ class SolicitudModel
                     : null,
                 'procedimiento' => $datos['procedimiento'] ?? null,
                 'prioridad'     => $datos['prioridad'] ?? null,
+                'doctor'        => $datos['doctor'] ?? null,
+                'tipo'          => $datos['tipo'] ?? null,
+                'afiliacion'    => $datos['afiliacion'] ?? null,
+                'fecha_programada' => $datos['fecha_programada'] ?? null,
+                'estado_anterior' => $datosPrevios['estado'] ?? null,
+                'turno_anterior'  => $datosPrevios['turno'] ?? null,
             ];
         } catch (\Throwable $e) {
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    public function obtenerSolicitudBasicaPorId(int $id): ?array
+    {
+        $stmt = $this->db->prepare("SELECT
+                sp.id,
+                sp.form_id,
+                sp.hc_number,
+                sp.estado,
+                sp.prioridad,
+                sp.doctor,
+                sp.tipo,
+                sp.procedimiento,
+                sp.afiliacion,
+                sp.turno,
+                COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+            FROM solicitud_procedimiento sp
+            LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+            WHERE sp.id = :id
+            LIMIT 1");
+        $stmt->bindParam(':id', $id, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$row) {
+            return null;
+        }
+
+        if (isset($row['full_name'])) {
+            $row['full_name'] = trim((string) $row['full_name']) !== ''
+                ? trim((string) $row['full_name'])
+                : null;
+        }
+
+        return $row;
+    }
+
+    public function buscarSolicitudesProgramadas(DateTimeImmutable $desde, DateTimeImmutable $hasta): array
+    {
+        $stmt = $this->db->prepare("SELECT
+                sp.id,
+                sp.form_id,
+                sp.hc_number,
+                sp.estado,
+                sp.prioridad,
+                sp.procedimiento,
+                sp.doctor,
+                sp.tipo,
+                sp.afiliacion,
+                sp.turno,
+                COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
+                cd.quirofano,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+            FROM solicitud_procedimiento sp
+            INNER JOIN patient_data pd ON pd.hc_number = sp.hc_number
+            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+            WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :desde AND :hasta
+            ORDER BY COALESCE(cd.fecha, sp.fecha) ASC, sp.id ASC");
+
+        $stmt->bindValue(':desde', $desde->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':hasta', $hasta->format('Y-m-d H:i:s'));
+        $stmt->execute();
+
+        $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($resultados as &$row) {
+            if (isset($row['full_name'])) {
+                $row['full_name'] = trim((string) $row['full_name']) !== ''
+                    ? trim((string) $row['full_name'])
+                    : null;
+            }
+        }
+        unset($row);
+
+        return $resultados;
     }
 
     public function llamarTurno(?int $id, ?int $turno, string $nuevoEstado = 'Llamado'): ?array
