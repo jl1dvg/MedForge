@@ -18,6 +18,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.estado = solicitud.estado ?? '';
         tarjeta.dataset.id = solicitud.id ?? '';
         tarjeta.dataset.afiliacion = solicitud.afiliacion ?? '';
+        tarjeta.dataset.aseguradora = solicitud.aseguradora ?? solicitud.aseguradoraNombre ?? '';
 
         const fecha = solicitud.fecha ? new Date(solicitud.fecha) : null;
         const fechaFormateada = fecha ? moment(fecha).format('DD-MM-YYYY') : '—';

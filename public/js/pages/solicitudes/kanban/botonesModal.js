@@ -13,6 +13,30 @@ function cerrarModal() {
     }
 }
 
+function abrirEnNuevaPestana(url) {
+    if (!url) {
+        return false;
+    }
+
+    const nuevaVentana = window.open(url, '_blank', 'noopener');
+    if (nuevaVentana && typeof nuevaVentana.focus === 'function') {
+        nuevaVentana.focus();
+        return true;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.position = 'absolute';
+    anchor.style.left = '-9999px';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    return false;
+}
+
 function actualizarDesdeBoton(nuevoEstado) {
     const tarjeta = obtenerTarjetaActiva();
     if (!tarjeta) {
@@ -51,19 +75,37 @@ export function inicializarBotonesModal() {
             const hcNumber = tarjeta.dataset.hc;
 
             if (formId && hcNumber) {
-                const afiliacion = (tarjeta.dataset.afiliacion || '').toLowerCase();
+                const aseguradoraValores = [
+                    tarjeta.dataset.afiliacion,
+                    tarjeta.dataset.aseguradora,
+                    tarjeta.dataset.insurer,
+                    tarjeta.dataset.insurance,
+                ]
+                    .map(valor => (valor || '').toLowerCase())
+                    .filter(valor => valor !== '');
                 const aseguradorasConPlantilla = ['ecuasanitas'];
                 const params = `form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
 
-                if (aseguradorasConPlantilla.some(nombre => afiliacion.includes(nombre))) {
+                const usaPlantilla = aseguradorasConPlantilla.some(nombre =>
+                    aseguradoraValores.some(valor => valor.includes(nombre))
+                );
+
+                if (usaPlantilla) {
                     const templateUrl = `/reports/cobertura/pdf-template?${params}`;
                     const htmlUrl = `/reports/cobertura/pdf-html?${params}`;
 
-                    window.open(templateUrl, '_blank');
-                    window.open(htmlUrl, '_blank');
+                    const templateAbierta = abrirEnNuevaPestana(templateUrl);
+                    const htmlAbierta = abrirEnNuevaPestana(htmlUrl);
+
+                    if (!templateAbierta || !htmlAbierta) {
+                        showToast('Permite las ventanas emergentes para ver ambos documentos de cobertura.', false);
+                    }
                 } else {
                     const url = `/reports/cobertura/pdf?${params}`;
-                    window.open(url, '_blank');
+                    const abierta = abrirEnNuevaPestana(url);
+                    if (!abierta) {
+                        showToast('Permite las ventanas emergentes para ver el documento de cobertura.', false);
+                    }
                 }
             }
 
