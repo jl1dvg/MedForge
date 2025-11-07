@@ -197,8 +197,9 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
                     $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
                     $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
+                    $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
-                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes;
+                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessWhatsApp;
                     ?>
                     <?php if ($showAdmin): ?>
                         <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
@@ -227,6 +228,13 @@ if (!function_exists('isTreeOpen')) {
                                     <li class="<?= isActive('/settings') ?>">
                                         <a href="/settings">
                                             <i class="mdi mdi-settings"></i>Ajustes
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+                                <?php if ($canAccessWhatsApp): ?>
+                                    <li class="<?= isActive('/whatsapp/templates') ?>">
+                                        <a href="/whatsapp/templates">
+                                            <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp
                                         </a>
                                     </li>
                                 <?php endif; ?>
