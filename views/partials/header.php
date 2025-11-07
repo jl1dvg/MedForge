@@ -28,17 +28,28 @@
                 </li>
                 <li class="btn-group d-lg-inline-flex d-none">
                     <div class="app-menu">
-                        <div class="search-bx mx-5">
-                            <form>
+                        <div class="search-bx mx-5 position-relative" id="app-global-search">
+                            <form class="global-search-form" autocomplete="off" novalidate>
                                 <div class="input-group">
-                                    <input type="search" class="form-control" placeholder="Search">
+                                    <input
+                                        type="search"
+                                        class="form-control"
+                                        id="global-search-input"
+                                        name="q"
+                                        placeholder="Buscar en el sistema..."
+                                        aria-label="Buscar en el sistema"
+                                        aria-controls="global-search-results"
+                                        aria-expanded="false"
+                                        autocomplete="off"
+                                    >
                                     <div class="input-group-append">
-                                        <button class="btn" type="submit" id="button-addon3"><i
-                                                    class="icon-Search"><span class="path1"></span><span
-                                                        class="path2"></span></i></button>
+                                        <button class="btn" type="submit" id="global-search-submit" aria-label="Ejecutar búsqueda">
+                                            <i class="icon-Search"><span class="path1"></span><span class="path2"></span></i>
+                                        </button>
                                     </div>
                                 </div>
                             </form>
+                            <div class="global-search-panel card shadow-lg" id="global-search-results" role="listbox" aria-live="polite" hidden></div>
                         </div>
                     </div>
                 </li>
