@@ -61,7 +61,7 @@ if (!function_exists('isTreeOpen')) {
                     </li>
                     <li class="<?= isActive('/crm') ?>">
                         <a href="/crm">
-                            <i class="mdi mdi-account-group-outline"><span class="path1"></span><span class="path2"></span></i>
+                            <i class="icon-Layout-top-panel-1"><span class="path1"></span><span class="path2"></span></i>
                             <span>CRM</span>
                         </a>
                     </li>
@@ -226,7 +226,7 @@ if (!function_exists('isTreeOpen')) {
                                 <?php if ($canAccessSettings): ?>
                                     <li class="<?= isActive('/settings') ?>">
                                         <a href="/settings">
-                                            <i class="mdi mdi-cog-outline"></i>Ajustes
+                                            <i class="mdi mdi-settings"></i>Ajustes
                                         </a>
                                     </li>
                                 <?php endif; ?>

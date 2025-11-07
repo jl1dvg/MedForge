@@ -12,7 +12,7 @@ return [
             'filename_pattern' => 'cobertura_ecuasanitas_%2$s_%3$s.pdf',
             'report' => ['slug' => 'cobertura-ecuasanitas-form'],
             // 👇 NUEVO: vistas a anexar luego del PDF fijo
-            'append_views' => ['007', '010', 'referencia'],
+            'append_views' => ['007'],
             'orientations' => [
                 'referencia' => 'P',
             ],

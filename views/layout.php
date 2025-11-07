@@ -18,7 +18,10 @@
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="<?= asset('/css/vendors_css.css') ?>">
-    <link rel="stylesheet" href="<?= asset('assets/icons/font-awesome/css/font-awesome.min.css') ?>">
+
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <!-- Style-->
     <link rel="stylesheet" href="<?= asset('css/horizontal-menu.css') ?>">
@@ -113,18 +116,41 @@ $scriptStack = array_values(array_unique($scriptStack));
 
 <?php if (!$isAuthView): ?>
     <?php
-    $hasSettingsHelper = function_exists('get_option');
     $notificationChannels = [
-        'email' => $hasSettingsHelper ? (bool) get_option('notifications_email_enabled') : false,
-        'sms' => $hasSettingsHelper ? (bool) get_option('notifications_sms_enabled') : false,
-        'daily_summary' => $hasSettingsHelper ? (bool) get_option('notifications_daily_summary') : false,
+        'email' => false,
+        'sms' => false,
+        'daily_summary' => false,
     ];
-    $pusherEnabled = $hasSettingsHelper ? (bool) get_option('pusher_realtime_notifications') : false;
-    $pusherKey = $hasSettingsHelper ? (string) get_option('pusher_app_key') : '';
+    $pusherEnabled = false;
+    $pusherKey = '';
+
+    $pdoInstance = $GLOBALS['pdo'] ?? null;
+
+    if ($pdoInstance instanceof \PDO) {
+        try {
+            $pusherService = new \Modules\Notifications\Services\PusherConfigService($pdoInstance);
+            $panelConfig = $pusherService->getPublicConfig();
+
+            $notificationChannels = $panelConfig['channels'] ?? $notificationChannels;
+            $pusherEnabled = (bool)($panelConfig['enabled'] ?? false);
+            $pusherKey = (string)($panelConfig['key'] ?? '');
+        } catch (\Throwable $exception) {
+            error_log('No fue posible cargar la configuración pública de Pusher: ' . $exception->getMessage());
+        }
+    } elseif (function_exists('get_option')) {
+        $notificationChannels = [
+            'email' => (bool)get_option('notifications_email_enabled'),
+            'sms' => (bool)get_option('notifications_sms_enabled'),
+            'daily_summary' => (bool)get_option('notifications_daily_summary'),
+        ];
+        $pusherEnabled = (bool)get_option('pusher_realtime_notifications');
+        $pusherKey = (string)get_option('pusher_app_key');
+    }
+
     $panelModuleAsset = asset('js/pages/solicitudes/notifications/panel.js');
     ?>
     <script type="module">
-        import { createNotificationPanel } from '<?= $panelModuleAsset ?>';
+        import {createNotificationPanel} from '<?= $panelModuleAsset ?>';
 
         window.MEDF = window.MEDF || {};
         const panel = window.MEDF.notificationPanel || createNotificationPanel({

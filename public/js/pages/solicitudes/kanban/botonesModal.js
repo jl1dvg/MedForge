@@ -55,7 +55,8 @@ function actualizarDesdeBoton(nuevoEstado) {
 
 export function inicializarBotonesModal() {
     const revisarBtn = document.getElementById('btnRevisarCodigos');
-    if (revisarBtn) {
+    if (revisarBtn && revisarBtn.dataset.listenerAttached !== 'true') {
+        revisarBtn.dataset.listenerAttached = 'true';
         revisarBtn.addEventListener('click', () => {
             const estado = revisarBtn.dataset.estado || 'Revisión Códigos';
             actualizarDesdeBoton(estado).catch(() => {});
@@ -63,7 +64,8 @@ export function inicializarBotonesModal() {
     }
 
     const coberturaBtn = document.getElementById('btnSolicitarCobertura');
-    if (coberturaBtn) {
+    if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
+        coberturaBtn.dataset.listenerAttached = 'true';
         coberturaBtn.addEventListener('click', () => {
             const tarjeta = obtenerTarjetaActiva();
             if (!tarjeta) {
