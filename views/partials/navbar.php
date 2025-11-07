@@ -198,8 +198,9 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
                     $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
                     $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
+                    $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
-                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessWhatsApp;
+                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessWhatsApp || $canAccessCronManager;
                     ?>
                     <?php if ($showAdmin): ?>
                         <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
@@ -228,6 +229,13 @@ if (!function_exists('isTreeOpen')) {
                                     <li class="<?= isActive('/settings') ?>">
                                         <a href="/settings">
                                             <i class="mdi mdi-settings"></i>Ajustes
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
+                                <?php if ($canAccessCronManager): ?>
+                                    <li class="<?= isActive('/cron-manager') ?>">
+                                        <a href="/cron-manager">
+                                            <i class="mdi mdi-clock-outline"></i>Cron Manager
                                         </a>
                                     </li>
                                 <?php endif; ?>

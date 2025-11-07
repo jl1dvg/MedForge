@@ -392,6 +392,104 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'ai' => [
+                'title' => 'Inteligencia Artificial',
+                'icon' => 'fa-solid fa-robot',
+                'description' => 'Configura las credenciales y decide en qué pantallas clínicas estará disponible la asistencia de IA (consultas médicas y planes de tratamiento).',
+                'groups' => [
+                    [
+                        'id' => 'provider',
+                        'title' => 'Proveedor activo',
+                        'description' => 'Selecciona el motor principal de IA que responderá a las solicitudes generadas desde MedForge. Si lo dejas desactivado, los botones de IA desaparecerán de las vistas clínicas.',
+                        'fields' => [
+                            self::selectField(
+                                'ai_provider',
+                                'Proveedor de IA',
+                                [
+                                    '' => 'Desactivado',
+                                    'openai' => 'OpenAI',
+                                ],
+                                'openai'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'openai_credentials',
+                        'title' => 'Credenciales de OpenAI',
+                        'description' => 'Configura el acceso a la Responses API o a un gateway compatible para que la plataforma pueda generar resúmenes y propuestas clínicas.',
+                        'fields' => [
+                            array_merge(
+                                self::passwordField('ai_openai_api_key', 'API Key de OpenAI'),
+                                [
+                                    'required' => true,
+                                    'help' => 'Crea o reutiliza una API Key desde tu cuenta en platform.openai.com y pégala aquí. Se utiliza en cada solicitud de IA clínica.'
+                                ]
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'ai_openai_endpoint',
+                                    'Endpoint principal',
+                                    true,
+                                    'URL completa al endpoint compatible con Responses API.'
+                                ),
+                                [
+                                    'default' => 'https://api.openai.com/v1/responses',
+                                    'help' => 'Modifica este valor solo si utilizas un proxy o gateway propio. El endpoint debe aceptar solicitudes de la Responses API.'
+                                ]
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'ai_openai_model',
+                                    'Modelo predeterminado',
+                                    true,
+                                    'Modelo utilizado por defecto para las solicitudes clínicas.'
+                                ),
+                                [
+                                    'default' => 'gpt-4o-mini',
+                                    'help' => 'Introduce el identificador del modelo (por ejemplo, gpt-4o-mini o gpt-4o). Debe estar habilitado en tu cuenta.'
+                                ]
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'ai_openai_max_output_tokens',
+                                    'Límite de tokens de salida',
+                                    400,
+                                    'Define el máximo de tokens que se solicitará al generar respuestas.'
+                                ),
+                                [
+                                    'default' => 400,
+                                    'help' => 'Reduce el número si deseas respuestas más cortas o si tu plan tiene límites estrictos de uso.'
+                                ]
+                            ),
+                            self::textField(
+                                'ai_openai_organization',
+                                'Organización (opcional)',
+                                false,
+                                'Solo necesario si tu cuenta requiere cabecera OpenAI-Organization.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'features',
+                        'title' => 'Funciones asistidas',
+                        'description' => 'Activa o desactiva las herramientas clínicas que consumen IA. Cada opción controla un botón dentro de la historia clínica que envía información al endpoint correspondiente.',
+                        'fields' => [
+                            self::checkboxField(
+                                'ai_enable_consultas_enfermedad',
+                                'Sugerencias para enfermedad actual en consultas',
+                                true,
+                                'Cuando está activo, el formulario de consulta mostrará el botón “Generar enfermedad actual con IA” que llama al endpoint /ai/enfermedad usando los datos capturados.'
+                            ),
+                            self::checkboxField(
+                                'ai_enable_consultas_plan',
+                                'Propuestas de plan y procedimientos',
+                                true,
+                                'Habilita el botón “Proponer plan con IA” dentro de la consulta. Envía el resumen clínico al endpoint /ai/plan para obtener recomendaciones.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'localization' => [
                 'title' => 'Localización',
                 'icon' => 'fa-solid fa-earth-americas',
