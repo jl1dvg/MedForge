@@ -13,6 +13,7 @@
     "phpoffice/phpspreadsheet": "^4.2",
     "vlucas/phpdotenv": "^5.6",
     "tecnickcom/tcpdf": "^6.10",
-    "setasign/fpdi-tcpdf": "^2.3"
+    "setasign/fpdi-tcpdf": "^2.3",
+    "league/html-to-markdown": "^5.1"
   }
 }

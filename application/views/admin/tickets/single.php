@@ -281,6 +281,41 @@
         var content = document.getElementById('ticketDetails');
         var header = document.getElementById('header');
 
+        function aiRequest($button, endpoint, settings) {
+            settings = settings || {};
+
+            var method = settings.method || 'GET';
+            var data = settings.data || {};
+            var onSuccess = settings.onSuccess || function() {};
+
+            $button.button('loading');
+
+            $.ajax({
+                url: admin_url + endpoint,
+                type: method,
+                data: data,
+                dataType: 'json',
+            }).done(function(response) {
+                if (response.success) {
+                    onSuccess(response);
+                } else if (response.error) {
+                    alert_float('danger', response.error);
+                } else {
+                    alert_float('danger', app.lang.something_went_wrong);
+                }
+            }).fail(function(xhr) {
+                var message = app.lang.something_went_wrong;
+
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    message = xhr.responseJSON.error;
+                }
+
+                alert_float('danger', message);
+            }).always(function() {
+                $button.button('reset');
+            });
+        }
+
         function makeTicketDetailsSticky() {
             var scrolledPixels = getHeaderScrolledPixels();
 
@@ -327,6 +362,55 @@
         }
 
         $('#single-ticket-form').appFormValidator();
+
+        <?php if (is_ai_provider_enabled() && get_option('ai_enable_ticket_summarization') == '1') { ?>
+        $('.btn-ai-summarize').on('click', function() {
+            var $button = $(this);
+
+            aiRequest($button, 'ai_tickets/summarize_ticket/<?= e($ticket->ticketid); ?>', {
+                onSuccess: function(response) {
+                    $('#ai-summary-modal .modal-body').html(response.message);
+                    $('#ai-summary-modal').modal('show');
+                },
+            });
+        });
+        <?php } ?>
+
+        <?php if ($ticket->merged_ticket_id === null && is_ai_provider_enabled() && get_option('ai_enable_ticket_reply_suggestions') == '1') { ?>
+        var $aiSuggestButton = $('#btn-ai-suggest');
+        if ($aiSuggestButton.length) {
+            $aiSuggestButton.on('click', function() {
+                var $button = $(this);
+                var editor = tinymce.get('message');
+
+                if (!editor) {
+                    alert_float('danger', app.lang.something_went_wrong);
+                    return;
+                }
+
+                var currentContent = editor.getContent({ format: 'html' }).trim();
+
+                if (currentContent === '') {
+                    aiRequest($button, 'ai_tickets/suggest_reply/<?= e($ticket->ticketid); ?>', {
+                        onSuccess: function(response) {
+                            editor.setContent(response.message);
+                            $button.text($button.data('rephrase-text'));
+                        },
+                    });
+                } else {
+                    aiRequest($button, 'ai/text_enhancement/polite', {
+                        method: 'POST',
+                        data: {
+                            text: currentContent,
+                        },
+                        onSuccess: function(response) {
+                            editor.setContent(response.message);
+                        },
+                    });
+                }
+            });
+        }
+        <?php } ?>
 
         init_ajax_search('contact', '#contactid.ajax-search', {
             tickets_contacts: true
