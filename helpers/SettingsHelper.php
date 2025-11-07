@@ -188,15 +188,15 @@ class SettingsHelper
                     ],
                 ],
             ],
-            'integrations' => [
-                'title' => 'Integraciones',
-                'icon' => 'fa-solid fa-plug',
-                'description' => 'Conecta servicios externos como Pusher y Google para ampliar las capacidades del sistema.',
+            'whatsapp' => [
+                'title' => 'WhatsApp',
+                'icon' => 'fa-brands fa-whatsapp',
+                'description' => 'Administra la integración con WhatsApp Cloud API y futuros canales conversacionales internos.',
                 'groups' => [
                     [
-                        'id' => 'whatsapp_cloud',
+                        'id' => 'cloud_api',
                         'title' => 'WhatsApp Cloud API',
-                        'description' => 'Integra la API oficial de WhatsApp para enviar mensajes automáticos desde el CRM y planificar un chat interno.',
+                        'description' => 'Credenciales y preferencias compartidas por el módulo de WhatsApp, listas para reutilizar en un chat interno.',
                         'fields' => [
                             self::checkboxField(
                                 'whatsapp_cloud_enabled',
@@ -212,7 +212,9 @@ class SettingsHelper
                             ),
                             self::textField(
                                 'whatsapp_cloud_business_account_id',
-                                'Business Account ID'
+                                'Business Account ID',
+                                false,
+                                'Dato informativo útil para auditoría o múltiples líneas.'
                             ),
                             self::passwordField('whatsapp_cloud_access_token', 'Access Token'),
                             array_merge(
@@ -230,6 +232,13 @@ class SettingsHelper
                             ),
                         ],
                     ],
+                ],
+            ],
+            'integrations' => [
+                'title' => 'Integraciones',
+                'icon' => 'fa-solid fa-plug',
+                'description' => 'Conecta servicios externos como Pusher y Google para ampliar las capacidades del sistema.',
+                'groups' => [
                     [
                         'id' => 'pusher',
                         'title' => 'Pusher.com',

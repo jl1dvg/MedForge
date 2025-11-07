@@ -5,7 +5,8 @@ namespace Modules\Solicitudes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
-use Modules\Notifications\Services\WhatsAppCloudService;
+use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
+use Modules\WhatsApp\WhatsAppModule;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -18,14 +19,14 @@ class SolicitudCrmService
     private PDO $pdo;
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
-    private WhatsAppCloudService $whatsapp;
+    private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
-        $this->whatsapp = new WhatsAppCloudService($pdo);
+        $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
     public function obtenerResponsables(): array

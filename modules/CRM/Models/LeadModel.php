@@ -4,19 +4,20 @@ namespace Modules\CRM\Models;
 
 use PDO;
 use Modules\CRM\Services\LeadConfigurationService;
-use Modules\Notifications\Services\WhatsAppCloudService;
+use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
+use Modules\WhatsApp\WhatsAppModule;
 
 class LeadModel
 {
     private PDO $pdo;
     private LeadConfigurationService $configService;
-    private WhatsAppCloudService $whatsapp;
+    private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->configService = new LeadConfigurationService($pdo);
-        $this->whatsapp = new WhatsAppCloudService($pdo);
+        $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
     public function getStatuses(): array
