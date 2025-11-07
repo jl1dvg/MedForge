@@ -44,6 +44,14 @@ if (!function_exists('isTreeOpen')) {
         return '';
     }
 }
+
+$rawPermissions = $_SESSION['permisos'] ?? [];
+$normalizedPermissions = Permissions::normalize($rawPermissions);
+$canAccessVerification = Permissions::containsAny($normalizedPermissions, [
+    'administrativo',
+    'pacientes.verification.view',
+    'pacientes.verification.manage',
+]);
 ?>
 <aside class="main-sidebar">
     <!-- sidebar-->
@@ -83,6 +91,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
                                 </a>
                             </li>
+                            <?php if ($canAccessVerification): ?>
+                                <li class="<?= isActive('/pacientes/certificaciones') ?>">
+                                    <a href="/pacientes/certificaciones">
+                                        <i class="mdi mdi-shield-account"></i>Certificación biométrica
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                         </ul>
                     </li>
 
@@ -192,8 +207,6 @@ if (!function_exists('isTreeOpen')) {
                     </li>
 
                     <?php
-                    $rawPermissions = $_SESSION['permisos'] ?? [];
-                    $normalizedPermissions = Permissions::normalize($rawPermissions);
                     $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
                     $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
                     $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
