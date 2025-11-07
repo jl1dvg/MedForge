@@ -74,8 +74,22 @@ if (class_exists(Dotenv::class)) {
 
 // Ahora puedes usar $_ENV['OPENAI_API_KEY'] o getenv('OPENAI_API_KEY')
 
-// Cargar conexión a la base de datos
-$pdo = require_once __DIR__ . '/config/database.php';
+// Cargar conexión a la base de datos (se puede omitir en entornos de prueba locales)
+$skipDbConnectionRaw = $_ENV['SKIP_DB_CONNECTION'] ?? getenv('SKIP_DB_CONNECTION');
+
+if (is_bool($skipDbConnectionRaw)) {
+    $skipDbConnection = $skipDbConnectionRaw;
+} elseif ($skipDbConnectionRaw !== null) {
+    $skipDbConnection = filter_var((string) $skipDbConnectionRaw, FILTER_VALIDATE_BOOLEAN);
+} else {
+    $skipDbConnection = false;
+}
+
+$pdo = null;
+
+if (!$skipDbConnection) {
+    $pdo = require_once __DIR__ . '/config/database.php';
+}
 
 // Definir constantes de rutas
 define('BASE_PATH', __DIR__);
@@ -86,17 +100,94 @@ define('VIEW_PATH', BASE_PATH . '/views');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 
 // URL base del sitio
-define('BASE_URL', 'https://cive.consulmed.me/');
+function determineBaseUrl(): string
+{
+    $envBaseUrl = $_ENV['BASE_URL'] ?? $_SERVER['BASE_URL'] ?? getenv('BASE_URL');
+
+    if (!empty($envBaseUrl)) {
+        return rtrim($envBaseUrl, '/') . '/';
+    }
+
+    if (!empty($_SERVER['HTTP_HOST'])) {
+        $scheme = 'http';
+
+        if (
+            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (isset($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] === 'https')
+        ) {
+            $scheme = 'https';
+        }
+
+        $host = $_SERVER['HTTP_HOST'];
+        $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+        $directory = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
+
+        $baseUrl = $scheme . '://' . $host;
+
+        if (!empty($directory) && $directory !== '.') {
+            $baseUrl .= $directory[0] === '/' ? $directory : '/' . $directory;
+        }
+
+        return rtrim($baseUrl, '/') . '/';
+    }
+
+    return '/';
+}
+
+define('BASE_URL', determineBaseUrl());
+
+function isAbsoluteAssetPath(string $path): bool
+{
+    if ($path === '') {
+        return false;
+    }
+
+    if (strpos($path, '//') === 0) {
+        return true;
+    }
+
+    return (bool) preg_match('/^[a-z][a-z0-9+.-]*:/i', $path);
+}
+
+function shouldPreserveRelativePath(string $path): bool
+{
+    return strpos($path, './') === 0 || strpos($path, '../') === 0;
+}
+
+function buildAssetUrl(string $path, string $prefix = ''): string
+{
+    if ($path === '') {
+        return $path;
+    }
+
+    if (isAbsoluteAssetPath($path) || shouldPreserveRelativePath($path)) {
+        return $path;
+    }
+
+    $normalizedPath = ltrim($path, '/');
+
+    if ($prefix !== '') {
+        $normalizedPath = rtrim($prefix, '/') . '/' . $normalizedPath;
+    }
+
+    $baseUrl = rtrim(BASE_URL, '/');
+
+    if ($baseUrl === '' || $baseUrl === '/') {
+        return '/' . ltrim($normalizedPath, '/');
+    }
+
+    return $baseUrl . '/' . ltrim($normalizedPath, '/');
+}
 
 // Helper para generar URLs públicas
 function asset($path)
 {
-    return BASE_URL . ltrim($path, '/');
+    return buildAssetUrl($path);
 }
 
 function img($path)
 {
-    return BASE_URL . 'images/' . ltrim($path, '/');
+    return buildAssetUrl($path, 'images');
 }
 
 // Expiración automática de sesión tras 1 hora de inactividad
