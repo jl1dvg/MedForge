@@ -87,6 +87,7 @@ $defaultScripts = [
     'assets/icons/feather-icons/feather.min.js',
     'js/jquery.smartmenus.js',
     'js/menus.js',
+    'js/pages/global-search.js',
     'js/template.js',
 ];
 
