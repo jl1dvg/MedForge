@@ -207,6 +207,7 @@ $(function () {
             pintarFilas();
         });
 
+        actualizarInsumos();
         pintarFilas();
     }
 

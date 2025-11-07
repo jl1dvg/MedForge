@@ -4,6 +4,50 @@ $(document).ready(function () {
     });
 
     // Inicializar el plugin de steps
+    const hasSwalV2 = () => {
+        if (!window.Swal) {
+            return false;
+        }
+
+        return typeof window.Swal.fire === 'function';
+    };
+    const hasSwalV1 = () => typeof window.swal === 'function';
+
+    const showAlert = (config, fallbackType = 'info') => {
+        if (hasSwalV2()) {
+            return window.Swal.fire(config);
+        }
+
+        if (hasSwalV1()) {
+            const title = config.title || '';
+            const text = config.text || '';
+            const icon = config.icon || config.type || fallbackType || 'info';
+
+            window.swal(title, text, icon);
+            return Promise.resolve({ isConfirmed: true });
+        }
+
+        if (config.text || config.title) {
+            alert(config.text || config.title);
+        }
+
+        return Promise.resolve({ isConfirmed: true });
+    };
+
+    const openPdfIfNeeded = (form, revisado) => {
+        if (!revisado) {
+            return;
+        }
+
+        if (!form) {
+            return;
+        }
+
+        const formId = form.querySelector('input[name="form_id"]').value;
+        const hcNumber = form.querySelector('input[name="hc_number"]').value;
+        window.open('/reports/protocolo/pdf?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
+    };
+
     $(".tab-wizard").steps({
         headerTag: "h6",
         bodyTag: "section",
@@ -46,28 +90,34 @@ $(document).ready(function () {
                     .then(data => {
                         const revisado = document.getElementById('statusCheckbox')?.checked;
 
-                        Swal.fire({
+                        return showAlert({
                             title: 'Datos actualizados',
                             text: revisado ? data.message + ' ¿Desea imprimir el PDF?' : data.message,
-                                icon: 'success',
-                                showCancelButton: revisado,
-                                confirmButtonText: revisado ? 'Imprimir PDF' : 'OK',
-                                cancelButtonText: 'Cerrar'
-                            }).then((resultSwal) => {
-                                if (resultSwal.isConfirmed && revisado) {
-                                    const formId = form.querySelector('input[name="form_id"]').value;
-                                    const hcNumber = form.querySelector('input[name="hc_number"]').value;
-                                    window.open('/reports/protocolo/pdf?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
-                                }
-                            });
+                            icon: 'success',
+                            showCancelButton: revisado,
+                            confirmButtonText: revisado ? 'Imprimir PDF' : 'OK',
+                            cancelButtonText: 'Cerrar'
+                        }, 'success').then((resultSwal) => {
+                            if ((resultSwal?.isConfirmed || !hasSwalV2()) && revisado) {
+                                openPdfIfNeeded(form, revisado);
+                            }
+                        });
                     })
                     .catch(error => {
                         console.error('Error al actualizar los datos:', error);
                         const message = error.message || 'Ocurrió un error al actualizar los datos. Por favor, intenta nuevamente.';
-                        swal("Error", message, "error");
+                        showAlert({
+                            title: 'Error',
+                            text: message,
+                            icon: 'error'
+                        }, 'error');
                     });
             } else {
-                swal("Error", "Por favor, completa los campos obligatorios.", "error");
+                showAlert({
+                    title: 'Error',
+                    text: 'Por favor, completa los campos obligatorios.',
+                    icon: 'error'
+                }, 'error');
             }
         }
     });

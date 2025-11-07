@@ -134,6 +134,8 @@
             btn.addEventListener('click', function () {
                 const form_id = btn.dataset.form;
                 const hc_number = btn.dataset.hc;
+                const currentUrl = new URL(window.location.href);
+                const requestUrl = currentUrl.pathname + currentUrl.search;
 
                 // UI: disable & show spinner
                 btn.disabled = true;
@@ -146,9 +148,11 @@
                 formData.append('scrape_derivacion', '1');
                 formData.append('form_id_scrape', form_id);
                 formData.append('hc_number_scrape', hc_number);
+                formData.append('form_id', form_id);
+                formData.append('hc_number', hc_number);
                 formData.append('ajax', '1'); // marca como ajax para futura lógica si la usas en PHP
 
-                fetch(window.location.href, {
+                fetch(requestUrl, {
                     method: 'POST',
                     body: formData,
                     headers: {
