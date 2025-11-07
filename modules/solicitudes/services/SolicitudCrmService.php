@@ -681,6 +681,7 @@ class SolicitudCrmService
                 detalles.followers AS crm_followers,
                 responsable.nombre AS crm_responsable_nombre,
                 responsable.email AS crm_responsable_email,
+                responsable.profile_photo AS crm_responsable_avatar,
                 cl.status  AS crm_lead_status,
                 cl.source  AS crm_lead_source,
                 cl.updated_at AS crm_lead_updated_at,
@@ -725,6 +726,8 @@ class SolicitudCrmService
             return null;
         }
 
+        $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
+
         $row['crm_pipeline_stage'] = $this->normalizarEtapa($row['crm_pipeline_stage'] ?? null);
 
         $row['seguidores'] = $this->decodificarSeguidores($row['crm_followers'] ?? null);
@@ -733,6 +736,19 @@ class SolicitudCrmService
         $row['dias_en_estado'] = $this->calcularDiasEnEstado($row['created_at'] ?? null);
 
         return $row;
+    }
+
+    private function formatProfilePhoto(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        if (preg_match('~^https?://~i', $path)) {
+            return $path;
+        }
+
+        return function_exists('asset') ? asset($path) : $path;
     }
 
     private function sincronizarLead(int $solicitudId, array $detalle, array $payload, ?int $usuarioId): ?int

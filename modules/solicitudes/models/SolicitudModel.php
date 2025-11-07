@@ -46,6 +46,7 @@ class SolicitudModel
                 detalles.contacto_telefono AS crm_contacto_telefono,
                 detalles.responsable_id AS crm_responsable_id,
                 responsable.nombre AS crm_responsable_nombre,
+                responsable.profile_photo AS crm_responsable_avatar,
                 COALESCE(notas.total_notas, 0) AS crm_total_notas,
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
