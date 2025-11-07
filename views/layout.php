@@ -18,6 +18,7 @@
 
     <!-- Vendors Style-->
     <link rel="stylesheet" href="<?= asset('/css/vendors_css.css') ?>">
+    <link rel="stylesheet" href="<?= asset('assets/icons/font-awesome/css/font-awesome.min.css') ?>">
 
     <!-- Style-->
     <link rel="stylesheet" href="<?= asset('css/horizontal-menu.css') ?>">
