@@ -53,8 +53,122 @@ $realtime = array_merge(
             position: relative;
         }
 
+        .kanban-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .kanban-toolbar h4 {
+            margin-bottom: 0.2rem;
+        }
+
+        .kanban-toolbar .text-muted {
+            font-size: 0.9rem;
+        }
+
+        .view-toggle .btn {
+            min-width: 120px;
+        }
+
+        .view-toggle .btn.active {
+            background: #0ea5e9;
+            color: #fff;
+            border-color: #0ea5e9;
+            box-shadow: 0 3px 12px rgba(14, 165, 233, 0.35);
+        }
+
+        .solicitudes-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .overview-card {
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: linear-gradient(145deg, #ffffff, #f8fafc);
+            padding: 1rem 1.2rem;
+            box-shadow: 0 10px 30px rgba(15, 118, 110, 0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .overview-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(37, 99, 235, 0.12);
+        }
+
+        .overview-card h6 {
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            letter-spacing: 0.05em;
+            color: #6366f1;
+            margin-bottom: 0.75rem;
+        }
+
+        .overview-card .count {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1;
+        }
+
+        .overview-card .meta {
+            font-size: 0.85rem;
+            color: #475569;
+            margin-top: 0.4rem;
+        }
+
+        .overview-card .badge {
+            font-size: 0.75rem;
+        }
+
         .kanban-card strong {
             font-size: 1.05em;
+        }
+
+        .kanban-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .kanban-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+            flex-shrink: 0;
+            box-shadow: 0 4px 10px rgba(15, 118, 110, 0.15);
+        }
+
+        .kanban-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .kanban-avatar--placeholder {
+            background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(14, 165, 233, 0.45));
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+        }
+
+        .kanban-card-body {
+            flex: 1;
+            display: grid;
+            gap: 0.25rem;
         }
 
         .kanban-card:hover,
@@ -164,6 +278,59 @@ $realtime = array_merge(
             display: inline-flex;
             align-items: center;
             gap: 0.3rem;
+        }
+
+        .table-view {
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+            padding: 1rem;
+        }
+
+        .table-view thead th {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            border-bottom-width: 1px;
+        }
+
+        .table-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-shadow: 0 3px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .table-avatar-placeholder {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.18);
+            color: #1d4ed8;
+        }
+
+        .table-view .badge {
+            font-size: 0.75rem;
+        }
+
+        .table-view .table tr.table-active {
+            background: rgba(14, 165, 233, 0.08);
+        }
+
+        .table-view-empty {
+            border: 1px dashed rgba(148, 163, 184, 0.5);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            color: #64748b;
+            font-size: 0.95rem;
         }
 
         #crmOffcanvas {
@@ -330,59 +497,94 @@ $realtime = array_merge(
             pointer-events: auto !important;
         }
     </style>
-    <div class="box">
-        <div class="box-body">
-            <div class="row g-3">
-                <div class="col-md-3">
-                    <label for="kanbanDateFilter" class="form-label">Fecha</label>
-                    <input type="text" id="kanbanDateFilter" class="form-control" placeholder="Seleccione un rango">
-                </div>
-                <div class="col-md-3">
-                    <label for="kanbanAfiliacionFilter" class="form-label">Afiliación</label>
-                    <select id="kanbanAfiliacionFilter" class="form-select">
-                        <option value="">Todas</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="kanbanDoctorFilter" class="form-label">Doctor</label>
-                    <select id="kanbanDoctorFilter" class="form-select">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="kanbanSemaforoFilter" class="form-label">Prioridad</label>
-                    <select id="kanbanSemaforoFilter" class="form-select">
-                        <option value="">Todas</option>
-                        <option value="normal">🟢 Normal (≤ 3 días)</option>
-                        <option value="pendiente">🟡 Pendiente (4–7 días)</option>
-                        <option value="urgente">🔴 Urgente (&gt; 7 días)</option>
-                    </select>
+    <div class="kanban-toolbar">
+        <div>
+            <h4 class="fw-bold mb-0">Solicitudes</h4>
+            <div class="text-muted">
+                <span id="solicitudesTotalCount">0</span> solicitudes activas
+            </div>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="btn-group view-toggle" role="group" aria-label="Cambiar vista">
+                <button type="button" class="btn btn-outline-secondary active" data-solicitudes-view="kanban">
+                    <i class="mdi mdi-view-kanban"></i> Tablero
+                </button>
+                <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="table">
+                    <i class="mdi mdi-table-large"></i> Tabla
+                </button>
+            </div>
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#solicitudesFilters" aria-expanded="false" aria-controls="solicitudesFilters">
+                <i class="mdi mdi-filter-variant"></i> Filtros
+            </button>
+            <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
+                <i class="mdi mdi-bell-outline"></i> Avisos
+            </button>
+        </div>
+    </div>
+
+    <div id="solicitudesOverview" class="solicitudes-overview"></div>
+
+    <div class="collapse show" id="solicitudesFilters">
+        <div class="box mb-3">
+            <div class="box-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanSearchFilter" class="form-label">Buscar</label>
+                        <input type="search" id="kanbanSearchFilter" class="form-control" placeholder="Paciente, HC o procedimiento">
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanDateFilter" class="form-label">Fecha</label>
+                        <input type="text" id="kanbanDateFilter" class="form-control" placeholder="Seleccione un rango">
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanAfiliacionFilter" class="form-label">Afiliación</label>
+                        <select id="kanbanAfiliacionFilter" class="form-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanDoctorFilter" class="form-label">Doctor</label>
+                        <select id="kanbanDoctorFilter" class="form-select">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanSemaforoFilter" class="form-label">Prioridad</label>
+                        <select id="kanbanSemaforoFilter" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="normal">🟢 Normal (≤ 3 días)</option>
+                            <option value="pendiente">🟡 Pendiente (4–7 días)</option>
+                            <option value="urgente">🔴 Urgente (&gt; 7 días)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
-        <?php
-        $estados = [
-            'Recibido' => 'recibido',
-            'Llamado' => 'llamado',
-            'En atención' => 'en-atencion',
-            'Revisión Códigos' => 'revision-codigos',
-            'Docs Completos' => 'docs-completos',
-            'Aprobación Anestesia' => 'aprobacion-anestesia',
-            'Listo para Agenda' => 'listo-para-agenda',
-        ];
-        $colores = [
-            'recibido' => 'primary',
-            'llamado' => 'warning',
-            'en-atencion' => 'success',
-            'revision-codigos' => 'info',
-            'docs-completos' => 'success',
-            'aprobacion-anestesia' => 'warning',
-            'listo-para-agenda' => 'dark',
-        ];
-        foreach ($estados as $estadoLabel => $estadoId):
+    <?php
+    $estados = [
+        'Recibido' => 'recibido',
+        'Llamado' => 'llamado',
+        'En atención' => 'en-atencion',
+        'Revisión Códigos' => 'revision-codigos',
+        'Docs Completos' => 'docs-completos',
+        'Aprobación Anestesia' => 'aprobacion-anestesia',
+        'Listo para Agenda' => 'listo-para-agenda',
+    ];
+    $colores = [
+        'recibido' => 'primary',
+        'llamado' => 'warning',
+        'en-atencion' => 'success',
+        'revision-codigos' => 'info',
+        'docs-completos' => 'success',
+        'aprobacion-anestesia' => 'warning',
+        'listo-para-agenda' => 'dark',
+    ];
+    ?>
+
+    <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
+        <?php foreach ($estados as $estadoLabel => $estadoId):
             $color = $colores[$estadoId] ?? 'secondary';
             ?>
             <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2">
@@ -395,6 +597,44 @@ $realtime = array_merge(
             </div>
         <?php endforeach; ?>
     </div>
+
+    <div id="solicitudesViewTable" class="table-view d-none">
+        <div class="table-responsive">
+            <table class="table align-middle" id="solicitudesTable">
+                <thead>
+                    <tr>
+                        <th>Paciente</th>
+                        <th>Detalle</th>
+                        <th>Estado</th>
+                        <th>Pipeline CRM</th>
+                        <th>Responsable</th>
+                        <th>Prioridad</th>
+                        <th>Turno</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div id="solicitudesTableEmpty" class="table-view-empty d-none">
+            No hay solicitudes para los filtros seleccionados.
+        </div>
+    </div>
+
+    <?php
+    $estadoMeta = [];
+    foreach ($estados as $label => $slug) {
+        $estadoMeta[$slug] = [
+            'label' => $label,
+            'slug' => $slug,
+            'color' => $colores[$slug] ?? 'secondary',
+        ];
+    }
+    ?>
+
+    <script>
+        window.__solicitudesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+    </script>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
