@@ -8,8 +8,8 @@ class ProtocoloHelper
 {
     public static function buscarUsuarioPorNombre(PDO $db, string $nombreCompleto): ?array
     {
-        $nombreCompletoNormalizado = strtolower(trim($nombreCompleto));
-        $sql = "SELECT * FROM users WHERE LOWER(TRIM(nombre)) LIKE ?";
+        $nombreCompletoNormalizado = trim($nombreCompleto);
+        $sql = "SELECT * FROM users WHERE nombre COLLATE utf8mb4_unicode_ci LIKE ?";
         $stmt = $db->prepare($sql);
         $param = "%" . $nombreCompletoNormalizado . "%";
         $stmt->execute([$param]);
@@ -18,14 +18,14 @@ class ProtocoloHelper
 
     public static function obtenerIdProcedimiento(PDO $db, string $realizedProcedure): ?string
     {
-        $normalized = strtolower(trim($realizedProcedure));
-        preg_match('/^(.*?)(\sen\sojo\s.*|\sao|\soi|\sod)?$/i', $normalized, $matches);
+        $normalized = trim($realizedProcedure);
+        preg_match('/^(.*?)(\sen\sojo\s.*|\sao|\soi|\sod)?$/i', strtolower($normalized), $matches);
         $nombre = $matches[1] ?? '';
 
         error_log('Nombre para buscar procedimiento: ' . $nombre);
 
         if (!empty($nombre)) {
-            $sql = "SELECT id FROM procedimientos WHERE LOWER(TRIM(membrete)) LIKE ?";
+            $sql = "SELECT id FROM procedimientos WHERE membrete COLLATE utf8mb4_unicode_ci LIKE ?";
             $stmt = $db->prepare($sql);
             $searchTerm = "%" . $nombre . "%";
             $stmt->execute([$searchTerm]);
@@ -79,8 +79,8 @@ class ProtocoloHelper
 
     public static function mostrarImagenProcedimiento(PDO $db, string $nombreProcedimiento): ?string
     {
-        $normalized = strtolower(trim($nombreProcedimiento));
-        $sql = "SELECT imagen_link FROM procedimientos WHERE LOWER(TRIM(id)) LIKE ?";
+        $normalized = trim($nombreProcedimiento);
+        $sql = "SELECT imagen_link FROM procedimientos WHERE id COLLATE utf8mb4_unicode_ci LIKE ?";
         $stmt = $db->prepare($sql);
         $searchTerm = "%" . $normalized . "%";
         $stmt->execute([$searchTerm]);

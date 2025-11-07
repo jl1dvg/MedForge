@@ -433,13 +433,13 @@ class PacienteService
     {
         $sql = <<<'SQL'
             SELECT p.hc_number, CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS nombre_completo,
-                   'consulta' AS tipo, cd.form_id, cd.fecha, LOWER(p.afiliacion) AS afiliacion,
+                   'consulta' AS tipo, cd.form_id, cd.fecha, p.afiliacion AS afiliacion,
                    pp.procedimiento_proyectado, pp.doctor
             FROM patient_data p
             JOIN consulta_data cd ON cd.hc_number = p.hc_number
             JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id
             WHERE cd.fecha BETWEEN :inicio1 AND :fin1
-              AND LOWER(p.afiliacion) NOT IN (
+              AND p.afiliacion COLLATE utf8mb4_unicode_ci NOT IN (
                   'isspol', 'issfa', 'iess', 'msp',
                   'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
                   'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
@@ -449,13 +449,13 @@ class PacienteService
             UNION ALL
 
             SELECT p.hc_number, CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS nombre_completo,
-                   'protocolo' AS tipo, pd.form_id, pd.fecha_inicio AS fecha, LOWER(p.afiliacion) AS afiliacion,
+                   'protocolo' AS tipo, pd.form_id, pd.fecha_inicio AS fecha, p.afiliacion AS afiliacion,
                    pp.procedimiento_proyectado, pp.doctor
             FROM patient_data p
             JOIN protocolo_data pd ON pd.hc_number = p.hc_number
             JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id
             WHERE pd.fecha_inicio BETWEEN :inicio2 AND :fin2
-              AND LOWER(p.afiliacion) NOT IN (
+              AND p.afiliacion COLLATE utf8mb4_unicode_ci NOT IN (
                   'isspol', 'issfa', 'iess', 'msp',
                   'contribuyente voluntario', 'conyuge', 'conyuge pensionista', 'seguro campesino',
                   'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',

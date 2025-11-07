@@ -144,15 +144,26 @@ class ExportService
      */
     public function exportarPlanillasPorMes(string $mes, string $grupoAfiliacion, callable $obtenerDatos): void
     {
+        $inicioMes = \DateTime::createFromFormat('Y-m-d', $mes . '-01');
+        if (!$inicioMes) {
+            throw new \InvalidArgumentException('Formato de mes inválido, se esperaba YYYY-MM.');
+        }
+        $finMes = (clone $inicioMes)->modify('first day of next month');
+
         $stmt = $this->db->prepare("
             SELECT pd.form_id
             FROM protocolo_data pd
             JOIN patient_data pa ON pa.hc_number = pd.hc_number
-            WHERE DATE_FORMAT(pd.fecha_inicio, '%Y-%m') = ?
-              AND UPPER(pa.afiliacion) = ?
+            WHERE pd.fecha_inicio >= :inicio
+              AND pd.fecha_inicio < :fin
+              AND pa.afiliacion COLLATE utf8mb4_unicode_ci = :afiliacion
               AND pd.status = 1
         ");
-        $stmt->execute([$mes, strtoupper($grupoAfiliacion)]);
+        $stmt->execute([
+            ':inicio' => $inicioMes->format('Y-m-d'),
+            ':fin' => $finMes->format('Y-m-d'),
+            ':afiliacion' => $grupoAfiliacion,
+        ]);
         $formIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         if (empty($formIds)) {

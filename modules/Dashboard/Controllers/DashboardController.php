@@ -295,16 +295,17 @@ class DashboardController
 
     public function getEstadisticasPorAfiliacion()
     {
-        $mes = date('m');
-        $anio = date('Y');
+        $inicioMes = (new \DateTime('first day of this month'))->format('Y-m-01');
+        $finMes = (new \DateTime('first day of next month'))->format('Y-m-01');
+
         $sql = "SELECT p.afiliacion, COUNT(*) as total_procedimientos
             FROM protocolo_data pr
             INNER JOIN patient_data p ON pr.hc_number = p.hc_number
-            WHERE MONTH(pr.fecha_inicio) = ? AND YEAR(pr.fecha_inicio) = ?
+            WHERE pr.fecha_inicio >= ? AND pr.fecha_inicio < ?
             GROUP BY p.afiliacion";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$mes, $anio]);
+        $stmt->execute([$inicioMes, $finMes]);
 
         $afiliaciones = [];
         $totales = [];

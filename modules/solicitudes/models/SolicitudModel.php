@@ -74,8 +74,8 @@ class SolicitudModel
                 FROM solicitud_crm_tareas
                 GROUP BY solicitud_id
             ) tareas ON tareas.solicitud_id = sp.id
-            WHERE sp.procedimiento IS NOT NULL 
-              AND TRIM(sp.procedimiento) != '' 
+            WHERE sp.procedimiento IS NOT NULL
+              AND sp.procedimiento <> ''
               AND sp.procedimiento != 'SELECCIONE' 
               AND sp.doctor != 'SELECCIONE'";
 
@@ -84,19 +84,19 @@ class SolicitudModel
         $params = [];
 
         if (!empty($filtros['afiliacion'])) {
-            $sql .= " AND LOWER(pd.afiliacion) LIKE ?";
-            $params[] = '%' . strtolower($filtros['afiliacion']) . '%';
+            $sql .= " AND pd.afiliacion COLLATE utf8mb4_unicode_ci LIKE ?";
+            $params[] = '%' . trim($filtros['afiliacion']) . '%';
         }
 
         if (!empty($filtros['doctor'])) {
-            $sql .= " AND LOWER(sp.doctor) LIKE ?";
-            $params[] = '%' . strtolower($filtros['doctor']) . '%';
+            $sql .= " AND sp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
+            $params[] = '%' . trim($filtros['doctor']) . '%';
         }
 
         if (!empty($filtros['prioridad'])) {
             // Ejemplo: prioridad puede ser 'normal', 'pendiente' o 'urgente'
-            $sql .= " AND LOWER(sp.prioridad) = ?";
-            $params[] = strtolower($filtros['prioridad']);
+            $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
+            $params[] = trim($filtros['prioridad']);
         }
 
         if (!empty($filtros['fechaTexto']) && str_contains($filtros['fechaTexto'], ' - ')) {

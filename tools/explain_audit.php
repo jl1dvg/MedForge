@@ -167,6 +167,79 @@ function scenarios(): array
                 ],
             ],
         ],
+        'billing_form_lookup' => [
+            'description' => 'Consulta individual de billing_main por form_id usada al validar facturas existentes',
+            'sql' => <<<SQL
+                SELECT id
+                FROM billing_main
+                WHERE form_id = :form_id
+                LIMIT 1
+                SQL,
+            'params' => [
+                [
+                    ':form_id' => 'FORM-FAKE-001',
+                ],
+            ],
+        ],
+        'billing_facturas_mes' => [
+            'description' => 'Listado de facturas disponibles con joins hacia protocolo_data y procedimiento_proyectado',
+            'sql' => <<<SQL
+                SELECT
+                    bm.id,
+                    bm.form_id,
+                    bm.hc_number,
+                    COALESCE(pd.fecha_inicio, pp.fecha) AS fecha_ordenada
+                FROM billing_main bm
+                LEFT JOIN protocolo_data pd ON bm.form_id = pd.form_id
+                LEFT JOIN procedimiento_proyectado pp ON bm.form_id = pp.form_id
+                WHERE (:filtrar_mes = 0)
+                   OR (COALESCE(pd.fecha_inicio, pp.fecha) BETWEEN :start_date AND :end_date)
+                ORDER BY fecha_ordenada DESC
+                LIMIT :limit
+                SQL,
+            'params' => [
+                [
+                    ':filtrar_mes' => 0,
+                    ':start_date' => null,
+                    ':end_date' => null,
+                    ':limit' => 100,
+                ],
+                [
+                    ':filtrar_mes' => 1,
+                    ':start_date' => '2024-12-01',
+                    ':end_date' => '2024-12-31',
+                    ':limit' => 50,
+                ],
+            ],
+        ],
+        'guardar_proyeccion_form_id' => [
+            'description' => 'Validación de existencia previa por form_id en procedimiento_proyectado',
+            'sql' => <<<SQL
+                SELECT COUNT(*)
+                FROM procedimiento_proyectado
+                WHERE form_id = :form_id
+                SQL,
+            'params' => [
+                [
+                    ':form_id' => 'FORM-FAKE-001',
+                ],
+            ],
+        ],
+        'guardar_proyeccion_horario' => [
+            'description' => 'Determinación de hora más temprana por paciente y fecha en procedimiento_proyectado',
+            'sql' => <<<SQL
+                SELECT MIN(hora)
+                FROM procedimiento_proyectado
+                WHERE hc_number = :hc_number
+                  AND fecha = :fecha
+                SQL,
+            'params' => [
+                [
+                    ':hc_number' => 'HC-FAKE-001',
+                    ':fecha' => '2024-06-10',
+                ],
+            ],
+        ],
     ];
 }
 

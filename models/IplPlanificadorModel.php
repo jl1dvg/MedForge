@@ -28,7 +28,7 @@ class IplPlanificadorModel
                 LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
                 LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
                 WHERE pr.procedimiento_id LIKE 'sondaje_via_lagrimal' 
-                AND LOWER(p.afiliacion) IN (
+                AND p.afiliacion COLLATE utf8mb4_unicode_ci IN (
                     'isspol', 'issfa', 'iess', 'msp',
                     'contribuyente voluntario', 'conyuge', 'conyuge pensionista',
                     'seguro campesino', 'seguro campesino jubilado',

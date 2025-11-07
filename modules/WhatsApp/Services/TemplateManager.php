@@ -68,34 +68,22 @@ class TemplateManager
      */
     public function listLanguages(): array
     {
-        $config = $this->ensureConfigured();
-
-        $response = $this->request(
-            'GET',
-            $config['business_account_id'] . '/message_template_languages',
-            null,
-            [],
-            $config
-        );
-
-        $languages = [];
-        foreach (($response['data'] ?? []) as $language) {
-            if (!is_array($language)) {
-                continue;
-            }
-
-            $code = trim((string) ($language['code'] ?? ''));
-            $name = trim((string) ($language['name'] ?? ''));
-
-            if ($code === '') {
-                continue;
-            }
-
-            $languages[] = [
-                'code' => $code,
-                'name' => $name !== '' ? $name : $code,
-            ];
-        }
+        // Nota: No existe el endpoint /{waba_id}/message_templates_languages en Graph API.
+        // Para el selector del UI usamos una lista estática de idiomas admitidos por WhatsApp Cloud API.
+        // Puedes ampliar esta lista según lo necesites (ver documentación oficial).
+        $languages = [
+            ['code' => 'es',    'name' => 'Español'],
+            ['code' => 'es_AR', 'name' => 'Español (Argentina)'],
+            ['code' => 'es_ES', 'name' => 'Español (España)'],
+            ['code' => 'en',    'name' => 'English'],
+            ['code' => 'en_US', 'name' => 'English (US)'],
+            ['code' => 'en_GB', 'name' => 'English (UK)'],
+            ['code' => 'pt_BR', 'name' => 'Português (Brasil)'],
+            ['code' => 'pt_PT', 'name' => 'Português (Portugal)'],
+            ['code' => 'fr',    'name' => 'Français'],
+            ['code' => 'de',    'name' => 'Deutsch'],
+            ['code' => 'it',    'name' => 'Italiano'],
+        ];
 
         usort($languages, static function (array $a, array $b): int {
             return strcmp($a['name'], $b['name']);
@@ -286,6 +274,10 @@ class TemplateManager
 
         if (trim((string) $config['access_token']) === '') {
             throw new RuntimeException('Falta el token de acceso de WhatsApp Cloud API.');
+        }
+
+        if (trim((string) $config['api_version']) === '') {
+            $config['api_version'] = 'v22.0'; // o superior estable
         }
 
         return $config;

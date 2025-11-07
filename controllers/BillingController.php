@@ -243,7 +243,7 @@ class BillingController
                 SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id
             )
             AND pd.fecha_inicio >= '2024-12-01'
-            AND LOWER(pa.afiliacion) IN ($afiliacionesList)
+            AND pa.afiliacion COLLATE utf8mb4_unicode_ci IN ($afiliacionesList)
         ";
         // 2. Procedimientos NO quirúrgicos (sin protocolo_data)
         $queryNoQuirurgicos = "
@@ -266,7 +266,7 @@ class BillingController
                 SELECT 1 FROM protocolo_data pd WHERE pd.form_id = pr.form_id
             )
             AND pr.fecha >= '2024-12-01'
-            AND LOWER(pa.afiliacion) IN ($afiliacionesList)
+            AND pa.afiliacion COLLATE utf8mb4_unicode_ci IN ($afiliacionesList)
         ";
         // Ejecutar ambos y unificar
         $quirurgicosRaw = $this->db->query($queryQuirurgicos)->fetchAll(PDO::FETCH_ASSOC);
