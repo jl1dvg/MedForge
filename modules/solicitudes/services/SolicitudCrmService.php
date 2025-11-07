@@ -5,9 +5,12 @@ namespace Modules\Solicitudes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
+use Modules\WhatsApp\WhatsAppModule;
 use PDO;
 use PDOException;
 use RuntimeException;
+use Throwable;
 
 class SolicitudCrmService
 {
@@ -16,12 +19,14 @@ class SolicitudCrmService
     private PDO $pdo;
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
+    private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
+        $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
     public function obtenerResponsables(): array
@@ -136,6 +141,23 @@ class SolicitudCrmService
             $this->pdo->rollBack();
             throw $e;
         }
+
+        $detallePosterior = $this->safeObtenerDetalleSolicitud($solicitudId);
+        $this->notifyWhatsAppEvent(
+            $solicitudId,
+            'details_updated',
+            [
+                'detalle' => $detallePosterior,
+                'detalle_anterior' => $detalleActual,
+                'payload' => [
+                    'responsable_id' => $responsableId,
+                    'etapa' => $etapa,
+                    'fuente' => $fuente,
+                    'contacto_email' => $contactoEmail,
+                    'contacto_telefono' => $contactoTelefono,
+                ],
+            ]
+        );
     }
 
     public function registrarNota(int $solicitudId, string $nota, ?int $autorId): void
@@ -152,6 +174,16 @@ class SolicitudCrmService
         $stmt->bindValue(':autor_id', $autorId, $autorId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':nota', $nota, PDO::PARAM_STR);
         $stmt->execute();
+
+        $this->notifyWhatsAppEvent(
+            $solicitudId,
+            'note_added',
+            [
+                'nota' => $nota,
+                'autor_id' => $autorId,
+                'autor_nombre' => $this->obtenerNombreUsuario($autorId),
+            ]
+        );
     }
 
     public function registrarTarea(int $solicitudId, array $data, ?int $autorId): void
@@ -181,6 +213,27 @@ class SolicitudCrmService
         $stmt->bindValue(':due_date', $dueDate, $dueDate !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':remind_at', $remindAt, $remindAt !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->execute();
+
+        $tareaContexto = [
+            'id' => (int) $this->pdo->lastInsertId(),
+            'titulo' => $titulo,
+            'descripcion' => $descripcion,
+            'estado' => $estado,
+            'assigned_to' => $assignedTo,
+            'assigned_to_nombre' => $this->obtenerNombreUsuario($assignedTo),
+            'due_date' => $dueDate,
+            'remind_at' => $remindAt,
+        ];
+
+        $this->notifyWhatsAppEvent(
+            $solicitudId,
+            'task_created',
+            [
+                'tarea' => $tareaContexto,
+                'autor_id' => $autorId,
+                'autor_nombre' => $this->obtenerNombreUsuario($autorId),
+            ]
+        );
     }
 
     public function actualizarEstadoTarea(int $solicitudId, int $tareaId, string $estado): void
@@ -197,6 +250,17 @@ class SolicitudCrmService
         $stmt->bindValue(':id', $tareaId, PDO::PARAM_INT);
         $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
         $stmt->execute();
+
+        $tarea = $this->obtenerTareaPorId($solicitudId, $tareaId);
+        if ($tarea !== null) {
+            $this->notifyWhatsAppEvent(
+                $solicitudId,
+                'task_status_updated',
+                [
+                    'tarea' => $tarea,
+                ]
+            );
+        }
     }
 
     public function registrarAdjunto(
@@ -221,6 +285,372 @@ class SolicitudCrmService
         $stmt->bindValue(':descripcion', $descripcion, $descripcion !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':subido_por', $usuarioId, $usuarioId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->execute();
+
+        $this->notifyWhatsAppEvent(
+            $solicitudId,
+            'attachment_uploaded',
+            [
+                'adjunto' => [
+                    'nombre_original' => $nombreOriginal,
+                    'descripcion' => $descripcion,
+                    'mime_type' => $mimeType,
+                    'tamano' => $tamano,
+                ],
+                'usuario_id' => $usuarioId,
+                'usuario_nombre' => $this->obtenerNombreUsuario($usuarioId),
+            ]
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $contexto
+     */
+    private function notifyWhatsAppEvent(int $solicitudId, string $evento, array $contexto = []): void
+    {
+        if (!$this->whatsapp->isEnabled()) {
+            return;
+        }
+
+        $detalle = $contexto['detalle'] ?? $this->safeObtenerDetalleSolicitud($solicitudId);
+        if ($detalle === null) {
+            return;
+        }
+
+        $contexto['detalle'] = $detalle;
+
+        if ($evento === 'details_updated' && isset($contexto['detalle_anterior']) && is_array($contexto['detalle_anterior'])) {
+            if (!$this->huboCambiosRelevantes($contexto['detalle_anterior'], $detalle, $contexto['payload'] ?? [])) {
+                return;
+            }
+        }
+
+        $telefonos = $this->collectWhatsappPhones($detalle, $contexto);
+        if (empty($telefonos)) {
+            return;
+        }
+
+        $mensaje = $this->buildWhatsAppMessage($evento, $contexto);
+        if ($mensaje === '') {
+            return;
+        }
+
+        $this->whatsapp->sendTextMessage($telefonos, $mensaje);
+    }
+
+    /**
+     * @param array<string, mixed> $detalle
+     * @param array<string, mixed> $contexto
+     *
+     * @return string[]
+     */
+    private function collectWhatsappPhones(array $detalle, array $contexto): array
+    {
+        $telefonos = [];
+
+        foreach (['crm_contacto_telefono', 'paciente_celular', 'contacto_telefono'] as $clave) {
+            if (!empty($detalle[$clave])) {
+                $telefonos[] = (string) $detalle[$clave];
+            }
+        }
+
+        if (!empty($contexto['payload']['contacto_telefono'])) {
+            $telefonos[] = (string) $contexto['payload']['contacto_telefono'];
+        }
+
+        if (!empty($contexto['telefonos_adicionales']) && is_array($contexto['telefonos_adicionales'])) {
+            foreach ($contexto['telefonos_adicionales'] as $telefono) {
+                if ($telefono) {
+                    $telefonos[] = (string) $telefono;
+                }
+            }
+        }
+
+        if (!empty($contexto['tarea']['telefono'])) {
+            $telefonos[] = (string) $contexto['tarea']['telefono'];
+        }
+
+        return array_values(array_unique(array_filter($telefonos)));
+    }
+
+    /**
+     * @param array<string, mixed> $contexto
+     */
+    private function buildWhatsAppMessage(string $evento, array $contexto): string
+    {
+        $detalle = $contexto['detalle'] ?? [];
+        $solicitudId = isset($detalle['id']) ? (int) $detalle['id'] : 0;
+        $paciente = trim((string) ($detalle['paciente_nombre'] ?? ''));
+        $marca = $this->whatsapp->getBrandName();
+        $tituloSolicitud = $solicitudId > 0
+            ? 'Solicitud #' . $solicitudId . ($paciente !== '' ? ' · ' . $paciente : '')
+            : ($paciente !== '' ? $paciente : 'Solicitud CRM');
+
+        switch ($evento) {
+            case 'details_updated':
+                $actual = $detalle['crm_pipeline_stage'] ?? ($detalle['pipeline_stage'] ?? null);
+                $anterior = $contexto['detalle_anterior']['crm_pipeline_stage'] ?? null;
+                $responsable = $detalle['crm_responsable_nombre'] ?? null;
+                $lineas = [
+                    '🔄 Actualización CRM - ' . $marca,
+                    $tituloSolicitud,
+                ];
+
+                if (!empty($detalle['procedimiento'])) {
+                    $lineas[] = 'Procedimiento: ' . $detalle['procedimiento'];
+                }
+
+                if ($actual) {
+                    if ($anterior && strcasecmp($anterior, $actual) !== 0) {
+                        $lineas[] = 'Etapa: ' . $anterior . ' → ' . $actual;
+                    } else {
+                        $lineas[] = 'Etapa actual: ' . $actual;
+                    }
+                }
+
+                if ($responsable) {
+                    $lineas[] = 'Responsable: ' . $responsable;
+                }
+
+                if (!empty($detalle['prioridad'])) {
+                    $lineas[] = 'Prioridad: ' . ucfirst((string) $detalle['prioridad']);
+                }
+
+                if (!empty($detalle['crm_fuente'])) {
+                    $lineas[] = 'Fuente: ' . $detalle['crm_fuente'];
+                }
+
+                $lineas[] = 'Ver detalle: ' . $this->buildSolicitudUrl($solicitudId);
+
+                return implode("\n", array_filter($lineas));
+
+            case 'note_added':
+                $nota = trim((string) ($contexto['nota'] ?? ''));
+                $autor = trim((string) ($contexto['autor_nombre'] ?? ''));
+                $lineas = [
+                    '📝 Nueva nota en CRM - ' . $marca,
+                    $tituloSolicitud,
+                ];
+                if ($autor !== '') {
+                    $lineas[] = 'Autor: ' . $autor;
+                }
+                if ($nota !== '') {
+                    $lineas[] = 'Nota: ' . $this->truncateText($nota, 320);
+                }
+                $lineas[] = 'Revisa el historial: ' . $this->buildSolicitudUrl($solicitudId);
+
+                return implode("\n", array_filter($lineas));
+
+            case 'task_created':
+                $tarea = $contexto['tarea'] ?? [];
+                $lineas = [
+                    '✅ Nueva tarea CRM - ' . $marca,
+                    $tituloSolicitud,
+                ];
+                if (!empty($tarea['titulo'])) {
+                    $lineas[] = 'Tarea: ' . $tarea['titulo'];
+                }
+                if (!empty($tarea['assigned_to_nombre'])) {
+                    $lineas[] = 'Responsable: ' . $tarea['assigned_to_nombre'];
+                }
+                if (!empty($tarea['estado'])) {
+                    $lineas[] = 'Estado inicial: ' . $this->humanizeStatus((string) $tarea['estado']);
+                }
+                if (!empty($tarea['due_date'])) {
+                    $fecha = $this->formatDateTime($tarea['due_date'], 'd/m/Y');
+                    if ($fecha) {
+                        $lineas[] = 'Vencimiento: ' . $fecha;
+                    }
+                }
+                if (!empty($tarea['remind_at'])) {
+                    $recordatorio = $this->formatDateTime($tarea['remind_at'], 'd/m/Y H:i');
+                    if ($recordatorio) {
+                        $lineas[] = 'Recordatorio: ' . $recordatorio;
+                    }
+                }
+                $lineas[] = 'Gestiona la tarea: ' . $this->buildSolicitudUrl($solicitudId);
+
+                return implode("\n", array_filter($lineas));
+
+            case 'task_status_updated':
+                $tarea = $contexto['tarea'] ?? [];
+                $lineas = [
+                    '📌 Actualización de tarea CRM - ' . $marca,
+                    $tituloSolicitud,
+                ];
+                if (!empty($tarea['titulo'])) {
+                    $lineas[] = 'Tarea: ' . $tarea['titulo'];
+                }
+                if (!empty($tarea['estado'])) {
+                    $lineas[] = 'Estado actual: ' . $this->humanizeStatus((string) $tarea['estado']);
+                }
+                if (!empty($tarea['assigned_to_nombre'])) {
+                    $lineas[] = 'Responsable: ' . $tarea['assigned_to_nombre'];
+                }
+                if (!empty($tarea['due_date'])) {
+                    $fecha = $this->formatDateTime($tarea['due_date'], 'd/m/Y');
+                    if ($fecha) {
+                        $lineas[] = 'Vencimiento: ' . $fecha;
+                    }
+                }
+                $lineas[] = 'Ver tablero: ' . $this->buildSolicitudUrl($solicitudId);
+
+                return implode("\n", array_filter($lineas));
+
+            case 'attachment_uploaded':
+                $adjunto = $contexto['adjunto'] ?? [];
+                $autorAdjunto = trim((string) ($contexto['usuario_nombre'] ?? ''));
+                $lineas = [
+                    '📎 Nuevo adjunto en CRM - ' . $marca,
+                    $tituloSolicitud,
+                ];
+                if (!empty($adjunto['nombre_original'])) {
+                    $lineas[] = 'Archivo: ' . $adjunto['nombre_original'];
+                }
+                if (!empty($adjunto['descripcion'])) {
+                    $lineas[] = 'Descripción: ' . $this->truncateText((string) $adjunto['descripcion'], 200);
+                }
+                if ($autorAdjunto !== '') {
+                    $lineas[] = 'Cargado por: ' . $autorAdjunto;
+                }
+                $lineas[] = 'Consulta los documentos: ' . $this->buildSolicitudUrl($solicitudId);
+
+                return implode("\n", array_filter($lineas));
+
+            default:
+                return '';
+        }
+    }
+
+    private function buildSolicitudUrl(int $solicitudId): string
+    {
+        $base = defined('BASE_URL') ? rtrim((string) BASE_URL, '/') : '';
+        $path = '/solicitudes/' . $solicitudId . '/crm';
+
+        if ($base === '') {
+            return $path;
+        }
+
+        return $base . $path;
+    }
+
+    private function formatDateTime(?string $valor, string $formato): ?string
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        try {
+            $fecha = new DateTimeImmutable($valor);
+
+            return $fecha->format($formato);
+        } catch (Throwable $exception) {
+            return null;
+        }
+    }
+
+    private function truncateText(string $texto, int $limite): string
+    {
+        $texto = trim(preg_replace('/\s+/u', ' ', $texto));
+        if (mb_strlen($texto) <= $limite) {
+            return $texto;
+        }
+
+        return mb_substr($texto, 0, $limite - 1) . '…';
+    }
+
+    private function humanizeStatus(string $estado): string
+    {
+        $estado = str_replace('_', ' ', $estado);
+
+        return ucwords($estado);
+    }
+
+    /**
+     * @param array<string, mixed> $anterior
+     * @param array<string, mixed> $actual
+     * @param array<string, mixed> $payload
+     */
+    private function huboCambiosRelevantes(array $anterior, array $actual, array $payload): bool
+    {
+        $comparaciones = [
+            'crm_pipeline_stage',
+            'crm_responsable_id',
+            'crm_contacto_telefono',
+            'crm_contacto_email',
+            'crm_fuente',
+        ];
+
+        foreach ($comparaciones as $clave) {
+            $previo = $anterior[$clave] ?? null;
+            $nuevo = $actual[$clave] ?? null;
+
+            if ($clave === 'crm_pipeline_stage') {
+                $previo = $this->normalizarEtapa($previo ?? null);
+                $nuevo = $this->normalizarEtapa($nuevo ?? null);
+            }
+
+            if ($previo != $nuevo) {
+                return true;
+            }
+        }
+
+        if (!empty($payload['contacto_telefono']) && $payload['contacto_telefono'] !== ($anterior['crm_contacto_telefono'] ?? null)) {
+            return true;
+        }
+
+        if (!empty($payload['contacto_email']) && $payload['contacto_email'] !== ($anterior['crm_contacto_email'] ?? null)) {
+            return true;
+        }
+
+        if (!empty($payload['fuente']) && $payload['fuente'] !== ($anterior['crm_fuente'] ?? null)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function obtenerNombreUsuario(?int $usuarioId): ?string
+    {
+        if (!$usuarioId) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare('SELECT nombre FROM users WHERE id = :id LIMIT 1');
+        $stmt->bindValue(':id', $usuarioId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $nombre = $stmt->fetchColumn();
+
+        return $nombre ? (string) $nombre : null;
+    }
+
+    private function obtenerTareaPorId(int $solicitudId, int $tareaId): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id, titulo, descripcion, estado, assigned_to, due_date, remind_at, completed_at'
+            . ' FROM solicitud_crm_tareas WHERE id = :id AND solicitud_id = :solicitud_id LIMIT 1'
+        );
+        $stmt->bindValue(':id', $tareaId, PDO::PARAM_INT);
+        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $tarea = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tarea) {
+            return null;
+        }
+
+        $tarea['assigned_to_nombre'] = $this->obtenerNombreUsuario(isset($tarea['assigned_to']) ? (int) $tarea['assigned_to'] : null);
+
+        return $tarea;
+    }
+
+    private function safeObtenerDetalleSolicitud(int $solicitudId): ?array
+    {
+        try {
+            return $this->obtenerDetalleSolicitud($solicitudId);
+        } catch (Throwable $exception) {
+            return null;
+        }
     }
 
     private function obtenerDetalleSolicitud(int $solicitudId): ?array

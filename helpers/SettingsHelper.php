@@ -188,6 +188,52 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'whatsapp' => [
+                'title' => 'WhatsApp',
+                'icon' => 'fa-brands fa-whatsapp',
+                'description' => 'Administra la integración con WhatsApp Cloud API y futuros canales conversacionales internos.',
+                'groups' => [
+                    [
+                        'id' => 'cloud_api',
+                        'title' => 'WhatsApp Cloud API',
+                        'description' => 'Credenciales y preferencias compartidas por el módulo de WhatsApp, listas para reutilizar en un chat interno.',
+                        'fields' => [
+                            self::checkboxField(
+                                'whatsapp_cloud_enabled',
+                                'Habilitar WhatsApp Cloud API',
+                                false,
+                                'Activa el envío de mensajes transaccionales y notificaciones por WhatsApp.'
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_phone_number_id',
+                                'Phone Number ID',
+                                true,
+                                'Identificador del número configurado en Meta Business.'
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_business_account_id',
+                                'Business Account ID',
+                                false,
+                                'Dato informativo útil para auditoría o múltiples líneas.'
+                            ),
+                            self::passwordField('whatsapp_cloud_access_token', 'Access Token'),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_cloud_api_version',
+                                    'Versión de la API de Graph'
+                                ),
+                                ['default' => 'v17.0']
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_default_country_code',
+                                'Código de país predeterminado',
+                                false,
+                                'Se antepone si el número de teléfono no incluye prefijo internacional. Ej: 593.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'integrations' => [
                 'title' => 'Integraciones',
                 'icon' => 'fa-solid fa-plug',
