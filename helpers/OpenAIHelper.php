@@ -2,17 +2,73 @@
 
 namespace Helpers;
 
+use RuntimeException;
+
 class OpenAIHelper
 {
     private string $apiKey;
-    private string $baseUrl = 'https://api.openai.com/v1/responses';
-    private string $model = 'gpt-4o-mini'; // cámbialo si lo necesitas
+    private string $endpoint;
+    private string $model;
+    private int $defaultMaxOutputTokens;
+    /** @var array<string, string> */
+    private array $headers = [];
 
-    public function __construct(?string $apiKey = null)
+    /**
+     * @param array<string, mixed>|string|null $config
+     */
+    public function __construct(array|string|null $config = null)
     {
-        $this->apiKey = $apiKey ?: ($_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY') ?: '');
-        if (!$this->apiKey) {
-            throw new \RuntimeException('Falta OPENAI_API_KEY en el entorno.');
+        $options = [];
+        if (is_array($config)) {
+            $options = $config;
+        } elseif ($config !== null) {
+            $options['api_key'] = $config;
+        }
+
+        $apiKey = trim((string) ($options['api_key'] ?? ''));
+        if ($apiKey === '') {
+            $apiKey = $_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY') ?: '';
+        }
+
+        if ($apiKey === '') {
+            throw new RuntimeException('Falta la clave API de OpenAI en la configuración o en el entorno.');
+        }
+
+        $this->apiKey = $apiKey;
+
+        $endpoint = $options['endpoint'] ?? ($options['base_url'] ?? null);
+        $endpoint = trim((string) ($endpoint ?? ''));
+        if ($endpoint === '') {
+            $endpoint = 'https://api.openai.com/v1/responses';
+        }
+
+        $normalizedEndpoint = rtrim($endpoint, '/');
+        if (!preg_match('#/responses$#', $normalizedEndpoint)) {
+            $normalizedEndpoint .= '/responses';
+        }
+        $this->endpoint = $normalizedEndpoint;
+
+        $model = trim((string) ($options['model'] ?? ''));
+        $this->model = $model !== '' ? $model : 'gpt-4o-mini';
+
+        $maxTokens = (int) ($options['max_output_tokens'] ?? 400);
+        $this->defaultMaxOutputTokens = $maxTokens > 0 ? $maxTokens : 400;
+
+        if (!empty($options['headers']) && is_array($options['headers'])) {
+            foreach ($options['headers'] as $header => $value) {
+                $headerName = trim((string) $header);
+                $headerValue = trim((string) $value);
+                if ($headerName !== '' && $headerValue !== '') {
+                    $this->headers[$headerName] = $headerValue;
+                }
+            }
+        }
+
+        if (!empty($options['organization']) && !isset($this->headers['OpenAI-Organization'])) {
+            $organization = trim((string) $options['organization']);
+            if ($organization !== '') {
+                $this->headers['OpenAI-Organization'] = $organization;
+            }
         }
     }
 
@@ -20,20 +76,27 @@ class OpenAIHelper
      * Llamada genérica a Responses API.
      * Devuelve el "output_text" o lanza excepción con el error.
      */
-    public function respond(string $input, int $maxOutputTokens = 400): string
+    public function respond(string $input, ?int $maxOutputTokens = null): string
     {
+        $maxTokens = $maxOutputTokens ?? $this->defaultMaxOutputTokens;
         $payload = [
             'model' => $this->model,
             'input' => $input,
-            'max_output_tokens' => $maxOutputTokens
+            'max_output_tokens' => $maxTokens
         ];
 
-        $ch = curl_init($this->baseUrl);
+        $headers = [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $this->apiKey,
+        ];
+
+        foreach ($this->headers as $header => $value) {
+            $headers[] = $header . ': ' . $value;
+        }
+
+        $ch = curl_init($this->endpoint);
         curl_setopt_array($ch, [
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'Authorization: ' . 'Bearer ' . $this->apiKey,
-            ],
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
             CURLOPT_RETURNTRANSFER => true,

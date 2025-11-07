@@ -18,11 +18,6 @@ function _app_init_load()
         'merge_fields/app_merge_fields',
         'app_object_cache',
     ]);
-
-    $aiBootstrapPath = APPPATH . 'services/ai/bootstrap.php';
-    if (file_exists($aiBootstrapPath)) {
-        require_once $aiBootstrapPath;
-    }
 }
 
 function _app_init()
