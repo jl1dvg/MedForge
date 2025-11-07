@@ -31,6 +31,9 @@ $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
             <div class="fw-600">
                 <?= $escape($brand); ?>
             </div>
+            <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary mt-2">
+                <i class="mdi mdi-whatsapp me-1"></i>Gestionar plantillas
+            </a>
         </div>
     </div>
 </div>

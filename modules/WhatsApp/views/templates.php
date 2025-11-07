@@ -3,11 +3,14 @@
 /** @var array $categories */
 /** @var array $languages */
 /** @var array $integrationErrors */
+/** @var array $integrationWarnings */
 /** @var array $bootstrap */
+/** @var bool $isIntegrationReady */
 
 $scripts = $scripts ?? [];
+$integrationWarnings = $integrationWarnings ?? [];
+$isIntegrationReady = $isIntegrationReady ?? (($config['enabled'] ?? false) && empty($integrationErrors ?? []));
 $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
-$isIntegrationReady = ($config['enabled'] ?? false) && empty($integrationErrors);
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -28,6 +31,9 @@ $isIntegrationReady = ($config['enabled'] ?? false) && empty($integrationErrors)
             <div class="fw-600">
                 <?= htmlspecialchars($config['brand'] ?? 'Sin marca', ENT_QUOTES, 'UTF-8'); ?>
             </div>
+            <a href="/whatsapp/autoresponder" class="btn btn-sm btn-outline-primary mt-2">
+                <i class="mdi mdi-flowchart me-1"></i>Ver flujo de autorespuesta
+            </a>
         </div>
     </div>
 </div>
@@ -68,6 +74,17 @@ $isIntegrationReady = ($config['enabled'] ?? false) && empty($integrationErrors)
                                 <?php endforeach; ?>
                             </ul>
                             <a href="/settings?section=whatsapp" class="btn btn-sm btn-outline-warning">Ir a configuración</a>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (empty($integrationErrors) && !empty($integrationWarnings)): ?>
+                        <div class="alert alert-info">
+                            <h5 class="mb-2"><i class="mdi mdi-information-outline"></i> Integración con observaciones</h5>
+                            <ul class="mb-0 ps-3">
+                                <?php foreach ($integrationWarnings as $warning): ?>
+                                    <li><?= htmlspecialchars($warning, ENT_QUOTES, 'UTF-8'); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
                         </div>
                     <?php endif; ?>
 

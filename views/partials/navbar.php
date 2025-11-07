@@ -240,6 +240,11 @@ if (!function_exists('isTreeOpen')) {
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessWhatsApp): ?>
+                                    <li class="<?= isActive('/whatsapp/autoresponder') ?>">
+                                        <a href="/whatsapp/autoresponder">
+                                            <i class="mdi mdi-flowchart"></i>Flujo de autorespuesta
+                                        </a>
+                                    </li>
                                     <li class="<?= isActive('/whatsapp/templates') ?>">
                                         <a href="/whatsapp/templates">
                                             <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp

@@ -31,6 +31,7 @@ class TemplateController extends BaseController
         $categories = TemplateManager::availableCategories();
         $languages = [];
         $integrationErrors = [];
+        $integrationWarnings = [];
 
         if (!$config['enabled']) {
             $integrationErrors[] = 'WhatsApp Cloud API no está habilitado. Verifica los ajustes en Configuración > WhatsApp.';
@@ -48,11 +49,13 @@ class TemplateController extends BaseController
             try {
                 $languages = $this->templates->listLanguages();
             } catch (RuntimeException $exception) {
-                $integrationErrors[] = $exception->getMessage();
+                $integrationWarnings[] = $exception->getMessage();
             } catch (Throwable $exception) {
-                $integrationErrors[] = 'No fue posible cargar los idiomas disponibles: ' . $exception->getMessage();
+                $integrationWarnings[] = 'No fue posible cargar los idiomas disponibles: ' . $exception->getMessage();
             }
         }
+
+        $isIntegrationReady = ($config['enabled'] ?? false) && empty($integrationErrors);
 
         $bootstrap = [
             'config' => [
@@ -71,7 +74,9 @@ class TemplateController extends BaseController
             'categories' => $categories,
             'languages' => $languages,
             'integrationErrors' => $integrationErrors,
+            'integrationWarnings' => $integrationWarnings,
             'bootstrap' => $bootstrap,
+            'isIntegrationReady' => $isIntegrationReady,
             'scripts' => ['js/pages/whatsapp-templates.js'],
         ]);
     }
