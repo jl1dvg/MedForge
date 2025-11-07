@@ -5,7 +5,7 @@ namespace Modules\Solicitudes\Services;
 use DateInterval;
 use DateTimeImmutable;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Solicitudes\Models\SolicitudModel;
+use Models\SolicitudModel;
 use PDO;
 
 class SolicitudReminderService
