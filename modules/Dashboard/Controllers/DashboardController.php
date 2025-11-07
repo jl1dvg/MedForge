@@ -3,6 +3,10 @@
 namespace Modules\Dashboard\Controllers;
 
 use Core\View;
+use DateInterval;
+use DateTimeImmutable;
+use DateTimeInterface;
+use Modules\AI\Services\AIConfigService;
 use PDO;
 use Throwable;
 
@@ -35,29 +39,44 @@ class DashboardController
                 exit;
             }
 
+            $dateRange = $this->resolveDateRange();
             $username = $this->getAuthenticatedUser();
-            $procedimientos_dia = $this->getProcedimientosPorDia();
-            $top_procedimientos = $this->getTopProcedimientosDelMes();
+
+            $procedimientos_dia = $this->getProcedimientosPorDia($dateRange['start'], $dateRange['end']);
+            $top_procedimientos = $this->getTopProcedimientosDelPeriodo($dateRange['start'], $dateRange['end']);
+            $cirugias_recientes = $this->getCirugiasRecientes($dateRange['start'], $dateRange['end']);
+            $revision_estados = $this->getEstadosRevisionProtocolos($dateRange['start'], $dateRange['end']);
+            $solicitudes_funnel = $this->getSolicitudesFunnel($dateRange['start'], $dateRange['end']);
+            $crm_backlog = $this->getCrmBacklogStats($dateRange['start'], $dateRange['end']);
+            $ai_summary = $this->getAiSummary();
 
             $data = [
                 'username' => $username,
+                'date_range' => $this->formatDateRangeForView($dateRange),
                 'procedimientos_dia' => $procedimientos_dia,
                 'fechas_json' => json_encode($procedimientos_dia['fechas']),
                 'procedimientos_dia_json' => json_encode($procedimientos_dia['totales']),
-                'total_patients' => $this->totalPacientes(),
-                'total_users' => $this->totalUsuarios(),
-                'total_protocols' => $this->totalProtocolos(),
-                'cirugias_recientes' => $this->getCirugiasRecientes(),
-                'total_cirugias' => $this->getTotalCirugias(),
+                'solicitudes_funnel' => $solicitudes_funnel,
+                'solicitudes_funnel_json' => json_encode($solicitudes_funnel, JSON_THROW_ON_ERROR),
+                'crm_backlog' => $crm_backlog,
+                'crm_backlog_json' => json_encode($crm_backlog, JSON_THROW_ON_ERROR),
                 'top_procedimientos' => $top_procedimientos,
                 'membretes_json' => json_encode($top_procedimientos['membretes']),
                 'procedimientos_membrete_json' => json_encode($top_procedimientos['totales']),
                 'plantillas' => $this->getPlantillasRecientes(),
                 'diagnosticos_frecuentes' => $this->getDiagnosticosFrecuentes(),
-                'solicitudes_quirurgicas' => $this->getUltimasSolicitudes(),
-                'doctores_top' => $this->getTopDoctores(),
-                'estadisticas_afiliacion' => $this->getEstadisticasPorAfiliacion(),
-                'revision_estados' => $this->getEstadosRevisionProtocolos(),
+                'solicitudes_quirurgicas' => $this->getUltimasSolicitudes($dateRange['start'], $dateRange['end']),
+                'doctores_top' => $this->getTopDoctores($dateRange['start'], $dateRange['end']),
+                'estadisticas_afiliacion' => $this->getEstadisticasPorAfiliacion($dateRange['start'], $dateRange['end']),
+                'revision_estados' => $revision_estados,
+                'revision_estados_json' => json_encode($revision_estados, JSON_THROW_ON_ERROR),
+                'total_cirugias_periodo' => $this->getTotalCirugias($dateRange['start'], $dateRange['end']),
+                'total_protocols' => $this->totalProtocolos(),
+                'total_patients' => $this->totalPacientes(),
+                'total_users' => $this->totalUsuarios(),
+                'kpi_cards' => $this->buildKpiCards($solicitudes_funnel, $crm_backlog, $revision_estados, $ai_summary),
+                'ai_summary' => $ai_summary,
+                'cirugias_recientes' => $cirugias_recientes,
             ];
 
             View::render(
@@ -92,17 +111,22 @@ class DashboardController
         return $stmt->fetchColumn() ?? 0;
     }
 
-    public function getRecentCirugias($limit = 8)
+    public function getRecentCirugias(DateTimeInterface $start, DateTimeInterface $end, $limit = 8)
     {
-        $stmt = $this->db->prepare("SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
-                                        pr.fecha_inicio, pr.id, pr.membrete, pr.form_id
-                                    FROM patient_data p 
-                                    INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
-                                    ORDER BY pr.fecha_inicio DESC, pr.id DESC
-                                    LIMIT :limit");
-        $stmt->bindValue(':limit', (int)$limit, \PDO::PARAM_INT);
+        $sql = "SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion,
+                       pr.fecha_inicio, pr.id, pr.membrete, pr.form_id
+                FROM patient_data p
+                INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
+                WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                ORDER BY pr.fecha_inicio DESC, pr.id DESC
+                LIMIT :limit";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':inicio', $start->format('Y-m-d 00:00:00'));
+        $stmt->bindValue(':fin', $end->format('Y-m-d 23:59:59'));
+        $stmt->bindValue(':limit', (int) $limit, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function getDiagnosticosFrecuentes(): array
@@ -146,15 +170,19 @@ class DashboardController
         return array_slice($prevalencias, 0, 9, true);
     }
 
-    public function getProcedimientosPorDia()
+    public function getProcedimientosPorDia(DateTimeInterface $start, DateTimeInterface $end)
     {
-        $sql = "SELECT DATE(fecha_inicio) as fecha, COUNT(*) as total_procedimientos 
-            FROM protocolo_data 
+        $sql = "SELECT DATE(fecha_inicio) as fecha, COUNT(*) as total_procedimientos
+            FROM protocolo_data
+            WHERE fecha_inicio BETWEEN :inicio AND :fin
             GROUP BY DATE(fecha_inicio)
-            ORDER BY fecha DESC 
-            LIMIT 12";
+            ORDER BY fecha ASC";
 
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
 
         $fechas = [];
         $totales = [];
@@ -175,21 +203,22 @@ class DashboardController
         ];
     }
 
-    public function getTopProcedimientosDelMes()
+    public function getTopProcedimientosDelPeriodo(DateTimeInterface $start, DateTimeInterface $end)
     {
-        $current_year = date('Y');
-
-        $sql = "SELECT procedimiento_id, COUNT(*) as total_procedimientos 
-                FROM protocolo_data 
-                WHERE YEAR(fecha_inicio) = :year 
-                  AND procedimiento_id IS NOT NULL 
+        $sql = "SELECT procedimiento_id, COUNT(*) as total_procedimientos
+                FROM protocolo_data
+                WHERE fecha_inicio BETWEEN :inicio AND :fin
+                  AND procedimiento_id IS NOT NULL
                   AND procedimiento_id != ''
                 GROUP BY procedimiento_id
                 ORDER BY total_procedimientos DESC
                 LIMIT 5";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(['year' => $current_year]);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
 
         $membretes = [];
         $totales = [];
@@ -205,27 +234,36 @@ class DashboardController
         ];
     }
 
-    public function getCirugiasRecientes($limit = 8)
+    public function getCirugiasRecientes(DateTimeInterface $start, DateTimeInterface $end, $limit = 8)
     {
-        $sql = "SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion, 
+        $sql = "SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion,
                    pr.fecha_inicio, pr.id, pr.membrete, pr.form_id
-            FROM patient_data p 
+            FROM patient_data p
             INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
-            WHERE p.afiliacion != 'ALQUILER' 
+            WHERE p.afiliacion != 'ALQUILER'
+              AND pr.fecha_inicio BETWEEN :inicio AND :fin
             ORDER BY pr.fecha_inicio DESC, pr.id DESC
             LIMIT :limit";
 
         $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':inicio', $start->format('Y-m-d 00:00:00'));
+        $stmt->bindValue(':fin', $end->format('Y-m-d 23:59:59'));
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getTotalCirugias()
+    public function getTotalCirugias(DateTimeInterface $start, DateTimeInterface $end)
     {
-        $sql = "SELECT COUNT(*) as total FROM protocolo_data";
-        $stmt = $this->db->query($sql);
-        return $stmt->fetchColumn();
+        $sql = "SELECT COUNT(*) as total
+            FROM protocolo_data
+            WHERE fecha_inicio BETWEEN :inicio AND :fin";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
+        return (int) $stmt->fetchColumn();
     }
 
     public function getPlantillasRecientes($limit = 20)
@@ -247,30 +285,42 @@ class DashboardController
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getUltimasSolicitudes($limit = 5)
+    public function getUltimasSolicitudes(DateTimeInterface $start, DateTimeInterface $end, $limit = 5)
     {
-        $sql = "SELECT sp.id, sp.fecha, sp.procedimiento, p.fname, p.lname, p.hc_number
+        $sql = "SELECT sp.id, sp.fecha, sp.procedimiento, p.fname, p.lname, p.hc_number, sp.estado, sp.prioridad,
+                       sp.turno, detalles.pipeline_stage AS crm_pipeline_stage, detalles.responsable_id,
+                       responsable.nombre AS responsable_nombre
                 FROM solicitud_procedimiento sp
-                JOIN patient_data p 
+                JOIN patient_data p
                   ON sp.hc_number COLLATE utf8mb4_unicode_ci = p.hc_number COLLATE utf8mb4_unicode_ci
-                WHERE sp.procedimiento IS NOT NULL 
-                  AND sp.procedimiento != '' 
+                LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
+                LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+                WHERE sp.procedimiento IS NOT NULL
+                  AND sp.procedimiento != ''
                   AND sp.procedimiento != 'SELECCIONE'
-                ORDER BY sp.fecha DESC
+                  AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin
+                ORDER BY COALESCE(sp.created_at, sp.fecha) DESC
                 LIMIT :limit";
 
         $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':inicio', $start->format('Y-m-d 00:00:00'));
+        $stmt->bindValue(':fin', $end->format('Y-m-d 23:59:59'));
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $totalStmt = $this->db->query("SELECT COUNT(*) as total 
-            FROM solicitud_procedimiento 
-            WHERE procedimiento IS NOT NULL 
-              AND procedimiento != '' 
-              AND procedimiento != 'SELECCIONE'");
-        $total = $totalStmt->fetchColumn();
+        $totalStmt = $this->db->prepare("SELECT COUNT(*) as total
+            FROM solicitud_procedimiento
+            WHERE procedimiento IS NOT NULL
+              AND procedimiento != ''
+              AND procedimiento != 'SELECCIONE'
+              AND COALESCE(created_at, fecha) BETWEEN :inicio AND :fin");
+        $totalStmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
+        $total = (int) $totalStmt->fetchColumn();
 
         return [
             'solicitudes' => $result,
@@ -278,34 +328,38 @@ class DashboardController
         ];
     }
 
-    public function getTopDoctores()
+    public function getTopDoctores(DateTimeInterface $start, DateTimeInterface $end)
     {
         $sql = "SELECT cirujano_1, COUNT(*) as total
             FROM protocolo_data
-            WHERE cirujano_1 IS NOT NULL 
+            WHERE cirujano_1 IS NOT NULL
               AND cirujano_1 != ''
-              AND fecha_inicio >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+              AND fecha_inicio BETWEEN :inicio AND :fin
             GROUP BY cirujano_1
             ORDER BY total DESC
             LIMIT 5";
 
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getEstadisticasPorAfiliacion()
+    public function getEstadisticasPorAfiliacion(DateTimeInterface $start, DateTimeInterface $end)
     {
-        $inicioMes = (new \DateTime('first day of this month'))->format('Y-m-01');
-        $finMes = (new \DateTime('first day of next month'))->format('Y-m-01');
-
         $sql = "SELECT p.afiliacion, COUNT(*) as total_procedimientos
             FROM protocolo_data pr
             INNER JOIN patient_data p ON pr.hc_number = p.hc_number
-            WHERE pr.fecha_inicio >= ? AND pr.fecha_inicio < ?
+            WHERE pr.fecha_inicio BETWEEN ? AND ?
             GROUP BY p.afiliacion";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$inicioMes, $finMes]);
+        $stmt->execute([
+            $start->format('Y-m-d 00:00:00'),
+            $end->format('Y-m-d 23:59:59'),
+        ]);
 
         $afiliaciones = [];
         $totales = [];
@@ -321,7 +375,7 @@ class DashboardController
         ];
     }
 
-    public function getEstadosRevisionProtocolos()
+    public function getEstadosRevisionProtocolos(DateTimeInterface $start, DateTimeInterface $end)
     {
         $sql = "SELECT pr.status, pr.membrete, pr.dieresis, pr.exposicion, pr.hallazgo, pr.operatorio,
                    pr.complicaciones_operatorio, pr.datos_cirugia, pr.procedimientos,
@@ -330,9 +384,14 @@ class DashboardController
                    pr.anestesiologo, pr.segundo_ayudante, pr.ayudante_anestesia, pr.tercer_ayudante
             FROM protocolo_data pr
             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
             ORDER BY pr.fecha_inicio DESC, pr.id DESC";
 
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
 
         $incompletos = 0;
         $revisados = 0;
@@ -392,6 +451,282 @@ class DashboardController
             'incompletos' => $incompletos,
             'revisados' => $revisados,
             'no_revisados' => $no_revisados
+        ];
+    }
+
+    private function resolveDateRange(): array
+    {
+        $endParam = $_GET['end_date'] ?? '';
+        $startParam = $_GET['start_date'] ?? '';
+
+        $today = new DateTimeImmutable('today');
+        $defaultEnd = $today;
+        $defaultStart = $today->sub(new DateInterval('P29D'));
+
+        $end = $this->parseDate($endParam) ?? $defaultEnd;
+        $start = $this->parseDate($startParam) ?? $defaultStart;
+
+        if ($start > $end) {
+            [$start, $end] = [$end->sub(new DateInterval('P29D')), $start];
+        }
+
+        return [
+            'start' => $start,
+            'end' => $end,
+            'label' => $start->format('d/m/Y') . ' - ' . $end->format('d/m/Y'),
+        ];
+    }
+
+    private function parseDate(string $value): ?DateTimeImmutable
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $formats = ['Y-m-d', 'd/m/Y', 'd-m-Y'];
+        foreach ($formats as $format) {
+            $date = DateTimeImmutable::createFromFormat($format, $value);
+            if ($date instanceof DateTimeImmutable) {
+                return $date;
+            }
+        }
+
+        return null;
+    }
+
+    private function getSolicitudesFunnel(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $sql = "SELECT sp.estado, sp.prioridad, sp.turno, sp.id
+            FROM solicitud_procedimiento sp
+            WHERE sp.procedimiento IS NOT NULL
+              AND sp.procedimiento != ''
+              AND sp.procedimiento != 'SELECCIONE'
+              AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
+
+        $etapas = [
+            'recibido' => 0,
+            'llamado' => 0,
+            'en-atencion' => 0,
+            'revision-codigos' => 0,
+            'docs-completos' => 0,
+            'aprobacion-anestesia' => 0,
+            'listo-para-agenda' => 0,
+            'otros' => 0,
+        ];
+
+        $totales = [
+            'registradas' => 0,
+            'agendadas' => 0,
+            'urgentes_sin_turno' => 0,
+        ];
+
+        $prioridades = [
+            'urgente' => 0,
+            'alta' => 0,
+            'normal' => 0,
+            'otros' => 0,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $totales['registradas']++;
+
+            $estadoSlug = $this->slugify((string) ($row['estado'] ?? ''));
+            if ($estadoSlug === '') {
+                $estadoSlug = 'otros';
+            }
+
+            if (!array_key_exists($estadoSlug, $etapas)) {
+                $estadoSlug = 'otros';
+            }
+            $etapas[$estadoSlug]++;
+
+            $prioridad = $this->slugify((string) ($row['prioridad'] ?? ''));
+            if (isset($prioridades[$prioridad])) {
+                $prioridades[$prioridad]++;
+            } else {
+                $prioridades['otros']++;
+            }
+
+            $turno = trim((string) ($row['turno'] ?? ''));
+            if ($turno !== '') {
+                $totales['agendadas']++;
+            }
+
+            if ($prioridad === 'urgente' && $turno === '') {
+                $totales['urgentes_sin_turno']++;
+            }
+        }
+
+        $conversion = 0.0;
+        if ($totales['registradas'] > 0) {
+            $conversion = round(($totales['agendadas'] / $totales['registradas']) * 100, 1);
+        }
+
+        $conCirugia = $this->countSolicitudesConCirugia($start, $end);
+
+        return [
+            'etapas' => $etapas,
+            'totales' => array_merge($totales, [
+                'con_cirugia' => $conCirugia,
+                'conversion_agendada' => $conversion,
+            ]),
+            'prioridades' => $prioridades,
+        ];
+    }
+
+    private function countSolicitudesConCirugia(DateTimeInterface $start, DateTimeInterface $end): int
+    {
+        $sql = "SELECT COUNT(DISTINCT sp.id) AS total
+            FROM solicitud_procedimiento sp
+            INNER JOIN protocolo_data pr ON pr.form_id = sp.form_id AND pr.hc_number = sp.hc_number
+            WHERE sp.procedimiento IS NOT NULL
+              AND sp.procedimiento != ''
+              AND sp.procedimiento != 'SELECCIONE'
+              AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin
+              AND pr.fecha_inicio BETWEEN :inicio AND :fin";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    private function getCrmBacklogStats(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $sql = "SELECT
+                SUM(CASE WHEN t.estado IN ('pendiente', 'en_progreso') THEN 1 ELSE 0 END) AS pendientes,
+                SUM(CASE WHEN t.estado = 'completado' THEN 1 ELSE 0 END) AS completadas,
+                SUM(CASE WHEN t.estado IN ('pendiente', 'en_progreso') AND t.due_date < CURDATE() THEN 1 ELSE 0 END) AS vencidas,
+                SUM(CASE WHEN t.estado IN ('pendiente', 'en_progreso') AND DATE(t.due_date) = CURDATE() THEN 1 ELSE 0 END) AS vencen_hoy
+            FROM solicitud_crm_tareas t
+            INNER JOIN solicitud_procedimiento sp ON sp.id = t.solicitud_id
+            WHERE COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start->format('Y-m-d 00:00:00'),
+            ':fin' => $end->format('Y-m-d 23:59:59'),
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $pendientes = (int) ($row['pendientes'] ?? 0);
+        $completadas = (int) ($row['completadas'] ?? 0);
+        $vencidas = (int) ($row['vencidas'] ?? 0);
+        $vencenHoy = (int) ($row['vencen_hoy'] ?? 0);
+
+        $total = $pendientes + $completadas;
+        $avance = $total > 0 ? round(($completadas / $total) * 100, 1) : 0.0;
+
+        return [
+            'pendientes' => $pendientes,
+            'completadas' => $completadas,
+            'vencidas' => $vencidas,
+            'vencen_hoy' => $vencenHoy,
+            'avance' => $avance,
+        ];
+    }
+
+    private function getAiSummary(): array
+    {
+        $service = new AIConfigService($this->db);
+        $provider = $service->getActiveProvider();
+        $features = [
+            'consultas_enfermedad' => $service->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_ENFERMEDAD),
+            'consultas_plan' => $service->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_PLAN),
+        ];
+
+        return [
+            'provider' => $provider,
+            'features' => $features,
+            'provider_configured' => $provider !== '',
+        ];
+    }
+
+    private function buildKpiCards(array $solicitudesFunnel, array $crmBacklog, array $revisionEstados, array $aiSummary): array
+    {
+        $registradas = $solicitudesFunnel['totales']['registradas'] ?? 0;
+        $agendadas = $solicitudesFunnel['totales']['agendadas'] ?? 0;
+        $conversion = $solicitudesFunnel['totales']['conversion_agendada'] ?? 0;
+        $conCirugia = $solicitudesFunnel['totales']['con_cirugia'] ?? 0;
+        $urgentesSinTurno = $solicitudesFunnel['totales']['urgentes_sin_turno'] ?? 0;
+
+        $cards = [
+            [
+                'title' => 'Solicitudes registradas',
+                'value' => $registradas,
+                'description' => 'Ingresadas en el periodo seleccionado',
+                'icon' => 'svg-icon/color-svg/custom-20.svg',
+                'tag' => $conversion > 0 ? $conversion . '% agendadas' : 'Sin agenda registrada',
+            ],
+            [
+                'title' => 'Agenda confirmada',
+                'value' => $agendadas,
+                'description' => 'Solicitudes con turno asignado',
+                'icon' => 'svg-icon/color-svg/custom-19.svg',
+                'tag' => $conCirugia > 0 ? $conCirugia . ' con cirugía' : 'Sin cirugías vinculadas',
+            ],
+            [
+                'title' => 'Urgentes sin turno',
+                'value' => $urgentesSinTurno,
+                'description' => 'Prioridad urgente pendientes de agenda',
+                'icon' => 'svg-icon/color-svg/custom-18.svg',
+                'tag' => $urgentesSinTurno > 0 ? 'Revisar backlog' : 'Todo al día',
+            ],
+        ];
+
+        $cards[] = [
+            'title' => 'Tareas CRM vencidas',
+            'value' => $crmBacklog['vencidas'] ?? 0,
+            'description' => 'Pendientes de seguimiento',
+            'icon' => 'svg-icon/color-svg/custom-21.svg',
+            'tag' => ($crmBacklog['avance'] ?? 0) . '% completadas',
+        ];
+
+        $cards[] = [
+            'title' => 'Protocolos sin revisar',
+            'value' => $revisionEstados['no_revisados'] ?? 0,
+            'description' => 'Listos para auditoría final',
+            'icon' => 'svg-icon/color-svg/custom-22.svg',
+            'tag' => ($revisionEstados['incompletos'] ?? 0) . ' incompletos',
+        ];
+
+        $cards[] = [
+            'title' => 'Asistente IA',
+            'value' => $aiSummary['provider_configured'] ? 'Activo' : 'Inactivo',
+            'description' => $aiSummary['provider_configured'] ? strtoupper($aiSummary['provider']) : 'Configurar proveedor',
+            'icon' => 'svg-icon/color-svg/custom-23.svg',
+            'tag' => $aiSummary['features']['consultas_enfermedad'] && $aiSummary['features']['consultas_plan']
+                ? 'Consultas y planes habilitados'
+                : 'Funciones limitadas',
+        ];
+
+        return $cards;
+    }
+
+    private function slugify(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/[^a-z0-9]+/u', '-', $value);
+        return trim($value ?? '', '-');
+    }
+
+    private function formatDateRangeForView(array $range): array
+    {
+        return [
+            'label' => $range['label'],
+            'start' => $range['start']->format('Y-m-d'),
+            'end' => $range['end']->format('Y-m-d'),
         ];
     }
 }

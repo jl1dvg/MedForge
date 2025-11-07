@@ -1,6 +1,4 @@
-//[Dashboard Javascript]
-
-//Project:	Doclinic - Responsive Admin Template
+//Project:      Doclinic - Responsive Admin Template
 //Primary use:   Used only for the main dashboard (index.html)
 
 
@@ -8,10 +6,16 @@ $(function () {
 
     'use strict';
 
-    var options = {
+    function toNumber(value) {
+        var parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    // Procedimientos más realizados
+    var procedimientosChart = new ApexCharts(document.querySelector("#patient_statistics"), {
         series: [{
             name: 'Procedimientos',
-            data: procedimientos_membrete  // Datos dinámicos de procedimientos
+            data: procedimientos_membrete
         }],
         chart: {
             type: 'bar',
@@ -19,20 +23,20 @@ $(function () {
             height: 260,
             stacked: true,
             toolbar: {
-                show: false,
+                show: false
             }
         },
         plotOptions: {
             bar: {
                 horizontal: false,
-                columnWidth: '30%',
-            },
+                columnWidth: '30%'
+            }
         },
         dataLabels: {
-            enabled: false,
+            enabled: false
         },
         grid: {
-            show: true,
+            show: true
         },
         stroke: {
             show: true,
@@ -41,12 +45,11 @@ $(function () {
         },
         colors: ['#5156be'],
         xaxis: {
-            categories: membretes,  // Los membretes dinámicos desde PHP
+            categories: membretes
         },
-        yaxis: {},
         legend: {
             show: true,
-            position: 'top',
+            position: 'top'
         },
         fill: {
             opacity: 1
@@ -58,81 +61,171 @@ $(function () {
                 }
             },
             marker: {
-                show: false,
-            },
+                show: false
+            }
         }
+    });
+    procedimientosChart.render();
+
+    // Embudo de solicitudes
+    var etapasOrden = ['recibido', 'llamado', 'en-atencion', 'revision-codigos', 'docs-completos', 'aprobacion-anestesia', 'listo-para-agenda', 'otros'];
+    var etapasEtiquetas = {
+        'recibido': 'Recibido',
+        'llamado': 'Llamado',
+        'en-atencion': 'En atención',
+        'revision-codigos': 'Revisión de códigos',
+        'docs-completos': 'Docs completos',
+        'aprobacion-anestesia': 'Aprobación anestesia',
+        'listo-para-agenda': 'Listo para agenda',
+        'otros': 'Otros'
     };
+    var funnelValores = etapasOrden.map(function (clave) {
+        return toNumber(solicitudesFunnel.etapas ? solicitudesFunnel.etapas[clave] : 0);
+    });
+    var funnelCategorias = etapasOrden.map(function (clave) {
+        return etapasEtiquetas[clave] || clave;
+    });
 
-    var chart = new ApexCharts(document.querySelector("#patient_statistics"), options);
-    chart.render();
-
-
-    // Configuración del gráfico de pastel
-    var options = {
-        series: [incompletos, revisados, no_revisados],  // Datos dinámicos de estados
-        chart: {
-            type: 'pie',
-            height: 300
-        },
-        labels: ['Incompletos', 'Revisados', 'No Revisados'],  // Etiquetas del gráfico
-        colors: ['#FF6347', '#32CD32', '#FFD700'],  // Colores personalizables para cada estado
-        legend: {
-            position: 'bottom'
-        },
-        tooltip: {
-            y: {
+    var funnelEl = document.querySelector("#solicitudes_funnel_chart");
+    if (funnelEl) {
+        new ApexCharts(funnelEl, {
+            series: [{
+                data: funnelValores,
+                name: 'Solicitudes'
+            }],
+            chart: {
+                type: 'bar',
+                height: 320
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: true,
+                    barHeight: '60%',
+                    distributed: true
+                }
+            },
+            colors: ['#9fa8da', '#7986cb', '#5c6bc0', '#3f51b5', '#3949ab', '#303f9f', '#283593', '#1a237e'],
+            dataLabels: {
+                enabled: true,
                 formatter: function (val) {
-                    return val + " procedimientos";
+                    return val;
+                }
+            },
+            xaxis: {
+                categories: funnelCategorias
+            },
+            tooltip: {
+                y: {
+                    formatter: function (val) {
+                        return val + ' solicitudes';
+                    }
                 }
             }
-        }
-    };
+        }).render();
+    }
 
-    var chart = new ApexCharts(document.querySelector("#recovery_statistics"), options);
-    chart.render();
+    // Backlog CRM
+    var backlogEl = document.querySelector("#crm_backlog_chart");
+    if (backlogEl) {
+        var backlogPendientes = toNumber(crmBacklog.pendientes);
+        var backlogVencidas = toNumber(crmBacklog.vencidas);
+        var backlogCompletadas = toNumber(crmBacklog.completadas);
 
+        new ApexCharts(backlogEl, {
+            series: [backlogPendientes, backlogVencidas, backlogCompletadas],
+            chart: {
+                type: 'donut',
+                height: 320
+            },
+            labels: ['Pendientes', 'Vencidas', 'Completadas'],
+            colors: ['#42a5f5', '#ef5350', '#66bb6a'],
+            dataLabels: {
+                enabled: true
+            },
+            legend: {
+                position: 'bottom'
+            },
+            tooltip: {
+                y: {
+                    formatter: function (val) {
+                        return val + ' tareas';
+                    }
+                }
+            }
+        }).render();
+    }
+
+    // Estado de protocolos
+    var revisionEl = document.querySelector("#revision_estado_chart");
+    if (revisionEl) {
+        var revisionSeries = [
+            toNumber(revisionEstados.incompletos),
+            toNumber(revisionEstados.revisados),
+            toNumber(revisionEstados.no_revisados)
+        ];
+
+        new ApexCharts(revisionEl, {
+            series: revisionSeries,
+            chart: {
+                type: 'pie',
+                height: 320
+            },
+            labels: ['Incompletos', 'Revisados', 'Listos sin revisión'],
+            colors: ['#FF7043', '#66BB6A', '#FFD54F'],
+            legend: {
+                position: 'bottom'
+            },
+            tooltip: {
+                y: {
+                    formatter: function (val) {
+                        return val + ' protocolos';
+                    }
+                }
+            }
+        }).render();
+    }
 
     // Gráfico de procedimientos por día
-    var options = {
-        series: [{
-            name: 'Procedimientos por Día',
-            type: 'column',
-            data: procedimientos_dia  // Aquí cargamos los datos dinámicos
-        }],
-        chart: {
-            height: 350,
-            type: 'line',
-            toolbar: {
-                show: false,
+    var procedimientosDiaEl = document.querySelector("#total_patient");
+    if (procedimientosDiaEl) {
+        new ApexCharts(procedimientosDiaEl, {
+            series: [{
+                name: 'Procedimientos por día',
+                type: 'column',
+                data: procedimientos_dia
+            }],
+            chart: {
+                height: 350,
+                type: 'line',
+                toolbar: {
+                    show: false
+                }
+            },
+            stroke: {
+                width: [0, 4],
+                curve: 'smooth'
+            },
+            colors: ['#E7E4FF', '#5156be'],
+            dataLabels: {
+                enabled: false
+            },
+            labels: fechas,
+            xaxis: {
+                type: 'category'
+            },
+            legend: {
+                show: true,
+                position: 'top'
             }
-        },
-        stroke: {
-            width: [0, 4],
-            curve: 'smooth'
-        },
-        colors: ['#E7E4FF', '#5156be'],
-        dataLabels: {
-            enabled: false,
-        },
-        labels: fechas,  // Fechas dinámicas cargadas desde PHP
-        xaxis: {
-            type: 'category'
-        },
-        legend: {
-            show: true,
-            position: 'top',
-        }
-    };
-
-    var chart = new ApexCharts(document.querySelector("#total_patient"), options);
-    chart.render();
+        }).render();
+    }
 
     $('.inner-user-div3').slimScroll({
         height: '310px'
     });
 
     $('.inner-user-div4').slimScroll({
-        height: '127px'
+        height: '200px'
     });
 
     $('.owl-carousel').owlCarousel({
@@ -144,13 +237,13 @@ $(function () {
         nav: true,
         responsive: {
             0: {
-                items: 1,
+                items: 1
             },
             600: {
-                items: 1,
+                items: 1
             },
             1000: {
-                items: 1,
+                items: 1
             }
         }
     });
