@@ -308,6 +308,90 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'ai' => [
+                'title' => 'Inteligencia Artificial',
+                'icon' => 'fa-solid fa-robot',
+                'description' => 'Administra los proveedores de IA y qué funciones clínicas utilizan asistencia automatizada.',
+                'groups' => [
+                    [
+                        'id' => 'provider',
+                        'title' => 'Proveedor activo',
+                        'description' => 'Selecciona el motor principal de IA que se usará en la plataforma.',
+                        'fields' => [
+                            self::selectField(
+                                'ai_provider',
+                                'Proveedor de IA',
+                                [
+                                    '' => 'Desactivado',
+                                    'openai' => 'OpenAI',
+                                ],
+                                'openai'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'openai_credentials',
+                        'title' => 'Credenciales de OpenAI',
+                        'description' => 'Configura el acceso a la Responses API o a un gateway compatible.',
+                        'fields' => [
+                            array_merge(
+                                self::passwordField('ai_openai_api_key', 'API Key de OpenAI'),
+                                ['required' => true]
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'ai_openai_endpoint',
+                                    'Endpoint principal',
+                                    true,
+                                    'URL completa al endpoint compatible con Responses API.'
+                                ),
+                                ['default' => 'https://api.openai.com/v1/responses']
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'ai_openai_model',
+                                    'Modelo predeterminado',
+                                    true,
+                                    'Modelo utilizado por defecto para las solicitudes clínicas.'
+                                ),
+                                ['default' => 'gpt-4o-mini']
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'ai_openai_max_output_tokens',
+                                    'Límite de tokens de salida',
+                                    400,
+                                    'Define el máximo de tokens que se solicitará al generar respuestas.'
+                                ),
+                                ['default' => 400]
+                            ),
+                            self::textField(
+                                'ai_openai_organization',
+                                'Organización (opcional)',
+                                false,
+                                'Solo necesario si tu cuenta requiere cabecera OpenAI-Organization.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'features',
+                        'title' => 'Funciones asistidas',
+                        'description' => 'Activa o desactiva las herramientas clínicas que utilizan IA.',
+                        'fields' => [
+                            self::checkboxField(
+                                'ai_enable_consultas_enfermedad',
+                                'Sugerencias para enfermedad actual en consultas',
+                                true
+                            ),
+                            self::checkboxField(
+                                'ai_enable_consultas_plan',
+                                'Propuestas de plan y procedimientos',
+                                true
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'localization' => [
                 'title' => 'Localización',
                 'icon' => 'fa-solid fa-earth-americas',
