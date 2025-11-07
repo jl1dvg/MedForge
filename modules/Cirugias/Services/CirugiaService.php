@@ -74,6 +74,157 @@ class CirugiaService
         return $allowNull ? null : $fallback;
     }
 
+    private function decodeJsonToArray(?string $json): ?array
+    {
+        if ($json === null) {
+            return null;
+        }
+
+        if (!is_string($json)) {
+            return null;
+        }
+
+        $json = trim($json);
+
+        if ($json === '' || strcasecmp($json, 'null') === 0) {
+            return null;
+        }
+
+        $decoded = json_decode($json, true);
+
+        return json_last_error() === JSON_ERROR_NONE && is_array($decoded) ? $decoded : null;
+    }
+
+    private function isList(array $array): bool
+    {
+        if ($array === []) {
+            return true;
+        }
+
+        return array_keys($array) === range(0, count($array) - 1);
+    }
+
+    private function isInsumoItemFilled(mixed $item): bool
+    {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $cantidad = isset($item['cantidad']) ? (int) $item['cantidad'] : null;
+        $id = $item['id'] ?? null;
+        $nombre = $item['nombre'] ?? null;
+
+        if ($cantidad !== null && $cantidad <= 0) {
+            $cantidad = null;
+        }
+
+        if ($cantidad !== null && ($id !== null && $id !== '' || ($nombre !== null && $nombre !== ''))) {
+            return true;
+        }
+
+        if ($cantidad === null && (($id !== null && $id !== '') || ($nombre !== null && $nombre !== ''))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function hasInsumosContenido(?array $insumos): bool
+    {
+        if ($insumos === null) {
+            return false;
+        }
+
+        if ($this->isList($insumos)) {
+            foreach ($insumos as $item) {
+                if ($this->isInsumoItemFilled($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach ($insumos as $value) {
+            if (!is_array($value)) {
+                if ($value !== null && $value !== '') {
+                    return true;
+                }
+                continue;
+            }
+
+            if ($this->isList($value)) {
+                foreach ($value as $item) {
+                    if ($this->isInsumoItemFilled($item)) {
+                        return true;
+                    }
+                }
+            } elseif ($this->isInsumoItemFilled($value)) {
+                return true;
+            } elseif ($this->hasInsumosContenido($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isMedicamentoItemFilled(mixed $item): bool
+    {
+        if (!is_array($item)) {
+            return false;
+        }
+
+        $campos = ['id', 'medicamento', 'dosis', 'frecuencia', 'via_administracion', 'responsable'];
+        foreach ($campos as $campo) {
+            if (isset($item[$campo]) && $item[$campo] !== '' && $item[$campo] !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasMedicamentosContenido(?array $medicamentos): bool
+    {
+        if ($medicamentos === null) {
+            return false;
+        }
+
+        if ($this->isList($medicamentos)) {
+            foreach ($medicamentos as $item) {
+                if ($this->isMedicamentoItemFilled($item)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach ($medicamentos as $value) {
+            if (!is_array($value)) {
+                if ($value !== null && $value !== '') {
+                    return true;
+                }
+                continue;
+            }
+
+            if ($this->isList($value)) {
+                foreach ($value as $item) {
+                    if ($this->isMedicamentoItemFilled($item)) {
+                        return true;
+                    }
+                }
+            } elseif ($this->isMedicamentoItemFilled($value)) {
+                return true;
+            } elseif ($this->hasMedicamentosContenido($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Devuelve el listado completo de cirugías con los campos necesarios para el reporte.
      *
@@ -205,11 +356,9 @@ class CirugiaService
 
     public function obtenerInsumosPorProtocolo(?string $procedimientoId, ?string $jsonInsumosProtocolo): array
     {
-        if (!empty($jsonInsumosProtocolo)) {
-            $decoded = json_decode($jsonInsumosProtocolo, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                return $decoded;
-            }
+        $decoded = $this->decodeJsonToArray($jsonInsumosProtocolo);
+        if ($this->hasInsumosContenido($decoded)) {
+            return $decoded;
         }
 
         if (!$procedimientoId) {
@@ -221,18 +370,16 @@ class CirugiaService
         $stmt->execute([$procedimientoId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $decoded = json_decode($row['insumos'] ?? '[]', true);
-        return json_last_error() === JSON_ERROR_NONE && is_array($decoded) ? $decoded : [];
+        $decoded = $this->decodeJsonToArray($row['insumos'] ?? null) ?? [];
+
+        return $this->hasInsumosContenido($decoded) ? $decoded : [];
     }
 
     public function obtenerMedicamentosConfigurados(?string $jsonMedicamentos, ?string $procedimientoId): array
     {
-        $jsonMedicamentos = trim($jsonMedicamentos ?? '');
-        if ($jsonMedicamentos !== '' && $jsonMedicamentos !== '[]') {
-            $decoded = json_decode($jsonMedicamentos, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                return $decoded;
-            }
+        $decoded = $this->decodeJsonToArray($jsonMedicamentos);
+        if ($this->hasMedicamentosContenido($decoded)) {
+            return $decoded;
         }
 
         if (!$procedimientoId) {
@@ -242,9 +389,10 @@ class CirugiaService
         $stmt = $this->db->prepare("SELECT medicamentos FROM kardex WHERE procedimiento_id = ?");
         $stmt->execute([$procedimientoId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $decoded = json_decode($row['medicamentos'] ?? '[]', true);
 
-        return json_last_error() === JSON_ERROR_NONE && is_array($decoded) ? $decoded : [];
+        $decoded = $this->decodeJsonToArray($row['medicamentos'] ?? null) ?? [];
+
+        return $this->hasMedicamentosContenido($decoded) ? $decoded : [];
     }
 
     public function obtenerOpcionesMedicamentos(): array
@@ -262,7 +410,10 @@ class CirugiaService
             $existeStmt->execute([':form_id' => $data['form_id']]);
             $procedimientoIdExistente = $existeStmt->fetchColumn();
 
-            if (isset($procedimientoIdExistente) && empty($data['procedimiento_id'])) {
+            $procedimientoSeleccionado = $data['procedimiento_id'] ?? null;
+
+            if (isset($procedimientoIdExistente) && empty($procedimientoSeleccionado)) {
+                $procedimientoSeleccionado = $procedimientoIdExistente;
                 $data['procedimiento_id'] = $procedimientoIdExistente;
             }
 
@@ -274,6 +425,32 @@ class CirugiaService
 
             if ($this->lastError !== null) {
                 return false;
+            }
+
+            $procedimientoIdNormalizado = $this->normalizeNullableString($procedimientoSeleccionado);
+
+            if ($procedimientoIdNormalizado !== null) {
+                $insumosArray = $this->decodeJsonToArray($insumos);
+                if (!$this->hasInsumosContenido($insumosArray)) {
+                    $insumosDefault = $this->obtenerInsumosPorProtocolo($procedimientoIdNormalizado, null);
+                    if (!empty($insumosDefault)) {
+                        $encoded = json_encode($insumosDefault, JSON_UNESCAPED_UNICODE);
+                        if ($encoded !== false) {
+                            $insumos = $encoded;
+                        }
+                    }
+                }
+
+                $medicamentosArray = $this->decodeJsonToArray($medicamentos);
+                if (!$this->hasMedicamentosContenido($medicamentosArray)) {
+                    $medicamentosDefault = $this->obtenerMedicamentosConfigurados(null, $procedimientoIdNormalizado);
+                    if (!empty($medicamentosDefault)) {
+                        $encoded = json_encode($medicamentosDefault, JSON_UNESCAPED_UNICODE);
+                        if ($encoded !== false) {
+                            $medicamentos = $encoded;
+                        }
+                    }
+                }
             }
 
             $sql = "INSERT INTO protocolo_data (
@@ -324,7 +501,7 @@ class CirugiaService
 
             $stmt = $this->db->prepare($sql);
             if ($stmt->execute([
-                'procedimiento_id' => $this->normalizeNullableString($data['procedimiento_id'] ?? null),
+                'procedimiento_id' => $procedimientoIdNormalizado,
                 'membrete' => $this->normalizeNullableString($data['membrete'] ?? null),
                 'dieresis' => $this->normalizeNullableString($data['dieresis'] ?? null),
                 'exposicion' => $this->normalizeNullableString($data['exposicion'] ?? null),
@@ -539,13 +716,33 @@ class CirugiaService
         ];
 
         if ($insumos !== null) {
-            $sets[] = 'insumos = :insumos';
-            $params[':insumos'] = $this->normalizeJson($insumos) ?? '[]';
+            $insumosNormalizados = $this->normalizeJson($insumos);
+
+            if ($this->lastError !== null) {
+                return false;
+            }
+
+            $insumosArray = $this->decodeJsonToArray($insumosNormalizados);
+
+            if ($this->hasInsumosContenido($insumosArray)) {
+                $sets[] = 'insumos = :insumos';
+                $params[':insumos'] = $insumosNormalizados;
+            }
         }
 
         if ($medicamentos !== null) {
-            $sets[] = 'medicamentos = :medicamentos';
-            $params[':medicamentos'] = $this->normalizeJson($medicamentos) ?? '[]';
+            $medicamentosNormalizados = $this->normalizeJson($medicamentos);
+
+            if ($this->lastError !== null) {
+                return false;
+            }
+
+            $medicamentosArray = $this->decodeJsonToArray($medicamentosNormalizados);
+
+            if ($this->hasMedicamentosContenido($medicamentosArray)) {
+                $sets[] = 'medicamentos = :medicamentos';
+                $params[':medicamentos'] = $medicamentosNormalizados;
+            }
         }
 
         if (empty($sets)) {
