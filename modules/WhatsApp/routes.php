@@ -1,9 +1,15 @@
 <?php
 
 use Core\Router;
+use Modules\WhatsApp\Controllers\AutoresponderController;
 use Modules\WhatsApp\Controllers\TemplateController;
+use Modules\WhatsApp\Controllers\WebhookController;
 
 return static function (Router $router): void {
+    $router->get('/whatsapp/autoresponder', static function (\PDO $pdo): void {
+        (new AutoresponderController($pdo))->index();
+    });
+
     $router->get('/whatsapp/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->index();
     });
@@ -22,5 +28,9 @@ return static function (Router $router): void {
 
     $router->post('/whatsapp/api/templates/{templateId}/delete', static function (\PDO $pdo, string $templateId): void {
         (new TemplateController($pdo))->deleteTemplate($templateId);
+    });
+
+    $router->match(['GET', 'POST'], '/whatsapp/webhook', static function (\PDO $pdo): void {
+        (new WebhookController($pdo))->handle();
     });
 };
