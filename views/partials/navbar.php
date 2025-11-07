@@ -60,7 +60,7 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                     </li>
                     <li class="<?= isActive('/crm') ?>">
-                        <a href="<?= BASE_URL . 'crm'; ?>">
+                        <a href="/crm">
                             <i class="mdi mdi-account-group-outline"><span class="path1"></span><span class="path2"></span></i>
                             <span>CRM</span>
                         </a>
@@ -79,7 +79,7 @@ if (!function_exists('isTreeOpen')) {
                                 </a>
                             </li>
                             <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
-                                <a href="<?= BASE_URL . 'views/pacientes/flujo/flujo.php'; ?>">
+                                <a href="/views/pacientes/flujo/flujo.php">
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
                                 </a>
                             </li>
@@ -95,22 +95,22 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                         <ul class="treeview-menu">
                             <li class="<?= isActive('/solicitudes') ?: isActive('/views/solicitudes/solicitudes.php') ?>">
-                                <a href="<?= BASE_URL . 'solicitudes'; ?>">
+                                <a href="/solicitudes">
                                     <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>
                             </li>
                             <li class="<?= isActive('/cirugias') ?>">
-                                <a href="<?= BASE_URL . 'cirugias'; ?>">
+                                <a href="/cirugias">
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
                                 </a>
                             </li>
                             <li class="<?= isActive('/ipl') ?: isActive('/views/ipl/ipl_planificador_lista.php') ?>">
-                                <a href="<?= BASE_URL . 'ipl'; ?>">
+                                <a href="/ipl">
                                     <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
                                 </a>
                             </li>
                             <li class="<?= isActive('/protocolos') ?>">
-                                <a href="<?= BASE_URL . 'protocolos'; ?>">
+                                <a href="/protocolos">
                                     <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
                                 </a>
                             </li>
@@ -126,12 +126,12 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                         <ul class="treeview-menu">
                             <li class="<?= isActive('/insumos') ?>">
-                                <a href="<?= BASE_URL . 'insumos'; ?>">
+                                <a href="/insumos">
                                     <i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos
                                 </a>
                             </li>
                             <li class="<?= isActive('/insumos/medicamentos') ?>">
-                                <a href="<?= BASE_URL . 'insumos/medicamentos'; ?>">
+                                <a href="/insumos/medicamentos">
                                     <i class="mdi mdi-pill"></i>Lista de Medicamentos
                                 </a>
                             </li>
@@ -147,27 +147,27 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                         <ul class="treeview-menu">
                             <li class="<?= isActive('/informes/isspol') ?>">
-                                <a href="<?= BASE_URL . 'informes/isspol'; ?>">
+                                <a href="/informes/isspol">
                                     <i class="mdi mdi-shield"></i>ISSPOL
                                 </a>
                             </li>
                             <li class="<?= isActive('/informes/issfa') ?>">
-                                <a href="<?= BASE_URL . 'informes/issfa'; ?>">
+                                <a href="/informes/issfa">
                                     <i class="mdi mdi-star"></i>ISSFA
                                 </a>
                             </li>
                             <li class="<?= isActive('/informes/iess') ?>">
-                                <a href="<?= BASE_URL . 'informes/iess'; ?>">
+                                <a href="/informes/iess">
                                     <i class="mdi mdi-account"></i>IESS
                                 </a>
                             </li>
                             <li class="<?= isActive('/informes/particulares') ?>">
-                                <a href="<?= BASE_URL . 'informes/particulares'; ?>">
+                                <a href="/informes/particulares">
                                     <i class="mdi mdi-account-outline"></i>Particulares
                                 </a>
                             </li>
                             <li class="<?= isActive('/billing/no-facturados') ?>">
-                                <a href="<?= BASE_URL . 'billing/no-facturados'; ?>">
+                                <a href="/billing/no-facturados">
                                     <i class="mdi mdi-account-outline"></i>No Facturado
                                 </a>
                             </li>
@@ -184,7 +184,7 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                         <ul class="treeview-menu">
                             <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
-                                <a href="<?= BASE_URL . 'views/reportes/estadistica_flujo.php'; ?>">
+                                <a href="/views/reportes/estadistica_flujo.php">
                                     <i class="mdi mdi-chart-line"></i>Flujo de Pacientes
                                 </a>
                             </li>
@@ -211,28 +211,28 @@ if (!function_exists('isTreeOpen')) {
                             <ul class="treeview-menu">
                                 <?php if ($canAccessUsers): ?>
                                     <li class="<?= isActive('/usuarios') ?>">
-                                        <a href="<?= BASE_URL . 'usuarios'; ?>">
+                                        <a href="/usuarios">
                                             <i class="mdi mdi-account-key"></i>Usuarios
                                         </a>
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessRoles): ?>
                                     <li class="<?= isActive('/roles') ?>">
-                                        <a href="<?= BASE_URL . 'roles'; ?>">
+                                        <a href="/roles">
                                             <i class="mdi mdi-security"></i>Roles
                                         </a>
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessSettings): ?>
                                     <li class="<?= isActive('/settings') ?>">
-                                        <a href="<?= BASE_URL . 'settings'; ?>">
+                                        <a href="/settings">
                                             <i class="mdi mdi-cog-outline"></i>Ajustes
                                         </a>
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessCodes): ?>
                                     <li class="<?= isActive('/views/codes/index.php') ?>">
-                                        <a href="<?= BASE_URL . 'views/codes/index.php'; ?>">
+                                        <a href="/views/codes/index.php">
                                             <i class="mdi mdi-tag-text-outline"></i>Codificación
                                         </a>
                                     </li>
