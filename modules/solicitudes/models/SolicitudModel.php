@@ -334,25 +334,34 @@ class SolicitudModel
 
     public function buscarSolicitudesProgramadas(DateTimeImmutable $desde, DateTimeImmutable $hasta): array
     {
-        $stmt = $this->db->prepare("SELECT
-                sp.id,
-                sp.form_id,
-                sp.hc_number,
-                sp.estado,
-                sp.prioridad,
-                sp.procedimiento,
-                sp.doctor,
-                sp.tipo,
-                sp.afiliacion,
-                sp.turno,
-                COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
-                cd.quirofano,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
-            FROM solicitud_procedimiento sp
-            INNER JOIN patient_data pd ON pd.hc_number = sp.hc_number
-            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
-            WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :desde AND :hasta
-            ORDER BY COALESCE(cd.fecha, sp.fecha) ASC, sp.id ASC");
+        $columnas = [
+            'sp.id',
+            'sp.form_id',
+            'sp.hc_number',
+            'sp.estado',
+            'sp.prioridad',
+            'sp.procedimiento',
+            'sp.doctor',
+            'sp.tipo',
+            'sp.afiliacion',
+            'sp.turno',
+            'COALESCE(cd.fecha, sp.fecha) AS fecha_programada',
+        ];
+
+        if ($this->consultaDataTieneColumna('quirofano')) {
+            $columnas[] = 'cd.quirofano';
+        } else {
+            $columnas[] = 'NULL AS quirofano';
+        }
+
+        $columnas[] = "CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name";
+
+        $sql = sprintf(
+            "SELECT\n                %s\n            FROM solicitud_procedimiento sp\n            INNER JOIN patient_data pd ON pd.hc_number = sp.hc_number\n            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id\n            WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :desde AND :hasta\n            ORDER BY COALESCE(cd.fecha, sp.fecha) ASC, sp.id ASC",
+            implode(",\n                ", $columnas)
+        );
+
+        $stmt = $this->db->prepare($sql);
 
         $stmt->bindValue(':desde', $desde->format('Y-m-d H:i:s'));
         $stmt->bindValue(':hasta', $hasta->format('Y-m-d H:i:s'));
@@ -370,6 +379,23 @@ class SolicitudModel
         unset($row);
 
         return $resultados;
+    }
+
+    private function consultaDataTieneColumna(string $columna): bool
+    {
+        static $cache = [];
+
+        if (array_key_exists($columna, $cache)) {
+            return $cache[$columna];
+        }
+
+        $stmt = $this->db->prepare('SHOW COLUMNS FROM consulta_data LIKE :columna');
+        $stmt->bindValue(':columna', $columna, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $cache[$columna] = $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+
+        return $cache[$columna];
     }
 
     public function llamarTurno(?int $id, ?int $turno, string $nuevoEstado = 'Llamado'): ?array
