@@ -194,6 +194,43 @@ class SettingsHelper
                 'description' => 'Conecta servicios externos como Pusher y Google para ampliar las capacidades del sistema.',
                 'groups' => [
                     [
+                        'id' => 'whatsapp_cloud',
+                        'title' => 'WhatsApp Cloud API',
+                        'description' => 'Integra la API oficial de WhatsApp para enviar mensajes automáticos desde el CRM y planificar un chat interno.',
+                        'fields' => [
+                            self::checkboxField(
+                                'whatsapp_cloud_enabled',
+                                'Habilitar WhatsApp Cloud API',
+                                false,
+                                'Activa el envío de mensajes transaccionales y notificaciones por WhatsApp.'
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_phone_number_id',
+                                'Phone Number ID',
+                                true,
+                                'Identificador del número configurado en Meta Business.'
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_business_account_id',
+                                'Business Account ID'
+                            ),
+                            self::passwordField('whatsapp_cloud_access_token', 'Access Token'),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_cloud_api_version',
+                                    'Versión de la API de Graph'
+                                ),
+                                ['default' => 'v17.0']
+                            ),
+                            self::textField(
+                                'whatsapp_cloud_default_country_code',
+                                'Código de país predeterminado',
+                                false,
+                                'Se antepone si el número de teléfono no incluye prefijo internacional. Ej: 593.'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'pusher',
                         'title' => 'Pusher.com',
                         'description' => 'Configura las credenciales para habilitar notificaciones en tiempo real similares a Perfex.',

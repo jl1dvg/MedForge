@@ -4,16 +4,19 @@ namespace Modules\CRM\Models;
 
 use PDO;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\Notifications\Services\WhatsAppCloudService;
 
 class LeadModel
 {
     private PDO $pdo;
     private LeadConfigurationService $configService;
+    private WhatsAppCloudService $whatsapp;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->configService = new LeadConfigurationService($pdo);
+        $this->whatsapp = new WhatsAppCloudService($pdo);
     }
 
     public function getStatuses(): array
@@ -155,7 +158,14 @@ class LeadModel
         $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->execute();
 
-        return $this->find((int) $this->pdo->lastInsertId());
+        $lead = $this->find((int) $this->pdo->lastInsertId());
+        if ($lead) {
+            $this->notifyLeadEvent('created', $lead, [
+                'created_by' => $userId,
+            ]);
+        }
+
+        return $lead;
     }
 
     public function update(int $id, array $data): ?array
@@ -238,16 +248,36 @@ class LeadModel
 
         $stmt->execute();
 
-        return $this->find($id);
+        $actualizado = $this->find($id);
+        if ($actualizado) {
+            $this->notifyLeadEvent('updated', $actualizado, [
+                'previous' => $lead,
+                'changes' => $data,
+            ]);
+        }
+
+        return $actualizado;
     }
 
     public function updateStatus(int $id, string $status): ?array
     {
+        $anterior = $this->find($id);
+        if (!$anterior) {
+            return null;
+        }
+
         $status = $this->sanitizeStatus($status);
         $stmt = $this->pdo->prepare('UPDATE crm_leads SET status = :status WHERE id = :id');
         $stmt->execute([':status' => $status, ':id' => $id]);
 
-        return $this->find($id);
+        $actualizado = $this->find($id);
+        if ($actualizado) {
+            $this->notifyLeadEvent('status_updated', $actualizado, [
+                'previous' => $anterior,
+            ]);
+        }
+
+        return $actualizado;
     }
 
     public function attachCustomer(int $id, int $customerId): void
@@ -268,9 +298,149 @@ class LeadModel
 
         $customerId = $lead['customer_id'] ? (int) $lead['customer_id'] : $this->upsertCustomer($lead, $customerPayload);
         $this->attachCustomer($id, $customerId);
-        $this->updateStatus($id, $this->configService->getWonStage());
+        $actualizado = $this->updateStatus($id, $this->configService->getWonStage());
 
-        return $this->find($id);
+        if ($actualizado) {
+            $this->notifyLeadEvent('converted', $actualizado, [
+                'customer_id' => $customerId,
+            ]);
+        }
+
+        return $actualizado;
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     */
+    private function notifyLeadEvent(string $event, array $lead, array $context = []): void
+    {
+        if (!$this->whatsapp->isEnabled()) {
+            return;
+        }
+
+        $phones = $this->collectLeadPhones($lead, $context);
+        if (empty($phones)) {
+            return;
+        }
+
+        $message = $this->buildLeadMessage($event, $lead, $context);
+        if ($message === '') {
+            return;
+        }
+
+        $this->whatsapp->sendTextMessage($phones, $message);
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     *
+     * @return string[]
+     */
+    private function collectLeadPhones(array $lead, array $context = []): array
+    {
+        $phones = [];
+
+        foreach (['phone', 'contact_phone', 'customer_phone'] as $key) {
+            if (!empty($lead[$key])) {
+                $phones[] = (string) $lead[$key];
+            }
+        }
+
+        if (!empty($context['phone'])) {
+            $phones[] = (string) $context['phone'];
+        }
+
+        return array_values(array_unique(array_filter($phones)));
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     */
+    private function buildLeadMessage(string $event, array $lead, array $context = []): string
+    {
+        $brand = $this->whatsapp->getBrandName();
+        $greeting = $this->buildLeadGreeting($lead);
+
+        switch ($event) {
+            case 'created':
+                $lines = [
+                    $greeting,
+                    'Somos ' . $brand . '.',
+                    'Registramos tu solicitud y pronto te contactaremos.',
+                ];
+                if (!empty($lead['status'])) {
+                    $lines[] = 'Estado inicial: ' . $lead['status'];
+                }
+                if (!empty($lead['source'])) {
+                    $lines[] = 'Origen: ' . $lead['source'];
+                }
+                $lines[] = 'Si necesitas ayuda, responde a este mensaje.';
+
+                return implode("\n", array_filter($lines));
+
+            case 'updated':
+                $previous = $context['previous'] ?? [];
+                $statusChanged = ($lead['status'] ?? null) !== ($previous['status'] ?? null);
+                $assignedChanged = ($lead['assigned_to'] ?? null) !== ($previous['assigned_to'] ?? null);
+
+                if (!$statusChanged && !$assignedChanged) {
+                    return '';
+                }
+
+                $lines = [$greeting, 'Tenemos novedades desde ' . $brand . '.'];
+                if ($statusChanged && !empty($lead['status'])) {
+                    $lines[] = 'Tu estado ahora es: ' . $lead['status'];
+                }
+                if ($assignedChanged) {
+                    $asesor = $lead['assigned_name'] ?? 'nuestro equipo';
+                    $lines[] = 'Tu asesor asignado es: ' . $asesor;
+                }
+                $lines[] = 'Seguimos atentos a tus comentarios.';
+
+                return implode("\n", array_filter($lines));
+
+            case 'status_updated':
+                $previousStatus = $context['previous']['status'] ?? null;
+                if (($lead['status'] ?? null) === $previousStatus) {
+                    return '';
+                }
+
+                $lines = [$greeting];
+                if (!empty($lead['status'])) {
+                    $lines[] = 'Actualizamos el estado de tu caso a: ' . $lead['status'];
+                } else {
+                    $lines[] = 'Tenemos novedades sobre tu caso.';
+                }
+                $lines[] = 'Gracias por confiar en ' . $brand . '.';
+
+                return implode("\n", array_filter($lines));
+
+            case 'converted':
+                $lines = [
+                    $greeting,
+                    '🎉 ¡Tu proceso con ' . $brand . ' ha sido completado exitosamente!',
+                    'En breve nos pondremos en contacto para los siguientes pasos.',
+                ];
+
+                return implode("\n", array_filter($lines));
+
+            default:
+                return '';
+        }
+    }
+
+    private function buildLeadGreeting(array $lead): string
+    {
+        $name = trim((string) ($lead['name'] ?? ''));
+
+        if ($name === '') {
+            return 'Hola 👋';
+        }
+
+        return 'Hola ' . $name . ' 👋';
     }
 
     private function upsertCustomer(array $lead, array $payload): int
