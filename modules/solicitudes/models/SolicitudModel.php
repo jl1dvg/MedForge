@@ -46,6 +46,16 @@ class SolicitudModel
                 detalles.contacto_telefono AS crm_contacto_telefono,
                 detalles.responsable_id AS crm_responsable_id,
                 responsable.nombre AS crm_responsable_nombre,
+                responsable.profile_photo AS crm_responsable_avatar,
+                (
+                    SELECT u.profile_photo
+                    FROM users u
+                    WHERE u.profile_photo IS NOT NULL
+                      AND u.profile_photo <> ''
+                      AND LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                    ORDER BY u.id ASC
+                    LIMIT 1
+                ) AS doctor_avatar,
                 COALESCE(notas.total_notas, 0) AS crm_total_notas,
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,

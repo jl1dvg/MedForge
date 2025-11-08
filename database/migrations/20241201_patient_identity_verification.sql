@@ -24,7 +24,12 @@ CREATE TABLE IF NOT EXISTS patient_identity_certifications (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_patient_identity_certifications_patient (patient_id),
-    KEY idx_patient_identity_certifications_document (document_number)
+    KEY idx_patient_identity_certifications_document (document_number),
+    CONSTRAINT fk_patient_identity_certifications_patient
+        FOREIGN KEY (patient_id)
+        REFERENCES patient_data (hc_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS patient_identity_checkins (

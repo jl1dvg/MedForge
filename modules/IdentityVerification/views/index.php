@@ -2,6 +2,7 @@
 /** @var array $certifications */
 /** @var array $errors */
 /** @var array $old */
+/** @var array|null $selectedPatient */
 /** @var string|null $status */
 ?>
 <div class="content-header">
@@ -39,6 +40,26 @@
                                     <li><?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?></li>
                                 <?php endforeach; ?>
                             </ul>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($selectedPatient)): ?>
+                        <div class="alert alert-info">
+                            <div class="d-flex flex-column">
+                                <strong>Paciente seleccionado:</strong>
+                                <span>
+                                    <?= htmlspecialchars($selectedPatient['full_name'] !== '' ? $selectedPatient['full_name'] : 'Historia clínica ' . ($selectedPatient['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                </span>
+                                <small class="text-muted">
+                                    HC: <?= htmlspecialchars($selectedPatient['hc_number'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if (!empty($selectedPatient['cedula'])): ?>
+                                        · Cédula registrada: <?= htmlspecialchars($selectedPatient['cedula'], ENT_QUOTES, 'UTF-8') ?>
+                                    <?php endif; ?>
+                                    <?php if (!empty($selectedPatient['afiliacion'])): ?>
+                                        · Afiliación: <?= htmlspecialchars($selectedPatient['afiliacion'], ENT_QUOTES, 'UTF-8') ?>
+                                    <?php endif; ?>
+                                </small>
+                            </div>
                         </div>
                     <?php endif; ?>
 

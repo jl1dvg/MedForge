@@ -2,7 +2,7 @@
 
 use Core\Router;
 use Modules\IdentityVerification\Controllers\VerificationController;
-use PDO;
+//use PDO;
 
 return function (Router $router) {
     $router->get('/pacientes/certificaciones', function (PDO $pdo) {

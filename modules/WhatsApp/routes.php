@@ -1,10 +1,19 @@
 <?php
 
 use Core\Router;
+use Modules\WhatsApp\Controllers\AutoresponderController;
 use Modules\WhatsApp\Controllers\TemplateController;
 use Modules\WhatsApp\Controllers\WebhookController;
 
 return static function (Router $router): void {
+    $router->get('/whatsapp/autoresponder', static function (\PDO $pdo): void {
+        (new AutoresponderController($pdo))->index();
+    });
+
+    $router->post('/whatsapp/autoresponder', static function (\PDO $pdo): void {
+        (new AutoresponderController($pdo))->update();
+    });
+
     $router->get('/whatsapp/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->index();
     });

@@ -168,6 +168,32 @@ class VerificationModel
         ]);
     }
 
+    public function findPatientSummary(string $patientId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT hc_number, fname, mname, lname, lname2, cedula, celular, afiliacion
+            FROM patient_data
+            WHERE hc_number = :hc
+            LIMIT 1
+        ");
+        $stmt->bindValue(':hc', $patientId, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $patient = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$patient) {
+            return null;
+        }
+
+        $patient['full_name'] = trim(implode(' ', array_filter([
+            $patient['fname'] ?? null,
+            $patient['mname'] ?? null,
+            $patient['lname'] ?? null,
+            $patient['lname2'] ?? null,
+        ])));
+
+        return $patient;
+    }
+
     private function hydrate(array $row): array
     {
         $row['full_name'] = trim(implode(' ', array_filter([

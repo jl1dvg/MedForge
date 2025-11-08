@@ -1,4 +1,5 @@
 <?php
+
 use Core\Permissions;
 
 // Helpers para resaltar elementos activos y abrir treeviews según la URL actual
@@ -69,7 +70,8 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                     </li>
                     <li class="<?= isActive('/crm') ?>">
                         <a href="/crm">
-                            <i class="icon-Layout-top-panel-1"><span class="path1"></span><span class="path2"></span></i>
+                            <i class="icon-Layout-top-panel-1"><span class="path1"></span><span
+                                        class="path2"></span></i>
                             <span>CRM</span>
                         </a>
                     </li>
@@ -94,7 +96,7 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                             <?php if ($canAccessVerification): ?>
                                 <li class="<?= isActive('/pacientes/certificaciones') ?>">
                                     <a href="/pacientes/certificaciones">
-                                        <i class="mdi mdi-shield-account"></i>Certificación biométrica
+                                        <i class="mdi mdi-account-card-details"></i>Certificación biométrica
                                     </a>
                                 </li>
                             <?php endif; ?>
@@ -248,11 +250,16 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                 <?php if ($canAccessCronManager): ?>
                                     <li class="<?= isActive('/cron-manager') ?>">
                                         <a href="/cron-manager">
-                                            <i class="mdi mdi-clock-outline"></i>Cron Manager
+                                            <i class="mdi mdi-animation"></i>Cron Manager
                                         </a>
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessWhatsApp): ?>
+                                    <li class="<?= isActive('/whatsapp/autoresponder') ?>">
+                                        <a href="/whatsapp/autoresponder">
+                                            <i class="mdi mdi-clipboard-flow"></i>Flujo de autorespuesta
+                                        </a>
+                                    </li>
                                     <li class="<?= isActive('/whatsapp/templates') ?>">
                                         <a href="/whatsapp/templates">
                                             <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp

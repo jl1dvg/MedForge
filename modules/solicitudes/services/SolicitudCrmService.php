@@ -682,6 +682,15 @@ class SolicitudCrmService
                 responsable.nombre AS crm_responsable_nombre,
                 responsable.email AS crm_responsable_email,
                 responsable.profile_photo AS crm_responsable_avatar,
+                (
+                    SELECT u.profile_photo
+                    FROM users u
+                    WHERE u.profile_photo IS NOT NULL
+                      AND u.profile_photo <> ''
+                      AND LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                    ORDER BY u.id ASC
+                    LIMIT 1
+                ) AS doctor_avatar,
                 cl.status  AS crm_lead_status,
                 cl.source  AS crm_lead_source,
                 cl.updated_at AS crm_lead_updated_at,
@@ -727,6 +736,7 @@ class SolicitudCrmService
         }
 
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
+        $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
 
         $row['crm_pipeline_stage'] = $this->normalizarEtapa($row['crm_pipeline_stage'] ?? null);
 

@@ -1,9 +1,9 @@
-import {poblarAfiliacionesUnicas, poblarDoctoresUnicos} from './kanban/filtros.js';
-import {initKanban} from './kanban/index.js';
-import {setCrmOptions} from './kanban/crmPanel.js';
-import {showToast} from './kanban/toast.js';
-import {createNotificationPanel} from './notifications/panel.js';
-import {formatTurno} from './kanban/turnero.js';
+import { poblarAfiliacionesUnicas, poblarDoctoresUnicos } from './kanban/filtros.js';
+import { initKanban } from './kanban/index.js';
+import { setCrmOptions } from './kanban/crmPanel.js';
+import { showToast } from './kanban/toast.js';
+import { createNotificationPanel } from './notifications/panel.js';
+import { formatTurno } from './kanban/turnero.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const realtimeConfig = window.MEDF_PusherConfig || {};
@@ -71,15 +71,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (Notification.permission === 'default') {
-            Notification.requestPermission().catch(() => {
-            });
+            Notification.requestPermission().catch(() => {});
         }
 
         if (Notification.permission !== 'granted') {
             return;
         }
 
-        const notification = new Notification(title, {body});
+        const notification = new Notification(title, { body });
         if (autoDismissSeconds && autoDismissSeconds > 0) {
             setTimeout(() => notification.close(), autoDismissSeconds * 1000);
         }
@@ -146,14 +145,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const obtenerSemaforo = (dias) => {
         if (dias <= 3) {
-            return {label: 'Normal', badgeClass: 'text-bg-success'};
+            return { label: 'Normal', badgeClass: 'text-bg-success' };
         }
 
         if (dias <= 7) {
-            return {label: 'Pendiente', badgeClass: 'text-bg-warning text-dark'};
+            return { label: 'Pendiente', badgeClass: 'text-bg-warning text-dark' };
         }
 
-        return {label: 'Urgente', badgeClass: 'text-bg-danger'};
+        return { label: 'Urgente', badgeClass: 'text-bg-danger' };
     };
 
     const getInitials = (nombre) => {
@@ -202,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     };
 
-    const createOverviewCard = ({title, count, badge, badgeClass = 'text-bg-secondary', subtitle}) => {
+    const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle }) => {
         return `
             <div class="overview-card">
                 <h6>${escapeHtml(title)}</h6>
@@ -271,7 +270,6 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.entries(estadosMeta).forEach(([slug, meta]) => {
             // Omitir estados excluidos en el overview
             if (OVERVIEW_EXCLUDED_STATES.has(slug)) return;
-
             const count = counts[slug] || 0;
             const porcentaje = total ? Math.round((count / total) * 100) : 0;
             cards.push(createOverviewCard({
@@ -446,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return fetch('/solicitudes/kanban-data', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),
         })
             .then(async (response) => {
@@ -463,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return response.json();
             })
-            .then(({data = [], options = {}}) => {
+            .then(({ data = [], options = {} }) => {
                 window.__solicitudesKanban = Array.isArray(data) ? data : [];
 
                 if (options.afiliaciones) {
@@ -529,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
             notificationPanel.setIntegrationWarning('No se configuró la APP Key de Pusher en los ajustes.');
             console.warn('No se configuró la APP Key de Pusher.');
         } else {
-            const options = {forceTLS: true};
+            const options = { forceTLS: true };
             if (realtimeConfig.cluster) {
                 options.cluster = realtimeConfig.cluster;
             }
@@ -561,11 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
                     ],
                     badges: [
-                        data?.tipo ? {label: data.tipo, variant: 'bg-primary text-white'} : null,
-                        prioridad ? {
-                            label: `Prioridad ${prioridad}`,
-                            variant: urgente ? 'bg-danger text-white' : 'bg-success text-white'
-                        } : null,
+                        data?.tipo ? { label: data.tipo, variant: 'bg-primary text-white' } : null,
+                        prioridad ? { label: `Prioridad ${prioridad}`, variant: urgente ? 'bg-danger text-white' : 'bg-success text-white' } : null,
                     ].filter(Boolean),
                     icon: urgente ? 'mdi mdi-alert-decagram-outline' : 'mdi mdi-flash',
                     tone: urgente ? 'danger' : 'info',
@@ -594,11 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
                         ],
                         badges: [
-                            data?.prioridad ? {
-                                label: `Prioridad ${String(data.prioridad).toUpperCase()}`,
-                                variant: 'bg-secondary text-white'
-                            } : null,
-                            nuevoEstado ? {label: nuevoEstado, variant: 'bg-warning text-dark'} : null,
+                            data?.prioridad ? { label: `Prioridad ${String(data.prioridad).toUpperCase()}`, variant: 'bg-secondary text-white' } : null,
+                            nuevoEstado ? { label: nuevoEstado, variant: 'bg-warning text-dark' } : null,
                         ].filter(Boolean),
                         icon: 'mdi mdi-view-kanban',
                         tone: 'warning',
@@ -629,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             data?.fuente ? `Fuente: ${data.fuente}` : '',
                         ],
                         badges: [
-                            etapa ? {label: etapa, variant: 'bg-info text-white'} : null,
+                            etapa ? { label: etapa, variant: 'bg-info text-white' } : null,
                         ].filter(Boolean),
                         icon: 'mdi mdi-account-cog-outline',
                         tone: 'info',
@@ -660,7 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             data?.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
                         ],
                         badges: [
-                            fechaTexto ? {label: fechaTexto, variant: 'bg-primary text-white'} : null,
+                            fechaTexto ? { label: fechaTexto, variant: 'bg-primary text-white' } : null,
                         ].filter(Boolean),
                         icon: 'mdi mdi-alarm-check',
                         tone: 'primary',

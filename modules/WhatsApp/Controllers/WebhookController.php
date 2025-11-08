@@ -3,7 +3,10 @@
 namespace Modules\WhatsApp\Controllers;
 
 use Core\BaseController;
+use Modules\WhatsApp\Config\WhatsAppSettings;
+use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Services\Messenger;
+use Modules\WhatsApp\Support\AutoresponderFlow;
 use PDO;
 use function file_get_contents;
 use function hash_equals;
@@ -21,16 +24,25 @@ class WebhookController extends BaseController
 {
     private Messenger $messenger;
     private string $verifyToken;
+    /**
+     * @var array<string, mixed>
+     */
+    private array $flow;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->messenger = new Messenger($pdo);
-        $this->verifyToken = (string) ($_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
-            ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
-            ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
-            ?? getenv('WHATSAPP_VERIFY_TOKEN')
-            ?? 'medforge-whatsapp');
+        $repository = new AutoresponderFlowRepository($pdo);
+        $settings = new WhatsAppSettings($pdo);
+        $config = $settings->get();
+        $brand = trim((string) ($config['brand'] ?? ''));
+        if ($brand === '') {
+            $brand = $this->messenger->getBrandName();
+        }
+
+        $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
+        $this->verifyToken = $this->resolveVerifyToken($config);
     }
 
     public function handle(): void
@@ -140,31 +152,47 @@ class WebhookController extends BaseController
             return;
         }
 
-        if ($this->matchesKeyword($keyword, self::menuKeywords(), true)) {
-            $this->sendWelcomeMenu($sender);
+        $entry = $this->flow['entry'] ?? [];
+
+        if ($this->matchesKeyword($keyword, $entry['keywords'] ?? [], true)) {
+            $this->dispatchMessages($sender, $entry['messages'] ?? []);
 
             return;
         }
 
-        if ($this->matchesKeyword($keyword, self::informationKeywords(), true)) {
-            $this->sendInformation($sender);
+        foreach ($this->flow['options'] ?? [] as $option) {
+            $keywords = $option['keywords'] ?? [];
+            if (!$this->matchesKeyword($keyword, $keywords, true)) {
+                continue;
+            }
+
+            $this->dispatchMessages($sender, $option['messages'] ?? []);
 
             return;
         }
 
-        if ($this->matchesKeyword($keyword, self::scheduleKeywords(), true)) {
-            $this->sendSchedule($sender);
+        $fallback = $this->flow['fallback'] ?? [];
+        $this->dispatchMessages($sender, $fallback['messages'] ?? []);
+    }
 
-            return;
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function resolveVerifyToken(array $config): string
+    {
+        $token = trim((string) ($config['webhook_verify_token'] ?? ''));
+
+        if ($token !== '') {
+            return $token;
         }
 
-        if ($this->matchesKeyword($keyword, self::locationKeywords(), true)) {
-            $this->sendLocations($sender);
-
-            return;
-        }
-
-        $this->sendFallback($sender);
+        return (string) (
+            $_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
+            ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
+            ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
+            ?? getenv('WHATSAPP_VERIFY_TOKEN')
+            ?? 'medforge-whatsapp'
+        );
     }
 
     /**
@@ -198,45 +226,26 @@ class WebhookController extends BaseController
         return null;
     }
 
-    private static function menuKeywords(): array
-    {
-        return ['menu', 'inicio', 'hola', 'buen dia', 'buenos dias', 'buenas tardes', 'buenas noches', 'start'];
-    }
-
-    private static function informationKeywords(): array
-    {
-        return ['1', 'opcion 1', 'informacion', 'informacion general', 'obtener informacion', 'informacion cive'];
-    }
-
-    private static function scheduleKeywords(): array
-    {
-        return [
-            '2',
-            'opcion 2',
-            'horarios',
-            'horario',
-            'horario atencion',
-            'horarios atencion',
-            'horarios de atencion',
-        ];
-    }
-
-    private static function locationKeywords(): array
-    {
-        return ['3', 'opcion 3', 'ubicacion', 'ubicaciones', 'sedes', 'direccion', 'direcciones'];
-    }
-
     /**
      * @param array<int, string> $keywords
      */
     private function matchesKeyword(string $text, array $keywords, bool $allowPartial = false): bool
     {
         foreach ($keywords as $keyword) {
-            if ($text === $keyword) {
+            if (!is_string($keyword)) {
+                continue;
+            }
+
+            $normalizedKeyword = $this->normalize($keyword);
+            if ($normalizedKeyword === '') {
+                continue;
+            }
+
+            if ($text === $normalizedKeyword) {
                 return true;
             }
 
-            if ($allowPartial && strlen($keyword) > 1 && str_contains($text, $keyword)) {
+            if ($allowPartial && strlen($normalizedKeyword) > 1 && str_contains($text, $normalizedKeyword)) {
                 return true;
             }
         }
@@ -244,48 +253,63 @@ class WebhookController extends BaseController
         return false;
     }
 
-    private function sendWelcomeMenu(string $recipient): void
+    /**
+     * @param array<int, mixed> $messages
+     */
+    private function dispatchMessages(string $recipient, array $messages): void
     {
-        $brand = $this->messenger->getBrandName();
-
-        $messages = [
-            "¡Hola! Soy Dr. Ojito, el asistente virtual de {$brand} 👁️", 
-            "Te puedo ayudar con las siguientes solicitudes:\n1. Obtener información\n2. Horarios de atención\n3. Ubicaciones\n\nResponde con el número o escribe la opción que necesites."
-        ];
-
         foreach ($messages as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
+            if (is_string($message)) {
+                $this->messenger->sendTextMessage($recipient, $message);
+
+                continue;
+            }
+
+            if (!is_array($message)) {
+                continue;
+            }
+
+            $type = isset($message['type']) ? (string) $message['type'] : 'text';
+            $body = isset($message['body']) ? (string) $message['body'] : '';
+            if ($body === '') {
+                continue;
+            }
+
+            if ($type === 'buttons') {
+                $buttons = [];
+                foreach ($message['buttons'] ?? [] as $button) {
+                    if (!is_array($button)) {
+                        continue;
+                    }
+
+                    $id = isset($button['id']) ? (string) $button['id'] : '';
+                    $title = isset($button['title']) ? (string) $button['title'] : '';
+                    if ($id === '' || $title === '') {
+                        continue;
+                    }
+
+                    $buttons[] = ['id' => $id, 'title' => $title];
+                }
+
+                if (empty($buttons)) {
+                    continue;
+                }
+
+                $options = [];
+                if (!empty($message['header']) && is_string($message['header'])) {
+                    $options['header'] = $message['header'];
+                }
+                if (!empty($message['footer']) && is_string($message['footer'])) {
+                    $options['footer'] = $message['footer'];
+                }
+
+                $this->messenger->sendInteractiveButtons($recipient, $body, $buttons, $options);
+
+                continue;
+            }
+
+            $this->messenger->sendTextMessage($recipient, $body);
         }
-    }
-
-    private function sendInformation(string $recipient): void
-    {
-        $messages = [
-            'Obtener Información',
-            "Selecciona la información que deseas conocer:\n• Procedimientos oftalmológicos disponibles.\n• Servicios complementarios como óptica y exámenes especializados.\n• Seguros y convenios con los que trabajamos.\n\nEscribe 'horarios' para conocer los horarios de atención o 'menu' para volver al inicio."
-        ];
-
-        foreach ($messages as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
-        }
-    }
-
-    private function sendSchedule(string $recipient): void
-    {
-        $message = "Horarios de atención 🕖\nVilla Club: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\nCeibos: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\n\nSi necesitas otra información responde 'menu'.";
-        $this->messenger->sendTextMessage($recipient, $message);
-    }
-
-    private function sendLocations(string $recipient): void
-    {
-        $message = "Nuestras sedes 📍\nVilla Club: Km. 12.5 Av. León Febres Cordero, Villa Club Etapa Flora.\nCeibos: C.C. Ceibos Center, piso 2, consultorio 210.\n\nResponde 'horarios' para conocer los horarios o 'menu' para otras opciones.";
-        $this->messenger->sendTextMessage($recipient, $message);
-    }
-
-    private function sendFallback(string $recipient): void
-    {
-        $message = "No logré identificar tu solicitud. Responde 'menu' para ver las opciones disponibles o 'horarios' para conocer nuestros horarios de atención.";
-        $this->messenger->sendTextMessage($recipient, $message);
     }
 
     private function normalize(string $text): string

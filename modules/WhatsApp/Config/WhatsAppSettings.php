@@ -33,6 +33,8 @@ class WhatsAppSettings
      *     access_token: string,
      *     api_version: string,
      *     default_country_code: string,
+     *     webhook_verify_token: string,
+     *     webhook_url: string,
      *     brand: string
      * }
      */
@@ -49,6 +51,8 @@ class WhatsAppSettings
             'access_token' => '',
             'api_version' => 'v17.0',
             'default_country_code' => '',
+            'webhook_verify_token' => '',
+            'webhook_url' => rtrim((string) (defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook',
             'brand' => 'MedForge',
         ];
 
@@ -61,6 +65,7 @@ class WhatsAppSettings
                     'whatsapp_cloud_access_token',
                     'whatsapp_cloud_api_version',
                     'whatsapp_cloud_default_country_code',
+                    'whatsapp_webhook_verify_token',
                     'companyname',
                 ]);
 
@@ -77,6 +82,9 @@ class WhatsAppSettings
                 $countryCode = preg_replace('/\D+/', '', (string) ($options['whatsapp_cloud_default_country_code'] ?? ''));
                 $config['default_country_code'] = $countryCode ?? '';
 
+                $webhookVerifyToken = trim((string) ($options['whatsapp_webhook_verify_token'] ?? ''));
+                $config['webhook_verify_token'] = $webhookVerifyToken;
+
                 $brand = trim((string) ($options['companyname'] ?? ''));
                 if ($brand !== '') {
                     $config['brand'] = $brand;
@@ -84,6 +92,16 @@ class WhatsAppSettings
             } catch (Throwable $exception) {
                 error_log('No fue posible cargar la configuración de WhatsApp Cloud API: ' . $exception->getMessage());
             }
+        }
+
+        if ($config['webhook_verify_token'] === '') {
+            $config['webhook_verify_token'] = (string) (
+                $_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
+                ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
+                ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
+                ?? getenv('WHATSAPP_VERIFY_TOKEN')
+                ?? 'medforge-whatsapp'
+            );
         }
 
         $config['enabled'] = $config['enabled']

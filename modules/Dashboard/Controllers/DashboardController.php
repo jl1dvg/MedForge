@@ -589,13 +589,15 @@ class DashboardController
             WHERE sp.procedimiento IS NOT NULL
               AND sp.procedimiento != ''
               AND sp.procedimiento != 'SELECCIONE'
-              AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin
-              AND pr.fecha_inicio BETWEEN :inicio AND :fin";
+              AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio_solicitud AND :fin_solicitud
+              AND pr.fecha_inicio BETWEEN :inicio_protocolo AND :fin_protocolo";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
-            ':inicio' => $start->format('Y-m-d 00:00:00'),
-            ':fin' => $end->format('Y-m-d 23:59:59'),
+            ':inicio_solicitud' => $start->format('Y-m-d 00:00:00'),
+            ':fin_solicitud' => $end->format('Y-m-d 23:59:59'),
+            ':inicio_protocolo' => $start->format('Y-m-d 00:00:00'),
+            ':fin_protocolo' => $end->format('Y-m-d 23:59:59'),
         ]);
 
         return (int) $stmt->fetchColumn();

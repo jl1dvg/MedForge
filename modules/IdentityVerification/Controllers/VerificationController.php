@@ -30,13 +30,30 @@ class VerificationController extends BaseController
         $certifications = $this->verifications->getRecent(25);
         $status = $_GET['status'] ?? null;
         $errors = [];
+        $selectedPatient = null;
+        $old = [];
+
+        $lookupPatientId = isset($_GET['patient_id']) ? $this->normalizePatientId((string) $_GET['patient_id']) : '';
+        if ($lookupPatientId !== '') {
+            $selectedPatient = $this->verifications->findPatientSummary($lookupPatientId);
+            if ($selectedPatient) {
+                $old['patient_id'] = $selectedPatient['hc_number'];
+                if (!empty($selectedPatient['cedula'])) {
+                    $old['document_number'] = $selectedPatient['cedula'];
+                }
+            } else {
+                $errors['patient_id'] = 'No se encontró un paciente con la historia clínica proporcionada.';
+                $old['patient_id'] = $lookupPatientId;
+            }
+        }
 
         $this->render(BASE_PATH . '/modules/IdentityVerification/views/index.php', [
             'pageTitle' => 'Certificación biométrica de pacientes',
             'certifications' => $certifications,
             'status' => $status,
             'errors' => $errors,
-            'old' => [],
+            'old' => $old,
+            'selectedPatient' => $selectedPatient,
             'scripts' => [
                 'js/modules/patient-verification.js',
             ],
@@ -49,7 +66,17 @@ class VerificationController extends BaseController
         $this->requirePermission(['administrativo', 'pacientes.verification.manage']);
 
         $input = $this->collectInput();
-        $errors = $this->validateCertificationInput($input);
+        $input['patient_id'] = $this->normalizePatientId($input['patient_id'] ?? '');
+
+        $patient = null;
+        if ($input['patient_id'] !== '') {
+            $patient = $this->verifications->findPatientSummary($input['patient_id']);
+            if ($patient && empty($input['document_number'])) {
+                $input['document_number'] = (string) ($patient['cedula'] ?? '');
+            }
+        }
+
+        $errors = $this->validateCertificationInput($input, $patient);
 
         if (!empty($errors)) {
             $certifications = $this->verifications->getRecent(25);
@@ -59,6 +86,7 @@ class VerificationController extends BaseController
                 'status' => null,
                 'errors' => $errors,
                 'old' => $input,
+                'selectedPatient' => $patient,
                 'scripts' => [
                     'js/modules/patient-verification.js',
                 ],
@@ -120,7 +148,7 @@ class VerificationController extends BaseController
         $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
 
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        $patientId = isset($_GET['patient_id']) ? trim((string) $_GET['patient_id']) : '';
+        $patientId = isset($_GET['patient_id']) ? $this->normalizePatientId((string) $_GET['patient_id']) : '';
 
         $certification = null;
         if ($id > 0) {
@@ -149,7 +177,7 @@ class VerificationController extends BaseController
         $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
 
         $certificationId = isset($_POST['certification_id']) ? (int) $_POST['certification_id'] : 0;
-        $patientId = isset($_POST['patient_id']) ? trim((string) $_POST['patient_id']) : '';
+        $patientId = isset($_POST['patient_id']) ? $this->normalizePatientId((string) $_POST['patient_id']) : '';
 
         $certification = null;
         if ($certificationId > 0) {
@@ -230,7 +258,7 @@ class VerificationController extends BaseController
         ]);
     }
 
-    private function validateCertificationInput(array $input): array
+    private function validateCertificationInput(array $input, ?array $patient): array
     {
         $errors = [];
 
@@ -241,6 +269,8 @@ class VerificationController extends BaseController
 
         if ($patientId === '') {
             $errors['patient_id'] = 'Debe indicar el identificador interno del paciente.';
+        } elseif ($patient === null) {
+            $errors['patient_id'] = 'El paciente indicado no existe en patient_data. Verifique la historia clínica ingresada.';
         }
 
         if ($documentNumber === '') {
@@ -256,6 +286,18 @@ class VerificationController extends BaseController
         }
 
         return $errors;
+    }
+
+    private function normalizePatientId(?string $value): string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return '';
+        }
+
+        return function_exists('mb_strtoupper')
+            ? mb_strtoupper($value, 'UTF-8')
+            : strtoupper($value);
     }
 
     private function persistDataUri(string $dataUri, string $folder): ?string
