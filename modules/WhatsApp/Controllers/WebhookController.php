@@ -299,6 +299,10 @@ class WebhookController extends BaseController
                 }
 
                 if (empty($buttons)) {
+                    if ($body !== '') {
+                        $this->messenger->sendTextMessage($recipient, $body);
+                    }
+
                     continue;
                 }
 
@@ -310,7 +314,10 @@ class WebhookController extends BaseController
                     $options['footer'] = $message['footer'];
                 }
 
-                $this->messenger->sendInteractiveButtons($recipient, $body, $buttons, $options);
+                $sent = $this->messenger->sendInteractiveButtons($recipient, $body, $buttons, $options);
+                if (!$sent && $body !== '') {
+                    $this->messenger->sendTextMessage($recipient, $body);
+                }
 
                 continue;
             }
@@ -318,6 +325,10 @@ class WebhookController extends BaseController
             if ($type === 'list') {
                 $sections = $message['sections'] ?? [];
                 if (!is_array($sections) || empty($sections)) {
+                    if ($body !== '') {
+                        $this->messenger->sendTextMessage($recipient, $body);
+                    }
+
                     continue;
                 }
 
@@ -336,7 +347,10 @@ class WebhookController extends BaseController
                     $body = 'Selecciona una opción para continuar';
                 }
 
-                $this->messenger->sendInteractiveList($recipient, $body, $sections, $options);
+                $sent = $this->messenger->sendInteractiveList($recipient, $body, $sections, $options);
+                if (!$sent && $body !== '') {
+                    $this->messenger->sendTextMessage($recipient, $body);
+                }
 
                 continue;
             }
@@ -344,10 +358,17 @@ class WebhookController extends BaseController
             if ($type === 'template') {
                 $template = $message['template'] ?? null;
                 if (!is_array($template)) {
+                    if ($body !== '') {
+                        $this->messenger->sendTextMessage($recipient, $body);
+                    }
+
                     continue;
                 }
 
-                $this->messenger->sendTemplateMessage($recipient, $template);
+                $sent = $this->messenger->sendTemplateMessage($recipient, $template);
+                if (!$sent && $body !== '') {
+                    $this->messenger->sendTextMessage($recipient, $body);
+                }
 
                 continue;
             }
