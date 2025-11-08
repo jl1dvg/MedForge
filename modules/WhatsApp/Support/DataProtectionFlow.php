@@ -33,6 +33,10 @@ class DataProtectionFlow
      */
     public function handle(string $number, string $normalizedKeyword, array $message, string $rawText): bool
     {
+        if (!$this->repository->isReady()) {
+            return false;
+        }
+
         $consentRecord = $this->repository->findByNumber($number);
 
         if ($consentRecord !== null && $consentRecord['consent_status'] === 'pending') {
@@ -72,7 +76,7 @@ class DataProtectionFlow
             return true;
         }
 
-        $patient = $this->patients->findLocalByCedula($cedula);
+        $patient = $this->patients->findLocalByCedulaOrHistory($cedula);
         $source = 'local';
         $rawPayload = null;
 

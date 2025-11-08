@@ -6,7 +6,7 @@
 /** @var array $templates */
 /** @var string|null $templatesError */
 
-$escape = static fn(?string $value): string => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+$escape = static fn (?string $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $renderLines = static fn (string $value): string => nl2br($escape($value), false);
 
 $extractPlaceholders = static function (string $text): array {
@@ -37,7 +37,7 @@ $prepareTemplateCatalog = static function (array $templates) use ($extractPlaceh
         $language = isset($template['language']) ? trim((string) $template['language']) : '';
         if ($name === '' || $language === '') {
             continue;
-    }
+        }
 
         $category = isset($template['category']) ? trim((string) $template['category']) : '';
         $components = [];
@@ -141,16 +141,16 @@ $renderPreviewMessage = static function ($message) use ($escape, $renderLines): 
     }
 
     if ($type === 'buttons' && !empty($message['buttons']) && is_array($message['buttons'])) {
-    $items = [];
+        $items = [];
         foreach ($message['buttons'] as $button) {
             if (!is_array($button)) {
                 continue;
             }
-        $title = $escape($button['title'] ?? '');
-        $id = $escape($button['id'] ?? '');
-        if ($title === '') {
-            continue;
-        }
+            $title = $escape($button['title'] ?? '');
+            $id = $escape($button['id'] ?? '');
+            if ($title === '') {
+                continue;
+            }
             $label = $id !== '' ? '<code class="ms-2">' . $id . '</code>' : '';
             $items[] = '<li class="d-flex justify-content-between align-items-center"><span>' . $title . '</span>' . $label . '</li>';
         }
@@ -210,7 +210,7 @@ $renderPreviewMessage = static function ($message) use ($escape, $renderLines): 
         }
         if (!empty($template['category'])) {
             $details[] = '<div><span class="fw-600">Categoría:</span> ' . $escape((string) $template['category']) . '</div>';
-    }
+        }
 
         if (!empty($details)) {
             $extras[] = '<div class="mt-2 text-muted small">' . implode('', $details) . '</div>';
@@ -221,6 +221,7 @@ $renderPreviewMessage = static function ($message) use ($escape, $renderLines): 
 
     return '<p class="mb-0">' . $body . $badge . '</p>' . $extraBlock;
 };
+
 $formatKeywords = static function ($keywords) use ($escape): string {
     if (!is_array($keywords)) {
         return '';
@@ -268,7 +269,7 @@ $editableKeywords = static function (array $section): array {
                 foreach (['id', 'title'] as $field) {
                     if (!empty($button[$field]) && is_string($button[$field])) {
                         $auto[] = trim($button[$field]);
-                }
+                    }
                 }
             }
         }
@@ -288,8 +289,8 @@ $options = $flow['options'] ?? [];
 $fallback = $flow['fallback'] ?? [];
 $meta = $flow['meta'] ?? [];
 $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
-$webhookUrl = $config['webhook_url'] ?? (rtrim((string)(defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
-$webhookToken = trim((string)($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
+$webhookUrl = $config['webhook_url'] ?? (rtrim((string) (defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
+$webhookToken = trim((string) ($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
 
 $editorEntry = $editorFlow['entry'] ?? [];
 $editorOptions = $editorFlow['options'] ?? [];
@@ -297,6 +298,7 @@ $editorFallback = $editorFlow['fallback'] ?? [];
 
 $statusType = is_array($status) ? ($status['type'] ?? 'info') : null;
 $statusMessage = is_array($status) ? ($status['message'] ?? '') : '';
+
 switch ($statusType) {
     case 'success':
         $alertClass = 'alert-success';
@@ -313,136 +315,18 @@ switch ($statusType) {
 }
 ?>
 <style>
-    /* ===== Autoresponder modern UI ===== */
-    .flow-layout {
-        display: flex;
-        gap: 1.25rem;
-        flex-wrap: wrap
+    [data-message].has-validation-error {
+        border: 1px solid #dc3545;
+        box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.1);
     }
 
-    .flow-editor-col {
-        flex: 1 1 680px;
-        min-width: 360px
+    [data-message].has-validation-error .card-body,
+    [data-message].has-validation-error.card-body {
+        border-color: inherit;
     }
 
-    .flow-preview-col {
-        flex: 1 1 420px;
-        min-width: 320px
-    }
-
-    .sticky-panel {
-        position: sticky;
-        top: 1rem
-    }
-
-    .chat-preview {
-        background: #f6f7fb;
-        border: 1px solid #e9edf4;
-        border-radius: 14px;
-        padding: 14px
-    }
-
-    .chat-bubble {
-        background: #fff;
-        border: 1px solid #e3e7ee;
-        border-radius: 12px;
-        padding: 10px 12px;
-        margin: 8px 0;
-        box-shadow: 0 1px 1px rgba(16, 24, 40, .04)
-    }
-
-    .chat-bubble.header {
-        background: #eef2ff
-    }
-
-    .chat-bubble.footer {
-        background: #f8fafc
-    }
-
-    .chat-meta {
-        font-size: .75rem;
-        color: #6b7280;
-        text-transform: uppercase;
-        font-weight: 600;
-        letter-spacing: .02em;
-        margin-bottom: 4px
-    }
-
-    .chat-buttons {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 6px
-    }
-
-    .chat-buttons .btn {
-        padding: 2px 8px;
-        font-size: .75rem
-    }
-
-    .preview-section-title {
-        font-weight: 700;
-        color: #374151;
-        margin-top: .5rem
-    }
-
-    .preview-subtitle {
-        font-size: .825rem;
-        color: #6b7280;
-        margin-bottom: .25rem
-    }
-
-    .form-actions-sticky {
-        position: sticky;
-        bottom: 0;
-        background: #fff;
-        border-top: 1px solid #eef0f4;
-        padding: 12px 0;
-        z-index: 5
-    }
-
-    .flow-editor-message .message-body {
-        min-height: 84px
-    }
-
-    /* keyword chips */
-    .keyword-input {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        border: 1px dashed #d7dbe5;
-        border-radius: 10px;
-        padding: 10px
-    }
-
-    .keyword-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: #eef2ff;
-        color: #3b49df;
-        border: 1px solid #dfe3f8;
-        border-radius: 999px;
-        padding: 4px 10px;
-        font-size: .85rem
-    }
-
-    .keyword-chip .remove {
-        cursor: pointer;
-        opacity: .7
-    }
-
-    .keyword-chip .remove:hover {
-        opacity: 1
-    }
-
-    .keyword-input input {
-        border: 0;
-        min-width: 160px;
-        flex: 1 1 160px;
-        outline: none;
-        background: transparent;
-        padding: 4px 6px
+    .is-invalid[data-template-parameter] {
+        background-color: #fff5f5;
     }
 </style>
 <div class="content-header">
@@ -468,22 +352,22 @@ switch ($statusType) {
                 </a>
                 <a href="/settings?section=whatsapp" class="btn btn-sm btn-primary">
                     <i class="mdi mdi-cog-outline me-1"></i>Ajustes
-            </a>
+                </a>
+            </div>
         </div>
     </div>
-</div>
 </div>
 
 <section class="content">
     <div class="row g-4">
-            <?php if ($statusMessage !== ''): ?>
+        <?php if ($statusMessage !== ''): ?>
             <div class="col-12">
                 <div class="alert <?= $alertClass; ?> alert-dismissible fade show" role="alert">
                     <?= $escape($statusMessage); ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
                 </div>
-                </div>
-            <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
         <div class="col-12 col-xl-4 d-flex flex-column gap-4">
             <div class="box h-100">
@@ -495,32 +379,32 @@ switch ($statusType) {
                     <div class="mb-3">
                         <label class="form-label small text-uppercase fw-600 text-muted">URL del webhook</label>
                         <input type="text" class="form-control" readonly value="<?= $escape($webhookUrl); ?>">
-                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label small text-uppercase fw-600 text-muted">Token de verificación</label>
                         <input type="text" class="form-control" readonly value="<?= $escape($webhookToken); ?>">
-                        </div>
-                    <p class="small text-muted mb-0">Recuerda habilitar las suscripciones de mensajes entrantes para este número en el panel de Meta.</p>
                     </div>
+                    <p class="small text-muted mb-0">Recuerda habilitar las suscripciones de mensajes entrantes para este número en el panel de Meta.</p>
                 </div>
+            </div>
 
             <?php if (!empty($templatesError)): ?>
                 <div class="alert alert-warning mb-0">
                     <strong>No pudimos sincronizar las plantillas:</strong> <?= $escape($templatesError); ?>
-            </div>
+                </div>
             <?php endif; ?>
 
             <div class="box h-100">
                 <div class="box-header with-border">
                     <h4 class="box-title mb-0">Plantillas disponibles</h4>
                     <p class="text-muted mb-0 small">Reutiliza tus mensajes aprobados para flujos automáticos.</p>
-        </div>
+                </div>
                 <div class="box-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div>
+                        <div>
                             <div class="fw-600 display-6 mb-0"><?= (int) $templateCount; ?></div>
                             <div class="small text-muted">plantillas listas</div>
-                    </div>
+                        </div>
                         <a href="/whatsapp/templates" class="btn btn-outline-primary btn-sm">
                             Gestionar
                         </a>
@@ -563,36 +447,36 @@ switch ($statusType) {
                                 <?php foreach (($entry['messages'] ?? []) as $message): ?>
                                     <div class="bg-white border rounded-3 p-2 shadow-sm">
                                         <?= $renderPreviewMessage($message); ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         </li>
 
-                            <?php foreach ($options as $option): ?>
+                        <?php foreach ($options as $option): ?>
                             <li class="border rounded-3 p-3">
                                 <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-                                            <div>
+                                    <div>
                                         <span class="badge bg-success me-2">Opción</span>
                                         <span class="fw-600"><?= $escape($option['title'] ?? 'Opción'); ?></span>
-                                            </div>
-                                            <?php if (!empty($option['keywords'])): ?>
+                                    </div>
+                                    <?php if (!empty($option['keywords'])): ?>
                                         <div class="small text-muted text-end">
                                             <?= $formatKeywords($option['keywords']); ?>
-                                                </div>
-                                            <?php endif; ?>
                                         </div>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="mt-2 d-flex flex-column gap-2">
                                     <?php foreach (($option['messages'] ?? []) as $message): ?>
                                         <div class="bg-light border rounded-3 p-2">
                                             <?= $renderPreviewMessage($message); ?>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                        <?php if (!empty($option['followup'])): ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <?php if (!empty($option['followup'])): ?>
                                         <div class="small text-muted">Sugerencia: <?= $escape($option['followup']); ?></div>
-                                        <?php endif; ?>
-                                    </div>
+                                    <?php endif; ?>
+                                </div>
                             </li>
-                            <?php endforeach; ?>
+                        <?php endforeach; ?>
 
                         <li class="border rounded-3 p-3 bg-light">
                             <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
@@ -603,21 +487,21 @@ switch ($statusType) {
                                 <?php if (!empty($fallback['keywords'])): ?>
                                     <div class="small text-muted text-end">
                                         <?= $formatKeywords($fallback['keywords']); ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                             <div class="mt-2 d-flex flex-column gap-2">
                                 <?php foreach (($fallback['messages'] ?? []) as $message): ?>
                                     <div class="bg-white border rounded-3 p-2 shadow-sm">
                                         <?= $renderPreviewMessage($message); ?>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         </li>
                     </ol>
-                    </div>
                 </div>
             </div>
+        </div>
 
         <div class="col-12 col-xl-8">
             <div class="box">
@@ -628,84 +512,79 @@ switch ($statusType) {
                 <div class="box-body">
                     <form method="post" action="/whatsapp/autoresponder" data-autoresponder-form>
                         <input type="hidden" name="template_catalog" value="<?= $templatesJson; ?>" data-template-catalog>
-                                <input type="hidden" name="flow_payload" id="flow_payload" value="">
+                        <input type="hidden" name="flow_payload" id="flow_payload" value="">
 
                         <div class="alert alert-danger d-none" data-validation-errors role="alert"></div>
 
                         <div class="flow-step mb-4" data-section="entry">
-                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                        <div>
-                                            <h5 class="mb-0">Mensaje de bienvenida</h5>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h5 class="mb-0">Mensaje de bienvenida</h5>
                                     <p class="text-muted small mb-0">Se envía al iniciar la conversación o cuando escriben "menú".</p>
-                                        </div>
+                                </div>
                                 <span class="small text-muted">Usa comas o saltos de línea para separar las palabras clave.</span>
-                                    </div>
+                            </div>
                             <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label">Título interno</label>
-                                            <input type="text" class="form-control" data-field="title"
-                                                   value="<?= $escape($editorEntry['title'] ?? 'Mensaje de bienvenida'); ?>">
-                                        </div>
-                                        <div class="col-md-6">
+                                <div class="col-md-6">
+                                    <label class="form-label">Título interno</label>
+                                    <input type="text" class="form-control" data-field="title" value="<?= $escape($editorEntry['title'] ?? 'Mensaje de bienvenida'); ?>">
+                                </div>
+                                <div class="col-md-6">
                                     <label class="form-label">Descripción</label>
-                                            <input type="text" class="form-control" data-field="description"
-                                                   value="<?= $escape($editorEntry['description'] ?? 'Primer contacto que recibe el usuario.'); ?>">
-                                        </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Palabras clave</label>
+                                    <input type="text" class="form-control" data-field="description" value="<?= $escape($editorEntry['description'] ?? 'Primer contacto que recibe el usuario.'); ?>">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Palabras clave</label>
                                     <textarea class="form-control" rows="2" data-field="keywords" placeholder="menu, hola, inicio"><?= $escape(implode(", ", $editableKeywords($editorEntry))); ?></textarea>
-                                            </div>
-                                                </div>
+                                </div>
+                            </div>
                             <div class="mt-3" data-messages>
                                 <?php foreach (($editorEntry['messages'] ?? []) as $message): ?>
                                     <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
-                                        <?php endforeach; ?>
-                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                             <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
                                 <i class="mdi mdi-plus"></i> Añadir respuesta
-                                    </button>
-                                </div>
+                            </button>
+                        </div>
 
-                                <?php foreach ($editorOptions as $option): ?>
+                        <?php foreach ($editorOptions as $option): ?>
                             <div class="flow-step mb-4 border-top pt-4" data-option>
-                                        <input type="hidden" class="option-id"
-                                               value="<?= $escape($option['id'] ?? ''); ?>">
-                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                            <div>
+                                <input type="hidden" class="option-id" value="<?= $escape($option['id'] ?? ''); ?>">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                    <div>
                                         <h5 class="mb-0"><?= $escape($option['title'] ?? 'Opción personalizada'); ?></h5>
                                         <p class="text-muted small mb-0">Palabras clave que disparan esta respuesta específica.</p>
-                                            </div>
+                                    </div>
                                     <span class="badge bg-success-light text-success">Opción del menú</span>
-                                            </div>
+                                </div>
                                 <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label">Título interno</label>
-                                                <input type="text" class="form-control" data-field="title"
-                                                       value="<?= $escape($option['title'] ?? ''); ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                        <label class="form-label">Descripción</label>
-                                                <input type="text" class="form-control" data-field="description"
-                                                       value="<?= $escape($option['description'] ?? ''); ?>">
-                                            </div>
                                     <div class="col-md-6">
-                                                <label class="form-label">Palabras clave</label>
+                                        <label class="form-label">Título interno</label>
+                                        <input type="text" class="form-control" data-field="title" value="<?= $escape($option['title'] ?? ''); ?>">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Descripción</label>
+                                        <input type="text" class="form-control" data-field="description" value="<?= $escape($option['description'] ?? ''); ?>">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Palabras clave</label>
                                         <textarea class="form-control" rows="2" data-field="keywords" placeholder="1, opcion 1, informacion"><?= $escape(implode(", ", $editableKeywords($option))); ?></textarea>
-                                                </div>
+                                    </div>
                                     <div class="col-md-6">
                                         <label class="form-label">Siguiente paso sugerido</label>
                                         <input type="text" class="form-control" data-field="followup" value="<?= $escape($option['followup'] ?? ''); ?>" placeholder="Ej. Responde 'menu' para volver al inicio">
-                                            </div>
-                                        </div>
+                                    </div>
+                                </div>
                                 <div class="mt-3" data-messages>
                                     <?php foreach (($option['messages'] ?? []) as $message): ?>
                                         <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
                                     <?php endforeach; ?>
-                                                        </div>
+                                </div>
                                 <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
                                     <i class="mdi mdi-plus"></i> Añadir respuesta
-                                                        </button>
-                                                    </div>
+                                </button>
+                            </div>
                         <?php endforeach; ?>
 
                         <div class="flow-step border-top pt-4" data-section="fallback">
@@ -713,40 +592,40 @@ switch ($statusType) {
                                 <div>
                                     <h5 class="mb-0">Fallback</h5>
                                     <p class="text-muted small mb-0">Mensaje cuando no se reconoce ninguna palabra clave.</p>
-                                                    </div>
+                                </div>
                                 <span class="badge bg-warning text-dark">Rescate</span>
                             </div>
                             <div class="row g-3">
-                                                        <div class="col-md-6">
+                                <div class="col-md-6">
                                     <label class="form-label">Título interno</label>
                                     <input type="text" class="form-control" data-field="title" value="<?= $escape($editorFallback['title'] ?? 'Sin coincidencia'); ?>">
-                                                        </div>
-                                                        <div class="col-md-6">
+                                </div>
+                                <div class="col-md-6">
                                     <label class="form-label">Descripción</label>
                                     <input type="text" class="form-control" data-field="description" value="<?= $escape($editorFallback['description'] ?? 'Mensaje cuando no se reconoce la solicitud.'); ?>">
-                                                        </div>
+                                </div>
                                 <div class="col-12">
                                     <label class="form-label">Palabras clave</label>
                                     <textarea class="form-control" rows="2" data-field="keywords" placeholder="sin coincidencia, ayuda"><?= $escape(implode(", ", $editableKeywords($editorFallback))); ?></textarea>
-                                                        </div>
-                                                                </div>
+                                </div>
+                            </div>
                             <div class="mt-3" data-messages>
                                 <?php foreach (($editorFallback['messages'] ?? []) as $message): ?>
                                     <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
-                                            <?php endforeach; ?>
-                                        </div>
+                                <?php endforeach; ?>
+                            </div>
                             <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
                                 <i class="mdi mdi-plus"></i> Añadir respuesta
-                                        </button>
-                                        </div>
+                            </button>
+                        </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
                             <span class="small text-muted">Los cambios se aplicarán inmediatamente después de guardar.</span>
-                                    <button type="submit" class="btn btn-primary">
-                                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar flujo
-                                    </button>
-                                </div>
-                            </form>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="mdi mdi-content-save-outline me-1"></i>Guardar flujo
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -770,13 +649,13 @@ switch ($statusType) {
 </template>
 
 <script>
-        (function () {
+(function () {
     const form = document.querySelector('[data-autoresponder-form]');
     if (!form) {
         return;
     }
 
-            const flowField = document.getElementById('flow_payload');
+    const flowField = document.getElementById('flow_payload');
     const validationAlert = form.querySelector('[data-validation-errors]');
     let validationErrors = [];
 
@@ -816,8 +695,8 @@ switch ($statusType) {
         }
     };
 
-            const messageTemplate = document.getElementById('message-template');
-            const buttonTemplate = document.getElementById('button-template');
+    const messageTemplate = document.getElementById('message-template');
+    const buttonTemplate = document.getElementById('button-template');
     const templateCatalogInput = form.querySelector('[data-template-catalog]');
     let templateCatalog = [];
 
@@ -827,9 +706,9 @@ switch ($statusType) {
         } catch (error) {
             console.warn('No fue posible interpretar el catálogo de plantillas', error);
             templateCatalog = [];
-                            }
+        }
         templateCatalogInput.name = '';
-                        }
+    }
 
     const addButtonRow = (messageElement, data = {}) => {
         if (!buttonTemplate) {
@@ -839,8 +718,8 @@ switch ($statusType) {
         if (!list) {
             return null;
         }
-                const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
-                list.appendChild(clone);
+        const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
+        list.appendChild(clone);
         const titleField = clone.querySelector('.button-title');
         const idField = clone.querySelector('.button-id');
         if (titleField && data.title) {
@@ -1285,9 +1164,9 @@ switch ($statusType) {
                 hydrateSection(section);
             }
         }
-            };
+    };
 
-            const hydrateMessage = (messageElement) => {
+    const hydrateMessage = (messageElement) => {
         const typeField = messageElement.querySelector('.message-type');
         const removeMessageButton = messageElement.querySelector('[data-action="remove-message"]');
         const addButton = messageElement.querySelector('[data-action="add-button"]');
@@ -1299,42 +1178,42 @@ switch ($statusType) {
         if (removeMessageButton) {
             removeMessageButton.addEventListener('click', () => messageElement.remove());
         }
-                if (addButton) {
+        if (addButton) {
             addButton.addEventListener('click', () => addButtonRow(messageElement));
-                }
+        }
         presetButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 const preset = button.getAttribute('data-preset');
                 if (preset) {
                     applyPreset(messageElement, preset);
-                        }
-                    });
-                });
+                }
+            });
+        });
         messageElement.querySelectorAll('[data-button]').forEach((item) => {
             const remove = item.querySelector('[data-action="remove-button"]');
             if (remove) {
                 remove.addEventListener('click', () => item.remove());
             }
-                });
+        });
 
         ensureListControls(messageElement);
         ensureTemplateControls(messageElement);
         toggleMessageFields(messageElement);
-            };
+    };
 
-            form.querySelectorAll('[data-messages]').forEach((container) => {
-                container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
+    form.querySelectorAll('[data-messages]').forEach((container) => {
+        container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
         const addMessageButton = container.parentElement?.querySelector('[data-action="add-message"]');
         if (addMessageButton && messageTemplate) {
             addMessageButton.addEventListener('click', () => {
-                        const clone = messageTemplate.content.firstElementChild.cloneNode(true);
-                        container.appendChild(clone);
-                        hydrateMessage(clone);
-                    });
-                }
+                const clone = messageTemplate.content.firstElementChild.cloneNode(true);
+                container.appendChild(clone);
+                hydrateMessage(clone);
             });
+        }
+    });
 
-            const collectButtons = (messageElement) => {
+    const collectButtons = (messageElement) => {
         const buttons = [];
         messageElement.querySelectorAll('[data-button]').forEach((item) => {
             const title = item.querySelector('.button-title')?.value?.trim() || '';
@@ -1495,7 +1374,7 @@ switch ($statusType) {
                         });
                     }
                 });
-                });
+            });
 
         if (messageHasErrors) {
             return null;
@@ -1511,10 +1390,10 @@ switch ($statusType) {
             category,
             components,
         };
-            };
+    };
 
     const collectMessages = (container, contextLabel = '') => {
-                const messages = [];
+        const messages = [];
         container.querySelectorAll('[data-message]').forEach((messageElement, index) => {
             messageElement.classList.remove('has-validation-error');
             const type = messageElement.querySelector('.message-type')?.value || 'text';
@@ -1522,19 +1401,19 @@ switch ($statusType) {
             const header = messageElement.querySelector('.message-header')?.value?.trim() || '';
             const footer = messageElement.querySelector('.message-footer')?.value?.trim() || '';
 
-                    const payload = {type, body};
+            const payload = { type, body };
             if (header !== '') {
                 payload.header = header;
             }
             if (footer !== '') {
                 payload.footer = footer;
             }
-                    if (type === 'buttons') {
-                        const buttons = collectButtons(messageElement);
+            if (type === 'buttons') {
+                const buttons = collectButtons(messageElement);
                 if (buttons.length === 0) {
                     return;
                 }
-                        payload.buttons = buttons;
+                payload.buttons = buttons;
             } else if (type === 'list') {
                 const listData = collectListData(messageElement);
                 if (!listData.sections.length) {
@@ -1544,7 +1423,7 @@ switch ($statusType) {
                 payload.sections = listData.sections;
                 if (payload.body === '') {
                     payload.body = 'Selecciona una opción para continuar';
-                    }
+                }
             } else if (type === 'template') {
                 const template = collectTemplateData(messageElement, contextLabel, index);
                 if (!template) {
@@ -1555,59 +1434,59 @@ switch ($statusType) {
                 return;
             }
 
-                    messages.push(payload);
-                });
-                return messages;
-            };
+            messages.push(payload);
+        });
+        return messages;
+    };
 
     const collectSection = (sectionElement, defaultLabel = '') => {
         if (!sectionElement) {
             return {};
         }
-                const data = {};
-                sectionElement.querySelectorAll('[data-field]').forEach((field) => {
-                    const key = field.getAttribute('data-field');
+        const data = {};
+        sectionElement.querySelectorAll('[data-field]').forEach((field) => {
+            const key = field.getAttribute('data-field');
             if (!key) {
                 return;
             }
-                    data[key] = field.value;
-                });
-                const messagesContainer = sectionElement.querySelector('[data-messages]');
+            data[key] = field.value;
+        });
+        const messagesContainer = sectionElement.querySelector('[data-messages]');
         if (messagesContainer) {
             const titleField = sectionElement.querySelector('[data-field="title"]');
             const rawTitle = titleField?.value?.trim() || '';
             const contextLabel = rawTitle !== '' ? rawTitle : defaultLabel;
             data.messages = collectMessages(messagesContainer, contextLabel);
         }
-                return data;
-            };
+        return data;
+    };
 
-            const collectOption = (optionElement) => {
+    const collectOption = (optionElement) => {
         const option = collectSection(optionElement, 'Opción del menú');
         option.id = optionElement.querySelector('.option-id')?.value || '';
-                return option;
-            };
+        return option;
+    };
 
     form.addEventListener('submit', (event) => {
         resetValidationState();
 
-                const entrySection = form.querySelector('[data-section="entry"]');
-                const fallbackSection = form.querySelector('[data-section="fallback"]');
+        const entrySection = form.querySelector('[data-section="entry"]');
+        const fallbackSection = form.querySelector('[data-section="fallback"]');
         const optionSections = Array.from(form.querySelectorAll('[data-option]'));
 
         const payload = {
             entry: collectSection(entrySection, 'Mensaje de bienvenida'),
             fallback: collectSection(fallbackSection, 'Fallback'),
             options: optionSections.map((element) => collectOption(element)),
-            };
+        };
 
         if (validationErrors.length > 0) {
             event.preventDefault();
             presentValidationErrors();
             return;
-                }
+        }
 
         flowField.value = JSON.stringify(payload);
-                });
-        })();
+    });
+})();
 </script>
