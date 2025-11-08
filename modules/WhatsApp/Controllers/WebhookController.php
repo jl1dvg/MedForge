@@ -3,6 +3,7 @@
 namespace Modules\WhatsApp\Controllers;
 
 use Core\BaseController;
+use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Support\AutoresponderFlow;
@@ -33,13 +34,15 @@ class WebhookController extends BaseController
         parent::__construct($pdo);
         $this->messenger = new Messenger($pdo);
         $repository = new AutoresponderFlowRepository($pdo);
-        $brand = $this->messenger->getBrandName();
+        $settings = new WhatsAppSettings($pdo);
+        $config = $settings->get();
+        $brand = trim((string) ($config['brand'] ?? ''));
+        if ($brand === '') {
+            $brand = $this->messenger->getBrandName();
+        }
+
         $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
-        $this->verifyToken = (string) ($_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
-            ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
-            ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
-            ?? getenv('WHATSAPP_VERIFY_TOKEN')
-            ?? 'medforge-whatsapp');
+        $this->verifyToken = $this->resolveVerifyToken($config);
     }
 
     public function handle(): void
@@ -170,6 +173,26 @@ class WebhookController extends BaseController
 
         $fallback = $this->flow['fallback'] ?? [];
         $this->dispatchMessages($sender, $fallback['messages'] ?? []);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function resolveVerifyToken(array $config): string
+    {
+        $token = trim((string) ($config['webhook_verify_token'] ?? ''));
+
+        if ($token !== '') {
+            return $token;
+        }
+
+        return (string) (
+            $_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
+            ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
+            ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
+            ?? getenv('WHATSAPP_VERIFY_TOKEN')
+            ?? 'medforge-whatsapp'
+        );
     }
 
     /**

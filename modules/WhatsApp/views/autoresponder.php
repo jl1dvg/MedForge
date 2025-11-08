@@ -116,6 +116,8 @@ $fallback = $flow['fallback'] ?? [];
 $meta = $flow['meta'] ?? [];
 $keywordLegend = $meta['keywordLegend'] ?? [];
 $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
+$webhookUrl = $config['webhook_url'] ?? (rtrim((string) (defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
+$webhookToken = trim((string) ($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
 
 $editorEntry = $editorFlow['entry'] ?? [];
 $editorOptions = $editorFlow['options'] ?? [];
@@ -173,6 +175,34 @@ switch ($statusType) {
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
             <?php endif; ?>
+        </div>
+        <div class="col-12">
+            <div class="box">
+                <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div>
+                        <h4 class="box-title mb-0">Webhook de WhatsApp</h4>
+                        <p class="text-muted mb-0">Comparte estos datos con Meta para recibir mensajes entrantes en el autorespondedor.</p>
+                    </div>
+                    <a href="/settings?section=whatsapp" class="btn btn-sm btn-outline-primary">
+                        <i class="mdi mdi-cog-outline me-1"></i>Configurar en ajustes
+                    </a>
+                </div>
+                <div class="box-body">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label class="form-label fw-500 text-muted text-uppercase small">URL del webhook</label>
+                            <input type="text" class="form-control" value="<?= $escape($webhookUrl); ?>" readonly>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-500 text-muted text-uppercase small">Token de verificación</label>
+                            <input type="text" class="form-control" value="<?= $escape($webhookToken); ?>" readonly>
+                        </div>
+                    </div>
+                    <p class="text-muted small mb-0 mt-3">
+                        Asegúrate de que el token coincida con el configurado en Meta y recuerda habilitar las suscripciones para el número correspondiente.
+                    </p>
+                </div>
+            </div>
         </div>
         <div class="col-12">
             <div class="box">

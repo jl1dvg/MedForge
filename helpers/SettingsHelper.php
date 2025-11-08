@@ -230,6 +230,15 @@ class SettingsHelper
                                 false,
                                 'Se antepone si el número de teléfono no incluye prefijo internacional. Ej: 593.'
                             ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_webhook_verify_token',
+                                    'Token de verificación del webhook',
+                                    false,
+                                    'Debe coincidir con el token configurado en Meta para validar la suscripción.'
+                                ),
+                                ['default' => 'medforge-whatsapp']
+                            ),
                         ],
                     ],
                 ],
