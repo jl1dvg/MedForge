@@ -67,4 +67,95 @@ class Messenger
 
         return $allSucceeded;
     }
+
+    /**
+     * @param string|array<int, string> $recipients
+     * @param array<int, array{id: string, title: string}> $buttons
+     * @param array<string, mixed> $options
+     */
+    public function sendInteractiveButtons($recipients, string $message, array $buttons, array $options = []): bool
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return false;
+        }
+
+        $message = MessageSanitizer::sanitize($message);
+        if ($message === '') {
+            return false;
+        }
+
+        $normalizedButtons = [];
+        foreach ($buttons as $button) {
+            if (!is_array($button)) {
+                continue;
+            }
+
+            $id = trim((string) ($button['id'] ?? ''));
+            $title = MessageSanitizer::sanitize((string) ($button['title'] ?? ''));
+
+            if ($id === '' || $title === '') {
+                continue;
+            }
+
+            $normalizedButtons[] = [
+                'type' => 'reply',
+                'reply' => [
+                    'id' => $id,
+                    'title' => $title,
+                ],
+            ];
+
+            if (count($normalizedButtons) >= 3) {
+                break;
+            }
+        }
+
+        if (empty($normalizedButtons)) {
+            return false;
+        }
+
+        $recipients = PhoneNumberFormatter::normalizeRecipients($recipients, $config);
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $header = isset($options['header']) ? MessageSanitizer::sanitize((string) $options['header']) : '';
+        $footer = isset($options['footer']) ? MessageSanitizer::sanitize((string) $options['footer']) : '';
+
+        $allSucceeded = true;
+        foreach ($recipients as $recipient) {
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to' => $recipient,
+                'type' => 'interactive',
+                'interactive' => [
+                    'type' => 'button',
+                    'body' => [
+                        'text' => $message,
+                    ],
+                    'action' => [
+                        'buttons' => $normalizedButtons,
+                    ],
+                ],
+            ];
+
+            if ($header !== '') {
+                $payload['interactive']['header'] = [
+                    'type' => 'text',
+                    'text' => $header,
+                ];
+            }
+
+            if ($footer !== '') {
+                $payload['interactive']['footer'] = [
+                    'text' => $footer,
+                ];
+            }
+
+            $allSucceeded = $this->transport->send($config, $payload) && $allSucceeded;
+        }
+
+        return $allSucceeded;
+    }
 }

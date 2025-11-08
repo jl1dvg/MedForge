@@ -10,6 +10,10 @@ return static function (Router $router): void {
         (new AutoresponderController($pdo))->index();
     });
 
+    $router->post('/whatsapp/autoresponder', static function (\PDO $pdo): void {
+        (new AutoresponderController($pdo))->update();
+    });
+
     $router->get('/whatsapp/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->index();
     });

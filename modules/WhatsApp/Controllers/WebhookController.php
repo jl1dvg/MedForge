@@ -3,6 +3,7 @@
 namespace Modules\WhatsApp\Controllers;
 
 use Core\BaseController;
+use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use PDO;
@@ -22,11 +23,18 @@ class WebhookController extends BaseController
 {
     private Messenger $messenger;
     private string $verifyToken;
+    /**
+     * @var array<string, mixed>
+     */
+    private array $flow;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->messenger = new Messenger($pdo);
+        $repository = new AutoresponderFlowRepository($pdo);
+        $brand = $this->messenger->getBrandName();
+        $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
         $this->verifyToken = (string) ($_ENV['WHATSAPP_WEBHOOK_VERIFY_TOKEN']
             ?? $_ENV['WHATSAPP_VERIFY_TOKEN']
             ?? getenv('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
@@ -141,31 +149,27 @@ class WebhookController extends BaseController
             return;
         }
 
-        if ($this->matchesKeyword($keyword, AutoresponderFlow::menuKeywords(), true)) {
-            $this->sendWelcomeMenu($sender);
+        $entry = $this->flow['entry'] ?? [];
+
+        if ($this->matchesKeyword($keyword, $entry['keywords'] ?? [], true)) {
+            $this->dispatchMessages($sender, $entry['messages'] ?? []);
 
             return;
         }
 
-        if ($this->matchesKeyword($keyword, AutoresponderFlow::informationKeywords(), true)) {
-            $this->sendInformation($sender);
+        foreach ($this->flow['options'] ?? [] as $option) {
+            $keywords = $option['keywords'] ?? [];
+            if (!$this->matchesKeyword($keyword, $keywords, true)) {
+                continue;
+            }
+
+            $this->dispatchMessages($sender, $option['messages'] ?? []);
 
             return;
         }
 
-        if ($this->matchesKeyword($keyword, AutoresponderFlow::scheduleKeywords(), true)) {
-            $this->sendSchedule($sender);
-
-            return;
-        }
-
-        if ($this->matchesKeyword($keyword, AutoresponderFlow::locationKeywords(), true)) {
-            $this->sendLocations($sender);
-
-            return;
-        }
-
-        $this->sendFallback($sender);
+        $fallback = $this->flow['fallback'] ?? [];
+        $this->dispatchMessages($sender, $fallback['messages'] ?? []);
     }
 
     /**
@@ -205,11 +209,20 @@ class WebhookController extends BaseController
     private function matchesKeyword(string $text, array $keywords, bool $allowPartial = false): bool
     {
         foreach ($keywords as $keyword) {
-            if ($text === $keyword) {
+            if (!is_string($keyword)) {
+                continue;
+            }
+
+            $normalizedKeyword = $this->normalize($keyword);
+            if ($normalizedKeyword === '') {
+                continue;
+            }
+
+            if ($text === $normalizedKeyword) {
                 return true;
             }
 
-            if ($allowPartial && strlen($keyword) > 1 && str_contains($text, $keyword)) {
+            if ($allowPartial && strlen($normalizedKeyword) > 1 && str_contains($text, $normalizedKeyword)) {
                 return true;
             }
         }
@@ -217,39 +230,62 @@ class WebhookController extends BaseController
         return false;
     }
 
-    private function sendWelcomeMenu(string $recipient): void
+    /**
+     * @param array<int, mixed> $messages
+     */
+    private function dispatchMessages(string $recipient, array $messages): void
     {
-        $brand = $this->messenger->getBrandName();
-        foreach (AutoresponderFlow::welcomeMessages($brand) as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
-        }
-    }
+        foreach ($messages as $message) {
+            if (is_string($message)) {
+                $this->messenger->sendTextMessage($recipient, $message);
 
-    private function sendInformation(string $recipient): void
-    {
-        foreach (AutoresponderFlow::informationMessages() as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
-        }
-    }
+                continue;
+            }
 
-    private function sendSchedule(string $recipient): void
-    {
-        foreach (AutoresponderFlow::scheduleMessages() as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
-        }
-    }
+            if (!is_array($message)) {
+                continue;
+            }
 
-    private function sendLocations(string $recipient): void
-    {
-        foreach (AutoresponderFlow::locationMessages() as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
-        }
-    }
+            $type = isset($message['type']) ? (string) $message['type'] : 'text';
+            $body = isset($message['body']) ? (string) $message['body'] : '';
+            if ($body === '') {
+                continue;
+            }
 
-    private function sendFallback(string $recipient): void
-    {
-        foreach (AutoresponderFlow::fallbackMessages() as $message) {
-            $this->messenger->sendTextMessage($recipient, $message);
+            if ($type === 'buttons') {
+                $buttons = [];
+                foreach ($message['buttons'] ?? [] as $button) {
+                    if (!is_array($button)) {
+                        continue;
+                    }
+
+                    $id = isset($button['id']) ? (string) $button['id'] : '';
+                    $title = isset($button['title']) ? (string) $button['title'] : '';
+                    if ($id === '' || $title === '') {
+                        continue;
+                    }
+
+                    $buttons[] = ['id' => $id, 'title' => $title];
+                }
+
+                if (empty($buttons)) {
+                    continue;
+                }
+
+                $options = [];
+                if (!empty($message['header']) && is_string($message['header'])) {
+                    $options['header'] = $message['header'];
+                }
+                if (!empty($message['footer']) && is_string($message['footer'])) {
+                    $options['footer'] = $message['footer'];
+                }
+
+                $this->messenger->sendInteractiveButtons($recipient, $body, $buttons, $options);
+
+                continue;
+            }
+
+            $this->messenger->sendTextMessage($recipient, $body);
         }
     }
 
