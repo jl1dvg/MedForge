@@ -163,14 +163,6 @@ class WebhookController extends BaseController
             return;
         }
 
-        $entry = $this->flow['entry'] ?? [];
-
-        if ($this->matchesKeyword($keyword, $entry['keywords'] ?? [], true)) {
-            $this->dispatchMessages($sender, $entry['messages'] ?? []);
-
-            return;
-        }
-
         foreach ($this->flow['options'] ?? [] as $option) {
             $keywords = $option['keywords'] ?? [];
             if (!$this->matchesKeyword($keyword, $keywords, true)) {
@@ -178,6 +170,14 @@ class WebhookController extends BaseController
             }
 
             $this->dispatchMessages($sender, $option['messages'] ?? []);
+
+            return;
+        }
+
+        $entry = $this->flow['entry'] ?? [];
+
+        if ($this->matchesKeyword($keyword, $entry['keywords'] ?? [], true)) {
+            $this->dispatchMessages($sender, $entry['messages'] ?? []);
 
             return;
         }

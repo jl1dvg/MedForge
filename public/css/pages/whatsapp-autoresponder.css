@@ -1,0 +1,23 @@
+[data-message].has-validation-error {
+    border: 1px solid #dc3545;
+    box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.1);
+}
+
+[data-message].has-validation-error .card-body,
+[data-message].has-validation-error.card-body {
+    border-color: inherit;
+}
+
+.is-invalid[data-template-parameter] {
+    background-color: #fff5f5;
+}
+
+/* Ensure left-column cards stack without overlapping even on BS4 */
+.col-xl-4 .box {
+    position: relative;
+    display: block;
+}
+
+.col-xl-4 .box + .box {
+    margin-top: 1rem;
+}

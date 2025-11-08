@@ -116,6 +116,62 @@ foreach ($templateCatalog as $templateMeta) {
 }
 $templatesJson = htmlspecialchars(json_encode($templateCatalog, JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8');
 
+$getConsentValue = static function (array $consent, string $key): string {
+    $value = $consent[$key] ?? '';
+    if (!is_string($value)) {
+        return '';
+    }
+
+    return trim($value);
+};
+
+$getConsentLines = static function (array $consent): array {
+    $lines = $consent['intro_lines'] ?? [];
+    if (!is_array($lines)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach ($lines as $line) {
+        if (!is_string($line)) {
+            continue;
+        }
+
+        $trimmed = trim($line);
+        if ($trimmed !== '') {
+            $normalized[] = $trimmed;
+        }
+    }
+
+    return $normalized;
+};
+
+$getConsentButton = static function (array $consent, string $key) use ($getConsentValue): string {
+    $buttons = $consent['buttons'] ?? [];
+    if (!is_array($buttons)) {
+        return '';
+    }
+
+    $value = $buttons[$key] ?? '';
+    if (!is_string($value)) {
+        return '';
+    }
+
+    return trim($value);
+};
+
+$missingCredentials = [];
+if (empty($config['phone_number_id'])) {
+    $missingCredentials[] = 'ID del número de teléfono';
+}
+if (empty($config['business_account_id'])) {
+    $missingCredentials[] = 'ID de la cuenta de empresa';
+}
+if (empty($config['access_token'])) {
+    $missingCredentials[] = 'Token de acceso';
+}
+$hasRegistryLookup = trim((string)($config['registry_lookup_url'] ?? '')) !== '';
+
 $renderPreviewMessage = static function ($message) use ($escape, $renderLines): string {
     if (!is_array($message)) {
         return '<p class="mb-0">' . $renderLines((string)$message) . '</p>';
@@ -288,6 +344,7 @@ $entry = $flow['entry'] ?? [];
 $options = $flow['options'] ?? [];
 $fallback = $flow['fallback'] ?? [];
 $meta = $flow['meta'] ?? [];
+$consent = is_array($flow['consent'] ?? null) ? $flow['consent'] : [];
 $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
 $webhookUrl = $config['webhook_url'] ?? (rtrim((string)(defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
 $webhookToken = trim((string)($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
@@ -295,6 +352,39 @@ $webhookToken = trim((string)($config['webhook_verify_token'] ?? 'medforge-whats
 $editorEntry = $editorFlow['entry'] ?? [];
 $editorOptions = $editorFlow['options'] ?? [];
 $editorFallback = $editorFlow['fallback'] ?? [];
+$editorConsent = is_array($editorFlow['consent'] ?? null) ? $editorFlow['consent'] : [];
+
+$consentIntro = $getConsentLines($consent);
+$editorConsentIntro = $getConsentLines($editorConsent);
+
+$consentPrompt = $getConsentValue($consent, 'consent_prompt');
+$consentRetry = $getConsentValue($consent, 'consent_retry');
+$consentDeclined = $getConsentValue($consent, 'consent_declined');
+$consentIdentifierRequest = $getConsentValue($consent, 'identifier_request');
+$consentIdentifierRetry = $getConsentValue($consent, 'identifier_retry');
+$consentCheck = $getConsentValue($consent, 'confirmation_check');
+$consentReview = $getConsentValue($consent, 'confirmation_review');
+$consentMenu = $getConsentValue($consent, 'confirmation_menu');
+$consentRecorded = $getConsentValue($consent, 'confirmation_recorded');
+
+$editorConsentPrompt = $getConsentValue($editorConsent, 'consent_prompt');
+$editorConsentRetry = $getConsentValue($editorConsent, 'consent_retry');
+$editorConsentDeclined = $getConsentValue($editorConsent, 'consent_declined');
+$editorConsentIdentifierRequest = $getConsentValue($editorConsent, 'identifier_request');
+$editorConsentIdentifierRetry = $getConsentValue($editorConsent, 'identifier_retry');
+$editorConsentCheck = $getConsentValue($editorConsent, 'confirmation_check');
+$editorConsentReview = $getConsentValue($editorConsent, 'confirmation_review');
+$editorConsentMenu = $getConsentValue($editorConsent, 'confirmation_menu');
+$editorConsentRecorded = $getConsentValue($editorConsent, 'confirmation_recorded');
+
+$consentButtons = [
+    'accept' => $getConsentButton($consent, 'accept') ?: 'Sí, autorizo',
+    'decline' => $getConsentButton($consent, 'decline') ?: 'No, gracias',
+];
+$editorConsentButtons = [
+    'accept' => $getConsentButton($editorConsent, 'accept') ?: 'Sí, autorizo',
+    'decline' => $getConsentButton($editorConsent, 'decline') ?: 'No, gracias',
+];
 
 $statusType = is_array($status) ? ($status['type'] ?? 'info') : null;
 $statusMessage = is_array($status) ? ($status['message'] ?? '') : '';
@@ -314,32 +404,6 @@ switch ($statusType) {
         $alertClass = 'alert-info';
 }
 ?>
-<style>
-    [data-message].has-validation-error {
-        border: 1px solid #dc3545;
-        box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.1);
-    }
-
-    [data-message].has-validation-error .card-body,
-    [data-message].has-validation-error.card-body {
-        border-color: inherit;
-    }
-
-    .is-invalid[data-template-parameter] {
-        background-color: #fff5f5;
-    }
-</style>
-<style>
-    /* Ensure left-column cards stack without overlapping even on BS4 */
-    .col-xl-4 .box {
-        position: relative;
-        display: block;
-    }
-
-    .col-xl-4 .box + .box {
-        margin-top: 1rem;
-    }
-</style>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -381,6 +445,20 @@ switch ($statusType) {
         <?php endif; ?>
 
         <div class="col-12 col-xl-4">
+            <?php if (!empty($missingCredentials)): ?>
+                <div class="alert alert-warning mb-4" role="alert">
+                    <strong>Completa la configuración de Meta.</strong>
+                    <div class="small mb-0">Faltan: <?= $escape(implode(', ', $missingCredentials)); ?>. Actualiza los campos en <a href="/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para habilitar las plantillas y mensajes interactivos.</div>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($hasRegistryLookup): ?>
+                <div class="alert alert-info mb-4" role="alert">
+                    <strong>Consulta externa habilitada.</strong>
+                    <div class="small mb-0">Si aún no cuentas con un endpoint oficial del Registro Civil, deja el campo <code>whatsapp_registry_lookup_url</code> vacío en <a href="/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para trabajar solo con la base local.</div>
+                </div>
+            <?php endif; ?>
+
             <div class="box mb-4">
                 <div class="box-header with-border">
                     <h4 class="box-title mb-0">Webhook conectado</h4>
@@ -513,6 +591,58 @@ switch ($statusType) {
                             </div>
                         </li>
                     </ol>
+                </div>
+            </div>
+
+            <div class="box mb-4">
+                <div class="box-header with-border">
+                    <h4 class="box-title mb-0">Consentimiento y protección de datos</h4>
+                    <p class="text-muted mb-0 small">Mensajes previos a validar la historia clínica.</p>
+                </div>
+                <div class="box-body d-flex flex-column gap-3">
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Introducción</div>
+                        <?php if (!empty($consentIntro)): ?>
+                            <ul class="small ps-3 mb-0">
+                                <?php foreach ($consentIntro as $line): ?>
+                                    <li><?= $escape($line); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else: ?>
+                            <p class="small text-muted mb-0">Se utilizará el mensaje predeterminado antes de solicitar la autorización.</p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Solicitud de autorización</div>
+                        <p class="small mb-1"><?= $escape($consentPrompt); ?></p>
+                        <div class="d-flex gap-2 flex-wrap small">
+                            <span class="badge bg-success-light text-success"><?= $escape($consentButtons['accept']); ?></span>
+                            <span class="badge bg-danger-light text-danger"><?= $escape($consentButtons['decline']); ?></span>
+                        </div>
+                        <?php if ($consentRetry !== ''): ?>
+                            <p class="small text-muted mb-0 mt-2">Recordatorio: <?= $escape($consentRetry); ?></p>
+                        <?php endif; ?>
+                        <?php if ($consentDeclined !== ''): ?>
+                            <p class="small text-muted mb-0">Respuesta ante rechazo: <?= $escape($consentDeclined); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Solicitud de historia clínica</div>
+                        <p class="small mb-1"><?= $escape($consentIdentifierRequest); ?></p>
+                        <?php if ($consentIdentifierRetry !== ''): ?>
+                            <p class="small text-muted mb-0">Cuando no hay coincidencias: <?= $escape($consentIdentifierRetry); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Confirmación final</div>
+                        <ul class="small ps-3 mb-0 d-flex flex-column gap-1">
+                            <li><?= $escape($consentCheck); ?></li>
+                            <li><?= $escape($consentReview); ?></li>
+                            <li><?= $escape($consentMenu); ?></li>
+                            <li><?= $escape($consentRecorded); ?></li>
+                        </ul>
+                    </div>
+                    <p class="small text-muted mb-0">Puedes utilizar <code>{{brand}}</code>, <code>{{terms_url}}</code> y <code>{{history_number}}</code> para personalizar los mensajes.</p>
                 </div>
             </div>
         </div>
@@ -650,6 +780,71 @@ switch ($statusType) {
                             </button>
                         </div>
 
+                        <div class="flow-step border-top pt-4" data-consent>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h5 class="mb-0">Consentimiento y validación</h5>
+                                    <p class="text-muted small mb-0">Define qué se envía antes de continuar con el flujo automático.</p>
+                                </div>
+                                <span class="small text-muted">Placeholders disponibles: <code>{{brand}}</code>, <code>{{terms_url}}</code>, <code>{{name}}</code>, <code>{{history_number}}</code>.</span>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Introducción (una línea por mensaje)</label>
+                                <textarea class="form-control" rows="3" data-consent-field="intro_lines"><?= $escape(implode("\n", $editorConsentIntro)); ?></textarea>
+                                <div class="form-text">Se envía antes de solicitar la autorización. Puedes referenciar {{brand}} o {{terms_url}}.</div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje para solicitar la autorización</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_prompt"><?= $escape($editorConsentPrompt); ?></textarea>
+                                <div class="form-text">Si incluyes {{name}}, el mensaje mencionará al paciente cuando esté disponible.</div>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6" data-consent-wrapper>
+                                    <label class="form-label">Botón de aceptación</label>
+                                    <input type="text" class="form-control" data-consent-field="button_accept"
+                                           value="<?= $escape($editorConsentButtons['accept'] ?? ''); ?>">
+                                </div>
+                                <div class="col-md-6" data-consent-wrapper>
+                                    <label class="form-label">Botón de rechazo</label>
+                                    <input type="text" class="form-control" data-consent-field="button_decline"
+                                           value="<?= $escape($editorConsentButtons['decline'] ?? ''); ?>">
+                                </div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Recordatorio si no responde</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_retry"><?= $escape($editorConsentRetry); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Respuesta cuando se rechaza la autorización</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_declined"><?= $escape($editorConsentDeclined); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Solicitud del número de historia clínica</label>
+                                <textarea class="form-control" rows="2" data-consent-field="identifier_request"><?= $escape($editorConsentIdentifierRequest); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje si el número no coincide</label>
+                                <textarea class="form-control" rows="2" data-consent-field="identifier_retry"><?= $escape($editorConsentIdentifierRetry); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Verificación final</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_check"><?= $escape($editorConsentCheck); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje para revisar el número detectado</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_review"><?= $escape($editorConsentReview); ?></textarea>
+                                <div class="form-text">Incluye {{history_number}} para repetir la historia clínica ingresada.</div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Instrucciones para continuar</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_menu"><?= $escape($editorConsentMenu); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Confirmación del registro</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_recorded"><?= $escape($editorConsentRecorded); ?></textarea>
+                            </div>
+                        </div>
+
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
                             <span class="small text-muted">Los cambios se aplicarán inmediatamente después de guardar.</span>
                             <button type="submit" class="btn btn-primary">
@@ -680,845 +875,4 @@ switch ($statusType) {
     </div>
 </template>
 
-<script>
-    (function () {
-        const form = document.querySelector('[data-autoresponder-form]');
-        if (!form) {
-            return;
-        }
 
-        const flowField = document.getElementById('flow_payload');
-        const validationAlert = form.querySelector('[data-validation-errors]');
-        let validationErrors = [];
-
-        const resetValidationState = () => {
-            validationErrors = [];
-            if (validationAlert) {
-                validationAlert.classList.add('d-none');
-                validationAlert.innerHTML = '';
-            }
-            form.querySelectorAll('[data-message].has-validation-error').forEach((element) => {
-                element.classList.remove('has-validation-error');
-            });
-            form.querySelectorAll('[data-template-parameter].is-invalid').forEach((element) => {
-                element.classList.remove('is-invalid');
-            });
-        };
-
-        const recordValidationError = (message, element) => {
-            validationErrors.push({message, element});
-            if (element) {
-                element.classList.add('has-validation-error');
-            }
-        };
-
-        const presentValidationErrors = () => {
-            if (!validationAlert || validationErrors.length === 0) {
-                return;
-            }
-
-            const items = validationErrors.map((entry) => `<li>${entry.message}</li>`).join('');
-            validationAlert.innerHTML = `<strong>Revisa los siguientes puntos antes de guardar:</strong><ul class="mb-0">${items}</ul>`;
-            validationAlert.classList.remove('d-none');
-
-            const firstError = validationErrors[0];
-            if (firstError && firstError.element && typeof firstError.element.scrollIntoView === 'function') {
-                firstError.element.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        };
-
-        const messageTemplate = document.getElementById('message-template');
-        const buttonTemplate = document.getElementById('button-template');
-        const templateCatalogInput = form.querySelector('[data-template-catalog]');
-        let templateCatalog = [];
-
-        if (templateCatalogInput) {
-            try {
-                templateCatalog = JSON.parse(templateCatalogInput.value || '[]');
-            } catch (error) {
-                console.warn('No fue posible interpretar el catálogo de plantillas', error);
-                templateCatalog = [];
-            }
-            templateCatalogInput.name = '';
-        }
-
-        const addButtonRow = (messageElement, data = {}) => {
-            if (!buttonTemplate) {
-                return null;
-            }
-            const list = messageElement.querySelector('[data-button-list]');
-            if (!list) {
-                return null;
-            }
-            const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
-            list.appendChild(clone);
-            const titleField = clone.querySelector('.button-title');
-            const idField = clone.querySelector('.button-id');
-            if (titleField && data.title) {
-                titleField.value = data.title;
-            }
-            if (idField && data.id) {
-                idField.value = data.id;
-            }
-            const removeBtn = clone.querySelector('[data-action="remove-button"]');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', () => clone.remove());
-            }
-
-            return clone;
-        };
-
-        const hasButton = (messageElement, title, id) => {
-            const list = messageElement.querySelectorAll('[data-button]');
-            for (const item of list) {
-                const existingTitle = item.querySelector('.button-title')?.value?.trim().toLowerCase();
-                const existingId = item.querySelector('.button-id')?.value?.trim().toLowerCase();
-                if ((title && existingTitle === title.toLowerCase()) || (id && existingId === id.toLowerCase())) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        const applyPreset = (messageElement, preset) => {
-            if (preset === 'yesno') {
-                if (!hasButton(messageElement, 'Sí', 'si')) {
-                    addButtonRow(messageElement, {title: 'Sí', id: 'si'});
-                }
-                if (!hasButton(messageElement, 'No', 'no')) {
-                    addButtonRow(messageElement, {title: 'No', id: 'no'});
-                }
-            }
-            if (preset === 'menu') {
-                if (!hasButton(messageElement, 'Menú', 'menu')) {
-                    addButtonRow(messageElement, {title: 'Menú', id: 'menu'});
-                }
-            }
-        };
-
-        const createRowElement = (data = {}) => {
-            const row = document.createElement('div');
-            row.className = 'input-group input-group-sm mb-2';
-            row.setAttribute('data-row', '');
-            row.innerHTML = `
-            <span class="input-group-text">Título</span>
-            <input type="text" class="form-control row-title" placeholder="Ej: Confirmar">
-            <span class="input-group-text">ID</span>
-            <input type="text" class="form-control row-id" placeholder="Identificador">
-            <input type="text" class="form-control row-description" placeholder="Descripción opcional">
-            <button type="button" class="btn btn-outline-danger" data-action="remove-row"><i class="mdi mdi-close"></i></button>
-        `;
-
-            if (data.title) {
-                row.querySelector('.row-title').value = data.title;
-            }
-            if (data.id) {
-                row.querySelector('.row-id').value = data.id;
-            }
-            if (data.description) {
-                row.querySelector('.row-description').value = data.description;
-            }
-
-            return row;
-        };
-
-        const createSectionElement = (data = {}) => {
-            const section = document.createElement('div');
-            section.className = 'border rounded-3 p-3 mb-3';
-            section.setAttribute('data-section', '');
-            section.innerHTML = `
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <input type="text" class="form-control section-title" placeholder="Título de la sección (opcional)">
-                <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-section"><i class="mdi mdi-close"></i></button>
-            </div>
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="small text-muted">Opciones</div>
-                <button type="button" class="btn btn-xs btn-outline-secondary" data-action="add-row">Añadir opción</button>
-            </div>
-            <div data-rows></div>
-        `;
-
-            if (data.title) {
-                section.querySelector('.section-title').value = data.title;
-            }
-
-            const rowsContainer = section.querySelector('[data-rows]');
-            if (Array.isArray(data.rows)) {
-                data.rows.forEach((rowData) => {
-                    rowsContainer.appendChild(createRowElement(rowData));
-                });
-            }
-
-            return section;
-        };
-
-        const hydrateRow = (rowElement) => {
-            const removeButton = rowElement.querySelector('[data-action="remove-row"]');
-            if (removeButton && !removeButton.dataset.bound) {
-                removeButton.dataset.bound = '1';
-                removeButton.addEventListener('click', () => rowElement.remove());
-            }
-        };
-
-        const hydrateSection = (sectionElement) => {
-            const removeButton = sectionElement.querySelector('[data-action="remove-section"]');
-            if (removeButton && !removeButton.dataset.bound) {
-                removeButton.dataset.bound = '1';
-                removeButton.addEventListener('click', () => sectionElement.remove());
-            }
-
-            const addRowButton = sectionElement.querySelector('[data-action="add-row"]');
-            if (addRowButton && !addRowButton.dataset.bound) {
-                addRowButton.dataset.bound = '1';
-                addRowButton.addEventListener('click', () => {
-                    const container = sectionElement.querySelector('[data-rows]');
-                    const row = createRowElement();
-                    container.appendChild(row);
-                    hydrateRow(row);
-                });
-            }
-
-            sectionElement.querySelectorAll('[data-row]').forEach((row) => hydrateRow(row));
-        };
-
-        const ensureListControls = (messageElement) => {
-            const listContainer = messageElement.querySelector('[data-list]');
-            if (!listContainer) {
-                return;
-            }
-
-            const sectionsWrapper = listContainer.querySelector('[data-sections]');
-            if (!sectionsWrapper) {
-                return;
-            }
-
-            sectionsWrapper.querySelectorAll('[data-section]').forEach((section) => hydrateSection(section));
-
-            const addSectionButton = listContainer.querySelector('[data-action="add-section"]');
-            if (addSectionButton && !addSectionButton.dataset.bound) {
-                addSectionButton.dataset.bound = '1';
-                addSectionButton.addEventListener('click', () => {
-                    const section = createSectionElement();
-                    sectionsWrapper.appendChild(section);
-                    hydrateSection(section);
-                });
-            }
-        };
-
-        const findTemplateMeta = (name, language) => {
-            if (!name || !language) {
-                return null;
-            }
-
-            return templateCatalog.find((template) => {
-                return template.name === name && template.language === language;
-            }) || null;
-        };
-
-        const renderTemplateSummary = (summaryElement, meta, fallback) => {
-            if (!summaryElement) {
-                return;
-            }
-
-            if (!meta && !fallback) {
-                summaryElement.innerHTML = '<div class="fw-600">Sin plantilla seleccionada</div><div>Elige una plantilla para ver sus variables y completar los parámetros.</div>';
-                return;
-            }
-
-            const name = meta?.name || fallback?.name || '';
-            const language = meta?.language || fallback?.language || '';
-            const category = meta?.category || fallback?.category || '';
-
-            summaryElement.innerHTML = `
-            <div class="fw-600">${name} · ${language}</div>
-            <div class="text-muted">Categoría: ${category || 'Sin categoría'}</div>
-        `;
-        };
-
-        const extractExistingComponents = (componentField) => {
-            if (!componentField) {
-                return {body: [], header: [], buttons: {}};
-            }
-
-            try {
-                const parsed = JSON.parse(componentField.value || '[]');
-                const existing = {body: [], header: [], buttons: {}};
-
-                parsed.forEach((component) => {
-                    if (!component || typeof component !== 'object') {
-                        return;
-                    }
-
-                    const type = (component.type || '').toUpperCase();
-                    if (type === 'BODY' && Array.isArray(component.parameters)) {
-                        existing.body = component.parameters;
-                    }
-                    if (type === 'HEADER' && Array.isArray(component.parameters)) {
-                        existing.header = component.parameters;
-                    }
-                    if (type === 'BUTTON' && Array.isArray(component.parameters)) {
-                        const index = Number.isInteger(component.index) ? component.index : 0;
-                        existing.buttons[index] = component.parameters;
-                    }
-                });
-
-                return existing;
-            } catch (error) {
-                return {body: [], header: [], buttons: {}};
-            }
-        };
-
-        const buildTemplateParameters = (messageElement, meta) => {
-            const container = messageElement.querySelector('.template-parameters');
-            const componentsField = messageElement.querySelector('.template-components');
-            if (!container) {
-                return;
-            }
-
-            container.innerHTML = '';
-
-            if (!meta) {
-                return;
-            }
-
-            const existing = extractExistingComponents(componentsField);
-            const blocks = [];
-
-            meta.components.forEach((component) => {
-                const type = (component.type || '').toUpperCase();
-                if (type === 'BODY' && Array.isArray(component.placeholders) && component.placeholders.length > 0) {
-                    const group = document.createElement('div');
-                    group.className = 'mb-3';
-                    group.innerHTML = '<label class="form-label small">Variables del cuerpo</label>';
-                    component.placeholders.forEach((placeholder) => {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'form-control mb-2';
-                        input.placeholder = `Valor para {{${placeholder}}}`;
-                        input.setAttribute('data-template-parameter', '');
-                        input.setAttribute('data-component', 'BODY');
-                        input.setAttribute('data-placeholder', String(placeholder));
-                        const existingParam = existing.body[placeholder - 1] || {};
-                        if (typeof existingParam.text === 'string') {
-                            input.value = existingParam.text;
-                        }
-                        group.appendChild(input);
-                    });
-                    blocks.push(group);
-                }
-
-                if (type === 'HEADER' && component.format === 'TEXT' && Array.isArray(component.placeholders) && component.placeholders.length > 0) {
-                    const group = document.createElement('div');
-                    group.className = 'mb-3';
-                    group.innerHTML = '<label class="form-label small">Variables del encabezado</label>';
-                    component.placeholders.forEach((placeholder) => {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'form-control mb-2';
-                        input.placeholder = `Valor para encabezado {{${placeholder}}}`;
-                        input.setAttribute('data-template-parameter', '');
-                        input.setAttribute('data-component', 'HEADER');
-                        input.setAttribute('data-placeholder', String(placeholder));
-                        const existingParam = existing.header[placeholder - 1] || {};
-                        if (typeof existingParam.text === 'string') {
-                            input.value = existingParam.text;
-                        }
-                        group.appendChild(input);
-                    });
-                    blocks.push(group);
-                }
-
-                if (type === 'BUTTONS' && Array.isArray(component.buttons)) {
-                    component.buttons.forEach((button) => {
-                        const subType = (button.type || '').toUpperCase();
-                        const index = Number.isInteger(button.index) ? button.index : 0;
-                        const placeholders = Array.isArray(button.placeholders) ? button.placeholders : [];
-                        if (placeholders.length === 0) {
-                            return;
-                        }
-
-                        const group = document.createElement('div');
-                        group.className = 'mb-3';
-                        const labelText = button.text ? `${button.text} (${subType})` : `Botón ${index + 1} (${subType})`;
-                        group.innerHTML = `<label class="form-label small">${labelText}</label>`;
-
-                        placeholders.forEach((placeholder) => {
-                            const input = document.createElement('input');
-                            input.type = 'text';
-                            input.className = 'form-control mb-2';
-                            input.placeholder = `Valor para botón {{${placeholder}}}`;
-                            input.setAttribute('data-template-parameter', '');
-                            input.setAttribute('data-component', 'BUTTON');
-                            input.setAttribute('data-index', String(index));
-                            input.setAttribute('data-placeholder', String(placeholder));
-                            const existingButtonParams = existing.buttons[index] || [];
-                            const existingParam = existingButtonParams[placeholder - 1] || {};
-                            const candidate = existingParam.text || existingParam.payload;
-                            if (typeof candidate === 'string') {
-                                input.value = candidate;
-                            }
-                            group.appendChild(input);
-                        });
-
-                        blocks.push(group);
-                    });
-                }
-            });
-
-            if (blocks.length === 0) {
-                const note = document.createElement('p');
-                note.className = 'small text-muted mb-0';
-                note.textContent = 'Esta plantilla no requiere variables. Se enviará tal como está configurada en Meta.';
-                container.appendChild(note);
-            } else {
-                blocks.forEach((block) => container.appendChild(block));
-            }
-
-        };
-
-        const ensureTemplateControls = (messageElement) => {
-            const templateContainer = messageElement.querySelector('[data-template]');
-            if (!templateContainer) {
-                return;
-            }
-
-            const select = templateContainer.querySelector('.template-selector');
-            const nameField = templateContainer.querySelector('.template-name');
-            const languageField = templateContainer.querySelector('.template-language');
-            const categoryField = templateContainer.querySelector('.template-category');
-            const summaryElement = templateContainer.querySelector('.template-summary');
-            const componentsField = templateContainer.querySelector('.template-components');
-
-            if (select && !select.dataset.loaded) {
-                templateCatalog.forEach((template) => {
-                    const option = document.createElement('option');
-                    option.value = `${template.name}::${template.language}`;
-                    const categoryLabel = template.category ? template.category : 'Sin categoría';
-                    option.textContent = `${template.name} · ${template.language} (${categoryLabel})`;
-                    select.appendChild(option);
-                });
-                select.dataset.loaded = '1';
-            }
-
-            const selectedName = nameField?.value?.trim();
-            const selectedLanguage = languageField?.value?.trim();
-            const meta = findTemplateMeta(selectedName, selectedLanguage);
-            if (select && selectedName && selectedLanguage) {
-                const value = `${selectedName}::${selectedLanguage}`;
-                if (!Array.from(select.options).some((option) => option.value === value)) {
-                    const fallbackOption = document.createElement('option');
-                    fallbackOption.value = value;
-                    fallbackOption.textContent = `${selectedName} · ${selectedLanguage} (no sincronizada)`;
-                    select.appendChild(fallbackOption);
-                }
-                select.value = value;
-            }
-
-            renderTemplateSummary(summaryElement, meta, {
-                name: selectedName,
-                language: selectedLanguage,
-                category: categoryField?.value?.trim() || '',
-            });
-
-            const parametersContainer = templateContainer.querySelector('.template-parameters');
-            const currentKey = templateContainer.dataset.renderedTemplate || '';
-            const nextKey = meta ? `${meta.name}::${meta.language}` : '';
-            if (!parametersContainer || parametersContainer.childElementCount === 0 || currentKey !== nextKey) {
-                buildTemplateParameters(messageElement, meta);
-                templateContainer.dataset.renderedTemplate = nextKey;
-            }
-
-            if (select && !select.dataset.bound) {
-                select.dataset.bound = '1';
-                select.addEventListener('change', () => {
-                    const value = select.value;
-                    if (!value) {
-                        if (nameField) nameField.value = '';
-                        if (languageField) languageField.value = '';
-                        if (categoryField) categoryField.value = '';
-                        renderTemplateSummary(summaryElement, null, null);
-                        buildTemplateParameters(messageElement, null);
-                        templateContainer.dataset.renderedTemplate = '';
-                        if (componentsField) {
-                            componentsField.value = '[]';
-                        }
-                        return;
-                    }
-
-                    const [name, language] = value.split('::');
-                    const selectedMeta = findTemplateMeta(name, language);
-                    if (nameField) nameField.value = name || '';
-                    if (languageField) languageField.value = language || '';
-                    if (categoryField) categoryField.value = selectedMeta?.category || '';
-                    renderTemplateSummary(summaryElement, selectedMeta, null);
-                    buildTemplateParameters(messageElement, selectedMeta);
-                    templateContainer.dataset.renderedTemplate = selectedMeta ? `${selectedMeta.name}::${selectedMeta.language}` : '';
-                    if (componentsField) {
-                        componentsField.value = '[]';
-                    }
-                });
-            }
-        };
-
-        const toggleMessageFields = (messageElement) => {
-            const type = messageElement.querySelector('.message-type')?.value || 'text';
-            const buttonsContainer = messageElement.querySelector('[data-buttons]');
-            const listContainer = messageElement.querySelector('[data-list]');
-            const templateContainer = messageElement.querySelector('[data-template]');
-            const headerField = messageElement.querySelector('.message-header');
-            const footerField = messageElement.querySelector('.message-footer');
-
-            if (buttonsContainer) {
-                buttonsContainer.classList.toggle('d-none', type !== 'buttons');
-            }
-            if (listContainer) {
-                listContainer.classList.toggle('d-none', type !== 'list');
-            }
-            if (templateContainer) {
-                templateContainer.classList.toggle('d-none', type !== 'template');
-            }
-
-            if (type === 'template') {
-                if (headerField) headerField.setAttribute('disabled', 'disabled');
-                if (footerField) footerField.setAttribute('disabled', 'disabled');
-                ensureTemplateControls(messageElement);
-            } else {
-                if (headerField) headerField.removeAttribute('disabled');
-                if (footerField) footerField.removeAttribute('disabled');
-            }
-
-            if (type === 'list') {
-                ensureListControls(messageElement);
-                const wrapper = messageElement.querySelector('[data-sections]');
-                if (wrapper && !wrapper.querySelector('[data-section]')) {
-                    const section = createSectionElement();
-                    wrapper.appendChild(section);
-                    hydrateSection(section);
-                }
-            }
-        };
-
-        const hydrateMessage = (messageElement) => {
-            const typeField = messageElement.querySelector('.message-type');
-            const removeMessageButton = messageElement.querySelector('[data-action="remove-message"]');
-            const addButton = messageElement.querySelector('[data-action="add-button"]');
-            const presetButtons = messageElement.querySelectorAll('[data-action="preset"]');
-
-            if (typeField) {
-                typeField.addEventListener('change', () => toggleMessageFields(messageElement));
-            }
-            if (removeMessageButton) {
-                removeMessageButton.addEventListener('click', () => messageElement.remove());
-            }
-            if (addButton) {
-                addButton.addEventListener('click', () => addButtonRow(messageElement));
-            }
-            presetButtons.forEach((button) => {
-                button.addEventListener('click', () => {
-                    const preset = button.getAttribute('data-preset');
-                    if (preset) {
-                        applyPreset(messageElement, preset);
-                    }
-                });
-            });
-            messageElement.querySelectorAll('[data-button]').forEach((item) => {
-                const remove = item.querySelector('[data-action="remove-button"]');
-                if (remove) {
-                    remove.addEventListener('click', () => item.remove());
-                }
-            });
-
-            ensureListControls(messageElement);
-            ensureTemplateControls(messageElement);
-            toggleMessageFields(messageElement);
-        };
-
-        form.querySelectorAll('[data-messages]').forEach((container) => {
-            container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
-            const addMessageButton = container.parentElement?.querySelector('[data-action="add-message"]');
-            if (addMessageButton && messageTemplate) {
-                addMessageButton.addEventListener('click', () => {
-                    const clone = messageTemplate.content.firstElementChild.cloneNode(true);
-                    container.appendChild(clone);
-                    hydrateMessage(clone);
-                });
-            }
-        });
-
-        const collectButtons = (messageElement) => {
-            const buttons = [];
-            messageElement.querySelectorAll('[data-button]').forEach((item) => {
-                const title = item.querySelector('.button-title')?.value?.trim() || '';
-                const id = item.querySelector('.button-id')?.value?.trim() || '';
-                if (title !== '') {
-                    buttons.push({title, id});
-                }
-            });
-            return buttons;
-        };
-
-        const collectListData = (messageElement) => {
-            const buttonLabel = messageElement.querySelector('.list-button')?.value?.trim() || 'Ver opciones';
-            const sections = [];
-            messageElement.querySelectorAll('[data-section]').forEach((sectionElement) => {
-                const rows = [];
-                sectionElement.querySelectorAll('[data-row]').forEach((rowElement) => {
-                    const title = rowElement.querySelector('.row-title')?.value?.trim() || '';
-                    const id = rowElement.querySelector('.row-id')?.value?.trim() || '';
-                    if (title === '' || id === '') {
-                        return;
-                    }
-                    const description = rowElement.querySelector('.row-description')?.value?.trim() || '';
-                    const row = {title, id};
-                    if (description !== '') {
-                        row.description = description;
-                    }
-                    rows.push(row);
-                });
-
-                if (rows.length === 0) {
-                    return;
-                }
-
-                const title = sectionElement.querySelector('.section-title')?.value?.trim() || '';
-                sections.push({title, rows});
-            });
-
-            return {button: buttonLabel, sections};
-        };
-
-        const collectTemplateData = (messageElement, contextLabel, messageIndex) => {
-            const sectionDescription = contextLabel ? `en la sección "${contextLabel}"` : 'en esta sección';
-            const messageDescription = `${sectionDescription} (mensaje ${messageIndex + 1})`;
-            const name = messageElement.querySelector('.template-name')?.value?.trim() || '';
-            const language = messageElement.querySelector('.template-language')?.value?.trim() || '';
-
-            if (name === '' || language === '') {
-                recordValidationError(`Selecciona una plantilla aprobada ${messageDescription}.`, messageElement);
-                return null;
-            }
-
-            const category = messageElement.querySelector('.template-category')?.value?.trim() || '';
-            const componentsField = messageElement.querySelector('.template-components');
-            const meta = findTemplateMeta(name, language);
-
-            messageElement.querySelectorAll('[data-template-parameter]').forEach((input) => {
-                input.classList.remove('is-invalid');
-            });
-
-            if (!meta) {
-                recordValidationError(`La plantilla "${name}" (${language}) ya no está disponible; vuelve a seleccionarla ${messageDescription}.`, messageElement);
-                return null;
-            }
-
-            const components = [];
-            let messageHasErrors = false;
-
-            const appendParameters = (type, parameters, extra = {}) => {
-                if (!parameters || parameters.length === 0) {
-                    return;
-                }
-                components.push(Object.assign({type, parameters}, extra));
-            };
-
-            const bodyComponent = meta.components.find((component) => component.type === 'BODY');
-            if (bodyComponent && Array.isArray(bodyComponent.placeholders) && bodyComponent.placeholders.length > 0) {
-                const missing = [];
-                const parameters = [];
-                bodyComponent.placeholders.forEach((placeholder) => {
-                    const input = messageElement.querySelector(`[data-template-parameter][data-component="BODY"][data-placeholder="${placeholder}"]`);
-                    const value = input?.value?.trim() || '';
-                    if (!input || value === '') {
-                        missing.push(placeholder);
-                        if (input) {
-                            input.classList.add('is-invalid');
-                        }
-                        return;
-                    }
-                    parameters.push({type: 'text', text: value});
-                });
-                if (missing.length > 0) {
-                    messageHasErrors = true;
-                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del cuerpo de la plantilla ${messageDescription}.`, messageElement);
-                } else {
-                    appendParameters('BODY', parameters);
-                }
-            }
-
-            const headerComponent = meta.components.find((component) => component.type === 'HEADER' && component.format === 'TEXT');
-            if (headerComponent && Array.isArray(headerComponent.placeholders) && headerComponent.placeholders.length > 0) {
-                const missing = [];
-                const parameters = [];
-                headerComponent.placeholders.forEach((placeholder) => {
-                    const input = messageElement.querySelector(`[data-template-parameter][data-component="HEADER"][data-placeholder="${placeholder}"]`);
-                    const value = input?.value?.trim() || '';
-                    if (!input || value === '') {
-                        missing.push(placeholder);
-                        if (input) {
-                            input.classList.add('is-invalid');
-                        }
-                        return;
-                    }
-                    parameters.push({type: 'text', text: value});
-                });
-                if (missing.length > 0) {
-                    messageHasErrors = true;
-                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del encabezado ${messageDescription}.`, messageElement);
-                } else {
-                    appendParameters('HEADER', parameters);
-                }
-            }
-
-            meta.components
-                .filter((component) => component.type === 'BUTTONS' && Array.isArray(component.buttons))
-                .forEach((component) => {
-                    component.buttons.forEach((button) => {
-                        if (!Array.isArray(button.placeholders) || button.placeholders.length === 0) {
-                            return;
-                        }
-
-                        const missing = [];
-                        const parameters = [];
-                        button.placeholders.forEach((placeholder) => {
-                            const input = messageElement.querySelector(`[data-template-parameter][data-component="BUTTON"][data-index="${button.index}"][data-placeholder="${placeholder}"]`);
-                            const value = input?.value?.trim() || '';
-                            if (!input || value === '') {
-                                missing.push(placeholder);
-                                if (input) {
-                                    input.classList.add('is-invalid');
-                                }
-                                return;
-                            }
-                            parameters.push({type: 'text', text: value});
-                        });
-
-                        if (missing.length > 0) {
-                            messageHasErrors = true;
-                            const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                            const buttonLabel = button.text ? ` del botón "${button.text}"` : '';
-                            recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders}${buttonLabel} ${messageDescription}.`, messageElement);
-                        } else {
-                            appendParameters('BUTTON', parameters, {
-                                sub_type: button.type,
-                                index: button.index,
-                            });
-                        }
-                    });
-                });
-
-            if (messageHasErrors) {
-                return null;
-            }
-
-            if (componentsField) {
-                componentsField.value = JSON.stringify(components);
-            }
-
-            return {
-                name,
-                language,
-                category,
-                components,
-            };
-        };
-
-        const collectMessages = (container, contextLabel = '') => {
-            const messages = [];
-            container.querySelectorAll('[data-message]').forEach((messageElement, index) => {
-                messageElement.classList.remove('has-validation-error');
-                const type = messageElement.querySelector('.message-type')?.value || 'text';
-                const body = messageElement.querySelector('.message-body')?.value?.trim() || '';
-                const header = messageElement.querySelector('.message-header')?.value?.trim() || '';
-                const footer = messageElement.querySelector('.message-footer')?.value?.trim() || '';
-
-                const payload = {type, body};
-                if (header !== '') {
-                    payload.header = header;
-                }
-                if (footer !== '') {
-                    payload.footer = footer;
-                }
-                if (type === 'buttons') {
-                    const buttons = collectButtons(messageElement);
-                    if (buttons.length === 0) {
-                        return;
-                    }
-                    payload.buttons = buttons;
-                } else if (type === 'list') {
-                    const listData = collectListData(messageElement);
-                    if (!listData.sections.length) {
-                        return;
-                    }
-                    payload.button = listData.button;
-                    payload.sections = listData.sections;
-                    if (payload.body === '') {
-                        payload.body = 'Selecciona una opción para continuar';
-                    }
-                } else if (type === 'template') {
-                    const template = collectTemplateData(messageElement, contextLabel, index);
-                    if (!template) {
-                        return;
-                    }
-                    payload.template = template;
-                } else if (body === '') {
-                    return;
-                }
-
-                messages.push(payload);
-            });
-            return messages;
-        };
-
-        const collectSection = (sectionElement, defaultLabel = '') => {
-            if (!sectionElement) {
-                return {};
-            }
-            const data = {};
-            sectionElement.querySelectorAll('[data-field]').forEach((field) => {
-                const key = field.getAttribute('data-field');
-                if (!key) {
-                    return;
-                }
-                data[key] = field.value;
-            });
-            const messagesContainer = sectionElement.querySelector('[data-messages]');
-            if (messagesContainer) {
-                const titleField = sectionElement.querySelector('[data-field="title"]');
-                const rawTitle = titleField?.value?.trim() || '';
-                const contextLabel = rawTitle !== '' ? rawTitle : defaultLabel;
-                data.messages = collectMessages(messagesContainer, contextLabel);
-            }
-            return data;
-        };
-
-        const collectOption = (optionElement) => {
-            const option = collectSection(optionElement, 'Opción del menú');
-            option.id = optionElement.querySelector('.option-id')?.value || '';
-            return option;
-        };
-
-        form.addEventListener('submit', (event) => {
-            resetValidationState();
-
-            const entrySection = form.querySelector('[data-section="entry"]');
-            const fallbackSection = form.querySelector('[data-section="fallback"]');
-            const optionSections = Array.from(form.querySelectorAll('[data-option]'));
-
-            const payload = {
-                entry: collectSection(entrySection, 'Mensaje de bienvenida'),
-                fallback: collectSection(fallbackSection, 'Fallback'),
-                options: optionSections.map((element) => collectOption(element)),
-            };
-
-            if (validationErrors.length > 0) {
-                event.preventDefault();
-                presentValidationErrors();
-                return;
-            }
-
-            flowField.value = JSON.stringify(payload);
-        });
-    })();
-</script>

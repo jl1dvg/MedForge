@@ -7,14 +7,39 @@ use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\PatientLookupService;
-use RuntimeException;
+
+use function array_filter;
+use function array_merge;
+use function array_values;
+use function in_array;
+use function is_array;
+use function is_string;
+use function json_decode;
+use function mb_strtolower;
+use function preg_match;
+use function preg_replace;
+use function preg_split;
+use function sha1;
+use function strlen;
+use function strtr;
+use function strtoupper;
+use function substr;
+use function trim;
 
 class DataProtectionFlow
 {
+    private const STAGE_AWAITING_CONSENT = 'awaiting_consent';
+    private const STAGE_AWAITING_IDENTIFIER = 'awaiting_identifier';
+    private const STAGE_COMPLETE = 'complete';
+    private const MIN_HISTORY_LENGTH = 6;
+
     private Messenger $messenger;
     private ContactConsentRepository $repository;
     private PatientLookupService $patients;
     private WhatsAppSettings $settings;
+    private array $copy;
+    private array $defaultCopy;
+    private string $brand;
 
     public function __construct(
         Messenger $messenger,
@@ -26,6 +51,15 @@ class DataProtectionFlow
         $this->repository = $repository;
         $this->patients = $patients;
         $this->settings = $settings;
+        $this->brand = $this->settings->getBrandName();
+        $this->defaultCopy = DataProtectionCopy::defaults($this->brand);
+        $config = $this->settings->get();
+        $flowCopy = $config['data_protection_flow'] ?? null;
+        if (is_array($flowCopy)) {
+            $this->copy = DataProtectionCopy::sanitize($flowCopy, $this->brand);
+        } else {
+            $this->copy = $this->defaultCopy;
+        }
     }
 
     /**
@@ -33,153 +67,528 @@ class DataProtectionFlow
      */
     public function handle(string $number, string $normalizedKeyword, array $message, string $rawText): bool
     {
-        $consentRecord = $this->repository->findByNumber($number);
+        $record = $this->repository->findByNumber($number);
 
-        if ($consentRecord !== null && $consentRecord['consent_status'] === 'pending') {
-            if ($this->isAcceptance($normalizedKeyword)) {
-                $this->repository->markConsent($number, $consentRecord['cedula'], true);
-                $this->messenger->sendTextMessage($number, '✅ Gracias. Hemos registrado tu autorización para gestionar tus datos clínicos con seguridad.');
+        if ($record !== null && !isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = (string) $record['cedula'];
+        }
 
-                return true;
-            }
-
-            if ($this->isRejection($normalizedKeyword)) {
-                $this->repository->markConsent($number, $consentRecord['cedula'], false);
-                $this->messenger->sendTextMessage($number, 'Entendido. No utilizaremos tus datos hasta que lo autorices. Si deseas continuar responde "sí" o comunícate con nuestro equipo.');
-
-                return true;
-            }
-
-            // Recordamos la pregunta inicial
-            $this->sendConsentPrompt($number, $consentRecord['patient_full_name'] ?? null);
+        if ($record === null) {
+            $this->beginConsentHandshake($number);
 
             return true;
         }
 
-        $cedula = $this->detectCedula($rawText, $normalizedKeyword);
-        if ($cedula === null) {
+        $status = (string) ($record['consent_status'] ?? 'pending');
+
+        if ($status === 'accepted') {
             return false;
         }
 
-        $existing = $this->repository->findByNumberAndCedula($number, $cedula);
-        if ($existing !== null && $existing['consent_status'] === 'accepted') {
-            $name = trim((string) ($existing['patient_full_name'] ?? ''));
-            $message = $name !== ''
-                ? 'Hola ' . $name . '. Ya tenemos tu autorización vigente. ¿En qué puedo ayudarte hoy?'
-                : 'Ya registramos tu autorización anteriormente. ¿Cómo puedo asistirte?';
-            $this->messenger->sendTextMessage($number, $message);
+        $stage = $this->resolveStage($record);
 
-            return true;
-        }
-
-        $patient = $this->patients->findLocalByCedula($cedula);
-        $source = 'local';
-        $rawPayload = null;
-
-        if ($patient === null) {
-            try {
-                $registry = $this->patients->lookupInRegistry($cedula);
-                if ($registry !== null) {
-                    $patient = [
-                        'hc_number' => $registry['hc_number'] ?? null,
-                        'cedula' => $cedula,
-                        'full_name' => $registry['full_name'] ?? null,
-                    ];
-                    $rawPayload = $registry['raw'] ?? $registry;
-                    $source = 'registry';
-                }
-            } catch (RuntimeException $exception) {
+        if ($status === 'declined') {
+            if ($this->isAcceptance($normalizedKeyword)) {
+                $identifierValue = (string) ($record['identifier'] ?? '');
+                $this->repository->markPendingResponse($number, $identifierValue);
+                $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
+                    'restarted_at' => (new DateTimeImmutable())->format('c'),
+                ]);
                 $this->messenger->sendTextMessage(
                     $number,
-                    'No pudimos validar tus datos en este momento (' . $exception->getMessage() . '). Intenta nuevamente más tarde o comunícate con nuestro equipo.'
+                    'Perfecto, continuemos. Escribe tu número de historia clínica 🪪'
                 );
 
                 return true;
             }
-        }
 
-        if ($patient === null) {
             $this->messenger->sendTextMessage(
                 $number,
-                'No encontramos tu número de cédula en nuestros registros. Si crees que es un error, por favor comunícate con nuestro equipo para verificarlo.'
+                'Para continuar necesitamos tu autorización. Si deseas habilitarla responde "sí" o utiliza los botones enviados anteriormente.'
             );
 
             return true;
         }
 
-        $name = trim((string) ($patient['full_name'] ?? ''));
-        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+        if ($status === 'pending') {
+            if ($stage === self::STAGE_AWAITING_CONSENT) {
+                return $this->handleConsentStage($number, $record, $normalizedKeyword);
+            }
+
+            return $this->handleIdentifierStage($number, $record, $normalizedKeyword, $rawText);
+        }
+
+        return false;
+    }
+
+    private function beginConsentHandshake(string $number): void
+    {
+        $now = new DateTimeImmutable();
+
+        $this->sendConsentIntro($number);
+        $this->sendConsentPrompt($number, null);
+
+        $payload = [
+            'stage' => self::STAGE_AWAITING_CONSENT,
+            'intro_sent_at' => $now->format('c'),
+        ];
+
         $this->repository->startOrUpdate([
             'wa_number' => $number,
-            'cedula' => $cedula,
-            'patient_hc_number' => $patient['hc_number'] ?? null,
-            'patient_full_name' => $name,
+            'identifier' => $this->placeholderIdentifier($number),
+            'patient_hc_number' => null,
+            'patient_full_name' => null,
             'consent_status' => 'pending',
-            'consent_source' => $source,
-            'consent_asked_at' => $now,
-            'extra_payload' => $rawPayload,
+            'consent_source' => 'manual',
+            'consent_asked_at' => $now->format('Y-m-d H:i:s'),
+            'extra_payload' => $payload,
         ]);
+    }
 
-        $intro = $name !== ''
-            ? 'Hola ' . $name . ' 👋'
-            : 'Hola, gracias por escribirnos 👋';
+    private function sendConsentIntro(string $number): void
+    {
+        $config = $this->settings->get();
+        $termsUrl = trim((string) ($config['data_terms_url'] ?? ''));
+        $rendered = [];
 
-        $this->messenger->sendTextMessage($number, $intro);
-        $this->sendConsentPrompt($number, $name !== '' ? $name : null);
+        foreach ($this->copyLines('intro_lines') as $line) {
+            $text = $this->renderCopy($line, [
+                'terms_url' => $termsUrl,
+                'brand' => $this->brand,
+            ]);
+
+            if ($text !== '') {
+                $rendered[] = $text;
+            }
+        }
+
+        if (empty($rendered)) {
+            $rendered = $this->copyLines('intro_lines');
+        }
+
+        $this->messenger->sendTextMessage($number, implode("
+
+", $rendered));
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     */
+    private function handleConsentStage(string $number, array $record, string $keyword): bool
+    {
+        if ($this->isAcceptance($keyword)) {
+            $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
+                'accepted_at' => (new DateTimeImmutable())->format('c'),
+            ]);
+            $message = $this->renderCopy($this->copyString('identifier_request'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
+
+            return true;
+        }
+
+        if ($this->isRejection($keyword)) {
+            $identifierValue = (string) ($record['identifier'] ?? '');
+            $this->repository->markConsent($number, $identifierValue, false);
+            $message = $this->renderCopy($this->copyString('consent_declined'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
+
+            return true;
+        }
+
+        $retryMessage = $this->renderCopy($this->copyString('consent_retry'), ['brand' => $this->brand]);
+        if ($retryMessage !== '') {
+            $this->messenger->sendTextMessage($number, $retryMessage);
+        }
+        $this->sendConsentPrompt($number, $record['patient_full_name'] ?? null);
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     */
+    private function handleIdentifierStage(string $number, array $record, string $keyword, string $rawText): bool
+    {
+        $identifier = $this->detectIdentifier($rawText, $keyword);
+
+        if ($identifier === null) {
+            $message = $this->renderCopy($this->copyString('identifier_request'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
+            $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER);
+
+            return true;
+        }
+
+        $patient = $this->patients->findLocalByHistoryNumber($identifier['value']);
+        if ($patient === null) {
+            $retryMessage = $this->renderCopy($this->copyString('identifier_retry'), ['brand' => $this->brand]);
+            if ($retryMessage !== '') {
+                $this->messenger->sendTextMessage($number, $retryMessage);
+            }
+            $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
+                'last_identifier_attempt' => $identifier['value'],
+            ]);
+
+            return true;
+        }
+
+        $historyNumber = isset($patient['hc_number']) ? trim((string) $patient['hc_number']) : '';
+        if ($historyNumber === '') {
+            $historyNumber = strtoupper($identifier['value']);
+        }
+
+        $fullName = isset($patient['full_name']) ? trim((string) $patient['full_name']) : null;
+        if ($fullName === '') {
+            $fullName = null;
+        }
+
+        $payload = array_merge(
+            $this->payloadFromRecord($record),
+            [
+                'stage' => self::STAGE_COMPLETE,
+                'identifier' => [
+                    'type' => 'history',
+                    'value' => $historyNumber,
+                    'input' => $identifier['value'],
+                    'display' => $identifier['display'],
+                ],
+                'verified_at' => (new DateTimeImmutable())->format('c'),
+            ]
+        );
+
+        $currentIdentifier = (string) ($record['identifier'] ?? '');
+
+        $this->repository->reassignIdentifier(
+            $number,
+            $currentIdentifier,
+            $historyNumber,
+            $historyNumber,
+            $fullName,
+            'local',
+            $payload
+        );
+
+        $this->repository->markConsent($number, $historyNumber, true);
+
+        $confirmation = [
+            $this->renderCopy($this->copyString('confirmation_check'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_review'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_menu'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_recorded'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+        ];
+
+        foreach ($confirmation as $message) {
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function copyLines(string $key): array
+    {
+        $lines = $this->copy[$key] ?? [];
+        if (is_array($lines)) {
+            $normalized = [];
+            foreach ($lines as $line) {
+                if (!is_string($line)) {
+                    continue;
+                }
+
+                $trimmed = trim($line);
+                if ($trimmed !== '') {
+                    $normalized[] = $trimmed;
+                }
+            }
+
+            if ($normalized !== []) {
+                return $normalized;
+            }
+        }
+
+        $fallback = $this->defaultCopy[$key] ?? [];
+        if (!is_array($fallback)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($fallback as $line) {
+            if (!is_string($line)) {
+                continue;
+            }
+
+            $trimmed = trim($line);
+            if ($trimmed !== '') {
+                $normalized[] = $trimmed;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function copyString(string $key): string
+    {
+        $value = $this->copy[$key] ?? null;
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        $fallback = $this->defaultCopy[$key] ?? '';
+
+        return is_string($fallback) ? trim($fallback) : '';
+    }
+
+    private function copyButton(string $key): string
+    {
+        $buttons = $this->copy['buttons'] ?? null;
+        if (is_array($buttons) && isset($buttons[$key]) && is_string($buttons[$key])) {
+            $label = trim($buttons[$key]);
+            if ($label !== '') {
+                return $label;
+            }
+        }
+
+        $fallbackButtons = $this->defaultCopy['buttons'] ?? [];
+        if (is_array($fallbackButtons) && isset($fallbackButtons[$key]) && is_string($fallbackButtons[$key])) {
+            return trim($fallbackButtons[$key]);
+        }
+
+        return $key === 'accept' ? 'Sí, autorizo' : 'No, gracias';
+    }
+
+    /**
+     * @param array<string, string> $context
+     */
+    private function renderCopy(string $text, array $context = []): string
+    {
+        $replacements = [
+            '{{brand}}' => $context['brand'] ?? $this->brand,
+            '{{terms_url}}' => $context['terms_url'] ?? '',
+            '{{history_number}}' => $context['history_number'] ?? '',
+            '{{name}}' => $context['name'] ?? '',
+        ];
+
+        $result = $text;
+        foreach ($replacements as $placeholder => $value) {
+            $result = str_replace($placeholder, (string) $value, $result);
+        }
+
+        return trim($result);
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     * @return array<string, mixed>
+     */
+    private function payloadFromRecord(array $record): array
+    {
+        $payload = $record['extra_payload'] ?? null;
+
+        if (is_array($payload)) {
+            return $payload;
+        }
+
+        if (is_string($payload) && $payload !== '') {
+            $decoded = json_decode($payload, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     */
+    private function updateStage(array $record, string $stage, array $extra = []): void
+    {
+        $payload = array_merge($this->payloadFromRecord($record), $extra);
+        $payload['stage'] = $stage;
+
+        $identifier = (string) ($record['identifier'] ?? $record['cedula'] ?? '');
+
+        $this->repository->updateExtraPayload($record['wa_number'], $identifier, $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     */
+    private function resolveStage(array $record): string
+    {
+        $payload = $this->payloadFromRecord($record);
+        $stage = $payload['stage'] ?? null;
+
+        return is_string($stage) ? $stage : self::STAGE_AWAITING_IDENTIFIER;
+    }
+
+    private function placeholderIdentifier(string $number): string
+    {
+        return '__pending_' . substr(sha1($number), 0, 10);
+    }
+
+    /**
+     * @return array{type: string, value: string, display: string}|null
+     */
+    private function detectIdentifier(string $rawText, string $normalized): ?array
+    {
+        $history = $this->normalizeHistoryIdentifier($rawText);
+        if ($history !== null) {
+            return $history;
+        }
+
+        return $this->normalizeHistoryIdentifier($normalized);
+    }
+
+    /**
+     * @return array{type: string, value: string, display: string}|null
+     */
+    private function normalizeHistoryIdentifier(string $value): ?array
+    {
+        $clean = preg_replace('/[^A-Za-z0-9]/', '', $value);
+        if ($clean === null || $clean === '') {
+            return null;
+        }
+
+        if (!preg_match('/\d/', $clean)) {
+            return null;
+        }
+
+        if (strlen($clean) < self::MIN_HISTORY_LENGTH) {
+            return null;
+        }
+
+        $display = trim(preg_replace('/\s+/', ' ', $value) ?? '');
+        if ($display === '') {
+            $display = $clean;
+        }
+
+        return [
+            'type' => 'history',
+            'value' => strtoupper($clean),
+            'display' => $display,
+        ];
     }
 
     private function sendConsentPrompt(string $number, ?string $name): void
     {
         $config = $this->settings->get();
-        $message = (string) ($config['data_consent_message'] ?? 'Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?');
+        $rawPrompt = $this->copyString('consent_prompt');
+        $context = [
+            'brand' => $this->brand,
+            'terms_url' => $config['data_terms_url'] ?? '',
+            'name' => $name ?? '',
+        ];
 
-        if ($name !== null && $name !== '') {
+        $message = $this->renderCopy($rawPrompt, $context);
+        if ($message === '') {
+            $message = $this->renderCopy($this->defaultCopy['consent_prompt'] ?? '', $context);
+        }
+
+        if ($name !== null && $name !== '' && strpos($rawPrompt, '{{name}}') === false) {
             $message = 'Antes de continuar, ' . $name . ', ' . $message;
         }
 
         $this->messenger->sendInteractiveButtons($number, $message, [
-            ['id' => 'consent_yes', 'title' => 'Sí, autorizo'],
-            ['id' => 'consent_no', 'title' => 'No, gracias'],
+            ['id' => 'consent_yes', 'title' => $this->copyButton('accept')],
+            ['id' => 'consent_no', 'title' => $this->copyButton('decline')],
         ]);
     }
 
     private function isAcceptance(string $keyword): bool
     {
-        $keyword = trim($keyword);
-        if ($keyword === '') {
-            return false;
+        $variants = [
+            'consent_yes',
+            'si',
+            'si autorizo',
+            'autorizo',
+            'autorizo si',
+            'claro autorizo',
+        ];
+
+        $button = $this->normalizeVariant($this->copyButton('accept'));
+        if ($button !== '') {
+            $variants[] = $button;
         }
 
-        if (in_array($keyword, ['consent_yes', 'si', 'sí'], true)) {
-            return true;
-        }
-
-        $config = $this->settings->get();
-        foreach (($config['data_consent_yes_keywords'] ?? []) as $accepted) {
-            if ($keyword === $accepted) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->matchesKeyword(
+            $keyword,
+            $variants,
+            $this->collectConfiguredKeywords('data_consent_yes_keywords')
+        );
     }
 
     private function isRejection(string $keyword): bool
     {
-        $keyword = trim($keyword);
-        if ($keyword === '') {
+        $variants = [
+            'consent_no',
+            'no',
+            'no autorizo',
+            'no gracias',
+            'rechazo',
+        ];
+
+        $button = $this->normalizeVariant($this->copyButton('decline'));
+        if ($button !== '') {
+            $variants[] = $button;
+        }
+
+        return $this->matchesKeyword(
+            $keyword,
+            $variants,
+            $this->collectConfiguredKeywords('data_consent_no_keywords')
+        );
+    }
+
+    /**
+     * @param array<int, string> $variants
+     * @param array<int, string> $configured
+     */
+    private function matchesKeyword(string $keyword, array $variants, array $configured): bool
+    {
+        $normalized = trim($keyword);
+        if ($normalized === '') {
             return false;
         }
 
-        if (in_array($keyword, ['consent_no', 'no'], true)) {
-            return true;
-        }
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn($token) => $token !== ''));
+        $candidates = array_merge($variants, $configured);
 
-        $config = $this->settings->get();
-        foreach (($config['data_consent_no_keywords'] ?? []) as $rejected) {
-            if ($keyword === $rejected) {
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if ($normalized === $candidate) {
+                return true;
+            }
+
+            if (in_array($candidate, $tokens, true)) {
+                return true;
+            }
+
+            $candidateTokens = preg_split('/\s+/', $candidate) ?: [];
+            $candidateTokens = array_values(array_filter($candidateTokens, static fn($token) => $token !== ''));
+            if ($candidateTokens === []) {
+                continue;
+            }
+
+            if ($this->tokensContainSequence($tokens, $candidateTokens)) {
                 return true;
             }
         }
@@ -187,25 +596,76 @@ class DataProtectionFlow
         return false;
     }
 
-    private function detectCedula(string $rawText, string $normalized): ?string
+    /**
+     * @param array<int, string> $tokens
+     * @param array<int, string> $sequence
+     */
+    private function tokensContainSequence(array $tokens, array $sequence): bool
     {
-        $rawDigits = preg_replace('/\D+/', '', $rawText);
-        if ($rawDigits !== '' && $this->isValidLength($rawDigits)) {
-            return $rawDigits;
+        $needleLength = count($sequence);
+        if ($needleLength === 0) {
+            return false;
         }
 
-        $normalizedDigits = preg_replace('/\D+/', '', $normalized ?? '');
-        if ($normalizedDigits !== '' && $this->isValidLength($normalizedDigits)) {
-            return $normalizedDigits;
+        $haystackLength = count($tokens);
+        if ($haystackLength < $needleLength) {
+            return false;
         }
 
-        return null;
+        for ($offset = 0; $offset <= $haystackLength - $needleLength; $offset++) {
+            $matches = true;
+            for ($index = 0; $index < $needleLength; $index++) {
+                if ($tokens[$offset + $index] !== $sequence[$index]) {
+                    $matches = false;
+                    break;
+                }
+            }
+
+            if ($matches) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private function isValidLength(string $digits): bool
+    /**
+     * @return array<int, string>
+     */
+    private function collectConfiguredKeywords(string $key): array
     {
-        $length = strlen($digits);
+        $config = $this->settings->get();
+        $values = [];
 
-        return in_array($length, [10, 13], true);
+        foreach (($config[$key] ?? []) as $variant) {
+            if (!is_string($variant)) {
+                continue;
+            }
+
+            $normalized = $this->normalizeVariant($variant);
+            if ($normalized !== '') {
+                $values[] = $normalized;
+            }
+        }
+
+        return $values;
+    }
+
+    private function normalizeVariant(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+        $value = preg_replace('/[^a-z0-9 ]+/u', '', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 }
