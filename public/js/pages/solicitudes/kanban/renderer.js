@@ -1,6 +1,76 @@
 import { showToast } from './toast.js';
 import { llamarTurnoSolicitud, formatTurno } from './turnero.js';
 
+const ESCAPE_MAP = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '`': '&#96;',
+};
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    return String(value).replace(/[&<>"'`]/g, character => ESCAPE_MAP[character]);
+}
+
+function getInitials(nombre) {
+    if (!nombre) {
+        return '—';
+    }
+
+    const parts = nombre
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .filter(Boolean);
+
+    if (!parts.length) {
+        return '—';
+    }
+
+    if (parts.length === 1) {
+        return parts[0].substring(0, 2).toUpperCase();
+    }
+
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function renderAvatar(nombreResponsable, avatarUrl) {
+    const nombre = nombreResponsable || '';
+    const alt = nombre !== '' ? nombre : 'Responsable sin asignar';
+
+    if (avatarUrl) {
+        return `
+            <div class="kanban-avatar">
+                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(alt)}">
+            </div>
+        `;
+    }
+
+    return `
+        <div class="kanban-avatar kanban-avatar--placeholder">
+            <span>${escapeHtml(getInitials(nombre || ''))}</span>
+        </div>
+    `;
+}
+
+function formatBadge(label, value, icon) {
+    const safeValue = escapeHtml(value ?? '');
+    if (!safeValue) {
+        return '';
+    }
+
+    const safeLabel = escapeHtml(label ?? '');
+    const safeIcon = icon ? `${icon} ` : '';
+
+    return `<span class="badge">${safeIcon}${safeLabel !== '' ? `${safeLabel}: ` : ''}${safeValue}</span>`;
+}
+
 export function renderKanban(data, callbackEstadoActualizado) {
     document.querySelectorAll('.kanban-items').forEach(col => {
         col.innerHTML = '';
@@ -19,6 +89,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.id = solicitud.id ?? '';
         tarjeta.dataset.afiliacion = solicitud.afiliacion ?? '';
         tarjeta.dataset.aseguradora = solicitud.aseguradora ?? solicitud.aseguradoraNombre ?? '';
+        tarjeta.dataset.prefacturaTrigger = 'kanban';
 
         const fecha = solicitud.fecha ? new Date(solicitud.fecha) : null;
         const fechaFormateada = fecha ? moment(fecha).format('DD-MM-YYYY') : '—';
@@ -31,6 +102,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
             : 'Recibido';
         const pipelineStage = solicitud.crm_pipeline_stage || defaultPipelineStage;
         const responsable = solicitud.crm_responsable_nombre || 'Sin responsable asignado';
+        const doctorNombre = (solicitud.doctor ?? '').trim();
+        const doctor = doctorNombre !== '' ? doctorNombre : 'Sin doctor';
+        const avatarNombre = doctorNombre !== '' ? doctorNombre : responsable;
+        const avatarUrl = solicitud.doctor_avatar || solicitud.crm_responsable_avatar || null;
         const contactoTelefono = solicitud.crm_contacto_telefono || solicitud.paciente_celular || 'Sin teléfono';
         const contactoCorreo = solicitud.crm_contacto_email || 'Sin correo';
         const fuente = solicitud.crm_fuente || '';
@@ -42,32 +117,44 @@ export function renderKanban(data, callbackEstadoActualizado) {
             ? moment(solicitud.crm_proximo_vencimiento).format('DD-MM-YYYY')
             : 'Sin vencimiento';
 
+        const pacienteNombre = solicitud.full_name ?? 'Paciente sin nombre';
+        const procedimiento = solicitud.procedimiento || 'Sin procedimiento';
+        // doctor already normalizado
+        const afiliacion = solicitud.afiliacion || 'Sin afiliación';
+        const ojo = solicitud.ojo || '—';
+        const observacion = solicitud.observacion || 'Sin nota';
+
+        const badges = [
+            formatBadge('Notas', totalNotas, '<i class="mdi mdi-note-text-outline"></i>'),
+            formatBadge('Adjuntos', totalAdjuntos, '<i class="mdi mdi-paperclip"></i>'),
+            formatBadge('Tareas', `${tareasPendientes}/${tareasTotal}`, '<i class="mdi mdi-format-list-checks"></i>'),
+            formatBadge('Vencimiento', proximoVencimiento, '<i class="mdi mdi-calendar-clock"></i>'),
+        ].filter(Boolean).join('');
+
         tarjeta.innerHTML = `
-            <div class="d-flex flex-column gap-1">
-                <strong>👤 ${solicitud.full_name ?? 'Paciente sin nombre'}</strong>
-                <small>🆔 ${solicitud.hc_number ?? '—'}</small>
-                <small>📅 ${fechaFormateada} <span class="badge">${semaforo}</span></small>
-                <small>🧑‍⚕️ ${solicitud.doctor || 'Sin doctor'}</small>
-                <small>🏥 ${solicitud.afiliacion || 'Sin afiliación'}</small>
-                <small>🔍 <span class="text-primary fw-bold">${solicitud.procedimiento || 'Sin procedimiento'}</span></small>
-                <small>👁️ ${solicitud.ojo || '—'}</small>
-                <small>💬 ${(solicitud.observacion || 'Sin nota')}</small>
-                <small>⏱️ ${dias} día(s) en estado actual</small>
+            <div class="kanban-card-header">
+                ${renderAvatar(avatarNombre, avatarUrl)}
+                <div class="kanban-card-body">
+                    <strong>${escapeHtml(pacienteNombre)}</strong>
+                    <small>🆔 ${escapeHtml(solicitud.hc_number ?? '—')}</small>
+                    <small>📅 ${escapeHtml(fechaFormateada)} <span class="badge">${escapeHtml(semaforo)}</span></small>
+                    <small>🧑‍⚕️ ${escapeHtml(doctor)}</small>
+                    <small>🏥 ${escapeHtml(afiliacion)}</small>
+                    <small>🔍 <span class="text-primary fw-bold">${escapeHtml(procedimiento)}</span></small>
+                    <small>👁️ ${escapeHtml(ojo)}</small>
+                    <small>💬 ${escapeHtml(observacion)}</small>
+                    <small>⏱️ ${escapeHtml(String(dias))} día(s) en estado actual</small>
+                </div>
             </div>
             <div class="kanban-card-crm mt-2">
-                <span class="crm-pill"><i class="mdi mdi-progress-check"></i>${pipelineStage}</span>
+                <span class="crm-pill"><i class="mdi mdi-progress-check"></i>${escapeHtml(pipelineStage)}</span>
                 <div class="crm-meta">
-                    <span><i class="mdi mdi-account-tie-outline"></i>${responsable}</span>
-                    <span><i class="mdi mdi-phone"></i>${contactoTelefono}</span>
-                    <span><i class="mdi mdi-email-outline"></i>${contactoCorreo}</span>
-                    ${fuente ? `<span><i class="mdi mdi-source-branch"></i>${fuente}</span>` : ''}
+                    <span><i class="mdi mdi-account-tie-outline"></i>${escapeHtml(responsable)}</span>
+                    <span><i class="mdi mdi-phone"></i>${escapeHtml(contactoTelefono)}</span>
+                    <span><i class="mdi mdi-email-outline"></i>${escapeHtml(contactoCorreo)}</span>
+                    ${fuente ? `<span><i class="mdi mdi-source-branch"></i>${escapeHtml(fuente)}</span>` : ''}
                 </div>
-                <div class="crm-badges">
-                    <span class="badge"><i class="mdi mdi-note-text-outline"></i>${totalNotas}</span>
-                    <span class="badge"><i class="mdi mdi-paperclip"></i>${totalAdjuntos}</span>
-                    <span class="badge"><i class="mdi mdi-format-list-checks"></i>${tareasPendientes}/${tareasTotal}</span>
-                    <span class="badge"><i class="mdi mdi-calendar-clock"></i>${proximoVencimiento}</span>
-                </div>
+                <div class="crm-badges">${badges}</div>
             </div>
         `;
 

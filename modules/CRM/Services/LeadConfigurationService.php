@@ -167,9 +167,27 @@ class LeadConfigurationService
      */
     public function getAssignableUsers(): array
     {
-        $stmt = $this->pdo->query('SELECT id, nombre, email FROM users ORDER BY nombre');
+        $stmt = $this->pdo->query('SELECT id, nombre, email, profile_photo FROM users ORDER BY nombre');
+        $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return array_map(function (array $usuario): array {
+            $usuario['avatar'] = $this->formatProfilePhoto($usuario['profile_photo'] ?? null);
+
+            return $usuario;
+        }, $usuarios);
+    }
+
+    private function formatProfilePhoto(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        if (preg_match('~^https?://~i', $path)) {
+            return $path;
+        }
+
+        return function_exists('asset') ? asset($path) : $path;
     }
 
     /**

@@ -93,10 +93,12 @@ class SolicitudController extends BaseController
 
         try {
             $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filtros);
+            $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
 
             $responsables = $this->leadConfig->getAssignableUsers();
+            $responsables = array_map([$this, 'transformResponsable'], $responsables);
             $fuentes = $this->leadConfig->getSources();
 
             $afiliaciones = array_values(array_unique(array_filter(array_map(
@@ -356,6 +358,38 @@ class SolicitudController extends BaseController
     private function getCurrentUserId(): ?int
     {
         return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    }
+
+    private function transformSolicitudRow(array $row): array
+    {
+        $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
+        $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+
+        return $row;
+    }
+
+    private function transformResponsable(array $usuario): array
+    {
+        $usuario['avatar'] = $this->formatProfilePhoto($usuario['avatar'] ?? ($usuario['profile_photo'] ?? null));
+
+        if (isset($usuario['profile_photo'])) {
+            $usuario['profile_photo'] = $this->formatProfilePhoto($usuario['profile_photo']);
+        }
+
+        return $usuario;
+    }
+
+    private function formatProfilePhoto(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        if (preg_match('~^https?://~i', $path)) {
+            return $path;
+        }
+
+        return function_exists('asset') ? asset($path) : $path;
     }
 
     public function actualizarEstado(): void
