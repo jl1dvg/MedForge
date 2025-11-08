@@ -5,8 +5,11 @@ namespace Modules\WhatsApp\Controllers;
 use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
+use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
+use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
+use Modules\WhatsApp\Support\DataProtectionFlow;
 use PDO;
 use function file_get_contents;
 use function hash_equals;
@@ -28,6 +31,7 @@ class WebhookController extends BaseController
      * @var array<string, mixed>
      */
     private array $flow;
+    private DataProtectionFlow $dataProtection;
 
     public function __construct(PDO $pdo)
     {
@@ -43,6 +47,9 @@ class WebhookController extends BaseController
 
         $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
         $this->verifyToken = $this->resolveVerifyToken($config);
+        $patientLookup = new PatientLookupService($pdo);
+        $consentRepository = new ContactConsentRepository($pdo);
+        $this->dataProtection = new DataProtectionFlow($this->messenger, $consentRepository, $patientLookup, $settings);
     }
 
     public function handle(): void
@@ -149,6 +156,10 @@ class WebhookController extends BaseController
         $keyword = $this->normalize($text);
 
         if ($keyword === '') {
+            return;
+        }
+
+        if ($this->dataProtection->handle($sender, $keyword, $message, $text)) {
             return;
         }
 
@@ -271,10 +282,6 @@ class WebhookController extends BaseController
 
             $type = isset($message['type']) ? (string) $message['type'] : 'text';
             $body = isset($message['body']) ? (string) $message['body'] : '';
-            if ($body === '') {
-                continue;
-            }
-
             if ($type === 'buttons') {
                 $buttons = [];
                 foreach ($message['buttons'] ?? [] as $button) {
