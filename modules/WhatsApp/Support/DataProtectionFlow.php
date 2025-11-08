@@ -9,15 +9,20 @@ use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\PatientLookupService;
 use RuntimeException;
 
+use function array_filter;
 use function array_merge;
+use function array_values;
 use function in_array;
 use function is_array;
 use function is_string;
 use function json_decode;
+use function mb_strtolower;
 use function preg_match;
 use function preg_replace;
+use function preg_split;
 use function sha1;
 use function strlen;
+use function strtr;
 use function strtoupper;
 use function substr;
 use function trim;
@@ -314,6 +319,10 @@ class DataProtectionFlow
             $number,
             'Cuando confirmes la información, responde con la opción que necesites o escribe "menu" para ver las alternativas disponibles.'
         );
+        $this->messenger->sendTextMessage(
+            $number,
+            'Tu autorización quedó registrada en nuestro sistema. Continuemos con la atención. ✅'
+        );
 
         return true;
     }
@@ -445,44 +454,33 @@ class DataProtectionFlow
 
     private function isAcceptance(string $keyword): bool
     {
-        $keyword = trim($keyword);
-        if ($keyword === '') {
-            return false;
-        }
-
-        if (in_array($keyword, ['consent_yes', 'si', 'sí', 'autorizo', 'autorizo.'], true)) {
-            return true;
-        }
-
-        $config = $this->settings->get();
-        foreach (($config['data_consent_yes_keywords'] ?? []) as $accepted) {
-            if ($keyword === $accepted) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->matchesKeyword(
+            $keyword,
+            [
+                'consent_yes',
+                'si',
+                'si autorizo',
+                'autorizo',
+                'autorizo si',
+                'claro autorizo',
+            ],
+            $this->collectConfiguredKeywords('data_consent_yes_keywords')
+        );
     }
 
     private function isRejection(string $keyword): bool
     {
-        $keyword = trim($keyword);
-        if ($keyword === '') {
-            return false;
-        }
-
-        if (in_array($keyword, ['consent_no', 'no'], true)) {
-            return true;
-        }
-
-        $config = $this->settings->get();
-        foreach (($config['data_consent_no_keywords'] ?? []) as $rejected) {
-            if ($keyword === $rejected) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->matchesKeyword(
+            $keyword,
+            [
+                'consent_no',
+                'no',
+                'no autorizo',
+                'no gracias',
+                'rechazo',
+            ],
+            $this->collectConfiguredKeywords('data_consent_no_keywords')
+        );
     }
 
     private function isValidLength(string $digits): bool
@@ -490,5 +488,121 @@ class DataProtectionFlow
         $length = strlen($digits);
 
         return in_array($length, [10, 13], true);
+    }
+
+    /**
+     * @param array<int, string> $variants
+     * @param array<int, string> $configured
+     */
+    private function matchesKeyword(string $keyword, array $variants, array $configured): bool
+    {
+        $normalized = trim($keyword);
+        if ($normalized === '') {
+            return false;
+        }
+
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn($token) => $token !== ''));
+        $candidates = array_merge($variants, $configured);
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if ($normalized === $candidate) {
+                return true;
+            }
+
+            if (in_array($candidate, $tokens, true)) {
+                return true;
+            }
+
+            $candidateTokens = preg_split('/\s+/', $candidate) ?: [];
+            $candidateTokens = array_values(array_filter($candidateTokens, static fn($token) => $token !== ''));
+            if ($candidateTokens === []) {
+                continue;
+            }
+
+            if ($this->tokensContainSequence($tokens, $candidateTokens)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, string> $tokens
+     * @param array<int, string> $sequence
+     */
+    private function tokensContainSequence(array $tokens, array $sequence): bool
+    {
+        $needleLength = count($sequence);
+        if ($needleLength === 0) {
+            return false;
+        }
+
+        $haystackLength = count($tokens);
+        if ($haystackLength < $needleLength) {
+            return false;
+        }
+
+        for ($offset = 0; $offset <= $haystackLength - $needleLength; $offset++) {
+            $matches = true;
+            for ($index = 0; $index < $needleLength; $index++) {
+                if ($tokens[$offset + $index] !== $sequence[$index]) {
+                    $matches = false;
+                    break;
+                }
+            }
+
+            if ($matches) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function collectConfiguredKeywords(string $key): array
+    {
+        $config = $this->settings->get();
+        $values = [];
+
+        foreach (($config[$key] ?? []) as $variant) {
+            if (!is_string($variant)) {
+                continue;
+            }
+
+            $normalized = $this->normalizeVariant($variant);
+            if ($normalized !== '') {
+                $values[] = $normalized;
+            }
+        }
+
+        return $values;
+    }
+
+    private function normalizeVariant(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+        $value = preg_replace('/[^a-z0-9 ]+/u', '', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 }
