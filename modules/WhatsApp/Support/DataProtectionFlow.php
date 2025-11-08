@@ -7,7 +7,6 @@ use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\PatientLookupService;
-use RuntimeException;
 
 use function array_filter;
 use function array_merge;
@@ -58,6 +57,10 @@ class DataProtectionFlow
     {
         $record = $this->repository->findByNumber($number);
 
+        if ($record !== null && !isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = (string) $record['cedula'];
+        }
+
         if ($record === null) {
             $this->beginConsentHandshake($number);
 
@@ -74,13 +77,14 @@ class DataProtectionFlow
 
         if ($status === 'declined') {
             if ($this->isAcceptance($normalizedKeyword)) {
-                $this->repository->markPendingResponse($number, $record['cedula']);
+                $identifierValue = (string) ($record['identifier'] ?? '');
+                $this->repository->markPendingResponse($number, $identifierValue);
                 $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
                     'restarted_at' => (new DateTimeImmutable())->format('c'),
                 ]);
                 $this->messenger->sendTextMessage(
                     $number,
-                    'Perfecto, continuemos. Escribe tu número de cédula o historia clínica 🪪'
+                    'Perfecto, continuemos. Escribe tu número de historia clínica 🪪'
                 );
 
                 return true;
@@ -119,7 +123,7 @@ class DataProtectionFlow
 
         $this->repository->startOrUpdate([
             'wa_number' => $number,
-            'cedula' => $this->placeholderCedula($number),
+            'identifier' => $this->placeholderIdentifier($number),
             'patient_hc_number' => null,
             'patient_full_name' => null,
             'consent_status' => 'pending',
@@ -160,14 +164,15 @@ class DataProtectionFlow
             ]);
             $this->messenger->sendTextMessage(
                 $number,
-                'Escribe tu número de cédula o historia clínica 🪪'
+                'Escribe tu número de historia clínica 🪪'
             );
 
             return true;
         }
 
         if ($this->isRejection($keyword)) {
-            $this->repository->markConsent($number, $record['cedula'], false);
+            $identifierValue = (string) ($record['identifier'] ?? '');
+            $this->repository->markConsent($number, $identifierValue, false);
             $this->messenger->sendTextMessage(
                 $number,
                 'Entendido. No utilizaremos tus datos hasta que lo autorices. Si deseas continuar responde "sí" o comunícate con nuestro equipo.'
@@ -195,54 +200,18 @@ class DataProtectionFlow
         if ($identifier === null) {
             $this->messenger->sendTextMessage(
                 $number,
-                'Por favor, escribe tu número de cédula o historia clínica para validar que estás registrado.'
+                'Por favor, escribe tu número de historia clínica para validar que estás registrado.'
             );
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER);
 
             return true;
         }
 
-        $rawPayload = null;
-        $source = 'local';
-        $patient = null;
-
-        if ($identifier['type'] === 'cedula') {
-            $patient = $this->patients->findLocalByCedula($identifier['value']);
-            if ($patient === null) {
-                try {
-                    $registry = $this->patients->lookupInRegistry($identifier['value']);
-                    if ($registry !== null) {
-                        $patient = [
-                            'hc_number' => $registry['hc_number'] ?? null,
-                            'cedula' => $registry['cedula'] ?? $identifier['value'],
-                            'full_name' => $registry['full_name'] ?? null,
-                        ];
-                        $rawPayload = $registry['raw'] ?? $registry;
-                        $source = 'registry';
-                    }
-                } catch (RuntimeException $exception) {
-                    $this->messenger->sendTextMessage(
-                        $number,
-                        'No pudimos validar tus datos en este momento (' . $exception->getMessage() . '). Intenta nuevamente más tarde o comunícate con nuestro equipo.'
-                    );
-
-                    return true;
-                }
-            }
-        } else {
-            $patient = $this->patients->findLocalByHistoryNumber($identifier['value']);
-            if ($patient === null) {
-                $maybeCedula = preg_replace('/\D+/', '', $identifier['value']);
-                if ($maybeCedula !== '' && $this->isValidLength($maybeCedula)) {
-                    $patient = $this->patients->findLocalByCedula($maybeCedula);
-                }
-            }
-        }
-
+        $patient = $this->patients->findLocalByHistoryNumber($identifier['value']);
         if ($patient === null) {
             $this->messenger->sendTextMessage(
                 $number,
-                'No encontramos tu registro con el dato proporcionado. Verifica tu número de cédula o historia clínica y vuelve a intentarlo.'
+                'No encontramos tu registro con el número de historia clínica proporcionado. Verifícalo y vuelve a intentarlo.'
             );
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
                 'last_identifier_attempt' => $identifier['value'],
@@ -251,30 +220,9 @@ class DataProtectionFlow
             return true;
         }
 
-        $cedula = trim((string) ($patient['cedula'] ?? ''));
-        if ($cedula === '') {
-            if ($identifier['type'] === 'cedula') {
-                $cedula = $identifier['value'];
-            } else {
-                $digits = preg_replace('/\D+/', '', $identifier['value']);
-                if ($digits !== '' && $this->isValidLength($digits)) {
-                    $cedula = $digits;
-                }
-            }
-        }
-
-        if ($cedula === '') {
-            $this->messenger->sendTextMessage(
-                $number,
-                'Validamos tus datos pero no pudimos asociar un número de cédula. Comunícate con nuestro equipo para asistencia.'
-            );
-
-            return true;
-        }
-
-        $hcNumber = isset($patient['hc_number']) ? trim((string) $patient['hc_number']) : null;
-        if ($hcNumber === '') {
-            $hcNumber = null;
+        $historyNumber = isset($patient['hc_number']) ? trim((string) $patient['hc_number']) : '';
+        if ($historyNumber === '') {
+            $historyNumber = strtoupper($identifier['value']);
         }
 
         $fullName = isset($patient['full_name']) ? trim((string) $patient['full_name']) : null;
@@ -287,33 +235,33 @@ class DataProtectionFlow
             [
                 'stage' => self::STAGE_COMPLETE,
                 'identifier' => [
-                    'type' => $identifier['type'],
-                    'value' => $identifier['value'],
+                    'type' => 'history',
+                    'value' => $historyNumber,
+                    'input' => $identifier['value'],
+                    'display' => $identifier['display'],
                 ],
                 'verified_at' => (new DateTimeImmutable())->format('c'),
             ]
         );
 
-        if ($rawPayload !== null) {
-            $payload['registry_payload'] = $rawPayload;
-        }
+        $currentIdentifier = (string) ($record['identifier'] ?? '');
 
-        $this->repository->reassignCedula(
+        $this->repository->reassignIdentifier(
             $number,
-            $record['cedula'],
-            $cedula,
-            $hcNumber,
+            $currentIdentifier,
+            $historyNumber,
+            $historyNumber,
             $fullName,
-            $source,
+            'local',
             $payload
         );
 
-        $this->repository->markConsent($number, $cedula, true);
+        $this->repository->markConsent($number, $historyNumber, true);
 
         $this->messenger->sendTextMessage($number, '¿Está seguro de que la información ingresada es correcta? ✅');
         $this->messenger->sendTextMessage(
             $number,
-            'Por favor, verifica si lo que ingresaste ' . $identifier['display'] . ' está correcto antes de continuar. ¡Gracias por tu atención! 😊'
+            'Por favor, verifica si tu número de historia clínica ' . $historyNumber . ' está correcto antes de continuar. ¡Gracias por tu atención! 😊'
         );
         $this->messenger->sendTextMessage(
             $number,
@@ -357,7 +305,9 @@ class DataProtectionFlow
         $payload = array_merge($this->payloadFromRecord($record), $extra);
         $payload['stage'] = $stage;
 
-        $this->repository->updateExtraPayload($record['wa_number'], $record['cedula'], $payload);
+        $identifier = (string) ($record['identifier'] ?? $record['cedula'] ?? '');
+
+        $this->repository->updateExtraPayload($record['wa_number'], $identifier, $payload);
     }
 
     /**
@@ -371,7 +321,7 @@ class DataProtectionFlow
         return is_string($stage) ? $stage : self::STAGE_AWAITING_IDENTIFIER;
     }
 
-    private function placeholderCedula(string $number): string
+    private function placeholderIdentifier(string $number): string
     {
         return '__pending_' . substr(sha1($number), 0, 10);
     }
@@ -381,24 +331,6 @@ class DataProtectionFlow
      */
     private function detectIdentifier(string $rawText, string $normalized): ?array
     {
-        $rawDigits = preg_replace('/\D+/', '', $rawText);
-        if ($rawDigits !== '' && $this->isValidLength($rawDigits)) {
-            return [
-                'type' => 'cedula',
-                'value' => $rawDigits,
-                'display' => $rawDigits,
-            ];
-        }
-
-        $normalizedDigits = preg_replace('/\D+/', '', $normalized);
-        if ($normalizedDigits !== '' && $this->isValidLength($normalizedDigits)) {
-            return [
-                'type' => 'cedula',
-                'value' => $normalizedDigits,
-                'display' => $normalizedDigits,
-            ];
-        }
-
         $history = $this->normalizeHistoryIdentifier($rawText);
         if ($history !== null) {
             return $history;
@@ -481,13 +413,6 @@ class DataProtectionFlow
             ],
             $this->collectConfiguredKeywords('data_consent_no_keywords')
         );
-    }
-
-    private function isValidLength(string $digits): bool
-    {
-        $length = strlen($digits);
-
-        return in_array($length, [10, 13], true);
     }
 
     /**

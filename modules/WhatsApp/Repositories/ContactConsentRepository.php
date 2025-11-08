@@ -24,21 +24,35 @@ class ContactConsentRepository
         $stmt->execute([':number' => $waNumber]);
 
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($record === false) {
+            return null;
+        }
 
-        return $record === false ? null : $record;
+        if (!isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = $record['cedula'];
+        }
+
+        return $record;
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function findByNumberAndCedula(string $waNumber, string $cedula): ?array
+    public function findByNumberAndIdentifier(string $waNumber, string $identifier): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number AND cedula = :cedula LIMIT 1');
-        $stmt->execute([':number' => $waNumber, ':cedula' => $cedula]);
+        $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number AND cedula = :identifier LIMIT 1');
+        $stmt->execute([':number' => $waNumber, ':identifier' => $identifier]);
 
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($record === false) {
+            return null;
+        }
 
-        return $record === false ? null : $record;
+        if (!isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = $record['cedula'];
+        }
+
+        return $record;
     }
 
     /**
@@ -48,7 +62,7 @@ class ContactConsentRepository
     {
         $sql = <<<SQL
             INSERT INTO whatsapp_contact_consent (wa_number, cedula, patient_hc_number, patient_full_name, consent_status, consent_source, consent_asked_at, extra_payload)
-            VALUES (:wa_number, :cedula, :hc, :name, :status, :source, :asked_at, :payload)
+            VALUES (:wa_number, :identifier, :hc, :name, :status, :source, :asked_at, :payload)
             ON DUPLICATE KEY UPDATE
                 patient_hc_number = VALUES(patient_hc_number),
                 patient_full_name = VALUES(patient_full_name),
@@ -65,9 +79,14 @@ class ContactConsentRepository
             $encodedPayload = json_encode($payload['extra_payload'], JSON_UNESCAPED_UNICODE);
         }
 
+        $identifier = $payload['identifier'] ?? $payload['cedula'] ?? null;
+        if (!is_string($identifier)) {
+            $identifier = '';
+        }
+
         return $stmt->execute([
             ':wa_number' => $payload['wa_number'],
-            ':cedula' => $payload['cedula'],
+            ':identifier' => $identifier,
             ':hc' => $payload['patient_hc_number'] ?? null,
             ':name' => $payload['patient_full_name'] ?? null,
             ':status' => $payload['consent_status'] ?? 'pending',
@@ -77,39 +96,39 @@ class ContactConsentRepository
         ]);
     }
 
-    public function markConsent(string $waNumber, string $cedula, bool $accepted): bool
+    public function markConsent(string $waNumber, string $identifier, bool $accepted): bool
     {
         $status = $accepted ? 'accepted' : 'declined';
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET consent_status = :status, consent_responded_at = NOW() WHERE wa_number = :number AND cedula = :cedula'
+            'UPDATE whatsapp_contact_consent SET consent_status = :status, consent_responded_at = NOW() WHERE wa_number = :number AND cedula = :identifier'
         );
 
         return $stmt->execute([
             ':status' => $status,
             ':number' => $waNumber,
-            ':cedula' => $cedula,
+            ':identifier' => $identifier,
         ]);
     }
 
-    public function markPendingResponse(string $waNumber, string $cedula): void
+    public function markPendingResponse(string $waNumber, string $identifier): void
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET consent_status = "pending", consent_responded_at = NULL WHERE wa_number = :number AND cedula = :cedula'
+            'UPDATE whatsapp_contact_consent SET consent_status = "pending", consent_responded_at = NULL WHERE wa_number = :number AND cedula = :identifier'
         );
 
         $stmt->execute([
             ':number' => $waNumber,
-            ':cedula' => $cedula,
+            ':identifier' => $identifier,
         ]);
     }
 
     /**
      * @param array<string, mixed>|null $payload
      */
-    public function updateExtraPayload(string $waNumber, string $cedula, ?array $payload): bool
+    public function updateExtraPayload(string $waNumber, string $identifier, ?array $payload): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET extra_payload = :payload WHERE wa_number = :number AND cedula = :cedula LIMIT 1'
+            'UPDATE whatsapp_contact_consent SET extra_payload = :payload WHERE wa_number = :number AND cedula = :identifier LIMIT 1'
         );
 
         $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
@@ -117,36 +136,36 @@ class ContactConsentRepository
         return $stmt->execute([
             ':payload' => $encoded,
             ':number' => $waNumber,
-            ':cedula' => $cedula,
+            ':identifier' => $identifier,
         ]);
     }
 
     /**
      * @param array<string, mixed>|null $payload
      */
-    public function reassignCedula(
+    public function reassignIdentifier(
         string $waNumber,
-        string $currentCedula,
-        string $newCedula,
+        string $currentIdentifier,
+        string $newIdentifier,
         ?string $historyNumber,
         ?string $fullName,
         string $source,
         ?array $payload
     ): bool {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET cedula = :newCedula, patient_hc_number = :hc, patient_full_name = :name, consent_source = :source, extra_payload = :payload WHERE wa_number = :number AND cedula = :current LIMIT 1'
+            'UPDATE whatsapp_contact_consent SET cedula = :newIdentifier, patient_hc_number = :hc, patient_full_name = :name, consent_source = :source, extra_payload = :payload WHERE wa_number = :number AND cedula = :current LIMIT 1'
         );
 
         $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
 
         return $stmt->execute([
-            ':newCedula' => $newCedula,
+            ':newIdentifier' => $newIdentifier,
             ':hc' => $historyNumber,
             ':name' => $fullName,
             ':source' => $source,
             ':payload' => $encoded,
             ':number' => $waNumber,
-            ':current' => $currentCedula,
+            ':current' => $currentIdentifier,
         ]);
     }
 
