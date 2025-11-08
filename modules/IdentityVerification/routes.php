@@ -2,22 +2,24 @@
 
 use Core\Router;
 use Modules\IdentityVerification\Controllers\VerificationController;
-use PDO;
-
 return function (Router $router) {
-    $router->get('/pacientes/certificaciones', function (PDO $pdo) {
+    $router->get('/pacientes/certificaciones', function (\PDO $pdo) {
         (new VerificationController($pdo))->index();
     });
 
-    $router->post('/pacientes/certificaciones', function (PDO $pdo) {
+    $router->post('/pacientes/certificaciones', function (\PDO $pdo) {
         (new VerificationController($pdo))->store();
     });
 
-    $router->get('/pacientes/certificaciones/detalle', function (PDO $pdo) {
+    $router->get('/pacientes/certificaciones/detalle', function (\PDO $pdo) {
         (new VerificationController($pdo))->show();
     });
 
-    $router->post('/pacientes/certificaciones/verificar', function (PDO $pdo) {
+    $router->get('/pacientes/certificaciones/comprobante', function (\PDO $pdo) {
+        (new VerificationController($pdo))->consentDocument();
+    });
+
+    $router->post('/pacientes/certificaciones/verificar', function (\PDO $pdo) {
         (new VerificationController($pdo))->verify();
     });
 };

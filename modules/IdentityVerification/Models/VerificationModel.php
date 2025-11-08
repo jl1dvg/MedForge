@@ -132,21 +132,29 @@ class VerificationModel
         ]);
     }
 
-    public function touchVerificationMetadata(int $id, string $result): void
+    public function touchVerificationMetadata(int $id, string $result, ?string $status = null): void
     {
-        $stmt = $this->db->prepare("
+        $sql = "
             UPDATE patient_identity_certifications
             SET last_verification_at = NOW(),
-                last_verification_result = :result
-            WHERE id = :id
-        ");
-        $stmt->execute([
-            ':result' => $result,
-            ':id' => $id,
-        ]);
+                last_verification_result = :result";
+
+        if ($status !== null) {
+            $sql .= ", status = :status";
+        }
+
+        $sql .= " WHERE id = :id";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':result', $result, PDO::PARAM_STR);
+        if ($status !== null) {
+            $stmt->bindValue(':status', $status, PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
-    public function logCheckin(int $certificationId, array $data): void
+    public function logCheckin(int $certificationId, array $data): int
     {
         $stmt = $this->db->prepare("
             INSERT INTO patient_identity_checkins (
@@ -166,6 +174,44 @@ class VerificationModel
             ':metadata' => $this->encodeTemplate($data['metadata'] ?? null),
             ':created_by' => $data['created_by'] ?? null,
         ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function findCheckinWithCertification(int $checkinId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT ch.*, c.patient_id, c.document_number, c.document_type,
+                   c.signature_path, c.document_signature_path,
+                   c.document_front_path, c.document_back_path,
+                   c.face_image_path, c.status,
+                   p.hc_number, p.fname, p.mname, p.lname, p.lname2,
+                   p.cedula, p.celular, p.afiliacion
+            FROM patient_identity_checkins ch
+            INNER JOIN patient_identity_certifications c ON c.id = ch.certification_id
+            LEFT JOIN patient_data p ON p.hc_number = c.patient_id
+            WHERE ch.id = :id
+            LIMIT 1
+        ");
+        $stmt->bindValue(':id', $checkinId, PDO::PARAM_INT);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$row) {
+            return null;
+        }
+
+        $row['metadata'] = $this->decodeTemplate($row['metadata'] ?? null);
+        $row['full_name'] = trim(implode(' ', array_filter([
+            $row['fname'] ?? null,
+            $row['mname'] ?? null,
+            $row['lname'] ?? null,
+            $row['lname2'] ?? null,
+        ])));
+
+        unset($row['fname'], $row['mname'], $row['lname'], $row['lname2']);
+
+        return $row;
     }
 
     public function findPatientSummary(string $patientId): ?array

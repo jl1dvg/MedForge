@@ -31,6 +31,7 @@ class VerificationController extends BaseController
         $status = $_GET['status'] ?? null;
         $errors = [];
         $selectedPatient = null;
+        $selectedCertification = null;
         $old = [];
 
         $lookupPatientId = isset($_GET['patient_id']) ? $this->normalizePatientId((string) $_GET['patient_id']) : '';
@@ -40,6 +41,10 @@ class VerificationController extends BaseController
                 $old['patient_id'] = $selectedPatient['hc_number'];
                 if (!empty($selectedPatient['cedula'])) {
                     $old['document_number'] = $selectedPatient['cedula'];
+                }
+                $selectedCertification = $this->verifications->findByPatient($selectedPatient['hc_number']);
+                if ($selectedCertification) {
+                    $selectedCertification['completeness'] = $this->summarizeCertificationCompleteness($selectedCertification);
                 }
             } else {
                 $errors['patient_id'] = 'No se encontró un paciente con la historia clínica proporcionada.';
@@ -54,6 +59,7 @@ class VerificationController extends BaseController
             'errors' => $errors,
             'old' => $old,
             'selectedPatient' => $selectedPatient,
+            'selectedCertification' => $selectedCertification,
             'scripts' => [
                 'js/modules/patient-verification.js',
             ],
@@ -69,14 +75,25 @@ class VerificationController extends BaseController
         $input['patient_id'] = $this->normalizePatientId($input['patient_id'] ?? '');
 
         $patient = null;
+        $existing = null;
         if ($input['patient_id'] !== '') {
             $patient = $this->verifications->findPatientSummary($input['patient_id']);
+            $existing = $this->verifications->findByPatient($input['patient_id']);
+
             if ($patient && empty($input['document_number'])) {
                 $input['document_number'] = (string) ($patient['cedula'] ?? '');
             }
+
+            if ($existing && empty($input['document_type'])) {
+                $input['document_type'] = (string) ($existing['document_type'] ?? '');
+            }
+
+            if ($existing) {
+                $existing['completeness'] = $this->summarizeCertificationCompleteness($existing);
+            }
         }
 
-        $errors = $this->validateCertificationInput($input, $patient);
+        $errors = $this->validateCertificationInput($input, $patient, $existing);
 
         if (!empty($errors)) {
             $certifications = $this->verifications->getRecent(25);
@@ -87,6 +104,7 @@ class VerificationController extends BaseController
                 'errors' => $errors,
                 'old' => $input,
                 'selectedPatient' => $patient,
+                'selectedCertification' => $existing,
                 'scripts' => [
                     'js/modules/patient-verification.js',
                 ],
@@ -101,22 +119,40 @@ class VerificationController extends BaseController
         $documentFrontPath = $this->persistUploadedFile('document_front', 'documents');
         $documentBackPath = $this->persistUploadedFile('document_back', 'documents');
 
+        $signaturePath = $signaturePath ?? ($existing['signature_path'] ?? null);
+        $facePath = $facePath ?? ($existing['face_image_path'] ?? null);
+        $documentSignaturePath = $documentSignaturePath ?? ($existing['document_signature_path'] ?? null);
+        $documentFrontPath = $documentFrontPath ?? ($existing['document_front_path'] ?? null);
+        $documentBackPath = $documentBackPath ?? ($existing['document_back_path'] ?? null);
+
         $signatureTemplate = null;
-        if ($signaturePath !== null) {
+        if (($input['signature_data'] ?? '') !== '' && $signaturePath !== null) {
+            $signatureTemplate = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signaturePath);
+        } elseif (!empty($existing['signature_template'])) {
+            $signatureTemplate = $existing['signature_template'];
+        } elseif ($signaturePath !== null) {
             $signatureTemplate = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signaturePath);
         }
 
         $faceTemplate = null;
-        if ($facePath !== null) {
+        if (($input['face_image'] ?? '') !== '' && $facePath !== null) {
+            $faceTemplate = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $facePath);
+        } elseif (!empty($existing['face_template'])) {
+            $faceTemplate = $existing['face_template'];
+        } elseif ($facePath !== null) {
             $faceTemplate = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $facePath);
         }
 
-        $existing = $this->verifications->findByPatient($input['patient_id']);
+        $documentNumber = $input['document_number'] !== ''
+            ? $input['document_number']
+            : (string) ($existing['document_number'] ?? '');
+
+        $documentType = $input['document_type'] ?? ($existing['document_type'] ?? 'cedula');
 
         $payload = [
             'patient_id' => $input['patient_id'],
-            'document_number' => $input['document_number'],
-            'document_type' => $input['document_type'] ?? 'cedula',
+            'document_number' => $documentNumber,
+            'document_type' => $documentType,
             'signature_path' => $signaturePath,
             'signature_template' => $signatureTemplate,
             'document_signature_path' => $documentSignaturePath,
@@ -124,21 +160,27 @@ class VerificationController extends BaseController
             'document_back_path' => $documentBackPath,
             'face_image_path' => $facePath,
             'face_template' => $faceTemplate,
-            'status' => 'verified',
+            'status' => $this->determineCertificationStatus([
+                'signature_path' => $signaturePath,
+                'signature_template' => $signatureTemplate,
+                'face_template' => $faceTemplate,
+                'document_number' => $documentNumber,
+                'document_front_path' => $documentFrontPath,
+                'document_back_path' => $documentBackPath,
+            ]),
             'updated_by' => $_SESSION['user_id'] ?? null,
         ];
 
         if ($existing) {
             $this->verifications->update((int) $existing['id'], $payload);
-            $certificationId = (int) $existing['id'];
         } else {
             $payload['created_by'] = $_SESSION['user_id'] ?? null;
-            $certificationId = $this->verifications->create($payload);
+            $this->verifications->create($payload);
         }
 
-        $this->verifications->touchVerificationMetadata($certificationId, 'approved');
+        $statusParam = $payload['status'] === 'verified' ? 'stored' : 'stored_pending';
 
-        header('Location: /pacientes/certificaciones?status=stored');
+        header('Location: /pacientes/certificaciones?status=' . $statusParam . '&patient_id=' . urlencode($input['patient_id']));
         exit;
     }
 
@@ -165,9 +207,39 @@ class VerificationController extends BaseController
             return;
         }
 
+        $certification['completeness'] = $this->summarizeCertificationCompleteness($certification);
+
         $this->json([
             'ok' => true,
             'data' => $certification,
+        ]);
+    }
+
+    public function consentDocument(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
+
+        $checkinId = isset($_GET['checkin_id']) ? (int) $_GET['checkin_id'] : 0;
+        if ($checkinId <= 0) {
+            http_response_code(404);
+            echo 'Registro de verificación no encontrado.';
+            return;
+        }
+
+        $checkin = $this->verifications->findCheckinWithCertification($checkinId);
+        if (!$checkin) {
+            http_response_code(404);
+            echo 'Registro de verificación no encontrado.';
+            return;
+        }
+
+        $canRenderConsent = in_array($checkin['verification_result'], ['approved', 'manual_review'], true);
+
+        $this->render(BASE_PATH . '/modules/IdentityVerification/views/consent_document.php', [
+            'pageTitle' => 'Documento de atención del paciente',
+            'checkin' => $checkin,
+            'canRenderConsent' => $canRenderConsent,
         ]);
     }
 
@@ -196,69 +268,95 @@ class VerificationController extends BaseController
             return;
         }
 
-        $signatureScore = null;
-        $faceScore = null;
-
-        $metadata = [
-            'patient_id' => $certification['patient_id'],
-            'document_number' => $certification['document_number'],
-        ];
-
-        $signatureData = $_POST['signature_data'] ?? '';
-        if ($signatureData !== '') {
-            $signatureTempPath = $this->persistDataUri($signatureData, 'verifications');
-            if ($signatureTempPath) {
-                $template = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signatureTempPath);
-                $signatureScore = $this->signatureAnalysis->compareTemplates(
-                    $certification['signature_template'] ?? null,
-                    $template
-                );
-                $metadata['signature_capture'] = $signatureTempPath;
-            }
-        }
-
-        $faceData = $_POST['face_image'] ?? '';
-        if ($faceData !== '') {
-            $faceTempPath = $this->persistDataUri($faceData, 'verifications');
-            if ($faceTempPath) {
-                $template = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $faceTempPath);
-                $faceScore = $this->faceRecognition->compareTemplates(
-                    $certification['face_template'] ?? null,
-                    $template
-                );
-                $metadata['face_capture'] = $faceTempPath;
-            }
-        }
-
-        if ($signatureScore === null && $faceScore === null) {
+        $completeness = $this->summarizeCertificationCompleteness($certification);
+        if (!$completeness['is_complete']) {
             $this->json([
                 'ok' => false,
-                'message' => 'Debe adjuntar una firma o una captura facial para verificar.',
+                'message' => 'La certificación biométrica está incompleta. Capture los datos faltantes antes de verificar.',
+                'missing' => $completeness['missing'],
+            ], 409);
+            return;
+        }
+
+        if (empty($certification['face_template'])) {
+            $this->json([
+                'ok' => false,
+                'message' => 'No existe una plantilla facial registrada para este paciente. Complete la certificación inicial.',
+            ], 409);
+            return;
+        }
+
+        $faceData = trim((string) ($_POST['face_image'] ?? ''));
+        if ($faceData === '') {
+            $this->json([
+                'ok' => false,
+                'message' => 'Debe capturar el rostro del paciente para continuar con la verificación.',
             ], 422);
             return;
         }
 
-        $result = $this->determineResult($signatureScore, $faceScore);
+        $faceTempPath = $this->persistDataUri($faceData, 'verifications');
+        if ($faceTempPath === null) {
+            $this->json([
+                'ok' => false,
+                'message' => 'No fue posible procesar la captura facial. Intente nuevamente.',
+            ], 422);
+            return;
+        }
 
-        $this->verifications->logCheckin((int) $certification['id'], [
-            'verified_signature_score' => $signatureScore,
+        $faceTemplate = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $faceTempPath);
+        $faceScore = $this->faceRecognition->compareTemplates(
+            $certification['face_template'] ?? null,
+            $faceTemplate
+        );
+
+        if ($faceScore === null) {
+            $this->json([
+                'ok' => false,
+                'message' => 'No se pudo calcular la similitud facial con los datos registrados.',
+            ], 422);
+            return;
+        }
+
+        $result = $this->determineResult(null, $faceScore);
+
+        $metadata = [
+            'patient_id' => $certification['patient_id'],
+            'document_number' => $certification['document_number'],
+            'face_capture' => $faceTempPath,
+        ];
+
+        $checkinId = $this->verifications->logCheckin((int) $certification['id'], [
+            'verified_signature_score' => null,
             'verified_face_score' => $faceScore,
             'verification_result' => $result,
             'metadata' => $metadata,
             'created_by' => $_SESSION['user_id'] ?? null,
         ]);
 
-        $this->verifications->touchVerificationMetadata((int) $certification['id'], $result);
+        $statusUpdate = match ($result) {
+            'approved' => 'verified',
+            'rejected' => 'revoked',
+            default => 'pending',
+        };
+
+        $this->verifications->touchVerificationMetadata((int) $certification['id'], $result, $statusUpdate);
+
+        $consentUrl = null;
+        if (in_array($result, ['approved', 'manual_review'], true)) {
+            $consentUrl = '/pacientes/certificaciones/comprobante?checkin_id=' . $checkinId;
+        }
 
         $this->json([
             'ok' => true,
             'result' => $result,
-            'signatureScore' => $signatureScore,
             'faceScore' => $faceScore,
+            'checkinId' => $checkinId,
+            'consentUrl' => $consentUrl,
         ]);
     }
 
-    private function validateCertificationInput(array $input, ?array $patient): array
+    private function validateCertificationInput(array $input, ?array $patient, ?array $existing): array
     {
         $errors = [];
 
@@ -273,15 +371,18 @@ class VerificationController extends BaseController
             $errors['patient_id'] = 'El paciente indicado no existe en patient_data. Verifique la historia clínica ingresada.';
         }
 
-        if ($documentNumber === '') {
+        $hasExistingDocument = !empty($existing['document_number'] ?? '');
+        if ($documentNumber === '' && !$hasExistingDocument) {
             $errors['document_number'] = 'Debe indicar la cédula o documento de identidad.';
         }
 
-        if ($signatureData === '') {
+        $hasExistingSignature = !empty($existing['signature_path'] ?? '');
+        if ($signatureData === '' && !$hasExistingSignature) {
             $errors['signature_data'] = 'Es necesario capturar la firma manuscrita del paciente.';
         }
 
-        if ($faceData === '') {
+        $hasExistingFace = !empty($existing['face_template'] ?? null) || !empty($existing['face_image_path'] ?? '');
+        if ($faceData === '' && !$hasExistingFace) {
             $errors['face_image'] = 'Debe registrar una imagen facial del paciente.';
         }
 
@@ -429,5 +530,49 @@ class VerificationController extends BaseController
         }
 
         return 'manual_review';
+    }
+
+    private function determineCertificationStatus(array $data): string
+    {
+        $hasSignature = !empty($data['signature_path']) && !empty($data['signature_template']);
+        $hasFace = !empty($data['face_template']);
+        $hasDocumentNumber = !empty($data['document_number']);
+        $hasDocumentImages = !empty($data['document_front_path']) && !empty($data['document_back_path']);
+
+        if ($hasSignature && $hasFace && $hasDocumentNumber && $hasDocumentImages) {
+            return 'verified';
+        }
+
+        return 'pending';
+    }
+
+    private function summarizeCertificationCompleteness(array $certification): array
+    {
+        $missing = [];
+
+        if (empty($certification['signature_path'])) {
+            $missing[] = 'firma manuscrita';
+        }
+
+        if (empty($certification['face_template']) && empty($certification['face_image_path'])) {
+            $missing[] = 'captura facial';
+        }
+
+        if (empty($certification['document_number'])) {
+            $missing[] = 'número de documento';
+        }
+
+        if (empty($certification['document_front_path'])) {
+            $missing[] = 'anverso del documento';
+        }
+
+        if (empty($certification['document_back_path'])) {
+            $missing[] = 'reverso del documento';
+        }
+
+        return [
+            'is_complete' => empty($missing),
+            'missing' => $missing,
+        ];
     }
 }

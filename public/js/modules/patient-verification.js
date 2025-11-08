@@ -301,7 +301,7 @@
         };
     }
 
-    function setupVerificationForm(signaturePad, faceCapture) {
+    function setupVerificationForm(faceCapture) {
         const form = document.getElementById('verificationForm');
         const resultContainer = document.getElementById('verificationResult');
         if (!form || !resultContainer) {
@@ -310,7 +310,6 @@
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
-            signaturePad?.syncHiddenInput?.();
             faceCapture?.syncInput?.();
 
             const formData = new FormData(form);
@@ -334,11 +333,14 @@
 
                 if (!response.ok || !data.ok) {
                     alertBox.className = 'alert alert-danger';
-                    alertBox.innerHTML = data.message ? String(data.message) : 'No se pudo validar la identidad del paciente.';
+                    let errorMessage = data.message ? String(data.message) : 'No se pudo validar la identidad del paciente.';
+                    if (Array.isArray(data.missing) && data.missing.length > 0) {
+                        errorMessage += `<br><small>Faltante: ${data.missing.join(', ')}</small>`;
+                    }
+                    alertBox.innerHTML = errorMessage;
                     return;
                 }
 
-                const signatureScore = data.signatureScore != null ? `Firma: ${data.signatureScore}%` : 'Firma no evaluada';
                 const faceScore = data.faceScore != null ? `Rostro: ${data.faceScore}%` : 'Rostro no evaluado';
                 let statusClass = 'alert-warning';
                 let statusLabel = 'Revisión manual requerida';
@@ -351,7 +353,11 @@
                 }
 
                 alertBox.className = `alert ${statusClass}`;
-                alertBox.innerHTML = `<strong>${statusLabel}</strong><br>${signatureScore} · ${faceScore}`;
+                let extraHtml = faceScore;
+                if (data.consentUrl) {
+                    extraHtml += `<br><a class="btn btn-sm btn-outline-light mt-2" href="${data.consentUrl}" target="_blank" rel="noopener">Generar documento de atención</a>`;
+                }
+                alertBox.innerHTML = `<strong>${statusLabel}</strong><br>${extraHtml}`;
             } catch (error) {
                 console.error('Error en la verificación', error);
                 const alertBox = resultContainer.querySelector('.alert');
@@ -379,13 +385,6 @@
             clearAction: 'clear-document-signature',
             loadInputId: 'documentSignatureUpload'
         });
-        const verificationSignaturePad = setupSignaturePad({
-            canvasId: 'verificationSignatureCanvas',
-            inputId: 'verificationSignatureDataField',
-            clearAction: 'clear-verification-signature',
-            loadInputId: 'verificationSignatureUpload'
-        });
-
         const faceCapture = setupFaceCapture({
             videoId: 'faceCaptureVideo',
             canvasId: 'faceCaptureCanvas',
@@ -412,6 +411,6 @@
             faceCapture?.syncInput?.();
         });
 
-        setupVerificationForm(verificationSignaturePad, verificationFaceCapture);
+        setupVerificationForm(verificationFaceCapture);
     });
 })();

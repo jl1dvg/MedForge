@@ -14,7 +14,7 @@ Esta guía describe cómo habilitar y utilizar el módulo **IdentityVerification
 
 3. **Extensión GD de PHP**: Para generar plantillas biométricas vectorizadas, el módulo requiere la extensión `gd` habilitada. Si no está disponible, el sistema utilizará un modo de respaldo basado en `SHA-256`.
 
-4. **Estructura de archivos**: Verifique que el directorio `storage/identity_verification/` sea escribible. El controlador creará subcarpetas para firmas, documentos y rostros cuando sea necesario.
+4. **Estructura de archivos**: Verifique que el directorio `storage/patient_verification/` sea escribible. El controlador creará subcarpetas para firmas, documentos y rostros cuando sea necesario.
 
 ## 2. Vinculación con `patient_data`
 
@@ -49,21 +49,23 @@ Los vectores resultantes se almacenan en formato JSON dentro de `signature_templ
 
 La vista principal del módulo se encuentra en [`modules/IdentityVerification/views/index.php`](../modules/IdentityVerification/views/index.php) y el comportamiento cliente en [`public/js/modules/patient-verification.js`](../public/js/modules/patient-verification.js).
 
-1. **Búsqueda del paciente**: Ingrese el número de historia clínica (`patient_id`). El sistema trae automáticamente los datos de `patient_data` si existe.
+1. **Búsqueda del paciente**: Ingrese el número de historia clínica (`patient_id`). El sistema trae automáticamente los datos de `patient_data` si existe y precarga la cédula registrada.
 2. **Captura de firmas**:
-   - Firma manuscrita directa mediante lienzo HTML5.
-   - Firma extraída de la cédula (subida de imagen o archivo PDF convertido).
-3. **Captura facial**: Puede tomarse una fotografía desde la cámara o subir una imagen existente.
-4. **Documentos de identidad**: Opcionalmente se sube el anverso y reverso de la cédula para auditoría.
-5. **Almacenamiento**: Al guardar, el módulo crea o actualiza el registro en `patient_identity_certifications`, genera las plantillas biométricas y marca la certificación como `verified`.
-6. **Historial**: Cada verificación posterior puede registrarse mediante `VerificationModel::logCheckin()` para conservar puntajes y resultados (`approved`, `rejected`, `manual_review`).
+   - Firma manuscrita directa mediante lienzo HTML5 (obligatoria para completar la certificación).
+   - Firma extraída de la cédula (opcional) para mantener evidencia documental.
+3. **Captura de documento**: Se registran número y tipo de documento, además de fotografías del anverso y reverso. Ambos lados son necesarios para que la certificación quede en estado `verified`.
+4. **Captura facial**: La interfaz permite usar la cámara integrada o subir una imagen existente. El sistema genera una plantilla biométrica que se utilizará en los check-ins.
+5. **Almacenamiento**: Al guardar, el módulo crea o actualiza el registro en `patient_identity_certifications`. Si falta alguno de los elementos obligatorios (firma manuscrita, plantilla facial o fotos del documento), el estado queda en `pending`; de lo contrario pasa a `verified`.
+6. **Check-in facial**: Durante la admisión, el personal captura únicamente el rostro del paciente. `VerificationController::verify()` compara la plantilla facial y almacena un registro en `patient_identity_checkins` con el resultado (`approved`, `manual_review` o `rejected`).
+7. **Comprobante de atención**: Para resultados `approved` (y `manual_review` si la política lo permite) puede generarse un documento HTML/PDF desde `/pacientes/certificaciones/comprobante?checkin_id={id}` que incrusta la firma registrada, los datos del documento y los detalles del check-in.
 
 ## 5. Buenas prácticas operativas
 
 - Valide que los pacientes actualicen su cédula en `patient_data` antes de iniciar la captura biométrica para evitar rechazos por inconsistencia documental.
-- Mantenga políticas de retención acordes a la legislación local sobre datos biométricos; el directorio `storage/identity_verification/` puede configurarse con rotaciones o cifrado.
+ - Mantenga políticas de retención acordes a la legislación local sobre datos biométricos; el directorio `storage/patient_verification/` puede configurarse con rotaciones o cifrado.
 - Genere procedimientos de revisión manual cuando los puntajes se sitúen por debajo de un umbral aceptable (por ejemplo, 75/100).
 - Registre capacitaciones al personal administrativo para garantizar capturas limpias (buena iluminación, documentos legibles, etc.).
+- Antes de cada atención confirme en la tabla de certificaciones que el estado sea `verified`; si se mantiene en `pending`, capture los elementos faltantes para evitar rechazos en el check-in.
 
 ## 6. Solución de problemas
 
