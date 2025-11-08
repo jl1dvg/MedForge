@@ -239,15 +239,6 @@ class SettingsHelper
                                 ),
                                 ['default' => 'medforge-whatsapp']
                             ),
-                            array_merge(
-                                self::textField(
-                                    'whatsapp_webhook_verify_token',
-                                    'Token de verificación del webhook',
-                                    false,
-                                    'Debe coincidir con el token configurado en Meta para validar la suscripción.'
-                                ),
-                                ['default' => 'medforge-whatsapp']
-                            ),
                         ],
                     ],
                     [
@@ -299,6 +290,15 @@ class SettingsHelper
                                     "no,rechazo,no autorizo"
                                 ),
                                 ['placeholder' => 'Separadas por comas']
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_webhook_verify_token',
+                                    'Token de verificación del webhook',
+                                    false,
+                                    'Debe coincidir con el token configurado en Meta para validar la suscripción.'
+                                ),
+                                ['default' => 'medforge-whatsapp']
                             ),
                         ],
                     ],
