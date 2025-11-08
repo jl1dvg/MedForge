@@ -4,6 +4,7 @@ namespace Modules\WhatsApp\Services;
 
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use PDO;
+use PDOException;
 use RuntimeException;
 
 class PatientLookupService
@@ -22,24 +23,7 @@ class PatientLookupService
      */
     public function findLocalByCedula(string $cedula): ?array
     {
-        $cedula = trim($cedula);
-        if ($cedula === '') {
-            return null;
-        }
-
-        $stmt = $this->pdo->prepare(
-            'SELECT hc_number, cedula, CONCAT_WS(" ", fname, mname, lname, lname2) AS full_name FROM patient_data WHERE cedula = :cedula LIMIT 1'
-        );
-        $stmt->execute([':cedula' => $cedula]);
-
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row === false) {
-            return null;
-        }
-
-        $row['full_name'] = trim(preg_replace('/\s+/', ' ', (string) ($row['full_name'] ?? '')));
-
-        return $row;
+        return $this->queryPatientByField('cedula', $cedula);
     }
 
     /**
@@ -47,15 +31,51 @@ class PatientLookupService
      */
     public function findLocalByHistoryNumber(string $historyNumber): ?array
     {
-        $historyNumber = trim($historyNumber);
-        if ($historyNumber === '') {
+        return $this->queryPatientByField('hc_number', $historyNumber);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function findLocalByCedulaOrHistory(string $identifier): ?array
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
             return null;
         }
 
-        $stmt = $this->pdo->prepare(
-            'SELECT hc_number, cedula, CONCAT_WS(" ", fname, mname, lname, lname2) AS full_name FROM patient_data WHERE hc_number = :hc LIMIT 1'
-        );
-        $stmt->execute([':hc' => $historyNumber]);
+        $patient = $this->findLocalByCedula($identifier);
+        if ($patient !== null) {
+            return $patient;
+        }
+
+        return $this->findLocalByHistoryNumber($identifier);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function queryPatientByField(string $field, string $value): ?array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                sprintf(
+                    'SELECT hc_number, cedula, CONCAT_WS(" ", fname, mname, lname, lname2) AS full_name FROM patient_data WHERE %s = :value LIMIT 1',
+                    $field
+                )
+            );
+            $stmt->execute([':value' => $value]);
+        } catch (PDOException $exception) {
+            // La tabla o columna no existe en esta instalación; devolvemos null para no interrumpir el flujo.
+            error_log('Patient lookup failed for field ' . $field . ': ' . $exception->getMessage());
+
+            return null;
+        }
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {

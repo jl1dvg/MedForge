@@ -76,7 +76,7 @@ class DataProtectionFlow
             return true;
         }
 
-        $patient = $this->patients->findLocalByCedula($cedula);
+        $patient = $this->patients->findLocalByCedulaOrHistory($cedula);
         $source = 'local';
         $rawPayload = null;
 
