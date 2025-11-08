@@ -103,6 +103,53 @@ class ContactConsentRepository
         ]);
     }
 
+    /**
+     * @param array<string, mixed>|null $payload
+     */
+    public function updateExtraPayload(string $waNumber, string $cedula, ?array $payload): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_contact_consent SET extra_payload = :payload WHERE wa_number = :number AND cedula = :cedula LIMIT 1'
+        );
+
+        $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+        return $stmt->execute([
+            ':payload' => $encoded,
+            ':number' => $waNumber,
+            ':cedula' => $cedula,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed>|null $payload
+     */
+    public function reassignCedula(
+        string $waNumber,
+        string $currentCedula,
+        string $newCedula,
+        ?string $historyNumber,
+        ?string $fullName,
+        string $source,
+        ?array $payload
+    ): bool {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_contact_consent SET cedula = :newCedula, patient_hc_number = :hc, patient_full_name = :name, consent_source = :source, extra_payload = :payload WHERE wa_number = :number AND cedula = :current LIMIT 1'
+        );
+
+        $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+        return $stmt->execute([
+            ':newCedula' => $newCedula,
+            ':hc' => $historyNumber,
+            ':name' => $fullName,
+            ':source' => $source,
+            ':payload' => $encoded,
+            ':number' => $waNumber,
+            ':current' => $currentCedula,
+        ]);
+    }
+
     public function purgeForNumber(string $waNumber): void
     {
         try {

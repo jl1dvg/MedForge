@@ -39,6 +39,7 @@ class WhatsAppSettings
      *     registry_lookup_url: string,
      *     registry_token: string,
      *     registry_timeout: int,
+     *     data_terms_url: string,
      *     data_consent_message: string,
      *     data_consent_yes_keywords: array<int, string>,
      *     data_consent_no_keywords: array<int, string>
@@ -63,6 +64,7 @@ class WhatsAppSettings
             'registry_lookup_url' => '',
             'registry_token' => '',
             'registry_timeout' => 10,
+            'data_terms_url' => '',
             'data_consent_message' => 'Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?',
             'data_consent_yes_keywords' => ['si', 'acepto', 'confirmo', 'confirmar'],
             'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
@@ -81,6 +83,7 @@ class WhatsAppSettings
                     'whatsapp_registry_lookup_url',
                     'whatsapp_registry_token',
                     'whatsapp_registry_timeout',
+                    'whatsapp_data_terms_url',
                     'whatsapp_data_consent_message',
                     'whatsapp_data_consent_yes_keywords',
                     'whatsapp_data_consent_no_keywords',
@@ -116,6 +119,11 @@ class WhatsAppSettings
                 $timeout = (int) ($options['whatsapp_registry_timeout'] ?? 10);
                 if ($timeout > 0) {
                     $config['registry_timeout'] = $timeout;
+                }
+
+                $termsUrl = trim((string) ($options['whatsapp_data_terms_url'] ?? ''));
+                if ($termsUrl !== '') {
+                    $config['data_terms_url'] = $termsUrl;
                 }
 
                 $consentMessage = trim((string) ($options['whatsapp_data_consent_message'] ?? ''));
