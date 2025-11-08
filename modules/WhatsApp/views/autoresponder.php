@@ -5,66 +5,70 @@
 /** @var array|null $status */
 
 $escape = static fn (?string $value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-$renderMessage = static fn (string $message): string => nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'), false);
-$renderButtons = static function (array $buttons) use ($escape): string {
-    if (empty($buttons)) {
-        return '';
+$renderLines = static fn (string $value): string => nl2br($escape($value), false);
+
+$renderPreviewMessage = static function ($message) use ($escape, $renderLines): string {
+    if (!is_array($message)) {
+        return '<p class="mb-0">' . $renderLines((string) $message) . '</p>';
     }
 
-    $items = [];
-    foreach ($buttons as $button) {
-        $title = $escape($button['title'] ?? '');
-        $id = $escape($button['id'] ?? '');
-        if ($title === '') {
-            continue;
+    $body = $renderLines((string) ($message['body'] ?? ''));
+    $badge = ($message['type'] ?? 'text') === 'buttons'
+        ? '<span class="badge bg-primary-light text-primary ms-1">Botones</span>'
+        : '';
+
+    $extras = [];
+    if (!empty($message['header'])) {
+        $extras[] = '<div class="small text-muted">Encabezado: ' . $renderLines((string) $message['header']) . '</div>';
+    }
+    if (!empty($message['footer'])) {
+        $extras[] = '<div class="small text-muted">Pie: ' . $renderLines((string) $message['footer']) . '</div>';
+    }
+
+    if (($message['type'] ?? '') === 'buttons' && !empty($message['buttons']) && is_array($message['buttons'])) {
+        $items = [];
+        foreach ($message['buttons'] as $button) {
+            if (!is_array($button)) {
+                continue;
+            }
+            $title = $escape($button['title'] ?? '');
+            $id = $escape($button['id'] ?? '');
+            if ($title === '') {
+                continue;
+            }
+            $label = $id !== '' ? '<code class="ms-2">' . $id . '</code>' : '';
+            $items[] = '<li class="d-flex justify-content-between align-items-center"><span>' . $title . '</span>' . $label . '</li>';
         }
-
-        $items[] = '<li class="d-flex align-items-center justify-content-between gap-2"><span>'
-            . $title . '</span><code class="bg-light px-2 py-1 rounded">' . $id . '</code></li>';
+        if (!empty($items)) {
+            $extras[] = '<div class="small text-muted">Botones:</div><ul class="small list-unstyled mb-0">' . implode('', $items) . '</ul>';
+        }
     }
 
-    if (empty($items)) {
-        return '';
-    }
+    $extraBlock = empty($extras) ? '' : '<div class="mt-2 d-flex flex-column gap-1">' . implode('', $extras) . '</div>';
 
-    return '<ul class="list-unstyled mb-0 small mt-2">' . implode('', $items) . '</ul>';
+    return '<p class="mb-0">' . $body . $badge . '</p>' . $extraBlock;
 };
+
 $formatKeywords = static function ($keywords) use ($escape): string {
     if (!is_array($keywords)) {
         return '';
     }
 
-    $clean = array_filter(array_map(static fn ($keyword): string => $escape((string) $keyword), $keywords));
+    $clean = [];
+    foreach ($keywords as $keyword) {
+        if (!is_string($keyword)) {
+            continue;
+        }
+        $keyword = trim($keyword);
+        if ($keyword === '') {
+            continue;
+        }
+        $clean[] = $escape($keyword);
+    }
 
     return implode(', ', $clean);
 };
-$displayMessage = static function ($message) use ($renderMessage, $renderButtons): string {
-    if (is_array($message)) {
-        $body = $renderMessage((string) ($message['body'] ?? ''));
-        $type = (string) ($message['type'] ?? 'text');
-        $header = isset($message['header']) ? $renderMessage((string) $message['header']) : '';
-        $footer = isset($message['footer']) ? $renderMessage((string) $message['footer']) : '';
 
-        $extra = '';
-        if ($type === 'buttons') {
-            $extra .= '<div class="small text-uppercase text-muted fw-600 mt-2">Botones</div>'
-                . $renderButtons($message['buttons'] ?? []);
-        }
-
-        if ($header !== '') {
-            $extra = '<div class="badge bg-secondary-light text-secondary me-2">Encabezado</div>'
-                . '<div class="small mt-1">' . $header . '</div>' . $extra;
-        }
-
-        if ($footer !== '') {
-            $extra .= '<div class="small text-muted mt-2">' . $footer . '</div>';
-        }
-
-        return '<div class="small">' . $body . '</div>' . $extra;
-    }
-
-    return '<div class="small">' . $renderMessage((string) $message) . '</div>';
-};
 $editableKeywords = static function (array $section): array {
     $keywords = [];
     if (isset($section['keywords']) && is_array($section['keywords'])) {
@@ -72,49 +76,45 @@ $editableKeywords = static function (array $section): array {
             if (!is_string($keyword)) {
                 continue;
             }
-            $keywords[] = trim($keyword);
+            $clean = trim($keyword);
+            if ($clean !== '') {
+                $keywords[] = $clean;
+            }
         }
     }
 
     $auto = [];
-    if (isset($section['messages']) && is_array($section['messages'])) {
+    if (!empty($section['messages']) && is_array($section['messages'])) {
         foreach ($section['messages'] as $message) {
-            if (!is_array($message)) {
-                continue;
-            }
-            if (($message['type'] ?? '') !== 'buttons') {
+            if (!is_array($message) || ($message['type'] ?? '') !== 'buttons') {
                 continue;
             }
             foreach ($message['buttons'] ?? [] as $button) {
                 if (!is_array($button)) {
                     continue;
                 }
-                if (isset($button['id']) && is_string($button['id'])) {
-                    $auto[] = trim($button['id']);
-                }
-                if (isset($button['title']) && is_string($button['title'])) {
-                    $auto[] = trim($button['title']);
+                foreach (['id', 'title'] as $field) {
+                    if (!empty($button[$field]) && is_string($button[$field])) {
+                        $auto[] = trim($button[$field]);
+                    }
                 }
             }
         }
     }
 
     if (empty($auto)) {
-        return array_values(array_filter($keywords, static fn ($keyword) => $keyword !== ''));
+        return $keywords;
     }
 
-    $autoLookup = array_filter(array_map(static fn ($keyword) => $keyword !== '' ? $keyword : null, $auto));
+    $auto = array_filter(array_map(static fn ($value) => is_string($value) ? trim($value) : '', $auto));
 
-    return array_values(array_filter($keywords, static function ($keyword) use ($autoLookup) {
-        return $keyword !== '' && !in_array($keyword, $autoLookup, true);
-    }));
+    return array_values(array_filter($keywords, static fn ($keyword) => $keyword !== '' && !in_array($keyword, $auto, true)));
 };
 
 $entry = $flow['entry'] ?? [];
 $options = $flow['options'] ?? [];
 $fallback = $flow['fallback'] ?? [];
 $meta = $flow['meta'] ?? [];
-$keywordLegend = $meta['keywordLegend'] ?? [];
 $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
 $webhookUrl = $config['webhook_url'] ?? (rtrim((string) (defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
 $webhookToken = trim((string) ($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
@@ -125,6 +125,7 @@ $editorFallback = $editorFlow['fallback'] ?? [];
 
 $statusType = is_array($status) ? ($status['type'] ?? 'info') : null;
 $statusMessage = is_array($status) ? ($status['message'] ?? '') : '';
+
 switch ($statusType) {
     case 'success':
         $alertClass = 'alert-success';
@@ -143,470 +144,256 @@ switch ($statusType) {
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Flujo de autorespuesta</h3>
+            <h3 class="page-title">Autorespuesta de WhatsApp</h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
                         <li class="breadcrumb-item">WhatsApp</li>
-                        <li class="breadcrumb-item active" aria-current="page">Autoresponder</li>
+                        <li class="breadcrumb-item active" aria-current="page">Autorespuesta</li>
                     </ol>
                 </nav>
             </div>
         </div>
         <div class="text-end">
             <div class="fw-600 text-muted small">Canal activo</div>
-            <div class="fw-600">
-                <?= $escape($brand); ?>
+            <div class="fw-600"><?= $escape($brand); ?></div>
+            <div class="mt-2 d-flex gap-2 justify-content-end">
+                <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary">
+                    <i class="mdi mdi-whatsapp me-1"></i>Plantillas
+                </a>
+                <a href="/settings?section=whatsapp" class="btn btn-sm btn-primary">
+                    <i class="mdi mdi-cog-outline me-1"></i>Ajustes
+                </a>
             </div>
-            <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary mt-2">
-                <i class="mdi mdi-whatsapp me-1"></i>Gestionar plantillas
-            </a>
         </div>
     </div>
 </div>
 
 <section class="content">
-    <div class="row g-3">
-        <div class="col-12">
-            <?php if ($statusMessage !== ''): ?>
+    <div class="row g-4">
+        <?php if ($statusMessage !== ''): ?>
+            <div class="col-12">
                 <div class="alert <?= $alertClass; ?> alert-dismissible fade show" role="alert">
                     <?= $escape($statusMessage); ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            <?php endif; ?>
-        </div>
-        <div class="col-12">
-            <div class="box">
-                <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-3">
-                    <div>
-                        <h4 class="box-title mb-0">Webhook de WhatsApp</h4>
-                        <p class="text-muted mb-0">Comparte estos datos con Meta para recibir mensajes entrantes en el autorespondedor.</p>
-                    </div>
-                    <a href="/settings?section=whatsapp" class="btn btn-sm btn-outline-primary">
-                        <i class="mdi mdi-cog-outline me-1"></i>Configurar en ajustes
-                    </a>
-                </div>
-                <div class="box-body">
-                    <div class="row g-3">
-                        <div class="col-md-7">
-                            <label class="form-label fw-500 text-muted text-uppercase small">URL del webhook</label>
-                            <input type="text" class="form-control" value="<?= $escape($webhookUrl); ?>" readonly>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label fw-500 text-muted text-uppercase small">Token de verificación</label>
-                            <input type="text" class="form-control" value="<?= $escape($webhookToken); ?>" readonly>
-                        </div>
-                    </div>
-                    <p class="text-muted small mb-0 mt-3">
-                        Asegúrate de que el token coincida con el configurado en Meta y recuerda habilitar las suscripciones para el número correspondiente.
-                    </p>
-                </div>
-            </div>
-        </div>
-        <div class="col-12">
-            <div class="box">
-                <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-3">
-                    <div>
-                        <h4 class="box-title mb-0">Diagrama general del flujo</h4>
-                        <p class="text-muted mb-0">Visualiza las palabras clave y los mensajes que se envían en cada paso del autorespondedor.</p>
-                    </div>
-                    <div class="text-end">
-                        <span class="badge bg-primary-light text-primary fw-600">Autoresponder activo</span>
-                    </div>
-                </div>
-                <div class="box-body">
-                    <div class="d-flex flex-column gap-4">
-                        <div class="flow-node border rounded-3 p-4 bg-light">
-                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                                <div>
-                                    <span class="badge bg-primary me-2">Inicio</span>
-                                    <h5 class="mb-1"><?= $escape($entry['title'] ?? 'Mensaje de bienvenida'); ?></h5>
-                                    <p class="text-muted mb-3 small"><?= $escape($entry['description'] ?? 'Mensaje inicial que habilita el menú principal.'); ?></p>
-                                </div>
-                                <?php if (!empty($entry['keywords'])): ?>
-                                    <div class="text-end">
-                                        <div class="fw-600 text-muted small text-uppercase">Palabras clave</div>
-                                        <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                            <?php foreach ($entry['keywords'] as $keyword): ?>
-                                                <span class="badge bg-primary-light text-primary"><?= $escape((string) $keyword); ?></span>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <?php if (!empty($entry['messages'])): ?>
-                                <div class="mt-3">
-                                    <?php foreach ($entry['messages'] as $message): ?>
-                                        <div class="bg-white border rounded-3 p-3 mb-2 shadow-sm">
-                                            <div class="fw-600 text-muted small mb-1"><i class="mdi mdi-robot-outline me-1"></i>Mensaje enviado</div>
-                                            <?= $displayMessage($message); ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="text-center">
-                            <i class="mdi mdi-arrow-down-thick text-muted" style="font-size: 1.5rem;"></i>
-                        </div>
-
-                        <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-                            <?php foreach ($options as $option): ?>
-                                <div class="col">
-                                    <div class="h-100 border rounded-3 p-4 shadow-sm">
-                                        <div class="d-flex justify-content-between align-items-start gap-2">
-                                            <div>
-                                                <h5 class="mb-1"><?= $escape($option['title'] ?? 'Opción'); ?></h5>
-                                                <p class="text-muted small mb-2"><?= $escape($option['description'] ?? 'Respuestas que se disparan con las palabras clave listadas.'); ?></p>
-                                            </div>
-                                            <?php if (!empty($option['keywords'])): ?>
-                                                <div class="text-end">
-                                                    <div class="fw-600 text-muted small text-uppercase">Palabras clave</div>
-                                                    <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                                        <?php foreach ($option['keywords'] as $keyword): ?>
-                                                            <span class="badge bg-success-light text-success"><?= $escape((string) $keyword); ?></span>
-                                                        <?php endforeach; ?>
-                                                    </div>
-                                                </div>
-                                            <?php endif; ?>
-                                        </div>
-                                        <?php if (!empty($option['messages'])): ?>
-                                            <div class="mt-3">
-                                                <?php foreach ($option['messages'] as $message): ?>
-                                                    <div class="bg-light border rounded-3 p-3 mb-2">
-                                                        <div class="fw-600 text-muted small mb-1"><i class="mdi mdi-message-text-outline me-1"></i>Mensaje enviado</div>
-                                                        <?= $displayMessage($message); ?>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($option['followup'])): ?>
-                                            <div class="mt-3 pt-3 border-top">
-                                                <div class="fw-600 text-muted small text-uppercase mb-1">Siguiente paso sugerido</div>
-                                                <p class="small mb-0"><?= $escape($option['followup']); ?></p>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-
-                        <div class="text-center">
-                            <i class="mdi mdi-arrow-down-thick text-muted" style="font-size: 1.5rem;"></i>
-                        </div>
-
-                        <div class="border rounded-3 p-4 bg-light">
-                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                                <div>
-                                    <span class="badge bg-warning text-dark me-2">Fallback</span>
-                                    <h5 class="mb-1"><?= $escape($fallback['title'] ?? 'Sin coincidencia'); ?></h5>
-                                    <p class="text-muted mb-3 small"><?= $escape($fallback['description'] ?? 'Mensaje cuando no se reconoce la solicitud.'); ?></p>
-                                </div>
-                            </div>
-                            <?php if (!empty($fallback['messages'])): ?>
-                                <div class="mt-2">
-                                    <?php foreach ($fallback['messages'] as $message): ?>
-                                        <div class="bg-white border rounded-3 p-3 mb-2 shadow-sm">
-                                            <div class="fw-600 text-muted small mb-1"><i class="mdi mdi-robot-outline me-1"></i>Mensaje enviado</div>
-                                            <?= $displayMessage($message); ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <?php if (!empty($keywordLegend)): ?>
-            <div class="col-12">
-                <div class="box">
-                    <div class="box-header with-border d-flex justify-content-between flex-wrap gap-2 align-items-center">
-                        <div>
-                            <h4 class="box-title mb-0">Leyenda de palabras clave</h4>
-                            <p class="text-muted mb-0">Usa estas palabras o frases para extender el flujo en el controlador.</p>
-                        </div>
-                    </div>
-                    <div class="box-body">
-                        <div class="row g-3">
-                            <?php foreach ($keywordLegend as $section => $keywords): ?>
-                                <div class="col-12 col-md-6 col-xl-3">
-                                    <div class="border rounded-3 p-3 h-100">
-                                        <div class="fw-600 mb-2"><?= $escape((string) $section); ?></div>
-                                        <div class="d-flex flex-wrap gap-1">
-                                            <?php foreach ($keywords as $keyword): ?>
-                                                <span class="badge bg-secondary-light text-secondary"><?= $escape((string) $keyword); ?></span>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
                 </div>
             </div>
         <?php endif; ?>
 
-        <div class="col-12">
-            <div class="box">
-                <div class="box-header with-border d-flex justify-content-between flex-wrap gap-2 align-items-center">
-                    <div>
-                        <h4 class="box-title mb-0">Configurar respuestas</h4>
-                        <p class="text-muted mb-0">Edita los mensajes, botones y palabras clave que se enviarán automáticamente.</p>
-                    </div>
+        <div class="col-12 col-xl-4 d-flex flex-column gap-4">
+            <div class="box h-100">
+                <div class="box-header with-border">
+                    <h4 class="box-title mb-0">Webhook conectado</h4>
+                    <p class="text-muted mb-0 small">Comparte estos datos con Meta para validar el webhook.</p>
                 </div>
                 <div class="box-body">
-                    <form method="post" action="/whatsapp/autoresponder" id="autoresponder-form" class="flow-editor-form">
+                    <div class="mb-3">
+                        <label class="form-label small text-uppercase fw-600 text-muted">URL del webhook</label>
+                        <input type="text" class="form-control" readonly value="<?= $escape($webhookUrl); ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-uppercase fw-600 text-muted">Token de verificación</label>
+                        <input type="text" class="form-control" readonly value="<?= $escape($webhookToken); ?>">
+                    </div>
+                    <p class="small text-muted mb-0">Recuerda habilitar las suscripciones de mensajes entrantes para este número en el panel de Meta.</p>
+                </div>
+            </div>
+
+            <div class="box h-100">
+                <div class="box-header with-border">
+                    <h4 class="box-title mb-0">Secuencia del flujo</h4>
+                    <p class="text-muted mb-0 small">Visualiza qué responde el bot en cada paso.</p>
+                </div>
+                <div class="box-body">
+                    <ol class="list-unstyled step-list mb-0 d-flex flex-column gap-3">
+                        <li class="border rounded-3 p-3 bg-light">
+                            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                                <div>
+                                    <span class="badge bg-primary me-2">Inicio</span>
+                                    <span class="fw-600"><?= $escape($entry['title'] ?? 'Mensaje de bienvenida'); ?></span>
+                                </div>
+                                <?php if (!empty($entry['keywords'])): ?>
+                                    <div class="small text-muted text-end">
+                                        <?= $formatKeywords($entry['keywords']); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="mt-2 d-flex flex-column gap-2">
+                                <?php foreach (($entry['messages'] ?? []) as $message): ?>
+                                    <div class="bg-white border rounded-3 p-2 shadow-sm">
+                                        <?= $renderPreviewMessage($message); ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </li>
+
+                        <?php foreach ($options as $option): ?>
+                            <li class="border rounded-3 p-3">
+                                <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                                    <div>
+                                        <span class="badge bg-success me-2">Opción</span>
+                                        <span class="fw-600"><?= $escape($option['title'] ?? 'Opción'); ?></span>
+                                    </div>
+                                    <?php if (!empty($option['keywords'])): ?>
+                                        <div class="small text-muted text-end">
+                                            <?= $formatKeywords($option['keywords']); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="mt-2 d-flex flex-column gap-2">
+                                    <?php foreach (($option['messages'] ?? []) as $message): ?>
+                                        <div class="bg-light border rounded-3 p-2">
+                                            <?= $renderPreviewMessage($message); ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <?php if (!empty($option['followup'])): ?>
+                                        <div class="small text-muted">Sugerencia: <?= $escape($option['followup']); ?></div>
+                                    <?php endif; ?>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+
+                        <li class="border rounded-3 p-3 bg-light">
+                            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                                <div>
+                                    <span class="badge bg-warning text-dark me-2">Fallback</span>
+                                    <span class="fw-600"><?= $escape($fallback['title'] ?? 'Sin coincidencia'); ?></span>
+                                </div>
+                                <?php if (!empty($fallback['keywords'])): ?>
+                                    <div class="small text-muted text-end">
+                                        <?= $formatKeywords($fallback['keywords']); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="mt-2 d-flex flex-column gap-2">
+                                <?php foreach (($fallback['messages'] ?? []) as $message): ?>
+                                    <div class="bg-white border rounded-3 p-2 shadow-sm">
+                                        <?= $renderPreviewMessage($message); ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-8">
+            <div class="box">
+                <div class="box-header with-border">
+                    <h4 class="box-title mb-0">Editar flujo</h4>
+                    <p class="text-muted mb-0 small">Actualiza palabras clave, mensajes y botones interactivos. Los cambios se guardan al enviar.</p>
+                </div>
+                <div class="box-body">
+                    <form method="post" action="/whatsapp/autoresponder" data-autoresponder-form>
                         <input type="hidden" name="flow_payload" id="flow_payload" value="">
 
-                        <div class="flow-editor-section mb-4" data-section="entry">
+                        <div class="flow-step mb-4" data-section="entry">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                                 <div>
                                     <h5 class="mb-0">Mensaje de bienvenida</h5>
-                                    <p class="text-muted small mb-0">Este mensaje se envía cuando el usuario inicia la conversación o escribe una palabra clave del menú.</p>
+                                    <p class="text-muted small mb-0">Se envía al iniciar la conversación o cuando escriben "menú".</p>
                                 </div>
-                                <div class="text-muted small">Palabras clave separadas por coma o salto de línea.</div>
+                                <span class="small text-muted">Usa comas o saltos de línea para separar las palabras clave.</span>
                             </div>
-                            <div class="row g-3 mb-3">
+                            <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Título interno</label>
                                     <input type="text" class="form-control" data-field="title" value="<?= $escape($editorEntry['title'] ?? 'Mensaje de bienvenida'); ?>">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Descripción interna</label>
+                                    <label class="form-label">Descripción</label>
                                     <input type="text" class="form-control" data-field="description" value="<?= $escape($editorEntry['description'] ?? 'Primer contacto que recibe el usuario.'); ?>">
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label">Palabras clave</label>
-                                    <textarea class="form-control" rows="2" data-field="keywords" placeholder="menu, inicio, hola"><?= $formatKeywords($editableKeywords($editorEntry)); ?></textarea>
+                                    <textarea class="form-control" rows="2" data-field="keywords" placeholder="menu, hola, inicio"><?= $escape(implode(", ", $editableKeywords($editorEntry))); ?></textarea>
                                 </div>
                             </div>
-
-                            <div class="flow-editor-messages" data-messages>
-                                <?php foreach ($editorEntry['messages'] ?? [] as $message): ?>
-                                    <div class="flow-editor-message card card-body shadow-sm mb-3" data-message>
-                                        <div class="d-flex justify-content-between flex-wrap gap-2">
-                                            <div class="w-100 w-md-auto">
-                                                <label class="form-label small text-muted mb-1">Tipo de mensaje</label>
-                                                <select class="form-select form-select-sm message-type">
-                                                    <option value="text"<?= (($message['type'] ?? 'text') === 'text') ? ' selected' : ''; ?>>Texto</option>
-                                                    <option value="buttons"<?= (($message['type'] ?? '') === 'buttons') ? ' selected' : ''; ?>>Botones</option>
-                                                </select>
-                                            </div>
-                                            <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-message">
-                                                <i class="mdi mdi-delete-outline me-1"></i>Eliminar
-                                            </button>
-                                        </div>
-                                        <div class="mt-3">
-                                            <label class="form-label">Contenido del mensaje</label>
-                                            <textarea class="form-control message-body" rows="3" placeholder="Escribe la respuesta que se enviará."><?= $escape($message['body'] ?? ''); ?></textarea>
-                                        </div>
-                                        <div class="row g-3 mt-2">
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Encabezado (opcional)</label>
-                                                <input type="text" class="form-control message-header" value="<?= $escape($message['header'] ?? ''); ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Pie (opcional)</label>
-                                                <input type="text" class="form-control message-footer" value="<?= $escape($message['footer'] ?? ''); ?>">
-                                            </div>
-                                        </div>
-                                        <div class="message-buttons mt-3<?= (($message['type'] ?? 'text') === 'buttons') ? '' : ' d-none'; ?>">
-                                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                                                <div class="fw-600 small text-muted">Botones interactivos</div>
-                                                <button type="button" class="btn btn-xs btn-outline-primary add-button">
-                                                    <i class="mdi mdi-plus"></i> Añadir botón
-                                                </button>
-                                            </div>
-                                            <div class="button-list">
-                                                <?php foreach ($message['buttons'] ?? [] as $button): ?>
-                                                    <div class="input-group input-group-sm button-item mb-2" data-button>
-                                                        <span class="input-group-text">Título</span>
-                                                        <input type="text" class="form-control button-title" value="<?= $escape($button['title'] ?? ''); ?>" placeholder="Ej. Sí">
-                                                        <span class="input-group-text">ID</span>
-                                                        <input type="text" class="form-control button-id" value="<?= $escape($button['id'] ?? ''); ?>" placeholder="Identificador opcional">
-                                                        <button type="button" class="btn btn-outline-danger remove-button"><i class="mdi mdi-close"></i></button>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                            <p class="text-muted small mb-0">Máximo 3 botones. Se recomienda utilizar identificadores cortos como <code>si</code>, <code>no</code>, <code>menu</code>.</p>
-                                        </div>
-                                    </div>
+                            <div class="mt-3" data-messages>
+                                <?php foreach (($editorEntry['messages'] ?? []) as $message): ?>
+                                    <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
                                 <?php endforeach; ?>
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm add-message" data-action="add-message">
-                                <i class="mdi mdi-plus"></i> Añadir mensaje
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
+                                <i class="mdi mdi-plus"></i> Añadir respuesta
                             </button>
                         </div>
 
                         <?php foreach ($editorOptions as $option): ?>
-                            <div class="flow-editor-section mb-4 border-top pt-4" data-option="<?= $escape($option['id'] ?? ''); ?>">
+                            <div class="flow-step mb-4 border-top pt-4" data-option>
                                 <input type="hidden" class="option-id" value="<?= $escape($option['id'] ?? ''); ?>">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                                     <div>
-                                        <h5 class="mb-0"><?= $escape($option['title'] ?? 'Opción'); ?></h5>
-                                        <p class="text-muted small mb-0">Configura las respuestas asociadas a esta opción del menú.</p>
+                                        <h5 class="mb-0"><?= $escape($option['title'] ?? 'Opción personalizada'); ?></h5>
+                                        <p class="text-muted small mb-0">Palabras clave que disparan esta respuesta específica.</p>
                                     </div>
-                                    <div class="text-muted small">Palabras clave separadas por coma o salto de línea.</div>
+                                    <span class="badge bg-success-light text-success">Opción del menú</span>
                                 </div>
-                                <div class="row g-3 mb-3">
+                                <div class="row g-3">
                                     <div class="col-md-6">
                                         <label class="form-label">Título interno</label>
                                         <input type="text" class="form-control" data-field="title" value="<?= $escape($option['title'] ?? ''); ?>">
                                     </div>
                                     <div class="col-md-6">
-                                        <label class="form-label">Descripción interna</label>
+                                        <label class="form-label">Descripción</label>
                                         <input type="text" class="form-control" data-field="description" value="<?= $escape($option['description'] ?? ''); ?>">
                                     </div>
-                                    <div class="col-12">
+                                    <div class="col-md-6">
                                         <label class="form-label">Palabras clave</label>
-                                        <textarea class="form-control" rows="2" data-field="keywords" placeholder="opcion 1, información"><?= $formatKeywords($editableKeywords($option)); ?></textarea>
+                                        <textarea class="form-control" rows="2" data-field="keywords" placeholder="1, opcion 1, informacion"><?= $escape(implode(", ", $editableKeywords($option))); ?></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Siguiente paso sugerido</label>
+                                        <input type="text" class="form-control" data-field="followup" value="<?= $escape($option['followup'] ?? ''); ?>" placeholder="Ej. Responde 'menu' para volver al inicio">
                                     </div>
                                 </div>
-                                <div class="flow-editor-messages" data-messages>
-                                    <?php foreach ($option['messages'] ?? [] as $message): ?>
-                                        <div class="flow-editor-message card card-body shadow-sm mb-3" data-message>
-                                            <div class="d-flex justify-content-between flex-wrap gap-2">
-                                                <div class="w-100 w-md-auto">
-                                                    <label class="form-label small text-muted mb-1">Tipo de mensaje</label>
-                                                    <select class="form-select form-select-sm message-type">
-                                                        <option value="text"<?= (($message['type'] ?? 'text') === 'text') ? ' selected' : ''; ?>>Texto</option>
-                                                        <option value="buttons"<?= (($message['type'] ?? '') === 'buttons') ? ' selected' : ''; ?>>Botones</option>
-                                                    </select>
-                                                </div>
-                                                <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-message">
-                                                    <i class="mdi mdi-delete-outline me-1"></i>Eliminar
-                                                </button>
-                                            </div>
-                                            <div class="mt-3">
-                                                <label class="form-label">Contenido del mensaje</label>
-                                                <textarea class="form-control message-body" rows="3" placeholder="Escribe la respuesta que se enviará."><?= $escape($message['body'] ?? ''); ?></textarea>
-                                            </div>
-                                            <div class="row g-3 mt-2">
-                                                <div class="col-md-6">
-                                                    <label class="form-label small">Encabezado (opcional)</label>
-                                                    <input type="text" class="form-control message-header" value="<?= $escape($message['header'] ?? ''); ?>">
-                                                </div>
-                                                <div class="col-md-6">
-                                                    <label class="form-label small">Pie (opcional)</label>
-                                                    <input type="text" class="form-control message-footer" value="<?= $escape($message['footer'] ?? ''); ?>">
-                                                </div>
-                                            </div>
-                                            <div class="message-buttons mt-3<?= (($message['type'] ?? 'text') === 'buttons') ? '' : ' d-none'; ?>">
-                                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                                                    <div class="fw-600 small text-muted">Botones interactivos</div>
-                                                    <button type="button" class="btn btn-xs btn-outline-primary add-button">
-                                                        <i class="mdi mdi-plus"></i> Añadir botón
-                                                    </button>
-                                                </div>
-                                                <div class="button-list">
-                                                    <?php foreach ($message['buttons'] ?? [] as $button): ?>
-                                                        <div class="input-group input-group-sm button-item mb-2" data-button>
-                                                            <span class="input-group-text">Título</span>
-                                                            <input type="text" class="form-control button-title" value="<?= $escape($button['title'] ?? ''); ?>" placeholder="Ej. Sí">
-                                                            <span class="input-group-text">ID</span>
-                                                            <input type="text" class="form-control button-id" value="<?= $escape($button['id'] ?? ''); ?>" placeholder="Identificador opcional">
-                                                            <button type="button" class="btn btn-outline-danger remove-button"><i class="mdi mdi-close"></i></button>
-                                                        </div>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                                <p class="text-muted small mb-0">Máximo 3 botones. Los IDs se utilizarán como palabras clave automáticas.</p>
-                                            </div>
-                                        </div>
+                                <div class="mt-3" data-messages>
+                                    <?php foreach (($option['messages'] ?? []) as $message): ?>
+                                        <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
                                     <?php endforeach; ?>
                                 </div>
-                                <button type="button" class="btn btn-outline-primary btn-sm add-message" data-action="add-message">
-                                    <i class="mdi mdi-plus"></i> Añadir mensaje
+                                <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
+                                    <i class="mdi mdi-plus"></i> Añadir respuesta
                                 </button>
-                                <div class="mt-3">
-                                    <label class="form-label">Siguiente paso sugerido</label>
-                                    <textarea class="form-control" rows="2" data-field="followup" placeholder="Texto que orienta al usuario a la siguiente acción."><?= $escape($option['followup'] ?? ''); ?></textarea>
-                                </div>
                             </div>
                         <?php endforeach; ?>
 
-                        <div class="flow-editor-section border-top pt-4" data-section="fallback">
+                        <div class="flow-step border-top pt-4" data-section="fallback">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                                 <div>
-                                    <h5 class="mb-0">Mensaje de fallback</h5>
-                                    <p class="text-muted small mb-0">Se envía cuando no hay coincidencias con ninguna palabra clave.</p>
+                                    <h5 class="mb-0">Fallback</h5>
+                                    <p class="text-muted small mb-0">Mensaje cuando no se reconoce ninguna palabra clave.</p>
                                 </div>
+                                <span class="badge bg-warning text-dark">Rescate</span>
                             </div>
-                            <div class="row g-3 mb-3">
+                            <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Título interno</label>
                                     <input type="text" class="form-control" data-field="title" value="<?= $escape($editorFallback['title'] ?? 'Sin coincidencia'); ?>">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Descripción interna</label>
+                                    <label class="form-label">Descripción</label>
                                     <input type="text" class="form-control" data-field="description" value="<?= $escape($editorFallback['description'] ?? 'Mensaje cuando no se reconoce la solicitud.'); ?>">
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label">Palabras clave</label>
-                                    <textarea class="form-control" rows="2" data-field="keywords" placeholder="sin coincidencia, fallback"><?= $formatKeywords($editableKeywords($editorFallback)); ?></textarea>
+                                    <textarea class="form-control" rows="2" data-field="keywords" placeholder="sin coincidencia, ayuda"><?= $escape(implode(", ", $editableKeywords($editorFallback))); ?></textarea>
                                 </div>
                             </div>
-                            <div class="flow-editor-messages" data-messages>
-                                <?php foreach ($editorFallback['messages'] ?? [] as $message): ?>
-                                    <div class="flow-editor-message card card-body shadow-sm mb-3" data-message>
-                                        <div class="d-flex justify-content-between flex-wrap gap-2">
-                                            <div class="w-100 w-md-auto">
-                                                <label class="form-label small text-muted mb-1">Tipo de mensaje</label>
-                                                <select class="form-select form-select-sm message-type">
-                                                    <option value="text"<?= (($message['type'] ?? 'text') === 'text') ? ' selected' : ''; ?>>Texto</option>
-                                                    <option value="buttons"<?= (($message['type'] ?? '') === 'buttons') ? ' selected' : ''; ?>>Botones</option>
-                                                </select>
-                                            </div>
-                                            <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-message">
-                                                <i class="mdi mdi-delete-outline me-1"></i>Eliminar
-                                            </button>
-                                        </div>
-                                        <div class="mt-3">
-                                            <label class="form-label">Contenido del mensaje</label>
-                                            <textarea class="form-control message-body" rows="3" placeholder="Escribe la respuesta que se enviará."><?= $escape($message['body'] ?? ''); ?></textarea>
-                                        </div>
-                                        <div class="row g-3 mt-2">
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Encabezado (opcional)</label>
-                                                <input type="text" class="form-control message-header" value="<?= $escape($message['header'] ?? ''); ?>">
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label small">Pie (opcional)</label>
-                                                <input type="text" class="form-control message-footer" value="<?= $escape($message['footer'] ?? ''); ?>">
-                                            </div>
-                                        </div>
-                                        <div class="message-buttons mt-3<?= (($message['type'] ?? 'text') === 'buttons') ? '' : ' d-none'; ?>">
-                                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                                                <div class="fw-600 small text-muted">Botones interactivos</div>
-                                                <button type="button" class="btn btn-xs btn-outline-primary add-button">
-                                                    <i class="mdi mdi-plus"></i> Añadir botón
-                                                </button>
-                                            </div>
-                                            <div class="button-list">
-                                                <?php foreach ($message['buttons'] ?? [] as $button): ?>
-                                                    <div class="input-group input-group-sm button-item mb-2" data-button>
-                                                        <span class="input-group-text">Título</span>
-                                                        <input type="text" class="form-control button-title" value="<?= $escape($button['title'] ?? ''); ?>" placeholder="Ej. Menú">
-                                                        <span class="input-group-text">ID</span>
-                                                        <input type="text" class="form-control button-id" value="<?= $escape($button['id'] ?? ''); ?>" placeholder="Identificador opcional">
-                                                        <button type="button" class="btn btn-outline-danger remove-button"><i class="mdi mdi-close"></i></button>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                            <p class="text-muted small mb-0">Puedes añadir botones para guiar al usuario nuevamente al menú.</p>
-                                        </div>
-                                    </div>
+                            <div class="mt-3" data-messages>
+                                <?php foreach (($editorFallback['messages'] ?? []) as $message): ?>
+                                    <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
                                 <?php endforeach; ?>
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm add-message" data-action="add-message">
-                                <i class="mdi mdi-plus"></i> Añadir mensaje
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
+                                <i class="mdi mdi-plus"></i> Añadir respuesta
                             </button>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
-                            <div class="text-muted small">Los cambios se aplicarán inmediatamente al guardar.</div>
+                            <span class="small text-muted">Los cambios se aplicarán inmediatamente después de guardar.</span>
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-content-save-outline me-1"></i>Guardar flujo
                             </button>
@@ -619,59 +406,24 @@ switch ($statusType) {
 </section>
 
 <template id="message-template">
-    <div class="flow-editor-message card card-body shadow-sm mb-3" data-message>
-        <div class="d-flex justify-content-between flex-wrap gap-2">
-            <div class="w-100 w-md-auto">
-                <label class="form-label small text-muted mb-1">Tipo de mensaje</label>
-                <select class="form-select form-select-sm message-type">
-                    <option value="text" selected>Texto</option>
-                    <option value="buttons">Botones</option>
-                </select>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-message">
-                <i class="mdi mdi-delete-outline me-1"></i>Eliminar
-            </button>
-        </div>
-        <div class="mt-3">
-            <label class="form-label">Contenido del mensaje</label>
-            <textarea class="form-control message-body" rows="3" placeholder="Escribe la respuesta que se enviará."></textarea>
-        </div>
-        <div class="row g-3 mt-2">
-            <div class="col-md-6">
-                <label class="form-label small">Encabezado (opcional)</label>
-                <input type="text" class="form-control message-header" value="">
-            </div>
-            <div class="col-md-6">
-                <label class="form-label small">Pie (opcional)</label>
-                <input type="text" class="form-control message-footer" value="">
-            </div>
-        </div>
-        <div class="message-buttons mt-3 d-none">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                <div class="fw-600 small text-muted">Botones interactivos</div>
-                <button type="button" class="btn btn-xs btn-outline-primary add-button">
-                    <i class="mdi mdi-plus"></i> Añadir botón
-                </button>
-            </div>
-            <div class="button-list"></div>
-            <p class="text-muted small mb-0">Máximo 3 botones por mensaje.</p>
-        </div>
-    </div>
+    <?php $message = ['type' => 'text', 'body' => '', 'header' => '', 'footer' => '', 'buttons' => []];
+    include __DIR__ . '/partials/autoresponder-message.php';
+    ?>
 </template>
 
 <template id="button-template">
-    <div class="input-group input-group-sm button-item mb-2" data-button>
+    <div class="input-group input-group-sm mb-2" data-button>
         <span class="input-group-text">Título</span>
-        <input type="text" class="form-control button-title" value="" placeholder="Texto del botón">
+        <input type="text" class="form-control button-title" placeholder="Texto del botón">
         <span class="input-group-text">ID</span>
-        <input type="text" class="form-control button-id" value="" placeholder="Identificador opcional">
-        <button type="button" class="btn btn-outline-danger remove-button"><i class="mdi mdi-close"></i></button>
+        <input type="text" class="form-control button-id" placeholder="Identificador opcional">
+        <button type="button" class="btn btn-outline-danger" data-action="remove-button"><i class="mdi mdi-close"></i></button>
     </div>
 </template>
 
 <script>
 (function () {
-    const form = document.getElementById('autoresponder-form');
+    const form = document.querySelector('[data-autoresponder-form]');
     if (!form) {
         return;
     }
@@ -680,50 +432,101 @@ switch ($statusType) {
     const messageTemplate = document.getElementById('message-template');
     const buttonTemplate = document.getElementById('button-template');
 
+    const addButtonRow = (messageElement, data = {}) => {
+        if (!buttonTemplate) {
+            return null;
+        }
+        const list = messageElement.querySelector('[data-button-list]');
+        if (!list) {
+            return null;
+        }
+        const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
+        list.appendChild(clone);
+        const titleField = clone.querySelector('.button-title');
+        const idField = clone.querySelector('.button-id');
+        if (titleField && data.title) {
+            titleField.value = data.title;
+        }
+        if (idField && data.id) {
+            idField.value = data.id;
+        }
+        const removeBtn = clone.querySelector('[data-action="remove-button"]');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => clone.remove());
+        }
+
+        return clone;
+    };
+
+    const hasButton = (messageElement, title, id) => {
+        const list = messageElement.querySelectorAll('[data-button]');
+        for (const item of list) {
+            const existingTitle = item.querySelector('.button-title')?.value?.trim().toLowerCase();
+            const existingId = item.querySelector('.button-id')?.value?.trim().toLowerCase();
+            if ((title && existingTitle === title.toLowerCase()) || (id && existingId === id.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const applyPreset = (messageElement, preset) => {
+        if (preset === 'yesno') {
+            if (!hasButton(messageElement, 'Sí', 'si')) {
+                addButtonRow(messageElement, { title: 'Sí', id: 'si' });
+            }
+            if (!hasButton(messageElement, 'No', 'no')) {
+                addButtonRow(messageElement, { title: 'No', id: 'no' });
+            }
+        }
+        if (preset === 'menu') {
+            if (!hasButton(messageElement, 'Menú', 'menu')) {
+                addButtonRow(messageElement, { title: 'Menú', id: 'menu' });
+            }
+        }
+    };
+
     const toggleButtons = (messageElement) => {
-        const type = messageElement.querySelector('.message-type').value;
-        const buttonsContainer = messageElement.querySelector('.message-buttons');
-        if (!buttonsContainer) {
+        const type = messageElement.querySelector('.message-type')?.value || 'text';
+        const container = messageElement.querySelector('[data-buttons]');
+        if (!container) {
             return;
         }
         if (type === 'buttons') {
-            buttonsContainer.classList.remove('d-none');
+            container.classList.remove('d-none');
         } else {
-            buttonsContainer.classList.add('d-none');
+            container.classList.add('d-none');
         }
-    };
-
-    const handleAddButton = (messageElement) => {
-        const list = messageElement.querySelector('.button-list');
-        if (!list || !buttonTemplate) {
-            return;
-        }
-
-        const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
-        list.appendChild(clone);
-        clone.querySelector('.remove-button').addEventListener('click', () => {
-            clone.remove();
-        });
     };
 
     const hydrateMessage = (messageElement) => {
-        messageElement.querySelector('.message-type').addEventListener('change', () => toggleButtons(messageElement));
-        messageElement.querySelector('.remove-message').addEventListener('click', () => {
-            messageElement.remove();
-        });
+        const typeField = messageElement.querySelector('.message-type');
+        const removeMessageButton = messageElement.querySelector('[data-action="remove-message"]');
+        const addButton = messageElement.querySelector('[data-action="add-button"]');
+        const presetButtons = messageElement.querySelectorAll('[data-action="preset"]');
 
-        const addButton = messageElement.querySelector('.add-button');
-        if (addButton) {
-            addButton.addEventListener('click', () => handleAddButton(messageElement));
+        if (typeField) {
+            typeField.addEventListener('change', () => toggleButtons(messageElement));
         }
-
-        messageElement.querySelectorAll('.button-item .remove-button').forEach((button) => {
-            button.addEventListener('click', (event) => {
-                const target = event.currentTarget;
-                if (target && target.closest('.button-item')) {
-                    target.closest('.button-item').remove();
+        if (removeMessageButton) {
+            removeMessageButton.addEventListener('click', () => messageElement.remove());
+        }
+        if (addButton) {
+            addButton.addEventListener('click', () => addButtonRow(messageElement));
+        }
+        presetButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const preset = button.getAttribute('data-preset');
+                if (preset) {
+                    applyPreset(messageElement, preset);
                 }
             });
+        });
+        messageElement.querySelectorAll('[data-button]').forEach((item) => {
+            const remove = item.querySelector('[data-action="remove-button"]');
+            if (remove) {
+                remove.addEventListener('click', () => item.remove());
+            }
         });
 
         toggleButtons(messageElement);
@@ -731,13 +534,9 @@ switch ($statusType) {
 
     form.querySelectorAll('[data-messages]').forEach((container) => {
         container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
-        const parent = container.parentElement;
-        if (!parent) {
-            return;
-        }
-        const addButton = parent.querySelector('[data-action="add-message"]');
-        if (addButton && messageTemplate) {
-            addButton.addEventListener('click', () => {
+        const addMessageButton = container.parentElement?.querySelector('[data-action="add-message"]');
+        if (addMessageButton && messageTemplate) {
+            addMessageButton.addEventListener('click', () => {
                 const clone = messageTemplate.content.firstElementChild.cloneNode(true);
                 container.appendChild(clone);
                 hydrateMessage(clone);
@@ -745,32 +544,25 @@ switch ($statusType) {
         }
     });
 
-    const getFieldValue = (root, selector) => {
-        const element = root.querySelector(selector);
-        return element ? element.value : '';
-    };
-
     const collectButtons = (messageElement) => {
-        const items = [];
-        messageElement.querySelectorAll('.button-item').forEach((item) => {
-            const title = getFieldValue(item, '.button-title').trim();
-            const id = getFieldValue(item, '.button-id').trim();
-            if (title === '') {
-                return;
+        const buttons = [];
+        messageElement.querySelectorAll('[data-button]').forEach((item) => {
+            const title = item.querySelector('.button-title')?.value?.trim() || '';
+            const id = item.querySelector('.button-id')?.value?.trim() || '';
+            if (title !== '') {
+                buttons.push({ title, id });
             }
-            items.push({ title, id });
         });
-
-        return items;
+        return buttons;
     };
 
     const collectMessages = (container) => {
         const messages = [];
         container.querySelectorAll('[data-message]').forEach((messageElement) => {
-            const type = getFieldValue(messageElement, '.message-type') || 'text';
-            const body = getFieldValue(messageElement, '.message-body').trim();
-            const header = getFieldValue(messageElement, '.message-header').trim();
-            const footer = getFieldValue(messageElement, '.message-footer').trim();
+            const type = messageElement.querySelector('.message-type')?.value || 'text';
+            const body = messageElement.querySelector('.message-body')?.value?.trim() || '';
+            const header = messageElement.querySelector('.message-header')?.value?.trim() || '';
+            const footer = messageElement.querySelector('.message-footer')?.value?.trim() || '';
 
             if (body === '') {
                 return;
@@ -783,7 +575,6 @@ switch ($statusType) {
             if (footer !== '') {
                 payload.footer = footer;
             }
-
             if (type === 'buttons') {
                 const buttons = collectButtons(messageElement);
                 if (buttons.length === 0) {
@@ -794,7 +585,6 @@ switch ($statusType) {
 
             messages.push(payload);
         });
-
         return messages;
     };
 
@@ -802,7 +592,6 @@ switch ($statusType) {
         if (!sectionElement) {
             return {};
         }
-
         const data = {};
         sectionElement.querySelectorAll('[data-field]').forEach((field) => {
             const key = field.getAttribute('data-field');
@@ -811,31 +600,28 @@ switch ($statusType) {
             }
             data[key] = field.value;
         });
-
         const messagesContainer = sectionElement.querySelector('[data-messages]');
         if (messagesContainer) {
             data.messages = collectMessages(messagesContainer);
         }
-
         return data;
     };
 
     const collectOption = (optionElement) => {
         const option = collectSection(optionElement);
-        option.id = getFieldValue(optionElement, '.option-id');
-
+        option.id = optionElement.querySelector('.option-id')?.value || '';
         return option;
     };
 
     form.addEventListener('submit', (event) => {
         const entrySection = form.querySelector('[data-section="entry"]');
         const fallbackSection = form.querySelector('[data-section="fallback"]');
-        const optionSections = form.querySelectorAll('[data-option]');
+        const optionSections = Array.from(form.querySelectorAll('[data-option]'));
 
         const payload = {
             entry: collectSection(entrySection),
             fallback: collectSection(fallbackSection),
-            options: Array.from(optionSections).map((optionElement) => collectOption(optionElement)),
+            options: optionSections.map((element) => collectOption(element)),
         };
 
         flowField.value = JSON.stringify(payload);
