@@ -1,5 +1,4 @@
 <?php
-
 use Core\Permissions;
 
 // Helpers para resaltar elementos activos y abrir treeviews según la URL actual
@@ -45,14 +44,6 @@ if (!function_exists('isTreeOpen')) {
         return '';
     }
 }
-
-$rawPermissions = $_SESSION['permisos'] ?? [];
-$normalizedPermissions = Permissions::normalize($rawPermissions);
-$canAccessVerification = Permissions::containsAny($normalizedPermissions, [
-    'administrativo',
-    'pacientes.verification.view',
-    'pacientes.verification.manage',
-]);
 ?>
 <aside class="main-sidebar">
     <!-- sidebar-->
@@ -70,8 +61,7 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                     </li>
                     <li class="<?= isActive('/crm') ?>">
                         <a href="/crm">
-                            <i class="icon-Layout-top-panel-1"><span class="path1"></span><span
-                                        class="path2"></span></i>
+                            <i class="icon-Layout-top-panel-1"><span class="path1"></span><span class="path2"></span></i>
                             <span>CRM</span>
                         </a>
                     </li>
@@ -93,13 +83,6 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
                                 </a>
                             </li>
-                            <?php if ($canAccessVerification): ?>
-                                <li class="<?= isActive('/pacientes/certificaciones') ?>">
-                                    <a href="/pacientes/certificaciones">
-                                        <i class="mdi mdi-account-card-details"></i>Certificación biométrica
-                                    </a>
-                                </li>
-                            <?php endif; ?>
                         </ul>
                     </li>
 
@@ -209,6 +192,8 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                     </li>
 
                     <?php
+                    $rawPermissions = $_SESSION['permisos'] ?? [];
+                    $normalizedPermissions = Permissions::normalize($rawPermissions);
                     $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
                     $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
                     $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
@@ -250,14 +235,14 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                 <?php if ($canAccessCronManager): ?>
                                     <li class="<?= isActive('/cron-manager') ?>">
                                         <a href="/cron-manager">
-                                            <i class="mdi mdi-animation"></i>Cron Manager
+                                            <i class="mdi mdi-clock-outline"></i>Cron Manager
                                         </a>
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessWhatsApp): ?>
                                     <li class="<?= isActive('/whatsapp/autoresponder') ?>">
                                         <a href="/whatsapp/autoresponder">
-                                            <i class="mdi mdi-clipboard-flow"></i>Flujo de autorespuesta
+                                            <i class="mdi mdi-flowchart"></i>Flujo de autorespuesta
                                         </a>
                                     </li>
                                     <li class="<?= isActive('/whatsapp/templates') ?>">

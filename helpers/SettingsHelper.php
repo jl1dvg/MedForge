@@ -239,6 +239,67 @@ class SettingsHelper
                                 ),
                                 ['default' => 'medforge-whatsapp']
                             ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_webhook_verify_token',
+                                    'Token de verificación del webhook',
+                                    false,
+                                    'Debe coincidir con el token configurado en Meta para validar la suscripción.'
+                                ),
+                                ['default' => 'medforge-whatsapp']
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'data_protection',
+                        'title' => 'Protección de datos y plantillas',
+                        'description' => 'Controla la verificación de identidad, el consentimiento y las plantillas enriquecidas enviadas por el autorespondedor.',
+                        'fields' => [
+                            self::textField(
+                                'whatsapp_registry_lookup_url',
+                                'Endpoint del Registro Civil',
+                                false,
+                                'URL del servicio externo para validar cédulas. Usa {{cedula}} como placeholder.'
+                            ),
+                            self::passwordField(
+                                'whatsapp_registry_token',
+                                'Token API Registro Civil'
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_registry_timeout',
+                                    'Tiempo de espera del API (segundos)',
+                                    10,
+                                    'Define el tiempo máximo de espera antes de marcar la consulta como fallida.'
+                                ),
+                                ['min' => 1, 'max' => 60]
+                            ),
+                            array_merge(
+                                self::textareaField(
+                                    'whatsapp_data_consent_message',
+                                    'Mensaje de consentimiento predeterminado',
+                                    "Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?"
+                                ),
+                                ['rows' => 3]
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_data_consent_yes_keywords',
+                                    'Palabras clave para aceptar',
+                                    false,
+                                    "si,acepto,confirmo,confirmar"
+                                ),
+                                ['placeholder' => 'Separadas por comas']
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_data_consent_no_keywords',
+                                    'Palabras clave para rechazar',
+                                    false,
+                                    "no,rechazo,no autorizo"
+                                ),
+                                ['placeholder' => 'Separadas por comas']
+                            ),
                         ],
                     ],
                 ],
