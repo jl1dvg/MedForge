@@ -6,10 +6,12 @@ use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
+use Modules\WhatsApp\Services\TemplateManager;
 use PDO;
 use function is_array;
 use function is_string;
 use function json_decode;
+use Throwable;
 
 class AutoresponderController extends BaseController
 {
@@ -46,12 +48,24 @@ class AutoresponderController extends BaseController
         $resolvedFlow = AutoresponderFlow::resolve($brand, $editorSource);
         $flow = AutoresponderFlow::overview($brand, $editorSource);
 
+        $templates = [];
+        $templatesError = null;
+        try {
+            $templateManager = new TemplateManager($this->pdo);
+            $templateResult = $templateManager->listTemplates(['limit' => 250]);
+            $templates = $templateResult['data'] ?? [];
+        } catch (Throwable $exception) {
+            $templatesError = $exception->getMessage();
+        }
+
         $this->render(BASE_PATH . '/modules/WhatsApp/views/autoresponder.php', [
             'pageTitle' => 'Flujo de autorespuesta de WhatsApp',
             'config' => $config,
             'flow' => $flow,
             'editorFlow' => $resolvedFlow,
             'status' => $status,
+            'templates' => $templates,
+            'templatesError' => $templatesError,
             'scripts' => [],
         ]);
     }

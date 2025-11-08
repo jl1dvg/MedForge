@@ -35,7 +35,13 @@ class WhatsAppSettings
      *     default_country_code: string,
      *     webhook_verify_token: string,
      *     webhook_url: string,
-     *     brand: string
+     *     brand: string,
+     *     registry_lookup_url: string,
+     *     registry_token: string,
+     *     registry_timeout: int,
+     *     data_consent_message: string,
+     *     data_consent_yes_keywords: array<int, string>,
+     *     data_consent_no_keywords: array<int, string>
      * }
      */
     public function get(): array
@@ -54,6 +60,12 @@ class WhatsAppSettings
             'webhook_verify_token' => '',
             'webhook_url' => rtrim((string) (defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook',
             'brand' => 'MedForge',
+            'registry_lookup_url' => '',
+            'registry_token' => '',
+            'registry_timeout' => 10,
+            'data_consent_message' => 'Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?',
+            'data_consent_yes_keywords' => ['si', 'acepto', 'confirmo', 'confirmar'],
+            'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -66,6 +78,12 @@ class WhatsAppSettings
                     'whatsapp_cloud_api_version',
                     'whatsapp_cloud_default_country_code',
                     'whatsapp_webhook_verify_token',
+                    'whatsapp_registry_lookup_url',
+                    'whatsapp_registry_token',
+                    'whatsapp_registry_timeout',
+                    'whatsapp_data_consent_message',
+                    'whatsapp_data_consent_yes_keywords',
+                    'whatsapp_data_consent_no_keywords',
                     'companyname',
                 ]);
 
@@ -84,6 +102,36 @@ class WhatsAppSettings
 
                 $webhookVerifyToken = trim((string) ($options['whatsapp_webhook_verify_token'] ?? ''));
                 $config['webhook_verify_token'] = $webhookVerifyToken;
+
+                $registryUrl = trim((string) ($options['whatsapp_registry_lookup_url'] ?? ''));
+                if ($registryUrl !== '') {
+                    $config['registry_lookup_url'] = $registryUrl;
+                }
+
+                $registryToken = trim((string) ($options['whatsapp_registry_token'] ?? ''));
+                if ($registryToken !== '') {
+                    $config['registry_token'] = $registryToken;
+                }
+
+                $timeout = (int) ($options['whatsapp_registry_timeout'] ?? 10);
+                if ($timeout > 0) {
+                    $config['registry_timeout'] = $timeout;
+                }
+
+                $consentMessage = trim((string) ($options['whatsapp_data_consent_message'] ?? ''));
+                if ($consentMessage !== '') {
+                    $config['data_consent_message'] = $consentMessage;
+                }
+
+                $yesKeywords = $this->normalizeKeywordList($options['whatsapp_data_consent_yes_keywords'] ?? null);
+                if (!empty($yesKeywords)) {
+                    $config['data_consent_yes_keywords'] = $yesKeywords;
+                }
+
+                $noKeywords = $this->normalizeKeywordList($options['whatsapp_data_consent_no_keywords'] ?? null);
+                if (!empty($noKeywords)) {
+                    $config['data_consent_no_keywords'] = $noKeywords;
+                }
 
                 $brand = trim((string) ($options['companyname'] ?? ''));
                 if ($brand !== '') {
@@ -119,5 +167,40 @@ class WhatsAppSettings
     public function getBrandName(): string
     {
         return $this->get()['brand'];
+    }
+
+    /**
+     * @param mixed $raw
+     * @return array<int, string>
+     */
+    private function normalizeKeywordList($raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        if (is_string($raw)) {
+            $raw = preg_split('/[,\n]/', $raw) ?: [];
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $keywords = [];
+        foreach ($raw as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+
+            $clean = trim($value);
+            if ($clean === '') {
+                continue;
+            }
+
+            $keywords[] = mb_strtolower($clean, 'UTF-8');
+        }
+
+        return array_values(array_unique($keywords));
     }
 }

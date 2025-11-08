@@ -387,12 +387,21 @@ class AutoresponderFlow
                 ? strtolower(self::sanitizeLine($message['type']))
                 : 'text';
 
-            if ($type !== 'text' && $type !== 'buttons') {
+            if (!in_array($type, ['text', 'buttons', 'list', 'template'], true)) {
                 $type = 'text';
             }
 
+            if ($type === 'template') {
+                $entry = self::sanitizeTemplateMessage($message);
+                if (!empty($entry)) {
+                    $normalized[] = $entry;
+                }
+
+                continue;
+            }
+
             $body = self::sanitizeMultiline($message['body'] ?? '');
-            if ($body === '') {
+            if ($body === '' && $type !== 'list') {
                 continue;
             }
 
@@ -420,6 +429,16 @@ class AutoresponderFlow
                 if (empty($entry['buttons'])) {
                     continue;
                 }
+            }
+
+            if ($type === 'list') {
+                $list = self::sanitizeListDefinition($message);
+                if (empty($list['sections'])) {
+                    continue;
+                }
+                $entry['body'] = $body === '' ? 'Lista interactiva' : $body;
+                $entry['button'] = $list['button'];
+                $entry['sections'] = $list['sections'];
             }
 
             $normalized[] = $entry;
@@ -475,6 +494,209 @@ class AutoresponderFlow
     }
 
     /**
+     * @param array<string, mixed> $message
+     * @return array<string, mixed>
+     */
+    private static function sanitizeListDefinition(array $message): array
+    {
+        $button = isset($message['button']) && is_string($message['button'])
+            ? self::sanitizeLine($message['button'])
+            : 'Ver opciones';
+        if ($button === '') {
+            $button = 'Ver opciones';
+        }
+
+        $sections = [];
+        if (isset($message['sections']) && is_array($message['sections'])) {
+            foreach ($message['sections'] as $section) {
+                if (!is_array($section)) {
+                    continue;
+                }
+
+                $title = isset($section['title']) ? self::sanitizeLine($section['title']) : '';
+                $rows = [];
+
+                if (isset($section['rows']) && is_array($section['rows'])) {
+                    foreach ($section['rows'] as $row) {
+                        if (!is_array($row)) {
+                            continue;
+                        }
+
+                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
+                        $rowTitle = isset($row['title']) ? self::sanitizeLine($row['title']) : '';
+                        if ($id === '' || $rowTitle === '') {
+                            continue;
+                        }
+
+                        $entry = [
+                            'id' => $id,
+                            'title' => $rowTitle,
+                        ];
+
+                        if (isset($row['description']) && is_string($row['description'])) {
+                            $description = self::sanitizeLine($row['description']);
+                            if ($description !== '') {
+                                $entry['description'] = $description;
+                            }
+                        }
+
+                        $rows[] = $entry;
+
+                        if (count($rows) >= 10) {
+                            break;
+                        }
+                    }
+                }
+
+                if (empty($rows)) {
+                    continue;
+                }
+
+                $sections[] = [
+                    'title' => $title,
+                    'rows' => $rows,
+                ];
+
+                if (count($sections) >= 10) {
+                    break;
+                }
+            }
+        }
+
+        return [
+            'button' => $button,
+            'sections' => $sections,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     * @return array<string, mixed>
+     */
+    private static function sanitizeTemplateMessage(array $message): array
+    {
+        $template = isset($message['template']) && is_array($message['template'])
+            ? $message['template']
+            : $message;
+
+        $name = isset($template['name']) ? self::sanitizeLine($template['name']) : '';
+        $language = isset($template['language']) ? self::sanitizeLine($template['language']) : '';
+
+        if ($name === '' || $language === '') {
+            return [];
+        }
+
+        $category = isset($template['category']) ? strtoupper(self::sanitizeLine($template['category'])) : '';
+        $components = self::sanitizeTemplateComponents($template['components'] ?? []);
+
+        $body = isset($message['body']) ? self::sanitizeMultiline($message['body']) : '';
+        if ($body === '') {
+            $body = 'Plantilla: ' . $name . ' (' . $language . ')';
+        }
+
+        return [
+            'type' => 'template',
+            'body' => $body,
+            'template' => [
+                'name' => $name,
+                'language' => $language,
+                'category' => $category,
+                'components' => $components,
+            ],
+        ];
+    }
+
+    /**
+     * @param mixed $components
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeTemplateComponents($components): array
+    {
+        if (is_string($components)) {
+            $decoded = json_decode($components, true);
+            $components = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($components)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($components as $component) {
+            if (!is_array($component)) {
+                continue;
+            }
+
+            $type = isset($component['type']) ? strtoupper(self::sanitizeLine($component['type'])) : '';
+            if ($type === '') {
+                continue;
+            }
+
+            $entry = ['type' => $type];
+
+            if (isset($component['sub_type'])) {
+                $entry['sub_type'] = strtoupper(self::sanitizeLine($component['sub_type']));
+            }
+
+            if (isset($component['index'])) {
+                $entry['index'] = (int) $component['index'];
+            }
+
+            if (isset($component['parameters']) && is_array($component['parameters'])) {
+                $parameters = [];
+                foreach ($component['parameters'] as $parameter) {
+                    if (!is_array($parameter)) {
+                        continue;
+                    }
+
+                    $paramType = isset($parameter['type'])
+                        ? strtoupper(self::sanitizeLine($parameter['type']))
+                        : 'TEXT';
+
+                    $param = ['type' => $paramType];
+
+                    if (isset($parameter['text'])) {
+                        $text = self::sanitizeMultiline($parameter['text']);
+                        if ($text === '') {
+                            continue;
+                        }
+                        $param['text'] = $text;
+                    }
+
+                    if (isset($parameter['payload'])) {
+                        $payload = self::sanitizeLine($parameter['payload']);
+                        if ($payload === '') {
+                            continue;
+                        }
+                        $param['payload'] = $payload;
+                    }
+
+                    if (isset($parameter['currency']) && is_array($parameter['currency'])) {
+                        $param['currency'] = $parameter['currency'];
+                    }
+
+                    if (isset($parameter['date_time']) && is_array($parameter['date_time'])) {
+                        $param['date_time'] = $parameter['date_time'];
+                    }
+
+                    if (count($param) > 1) {
+                        $parameters[] = $param;
+                    }
+                }
+
+                if (!empty($parameters)) {
+                    $entry['parameters'] = $parameters;
+                }
+            }
+
+            $normalized[] = $entry;
+        }
+
+        return $normalized;
+    }
+
+    /**
      * @param array<string, mixed> $flow
      * @return array<string, mixed>
      */
@@ -520,21 +742,47 @@ class AutoresponderFlow
         $automatic = [];
         if (!empty($section['messages']) && is_array($section['messages'])) {
             foreach ($section['messages'] as $message) {
-                if (!is_array($message) || ($message['type'] ?? '') !== 'buttons') {
+                if (!is_array($message)) {
                     continue;
                 }
 
-                foreach ($message['buttons'] ?? [] as $button) {
-                    if (!is_array($button)) {
-                        continue;
+                if (($message['type'] ?? '') === 'buttons') {
+                    foreach ($message['buttons'] ?? [] as $button) {
+                        if (!is_array($button)) {
+                            continue;
+                        }
+
+                        if (isset($button['id']) && is_string($button['id'])) {
+                            $automatic[] = self::sanitizeLine($button['id']);
+                        }
+
+                        if (isset($button['title']) && is_string($button['title'])) {
+                            $automatic[] = self::sanitizeLine($button['title']);
+                        }
                     }
 
-                    if (isset($button['id']) && is_string($button['id'])) {
-                        $automatic[] = self::sanitizeLine($button['id']);
-                    }
+                    continue;
+                }
 
-                    if (isset($button['title']) && is_string($button['title'])) {
-                        $automatic[] = self::sanitizeLine($button['title']);
+                if (($message['type'] ?? '') === 'list') {
+                    foreach ($message['sections'] ?? [] as $sectionRows) {
+                        if (!is_array($sectionRows)) {
+                            continue;
+                        }
+
+                        foreach ($sectionRows['rows'] ?? [] as $row) {
+                            if (!is_array($row)) {
+                                continue;
+                            }
+
+                            if (isset($row['id']) && is_string($row['id'])) {
+                                $automatic[] = self::sanitizeLine($row['id']);
+                            }
+
+                            if (isset($row['title']) && is_string($row['title'])) {
+                                $automatic[] = self::sanitizeLine($row['title']);
+                            }
+                        }
                     }
                 }
             }
@@ -568,21 +816,43 @@ class AutoresponderFlow
                     continue;
                 }
 
-                if (($message['type'] ?? '') !== 'buttons') {
+                if (($message['type'] ?? '') === 'buttons') {
+                    foreach ($message['buttons'] ?? [] as $button) {
+                        if (!is_array($button)) {
+                            continue;
+                        }
+
+                        if (isset($button['id']) && is_string($button['id'])) {
+                            $keywords[] = self::sanitizeLine($button['id']);
+                        }
+
+                        if (isset($button['title']) && is_string($button['title'])) {
+                            $keywords[] = self::sanitizeLine($button['title']);
+                        }
+                    }
+
                     continue;
                 }
 
-                foreach ($message['buttons'] ?? [] as $button) {
-                    if (!is_array($button)) {
-                        continue;
-                    }
+                if (($message['type'] ?? '') === 'list') {
+                    foreach ($message['sections'] ?? [] as $sectionRows) {
+                        if (!is_array($sectionRows)) {
+                            continue;
+                        }
 
-                    if (isset($button['id']) && is_string($button['id'])) {
-                        $keywords[] = self::sanitizeLine($button['id']);
-                    }
+                        foreach ($sectionRows['rows'] ?? [] as $row) {
+                            if (!is_array($row)) {
+                                continue;
+                            }
 
-                    if (isset($button['title']) && is_string($button['title'])) {
-                        $keywords[] = self::sanitizeLine($button['title']);
+                            if (isset($row['id']) && is_string($row['id'])) {
+                                $keywords[] = self::sanitizeLine($row['id']);
+                            }
+
+                            if (isset($row['title']) && is_string($row['title'])) {
+                                $keywords[] = self::sanitizeLine($row['title']);
+                            }
+                        }
                     }
                 }
             }
