@@ -328,6 +328,11 @@ switch ($statusType) {
     .is-invalid[data-template-parameter] {
         background-color: #fff5f5;
     }
+
+    /* Prevent stacked boxes from stretching to full height in the left column */
+    @media (min-width: 1200px) {
+      .col-xl-4 .box { height: auto; }
+    }
 </style>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -370,7 +375,7 @@ switch ($statusType) {
         <?php endif; ?>
 
         <div class="col-12 col-xl-4 d-flex flex-column gap-4">
-            <div class="box h-100">
+            <div class="box">
                 <div class="box-header with-border">
                     <h4 class="box-title mb-0">Webhook conectado</h4>
                     <p class="text-muted mb-0 small">Comparte estos datos con Meta para validar el webhook.</p>
@@ -394,7 +399,7 @@ switch ($statusType) {
                 </div>
             <?php endif; ?>
 
-            <div class="box h-100">
+            <div class="box">
                 <div class="box-header with-border">
                     <h4 class="box-title mb-0">Plantillas disponibles</h4>
                     <p class="text-muted mb-0 small">Reutiliza tus mensajes aprobados para flujos automáticos.</p>
@@ -424,7 +429,7 @@ switch ($statusType) {
                 </div>
             </div>
 
-            <div class="box h-100">
+            <div class="box">
                 <div class="box-header with-border">
                     <h4 class="box-title mb-0">Secuencia del flujo</h4>
                     <p class="text-muted mb-0 small">Visualiza qué responde el bot en cada paso.</p>
