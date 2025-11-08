@@ -66,7 +66,8 @@ class AutoresponderController extends BaseController
             'status' => $status,
             'templates' => $templates,
             'templatesError' => $templatesError,
-            'scripts' => [],
+            'scripts' => ['js/pages/whatsapp-autoresponder.js'],
+            'styles' => ['css/pages/whatsapp-autoresponder.css'],
         ]);
     }
 
