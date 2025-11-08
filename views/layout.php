@@ -28,6 +28,29 @@
     <link rel="stylesheet" href="<?= asset('css/style.css') ?>">
     <link rel="stylesheet" href="<?= asset('css/skin_color.css') ?>">
 
+    <?php
+    if (!isset($styles) || !is_array($styles)) {
+        $styles = [];
+    }
+
+    $styleStack = [];
+    foreach ($styles as $style) {
+        if (!is_string($style) || $style === '') {
+            continue;
+        }
+
+        $styleStack[] = $style;
+    }
+
+    $styleStack = array_values(array_unique($styleStack));
+
+    foreach ($styleStack as $style) {
+        $isAbsolute = preg_match('#^(?:https?:)?//#', $style) === 1;
+        $href = $isAbsolute ? $style : asset($style);
+        echo '<link rel="stylesheet" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">';
+    }
+    ?>
+
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 
