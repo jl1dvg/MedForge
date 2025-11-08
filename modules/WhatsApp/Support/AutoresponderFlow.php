@@ -65,6 +65,7 @@ class AutoresponderFlow
         $brand = trim($brand) !== '' ? $brand : 'MedForge';
 
         return [
+            'consent' => DataProtectionCopy::defaults($brand),
             'entry' => [
                 'title' => 'Mensaje de bienvenida',
                 'description' => 'Primer contacto que recibe toda persona que escribe al canal.',
@@ -125,6 +126,8 @@ class AutoresponderFlow
     {
         $defaults = self::defaultConfig($brand);
         if (empty($overrides)) {
+            $defaults['consent'] = DataProtectionCopy::defaults($brand);
+
             return self::finalize($defaults);
         }
 
@@ -139,6 +142,8 @@ class AutoresponderFlow
         if (isset($overrides['fallback']) && is_array($overrides['fallback'])) {
             $defaults['fallback'] = self::mergeSection($defaults['fallback'], $overrides['fallback']);
         }
+
+        $defaults['consent'] = DataProtectionCopy::sanitize($overrides['consent'] ?? [], $brand);
 
         return self::finalize($defaults);
     }
@@ -173,6 +178,7 @@ class AutoresponderFlow
         $resolved['entry'] = self::mergeSection($defaults['entry'], $flow['entry']);
         $resolved['fallback'] = self::mergeSection($defaults['fallback'], $flow['fallback']);
         $resolved['options'] = self::mergeOptions($defaults['options'], $flow['options']);
+        $resolved['consent'] = DataProtectionCopy::sanitize($flow['consent'] ?? [], $brand);
 
         $storage = self::purgeAutomaticKeywords($resolved);
 
@@ -202,6 +208,7 @@ class AutoresponderFlow
                     'Fallback' => $resolved['fallback']['keywords'] ?? [],
                 ],
             ],
+            'consent' => $resolved['consent'] ?? DataProtectionCopy::defaults($brand),
         ]);
     }
 
@@ -522,9 +529,17 @@ class AutoresponderFlow
                             continue;
                         }
 
-                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
                         $rowTitle = isset($row['title']) ? self::sanitizeLine($row['title']) : '';
-                        if ($id === '' || $rowTitle === '') {
+                        if ($rowTitle === '') {
+                            continue;
+                        }
+
+                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
+                        if ($id === '') {
+                            $id = self::slugify($rowTitle);
+                        }
+
+                        if ($id === '') {
                             continue;
                         }
 
