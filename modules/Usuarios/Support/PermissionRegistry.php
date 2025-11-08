@@ -15,6 +15,8 @@ class PermissionRegistry
                 'pacientes.create' => 'Pacientes - Crear',
                 'pacientes.edit' => 'Pacientes - Editar',
                 'pacientes.delete' => 'Pacientes - Eliminar',
+                'pacientes.verification.view' => 'Certificación biométrica - Ver',
+                'pacientes.verification.manage' => 'Certificación biométrica - Gestionar',
             ],
             'Cirugías' => [
                 'cirugias.view' => 'Cirugías - Ver',
