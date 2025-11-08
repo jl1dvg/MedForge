@@ -522,9 +522,17 @@ class AutoresponderFlow
                             continue;
                         }
 
-                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
                         $rowTitle = isset($row['title']) ? self::sanitizeLine($row['title']) : '';
-                        if ($id === '' || $rowTitle === '') {
+                        if ($rowTitle === '') {
+                            continue;
+                        }
+
+                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
+                        if ($id === '') {
+                            $id = self::slugify($rowTitle);
+                        }
+
+                        if ($id === '') {
                             continue;
                         }
 
