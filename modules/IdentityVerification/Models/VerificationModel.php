@@ -146,7 +146,7 @@ class VerificationModel
         ]);
     }
 
-    public function logCheckin(int $certificationId, array $data): void
+    public function logCheckin(int $certificationId, array $data): array
     {
         $stmt = $this->db->prepare("
             INSERT INTO patient_identity_checkins (
@@ -166,6 +166,39 @@ class VerificationModel
             ':metadata' => $this->encodeTemplate($data['metadata'] ?? null),
             ':created_by' => $data['created_by'] ?? null,
         ]);
+
+        $id = (int) $this->db->lastInsertId();
+
+        return $this->findCheckin($id) ?? [
+            'id' => $id,
+            'certification_id' => $certificationId,
+            'verified_signature_score' => $data['verified_signature_score'] ?? null,
+            'verified_face_score' => $data['verified_face_score'] ?? null,
+            'verification_result' => $data['verification_result'] ?? 'manual_review',
+            'metadata' => $data['metadata'] ?? null,
+        ];
+    }
+
+    public function findCheckin(int $id): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT * FROM patient_identity_checkins
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$row) {
+            return null;
+        }
+
+        if (isset($row['metadata'])) {
+            $row['metadata'] = $this->decodeTemplate($row['metadata']);
+        }
+
+        return $row;
     }
 
     public function findPatientSummary(string $patientId): ?array
