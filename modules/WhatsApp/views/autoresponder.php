@@ -116,6 +116,50 @@ foreach ($templateCatalog as $templateMeta) {
 }
 $templatesJson = htmlspecialchars(json_encode($templateCatalog, JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8');
 
+$getConsentValue = static function (array $consent, string $key): string {
+    $value = $consent[$key] ?? '';
+    if (!is_string($value)) {
+        return '';
+    }
+
+    return trim($value);
+};
+
+$getConsentLines = static function (array $consent): array {
+    $lines = $consent['intro_lines'] ?? [];
+    if (!is_array($lines)) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach ($lines as $line) {
+        if (!is_string($line)) {
+            continue;
+        }
+
+        $trimmed = trim($line);
+        if ($trimmed !== '') {
+            $normalized[] = $trimmed;
+        }
+    }
+
+    return $normalized;
+};
+
+$getConsentButton = static function (array $consent, string $key) use ($getConsentValue): string {
+    $buttons = $consent['buttons'] ?? [];
+    if (!is_array($buttons)) {
+        return '';
+    }
+
+    $value = $buttons[$key] ?? '';
+    if (!is_string($value)) {
+        return '';
+    }
+
+    return trim($value);
+};
+
 $missingCredentials = [];
 if (empty($config['phone_number_id'])) {
     $missingCredentials[] = 'ID del número de teléfono';
@@ -300,6 +344,7 @@ $entry = $flow['entry'] ?? [];
 $options = $flow['options'] ?? [];
 $fallback = $flow['fallback'] ?? [];
 $meta = $flow['meta'] ?? [];
+$consent = is_array($flow['consent'] ?? null) ? $flow['consent'] : [];
 $brand = $meta['brand'] ?? ($config['brand'] ?? 'MedForge');
 $webhookUrl = $config['webhook_url'] ?? (rtrim((string)(defined('BASE_URL') ? BASE_URL : ''), '/') . '/whatsapp/webhook');
 $webhookToken = trim((string)($config['webhook_verify_token'] ?? 'medforge-whatsapp'));
@@ -307,6 +352,39 @@ $webhookToken = trim((string)($config['webhook_verify_token'] ?? 'medforge-whats
 $editorEntry = $editorFlow['entry'] ?? [];
 $editorOptions = $editorFlow['options'] ?? [];
 $editorFallback = $editorFlow['fallback'] ?? [];
+$editorConsent = is_array($editorFlow['consent'] ?? null) ? $editorFlow['consent'] : [];
+
+$consentIntro = $getConsentLines($consent);
+$editorConsentIntro = $getConsentLines($editorConsent);
+
+$consentPrompt = $getConsentValue($consent, 'consent_prompt');
+$consentRetry = $getConsentValue($consent, 'consent_retry');
+$consentDeclined = $getConsentValue($consent, 'consent_declined');
+$consentIdentifierRequest = $getConsentValue($consent, 'identifier_request');
+$consentIdentifierRetry = $getConsentValue($consent, 'identifier_retry');
+$consentCheck = $getConsentValue($consent, 'confirmation_check');
+$consentReview = $getConsentValue($consent, 'confirmation_review');
+$consentMenu = $getConsentValue($consent, 'confirmation_menu');
+$consentRecorded = $getConsentValue($consent, 'confirmation_recorded');
+
+$editorConsentPrompt = $getConsentValue($editorConsent, 'consent_prompt');
+$editorConsentRetry = $getConsentValue($editorConsent, 'consent_retry');
+$editorConsentDeclined = $getConsentValue($editorConsent, 'consent_declined');
+$editorConsentIdentifierRequest = $getConsentValue($editorConsent, 'identifier_request');
+$editorConsentIdentifierRetry = $getConsentValue($editorConsent, 'identifier_retry');
+$editorConsentCheck = $getConsentValue($editorConsent, 'confirmation_check');
+$editorConsentReview = $getConsentValue($editorConsent, 'confirmation_review');
+$editorConsentMenu = $getConsentValue($editorConsent, 'confirmation_menu');
+$editorConsentRecorded = $getConsentValue($editorConsent, 'confirmation_recorded');
+
+$consentButtons = [
+    'accept' => $getConsentButton($consent, 'accept') ?: 'Sí, autorizo',
+    'decline' => $getConsentButton($consent, 'decline') ?: 'No, gracias',
+];
+$editorConsentButtons = [
+    'accept' => $getConsentButton($editorConsent, 'accept') ?: 'Sí, autorizo',
+    'decline' => $getConsentButton($editorConsent, 'decline') ?: 'No, gracias',
+];
 
 $statusType = is_array($status) ? ($status['type'] ?? 'info') : null;
 $statusMessage = is_array($status) ? ($status['message'] ?? '') : '';
@@ -515,6 +593,58 @@ switch ($statusType) {
                     </ol>
                 </div>
             </div>
+
+            <div class="box mb-4">
+                <div class="box-header with-border">
+                    <h4 class="box-title mb-0">Consentimiento y protección de datos</h4>
+                    <p class="text-muted mb-0 small">Mensajes previos a validar la historia clínica.</p>
+                </div>
+                <div class="box-body d-flex flex-column gap-3">
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Introducción</div>
+                        <?php if (!empty($consentIntro)): ?>
+                            <ul class="small ps-3 mb-0">
+                                <?php foreach ($consentIntro as $line): ?>
+                                    <li><?= $escape($line); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else: ?>
+                            <p class="small text-muted mb-0">Se utilizará el mensaje predeterminado antes de solicitar la autorización.</p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Solicitud de autorización</div>
+                        <p class="small mb-1"><?= $escape($consentPrompt); ?></p>
+                        <div class="d-flex gap-2 flex-wrap small">
+                            <span class="badge bg-success-light text-success"><?= $escape($consentButtons['accept']); ?></span>
+                            <span class="badge bg-danger-light text-danger"><?= $escape($consentButtons['decline']); ?></span>
+                        </div>
+                        <?php if ($consentRetry !== ''): ?>
+                            <p class="small text-muted mb-0 mt-2">Recordatorio: <?= $escape($consentRetry); ?></p>
+                        <?php endif; ?>
+                        <?php if ($consentDeclined !== ''): ?>
+                            <p class="small text-muted mb-0">Respuesta ante rechazo: <?= $escape($consentDeclined); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Solicitud de historia clínica</div>
+                        <p class="small mb-1"><?= $escape($consentIdentifierRequest); ?></p>
+                        <?php if ($consentIdentifierRetry !== ''): ?>
+                            <p class="small text-muted mb-0">Cuando no hay coincidencias: <?= $escape($consentIdentifierRetry); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div>
+                        <div class="small text-uppercase text-muted fw-600">Confirmación final</div>
+                        <ul class="small ps-3 mb-0 d-flex flex-column gap-1">
+                            <li><?= $escape($consentCheck); ?></li>
+                            <li><?= $escape($consentReview); ?></li>
+                            <li><?= $escape($consentMenu); ?></li>
+                            <li><?= $escape($consentRecorded); ?></li>
+                        </ul>
+                    </div>
+                    <p class="small text-muted mb-0">Puedes utilizar <code>{{brand}}</code>, <code>{{terms_url}}</code> y <code>{{history_number}}</code> para personalizar los mensajes.</p>
+                </div>
+            </div>
         </div>
 
         <div class="col-12 col-xl-8">
@@ -648,6 +778,71 @@ switch ($statusType) {
                             <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
                                 <i class="mdi mdi-plus"></i> Añadir respuesta
                             </button>
+                        </div>
+
+                        <div class="flow-step border-top pt-4" data-consent>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h5 class="mb-0">Consentimiento y validación</h5>
+                                    <p class="text-muted small mb-0">Define qué se envía antes de continuar con el flujo automático.</p>
+                                </div>
+                                <span class="small text-muted">Placeholders disponibles: <code>{{brand}}</code>, <code>{{terms_url}}</code>, <code>{{name}}</code>, <code>{{history_number}}</code>.</span>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Introducción (una línea por mensaje)</label>
+                                <textarea class="form-control" rows="3" data-consent-field="intro_lines"><?= $escape(implode("\n", $editorConsentIntro)); ?></textarea>
+                                <div class="form-text">Se envía antes de solicitar la autorización. Puedes referenciar {{brand}} o {{terms_url}}.</div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje para solicitar la autorización</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_prompt"><?= $escape($editorConsentPrompt); ?></textarea>
+                                <div class="form-text">Si incluyes {{name}}, el mensaje mencionará al paciente cuando esté disponible.</div>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6" data-consent-wrapper>
+                                    <label class="form-label">Botón de aceptación</label>
+                                    <input type="text" class="form-control" data-consent-field="button_accept"
+                                           value="<?= $escape($editorConsentButtons['accept'] ?? ''); ?>">
+                                </div>
+                                <div class="col-md-6" data-consent-wrapper>
+                                    <label class="form-label">Botón de rechazo</label>
+                                    <input type="text" class="form-control" data-consent-field="button_decline"
+                                           value="<?= $escape($editorConsentButtons['decline'] ?? ''); ?>">
+                                </div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Recordatorio si no responde</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_retry"><?= $escape($editorConsentRetry); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Respuesta cuando se rechaza la autorización</label>
+                                <textarea class="form-control" rows="2" data-consent-field="consent_declined"><?= $escape($editorConsentDeclined); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Solicitud del número de historia clínica</label>
+                                <textarea class="form-control" rows="2" data-consent-field="identifier_request"><?= $escape($editorConsentIdentifierRequest); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje si el número no coincide</label>
+                                <textarea class="form-control" rows="2" data-consent-field="identifier_retry"><?= $escape($editorConsentIdentifierRetry); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Verificación final</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_check"><?= $escape($editorConsentCheck); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Mensaje para revisar el número detectado</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_review"><?= $escape($editorConsentReview); ?></textarea>
+                                <div class="form-text">Incluye {{history_number}} para repetir la historia clínica ingresada.</div>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Instrucciones para continuar</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_menu"><?= $escape($editorConsentMenu); ?></textarea>
+                            </div>
+                            <div class="mb-3" data-consent-wrapper>
+                                <label class="form-label">Confirmación del registro</label>
+                                <textarea class="form-control" rows="2" data-consent-field="confirmation_recorded"><?= $escape($editorConsentRecorded); ?></textarea>
+                            </div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">

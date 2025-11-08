@@ -37,6 +37,9 @@ class DataProtectionFlow
     private ContactConsentRepository $repository;
     private PatientLookupService $patients;
     private WhatsAppSettings $settings;
+    private array $copy;
+    private array $defaultCopy;
+    private string $brand;
 
     public function __construct(
         Messenger $messenger,
@@ -48,6 +51,15 @@ class DataProtectionFlow
         $this->repository = $repository;
         $this->patients = $patients;
         $this->settings = $settings;
+        $this->brand = $this->settings->getBrandName();
+        $this->defaultCopy = DataProtectionCopy::defaults($this->brand);
+        $config = $this->settings->get();
+        $flowCopy = $config['data_protection_flow'] ?? null;
+        if (is_array($flowCopy)) {
+            $this->copy = DataProtectionCopy::sanitize($flowCopy, $this->brand);
+        } else {
+            $this->copy = $this->defaultCopy;
+        }
     }
 
     /**
@@ -137,20 +149,26 @@ class DataProtectionFlow
     {
         $config = $this->settings->get();
         $termsUrl = trim((string) ($config['data_terms_url'] ?? ''));
-        $parts = ['Por favor, antes de continuar, ayúdanos con unos datos.'];
+        $rendered = [];
 
-        if ($termsUrl !== '') {
-            $parts[] = "Para continuar con la conversación, debes aceptar nuestros Términos, Condiciones y Aviso de Privacidad:
-👉 " . $termsUrl;
-        } else {
-            $parts[] = 'Para continuar con la conversación, debes aceptar nuestros Términos, Condiciones y Aviso de Privacidad.';
+        foreach ($this->copyLines('intro_lines') as $line) {
+            $text = $this->renderCopy($line, [
+                'terms_url' => $termsUrl,
+                'brand' => $this->brand,
+            ]);
+
+            if ($text !== '') {
+                $rendered[] = $text;
+            }
         }
 
-        $parts[] = '¿Continuamos?';
+        if (empty($rendered)) {
+            $rendered = $this->copyLines('intro_lines');
+        }
 
         $this->messenger->sendTextMessage($number, implode("
 
-", $parts));
+", $rendered));
     }
 
     /**
@@ -162,10 +180,10 @@ class DataProtectionFlow
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
                 'accepted_at' => (new DateTimeImmutable())->format('c'),
             ]);
-            $this->messenger->sendTextMessage(
-                $number,
-                'Escribe tu número de historia clínica 🪪'
-            );
+            $message = $this->renderCopy($this->copyString('identifier_request'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
 
             return true;
         }
@@ -173,18 +191,18 @@ class DataProtectionFlow
         if ($this->isRejection($keyword)) {
             $identifierValue = (string) ($record['identifier'] ?? '');
             $this->repository->markConsent($number, $identifierValue, false);
-            $this->messenger->sendTextMessage(
-                $number,
-                'Entendido. No utilizaremos tus datos hasta que lo autorices. Si deseas continuar responde "sí" o comunícate con nuestro equipo.'
-            );
+            $message = $this->renderCopy($this->copyString('consent_declined'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
 
             return true;
         }
 
-        $this->messenger->sendTextMessage(
-            $number,
-            'Necesitamos tu confirmación para continuar. Usa los botones enviados o responde "sí, autorizo" si estás de acuerdo.'
-        );
+        $retryMessage = $this->renderCopy($this->copyString('consent_retry'), ['brand' => $this->brand]);
+        if ($retryMessage !== '') {
+            $this->messenger->sendTextMessage($number, $retryMessage);
+        }
         $this->sendConsentPrompt($number, $record['patient_full_name'] ?? null);
 
         return true;
@@ -198,10 +216,10 @@ class DataProtectionFlow
         $identifier = $this->detectIdentifier($rawText, $keyword);
 
         if ($identifier === null) {
-            $this->messenger->sendTextMessage(
-                $number,
-                'Por favor, escribe tu número de historia clínica para validar que estás registrado.'
-            );
+            $message = $this->renderCopy($this->copyString('identifier_request'), ['brand' => $this->brand]);
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER);
 
             return true;
@@ -209,10 +227,10 @@ class DataProtectionFlow
 
         $patient = $this->patients->findLocalByHistoryNumber($identifier['value']);
         if ($patient === null) {
-            $this->messenger->sendTextMessage(
-                $number,
-                'No encontramos tu registro con el número de historia clínica proporcionado. Verifícalo y vuelve a intentarlo.'
-            );
+            $retryMessage = $this->renderCopy($this->copyString('identifier_retry'), ['brand' => $this->brand]);
+            if ($retryMessage !== '') {
+                $this->messenger->sendTextMessage($number, $retryMessage);
+            }
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
                 'last_identifier_attempt' => $identifier['value'],
             ]);
@@ -258,21 +276,117 @@ class DataProtectionFlow
 
         $this->repository->markConsent($number, $historyNumber, true);
 
-        $this->messenger->sendTextMessage($number, '¿Está seguro de que la información ingresada es correcta? ✅');
-        $this->messenger->sendTextMessage(
-            $number,
-            'Por favor, verifica si tu número de historia clínica ' . $historyNumber . ' está correcto antes de continuar. ¡Gracias por tu atención! 😊'
-        );
-        $this->messenger->sendTextMessage(
-            $number,
-            'Cuando confirmes la información, responde con la opción que necesites o escribe "menu" para ver las alternativas disponibles.'
-        );
-        $this->messenger->sendTextMessage(
-            $number,
-            'Tu autorización quedó registrada en nuestro sistema. Continuemos con la atención. ✅'
-        );
+        $confirmation = [
+            $this->renderCopy($this->copyString('confirmation_check'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_review'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_menu'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+            $this->renderCopy($this->copyString('confirmation_recorded'), ['history_number' => $historyNumber, 'brand' => $this->brand]),
+        ];
+
+        foreach ($confirmation as $message) {
+            if ($message !== '') {
+                $this->messenger->sendTextMessage($number, $message);
+            }
+        }
 
         return true;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function copyLines(string $key): array
+    {
+        $lines = $this->copy[$key] ?? [];
+        if (is_array($lines)) {
+            $normalized = [];
+            foreach ($lines as $line) {
+                if (!is_string($line)) {
+                    continue;
+                }
+
+                $trimmed = trim($line);
+                if ($trimmed !== '') {
+                    $normalized[] = $trimmed;
+                }
+            }
+
+            if ($normalized !== []) {
+                return $normalized;
+            }
+        }
+
+        $fallback = $this->defaultCopy[$key] ?? [];
+        if (!is_array($fallback)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($fallback as $line) {
+            if (!is_string($line)) {
+                continue;
+            }
+
+            $trimmed = trim($line);
+            if ($trimmed !== '') {
+                $normalized[] = $trimmed;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function copyString(string $key): string
+    {
+        $value = $this->copy[$key] ?? null;
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        $fallback = $this->defaultCopy[$key] ?? '';
+
+        return is_string($fallback) ? trim($fallback) : '';
+    }
+
+    private function copyButton(string $key): string
+    {
+        $buttons = $this->copy['buttons'] ?? null;
+        if (is_array($buttons) && isset($buttons[$key]) && is_string($buttons[$key])) {
+            $label = trim($buttons[$key]);
+            if ($label !== '') {
+                return $label;
+            }
+        }
+
+        $fallbackButtons = $this->defaultCopy['buttons'] ?? [];
+        if (is_array($fallbackButtons) && isset($fallbackButtons[$key]) && is_string($fallbackButtons[$key])) {
+            return trim($fallbackButtons[$key]);
+        }
+
+        return $key === 'accept' ? 'Sí, autorizo' : 'No, gracias';
+    }
+
+    /**
+     * @param array<string, string> $context
+     */
+    private function renderCopy(string $text, array $context = []): string
+    {
+        $replacements = [
+            '{{brand}}' => $context['brand'] ?? $this->brand,
+            '{{terms_url}}' => $context['terms_url'] ?? '',
+            '{{history_number}}' => $context['history_number'] ?? '',
+            '{{name}}' => $context['name'] ?? '',
+        ];
+
+        $result = $text;
+        foreach ($replacements as $placeholder => $value) {
+            $result = str_replace($placeholder, (string) $value, $result);
+        }
+
+        return trim($result);
     }
 
     /**
@@ -372,45 +486,69 @@ class DataProtectionFlow
     private function sendConsentPrompt(string $number, ?string $name): void
     {
         $config = $this->settings->get();
-        $message = (string) ($config['data_consent_message'] ?? 'Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?');
+        $rawPrompt = $this->copyString('consent_prompt');
+        $context = [
+            'brand' => $this->brand,
+            'terms_url' => $config['data_terms_url'] ?? '',
+            'name' => $name ?? '',
+        ];
 
-        if ($name !== null && $name !== '') {
+        $message = $this->renderCopy($rawPrompt, $context);
+        if ($message === '') {
+            $message = $this->renderCopy($this->defaultCopy['consent_prompt'] ?? '', $context);
+        }
+
+        if ($name !== null && $name !== '' && strpos($rawPrompt, '{{name}}') === false) {
             $message = 'Antes de continuar, ' . $name . ', ' . $message;
         }
 
         $this->messenger->sendInteractiveButtons($number, $message, [
-            ['id' => 'consent_yes', 'title' => 'Sí, autorizo'],
-            ['id' => 'consent_no', 'title' => 'No, gracias'],
+            ['id' => 'consent_yes', 'title' => $this->copyButton('accept')],
+            ['id' => 'consent_no', 'title' => $this->copyButton('decline')],
         ]);
     }
 
     private function isAcceptance(string $keyword): bool
     {
+        $variants = [
+            'consent_yes',
+            'si',
+            'si autorizo',
+            'autorizo',
+            'autorizo si',
+            'claro autorizo',
+        ];
+
+        $button = $this->normalizeVariant($this->copyButton('accept'));
+        if ($button !== '') {
+            $variants[] = $button;
+        }
+
         return $this->matchesKeyword(
             $keyword,
-            [
-                'consent_yes',
-                'si',
-                'si autorizo',
-                'autorizo',
-                'autorizo si',
-                'claro autorizo',
-            ],
+            $variants,
             $this->collectConfiguredKeywords('data_consent_yes_keywords')
         );
     }
 
     private function isRejection(string $keyword): bool
     {
+        $variants = [
+            'consent_no',
+            'no',
+            'no autorizo',
+            'no gracias',
+            'rechazo',
+        ];
+
+        $button = $this->normalizeVariant($this->copyButton('decline'));
+        if ($button !== '') {
+            $variants[] = $button;
+        }
+
         return $this->matchesKeyword(
             $keyword,
-            [
-                'consent_no',
-                'no',
-                'no autorizo',
-                'no gracias',
-                'rechazo',
-            ],
+            $variants,
             $this->collectConfiguredKeywords('data_consent_no_keywords')
         );
     }

@@ -36,10 +36,16 @@
             form.querySelectorAll('[data-message].has-validation-error').forEach((element) => {
                 element.classList.remove('has-validation-error');
             });
+            form.querySelectorAll('[data-consent-wrapper].has-validation-error').forEach((element) => {
+                element.classList.remove('has-validation-error');
+            });
             form.querySelectorAll('[data-template-parameter].is-invalid').forEach((element) => {
                 element.classList.remove('is-invalid');
             });
             form.querySelectorAll('.template-selector.is-invalid').forEach((element) => {
+                element.classList.remove('is-invalid');
+            });
+            form.querySelectorAll('[data-consent-field].is-invalid').forEach((element) => {
                 element.classList.remove('is-invalid');
             });
         };
@@ -70,6 +76,7 @@
         const buttonTemplate = document.getElementById('button-template');
         const templateCatalogInput = form.querySelector('[data-template-catalog]');
         let templateCatalog = [];
+        const consentSection = form.querySelector('[data-consent]');
 
         if (templateCatalogInput) {
             try {
@@ -892,6 +899,112 @@
             return option;
         };
 
+        const collectConsent = (section) => {
+            const config = {
+                intro_lines: [],
+                consent_prompt: '',
+                consent_retry: '',
+                consent_declined: '',
+                identifier_request: '',
+                identifier_retry: '',
+                confirmation_check: '',
+                confirmation_review: '',
+                confirmation_menu: '',
+                confirmation_recorded: '',
+                buttons: {
+                    accept: '',
+                    decline: '',
+                },
+            };
+
+            if (!section) {
+                return config;
+            }
+
+            section.querySelectorAll('[data-consent-field]').forEach((field) => {
+                const key = field.getAttribute('data-consent-field');
+                if (!key) {
+                    return;
+                }
+
+                const raw = field.value || '';
+                const value = raw.trim();
+
+                if (key === 'intro_lines') {
+                    if (value === '') {
+                        config.intro_lines = [];
+                    } else {
+                        config.intro_lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '');
+                    }
+
+                    return;
+                }
+
+                if (key === 'button_accept') {
+                    config.buttons.accept = value;
+                    return;
+                }
+
+                if (key === 'button_decline') {
+                    config.buttons.decline = value;
+                    return;
+                }
+
+                config[key] = value;
+            });
+
+            return config;
+        };
+
+        const validateConsent = (consent) => {
+            if (!consentSection) {
+                return;
+            }
+
+            const findField = (name) => consentSection.querySelector(`[data-consent-field="${name}"]`);
+            const markFieldError = (name, message) => {
+                const field = findField(name);
+                if (field) {
+                    field.classList.add('is-invalid');
+                    const wrapper = field.closest('[data-consent-wrapper]') || field;
+                    recordValidationError(message, wrapper);
+                } else {
+                    recordValidationError(message, consentSection);
+                }
+            };
+
+            if (!Array.isArray(consent.intro_lines) || consent.intro_lines.length === 0) {
+                markFieldError('intro_lines', 'Añade al menos una línea para la introducción del consentimiento.');
+            }
+
+            const required = [
+                ['consent_prompt', 'Define el mensaje que solicitará la autorización.'],
+                ['button_accept', 'Indica el texto del botón de aceptación.'],
+                ['button_decline', 'Indica el texto del botón de rechazo.'],
+                ['identifier_request', 'Define la solicitud del número de historia clínica.'],
+                ['identifier_retry', 'Incluye el mensaje para cuando el número no coincide.'],
+                ['confirmation_check', 'Añade el mensaje de verificación final.'],
+                ['confirmation_review', 'Incluye la confirmación con el número de historia clínica.'],
+                ['confirmation_menu', 'Explica cómo continuar después de validar la información.'],
+                ['confirmation_recorded', 'Añade el mensaje que confirma el registro del consentimiento.'],
+            ];
+
+            required.forEach(([fieldName, message]) => {
+                let candidate = '';
+                if (fieldName === 'button_accept') {
+                    candidate = consent.buttons.accept || '';
+                } else if (fieldName === 'button_decline') {
+                    candidate = consent.buttons.decline || '';
+                } else {
+                    candidate = consent[fieldName] || '';
+                }
+
+                if (!candidate || candidate.trim() === '') {
+                    markFieldError(fieldName, message);
+                }
+            });
+        };
+
         form.addEventListener('submit', (event) => {
             resetValidationState();
 
@@ -904,6 +1017,10 @@
                 fallback: collectSection(fallbackSection, 'Fallback'),
                 options: optionSections.map((element) => collectOption(element)),
             };
+
+            const consentConfig = collectConsent(consentSection);
+            validateConsent(consentConfig);
+            payload.consent = consentConfig;
 
             if (validationErrors.length > 0) {
                 event.preventDefault();

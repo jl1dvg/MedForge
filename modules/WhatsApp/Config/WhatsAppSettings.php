@@ -3,6 +3,7 @@
 namespace Modules\WhatsApp\Config;
 
 use Models\SettingsModel;
+use Modules\WhatsApp\Support\DataProtectionCopy;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -42,7 +43,8 @@ class WhatsAppSettings
      *     data_terms_url: string,
      *     data_consent_message: string,
      *     data_consent_yes_keywords: array<int, string>,
-     *     data_consent_no_keywords: array<int, string>
+     *     data_consent_no_keywords: array<int, string>,
+     *     data_protection_flow: array<string, mixed>
      * }
      */
     public function get(): array
@@ -68,6 +70,7 @@ class WhatsAppSettings
             'data_consent_message' => 'Confirmamos tu identidad y protegemos tus datos personales. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?',
             'data_consent_yes_keywords' => ['si', 'acepto', 'confirmo', 'confirmar'],
             'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
+            'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -87,6 +90,7 @@ class WhatsAppSettings
                     'whatsapp_data_consent_message',
                     'whatsapp_data_consent_yes_keywords',
                     'whatsapp_data_consent_no_keywords',
+                    'whatsapp_autoresponder_flow',
                     'companyname',
                 ]);
 
@@ -145,9 +149,27 @@ class WhatsAppSettings
                 if ($brand !== '') {
                     $config['brand'] = $brand;
                 }
+
+                $flowOverrides = [];
+                $rawFlow = $options['whatsapp_autoresponder_flow'] ?? '';
+                if (is_string($rawFlow) && $rawFlow !== '') {
+                    $decodedFlow = json_decode($rawFlow, true);
+                    if (is_array($decodedFlow) && isset($decodedFlow['consent']) && is_array($decodedFlow['consent'])) {
+                        $flowOverrides = $decodedFlow['consent'];
+                    }
+                }
+
+                $config['data_protection_flow'] = DataProtectionCopy::resolve($config['brand'], $flowOverrides);
+                if (isset($config['data_protection_flow']['consent_prompt'])) {
+                    $config['data_consent_message'] = (string) $config['data_protection_flow']['consent_prompt'];
+                }
             } catch (Throwable $exception) {
                 error_log('No fue posible cargar la configuración de WhatsApp Cloud API: ' . $exception->getMessage());
             }
+        }
+
+        if (empty($config['data_protection_flow'])) {
+            $config['data_protection_flow'] = DataProtectionCopy::defaults($config['brand']);
         }
 
         if ($config['webhook_verify_token'] === '') {
