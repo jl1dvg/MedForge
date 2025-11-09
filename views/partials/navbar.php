@@ -263,6 +263,11 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                             <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp
                                         </a>
                                     </li>
+                                    <li class="<?= isActive('/whatsapp/chat') ?>">
+                                        <a href="/whatsapp/chat">
+                                            <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
+                                        </a>
+                                    </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessCodes): ?>
                                     <li class="<?= isActive('/views/codes/index.php') ?>">

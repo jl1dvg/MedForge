@@ -12,11 +12,13 @@ class Messenger
 {
     private WhatsAppSettings $settings;
     private TransportInterface $transport;
+    private ConversationService $conversations;
 
     public function __construct(PDO $pdo, ?TransportInterface $transport = null)
     {
         $this->settings = new WhatsAppSettings($pdo);
         $this->transport = $transport ?? new CloudApiTransport();
+        $this->conversations = new ConversationService($pdo);
     }
 
     public function isEnabled(): bool
@@ -62,7 +64,12 @@ class Messenger
                 ],
             ];
 
-            $allSucceeded = $this->transport->send($config, $payload) && $allSucceeded;
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $this->conversations->recordOutgoing($recipient, 'text', $message, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -153,7 +160,12 @@ class Messenger
                 ];
             }
 
-            $allSucceeded = $this->transport->send($config, $payload) && $allSucceeded;
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $this->conversations->recordOutgoing($recipient, 'interactive_buttons', $message, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -283,7 +295,12 @@ class Messenger
                 ];
             }
 
-            $allSucceeded = $this->transport->send($config, $payload) && $allSucceeded;
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $this->conversations->recordOutgoing($recipient, 'interactive_list', $message, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -336,7 +353,13 @@ class Messenger
                 'template' => $payloadTemplate,
             ];
 
-            $allSucceeded = $this->transport->send($config, $payload) && $allSucceeded;
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $preview = '[Plantilla] ' . $name;
+                $this->conversations->recordOutgoing($recipient, 'template', $preview, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
         }
 
         return $allSucceeded;
