@@ -7,6 +7,7 @@ use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
+use Modules\WhatsApp\Services\ConversationService;
 use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Support\DataProtectionFlow;
@@ -32,11 +33,13 @@ class WebhookController extends BaseController
      */
     private array $flow;
     private DataProtectionFlow $dataProtection;
+    private ConversationService $conversations;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->messenger = new Messenger($pdo);
+        $this->conversations = new ConversationService($pdo);
         $repository = new AutoresponderFlowRepository($pdo);
         $settings = new WhatsAppSettings($pdo);
         $config = $settings->get();
@@ -146,6 +149,12 @@ class WebhookController extends BaseController
         $sender = isset($message['from']) ? ('+' . ltrim((string) $message['from'], '+')) : null;
         if ($sender === null || $sender === '+') {
             return;
+        }
+
+        try {
+            $this->conversations->recordIncoming($message);
+        } catch (\Throwable $exception) {
+            error_log('No se pudo registrar el mensaje entrante de WhatsApp: ' . $exception->getMessage());
         }
 
         $text = $this->extractText($message);
