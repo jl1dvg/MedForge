@@ -143,9 +143,9 @@
             const clearButton = document.querySelector(`[data-action="${config.clearAction}"]`);
             if (clearButton) {
                 clearButton.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    pad.clear();
-                });
+                event.preventDefault();
+                pad.clear();
+            });
             }
         }
 
@@ -325,7 +325,7 @@
                     body: formData,
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest'
-                    }
+        }
                 });
 
                 const data = await response.json();

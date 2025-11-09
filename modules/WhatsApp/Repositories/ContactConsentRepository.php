@@ -9,16 +9,10 @@ use PDOException;
 class ContactConsentRepository
 {
     private PDO $pdo;
-    private bool $available = true;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
-    }
-
-    public function isReady(): bool
-    {
-        return $this->available;
     }
 
     /**
@@ -26,45 +20,39 @@ class ContactConsentRepository
      */
     public function findByNumber(string $waNumber): ?array
     {
-        if (!$this->available) {
+        $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number ORDER BY updated_at DESC LIMIT 1');
+        $stmt->execute([':number' => $waNumber]);
+
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($record === false) {
             return null;
         }
 
-        try {
-            $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number ORDER BY updated_at DESC LIMIT 1');
-            $stmt->execute([':number' => $waNumber]);
-
-            $record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            return $record === false ? null : $record;
-        } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
-
-            return null;
+        if (!isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = $record['cedula'];
         }
+
+        return $record;
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    public function findByNumberAndCedula(string $waNumber, string $cedula): ?array
+    public function findByNumberAndIdentifier(string $waNumber, string $identifier): ?array
     {
-        if (!$this->available) {
+        $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number AND cedula = :identifier LIMIT 1');
+        $stmt->execute([':number' => $waNumber, ':identifier' => $identifier]);
+
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($record === false) {
             return null;
         }
 
-        try {
-            $stmt = $this->pdo->prepare('SELECT * FROM whatsapp_contact_consent WHERE wa_number = :number AND cedula = :cedula LIMIT 1');
-            $stmt->execute([':number' => $waNumber, ':cedula' => $cedula]);
-
-            $record = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            return $record === false ? null : $record;
-        } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
-
-            return null;
+        if (!isset($record['identifier']) && isset($record['cedula'])) {
+            $record['identifier'] = $record['cedula'];
         }
+
+        return $record;
     }
 
     /**
@@ -72,13 +60,9 @@ class ContactConsentRepository
      */
     public function startOrUpdate(array $payload): bool
     {
-        if (!$this->available) {
-            return false;
-        }
-
         $sql = <<<SQL
             INSERT INTO whatsapp_contact_consent (wa_number, cedula, patient_hc_number, patient_full_name, consent_status, consent_source, consent_asked_at, extra_payload)
-            VALUES (:wa_number, :cedula, :hc, :name, :status, :source, :asked_at, :payload)
+            VALUES (:wa_number, :identifier, :hc, :name, :status, :source, :asked_at, :payload)
             ON DUPLICATE KEY UPDATE
                 patient_hc_number = VALUES(patient_hc_number),
                 patient_full_name = VALUES(patient_full_name),
@@ -95,89 +79,103 @@ class ContactConsentRepository
             $encodedPayload = json_encode($payload['extra_payload'], JSON_UNESCAPED_UNICODE);
         }
 
-        try {
-            return $stmt->execute([
-                ':wa_number' => $payload['wa_number'],
-                ':cedula' => $payload['cedula'],
-                ':hc' => $payload['patient_hc_number'] ?? null,
-                ':name' => $payload['patient_full_name'] ?? null,
-                ':status' => $payload['consent_status'] ?? 'pending',
-                ':source' => $payload['consent_source'] ?? 'local',
-                ':asked_at' => $payload['consent_asked_at'] ?? (new DateTimeImmutable())->format('Y-m-d H:i:s'),
-                ':payload' => $encodedPayload,
-            ]);
-        } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
-
-            return false;
+        $identifier = $payload['identifier'] ?? $payload['cedula'] ?? null;
+        if (!is_string($identifier)) {
+            $identifier = '';
         }
+
+        return $stmt->execute([
+            ':wa_number' => $payload['wa_number'],
+            ':identifier' => $identifier,
+            ':hc' => $payload['patient_hc_number'] ?? null,
+            ':name' => $payload['patient_full_name'] ?? null,
+            ':status' => $payload['consent_status'] ?? 'pending',
+            ':source' => $payload['consent_source'] ?? 'local',
+            ':asked_at' => $payload['consent_asked_at'] ?? (new DateTimeImmutable())->format('Y-m-d H:i:s'),
+            ':payload' => $encodedPayload,
+        ]);
     }
 
-    public function markConsent(string $waNumber, string $cedula, bool $accepted): bool
+    public function markConsent(string $waNumber, string $identifier, bool $accepted): bool
     {
-        if (!$this->available) {
-            return false;
-        }
-
         $status = $accepted ? 'accepted' : 'declined';
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET consent_status = :status, consent_responded_at = NOW() WHERE wa_number = :number AND cedula = :cedula'
+            'UPDATE whatsapp_contact_consent SET consent_status = :status, consent_responded_at = NOW() WHERE wa_number = :number AND cedula = :identifier'
         );
 
-        try {
-            return $stmt->execute([
-                ':status' => $status,
-                ':number' => $waNumber,
-                ':cedula' => $cedula,
-            ]);
-        } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
-
-            return false;
-        }
+        return $stmt->execute([
+            ':status' => $status,
+            ':number' => $waNumber,
+            ':identifier' => $identifier,
+        ]);
     }
 
-    public function markPendingResponse(string $waNumber, string $cedula): void
+    public function markPendingResponse(string $waNumber, string $identifier): void
     {
-        if (!$this->available) {
-            return;
-        }
-
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_contact_consent SET consent_status = "pending", consent_responded_at = NULL WHERE wa_number = :number AND cedula = :cedula'
+            'UPDATE whatsapp_contact_consent SET consent_status = "pending", consent_responded_at = NULL WHERE wa_number = :number AND cedula = :identifier'
         );
 
-        try {
-            $stmt->execute([
-                ':number' => $waNumber,
-                ':cedula' => $cedula,
-            ]);
-        } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
-        }
+        $stmt->execute([
+            ':number' => $waNumber,
+            ':identifier' => $identifier,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed>|null $payload
+     */
+    public function updateExtraPayload(string $waNumber, string $identifier, ?array $payload): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_contact_consent SET extra_payload = :payload WHERE wa_number = :number AND cedula = :identifier LIMIT 1'
+        );
+
+        $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+        return $stmt->execute([
+            ':payload' => $encoded,
+            ':number' => $waNumber,
+            ':identifier' => $identifier,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed>|null $payload
+     */
+    public function reassignIdentifier(
+        string $waNumber,
+        string $currentIdentifier,
+        string $newIdentifier,
+        ?string $historyNumber,
+        ?string $fullName,
+        string $source,
+        ?array $payload
+    ): bool {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_contact_consent SET cedula = :newIdentifier, patient_hc_number = :hc, patient_full_name = :name, consent_source = :source, extra_payload = :payload WHERE wa_number = :number AND cedula = :current LIMIT 1'
+        );
+
+        $encoded = $payload === null ? null : json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+        return $stmt->execute([
+            ':newIdentifier' => $newIdentifier,
+            ':hc' => $historyNumber,
+            ':name' => $fullName,
+            ':source' => $source,
+            ':payload' => $encoded,
+            ':number' => $waNumber,
+            ':current' => $currentIdentifier,
+        ]);
     }
 
     public function purgeForNumber(string $waNumber): void
     {
-        if (!$this->available) {
-            return;
-        }
-
         try {
             $stmt = $this->pdo->prepare('DELETE FROM whatsapp_contact_consent WHERE wa_number = :number');
             $stmt->execute([':number' => $waNumber]);
         } catch (PDOException $exception) {
-            $this->handleStorageError($exception);
+            error_log('No fue posible limpiar el historial de consentimiento de WhatsApp: ' . $exception->getMessage());
         }
-    }
-
-    private function handleStorageError(PDOException $exception): void
-    {
-        $code = $exception->getCode();
-        if (in_array($code, ['42S02', '1146'], true)) {
-            $this->available = false;
-        }
-
-        error_log('Repositorio de consentimiento de WhatsApp no disponible: ' . $exception->getMessage());
     }
 }
