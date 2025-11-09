@@ -6,6 +6,7 @@ use Core\BaseController;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\ConsentDocumentService;
 use Modules\IdentityVerification\Services\FaceRecognitionService;
+use Modules\IdentityVerification\Services\PythonBiometricClient;
 use Modules\IdentityVerification\Services\SignatureAnalysisService;
 use PDO;
 
@@ -14,14 +15,16 @@ class VerificationController extends BaseController
     private VerificationModel $verifications;
     private FaceRecognitionService $faceRecognition;
     private SignatureAnalysisService $signatureAnalysis;
+    private PythonBiometricClient $pythonBiometricClient;
     private ConsentDocumentService $consentDocumentService;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->verifications = new VerificationModel($pdo);
-        $this->faceRecognition = new FaceRecognitionService();
-        $this->signatureAnalysis = new SignatureAnalysisService();
+        $this->pythonBiometricClient = new PythonBiometricClient();
+        $this->faceRecognition = new FaceRecognitionService($this->pythonBiometricClient);
+        $this->signatureAnalysis = new SignatureAnalysisService($this->pythonBiometricClient);
         $this->consentDocumentService = new ConsentDocumentService();
     }
 

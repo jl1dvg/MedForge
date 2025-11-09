@@ -7,6 +7,13 @@ class SignatureAnalysisService
     private const TARGET_WIDTH = 64;
     private const TARGET_HEIGHT = 32;
 
+    private ?PythonBiometricClient $pythonClient;
+
+    public function __construct(?PythonBiometricClient $pythonClient = null)
+    {
+        $this->pythonClient = $pythonClient;
+    }
+
     public function createTemplateFromFile(string $path): ?array
     {
         if (!is_file($path) || !is_readable($path)) {
@@ -25,6 +32,13 @@ class SignatureAnalysisService
     {
         if ($binary === '') {
             return null;
+        }
+
+        if ($this->pythonClient) {
+            $template = $this->pythonClient->generateTemplate('signature', $binary);
+            if (is_array($template)) {
+                return $template;
+            }
         }
 
         if (!function_exists('imagecreatefromstring')) {
@@ -80,6 +94,13 @@ class SignatureAnalysisService
     {
         if (empty($reference) || empty($sample)) {
             return null;
+        }
+
+        if ($this->pythonClient) {
+            $score = $this->pythonClient->compare('signature', $reference, $sample);
+            if ($score !== null) {
+                return round($score, 2);
+            }
         }
 
         if (isset($reference['hash'], $sample['hash'])) {
