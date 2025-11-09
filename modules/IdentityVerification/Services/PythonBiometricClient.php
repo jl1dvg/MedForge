@@ -88,9 +88,9 @@ class PythonBiometricClient
         );
 
         $descriptorSpec = [
-            0 => ['pipe', 'w'],
-            1 => ['pipe', 'r'],
-            2 => ['pipe', 'r'],
+            0 => ['pipe', 'r'], // child STDIN (we write)
+            1 => ['pipe', 'w'], // child STDOUT (we read)
+            2 => ['pipe', 'w'], // child STDERR (we read)
         ];
 
         $process = @proc_open($command, $descriptorSpec, $pipes, BASE_PATH);
@@ -104,17 +104,26 @@ class PythonBiometricClient
             return null;
         }
 
-        fwrite($pipes[0], $input);
-        fclose($pipes[0]);
+        if (is_resource($pipes[0])) {
+            fwrite($pipes[0], $input);
+            fclose($pipes[0]);
+        }
 
-        $output = stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
+        $output = is_resource($pipes[1]) ? stream_get_contents($pipes[1]) : '';
+        if (is_resource($pipes[1])) {
+            fclose($pipes[1]);
+        }
 
-        $error = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
+        $error = is_resource($pipes[2]) ? stream_get_contents($pipes[2]) : '';
+        if (is_resource($pipes[2])) {
+            fclose($pipes[2]);
+        }
 
         $status = proc_close($process);
         if ($status !== 0) {
+            if (!empty($error)) {
+                error_log('[PythonBiometricClient] ' . trim($error));
+            }
             return null;
         }
 
