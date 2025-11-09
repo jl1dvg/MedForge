@@ -66,6 +66,13 @@ if (!function_exists('isTreeOpen')) {
                         </a>
                     </li>
 
+                    <li class="<?= isActive('/agenda') ?>">
+                        <a href="/agenda">
+                            <i class="mdi mdi-calendar-clock"><span class="path1"></span><span class="path2"></span></i>
+                            <span>Agenda</span>
+                        </a>
+                    </li>
+
                     <li class="treeview<?= isTreeOpen(['/pacientes']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
