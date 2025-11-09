@@ -44,14 +44,6 @@ if (!function_exists('isTreeOpen')) {
         return '';
     }
 }
-
-$rawPermissions = $_SESSION['permisos'] ?? [];
-$normalizedPermissions = Permissions::normalize($rawPermissions);
-$canAccessVerification = Permissions::containsAny($normalizedPermissions, [
-    'administrativo',
-    'pacientes.verification.view',
-    'pacientes.verification.manage',
-]);
 ?>
 <aside class="main-sidebar">
     <!-- sidebar-->
@@ -61,23 +53,63 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
 
                 <!-- sidebar menu-->
                 <ul class="sidebar-menu" data-widget="tree">
+                    <?php
+                    $rawPermissions = $_SESSION['permisos'] ?? [];
+                    $normalizedPermissions = Permissions::normalize($rawPermissions);
+                    $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
+                    $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
+                    $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
+                    $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
+                    $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
+                    $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
+                    ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
                             <i class="mdi mdi-view-dashboard"><span class="path1"></span><span class="path2"></span></i>
                             <span>Inicio</span>
                         </a>
                     </li>
-                    <li class="<?= isActive('/crm') ?>">
-                        <a href="/crm">
+                    <li class="treeview<?= isTreeOpen(['/crm', '/views/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) ?>">
+                        <a href="#">
                             <i class="icon-Layout-top-panel-1"><span class="path1"></span><span class="path2"></span></i>
-                            <span>CRM</span>
+                            <span>Marketing y captación</span>
+                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
+                        <ul class="treeview-menu">
+                            <li class="<?= isActive('/crm') ?>">
+                                <a href="/crm">
+                                    <i class="mdi mdi-account-tie"></i>CRM
+                                </a>
+                            </li>
+                            <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
+                                <a href="/views/pacientes/flujo/flujo.php">
+                                    <i class="mdi mdi-timetable"></i>Flujo de Pacientes
+                                </a>
+                            </li>
+                            <li class="<?= isActive('/leads') ?>">
+                                <a href="/leads">
+                                    <i class="mdi mdi-bullhorn"></i>Campañas y Leads
+                                </a>
+                            </li>
+                            <?php if ($canAccessWhatsApp): ?>
+                                <li class="<?= isActive('/whatsapp/autoresponder') ?>">
+                                    <a href="/whatsapp/autoresponder">
+                                        <i class="mdi mdi-flowchart"></i>Automatizaciones de WhatsApp
+                                    </a>
+                                </li>
+                                <li class="<?= isActive('/whatsapp/templates') ?>">
+                                    <a href="/whatsapp/templates">
+                                        <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/pacientes']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Pacientes</span>
+                            <span>Atención al paciente</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
@@ -86,15 +118,10 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
                                 </a>
                             </li>
-                            <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
-                                <a href="/views/pacientes/flujo/flujo.php">
-                                    <i class="mdi mdi-timetable"></i>Flujo de Pacientes
-                                </a>
-                            </li>
-                            <?php if ($canAccessVerification): ?>
-                                <li class="<?= isActive('/pacientes/certificaciones') ?>">
-                                    <a href="/pacientes/certificaciones">
-                                        <i class="mdi mdi-shield-account"></i>Certificación biométrica
+                            <?php if ($canAccessWhatsApp): ?>
+                                <li class="<?= isActive('/whatsapp/chat') ?>">
+                                    <a href="/whatsapp/chat">
+                                        <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
                                     </a>
                                 </li>
                             <?php endif; ?>
@@ -105,7 +132,7 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                         <a href="#">
                             <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
-                            <span>Cirugías</span>
+                            <span>Operaciones clínicas</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
@@ -136,7 +163,7 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                         <a href="#">
                             <i class="mdi mdi-medical-bag"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
-                            <span>Gestión de Insumos</span>
+                            <span>Inventario y logística</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
@@ -153,14 +180,16 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/views/informes', '/views/billing']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/informes', '/billing', '/views/reportes']) ?>">
                         <a href="#">
-                            <i class="mdi mdi-file-chart"><span class="path1"></span><span class="path2"></span><span
+                            <i class="mdi mdi-chart-areaspline"><span class="path1"></span><span
+                                        class="path2"></span><span
                                         class="path3"></span></i>
-                            <span>Facturación por Afiliación</span>
+                            <span>Finanzas y análisis</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
+                            <li class="header">Facturación por afiliación</li>
                             <li class="<?= isActive('/informes/isspol') ?>">
                                 <a href="/informes/isspol">
                                     <i class="mdi mdi-shield"></i>ISSPOL
@@ -186,18 +215,7 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                     <i class="mdi mdi-account-outline"></i>No Facturado
                                 </a>
                             </li>
-                        </ul>
-                    </li>
-
-                    <li class="treeview<?= isTreeOpen(['/views/reportes']) ?>">
-                        <a href="#">
-                            <i class="mdi mdi-chart-areaspline"><span class="path1"></span><span
-                                        class="path2"></span><span
-                                        class="path3"></span></i>
-                            <span>Estadísticas</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
+                            <li class="header">Reportes y estadísticas</li>
                             <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
                                 <a href="/views/reportes/estadistica_flujo.php">
                                     <i class="mdi mdi-chart-line"></i>Flujo de Pacientes
@@ -207,20 +225,14 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                     </li>
 
                     <?php
-                    $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
-                    $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
-                    $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
-                    $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
-                    $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
-                    $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
-                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessWhatsApp || $canAccessCronManager;
+                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessCronManager;
                     ?>
                     <?php if ($showAdmin): ?>
                         <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
                                             class="path3"></span></i>
-                                <span>Administración</span>
+                                <span>Administración y TI</span>
                                 <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                             </a>
                             <ul class="treeview-menu">
@@ -249,23 +261,6 @@ $canAccessVerification = Permissions::containsAny($normalizedPermissions, [
                                     <li class="<?= isActive('/cron-manager') ?>">
                                         <a href="/cron-manager">
                                             <i class="mdi mdi-clock-outline"></i>Cron Manager
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                                <?php if ($canAccessWhatsApp): ?>
-                                    <li class="<?= isActive('/whatsapp/autoresponder') ?>">
-                                        <a href="/whatsapp/autoresponder">
-                                            <i class="mdi mdi-flowchart"></i>Flujo de autorespuesta
-                                        </a>
-                                    </li>
-                                    <li class="<?= isActive('/whatsapp/templates') ?>">
-                                        <a href="/whatsapp/templates">
-                                            <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp
-                                        </a>
-                                    </li>
-                                    <li class="<?= isActive('/whatsapp/chat') ?>">
-                                        <a href="/whatsapp/chat">
-                                            <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
                                         </a>
                                     </li>
                                 <?php endif; ?>

@@ -6,6 +6,7 @@ use Core\BaseController;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\ConsentDocumentService;
 use Modules\IdentityVerification\Services\FaceRecognitionService;
+use Modules\IdentityVerification\Services\PythonBiometricClient;
 use Modules\IdentityVerification\Services\SignatureAnalysisService;
 use PDO;
 
@@ -14,14 +15,16 @@ class VerificationController extends BaseController
     private VerificationModel $verifications;
     private FaceRecognitionService $faceRecognition;
     private SignatureAnalysisService $signatureAnalysis;
+    private PythonBiometricClient $pythonBiometricClient;
     private ConsentDocumentService $consentDocumentService;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->verifications = new VerificationModel($pdo);
-        $this->faceRecognition = new FaceRecognitionService();
-        $this->signatureAnalysis = new SignatureAnalysisService();
+        $this->pythonBiometricClient = new PythonBiometricClient();
+        $this->faceRecognition = new FaceRecognitionService($this->pythonBiometricClient);
+        $this->signatureAnalysis = new SignatureAnalysisService($this->pythonBiometricClient);
         $this->consentDocumentService = new ConsentDocumentService();
     }
 
@@ -229,6 +232,8 @@ class VerificationController extends BaseController
 
         $signatureScore = null;
         $faceScore = null;
+        $hasSignatureCapture = false;
+        $hasFaceCapture = false;
 
         $metadata = [
             'patient_id' => $certification['patient_id'],
@@ -239,12 +244,20 @@ class VerificationController extends BaseController
         if ($faceData !== '') {
             $faceTempPath = $this->persistDataUri($faceData, 'verifications');
             if ($faceTempPath) {
-                $template = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $faceTempPath);
-                $faceScore = $this->faceRecognition->compareTemplates(
-                    $certification['face_template'] ?? null,
-                    $template
-                );
+                $hasFaceCapture = true;
                 $metadata['face_capture'] = $faceTempPath;
+                $template = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $faceTempPath);
+                if ($template) {
+                    $faceScore = $this->faceRecognition->compareTemplates(
+                        $certification['face_template'] ?? null,
+                        $template
+                    );
+                    if ($faceScore === null) {
+                        $metadata['face_capture_error'] = 'comparison_failed';
+                    }
+                } else {
+                    $metadata['face_capture_error'] = 'template_generation_failed';
+                }
             }
         }
 
@@ -252,16 +265,24 @@ class VerificationController extends BaseController
         if ($signatureData !== '' && !empty($certification['signature_template'])) {
             $signatureTempPath = $this->persistDataUri($signatureData, 'verifications');
             if ($signatureTempPath) {
-                $template = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signatureTempPath);
-                $signatureScore = $this->signatureAnalysis->compareTemplates(
-                    $certification['signature_template'] ?? null,
-                    $template
-                );
+                $hasSignatureCapture = true;
                 $metadata['signature_capture'] = $signatureTempPath;
+                $template = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signatureTempPath);
+                if ($template) {
+                    $signatureScore = $this->signatureAnalysis->compareTemplates(
+                        $certification['signature_template'] ?? null,
+                        $template
+                    );
+                    if ($signatureScore === null) {
+                        $metadata['signature_capture_error'] = 'comparison_failed';
+                    }
+                } else {
+                    $metadata['signature_capture_error'] = 'template_generation_failed';
+                }
             }
         }
 
-        if ($requiresFace && $faceScore === null) {
+        if ($requiresFace && !$hasFaceCapture) {
             $this->json([
                 'ok' => false,
                 'message' => 'Debe capturar el rostro del paciente para realizar el check-in.',
@@ -269,7 +290,7 @@ class VerificationController extends BaseController
             return;
         }
 
-        if ($requiresSignature && $signatureScore === null) {
+        if ($requiresSignature && !$hasSignatureCapture) {
             $this->json([
                 'ok' => false,
                 'message' => 'Debe capturar la firma del paciente para realizar el check-in.',
@@ -277,7 +298,7 @@ class VerificationController extends BaseController
             return;
         }
 
-        if ($signatureScore === null && $faceScore === null) {
+        if (!$hasSignatureCapture && !$hasFaceCapture) {
             $this->json([
                 'ok' => false,
                 'message' => 'Debe adjuntar una captura válida para verificar.',

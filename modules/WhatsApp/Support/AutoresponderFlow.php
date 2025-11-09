@@ -2,19 +2,31 @@
 
 namespace Modules\WhatsApp\Support;
 
+use function array_filter;
+use function array_key_exists;
 use function array_map;
 use function array_merge;
+use function array_slice;
 use function array_unique;
 use function array_values;
+use function count;
+use function in_array;
 use function is_array;
+use function is_numeric;
 use function is_string;
-use function mb_strlen;
+use function json_decode;
+use function ksort;
+use function preg_match;
 use function preg_replace;
+use function preg_split;
+use function str_replace;
+use function strtolower;
 use function trim;
 use function uniqid;
 
 class AutoresponderFlow
 {
+    public const CURRENT_VERSION = 2;
     private const BUTTON_LIMIT = 3;
 
     /**
@@ -58,54 +70,255 @@ class AutoresponderFlow
     }
 
     /**
+     * @return array<int, string>
+     */
+    public static function patientScenarioKeywords(): array
+    {
+        return ['4', 'opcion 4', 'paciente', 'pacientes', 'historia clinica', 'verificar paciente'];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function defaultConfig(string $brand): array
     {
         $brand = trim($brand) !== '' ? $brand : 'MedForge';
 
-        return [
-            'consent' => DataProtectionCopy::defaults($brand),
-            'entry' => [
-                'title' => 'Mensaje de bienvenida',
-                'description' => 'Primer contacto que recibe toda persona que escribe al canal.',
-                'keywords' => self::menuKeywords(),
-                'messages' => self::wrapMessages([
-                    "¡Hola! Soy Dr. Ojito, el asistente virtual de {$brand} 👁️",
-                    "Te puedo ayudar con las siguientes solicitudes:\n1. Obtener información\n2. Horarios de atención\n3. Ubicaciones\nResponde con el número o escribe la opción que necesites.",
-                ]),
-            ],
-            'options' => [
+        $flow = [
+            'version' => self::CURRENT_VERSION,
+            'entry_keywords' => self::menuKeywords(),
+            'shortcuts' => [
                 [
+                    'id' => 'menu-shortcut',
+                    'title' => 'Volver al menú principal',
+                    'keywords' => self::menuKeywords(),
+                    'target' => 'menu',
+                    'reset_context' => ['hc_number', 'patient'],
+                ],
+            ],
+            'nodes' => [
+                'menu' => [
+                    'id' => 'menu',
+                    'type' => 'message',
+                    'title' => 'Menú principal',
+                    'description' => 'Escenarios disponibles para guiar la conversación.',
+                    'messages' => self::wrapMessages([
+                        '¡Hola! Soy Dr. Ojito, el asistente virtual de {{brand}} 👁️',
+                        'Puedo ayudarte con estas solicitudes:' . "\n" .
+                        '1. Obtener información de servicios' . "\n" .
+                        '2. Horarios de atención' . "\n" .
+                        '3. Ubicaciones' . "\n" .
+                        '4. Verificar si un paciente está registrado' . "\n\n" .
+                        "Responde con el número o escribe la opción que necesites.",
+                    ]),
+                    'responses' => [
+                        [
+                            'id' => 'information',
+                            'title' => 'Opción 1 · Obtener información',
+                            'keywords' => self::informationKeywords(),
+                            'target' => 'information',
+                        ],
+                        [
+                            'id' => 'schedule',
+                            'title' => 'Opción 2 · Horarios de atención',
+                            'keywords' => self::scheduleKeywords(),
+                            'target' => 'schedule',
+                        ],
+                        [
+                            'id' => 'locations',
+                            'title' => 'Opción 3 · Ubicaciones',
+                            'keywords' => self::locationKeywords(),
+                            'target' => 'locations',
+                        ],
+                        [
+                            'id' => 'patient-entry',
+                            'title' => 'Opción 4 · Verificar paciente',
+                            'keywords' => self::patientScenarioKeywords(),
+                            'target' => 'patient-intro',
+                        ],
+                    ],
+                ],
+                'information' => [
                     'id' => 'information',
-                    'title' => 'Opción 1 · Obtener información',
-                    'description' => 'Respuestas que se disparan con las palabras clave listadas.',
-                    'keywords' => self::informationKeywords(),
+                    'type' => 'message',
+                    'title' => 'Información general',
+                    'description' => 'Respuestas sobre servicios y procedimientos.',
                     'messages' => self::wrapMessages([
                         'Obtener Información',
                         "Selecciona la información que deseas conocer:\n• Procedimientos oftalmológicos disponibles.\n• Servicios complementarios como óptica y exámenes especializados.\n• Seguros y convenios con los que trabajamos.\n\nEscribe 'horarios' para conocer los horarios de atención o 'menu' para volver al inicio.",
                     ]),
-                    'followup' => "Sugiere escribir 'horarios' para continuar o 'menu' para volver al inicio.",
+                    'responses' => [
+                        [
+                            'id' => 'menu-return',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                        ],
+                    ],
                 ],
-                [
+                'schedule' => [
                     'id' => 'schedule',
-                    'title' => 'Opción 2 · Horarios de atención',
+                    'type' => 'message',
+                    'title' => 'Horarios de atención',
                     'description' => 'Horarios disponibles para cada sede.',
-                    'keywords' => self::scheduleKeywords(),
                     'messages' => self::wrapMessages([
                         "Horarios de atención 🕖\nVilla Club: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\nCeibos: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\n\nSi necesitas otra información responde 'menu'.",
                     ]),
-                    'followup' => "Indica que el usuario puede responder 'menu' para otras opciones.",
+                    'responses' => [
+                        [
+                            'id' => 'schedule-menu',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                        ],
+                    ],
                 ],
-                [
+                'locations' => [
                     'id' => 'locations',
-                    'title' => 'Opción 3 · Ubicaciones',
+                    'type' => 'message',
+                    'title' => 'Ubicaciones',
                     'description' => 'Direcciones de las sedes disponibles.',
-                    'keywords' => self::locationKeywords(),
                     'messages' => self::wrapMessages([
                         "Nuestras sedes 📍\nVilla Club: Km. 12.5 Av. León Febres Cordero, Villa Club Etapa Flora.\nCeibos: C.C. Ceibos Center, piso 2, consultorio 210.\n\nResponde 'horarios' para conocer los horarios o 'menu' para otras opciones.",
                     ]),
-                    'followup' => "Recomienda escribir 'horarios' o 'menu' según la necesidad.",
+                    'responses' => [
+                        [
+                            'id' => 'locations-menu',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                        ],
+                    ],
+                ],
+                'patient-intro' => [
+                    'id' => 'patient-intro',
+                    'type' => 'message',
+                    'title' => 'Verificación de paciente',
+                    'description' => 'Explica cómo validar la existencia del paciente en la base de datos.',
+                    'messages' => self::wrapMessages([
+                        'Validemos tu información para continuar 👇',
+                        'Necesito que nos indiques el número de historia clínica (HC). Con ese dato confirmaremos si ya estás registrado en nuestros sistemas y te mostraremos los pasos siguientes.',
+                    ]),
+                    'responses' => [
+                        [
+                            'id' => 'patient-provide-hc',
+                            'title' => 'Ingresar HC',
+                            'keywords' => ['continuar', 'ingresar hc', 'hc', 'si', 'sí'],
+                            'target' => 'patient-capture-hc',
+                            'clear_context' => ['patient'],
+                        ],
+                        [
+                            'id' => 'patient-menu',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                            'clear_context' => ['hc_number', 'patient'],
+                        ],
+                    ],
+                ],
+                'patient-capture-hc' => [
+                    'id' => 'patient-capture-hc',
+                    'type' => 'input',
+                    'title' => 'Validar paciente por HC',
+                    'description' => 'Solicita al usuario el número de historia clínica.',
+                    'messages' => self::wrapMessages([
+                        'Por favor escribe tu número de historia clínica. Son 6 a 12 dígitos sin guiones ni espacios.',
+                    ]),
+                    'input' => [
+                        'field' => 'hc_number',
+                        'label' => 'Número de historia clínica',
+                        'normalize' => 'digits',
+                        'pattern' => '^(?:\d{6,12})$',
+                        'error_messages' => self::wrapMessages([
+                            'No reconozco ese número de HC. Asegúrate de enviar solo dígitos, por ejemplo 00123456.',
+                        ]),
+                    ],
+                    'next' => 'patient-lookup',
+                ],
+                'patient-lookup' => [
+                    'id' => 'patient-lookup',
+                    'type' => 'decision',
+                    'title' => 'Consulta de paciente',
+                    'description' => 'Verifica en la base de datos local si el paciente existe.',
+                    'branches' => [
+                        [
+                            'id' => 'patient-found',
+                            'title' => 'Paciente encontrado',
+                            'condition' => [
+                                'type' => 'patient_exists',
+                                'field' => 'hc_number',
+                                'source' => 'local',
+                            ],
+                            'messages' => self::wrapMessages([
+                                '¡Excelente {{patient.full_name}}! Encontré tu registro con HC {{context.hc_number}}.',
+                                'Puedo ayudarte a revisar tus citas, actualizar datos o agendar un nuevo control. Solo dime qué necesitas o escribe "menu" para volver al inicio.',
+                            ]),
+                            'next' => 'patient-found-options',
+                        ],
+                        [
+                            'id' => 'patient-not-found',
+                            'title' => 'Paciente no encontrado',
+                            'condition' => [
+                                'type' => 'always',
+                            ],
+                            'messages' => self::wrapMessages([
+                                'No encontré registros con ese número de HC.',
+                                'Si crees que es un error, puedes intentar nuevamente o compartir tus nombres completos para que un asesor te contacte.',
+                            ]),
+                            'next' => 'patient-missing-options',
+                        ],
+                    ],
+                ],
+                'patient-found-options' => [
+                    'id' => 'patient-found-options',
+                    'type' => 'message',
+                    'title' => 'Escenario · Paciente registrado',
+                    'description' => 'Opciones cuando el paciente existe en la base local.',
+                    'messages' => self::wrapMessages([
+                        '¿Cómo seguimos? Puedes indicarme si quieres agendar una cita, actualizar tus datos o escribir "menu" para ver otras opciones.',
+                    ]),
+                    'responses' => [
+                        [
+                            'id' => 'patient-found-new-search',
+                            'title' => 'Buscar otro paciente',
+                            'keywords' => ['otro paciente', 'buscar otro', 'otra hc'],
+                            'target' => 'patient-capture-hc',
+                            'clear_context' => ['hc_number', 'patient'],
+                        ],
+                        [
+                            'id' => 'patient-found-menu',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                            'clear_context' => ['hc_number', 'patient'],
+                        ],
+                    ],
+                ],
+                'patient-missing-options' => [
+                    'id' => 'patient-missing-options',
+                    'type' => 'message',
+                    'title' => 'Escenario · Paciente nuevo',
+                    'description' => 'Acciones sugeridas cuando el paciente no existe.',
+                    'messages' => self::wrapMessages([
+                        'Parece que aún no estás registrado en nuestros sistemas.',
+                        'Si deseas que un asesor te ayude con el registro, escribe tus nombres completos o responde "menu" para otras opciones.',
+                    ]),
+                    'responses' => [
+                        [
+                            'id' => 'patient-missing-retry',
+                            'title' => 'Intentar nuevamente',
+                            'keywords' => ['reintentar', 'intentar de nuevo', 'otra hc'],
+                            'target' => 'patient-capture-hc',
+                            'clear_context' => ['hc_number', 'patient'],
+                        ],
+                        [
+                            'id' => 'patient-missing-menu',
+                            'title' => 'Volver al menú',
+                            'keywords' => self::menuKeywords(),
+                            'target' => 'menu',
+                            'clear_context' => ['hc_number', 'patient'],
+                        ],
+                    ],
                 ],
             ],
             'fallback' => [
@@ -116,6 +329,12 @@ class AutoresponderFlow
                 ]),
             ],
         ];
+
+        $flow['meta'] = [
+            'brand' => $brand,
+        ];
+
+        return $flow;
     }
 
     /**
@@ -124,67 +343,44 @@ class AutoresponderFlow
      */
     public static function resolve(string $brand, array $overrides = []): array
     {
-        $defaults = self::defaultConfig($brand);
+        $base = self::defaultConfig($brand);
         if (empty($overrides)) {
-            $defaults['consent'] = DataProtectionCopy::defaults($brand);
-
-            return self::finalize($defaults);
+            return $base;
         }
 
-        if (isset($overrides['entry']) && is_array($overrides['entry'])) {
-            $defaults['entry'] = self::mergeSection($defaults['entry'], $overrides['entry']);
+        $result = self::sanitizeFlow($base, $overrides, false);
+        if (!empty($result['errors'])) {
+            $base['meta']['errors'] = $result['errors'];
+
+            return $base;
         }
 
-        if (isset($overrides['options']) && is_array($overrides['options'])) {
-            $defaults['options'] = self::mergeOptions($defaults['options'], $overrides['options']);
-        }
-
-        if (isset($overrides['fallback']) && is_array($overrides['fallback'])) {
-            $defaults['fallback'] = self::mergeSection($defaults['fallback'], $overrides['fallback']);
-        }
-
-        $defaults['consent'] = DataProtectionCopy::sanitize($overrides['consent'] ?? [], $brand);
-
-        return self::finalize($defaults);
+        return $result['flow'];
     }
 
     /**
      * @param array<string, mixed> $flow
-     * @return array{flow: array<string, mixed>, errors: array<int, string>}
+     * @return array{flow: array<string, mixed>, resolved?: array<string, mixed>, errors: array<int, string>}
      */
     public static function sanitizeSubmission(array $flow, string $brand): array
     {
-        $errors = [];
-        $brand = trim($brand) !== '' ? $brand : 'MedForge';
-        $defaults = self::defaultConfig($brand);
+        $base = self::defaultConfig($brand);
+        $result = self::sanitizeFlow($base, $flow, true);
 
-        if (!isset($flow['entry']) || !is_array($flow['entry'])) {
-            $errors[] = 'Falta la configuración del mensaje de bienvenida.';
+        if (!empty($result['errors'])) {
+            $resolved = $result['flow'];
+            $resolved['meta']['errors'] = $result['errors'];
+
+            return [
+                'flow' => $base,
+                'resolved' => $resolved,
+                'errors' => $result['errors'],
+            ];
         }
-
-        if (!isset($flow['fallback']) || !is_array($flow['fallback'])) {
-            $errors[] = 'Falta la configuración del mensaje de fallback.';
-        }
-
-        if (!isset($flow['options']) || !is_array($flow['options'])) {
-            $errors[] = 'Debes definir al menos una opción del menú.';
-        }
-
-        if (!empty($errors)) {
-            return ['flow' => $defaults, 'resolved' => self::finalize($defaults), 'errors' => $errors];
-        }
-
-        $resolved = $defaults;
-        $resolved['entry'] = self::mergeSection($defaults['entry'], $flow['entry']);
-        $resolved['fallback'] = self::mergeSection($defaults['fallback'], $flow['fallback']);
-        $resolved['options'] = self::mergeOptions($defaults['options'], $flow['options']);
-        $resolved['consent'] = DataProtectionCopy::sanitize($flow['consent'] ?? [], $brand);
-
-        $storage = self::purgeAutomaticKeywords($resolved);
 
         return [
-            'flow' => $storage,
-            'resolved' => self::finalize($storage),
+            'flow' => $result['flow'],
+            'resolved' => $result['flow'],
             'errors' => [],
         ];
     }
@@ -196,138 +392,438 @@ class AutoresponderFlow
     public static function overview(string $brand, array $flow = []): array
     {
         $resolved = self::resolve($brand, $flow);
+        $keywords = [];
+
+        foreach ($resolved['shortcuts'] ?? [] as $shortcut) {
+            if (!is_array($shortcut) || empty($shortcut['title'])) {
+                continue;
+            }
+
+            $keywords[$shortcut['title']] = $shortcut['keywords'] ?? [];
+        }
 
         return array_merge($resolved, [
-            'meta' => [
+            'meta' => array_merge($resolved['meta'] ?? [], [
                 'brand' => $brand,
-                'keywordLegend' => [
-                    'Bienvenida' => $resolved['entry']['keywords'],
-                    'Opción 1' => self::keywordsFromOption($resolved['options'], 'information'),
-                    'Opción 2' => self::keywordsFromOption($resolved['options'], 'schedule'),
-                    'Opción 3' => self::keywordsFromOption($resolved['options'], 'locations'),
-                    'Fallback' => $resolved['fallback']['keywords'] ?? [],
-                ],
-            ],
-            'consent' => $resolved['consent'] ?? DataProtectionCopy::defaults($brand),
+                'keywordLegend' => $keywords,
+            ]),
         ]);
     }
 
     /**
-     * @param array<string, mixed> $flow
-     * @return array<int, string>
+     * @param array<string, mixed> $base
+     * @param array<string, mixed> $overrides
+     * @return array{flow: array<string, mixed>, errors: array<int, string>}
      */
-    public static function keywordsFromSection(array $flow, string $key): array
+    private static function sanitizeFlow(array $base, array $overrides, bool $forStorage): array
     {
-        if (!isset($flow[$key]) || !is_array($flow[$key])) {
+        $errors = [];
+        $flow = $base;
+
+        if (!isset($overrides['version']) || (int) $overrides['version'] !== self::CURRENT_VERSION) {
+            $overrides = self::migrateLegacyFlow($overrides, $base);
+        }
+
+        $flow['version'] = self::CURRENT_VERSION;
+
+        if (isset($overrides['entry_keywords'])) {
+            $keywords = self::sanitizeKeywords($overrides['entry_keywords']);
+            if (!empty($keywords)) {
+                $flow['entry_keywords'] = $keywords;
+            }
+        }
+
+        if (isset($overrides['shortcuts']) && is_array($overrides['shortcuts'])) {
+            $flow['shortcuts'] = self::sanitizeShortcuts($overrides['shortcuts']);
+        }
+
+        $nodes = [];
+        $baseNodes = [];
+        foreach ($base['nodes'] ?? [] as $nodeId => $node) {
+            if (!is_array($node)) {
+                continue;
+            }
+            $id = isset($node['id']) ? self::sanitizeKey($node['id']) : (is_string($nodeId) ? self::sanitizeKey($nodeId) : '');
+            if ($id === '') {
+                $id = self::randomKey('node');
+            }
+            $node['id'] = $id;
+            $baseNodes[$id] = $node;
+        }
+
+        $overrideNodes = $overrides['nodes'] ?? [];
+        if (is_array($overrideNodes)) {
+            foreach ($overrideNodes as $nodeData) {
+                if (!is_array($nodeData)) {
+                    continue;
+                }
+
+                $id = isset($nodeData['id']) ? self::sanitizeKey($nodeData['id']) : null;
+                if ($id === null && isset($nodeData['slug'])) {
+                    $id = self::sanitizeKey($nodeData['slug']);
+                }
+
+                if ($id === null || $id === '') {
+                    $id = self::randomKey('node');
+                }
+
+                $baseNode = $baseNodes[$id] ?? null;
+                $sanitized = self::sanitizeNode($id, $nodeData, $baseNode, $errors, $forStorage);
+                if ($sanitized === null) {
+                    continue;
+                }
+
+                $nodes[$id] = $sanitized;
+            }
+        }
+
+        foreach ($baseNodes as $id => $node) {
+            if (isset($nodes[$id])) {
+                continue;
+            }
+
+            $nodes[$id] = self::sanitizeNode($id, $node, $node, $errors, $forStorage) ?? $node;
+        }
+
+        if (empty($nodes)) {
+            $errors[] = 'Debes definir al menos un escenario.';
+            $nodes = $baseNodes;
+        }
+
+        ksort($nodes);
+        $flow['nodes'] = array_values($nodes);
+
+        if (isset($overrides['fallback']) && is_array($overrides['fallback'])) {
+            $flow['fallback'] = self::sanitizeSection($overrides['fallback'], $base['fallback'] ?? []);
+        }
+
+        $flow['meta']['brand'] = $base['meta']['brand'] ?? ($flow['meta']['brand'] ?? 'MedForge');
+
+        return [
+            'flow' => $flow,
+            'errors' => array_values(array_unique($errors)),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $base
+     * @param array<string, mixed> $node
+     * @param array<int, string> $errors
+     * @return array<string, mixed>|null
+     */
+    private static function sanitizeNode(string $id, array $node, ?array $base, array &$errors, bool $forStorage): ?array
+    {
+        $type = isset($node['type']) && is_string($node['type'])
+            ? strtolower(self::sanitizeKey($node['type']))
+            : ($base['type'] ?? 'message');
+
+        if (!in_array($type, ['message', 'input', 'decision'], true)) {
+            $type = 'message';
+        }
+
+        $sanitized = [
+            'id' => $id,
+            'type' => $type,
+            'title' => self::sanitizeLine($node['title'] ?? ($base['title'] ?? 'Escenario')), 
+            'description' => self::sanitizeLine($node['description'] ?? ($base['description'] ?? '')),
+        ];
+
+        if ($type === 'message') {
+            $messages = $node['messages'] ?? ($base['messages'] ?? []);
+            $responses = $node['responses'] ?? ($base['responses'] ?? []);
+            $sanitized['messages'] = self::sanitizeMessages($messages);
+            $sanitized['responses'] = self::sanitizeResponses($responses, $errors);
+            if (!empty($node['next']) || !empty($base['next'])) {
+                $next = self::sanitizeKey($node['next'] ?? ($base['next'] ?? ''));
+                if ($next !== '') {
+                    $sanitized['next'] = $next;
+                }
+            }
+        } elseif ($type === 'input') {
+            $messages = $node['messages'] ?? ($base['messages'] ?? []);
+            $sanitized['messages'] = self::sanitizeMessages($messages);
+            $input = $node['input'] ?? ($base['input'] ?? []);
+            $sanitized['input'] = self::sanitizeInputDefinition($input, $errors);
+            $next = self::sanitizeKey($node['next'] ?? ($base['next'] ?? ''));
+            if ($next === '') {
+                $errors[] = 'El escenario de captura debe definir el siguiente paso.';
+            } else {
+                $sanitized['next'] = $next;
+            }
+        } else { // decision
+            $sanitized['branches'] = self::sanitizeBranches($node['branches'] ?? ($base['branches'] ?? []), $errors);
+            if (empty($sanitized['branches'])) {
+                $errors[] = 'El escenario de decisión debe tener al menos una condición.';
+            }
+        }
+
+        if (!$forStorage && isset($base['ui'])) {
+            $sanitized['ui'] = $base['ui'];
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<int|string, mixed> $shortcuts
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeShortcuts($shortcuts): array
+    {
+        if (!is_array($shortcuts)) {
             return [];
         }
 
-        return $flow[$key]['keywords'] ?? [];
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $options
-     * @return array<int, string>
-     */
-    public static function keywordsFromOption(array $options, string $id): array
-    {
-        foreach ($options as $option) {
-            if (($option['id'] ?? null) === $id) {
-                return $option['keywords'] ?? [];
-            }
-        }
-
-        return [];
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $messages
-     * @return array<int, array<string, mixed>>
-     */
-    private static function wrapMessages(array $messages): array
-    {
-        return array_map(static fn (string $message): array => [
-            'type' => 'text',
-            'body' => trim($message),
-        ], $messages);
-    }
-
-    /**
-     * @param array<string, mixed> $base
-     * @param array<string, mixed> $override
-     * @return array<string, mixed>
-     */
-    private static function mergeSection(array $base, array $override): array
-    {
-        $merged = $base;
-
-        if (isset($override['title']) && is_string($override['title'])) {
-            $merged['title'] = self::sanitizeLine($override['title']);
-        }
-
-        if (isset($override['description']) && is_string($override['description'])) {
-            $merged['description'] = self::sanitizeLine($override['description']);
-        }
-
-        if (isset($override['followup']) && is_string($override['followup'])) {
-            $merged['followup'] = self::sanitizeLine($override['followup']);
-        }
-
-        if (isset($override['keywords'])) {
-            $merged['keywords'] = self::sanitizeKeywords($override['keywords']);
-        }
-
-        if (isset($override['messages'])) {
-            $merged['messages'] = self::sanitizeMessages($override['messages']);
-        }
-
-        return $merged;
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $defaults
-     * @param array<int, mixed> $overrides
-     * @return array<int, array<string, mixed>>
-     */
-    private static function mergeOptions(array $defaults, array $overrides): array
-    {
-        $map = [];
-        foreach ($defaults as $option) {
-            $id = isset($option['id']) ? (string) $option['id'] : '';
-            if ($id === '') {
+        $sanitized = [];
+        foreach ($shortcuts as $shortcut) {
+            if (!is_array($shortcut)) {
                 continue;
             }
 
-            $map[$id] = $option;
-        }
-
-        foreach ($overrides as $override) {
-            if (!is_array($override)) {
+            $id = isset($shortcut['id']) ? self::sanitizeKey($shortcut['id']) : self::randomKey('shortcut');
+            $title = self::sanitizeLine($shortcut['title'] ?? 'Acceso directo');
+            $target = self::sanitizeKey($shortcut['target'] ?? '');
+            $keywords = self::sanitizeKeywords($shortcut['keywords'] ?? []);
+            if ($title === '' || $target === '' || empty($keywords)) {
                 continue;
             }
 
-            $id = isset($override['id']) && is_string($override['id'])
-                ? self::sanitizeKey($override['id'])
-                : ($override['slug'] ?? null);
-            $id = is_string($id) ? self::sanitizeKey($id) : '';
-            if ($id === '') {
-                continue;
-            }
-
-            $base = $map[$id] ?? [
+            $entry = [
                 'id' => $id,
-                'title' => 'Opción personalizada',
-                'description' => '',
-                'keywords' => [],
-                'messages' => [],
-                'followup' => '',
+                'title' => $title,
+                'target' => $target,
+                'keywords' => $keywords,
             ];
 
-            $map[$id] = self::mergeSection($base, $override);
-            $map[$id]['id'] = $id;
+            if (isset($shortcut['clear_context'])) {
+                $entry['clear_context'] = self::sanitizeContextKeys($shortcut['clear_context']);
+            } elseif (isset($shortcut['reset_context'])) {
+                $entry['clear_context'] = self::sanitizeContextKeys($shortcut['reset_context']);
+            }
+
+            $sanitized[] = $entry;
         }
 
-        return array_values($map);
+        return $sanitized;
+    }
+
+    /**
+     * @param array<int|string, mixed> $responses
+     * @param array<int, string> $errors
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeResponses($responses, array &$errors): array
+    {
+        if (!is_array($responses)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($responses as $response) {
+            if (!is_array($response)) {
+                continue;
+            }
+
+            $id = isset($response['id']) ? self::sanitizeKey($response['id']) : self::randomKey('resp');
+            $title = self::sanitizeLine($response['title'] ?? 'Respuesta');
+            $target = self::sanitizeKey($response['target'] ?? '');
+            $keywords = self::sanitizeKeywords($response['keywords'] ?? []);
+
+            if ($title === '' || $target === '' || empty($keywords)) {
+                continue;
+            }
+
+            $entry = [
+                'id' => $id,
+                'title' => $title,
+                'target' => $target,
+                'keywords' => $keywords,
+            ];
+
+            if (isset($response['messages'])) {
+                $entry['messages'] = self::sanitizeMessages($response['messages']);
+            }
+
+            if (isset($response['clear_context'])) {
+                $entry['clear_context'] = self::sanitizeContextKeys($response['clear_context']);
+            }
+
+            if (isset($response['set_context']) && is_array($response['set_context'])) {
+                $contextSet = [];
+                foreach ($response['set_context'] as $key => $value) {
+                    if (!is_string($key)) {
+                        continue;
+                    }
+                    $contextSet[self::sanitizeKey($key)] = self::sanitizeLine(is_scalar($value) ? (string) $value : '');
+                }
+                if (!empty($contextSet)) {
+                    $entry['set_context'] = $contextSet;
+                }
+            }
+
+            $sanitized[] = $entry;
+        }
+
+        return array_slice($sanitized, 0, 24);
+    }
+
+    /**
+     * @param array<int|string, mixed> $branches
+     * @param array<int, string> $errors
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeBranches($branches, array &$errors): array
+    {
+        if (!is_array($branches)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $id = isset($branch['id']) ? self::sanitizeKey($branch['id']) : self::randomKey('branch');
+            $title = self::sanitizeLine($branch['title'] ?? 'Condición');
+            $target = self::sanitizeKey($branch['next'] ?? ($branch['target'] ?? ''));
+            $condition = self::sanitizeCondition($branch['condition'] ?? []);
+
+            if ($target === '' || empty($condition)) {
+                continue;
+            }
+
+            $entry = [
+                'id' => $id,
+                'title' => $title === '' ? 'Condición' : $title,
+                'next' => $target,
+                'condition' => $condition,
+            ];
+
+            if (isset($branch['messages'])) {
+                $entry['messages'] = self::sanitizeMessages($branch['messages']);
+            }
+
+            if (isset($branch['clear_context'])) {
+                $entry['clear_context'] = self::sanitizeContextKeys($branch['clear_context']);
+            }
+
+            if (isset($branch['set_context']) && is_array($branch['set_context'])) {
+                $setContext = [];
+                foreach ($branch['set_context'] as $key => $value) {
+                    if (!is_string($key)) {
+                        continue;
+                    }
+                    $setContext[self::sanitizeKey($key)] = self::sanitizeLine(is_scalar($value) ? (string) $value : '');
+                }
+                if (!empty($setContext)) {
+                    $entry['set_context'] = $setContext;
+                }
+            }
+
+            $sanitized[] = $entry;
+        }
+
+        return array_slice($sanitized, 0, 10);
+    }
+
+    /**
+     * @param array<string, mixed>|string $input
+     * @param array<int, string> $errors
+     * @return array<string, mixed>
+     */
+    private static function sanitizeInputDefinition($input, array &$errors): array
+    {
+        if (is_string($input)) {
+            $decoded = json_decode($input, true);
+            $input = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($input)) {
+            $input = [];
+        }
+
+        $field = self::sanitizeKey($input['field'] ?? 'value');
+        if ($field === '') {
+            $field = 'value';
+        }
+
+        $definition = [
+            'field' => $field,
+            'label' => self::sanitizeLine($input['label'] ?? 'Dato solicitado'),
+            'pattern' => self::sanitizePattern($input['pattern'] ?? ''),
+            'normalize' => self::sanitizeNormalizeStrategy($input['normalize'] ?? ''),
+        ];
+
+        if (isset($input['error_messages'])) {
+            $definition['error_messages'] = self::sanitizeMessages($input['error_messages']);
+        }
+
+        if (isset($input['store']) && is_string($input['store'])) {
+            $definition['store'] = self::sanitizeLine($input['store']);
+        }
+
+        return $definition;
+    }
+
+    /**
+     * @param array<string, mixed>|string $condition
+     * @return array<string, mixed>
+     */
+    private static function sanitizeCondition($condition): array
+    {
+        if (is_string($condition)) {
+            $decoded = json_decode($condition, true);
+            $condition = is_array($decoded) ? $decoded : ['type' => $condition];
+        }
+
+        if (!is_array($condition)) {
+            return ['type' => 'always'];
+        }
+
+        $type = isset($condition['type']) ? strtolower(self::sanitizeKey($condition['type'])) : 'always';
+
+        if (!in_array($type, ['always', 'patient_exists', 'equals', 'not_equals', 'has_value'], true)) {
+            $type = 'always';
+        }
+
+        $sanitized = ['type' => $type];
+
+        if (isset($condition['field'])) {
+            $sanitized['field'] = self::sanitizeKey($condition['field']);
+        }
+
+        if ($type === 'patient_exists') {
+            $sanitized['source'] = self::sanitizeSource($condition['source'] ?? 'any');
+        } elseif (in_array($type, ['equals', 'not_equals'], true)) {
+            $sanitized['value'] = self::sanitizeLine((string) ($condition['value'] ?? ''));
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     * @param array<string, mixed> $base
+     * @return array<string, mixed>
+     */
+    private static function sanitizeSection(array $section, array $base): array
+    {
+        $sanitized = $base;
+
+        if (isset($section['title']) && is_string($section['title'])) {
+            $sanitized['title'] = self::sanitizeLine($section['title']);
+        }
+
+        if (isset($section['description']) && is_string($section['description'])) {
+            $sanitized['description'] = self::sanitizeLine($section['description']);
+        }
+
+        if (isset($section['messages'])) {
+            $sanitized['messages'] = self::sanitizeMessages($section['messages']);
+        }
+
+        return $sanitized;
     }
 
     /**
@@ -353,7 +849,7 @@ class AutoresponderFlow
                     continue;
                 }
 
-                $list[] = $clean;
+                $list[] = strtolower($clean);
             }
         }
 
@@ -364,7 +860,7 @@ class AutoresponderFlow
      * @param mixed $messages
      * @return array<int, array<string, mixed>>
      */
-    private static function sanitizeMessages($messages): array
+    public static function sanitizeMessages($messages): array
     {
         if (is_string($messages)) {
             $decoded = json_decode($messages, true);
@@ -375,11 +871,11 @@ class AutoresponderFlow
             }
         }
 
-        $normalized = [];
-
         if (!is_array($messages)) {
-            return $normalized;
+            return [];
         }
+
+        $normalized = [];
 
         foreach ($messages as $message) {
             if (is_string($message)) {
@@ -451,46 +947,40 @@ class AutoresponderFlow
             $normalized[] = $entry;
         }
 
-        return $normalized;
+        return array_slice($normalized, 0, 20);
     }
 
     /**
      * @param mixed $buttons
-     * @return array<int, array{id: string, title: string}>
+     * @return array<int, array<string, string>>
      */
     private static function sanitizeButtons($buttons): array
     {
-        $normalized = [];
-
-        if (is_string($buttons)) {
-            $decoded = json_decode($buttons, true);
-            $buttons = is_array($decoded) ? $decoded : [];
-        }
-
         if (!is_array($buttons)) {
-            return $normalized;
+            return [];
         }
 
+        $normalized = [];
         foreach ($buttons as $button) {
             if (!is_array($button)) {
                 continue;
             }
 
-            $title = self::sanitizeLine($button['title'] ?? '');
-            $id = self::sanitizeKey($button['id'] ?? ($button['value'] ?? ''));
-
+            $title = self::sanitizeLine($button['title'] ?? $button['text'] ?? '');
             if ($title === '') {
                 continue;
             }
 
-            if ($id === '') {
-                $id = self::slugify($title);
-            }
-
-            $normalized[] = [
-                'id' => $id,
+            $entry = [
+                'id' => self::sanitizeKey($button['id'] ?? $button['payload'] ?? uniqid('btn_', true)),
                 'title' => $title,
             ];
+
+            if (isset($button['payload']) && is_string($button['payload'])) {
+                $entry['payload'] = self::sanitizeLine($button['payload']);
+            }
+
+            $normalized[] = $entry;
 
             if (count($normalized) >= self::BUTTON_LIMIT) {
                 break;
@@ -506,75 +996,63 @@ class AutoresponderFlow
      */
     private static function sanitizeListDefinition(array $message): array
     {
-        $button = isset($message['button']) && is_string($message['button'])
-            ? self::sanitizeLine($message['button'])
-            : 'Ver opciones';
+        $button = isset($message['button']) ? self::sanitizeLine($message['button']) : '';
         if ($button === '') {
-            $button = 'Ver opciones';
+            $button = 'Seleccionar';
         }
 
         $sections = [];
-        if (isset($message['sections']) && is_array($message['sections'])) {
-            foreach ($message['sections'] as $section) {
-                if (!is_array($section)) {
+
+        foreach ($message['sections'] ?? [] as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+
+            $title = self::sanitizeLine($section['title'] ?? '');
+            $rows = [];
+
+            foreach ($section['rows'] ?? [] as $row) {
+                if (!is_array($row)) {
                     continue;
                 }
 
-                $title = isset($section['title']) ? self::sanitizeLine($section['title']) : '';
-                $rows = [];
+                $rowTitle = self::sanitizeLine($row['title'] ?? '');
+                $rowId = self::sanitizeKey($row['id'] ?? '');
 
-                if (isset($section['rows']) && is_array($section['rows'])) {
-                    foreach ($section['rows'] as $row) {
-                        if (!is_array($row)) {
-                            continue;
-                        }
+                if ($rowTitle === '' || $rowId === '') {
+                    continue;
+                }
 
-                        $rowTitle = isset($row['title']) ? self::sanitizeLine($row['title']) : '';
-                        if ($rowTitle === '') {
-                            continue;
-                        }
+                $entry = [
+                    'id' => $rowId,
+                    'title' => $rowTitle,
+                ];
 
-                        $id = isset($row['id']) ? self::sanitizeKey($row['id']) : '';
-                        if ($id === '') {
-                            $id = self::slugify($rowTitle);
-                        }
-
-                        if ($id === '') {
-                            continue;
-                        }
-
-                        $entry = [
-                            'id' => $id,
-                            'title' => $rowTitle,
-                        ];
-
-                        if (isset($row['description']) && is_string($row['description'])) {
-                            $description = self::sanitizeLine($row['description']);
-                            if ($description !== '') {
-                                $entry['description'] = $description;
-                            }
-                        }
-
-                        $rows[] = $entry;
-
-                        if (count($rows) >= 10) {
-                            break;
-                        }
+                if (isset($row['description']) && is_string($row['description'])) {
+                    $description = self::sanitizeLine($row['description']);
+                    if ($description !== '') {
+                        $entry['description'] = $description;
                     }
                 }
 
-                if (empty($rows)) {
-                    continue;
-                }
+                $rows[] = $entry;
 
-                $sections[] = [
-                    'title' => $title,
-                    'rows' => $rows,
-                ];
-
-                if (count($sections) >= 10) {
+                if (count($rows) >= 10) {
                     break;
                 }
+            }
+
+            if (empty($rows)) {
+                continue;
+            }
+
+            $sections[] = [
+                'title' => $title,
+                'rows' => $rows,
+            ];
+
+            if (count($sections) >= 10) {
+                break;
             }
         }
 
@@ -654,55 +1132,26 @@ class AutoresponderFlow
                 $entry['sub_type'] = strtoupper(self::sanitizeLine($component['sub_type']));
             }
 
-            if (isset($component['index'])) {
-                $entry['index'] = (int) $component['index'];
+            if (isset($component['format'])) {
+                $entry['format'] = strtoupper(self::sanitizeLine($component['format']));
+            }
+
+            if (isset($component['text']) && is_string($component['text'])) {
+                $entry['text'] = self::sanitizeMultiline($component['text']);
+            }
+
+            if (isset($component['example']) && is_array($component['example'])) {
+                $entry['example'] = array_values(array_filter(array_map(static function ($value) {
+                    if (is_array($value) || is_string($value) || is_numeric($value)) {
+                        return (string) $value;
+                    }
+
+                    return null;
+                }, $component['example'])));
             }
 
             if (isset($component['parameters']) && is_array($component['parameters'])) {
-                $parameters = [];
-                foreach ($component['parameters'] as $parameter) {
-                    if (!is_array($parameter)) {
-                        continue;
-                    }
-
-                    $paramType = isset($parameter['type'])
-                        ? strtoupper(self::sanitizeLine($parameter['type']))
-                        : 'TEXT';
-
-                    $param = ['type' => $paramType];
-
-                    if (isset($parameter['text'])) {
-                        $text = self::sanitizeMultiline($parameter['text']);
-                        if ($text === '') {
-                            continue;
-                        }
-                        $param['text'] = $text;
-                    }
-
-                    if (isset($parameter['payload'])) {
-                        $payload = self::sanitizeLine($parameter['payload']);
-                        if ($payload === '') {
-                            continue;
-                        }
-                        $param['payload'] = $payload;
-                    }
-
-                    if (isset($parameter['currency']) && is_array($parameter['currency'])) {
-                        $param['currency'] = $parameter['currency'];
-                    }
-
-                    if (isset($parameter['date_time']) && is_array($parameter['date_time'])) {
-                        $param['date_time'] = $parameter['date_time'];
-                    }
-
-                    if (count($param) > 1) {
-                        $parameters[] = $param;
-                    }
-                }
-
-                if (!empty($parameters)) {
-                    $entry['parameters'] = $parameters;
-                }
+                $entry['parameters'] = $component['parameters'];
             }
 
             $normalized[] = $entry;
@@ -711,211 +1160,200 @@ class AutoresponderFlow
         return $normalized;
     }
 
-    /**
-     * @param array<string, mixed> $flow
-     * @return array<string, mixed>
-     */
-    private static function finalize(array $flow): array
+    private static function sanitizePattern(string $pattern): string
     {
-        $flow['entry']['keywords'] = self::augmentKeywords($flow['entry']);
-        $flow['fallback']['keywords'] = self::augmentKeywords($flow['fallback']);
-
-        foreach ($flow['options'] as $index => $option) {
-            $flow['options'][$index]['keywords'] = self::augmentKeywords($option);
-        }
-
-        return $flow;
-    }
-
-    /**
-     * @param array<string, mixed> $flow
-     * @return array<string, mixed>
-     */
-    private static function purgeAutomaticKeywords(array $flow): array
-    {
-        $flow['entry']['keywords'] = self::stripAutomaticKeywords($flow['entry']);
-        $flow['fallback']['keywords'] = self::stripAutomaticKeywords($flow['fallback']);
-
-        foreach ($flow['options'] as $index => $option) {
-            $flow['options'][$index]['keywords'] = self::stripAutomaticKeywords($option);
-        }
-
-        return $flow;
-    }
-
-    /**
-     * @param array<string, mixed> $section
-     * @return array<int, string>
-     */
-    private static function stripAutomaticKeywords(array $section): array
-    {
-        $keywords = self::sanitizeKeywords($section['keywords'] ?? []);
-        if (empty($keywords)) {
-            return [];
-        }
-
-        $automatic = [];
-        if (!empty($section['messages']) && is_array($section['messages'])) {
-            foreach ($section['messages'] as $message) {
-                if (!is_array($message)) {
-                    continue;
-                }
-
-                if (($message['type'] ?? '') === 'buttons') {
-                    foreach ($message['buttons'] ?? [] as $button) {
-                        if (!is_array($button)) {
-                            continue;
-                        }
-
-                        if (isset($button['id']) && is_string($button['id'])) {
-                            $automatic[] = self::sanitizeLine($button['id']);
-                        }
-
-                        if (isset($button['title']) && is_string($button['title'])) {
-                            $automatic[] = self::sanitizeLine($button['title']);
-                        }
-                    }
-
-                    continue;
-                }
-
-                if (($message['type'] ?? '') === 'list') {
-                    foreach ($message['sections'] ?? [] as $sectionRows) {
-                        if (!is_array($sectionRows)) {
-                            continue;
-                        }
-
-                        foreach ($sectionRows['rows'] ?? [] as $row) {
-                            if (!is_array($row)) {
-                                continue;
-                            }
-
-                            if (isset($row['id']) && is_string($row['id'])) {
-                                $automatic[] = self::sanitizeLine($row['id']);
-                            }
-
-                            if (isset($row['title']) && is_string($row['title'])) {
-                                $automatic[] = self::sanitizeLine($row['title']);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (empty($automatic)) {
-            return $keywords;
-        }
-
-        $automatic = array_filter($automatic, static fn ($keyword) => $keyword !== '');
-
-        return array_values(array_filter($keywords, static fn ($keyword) => $keyword !== '' && !in_array($keyword, $automatic, true)));
-    }
-
-    /**
-     * @param array<string, mixed> $section
-     * @return array<int, string>
-     */
-    private static function augmentKeywords(array $section): array
-    {
-        $keywords = $section['keywords'] ?? [];
-        if (!is_array($keywords)) {
-            $keywords = [];
-        }
-
-        $keywords = self::sanitizeKeywords($keywords);
-
-        if (!empty($section['messages']) && is_array($section['messages'])) {
-            foreach ($section['messages'] as $message) {
-                if (!is_array($message)) {
-                    continue;
-                }
-
-                if (($message['type'] ?? '') === 'buttons') {
-                    foreach ($message['buttons'] ?? [] as $button) {
-                        if (!is_array($button)) {
-                            continue;
-                        }
-
-                        if (isset($button['id']) && is_string($button['id'])) {
-                            $keywords[] = self::sanitizeLine($button['id']);
-                        }
-
-                        if (isset($button['title']) && is_string($button['title'])) {
-                            $keywords[] = self::sanitizeLine($button['title']);
-                        }
-                    }
-
-                    continue;
-                }
-
-                if (($message['type'] ?? '') === 'list') {
-                    foreach ($message['sections'] ?? [] as $sectionRows) {
-                        if (!is_array($sectionRows)) {
-                            continue;
-                        }
-
-                        foreach ($sectionRows['rows'] ?? [] as $row) {
-                            if (!is_array($row)) {
-                                continue;
-                            }
-
-                            if (isset($row['id']) && is_string($row['id'])) {
-                                $keywords[] = self::sanitizeLine($row['id']);
-                            }
-
-                            if (isset($row['title']) && is_string($row['title'])) {
-                                $keywords[] = self::sanitizeLine($row['title']);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return array_values(array_unique(array_filter($keywords, static fn ($keyword) => $keyword !== '')));
-    }
-
-    private static function sanitizeLine($value): string
-    {
-        $value = trim((string) $value);
-
-        return $value;
-    }
-
-    private static function sanitizeMultiline($value): string
-    {
-        $value = (string) $value;
-        $value = preg_replace("/\r/", '', $value) ?? $value;
-        $value = trim($value);
-
-        return $value;
-    }
-
-    private static function sanitizeKey($value): string
-    {
-        $value = self::sanitizeLine($value);
-        $value = strtolower($value);
-        $value = preg_replace('/[^a-z0-9_\-]+/', '_', $value) ?? $value;
-        $value = trim($value, '_-');
-
-        if ($value === '') {
+        $pattern = trim($pattern);
+        if ($pattern === '') {
             return '';
         }
 
-        if (mb_strlen($value) > 32) {
-            $value = substr($value, 0, 32);
+        if (self::compileRegex($pattern) === null) {
+            return '';
         }
 
-        return $value;
+        return $pattern;
     }
 
-    private static function slugify(string $value): string
+    private static function compileRegex(string $pattern): ?string
     {
-        $value = strtolower(self::sanitizeLine($value));
-        $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? $value;
-        $value = trim($value, '_');
+        $pattern = trim($pattern);
+        if ($pattern === '') {
+            return null;
+        }
 
-        return $value === '' ? 'opcion_' . uniqid() : $value;
+        $escaped = str_replace('~', '\\~', $pattern);
+        $regex = '~' . $escaped . '~u';
+
+        if (@preg_match($regex, '') === false) {
+            return null;
+        }
+
+        return $regex;
+    }
+
+    private static function sanitizeNormalizeStrategy(string $strategy): string
+    {
+        $strategy = strtolower(self::sanitizeKey($strategy));
+
+        if (!in_array($strategy, ['digits', 'trim', 'uppercase', 'lowercase'], true)) {
+            return 'trim';
+        }
+
+        return $strategy;
+    }
+
+    private static function sanitizeSource(string $source): string
+    {
+        $source = strtolower(self::sanitizeKey($source));
+        if (!in_array($source, ['local', 'registry', 'any'], true)) {
+            return 'any';
+        }
+
+        return $source;
+    }
+
+    /**
+     * @param array<int|string, mixed> $keys
+     * @return array<int, string>
+     */
+    private static function sanitizeContextKeys($keys): array
+    {
+        if (!is_array($keys)) {
+            return [];
+        }
+
+        $sanitized = [];
+
+        foreach ($keys as $key) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $clean = self::sanitizeKey($key);
+            if ($clean === '') {
+                continue;
+            }
+
+            $sanitized[] = $clean;
+        }
+
+        return array_values(array_unique($sanitized));
+    }
+
+    private static function sanitizeKey(string $key): string
+    {
+        $key = trim($key);
+        $key = preg_replace('/[^a-zA-Z0-9_\-]+/', '-', strtolower($key));
+
+        return trim((string) $key, '-');
+    }
+
+    private static function sanitizeLine(string $value): string
+    {
+        $value = trim(preg_replace('/\s+/', ' ', (string) $value) ?? '');
+
+        return mb_substr($value, 0, 500);
+    }
+
+    private static function sanitizeMultiline(string $value): string
+    {
+        $value = trim(preg_replace("/\r\n?\n/", "\n\n", (string) $value) ?? '');
+
+        return mb_substr($value, 0, 2000);
+    }
+
+    /**
+     * @param array<int, string> $messages
+     * @return array<int, array<string, mixed>>
+     */
+    private static function wrapMessages(array $messages): array
+    {
+        return array_map(static fn (string $message): array => [
+            'type' => 'text',
+            'body' => trim($message),
+        ], $messages);
+    }
+
+    /**
+     * @param array<string, mixed> $legacy
+     * @param array<string, mixed> $base
+     * @return array<string, mixed>
+     */
+    private static function migrateLegacyFlow(array $legacy, array $base): array
+    {
+        if (isset($legacy['version']) && (int) $legacy['version'] === self::CURRENT_VERSION) {
+            return $legacy;
+        }
+
+        if (!isset($legacy['entry'], $legacy['options'], $legacy['fallback'])) {
+            return $legacy;
+        }
+
+        $flow = $base;
+
+        $entryKeywords = self::sanitizeKeywords($legacy['entry']['keywords'] ?? []);
+        if (!empty($entryKeywords)) {
+            $flow['entry_keywords'] = $entryKeywords;
+            $flow['shortcuts'][0]['keywords'] = $entryKeywords;
+        }
+
+        $flow['nodes'] = array_values($flow['nodes']);
+        $map = [];
+        foreach ($flow['nodes'] as $node) {
+            if (!isset($node['id'])) {
+                continue;
+            }
+            $map[$node['id']] = $node;
+        }
+
+        if (isset($legacy['entry']['messages'])) {
+            $map['menu']['messages'] = self::sanitizeMessages($legacy['entry']['messages']);
+        }
+
+        $optionMap = [
+            'information' => 'information',
+            'schedule' => 'schedule',
+            'locations' => 'locations',
+        ];
+
+        foreach ($legacy['options'] as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $id = isset($option['id']) ? self::sanitizeKey($option['id']) : null;
+            if ($id === null) {
+                continue;
+            }
+
+            $target = $optionMap[$id] ?? null;
+            if ($target === null) {
+                continue;
+            }
+
+            if (isset($option['messages'])) {
+                $map[$target]['messages'] = self::sanitizeMessages($option['messages']);
+            }
+
+            if (isset($option['keywords'])) {
+                foreach ($flow['nodes'][0]['responses'] ?? [] as &$response) {
+                    if (($response['target'] ?? '') === $target) {
+                        $response['keywords'] = self::sanitizeKeywords($option['keywords']);
+                    }
+                }
+            }
+        }
+
+        if (isset($legacy['fallback']['messages'])) {
+            $flow['fallback']['messages'] = self::sanitizeMessages($legacy['fallback']['messages']);
+        }
+
+        return $flow;
+    }
+
+    private static function randomKey(string $prefix): string
+    {
+        return $prefix . '-' . substr(uniqid('', true), 0, 8);
     }
 }
+

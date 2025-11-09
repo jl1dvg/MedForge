@@ -6,6 +6,13 @@ class FaceRecognitionService
 {
     private const TARGET_SIZE = 32;
 
+    private ?PythonBiometricClient $pythonClient;
+
+    public function __construct(?PythonBiometricClient $pythonClient = null)
+    {
+        $this->pythonClient = $pythonClient;
+    }
+
     public function createTemplateFromFile(string $path): ?array
     {
         if (!is_file($path) || !is_readable($path)) {
@@ -24,6 +31,13 @@ class FaceRecognitionService
     {
         if ($binary === '') {
             return null;
+        }
+
+        if ($this->pythonClient) {
+            $template = $this->pythonClient->generateTemplate('face', $binary);
+            if (is_array($template)) {
+                return $template;
+            }
         }
 
         if (!function_exists('imagecreatefromstring')) {
@@ -79,6 +93,13 @@ class FaceRecognitionService
     {
         if (empty($reference) || empty($sample)) {
             return null;
+        }
+
+        if ($this->pythonClient) {
+            $score = $this->pythonClient->compare('face', $reference, $sample);
+            if ($score !== null) {
+                return round($score, 2);
+            }
         }
 
         if (isset($reference['hash'], $sample['hash'])) {

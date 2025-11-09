@@ -9,6 +9,18 @@
         }
     }
 
+    const escapeMap = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    };
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char] ?? char);
+    }
+
     class CanvasSignaturePad {
         constructor(canvas, hiddenInput) {
             this.canvas = canvas;
@@ -57,6 +69,7 @@
                 }
                 event.preventDefault();
                 this.isDrawing = false;
+                this.syncHiddenInput();
             };
 
             this.canvas.addEventListener('pointerdown', start);
@@ -141,12 +154,10 @@
 
         if (config.clearAction) {
             const clearButton = document.querySelector(`[data-action="${config.clearAction}"]`);
-            if (clearButton) {
-                clearButton.addEventListener('click', (event) => {
+            clearButton?.addEventListener('click', (event) => {
                 event.preventDefault();
                 pad.clear();
             });
-            }
         }
 
         if (config.loadInputId) {
@@ -171,7 +182,12 @@
             }
         }
 
-        return pad;
+        return {
+            syncHiddenInput: () => pad.syncHiddenInput(),
+            clear: () => pad.clear(),
+            load: (dataUrl) => pad.loadFromDataUrl(dataUrl),
+            hasContent: () => pad.hasContent,
+        };
     }
 
     function setupFaceCapture(config) {
@@ -181,6 +197,8 @@
         if (!video || !canvas || !hiddenInput) {
             return {
                 syncInput() {},
+                reset() {},
+                stop() {},
             };
         }
 
@@ -301,72 +319,53 @@
         };
     }
 
-    function setupVerificationForm(signaturePad, faceCapture) {
-        const form = document.getElementById('verificationForm');
-        const resultContainer = document.getElementById('verificationResult');
-        if (!form || !resultContainer) {
+    function setBadgeState(element, state) {
+        if (!element) {
             return;
         }
-
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            signaturePad?.syncHiddenInput?.();
-            faceCapture?.syncInput?.();
-
-            const formData = new FormData(form);
-            const submitButton = form.querySelector('button[type="submit"]');
-            if (submitButton) {
-                submitButton.disabled = true;
-            }
-
-            try {
-                const response = await fetch(form.action, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
+        element.classList.remove('bg-secondary', 'bg-success', 'bg-warning');
+        if (state === 'ready') {
+            element.classList.add('bg-success');
+            element.textContent = 'Completo';
+        } else if (state === 'partial') {
+            element.classList.add('bg-warning');
+            element.textContent = 'Pendiente parcial';
+        } else {
+            element.classList.add('bg-secondary');
+            element.textContent = 'Pendiente';
         }
-                });
-
-                const data = await response.json();
-                const alertBox = resultContainer.querySelector('.alert');
-                resultContainer.hidden = false;
-
-                if (!response.ok || !data.ok) {
-                    alertBox.className = 'alert alert-danger';
-                    alertBox.innerHTML = data.message ? String(data.message) : 'No se pudo validar la identidad del paciente.';
-                    return;
-                }
-
-                const signatureScore = data.signatureScore != null ? `Firma: ${data.signatureScore}%` : 'Firma no evaluada';
-                const faceScore = data.faceScore != null ? `Rostro: ${data.faceScore}%` : 'Rostro no evaluado';
-                let statusClass = 'alert-warning';
-                let statusLabel = 'Revisión manual requerida';
-                if (data.result === 'approved') {
-                    statusClass = 'alert-success';
-                    statusLabel = 'Paciente verificado';
-                } else if (data.result === 'rejected') {
-                    statusClass = 'alert-danger';
-                    statusLabel = 'Verificación rechazada';
-                }
-
-                alertBox.className = `alert ${statusClass}`;
-                alertBox.innerHTML = `<strong>${statusLabel}</strong><br>${signatureScore} · ${faceScore}`;
-            } catch (error) {
-                console.error('Error en la verificación', error);
-                const alertBox = resultContainer.querySelector('.alert');
-                resultContainer.hidden = false;
-                alertBox.className = 'alert alert-danger';
-                alertBox.textContent = 'Ocurrió un error inesperado al verificar la identidad.';
-            } finally {
-                if (submitButton) {
-                    submitButton.disabled = false;
-                }
-            }
-        });
     }
 
     ready(function () {
+        const stepOrder = ['lookup', 'register', 'checkin'];
+        const stepperBadges = Array.from(document.querySelectorAll('#verificationStepper [data-step]'));
+        const stepPanels = Array.from(document.querySelectorAll('.wizard-panel[data-step-panel]'));
+        const summaryContainer = document.getElementById('certificationSummary');
+        const missingDataAlert = document.getElementById('registrationMissingData');
+        const registrationStatusBadge = document.getElementById('registrationStatusBadge');
+        const checkinStatusBadge = document.getElementById('checkinStatusBadge');
+        const checkinInstructions = document.getElementById('checkinInstructions');
+        const checkinSignatureBlock = document.getElementById('checkinSignatureCapture');
+        const verificationResult = document.getElementById('verificationResult');
+        const consentWrapper = document.getElementById('consentDownloadWrapper');
+        const consentLink = document.getElementById('consentDownloadLink');
+
+        const registrationForm = document.getElementById('patientCertificationForm');
+        const checkinForm = document.getElementById('verificationCheckinForm');
+        const lookupForm = document.getElementById('verificationLookupForm');
+
+        const registrationPatientId = document.getElementById('registrationPatientId');
+        const registrationDocumentNumber = document.getElementById('registrationDocumentNumber');
+        const registrationDocumentType = document.getElementById('registrationDocumentType');
+
+        const checkinCertificationId = document.getElementById('checkinCertificationId');
+        const checkinPatientId = document.getElementById('checkinPatientId');
+        const checkinPatientLabel = document.getElementById('checkinPatientLabel');
+        const checkinDocumentLabel = document.getElementById('checkinDocumentLabel');
+
+        const signatureBadge = document.querySelector('[data-field-state="signature"]');
+        const faceBadge = document.querySelector('[data-field-state="face"]');
+
         const patientSignaturePad = setupSignaturePad({
             canvasId: 'patientSignatureCanvas',
             inputId: 'signatureDataField',
@@ -405,13 +404,365 @@
             loadInputId: 'verificationFaceUpload'
         });
 
-        const certificationForm = document.getElementById('patientCertificationForm');
-        certificationForm?.addEventListener('submit', () => {
+        const state = {
+            step: 'lookup',
+            certification: null,
+            requiresSignature: false,
+        };
+
+        function setStep(step) {
+            state.step = step;
+            const index = stepOrder.indexOf(step);
+            stepperBadges.forEach((badge) => {
+                const badgeStep = badge.dataset.step;
+                const badgeIndex = stepOrder.indexOf(badgeStep);
+                badge.classList.remove('text-bg-primary', 'text-bg-secondary', 'text-bg-success');
+                if (badgeIndex < index) {
+                    badge.classList.add('text-bg-success');
+                } else if (badgeIndex === index) {
+                    badge.classList.add('text-bg-primary');
+                } else {
+                    badge.classList.add('text-bg-secondary');
+                }
+            });
+
+            stepPanels.forEach((panel) => {
+                const panelStep = panel.dataset.stepPanel;
+                if (panelStep === step) {
+                    panel.classList.remove('d-none');
+                } else {
+                    panel.classList.add('d-none');
+                }
+            });
+        }
+
+        function renderSummary(certification) {
+            if (!summaryContainer) {
+                return;
+            }
+            if (!certification) {
+                summaryContainer.innerHTML = '<p class="text-muted mb-0">Busque un paciente para visualizar su estado, los datos faltantes y la última verificación registrada.</p>';
+                return;
+            }
+            const missing = [];
+            const hasSignature = Boolean(certification.signature_path && certification.signature_template);
+            const hasFace = Boolean(certification.face_image_path && certification.face_template);
+            if (!hasSignature) {
+                missing.push('Firma manuscrita');
+            }
+            if (!hasFace) {
+                missing.push('Captura facial');
+            }
+            if (!certification.document_number) {
+                missing.push('Número de documento');
+            }
+            const missingHtml = missing.length > 0
+                ? `<div class="alert alert-warning mt-3"><strong>Datos faltantes:</strong> ${missing.map(escapeHtml).join(' · ')}</div>`
+                : '<div class="alert alert-success mt-3 mb-0"><strong>Certificación completa.</strong> Puede continuar con el check-in facial.</div>';
+            const lastVerification = certification.last_verification_at
+                ? `<span class="d-block">${escapeHtml(certification.last_verification_at)}</span><small class="text-muted">Resultado: ${escapeHtml(certification.last_verification_result ?? 'N/A')}</small>`
+                : '<span class="text-muted">Sin verificaciones registradas</span>';
+
+            summaryContainer.innerHTML = `
+                <div class="d-flex flex-column gap-2">
+                    <div>
+                        <strong>Paciente:</strong>
+                        <div>${escapeHtml(certification.full_name ?? 'Sin nombre registrado')}</div>
+                        <small class="text-muted">HC: ${escapeHtml(certification.patient_id)}</small>
+                    </div>
+                    <div>
+                        <strong>Documento:</strong>
+                        <div>${escapeHtml((certification.document_type || '').toUpperCase())} · ${escapeHtml(certification.document_number || 'Sin registrar')}</div>
+                    </div>
+                    <div>
+                        <strong>Estado de certificación:</strong>
+                        <span class="badge bg-${certification.status === 'verified' ? 'success' : 'warning'}">${escapeHtml(certification.status === 'verified' ? 'Verificada' : 'Pendiente')}</span>
+                    </div>
+                    <div>
+                        <strong>Última verificación:</strong>
+                        ${lastVerification}
+                    </div>
+                </div>
+                ${missingHtml}
+            `;
+        }
+
+        function updateRegistrationStep(certification, patientId, documentNumber) {
+            setStep('register');
+            if (registrationPatientId) {
+                registrationPatientId.value = patientId ?? '';
+            }
+            if (registrationDocumentNumber) {
+                registrationDocumentNumber.value = documentNumber ?? certification?.document_number ?? '';
+            }
+            if (registrationDocumentType) {
+                if (certification?.document_type) {
+                    registrationDocumentType.value = certification.document_type;
+                } else {
+                    registrationDocumentType.value = registrationDocumentType.dataset.default || 'cedula';
+                }
+            }
+
+            const hasSignature = Boolean(certification?.signature_path && certification?.signature_template);
+            const hasFace = Boolean(certification?.face_image_path && certification?.face_template);
+
+            setBadgeState(signatureBadge, hasSignature ? 'ready' : 'pending');
+            setBadgeState(faceBadge, hasFace ? 'ready' : 'pending');
+
+            if (missingDataAlert) {
+                if (!certification) {
+                    missingDataAlert.classList.add('d-none');
+                    missingDataAlert.textContent = '';
+                } else {
+                    const missingPieces = [];
+                    if (!hasSignature) {
+                        missingPieces.push('firma manuscrita');
+                    }
+                    if (!hasFace) {
+                        missingPieces.push('captura facial');
+                    }
+                    if (!certification.document_number) {
+                        missingPieces.push('número de documento');
+                    }
+                    if (missingPieces.length > 0) {
+                        missingDataAlert.textContent = `Faltan por completar: ${missingPieces.join(', ')}.`;
+                        missingDataAlert.classList.remove('d-none');
+                    } else {
+                        missingDataAlert.textContent = '';
+                        missingDataAlert.classList.add('d-none');
+                    }
+                }
+            }
+
+            if (registrationStatusBadge) {
+                registrationStatusBadge.textContent = certification ? 'Certificación existente' : 'Nuevo registro';
+                registrationStatusBadge.classList.remove('bg-primary', 'bg-success', 'bg-warning');
+                registrationStatusBadge.classList.add(certification && certification.status === 'verified' ? 'bg-success' : 'bg-primary');
+            }
+
+            patientSignaturePad?.clear?.();
+            documentSignaturePad?.clear?.();
+            faceCapture.reset();
+        }
+
+        function updateCheckinStep(certification) {
+            if (!certification) {
+                return;
+            }
+            setStep('checkin');
+            state.requiresSignature = !certification.face_template && !!certification.signature_template;
+            if (checkinCertificationId) {
+                checkinCertificationId.value = certification.id ?? '';
+            }
+            if (checkinPatientId) {
+                checkinPatientId.value = certification.patient_id ?? '';
+            }
+            if (checkinPatientLabel) {
+                checkinPatientLabel.value = certification.patient_id ?? '';
+            }
+            if (checkinDocumentLabel) {
+                const label = `${(certification.document_type || '').toUpperCase()} · ${certification.document_number || 'Sin registrar'}`;
+                checkinDocumentLabel.value = label;
+            }
+
+            if (checkinStatusBadge) {
+                checkinStatusBadge.textContent = certification.status === 'verified' ? 'Listo para check-in' : 'Certificación pendiente';
+                checkinStatusBadge.classList.remove('bg-info', 'bg-warning', 'bg-success');
+                checkinStatusBadge.classList.add(certification.status === 'verified' ? 'bg-success' : 'bg-warning');
+            }
+
+            if (checkinInstructions) {
+                checkinInstructions.textContent = state.requiresSignature
+                    ? 'Esta certificación aún no cuenta con plantilla facial. Capture la firma actual del paciente para continuar.'
+                    : 'Capture el rostro del paciente para validar su identidad.';
+            }
+
+            if (checkinSignatureBlock) {
+                if (state.requiresSignature) {
+                    checkinSignatureBlock.classList.remove('d-none');
+                } else {
+                    checkinSignatureBlock.classList.add('d-none');
+                }
+            }
+
+            verificationResult?.classList.add('d-none');
+            consentWrapper?.classList.add('d-none');
+            consentLink?.setAttribute('href', '#');
+            verificationSignaturePad?.clear?.();
+            verificationFaceCapture.reset();
+            verificationSignaturePad?.syncHiddenInput?.();
+            verificationFaceCapture.syncInput();
+        }
+
+        async function fetchCertification(patientId, documentNumber) {
+            const params = new URLSearchParams();
+            if (patientId) {
+                params.set('patient_id', patientId);
+            }
+            const url = `/pacientes/certificaciones/detalle?${params.toString()}`;
+            try {
+                const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!response.ok) {
+                    throw new Error('No encontrado');
+                }
+                const payload = await response.json();
+                if (!payload.ok) {
+                    throw new Error('No encontrado');
+                }
+                return payload.data;
+            } catch (error) {
+                if (documentNumber) {
+                    registrationDocumentNumber.value = documentNumber;
+                }
+                return null;
+            }
+        }
+
+        lookupForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(lookupForm);
+            const patientId = String(formData.get('patient_id') || '').trim();
+            const documentNumber = String(formData.get('document_number') || '').trim();
+            if (!patientId) {
+                alert('Ingrese un identificador de paciente.');
+                return;
+            }
+
+            const submitButton = lookupForm.querySelector('button[type="submit"]');
+            submitButton && (submitButton.disabled = true);
+            const certification = await fetchCertification(patientId, documentNumber);
+            submitButton && (submitButton.disabled = false);
+
+            state.certification = certification;
+            renderSummary(certification);
+
+            if (certification) {
+                registrationPatientId.value = certification.patient_id;
+                registrationDocumentNumber.value = certification.document_number || documentNumber;
+                if (registrationDocumentType && certification.document_type) {
+                    registrationDocumentType.value = certification.document_type;
+                }
+
+                const hasSignature = Boolean(certification.signature_path && certification.signature_template);
+                const hasFace = Boolean(certification.face_image_path && certification.face_template);
+                setBadgeState(signatureBadge, hasSignature ? 'ready' : 'pending');
+                setBadgeState(faceBadge, hasFace ? 'ready' : 'pending');
+
+                if (hasSignature && hasFace && certification.status === 'verified') {
+                    updateCheckinStep(certification);
+                } else {
+                    updateRegistrationStep(certification, certification.patient_id, certification.document_number || documentNumber);
+                }
+            } else {
+                updateRegistrationStep(null, patientId, documentNumber);
+                renderSummary(null);
+            }
+        });
+
+        document.querySelector('[data-action="start-registration"]')?.addEventListener('click', () => {
+            const patientId = document.getElementById('lookupPatientId')?.value.trim();
+            const documentNumber = document.getElementById('lookupDocument')?.value.trim();
+            if (!patientId) {
+                alert('Debe ingresar la historia clínica para iniciar el registro.');
+                return;
+            }
+            state.certification = null;
+            renderSummary(null);
+            updateRegistrationStep(null, patientId, documentNumber);
+        });
+
+        document.querySelector('[data-action="back-to-lookup"]')?.addEventListener('click', () => {
+            setStep('lookup');
+        });
+
+        document.querySelector('[data-action="back-to-registration"]')?.addEventListener('click', () => {
+            if (state.certification) {
+                updateRegistrationStep(state.certification, state.certification.patient_id, state.certification.document_number);
+            } else {
+                setStep('register');
+            }
+        });
+
+        registrationForm?.addEventListener('submit', () => {
             patientSignaturePad?.syncHiddenInput?.();
             documentSignaturePad?.syncHiddenInput?.();
             faceCapture?.syncInput?.();
         });
 
-        setupVerificationForm(verificationSignaturePad, verificationFaceCapture);
+        checkinForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            verificationSignaturePad?.syncHiddenInput?.();
+            verificationFaceCapture?.syncInput?.();
+
+            const submitButton = checkinForm.querySelector('button[type="submit"]');
+            submitButton && (submitButton.disabled = true);
+
+            try {
+                const formData = new FormData(checkinForm);
+                const response = await fetch(checkinForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+
+                const data = await response.json();
+                const alertBox = verificationResult?.querySelector('.alert');
+                if (!alertBox || !verificationResult) {
+                    return;
+                }
+
+                verificationResult.classList.remove('d-none');
+
+                if (!response.ok || !data.ok) {
+                    alertBox.className = 'alert alert-danger';
+                    alertBox.textContent = data.message ? String(data.message) : 'No se pudo validar la identidad del paciente.';
+                    consentWrapper?.classList.add('d-none');
+                    return;
+                }
+
+                const signatureScore = data.signatureScore != null ? `Firma: ${Number(data.signatureScore).toFixed(2)}%` : 'Firma no evaluada';
+                const faceScore = data.faceScore != null ? `Rostro: ${Number(data.faceScore).toFixed(2)}%` : 'Rostro no evaluado';
+
+                let statusClass = 'alert-warning';
+                let statusLabel = 'Revisión manual requerida';
+                if (data.result === 'approved') {
+                    statusClass = 'alert-success';
+                    statusLabel = 'Paciente verificado';
+                } else if (data.result === 'rejected') {
+                    statusClass = 'alert-danger';
+                    statusLabel = 'Verificación rechazada';
+                }
+
+                alertBox.className = `alert ${statusClass}`;
+                alertBox.innerHTML = `<strong>${statusLabel}</strong><br>${signatureScore} · ${faceScore}`;
+
+                if (data.consentDocument) {
+                    consentWrapper?.classList.remove('d-none');
+                    consentLink?.setAttribute('href', `/${data.consentDocument}`);
+                } else {
+                    consentWrapper?.classList.add('d-none');
+                }
+
+                if (state.certification) {
+                    state.certification.last_verification_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                    state.certification.last_verification_result = data.result;
+                    renderSummary(state.certification);
+                }
+            } catch (error) {
+                console.error('Error en la verificación', error);
+                const alertBox = verificationResult?.querySelector('.alert');
+                if (alertBox && verificationResult) {
+                    verificationResult.classList.remove('d-none');
+                    alertBox.className = 'alert alert-danger';
+                    alertBox.textContent = 'Ocurrió un error inesperado al verificar la identidad.';
+                }
+            } finally {
+                submitButton && (submitButton.disabled = false);
+            }
+        });
+
+        // Inicialización por defecto
+        setStep('lookup');
+        renderSummary(state.certification);
     });
 })();
