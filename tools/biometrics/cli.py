@@ -39,15 +39,15 @@ def ensure_image(binary: bytes) -> Optional["Image.Image"]:
         return None
 
 
-def normalize_vector(values: List[float]) -> List[float]:
+def normalize_vector(values: List[float]) -> Optional[List[float]]:
     if not values:
-        return values
-    mean = sum(values) / len(values)
-    variance = sum((v - mean) ** 2 for v in values) / len(values)
-    stddev = math.sqrt(variance) if variance > 0 else 0.0
-    if stddev <= 1e-9:
-        return [0.0 for _ in values]
-    return [(v - mean) / stddev for v in values]
+        return None
+
+    norm = math.sqrt(sum(v * v for v in values))
+    if norm <= 1e-9:
+        return None
+
+    return [v / norm for v in values]
 
 
 def cosine_similarity(a: List[float], b: List[float]) -> Optional[float]:
@@ -103,10 +103,17 @@ def face_template(binary: bytes) -> Dict[str, Any]:
     downsampled = enhanced.resize((48, 48), Image.Resampling.LANCZOS)
     pixels = [px / 255.0 for px in downsampled.getdata()]
     normalized = normalize_vector(pixels)
+    if normalized is None:
+        digest = base64.b16encode(__import__("hashlib").sha256(binary).digest()).decode("ascii")
+        return {
+            "provider": "python-cli",
+            "algorithm": "hash-only",
+            "hash": digest,
+        }
 
     return {
         "provider": "python-cli",
-        "algorithm": "pil-face-znorm-48",
+        "algorithm": "pil-face-l2-48",
         "vector": [round(v, 6) for v in normalized],
         "size": 48,
     }
