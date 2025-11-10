@@ -22,4 +22,8 @@ return function (Router $router) {
     $router->post('/pacientes/certificaciones/verificar', function (\PDO $pdo) {
         (new VerificationController($pdo))->verify();
     });
+
+    $router->post('/pacientes/certificaciones/eliminar', function (PDO $pdo) {
+        (new VerificationController($pdo))->destroy();
+    });
 };

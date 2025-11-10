@@ -464,27 +464,42 @@
                 : '<span class="text-muted">Sin verificaciones registradas</span>';
 
             summaryContainer.innerHTML = `
-                <div class="d-flex flex-column gap-2">
-                    <div>
-                        <strong>Paciente:</strong>
-                        <div>${escapeHtml(certification.full_name ?? 'Sin nombre registrado')}</div>
-                        <small class="text-muted">HC: ${escapeHtml(certification.patient_id)}</small>
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div class="flex-grow-1">
+                        <div class="mb-2">
+                            <strong>Paciente:</strong>
+                            <div>${escapeHtml(certification.full_name ?? 'Sin nombre registrado')}</div>
+                            <small class="text-muted">HC: ${escapeHtml(certification.patient_id)}</small>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Documento:</strong>
+                            <div>${escapeHtml((certification.document_type || '').toUpperCase())} · ${escapeHtml(certification.document_number || 'Sin registrar')}</div>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Estado de certificación:</strong>
+                            <span class="badge bg-${certification.status === 'verified' ? 'success' : 'warning'}">${escapeHtml(certification.status === 'verified' ? 'Verificada' : 'Pendiente')}</span>
+                        </div>
+                        <div>
+                            <strong>Última verificación:</strong>
+                            ${lastVerification}
+                        </div>
                     </div>
-                    <div>
-                        <strong>Documento:</strong>
-                        <div>${escapeHtml((certification.document_type || '').toUpperCase())} · ${escapeHtml(certification.document_number || 'Sin registrar')}</div>
-                    </div>
-                    <div>
-                        <strong>Estado de certificación:</strong>
-                        <span class="badge bg-${certification.status === 'verified' ? 'success' : 'warning'}">${escapeHtml(certification.status === 'verified' ? 'Verificada' : 'Pendiente')}</span>
-                    </div>
-                    <div>
-                        <strong>Última verificación:</strong>
-                        ${lastVerification}
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-danger btn-sm" data-action="delete-certification">
+                            <i class="mdi mdi-delete"></i> Eliminar certificación
+                        </button>
+                        <small class="d-block text-muted mt-2">Se eliminarán las capturas actuales y podrá registrar nuevamente los datos biométricos.</small>
                     </div>
                 </div>
                 ${missingHtml}
             `;
+
+            const deleteButton = summaryContainer.querySelector('[data-action="delete-certification"]');
+            if (deleteButton) {
+                deleteButton.dataset.id = String(certification.id ?? '');
+                deleteButton.dataset.patient = String(certification.patient_id ?? '');
+                deleteButton.dataset.document = String(certification.document_number ?? '');
+            }
         }
 
         function updateRegistrationStep(certification, patientId, documentNumber) {
@@ -680,6 +695,116 @@
                 updateRegistrationStep(state.certification, state.certification.patient_id, state.certification.document_number);
             } else {
                 setStep('register');
+            }
+        });
+
+        summaryContainer?.addEventListener('click', async (event) => {
+            const target = event.target instanceof Element ? event.target.closest('[data-action="delete-certification"]') : null;
+            if (!target) {
+                return;
+            }
+            event.preventDefault();
+
+            const certificationId = target.dataset.id || '';
+            const patientId = target.dataset.patient || '';
+            const documentNumber = target.dataset.document || '';
+
+            if (!certificationId && !patientId) {
+                return;
+            }
+
+            const confirmMessage = patientId
+                ? `¿Desea eliminar la certificación biométrica registrada para el paciente ${patientId}?`
+                : '¿Desea eliminar la certificación biométrica seleccionada?';
+            if (!window.confirm(confirmMessage)) {
+                return;
+            }
+
+            target.disabled = true;
+
+            try {
+                const formData = new FormData();
+                if (certificationId) {
+                    formData.append('certification_id', certificationId);
+                }
+                if (patientId) {
+                    formData.append('patient_id', patientId);
+                }
+
+                const response = await fetch('/pacientes/certificaciones/eliminar', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || 'No se pudo eliminar la certificación.');
+                }
+
+                state.certification = null;
+                state.requiresSignature = false;
+
+                updateRegistrationStep(null, patientId || '', documentNumber || '');
+
+                if (summaryContainer) {
+                    const message = escapeHtml(payload.message || 'La certificación biométrica se eliminó correctamente.');
+                    summaryContainer.innerHTML = `<div class="alert alert-success mb-2">${message}</div><p class="text-muted mb-0">Puede volver a capturar los datos biométricos en el formulario de registro.</p>`;
+                }
+
+                if (missingDataAlert) {
+                    missingDataAlert.classList.add('d-none');
+                    missingDataAlert.textContent = '';
+                }
+
+                if (registrationPatientId) {
+                    registrationPatientId.value = patientId || registrationPatientId.value;
+                }
+                if (registrationDocumentNumber && documentNumber) {
+                    registrationDocumentNumber.value = documentNumber;
+                }
+
+                if (checkinCertificationId) {
+                    checkinCertificationId.value = '';
+                }
+                if (checkinPatientId) {
+                    checkinPatientId.value = patientId || '';
+                }
+                if (checkinPatientLabel) {
+                    checkinPatientLabel.value = patientId || '';
+                }
+                if (checkinDocumentLabel) {
+                    const label = documentNumber ? `CEDULA · ${documentNumber}` : '';
+                    checkinDocumentLabel.value = label;
+                }
+
+                if (checkinStatusBadge) {
+                    checkinStatusBadge.textContent = 'En espera';
+                    checkinStatusBadge.classList.remove('bg-success', 'bg-warning');
+                    if (!checkinStatusBadge.classList.contains('bg-info')) {
+                        checkinStatusBadge.classList.add('bg-info');
+                    }
+                }
+
+                if (checkinInstructions) {
+                    checkinInstructions.textContent = 'Capture el rostro del paciente para validar su identidad. Si la certificación no tiene plantilla facial aún, se le solicitará la firma.';
+                }
+
+                verificationResult?.classList.add('d-none');
+                consentWrapper?.classList.add('d-none');
+                consentLink?.setAttribute('href', '#');
+
+                verificationSignaturePad?.clear?.();
+                verificationFaceCapture.reset();
+                verificationFaceCapture.syncInput();
+
+                setBadgeState(signatureBadge, 'pending');
+                setBadgeState(faceBadge, 'pending');
+            } catch (error) {
+                console.error('Error al eliminar la certificación', error);
+                alert(error instanceof Error ? error.message : 'No se pudo eliminar la certificación.');
+            } finally {
+                target.disabled = false;
             }
         });
 
