@@ -155,6 +155,8 @@ class ScenarioEngine
             $hasConsent = ($consentRecord['consent_status'] ?? '') === 'accepted';
         }
 
+        $normalizedIdentifier = $this->normalizeIdentifier($text);
+
         $facts = [
             'is_first_time' => $session === null && !$hasConsent,
             'state' => $context['state'] ?? 'inicio',
@@ -164,6 +166,10 @@ class ScenarioEngine
             'raw_message' => $rawMessage,
             'patient_found' => isset($context['patient']),
         ];
+
+        if ($normalizedIdentifier !== '') {
+            $facts['normalized_identifier'] = $normalizedIdentifier;
+        }
 
         if ($lastInteraction instanceof DateTimeImmutable) {
             $diff = $lastInteraction->diff($now);
@@ -253,8 +259,13 @@ class ScenarioEngine
                 }
 
                 $normalized = (string) ($facts['message'] ?? '');
+                if ($normalized !== '' && preg_match($regex, $normalized) === 1) {
+                    return true;
+                }
 
-                return $normalized !== '' && preg_match($regex, $normalized) === 1;
+                $identifier = (string) ($facts['normalized_identifier'] ?? '');
+
+                return $identifier !== '' && preg_match($regex, $identifier) === 1;
             case 'last_interaction_gt':
                 $minutes = (int) ($condition['minutes'] ?? 0);
                 if ($minutes <= 0) {
