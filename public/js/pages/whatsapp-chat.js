@@ -68,6 +68,8 @@
         var emptyChatState = root.querySelector('[data-chat-empty]');
         var header = root.querySelector('[data-chat-header]');
         var subtitle = header ? header.querySelector('[data-chat-subtitle]') : null;
+        var titleElement = root.querySelector('[data-chat-title]');
+        var lastSeenElement = root.querySelector('[data-chat-last-seen]');
         var unreadIndicator = root.querySelector('[data-unread-indicator]');
         var composer = root.querySelector('[data-chat-composer]');
         var messageForm = root.querySelector('[data-message-form]');
@@ -77,6 +79,12 @@
         var searchInput = root.querySelector('[data-conversation-search]');
         var newConversationForm = root.querySelector('[data-new-conversation-form]');
         var newConversationFeedback = root.querySelector('[data-new-conversation-feedback]');
+        var detailName = root.querySelector('[data-detail-name]');
+        var detailNumber = root.querySelector('[data-detail-number]');
+        var detailPatient = root.querySelector('[data-detail-patient]');
+        var detailHc = root.querySelector('[data-detail-hc]');
+        var detailLast = root.querySelector('[data-detail-last]');
+        var detailUnread = root.querySelector('[data-detail-unread]');
 
         function getConversationEndpoint(id) {
             return endpoints.conversation.replace('{id}', String(id));
@@ -187,21 +195,41 @@
             }
 
             data.messages.forEach(function (message) {
-                var wrapper = createElement('div', 'mb-3 d-flex');
-                var bubbleClass = message.direction === 'outbound' ? 'ms-auto bg-primary text-white' : 'me-auto bg-light';
-                var bubble = createElement('div', 'p-3 rounded-3 shadow-sm ' + bubbleClass);
+                var isOutbound = message.direction === 'outbound';
+                var cardClass = isOutbound
+                    ? 'card d-inline-block mb-3 float-end me-2 bg-primary text-white max-w-p80'
+                    : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80';
+
+                var card = createElement('div', cardClass);
+                var body = createElement('div', 'card-body');
+
+                var headerRow = createElement('div', 'd-flex justify-content-between align-items-center mb-2');
+                var senderName = isOutbound ? 'Tú' : 'Contacto';
+                if (message.sender_name) {
+                    senderName = message.sender_name;
+                }
+                headerRow.appendChild(createElement('span', 'fw-600' + (isOutbound ? ' text-white' : ''), senderName));
+                headerRow.appendChild(createElement('span', 'small ' + (isOutbound ? 'text-white-50' : 'text-muted'), formatDate(message.timestamp)));
+                body.appendChild(headerRow);
 
                 if (message.body) {
-                    var paragraph = createElement('p', 'mb-1');
+                    var paragraph = createElement('p', 'mb-2' + (isOutbound ? ' text-white' : ' text-dark'));
                     paragraph.textContent = message.body;
-                    bubble.appendChild(paragraph);
+                    body.appendChild(paragraph);
                 } else {
-                    bubble.appendChild(createElement('p', 'mb-1 fst-italic', '[Contenido sin vista previa]'));
+                    var placeholderClass = 'mb-2 fst-italic' + (isOutbound ? ' text-white-50' : ' text-muted');
+                    body.appendChild(createElement('p', placeholderClass, '[Contenido sin vista previa]'));
                 }
 
-                bubble.appendChild(createElement('div', 'small text-muted text-end mt-1', formatDate(message.timestamp)));
-                wrapper.appendChild(bubble);
-                messageContainer.appendChild(wrapper);
+                if (message.status) {
+                    var footerRow = createElement('div', 'd-flex justify-content-end small ' + (isOutbound ? 'text-white-50' : 'text-muted'));
+                    footerRow.appendChild(createElement('span', '', 'Estado: ' + message.status));
+                    body.appendChild(footerRow);
+                }
+
+                card.appendChild(body);
+                messageContainer.appendChild(card);
+                messageContainer.appendChild(createElement('div', 'clearfix'));
             });
 
             messageContainer.scrollTop = messageContainer.scrollHeight;
@@ -212,20 +240,63 @@
                 return;
             }
 
-            var titleElement = header.querySelector('.card-title');
+            var title = conversation.display_name || conversation.patient_full_name || conversation.wa_number;
             if (titleElement) {
-                titleElement.textContent = conversation.display_name || conversation.patient_full_name || conversation.wa_number;
+                titleElement.textContent = title;
             }
 
-            subtitle.textContent = conversation.wa_number;
+            subtitle.textContent = conversation.wa_number || '';
+
+            if (lastSeenElement) {
+                if (conversation.last_message_at) {
+                    lastSeenElement.textContent = 'Último mensaje: ' + formatDate(conversation.last_message_at);
+                } else {
+                    lastSeenElement.textContent = '';
+                }
+            }
+
+            var summary = state.conversations.find(function (item) {
+                return item.id === conversation.id;
+            });
 
             if (unreadIndicator) {
-                if (conversation.unread_count && conversation.unread_count > 0) {
-                    unreadIndicator.textContent = conversation.unread_count + ' sin leer';
+                var unreadCount = summary && summary.unread_count ? summary.unread_count : 0;
+                if (unreadCount > 0) {
+                    unreadIndicator.textContent = unreadCount + ' sin leer';
                     unreadIndicator.classList.remove('d-none');
                 } else {
                     unreadIndicator.classList.add('d-none');
                 }
+            }
+
+            if (summary && summary.unread_count) {
+                summary.unread_count = 0;
+                renderConversations();
+            }
+
+            if (detailName) {
+                detailName.textContent = title;
+            }
+
+            if (detailNumber) {
+                detailNumber.textContent = conversation.wa_number || '—';
+            }
+
+            if (detailPatient) {
+                detailPatient.textContent = conversation.patient_full_name || '—';
+            }
+
+            if (detailHc) {
+                detailHc.textContent = conversation.patient_hc_number || '—';
+            }
+
+            if (detailLast) {
+                detailLast.textContent = conversation.last_message_at ? formatDate(conversation.last_message_at) : '—';
+            }
+
+            if (detailUnread) {
+                var detailUnreadCount = summary && summary.unread_count ? summary.unread_count : 0;
+                detailUnread.textContent = detailUnreadCount > 0 ? String(detailUnreadCount) : '0';
             }
         }
 
@@ -260,25 +331,37 @@
             });
         }
 
-        function openConversation(id) {
+        function openConversation(id, options) {
             if (!endpoints.conversation) {
                 return;
             }
 
-            state.loadingConversation = true;
-            state.selectedId = id;
-            toggleComposer(false);
-            if (errorAlert) {
-                errorAlert.classList.add('d-none');
+            var opts = options || {};
+            var silent = !!opts.silent;
+
+            if (state.loadingConversation && !silent) {
+                return;
             }
-            renderConversations();
+
+            state.selectedId = id;
+
+            if (!silent) {
+                state.loadingConversation = true;
+                toggleComposer(false);
+                if (errorAlert) {
+                    errorAlert.classList.add('d-none');
+                }
+                renderConversations();
+            }
 
             fetch(getConversationEndpoint(id), {
                 headers: {
                     'Accept': 'application/json'
                 }
             }).then(function (response) {
-                state.loadingConversation = false;
+                if (!silent) {
+                    state.loadingConversation = false;
+                }
                 return response.json();
             }).then(function (payload) {
                 if (!payload || !payload.ok) {
@@ -288,14 +371,18 @@
                 updateHeader(payload.data);
                 renderMessages(payload.data);
             }).catch(function (error) {
-                state.loadingConversation = false;
-                state.selectedId = null;
-                console.error('No fue posible cargar la conversación', error);
-                toggleComposer(true);
-                renderConversations();
-                if (errorAlert) {
-                    errorAlert.textContent = error.message || 'No fue posible cargar la conversación seleccionada.';
-                    errorAlert.classList.remove('d-none');
+                if (!silent) {
+                    state.loadingConversation = false;
+                    state.selectedId = null;
+                    console.error('No fue posible cargar la conversación', error);
+                    toggleComposer(true);
+                    renderConversations();
+                    if (errorAlert) {
+                        errorAlert.textContent = error.message || 'No fue posible cargar la conversación seleccionada.';
+                        errorAlert.classList.remove('d-none');
+                    }
+                } else {
+                    console.error('No fue posible actualizar la conversación en segundo plano', error);
                 }
             });
         }
@@ -415,7 +502,7 @@
                         messageInput.value = '';
                     }
                     loadConversations();
-                    openConversation(state.selectedId);
+                    openConversation(state.selectedId, { silent: true });
                 }).catch(function (error) {
                     console.error('No fue posible enviar el mensaje', error);
                     if (errorAlert) {
@@ -435,7 +522,32 @@
             }, 300));
         }
 
+        var autoRefreshId = null;
+
+        function startAutoRefresh() {
+            if (autoRefreshId !== null) {
+                return;
+            }
+
+            autoRefreshId = window.setInterval(function () {
+                loadConversations();
+                if (state.selectedId) {
+                    openConversation(state.selectedId, { silent: true });
+                }
+            }, 5000);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshId !== null) {
+                window.clearInterval(autoRefreshId);
+                autoRefreshId = null;
+            }
+        }
+
+        window.addEventListener('beforeunload', stopAutoRefresh);
+
         toggleComposer(true);
         loadConversations();
+        startAutoRefresh();
     });
 })();
