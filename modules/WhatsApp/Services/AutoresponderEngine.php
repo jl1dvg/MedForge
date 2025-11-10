@@ -361,9 +361,6 @@ class AutoresponderEngine
             }
 
             $patient = $this->patientLookup->findLocalByHistoryNumber($value);
-            if ($patient === null && ($condition['source'] ?? 'any') !== 'local') {
-                $patient = $this->patientLookup->lookupInRegistry($value);
-            }
 
             if ($patient === null) {
                 return false;

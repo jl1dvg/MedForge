@@ -16,6 +16,8 @@ El navbar se reorganizó siguiendo el enfoque por roles internos del Modelo B. C
 
 3. **Atención al paciente**
    - Lista de Pacientes (`/pacientes`).
+   - Agendamiento (`/turnoAgenda/agenda-doctor/index`).
+   - Certificación biométrica (`/pacientes/certificaciones`, permisos de verificación de pacientes).
    - Chat de WhatsApp para seguimiento directo (`/whatsapp/chat`, permisos administrativos).
 
 4. **Operaciones clínicas**

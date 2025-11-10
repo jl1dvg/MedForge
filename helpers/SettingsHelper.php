@@ -246,25 +246,6 @@ class SettingsHelper
                         'title' => 'Protección de datos y plantillas',
                         'description' => 'Controla la verificación de identidad, el consentimiento y las plantillas enriquecidas enviadas por el autorespondedor.',
                         'fields' => [
-                            self::textField(
-                                'whatsapp_registry_lookup_url',
-                                'Endpoint del Registro Civil',
-                                false,
-                                'URL del servicio externo para validar cédulas. Usa {{cedula}} como placeholder.'
-                            ),
-                            self::passwordField(
-                                'whatsapp_registry_token',
-                                'Token API Registro Civil'
-                            ),
-                            array_merge(
-                                self::numberField(
-                                    'whatsapp_registry_timeout',
-                                    'Tiempo de espera del API (segundos)',
-                                    10,
-                                    'Define el tiempo máximo de espera antes de marcar la consulta como fallida.'
-                                ),
-                                ['min' => 1, 'max' => 60]
-                            ),
                             array_merge(
                                 self::textareaField(
                                     'whatsapp_data_consent_message',
