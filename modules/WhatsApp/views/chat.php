@@ -27,7 +27,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
 
 <section class="content">
     <div
-        class="row g-3"
+        class="row"
         id="whatsapp-chat-root"
         data-enabled="<?= $isIntegrationEnabled ? '1' : '0'; ?>"
         data-endpoint-list="/whatsapp/api/conversations"
@@ -35,7 +35,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         data-endpoint-send="/whatsapp/api/messages"
         data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
     >
-        <div class="col-12 col-lg-3 col-xl-3 col-xxl-3">
+        <div class="col-lg-3 col-12">
             <div class="box h-100">
                 <div class="box-header">
                     <ul class="nav nav-tabs customtab nav-justified" role="tablist">
@@ -102,7 +102,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                 </div>
             </div>
         </div>
-        <div class="col-12 col-lg-6 col-xl-6 col-xxl-6">
+        <div class="col-xxxl-8 col-lg-7 col-12">
             <div class="box h-100">
                 <div class="box-header">
                     <div class="media align-items-top p-0" data-chat-header>
@@ -134,7 +134,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                         </div>
                     </div>
                 </div>
-                <div class="box-footer no-border" data-chat-composer style="position: sticky; bottom: 0; background: #fff; z-index: 10; border-top: 1px solid #e5e7eb; box-shadow: 0 -2px 4px rgba(0,0,0,0.04);">
+                <div class="box-footer no-border" data-chat-composer>
                     <form class="d-md-flex d-block justify-content-between align-items-center bg-white p-5 rounded10 b-1 overflow-hidden" data-message-form>
                         <textarea class="form-control b-0 py-10 mb-md-0 mb-3 me-md-3" id="chatMessage" rows="2" placeholder="Escribe algo..." <?= $isIntegrationEnabled ? '' : 'disabled'; ?> required></textarea>
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -151,7 +151,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                 </div>
             </div>
         </div>
-        <div class="col-12 col-lg-3 col-xl-3 col-xxl-3">
+        <div class="col-xxxl-4 col-lg-5 col-12">
             <div class="box h-100">
                 <div class="box-header no-border">
                     <h4 class="box-title">Resumen de la integración</h4>
