@@ -1,0 +1,1709 @@
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184381
+✘ No hay billing_main registrado para el form_id: 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184381
+✘ No hay billing_main registrado para el form_id: 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 39
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183887
+✘ No hay billing_main registrado para el form_id: 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184381
+✘ No hay billing_main registrado para el form_id: 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-05 ==
+Cantidad de formIds encontrados: 10
+↪ form_id 187384 | Afiliacion: ISSPOL | Billing ID: 10
+Procesando form_id 187384
+✔ billing_main encontrado: billing_id = 10 para el form_id: 187384
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 187384...
+← Finalizó intento de generación de Excel para 187384, resultado: Éxito
+✔ Excel generado para 187384
+↪ form_id 189906 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 189906
+✘ No hay billing_main registrado para el form_id: 189906
+↪ form_id 190379 | Afiliacion: ISSPOL | Billing ID: 16
+Procesando form_id 190379
+✔ billing_main encontrado: billing_id = 16 para el form_id: 190379
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 190379...
+← Finalizó intento de generación de Excel para 190379, resultado: Éxito
+✔ Excel generado para 190379
+↪ form_id 189683 | Afiliacion: ISSPOL | Billing ID: 15
+Procesando form_id 189683
+✔ billing_main encontrado: billing_id = 15 para el form_id: 189683
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 189683...
+← Finalizó intento de generación de Excel para 189683, resultado: Éxito
+✔ Excel generado para 189683
+↪ form_id 191058 | Afiliacion: ISSPOL | Billing ID: 51
+Procesando form_id 191058
+✔ billing_main encontrado: billing_id = 51 para el form_id: 191058
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 191058...
+← Finalizó intento de generación de Excel para 191058, resultado: Éxito
+✔ Excel generado para 191058
+↪ form_id 191059 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191059
+✘ No hay billing_main registrado para el form_id: 191059
+↪ form_id 191351 | Afiliacion: ISSPOL | Billing ID: 50
+Procesando form_id 191351
+✔ billing_main encontrado: billing_id = 50 para el form_id: 191351
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 191351...
+← Finalizó intento de generación de Excel para 191351, resultado: Éxito
+✔ Excel generado para 191351
+↪ form_id 191667 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191667
+✘ No hay billing_main registrado para el form_id: 191667
+↪ form_id 192455 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 192455
+✘ No hay billing_main registrado para el form_id: 192455
+↪ form_id 191501 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191501
+✘ No hay billing_main registrado para el form_id: 191501
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 40
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: 78
+Procesando form_id 183887
+✔ billing_main encontrado: billing_id = 78 para el form_id: 183887
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183887...
+← Finalizó intento de generación de Excel para 183887, resultado: Éxito
+✔ Excel generado para 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: 79
+Procesando form_id 184381
+✔ billing_main encontrado: billing_id = 79 para el form_id: 184381
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 184381...
+← Finalizó intento de generación de Excel para 184381, resultado: Éxito
+✔ Excel generado para 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 179391 | Afiliacion: ISSPOL | Billing ID: 80
+Procesando form_id 179391
+✔ billing_main encontrado: billing_id = 80 para el form_id: 179391
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 179391...
+← Finalizó intento de generación de Excel para 179391, resultado: Éxito
+✔ Excel generado para 179391
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 40
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: 78
+Procesando form_id 183887
+✔ billing_main encontrado: billing_id = 78 para el form_id: 183887
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183887...
+← Finalizó intento de generación de Excel para 183887, resultado: Éxito
+✔ Excel generado para 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: 79
+Procesando form_id 184381
+✔ billing_main encontrado: billing_id = 79 para el form_id: 184381
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 184381...
+← Finalizó intento de generación de Excel para 184381, resultado: Éxito
+✔ Excel generado para 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 179391 | Afiliacion: ISSPOL | Billing ID: 80
+Procesando form_id 179391
+✔ billing_main encontrado: billing_id = 80 para el form_id: 179391
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 179391...
+← Finalizó intento de generación de Excel para 179391, resultado: Éxito
+✔ Excel generado para 179391
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 40
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: 78
+Procesando form_id 183887
+✔ billing_main encontrado: billing_id = 78 para el form_id: 183887
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183887...
+← Finalizó intento de generación de Excel para 183887, resultado: Éxito
+✔ Excel generado para 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: 79
+Procesando form_id 184381
+✔ billing_main encontrado: billing_id = 79 para el form_id: 184381
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 184381...
+← Finalizó intento de generación de Excel para 184381, resultado: Éxito
+✔ Excel generado para 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 179391 | Afiliacion: ISSPOL | Billing ID: 80
+Procesando form_id 179391
+✔ billing_main encontrado: billing_id = 80 para el form_id: 179391
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 179391...
+← Finalizó intento de generación de Excel para 179391, resultado: Éxito
+✔ Excel generado para 179391
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 40
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: 78
+Procesando form_id 183887
+✔ billing_main encontrado: billing_id = 78 para el form_id: 183887
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183887...
+← Finalizó intento de generación de Excel para 183887, resultado: Éxito
+✔ Excel generado para 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: 79
+Procesando form_id 184381
+✔ billing_main encontrado: billing_id = 79 para el form_id: 184381
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 184381...
+← Finalizó intento de generación de Excel para 184381, resultado: Éxito
+✔ Excel generado para 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 179391 | Afiliacion: ISSPOL | Billing ID: 80
+Procesando form_id 179391
+✔ billing_main encontrado: billing_id = 80 para el form_id: 179391
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 179391...
+← Finalizó intento de generación de Excel para 179391, resultado: Éxito
+✔ Excel generado para 179391
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-04 ==
+Cantidad de formIds encontrados: 40
+↪ form_id 172615 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 172615
+✘ No hay billing_main registrado para el form_id: 172615
+↪ form_id 183887 | Afiliacion: ISSPOL | Billing ID: 78
+Procesando form_id 183887
+✔ billing_main encontrado: billing_id = 78 para el form_id: 183887
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183887...
+← Finalizó intento de generación de Excel para 183887, resultado: Éxito
+✔ Excel generado para 183887
+↪ form_id 182488 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182488
+✘ No hay billing_main registrado para el form_id: 182488
+↪ form_id 183476 | Afiliacion: ISSPOL | Billing ID: 56
+Procesando form_id 183476
+✔ billing_main encontrado: billing_id = 56 para el form_id: 183476
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183476...
+← Finalizó intento de generación de Excel para 183476, resultado: Éxito
+✔ Excel generado para 183476
+↪ form_id 183083 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183083
+✘ No hay billing_main registrado para el form_id: 183083
+↪ form_id 183056 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183056
+✘ No hay billing_main registrado para el form_id: 183056
+↪ form_id 181469 | Afiliacion: ISSPOL | Billing ID: 38
+Procesando form_id 181469
+✔ billing_main encontrado: billing_id = 38 para el form_id: 181469
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 181469...
+← Finalizó intento de generación de Excel para 181469, resultado: Éxito
+✔ Excel generado para 181469
+↪ form_id 184634 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 184634
+✘ No hay billing_main registrado para el form_id: 184634
+↪ form_id 182489 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182489
+✘ No hay billing_main registrado para el form_id: 182489
+↪ form_id 185674 | Afiliacion: ISSPOL | Billing ID: 52
+Procesando form_id 185674
+✔ billing_main encontrado: billing_id = 52 para el form_id: 185674
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185674...
+← Finalizó intento de generación de Excel para 185674, resultado: Éxito
+✔ Excel generado para 185674
+↪ form_id 185319 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185319
+✘ No hay billing_main registrado para el form_id: 185319
+↪ form_id 185926 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185926
+✘ No hay billing_main registrado para el form_id: 185926
+↪ form_id 176077 | Afiliacion: ISSPOL | Billing ID: 39
+Procesando form_id 176077
+✔ billing_main encontrado: billing_id = 39 para el form_id: 176077
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 176077...
+← Finalizó intento de generación de Excel para 176077, resultado: Éxito
+✔ Excel generado para 176077
+↪ form_id 183844 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183844
+✘ No hay billing_main registrado para el form_id: 183844
+↪ form_id 183974 | Afiliacion: ISSPOL | Billing ID: 36
+Procesando form_id 183974
+✔ billing_main encontrado: billing_id = 36 para el form_id: 183974
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183974...
+← Finalizó intento de generación de Excel para 183974, resultado: Éxito
+✔ Excel generado para 183974
+↪ form_id 185920 | Afiliacion: ISSPOL | Billing ID: 4
+Procesando form_id 185920
+✔ billing_main encontrado: billing_id = 4 para el form_id: 185920
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 185920...
+← Finalizó intento de generación de Excel para 185920, resultado: Éxito
+✔ Excel generado para 185920
+↪ form_id 185606 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185606
+✘ No hay billing_main registrado para el form_id: 185606
+↪ form_id 184381 | Afiliacion: ISSPOL | Billing ID: 79
+Procesando form_id 184381
+✔ billing_main encontrado: billing_id = 79 para el form_id: 184381
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 184381...
+← Finalizó intento de generación de Excel para 184381, resultado: Éxito
+✔ Excel generado para 184381
+↪ form_id 183871 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183871
+✘ No hay billing_main registrado para el form_id: 183871
+↪ form_id 183913 | Afiliacion: ISSPOL | Billing ID: 57
+Procesando form_id 183913
+✔ billing_main encontrado: billing_id = 57 para el form_id: 183913
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183913...
+← Finalizó intento de generación de Excel para 183913, resultado: Éxito
+✔ Excel generado para 183913
+↪ form_id 181189 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 181189
+✘ No hay billing_main registrado para el form_id: 181189
+↪ form_id 186637 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186637
+✘ No hay billing_main registrado para el form_id: 186637
+↪ form_id 186649 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 186649
+✘ No hay billing_main registrado para el form_id: 186649
+↪ form_id 183057 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 183057
+✘ No hay billing_main registrado para el form_id: 183057
+↪ form_id 185592 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185592
+✘ No hay billing_main registrado para el form_id: 185592
+↪ form_id 182226 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182226
+✘ No hay billing_main registrado para el form_id: 182226
+↪ form_id 186676 | Afiliacion: ISSPOL | Billing ID: 41
+Procesando form_id 186676
+✔ billing_main encontrado: billing_id = 41 para el form_id: 186676
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 186676...
+← Finalizó intento de generación de Excel para 186676, resultado: Éxito
+✔ Excel generado para 186676
+↪ form_id 183821 | Afiliacion: ISSPOL | Billing ID: 48
+Procesando form_id 183821
+✔ billing_main encontrado: billing_id = 48 para el form_id: 183821
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 183821...
+← Finalizó intento de generación de Excel para 183821, resultado: Éxito
+✔ Excel generado para 183821
+↪ form_id 185212 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 185212
+✘ No hay billing_main registrado para el form_id: 185212
+↪ form_id 188114 | Afiliacion: ISSPOL | Billing ID: 55
+Procesando form_id 188114
+✔ billing_main encontrado: billing_id = 55 para el form_id: 188114
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188114...
+← Finalizó intento de generación de Excel para 188114, resultado: Éxito
+✔ Excel generado para 188114
+↪ form_id 188119 | Afiliacion: ISSPOL | Billing ID: 54
+Procesando form_id 188119
+✔ billing_main encontrado: billing_id = 54 para el form_id: 188119
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188119...
+← Finalizó intento de generación de Excel para 188119, resultado: Éxito
+✔ Excel generado para 188119
+↪ form_id 188122 | Afiliacion: ISSPOL | Billing ID: 2
+Procesando form_id 188122
+✔ billing_main encontrado: billing_id = 2 para el form_id: 188122
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188122...
+← Finalizó intento de generación de Excel para 188122, resultado: Éxito
+✔ Excel generado para 188122
+↪ form_id 179391 | Afiliacion: ISSPOL | Billing ID: 80
+Procesando form_id 179391
+✔ billing_main encontrado: billing_id = 80 para el form_id: 179391
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 179391...
+← Finalizó intento de generación de Excel para 179391, resultado: Éxito
+✔ Excel generado para 179391
+↪ form_id 187857 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187857
+✘ No hay billing_main registrado para el form_id: 187857
+↪ form_id 188088 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188088
+✘ No hay billing_main registrado para el form_id: 188088
+↪ form_id 188950 | Afiliacion: ISSPOL | Billing ID: 49
+Procesando form_id 188950
+✔ billing_main encontrado: billing_id = 49 para el form_id: 188950
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188950...
+← Finalizó intento de generación de Excel para 188950, resultado: Éxito
+✔ Excel generado para 188950
+↪ form_id 188467 | Afiliacion: ISSPOL | Billing ID: 43
+Procesando form_id 188467
+✔ billing_main encontrado: billing_id = 43 para el form_id: 188467
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188467...
+← Finalizó intento de generación de Excel para 188467, resultado: Éxito
+✔ Excel generado para 188467
+↪ form_id 188072 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188072
+✘ No hay billing_main registrado para el form_id: 188072
+↪ form_id 187598 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 187598
+✘ No hay billing_main registrado para el form_id: 187598
+↪ form_id 188789 | Afiliacion: ISSPOL | Billing ID: 53
+Procesando form_id 188789
+✔ billing_main encontrado: billing_id = 53 para el form_id: 188789
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 188789...
+← Finalizó intento de generación de Excel para 188789, resultado: Éxito
+✔ Excel generado para 188789
+== Exportando planillas del mes 2025-05 ==
+Cantidad de formIds encontrados: 16
+↪ form_id 187384 | Afiliacion: ISSPOL | Billing ID: 10
+Procesando form_id 187384
+✔ billing_main encontrado: billing_id = 10 para el form_id: 187384
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 187384...
+← Finalizó intento de generación de Excel para 187384, resultado: Éxito
+✔ Excel generado para 187384
+↪ form_id 189906 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 189906
+✘ No hay billing_main registrado para el form_id: 189906
+↪ form_id 190379 | Afiliacion: ISSPOL | Billing ID: 16
+Procesando form_id 190379
+✔ billing_main encontrado: billing_id = 16 para el form_id: 190379
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 190379...
+← Finalizó intento de generación de Excel para 190379, resultado: Éxito
+✔ Excel generado para 190379
+↪ form_id 189683 | Afiliacion: ISSPOL | Billing ID: 15
+Procesando form_id 189683
+✔ billing_main encontrado: billing_id = 15 para el form_id: 189683
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 189683...
+← Finalizó intento de generación de Excel para 189683, resultado: Éxito
+✔ Excel generado para 189683
+↪ form_id 191058 | Afiliacion: ISSPOL | Billing ID: 51
+Procesando form_id 191058
+✔ billing_main encontrado: billing_id = 51 para el form_id: 191058
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 191058...
+← Finalizó intento de generación de Excel para 191058, resultado: Éxito
+✔ Excel generado para 191058
+↪ form_id 191059 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191059
+✘ No hay billing_main registrado para el form_id: 191059
+↪ form_id 191351 | Afiliacion: ISSPOL | Billing ID: 50
+Procesando form_id 191351
+✔ billing_main encontrado: billing_id = 50 para el form_id: 191351
+Afiliación: ISSPOL
+→ Iniciando generación de Excel para 191351...
+← Finalizó intento de generación de Excel para 191351, resultado: Éxito
+✔ Excel generado para 191351
+↪ form_id 191667 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191667
+✘ No hay billing_main registrado para el form_id: 191667
+↪ form_id 192455 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 192455
+✘ No hay billing_main registrado para el form_id: 192455
+↪ form_id 192868 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 192868
+✘ No hay billing_main registrado para el form_id: 192868
+↪ form_id 192033 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 192033
+✘ No hay billing_main registrado para el form_id: 192033
+↪ form_id 182750 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 182750
+✘ No hay billing_main registrado para el form_id: 182750
+↪ form_id 188869 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 188869
+✘ No hay billing_main registrado para el form_id: 188869
+↪ form_id 193087 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 193087
+✘ No hay billing_main registrado para el form_id: 193087
+↪ form_id 191501 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 191501
+✘ No hay billing_main registrado para el form_id: 191501
+↪ form_id 193351 | Afiliacion: ISSPOL | Billing ID: NO
+Procesando form_id 193351
+✘ No hay billing_main registrado para el form_id: 193351
