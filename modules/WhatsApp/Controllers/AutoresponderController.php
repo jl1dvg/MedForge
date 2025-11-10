@@ -8,13 +8,19 @@ use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Services\TemplateManager;
 use PDO;
+use Throwable;
+use function bin2hex;
+use function hash_equals;
 use function is_array;
 use function is_string;
 use function json_decode;
-use Throwable;
+use function random_bytes;
+use function uniqid;
 
 class AutoresponderController extends BaseController
 {
+    private const CSRF_SESSION_KEY = 'whatsapp_autoresponder_csrf';
+
     private WhatsAppSettings $settings;
     private AutoresponderFlowRepository $flowRepository;
 
@@ -58,6 +64,8 @@ class AutoresponderController extends BaseController
             $templatesError = $exception->getMessage();
         }
 
+        $csrfToken = $this->generateCsrfToken();
+
         $this->render(BASE_PATH . '/modules/WhatsApp/views/autoresponder.php', [
             'pageTitle' => 'Flujo de autorespuesta de WhatsApp',
             'config' => $config,
@@ -66,6 +74,7 @@ class AutoresponderController extends BaseController
             'status' => $status,
             'templates' => $templates,
             'templatesError' => $templatesError,
+            'csrfToken' => $csrfToken,
             'scripts' => ['js/pages/whatsapp-autoresponder.js'],
             'styles' => ['css/pages/whatsapp-autoresponder.css'],
         ]);
@@ -75,6 +84,16 @@ class AutoresponderController extends BaseController
     {
         $this->requireAuth();
         $this->requirePermission(['settings.manage', 'administrativo']);
+
+        if (!$this->validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            $_SESSION['whatsapp_autoresponder_status'] = [
+                'type' => 'danger',
+                'message' => 'La sesión de seguridad expiró. Refresca la página e inténtalo nuevamente.',
+            ];
+            header('Location: /whatsapp/autoresponder');
+
+            return;
+        }
 
         $payload = $_POST['flow_payload'] ?? '';
         $decoded = is_string($payload) ? json_decode($payload, true) : null;
@@ -119,5 +138,36 @@ class AutoresponderController extends BaseController
         }
 
         header('Location: /whatsapp/autoresponder');
+    }
+
+    private function generateCsrfToken(): string
+    {
+        try {
+            $token = bin2hex(random_bytes(32));
+        } catch (Throwable) {
+            try {
+                $token = bin2hex(random_bytes(16));
+            } catch (Throwable) {
+                $token = bin2hex(uniqid('', true));
+            }
+        }
+
+        $_SESSION[self::CSRF_SESSION_KEY] = $token;
+
+        return $token;
+    }
+
+    private function validateCsrfToken(string $submittedToken): bool
+    {
+        $storedToken = $_SESSION[self::CSRF_SESSION_KEY] ?? null;
+        unset($_SESSION[self::CSRF_SESSION_KEY]);
+
+        if (!is_string($storedToken) || $storedToken === '') {
+            return false;
+        }
+
+        return is_string($submittedToken)
+            && $submittedToken !== ''
+            && hash_equals($storedToken, $submittedToken);
     }
 }

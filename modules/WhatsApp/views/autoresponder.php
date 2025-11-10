@@ -51,7 +51,9 @@ $keywordLegend = $flow['meta']['keywordLegend'] ?? [];
 <?php endif; ?>
 
 <form method="post" action="/whatsapp/autoresponder" data-autoresponder-form>
-    <input type="hidden" name="csrf_token" value="<?= $escape(csrf_token()); ?>">
+    <?php if (!empty($csrfToken)): ?>
+        <input type="hidden" name="csrf_token" value="<?= $escape($csrfToken); ?>">
+    <?php endif; ?>
     <input type="hidden" name="flow_payload" id="flow_payload" value="">
     <input type="hidden" data-flow-source value="<?= $flowJson; ?>">
     <input type="hidden" data-template-catalog value="<?= $escape(json_encode($templates, JSON_UNESCAPED_UNICODE) ?: '[]'); ?>">
