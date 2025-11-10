@@ -1,0 +1,283 @@
+{
+  "consent": {
+    "intro_lines": [
+      "Por favor, antes de continuar, ayúdanos con unos datos.",
+      "Para continuar con la conversación, debes aceptar nuestros Términos, Condiciones y Aviso de Privacidad: 👉 {{terms_url}}",
+      "¿Continuamos?"
+    ],
+    "consent_prompt": "Confirmamos tu identidad y protegemos tus datos personales para brindarte un mejor servicio en Clínica Internacional de la Visión del Ecuador. ¿Autorizas el uso de tu información para gestionar tus servicios médicos?",
+    "consent_retry": "Necesitamos tu confirmación para continuar. Usa los botones enviados o responde \"sí, autorizo\" si estás de acuerdo.",
+    "consent_declined": "Entendido. No utilizaremos tus datos hasta que lo autorices. Si deseas continuar responde \"sí\" o comunícate con nuestro equipo.",
+    "identifier_request": "Escribe tu número de historia clínica 🪪",
+    "identifier_retry": "No encontramos tu registro con el número de historia clínica proporcionado. Verifícalo y vuelve a intentarlo.",
+    "confirmation_check": "¿Está seguro de que la información ingresada es correcta? ✅",
+    "confirmation_review": "Por favor, verifica si tu número de historia clínica {{history_number}} está correcto antes de continuar. ¡Gracias por tu atención! 😊",
+    "confirmation_menu": "Cuando confirmes la información, responde con la opción que necesites o escribe \"menu\" para ver las alternativas disponibles.",
+    "confirmation_recorded": "Tu autorización quedó registrada en nuestro sistema. Continuemos con la atención. ✅",
+    "buttons": {
+      "accept": "Sí, autorizo",
+      "decline": "No, gracias"
+    }
+  },
+  "entry": {
+    "title": "Mensaje de bienvenida",
+    "description": "Primer contacto que recibe toda persona que escribe al canal.",
+    "keywords": [
+      "menu",
+      "inicio",
+      "hola",
+      "buen dia",
+      "buenos dias",
+      "buenas tardes",
+      "buenas noches",
+      "start"
+    ],
+    "messages": [
+      {
+        "type": "buttons",
+        "body": "Selecciona una opción:",
+        "buttons": [
+          {
+            "id": "menu_agendar",
+            "title": "Agendar cita"
+          },
+          {
+            "id": "menu_resultados",
+            "title": "Resultados"
+          }
+        ]
+      }
+    ]
+  },
+  "options": [
+    {
+      "id": "information",
+      "title": "Opción 1 · Obtener información",
+      "description": "Respuestas que se disparan con las palabras clave listadas.",
+      "keywords": [
+        "1",
+        "opcion 1",
+        "informacion",
+        "informacion general",
+        "obtener informacion",
+        "informacion cive"
+      ],
+      "messages": [
+        {
+          "type": "text",
+          "body": "Obtener Información"
+        },
+        {
+          "type": "text",
+          "body": "Selecciona la información que deseas conocer:\n• Procedimientos oftalmológicos disponibles.\n• Servicios complementarios como óptica y exámenes especializados.\n• Seguros y convenios con los que trabajamos.\n\nEscribe 'horarios' para conocer los horarios de atención o 'menu' para volver al inicio."
+        }
+      ],
+      "followup": "Sugiere escribir 'horarios' para continuar o 'menu' para volver al inicio."
+    },
+    {
+      "id": "schedule",
+      "title": "Opción 2 · Horarios de atención",
+      "description": "Horarios disponibles para cada sede.",
+      "keywords": [
+        "2",
+        "opcion 2",
+        "horarios",
+        "horario",
+        "horario atencion",
+        "horarios atencion",
+        "horarios de atencion"
+      ],
+      "messages": [
+        {
+          "type": "text",
+          "body": "Horarios de atención 🕖\nVilla Club: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\nCeibos: Lunes a Viernes 09h00 - 18h00, Sábados 09h00 - 13h00.\n\nSi necesitas otra información responde 'menu'."
+        }
+      ],
+      "followup": "Indica que el usuario puede responder 'menu' para otras opciones."
+    },
+    {
+      "id": "locations",
+      "title": "Opción 3 · Ubicaciones",
+      "description": "Direcciones de las sedes disponibles.",
+      "keywords": [
+        "3",
+        "opcion 3",
+        "ubicacion",
+        "ubicaciones",
+        "sedes",
+        "direccion",
+        "direcciones"
+      ],
+      "messages": [
+        {
+          "type": "text",
+          "body": "Nuestras sedes 📍\nVilla Club: Km. 12.5 Av. León Febres Cordero, Villa Club Etapa Flora.\nCeibos: C.C. Ceibos Center, piso 2, consultorio 210.\n\nResponde 'horarios' para conocer los horarios o 'menu' para otras opciones."
+        }
+      ],
+      "followup": "Recomienda escribir 'horarios' o 'menu' según la necesidad."
+    },
+    {
+      "id": "menu_agendar",
+      "title": "Agendar cita",
+      "description": "",
+      "keywords": [
+        "agendar",
+        "cita"
+      ],
+      "messages": [
+        {
+          "type": "text",
+          "body": "Estamos listos para agendar tu cita."
+        }
+      ],
+      "followup": ""
+    }
+  ],
+  "fallback": {
+    "title": "Sin coincidencia",
+    "description": "Mensaje que se envía cuando ninguna palabra clave coincide.",
+    "messages": [
+      {
+        "type": "text",
+        "body": "No logré identificar tu solicitud. Responde 'menu' para ver las opciones disponibles o 'horarios' para conocer nuestros horarios de atención."
+      }
+    ],
+    "keywords": []
+  },
+  "scenarios": [
+    {
+      "id": "n",
+      "name": "Nuevo paciente",
+      "description": "El paciente viene por primera vez",
+      "conditions": [
+        {
+          "type": "always"
+        }
+      ],
+      "actions": [
+        {
+          "type": "send_message",
+          "message": {
+            "type": "text",
+            "body": "Por favor, antes de continuar, ayúdanos con unos datos.\nPara continuar con la conversación, debes aceptar nuestros Términos, Condiciones y Aviso de Privacidad: 👉 {{terms_url}},\n¿Continuamos?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "acceso_menu_directo",
+      "name": "Acceso directo al menú",
+      "description": "Permite abrir el menú cuando el contacto escribe un atajo como \"menu\" u \"hola\".",
+      "conditions": [
+        {
+          "type": "has_consent",
+          "value": true
+        },
+        {
+          "type": "message_in",
+          "values": [
+            "menu",
+            "inicio",
+            "hola",
+            "buen dia",
+            "buenos dias",
+            "buenas tardes",
+            "buenas noches",
+            "start"
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_state",
+          "state": "menu_principal"
+        },
+        {
+          "type": "goto_menu"
+        }
+      ]
+    },
+    {
+      "id": "fallback",
+      "name": "Fallback",
+      "description": "Cuando ninguna regla aplica.",
+      "conditions": [
+        {
+          "type": "always"
+        }
+      ],
+      "actions": [
+        {
+          "type": "send_message",
+          "message": {
+            "type": "text",
+            "body": "No te entendí. Escribe menú para ver opciones."
+          }
+        }
+      ]
+    }
+  ],
+  "menu": {
+    "title": "Menú principal",
+    "message": {
+      "type": "buttons",
+      "body": "Selecciona una opción:",
+      "buttons": [
+        {
+          "id": "menu_agendar",
+          "title": "Agendar cita"
+        },
+        {
+          "id": "menu_resultados",
+          "title": "Resultados"
+        }
+      ]
+    },
+    "options": [
+      {
+        "id": "menu_agendar",
+        "title": "Agendar cita",
+        "keywords": [
+          "agendar",
+          "cita"
+        ],
+        "actions": [
+          {
+            "type": "send_message",
+            "message": {
+              "type": "text",
+              "body": "Estamos listos para agendar tu cita."
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "variables": {
+    "cedula": {
+      "label": "Cédula",
+      "source": "context.cedula",
+      "persist": true
+    },
+    "telefono": {
+      "label": "Teléfono",
+      "source": "session.wa_number",
+      "persist": true
+    },
+    "nombre": {
+      "label": "Nombre completo",
+      "source": "patient.full_name",
+      "persist": false
+    },
+    "consentimiento": {
+      "label": "Consentimiento",
+      "source": "context.consent",
+      "persist": true
+    },
+    "estado": {
+      "label": "Estado",
+      "source": "context.state",
+      "persist": false
+    }
+  }
+}
