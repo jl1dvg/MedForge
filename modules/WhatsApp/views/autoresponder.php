@@ -116,6 +116,12 @@ foreach ($templateCatalog as $templateMeta) {
     $templateCategories[$category] = ($templateCategories[$category] ?? 0) + 1;
 }
 $templatesJson = htmlspecialchars(json_encode($templateCatalog, JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8');
+$editorState = [
+    'variables' => $editorFlow['variables'] ?? [],
+    'scenarios' => $editorFlow['scenarios'] ?? [],
+    'menu' => $editorFlow['menu'] ?? [],
+];
+$flowEditorJson = htmlspecialchars(json_encode($editorState, JSON_UNESCAPED_UNICODE) ?: '{}', ENT_QUOTES, 'UTF-8');
 
 $getConsentValue = static function (array $consent, string $key): string {
     $value = $consent[$key] ?? '';
@@ -677,190 +683,52 @@ switch ($statusType) {
                         <input type="hidden" name="template_catalog" value="<?= $templatesJson; ?>"
                                data-template-catalog>
                         <input type="hidden" name="flow_payload" id="flow_payload" value="">
+                        <script type="application/json" data-flow-bootstrap><?= $flowEditorJson; ?></script>
 
                         <div class="alert alert-danger d-none" data-validation-errors role="alert"></div>
 
-                        <div class="flow-step mb-4" data-section="entry">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <div class="box mb-4" data-variables-panel>
+                            <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <div>
-                                    <h5 class="mb-0">Mensaje de bienvenida</h5>
-                                    <p class="text-muted small mb-0">Se envía al iniciar la conversación o cuando
-                                        escriben "menú".</p>
+                                    <h5 class="mb-1">Variables y fuentes de datos</h5>
+                                    <p class="text-muted small mb-0">Configura de dónde se obtiene cada valor y si debe guardarse.</p>
                                 </div>
-                                <span class="small text-muted">Usa comas o saltos de línea para separar las palabras clave.</span>
-                            </div>
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Título interno</label>
-                                    <input type="text" class="form-control" data-field="title"
-                                           value="<?= $escape($editorEntry['title'] ?? 'Mensaje de bienvenida'); ?>">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Descripción</label>
-                                    <input type="text" class="form-control" data-field="description"
-                                           value="<?= $escape($editorEntry['description'] ?? 'Primer contacto que recibe el usuario.'); ?>">
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Palabras clave</label>
-                                    <textarea class="form-control" rows="2" data-field="keywords"
-                                              placeholder="menu, hola, inicio"><?= $escape(implode(", ", $editableKeywords($editorEntry))); ?></textarea>
-                                </div>
-                            </div>
-                            <div class="mt-3" data-messages>
-                                <?php foreach (($editorEntry['messages'] ?? []) as $message): ?>
-                                    <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
-                                <?php endforeach; ?>
-                            </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
-                                <i class="mdi mdi-plus"></i> Añadir respuesta
-                            </button>
-                        </div>
-
-                        <?php foreach ($editorOptions as $option): ?>
-                            <div class="flow-step mb-4 border-top pt-4" data-option>
-                                <input type="hidden" class="option-id" value="<?= $escape($option['id'] ?? ''); ?>">
-                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                    <div>
-                                        <h5 class="mb-0"><?= $escape($option['title'] ?? 'Opción personalizada'); ?></h5>
-                                        <p class="text-muted small mb-0">Palabras clave que disparan esta respuesta
-                                            específica.</p>
-                                    </div>
-                                    <span class="badge bg-success-light text-success">Opción del menú</span>
-                                </div>
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="form-label">Título interno</label>
-                                        <input type="text" class="form-control" data-field="title"
-                                               value="<?= $escape($option['title'] ?? ''); ?>">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Descripción</label>
-                                        <input type="text" class="form-control" data-field="description"
-                                               value="<?= $escape($option['description'] ?? ''); ?>">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Palabras clave</label>
-                                        <textarea class="form-control" rows="2" data-field="keywords"
-                                                  placeholder="1, opcion 1, informacion"><?= $escape(implode(", ", $editableKeywords($option))); ?></textarea>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label">Siguiente paso sugerido</label>
-                                        <input type="text" class="form-control" data-field="followup"
-                                               value="<?= $escape($option['followup'] ?? ''); ?>"
-                                               placeholder="Ej. Responde 'menu' para volver al inicio">
-                                    </div>
-                                </div>
-                                <div class="mt-3" data-messages>
-                                    <?php foreach (($option['messages'] ?? []) as $message): ?>
-                                        <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
-                                    <?php endforeach; ?>
-                                </div>
-                                <button type="button" class="btn btn-outline-primary btn-sm mt-3"
-                                        data-action="add-message">
-                                    <i class="mdi mdi-plus"></i> Añadir respuesta
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-variables">
+                                    <i class="mdi mdi-restore"></i> Restaurar
                                 </button>
                             </div>
-                        <?php endforeach; ?>
-
-                        <div class="flow-step border-top pt-4" data-section="fallback">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                                <div>
-                                    <h5 class="mb-0">Fallback</h5>
-                                    <p class="text-muted small mb-0">Mensaje cuando no se reconoce ninguna palabra
-                                        clave.</p>
-                                </div>
-                                <span class="badge bg-warning text-dark">Rescate</span>
-                            </div>
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Título interno</label>
-                                    <input type="text" class="form-control" data-field="title"
-                                           value="<?= $escape($editorFallback['title'] ?? 'Sin coincidencia'); ?>">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Descripción</label>
-                                    <input type="text" class="form-control" data-field="description"
-                                           value="<?= $escape($editorFallback['description'] ?? 'Mensaje cuando no se reconoce la solicitud.'); ?>">
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Palabras clave</label>
-                                    <textarea class="form-control" rows="2" data-field="keywords"
-                                              placeholder="sin coincidencia, ayuda"><?= $escape(implode(", ", $editableKeywords($editorFallback))); ?></textarea>
-                                </div>
-                            </div>
-                            <div class="mt-3" data-messages>
-                                <?php foreach (($editorFallback['messages'] ?? []) as $message): ?>
-                                    <?php include __DIR__ . '/partials/autoresponder-message.php'; ?>
-                                <?php endforeach; ?>
-                            </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm mt-3" data-action="add-message">
-                                <i class="mdi mdi-plus"></i> Añadir respuesta
-                            </button>
+                            <div class="box-body" data-variable-list></div>
                         </div>
 
-                        <div class="flow-step border-top pt-4" data-consent>
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <div class="box mb-4" data-scenarios-panel>
+                            <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">
                                 <div>
-                                    <h5 class="mb-0">Consentimiento y validación</h5>
-                                    <p class="text-muted small mb-0">Define qué se envía antes de continuar con el flujo automático.</p>
+                                    <h5 class="mb-1">Escenarios</h5>
+                                    <p class="text-muted small mb-0">Cada escenario evalúa condiciones y dispara acciones en orden.</p>
                                 </div>
-                                <span class="small text-muted">Placeholders disponibles: <code>{{brand}}</code>, <code>{{terms_url}}</code>, <code>{{name}}</code>, <code>{{history_number}}</code>.</span>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Introducción (una línea por mensaje)</label>
-                                <textarea class="form-control" rows="3" data-consent-field="intro_lines"><?= $escape(implode("\n", $editorConsentIntro)); ?></textarea>
-                                <div class="form-text">Se envía antes de solicitar la autorización. Puedes referenciar {{brand}} o {{terms_url}}.</div>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Mensaje para solicitar la autorización</label>
-                                <textarea class="form-control" rows="2" data-consent-field="consent_prompt"><?= $escape($editorConsentPrompt); ?></textarea>
-                                <div class="form-text">Si incluyes {{name}}, el mensaje mencionará al paciente cuando esté disponible.</div>
-                            </div>
-                            <div class="row g-3">
-                                <div class="col-md-6" data-consent-wrapper>
-                                    <label class="form-label">Botón de aceptación</label>
-                                    <input type="text" class="form-control" data-consent-field="button_accept"
-                                           value="<?= $escape($editorConsentButtons['accept'] ?? ''); ?>">
-                                </div>
-                                <div class="col-md-6" data-consent-wrapper>
-                                    <label class="form-label">Botón de rechazo</label>
-                                    <input type="text" class="form-control" data-consent-field="button_decline"
-                                           value="<?= $escape($editorConsentButtons['decline'] ?? ''); ?>">
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-action="simulate-flow">
+                                        <i class="mdi mdi-flask-outline me-1"></i> Simular
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-primary" data-action="add-scenario">
+                                        <i class="mdi mdi-plus me-1"></i> Nuevo escenario
+                                    </button>
                                 </div>
                             </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Recordatorio si no responde</label>
-                                <textarea class="form-control" rows="2" data-consent-field="consent_retry"><?= $escape($editorConsentRetry); ?></textarea>
+                            <div class="box-body" data-scenario-list></div>
+                        </div>
+
+                        <div class="box" data-menu-panel>
+                            <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div>
+                                    <h5 class="mb-1">Constructor de menú</h5>
+                                    <p class="text-muted small mb-0">Define el mensaje principal y las opciones disponibles.</p>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-menu">
+                                    <i class="mdi mdi-restore"></i> Restaurar
+                                </button>
                             </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Respuesta cuando se rechaza la autorización</label>
-                                <textarea class="form-control" rows="2" data-consent-field="consent_declined"><?= $escape($editorConsentDeclined); ?></textarea>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Solicitud del número de historia clínica</label>
-                                <textarea class="form-control" rows="2" data-consent-field="identifier_request"><?= $escape($editorConsentIdentifierRequest); ?></textarea>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Mensaje si el número no coincide</label>
-                                <textarea class="form-control" rows="2" data-consent-field="identifier_retry"><?= $escape($editorConsentIdentifierRetry); ?></textarea>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Verificación final</label>
-                                <textarea class="form-control" rows="2" data-consent-field="confirmation_check"><?= $escape($editorConsentCheck); ?></textarea>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Mensaje para revisar el número detectado</label>
-                                <textarea class="form-control" rows="2" data-consent-field="confirmation_review"><?= $escape($editorConsentReview); ?></textarea>
-                                <div class="form-text">Incluye {{history_number}} para repetir la historia clínica ingresada.</div>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Instrucciones para continuar</label>
-                                <textarea class="form-control" rows="2" data-consent-field="confirmation_menu"><?= $escape($editorConsentMenu); ?></textarea>
-                            </div>
-                            <div class="mb-3" data-consent-wrapper>
-                                <label class="form-label">Confirmación del registro</label>
-                                <textarea class="form-control" rows="2" data-consent-field="confirmation_recorded"><?= $escape($editorConsentRecorded); ?></textarea>
-                            </div>
+                            <div class="box-body" data-menu-editor></div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
@@ -876,20 +744,146 @@ switch ($statusType) {
     </div>
 </section>
 
-<template id="message-template">
-    <?php $message = ['type' => 'text', 'body' => '', 'header' => '', 'footer' => '', 'buttons' => []];
-    include __DIR__ . '/partials/autoresponder-message.php';
-    ?>
+<template id="variable-row-template">
+    <div class="row g-3 align-items-center mb-3" data-variable-row>
+        <div class="col-md-3">
+            <div class="fw-600" data-variable-key></div>
+            <div class="text-muted small" data-variable-description></div>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small text-muted mb-1">Etiqueta</label>
+            <input type="text" class="form-control form-control-sm" data-variable-label>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small text-muted mb-1">Fuente</label>
+            <select class="form-select form-select-sm" data-variable-source></select>
+        </div>
+        <div class="col-md-2">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" data-variable-persist>
+                <label class="form-check-label small">Persistir</label>
+            </div>
+        </div>
+    </div>
 </template>
 
-<template id="button-template">
-    <div class="input-group input-group-sm mb-2" data-button>
-        <span class="input-group-text">Título</span>
-        <input type="text" class="form-control button-title" placeholder="Texto del botón">
-        <span class="input-group-text">ID</span>
-        <input type="text" class="form-control button-id" placeholder="Identificador opcional">
-        <button type="button" class="btn btn-outline-danger" data-action="remove-button"><i class="mdi mdi-close"></i>
-        </button>
+<template id="scenario-card-template">
+    <div class="scenario-card border rounded-3 p-3 mb-3" data-scenario>
+        <input type="hidden" data-scenario-id>
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+            <div class="flex-grow-1">
+                <input type="text" class="form-control form-control-sm mb-2" placeholder="Nombre del escenario" data-scenario-name>
+                <textarea class="form-control form-control-sm" rows="2" placeholder="Descripción" data-scenario-description></textarea>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" data-action="move-up"><i class="mdi mdi-arrow-up"></i></button>
+                <button type="button" class="btn btn-outline-secondary" data-action="move-down"><i class="mdi mdi-arrow-down"></i></button>
+                <button type="button" class="btn btn-outline-danger" data-action="remove-scenario"><i class="mdi mdi-close"></i></button>
+            </div>
+        </div>
+        <div class="scenario-conditions mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Condiciones</h6>
+                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-condition"><i class="mdi mdi-plus"></i> Añadir condición</button>
+            </div>
+            <div data-condition-list></div>
+        </div>
+        <div class="scenario-actions">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Acciones</h6>
+                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-action"><i class="mdi mdi-plus"></i> Añadir acción</button>
+            </div>
+            <div data-action-list></div>
+        </div>
+    </div>
+</template>
+
+<template id="condition-row-template">
+    <div class="card border-1 border-light bg-light-subtle p-3 mb-2" data-condition>
+        <div class="row g-2 align-items-center">
+            <div class="col-md-4">
+                <select class="form-select form-select-sm" data-condition-type></select>
+            </div>
+            <div class="col-md-7" data-condition-fields></div>
+            <div class="col-md-1 text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-condition"><i class="mdi mdi-close"></i></button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="action-row-template">
+    <div class="card border-1 border-secondary-subtle p-3 mb-2" data-action>
+        <div class="d-flex flex-wrap gap-2 align-items-start">
+            <div class="flex-grow-1">
+                <select class="form-select form-select-sm mb-2" data-action-type></select>
+                <div data-action-fields></div>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" data-action="action-up"><i class="mdi mdi-arrow-up"></i></button>
+                <button type="button" class="btn btn-outline-secondary" data-action="action-down"><i class="mdi mdi-arrow-down"></i></button>
+                <button type="button" class="btn btn-outline-danger" data-action="remove-action"><i class="mdi mdi-close"></i></button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<template id="menu-option-template">
+    <div class="border rounded-3 p-3 mb-3" data-menu-option>
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+            <div class="flex-grow-1">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label small text-muted">Identificador</label>
+                        <input type="text" class="form-control form-control-sm" data-option-id>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small text-muted">Título</label>
+                        <input type="text" class="form-control form-control-sm" data-option-title>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small text-muted">Palabras clave</label>
+                        <input type="text" class="form-control form-control-sm" data-option-keywords placeholder="menu, opcion">
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-menu-option"><i class="mdi mdi-close"></i></button>
+        </div>
+        <div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-600">Acciones</span>
+                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-option-action"><i class="mdi mdi-plus"></i> Añadir acción</button>
+            </div>
+            <div data-option-action-list></div>
+        </div>
+    </div>
+</template>
+
+<template id="button-row-template">
+    <div class="row g-2 align-items-center mb-2" data-button-row>
+        <div class="col-md-6">
+            <input type="text" class="form-control form-control-sm" placeholder="Título" data-button-title>
+        </div>
+        <div class="col-md-4">
+            <input type="text" class="form-control form-control-sm" placeholder="Identificador" data-button-id>
+        </div>
+        <div class="col-md-2 text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-button"><i class="mdi mdi-close"></i></button>
+        </div>
+    </div>
+</template>
+
+<template id="context-row-template">
+    <div class="row g-2 align-items-center mb-2" data-context-row>
+        <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" placeholder="Clave" data-context-key>
+        </div>
+        <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" placeholder="Valor" data-context-value>
+        </div>
+        <div class="col-md-2 text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-context"><i class="mdi mdi-close"></i></button>
+        </div>
     </div>
 </template>
 

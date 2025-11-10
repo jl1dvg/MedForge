@@ -40,6 +40,31 @@
         };
     }
 
+    function appendCacheBuster(url) {
+        if (!url) {
+            return url;
+        }
+
+        var separator = url.indexOf('?') === -1 ? '?' : '&';
+
+        return url + separator + '_=' + Date.now();
+    }
+
+    function resetContainer(container, placeholder) {
+        if (!container) {
+            return;
+        }
+
+        while (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+
+        if (placeholder) {
+            placeholder.classList.add('d-none');
+            container.appendChild(placeholder);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         var root = document.getElementById('whatsapp-chat-root');
         if (!root) {
@@ -106,17 +131,13 @@
                 return;
             }
 
-            listContainer.innerHTML = '';
+            resetContainer(listContainer, emptyListState);
 
             if (!state.conversations.length) {
                 if (emptyListState) {
                     emptyListState.classList.remove('d-none');
                 }
                 return;
-            }
-
-            if (emptyListState) {
-                emptyListState.classList.add('d-none');
             }
 
             var list = createElement('div', 'list-group list-group-flush');
@@ -181,7 +202,7 @@
                 return;
             }
 
-            messageContainer.innerHTML = '';
+            resetContainer(messageContainer, emptyChatState);
 
             if (!data || !data.messages || !data.messages.length) {
                 if (emptyChatState) {
@@ -303,7 +324,7 @@
         function loadConversations() {
             var url = endpoints.list;
             if (!url) {
-                return;
+                return Promise.resolve();
             }
 
             var requestUrl = url;
@@ -312,10 +333,14 @@
                 requestUrl = url + separator + 'search=' + encodeURIComponent(state.search);
             }
 
-            fetch(requestUrl, {
+            requestUrl = appendCacheBuster(requestUrl);
+
+            return fetch(requestUrl, {
                 headers: {
                     'Accept': 'application/json'
-                }
+                },
+                cache: 'no-store',
+                credentials: 'same-origin'
             }).then(function (response) {
                 return response.json();
             }).then(function (payload) {
@@ -333,14 +358,14 @@
 
         function openConversation(id, options) {
             if (!endpoints.conversation) {
-                return;
+                return Promise.resolve();
             }
 
             var opts = options || {};
             var silent = !!opts.silent;
 
             if (state.loadingConversation && !silent) {
-                return;
+                return Promise.resolve();
             }
 
             state.selectedId = id;
@@ -354,10 +379,14 @@
                 renderConversations();
             }
 
-            fetch(getConversationEndpoint(id), {
+            var requestUrl = appendCacheBuster(getConversationEndpoint(id));
+
+            return fetch(requestUrl, {
                 headers: {
                     'Accept': 'application/json'
-                }
+                },
+                cache: 'no-store',
+                credentials: 'same-origin'
             }).then(function (response) {
                 if (!silent) {
                     state.loadingConversation = false;
@@ -398,6 +427,8 @@
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
+                cache: 'no-store',
+                credentials: 'same-origin',
                 body: JSON.stringify(payload)
             }).then(function (response) {
                 return response.json();
@@ -452,11 +483,11 @@
                     }
 
                     newConversationForm.reset();
-                    loadConversations();
-
-                    if (result.conversation && result.conversation.id) {
-                        openConversation(result.conversation.id);
-                    }
+                    loadConversations().then(function () {
+                        if (result.conversation && result.conversation.id) {
+                            openConversation(result.conversation.id);
+                        }
+                    });
                 }).catch(function (error) {
                     console.error('No se pudo enviar el mensaje inicial', error);
                     if (newConversationFeedback) {
@@ -501,8 +532,9 @@
                     if (messageInput) {
                         messageInput.value = '';
                     }
-                    loadConversations();
-                    openConversation(state.selectedId, { silent: true });
+                    loadConversations().then(function () {
+                        openConversation(state.selectedId, { silent: true });
+                    });
                 }).catch(function (error) {
                     console.error('No fue posible enviar el mensaje', error);
                     if (errorAlert) {
@@ -523,6 +555,7 @@
         }
 
         var autoRefreshId = null;
+        var isRefreshing = false;
 
         function startAutoRefresh() {
             if (autoRefreshId !== null) {
@@ -530,10 +563,22 @@
             }
 
             autoRefreshId = window.setInterval(function () {
-                loadConversations();
-                if (state.selectedId) {
-                    openConversation(state.selectedId, { silent: true });
+                if (isRefreshing) {
+                    return;
                 }
+
+                isRefreshing = true;
+
+                var promises = [loadConversations()];
+                if (state.selectedId) {
+                    promises.push(openConversation(state.selectedId, { silent: true }));
+                }
+
+                Promise.all(promises).catch(function (error) {
+                    console.error('Error durante la actualización automática del chat', error);
+                }).finally(function () {
+                    isRefreshing = false;
+                });
             }, 5000);
         }
 
