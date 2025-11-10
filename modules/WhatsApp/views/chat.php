@@ -36,7 +36,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
     >
         <div class="col-lg-3 col-12">
-            <div class="box h-100">
+            <div class="box">
                 <div class="box-header">
                     <ul class="nav nav-tabs customtab nav-justified" role="tablist">
                         <li class="nav-item">
@@ -48,6 +48,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                     </ul>
                 </div>
                 <div class="box-body">
+                    <!-- Tab panes -->
                     <div class="tab-content">
                         <div class="tab-pane active" id="messages" role="tabpanel">
                             <div class="chat-box-one-side3">
@@ -57,7 +58,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <input type="search" class="form-control" placeholder="Buscar conversación" autocomplete="off" data-conversation-search>
                                     </div>
                                 </div>
-                                <div class="media-list media-list-hover" style="max-height: 540px; overflow-y: auto;" data-conversation-list>
+                                <div class="media-list media-list-hover" data-conversation-list>
                                     <div class="media flex-column align-items-center py-5 text-center text-muted" data-empty-state>
                                         <i class="mdi mdi-forum text-primary" style="font-size: 2.5rem;"></i>
                                         <p class="mt-2 mb-1">Aún no hay conversaciones registradas.</p>
@@ -111,9 +112,9 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                         </div>
                         <div class="d-lg-flex d-block justify-content-between align-items-center w-p100">
                             <div class="media-body mb-lg-0 mb-20">
-                                <p class="fs-16 mb-1" data-chat-title>Selecciona una conversación</p>
-                                <p class="fs-12 mb-0 text-muted" data-chat-subtitle>El historial aparecerá cuando elijas un contacto.</p>
-                                <p class="fs-12 mb-0 text-muted" data-chat-last-seen></p>
+                                <p class="fs-16" data-chat-title>Selecciona una conversación</p>
+                                <p class="fs-12 mb-0" data-chat-subtitle>El historial aparecerá cuando elijas un contacto.</p>
+                                <p class="fs-12 mb-0" data-chat-last-seen></p>
                             </div>
                             <div>
                                 <ul class="list-inline mb-0 fs-18">

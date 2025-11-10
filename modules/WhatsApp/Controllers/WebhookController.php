@@ -168,7 +168,10 @@ class WebhookController extends BaseController
         }
 
         try {
-            $this->conversations->recordIncoming($message);
+            $recorded = $this->conversations->recordIncoming($message);
+            if ($recorded === false) {
+                return;
+            }
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar el mensaje entrante de WhatsApp: ' . $exception->getMessage());
         }

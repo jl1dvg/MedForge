@@ -60,7 +60,11 @@ class ScenarioEngine
             $context['state'] = 'inicio';
         }
 
-        $facts = $this->buildFacts($sender, $text, $message, $session, $context);
+        if ($this->isDuplicateMessage($session, $message)) {
+            return true;
+        }
+
+        $facts = $this->buildFacts($sender, $text, $session, $context, $message);
         $handled = false;
 
         foreach ($this->flow['scenarios'] ?? [] as $scenario) {
@@ -78,7 +82,7 @@ class ScenarioEngine
             ]);
 
             $context = $result['context'];
-            $facts = $this->buildFacts($sender, $text, $message, $session, $context);
+            $facts = $this->buildFacts($sender, $text, $session, $context, $message);
 
             $awaiting = isset($context['awaiting_field']) ? 'input' : null;
             $this->sessions->upsert($conversationId, $sender, [
@@ -102,6 +106,30 @@ class ScenarioEngine
 
     /**
      * @param array<string, mixed>|null $session
+     * @param array<string, mixed> $message
+     */
+    private function isDuplicateMessage(?array $session, array $message): bool
+    {
+        if ($session === null) {
+            return false;
+        }
+
+        $lastPayload = $session['last_payload'] ?? null;
+        if (!is_array($lastPayload)) {
+            return false;
+        }
+
+        $lastId = $lastPayload['id'] ?? null;
+        $currentId = $message['id'] ?? null;
+        if (!is_string($lastId) || $lastId === '' || !is_string($currentId) || $currentId === '') {
+            return false;
+        }
+
+        return $lastId === $currentId;
+    }
+
+    /**
+     * @param array<string, mixed>|null $session
      * @param array<string, mixed> $context
      * @param array<string, mixed> $message
      * @return array<string, mixed>
@@ -110,6 +138,11 @@ class ScenarioEngine
     {
         $now = new DateTimeImmutable();
         $normalized = $this->normalizeText($text);
+
+        $rawMessage = trim($text);
+        if ($rawMessage === '') {
+            $rawMessage = $text;
+        }
 
         $lastInteraction = null;
         if (isset($session['last_interaction_at']) && is_string($session['last_interaction_at'])) {
@@ -123,12 +156,12 @@ class ScenarioEngine
         }
 
         $facts = [
-            'is_first_time' => $session === null,
+            'is_first_time' => $session === null && !$hasConsent,
             'state' => $context['state'] ?? 'inicio',
             'awaiting_field' => $context['awaiting_field'] ?? null,
             'has_consent' => $hasConsent || !empty($context['consent']),
             'message' => $normalized,
-            'raw_message' => $text,
+            'raw_message' => $rawMessage,
             'patient_found' => isset($context['patient']),
         ];
 
@@ -214,7 +247,14 @@ class ScenarioEngine
                     return false;
                 }
 
-                return preg_match($regex, (string) ($facts['raw_message'] ?? '')) === 1;
+                $raw = (string) ($facts['raw_message'] ?? '');
+                if ($raw !== '' && preg_match($regex, $raw) === 1) {
+                    return true;
+                }
+
+                $normalized = (string) ($facts['message'] ?? '');
+
+                return $normalized !== '' && preg_match($regex, $normalized) === 1;
             case 'last_interaction_gt':
                 $minutes = (int) ($condition['minutes'] ?? 0);
                 if ($minutes <= 0) {
@@ -312,13 +352,17 @@ class ScenarioEngine
                             'patient_full_name' => $patient['full_name'] ?? null,
                         ]);
                     }
+
+                    if (($context['awaiting_field'] ?? null) === $field) {
+                        unset($context['awaiting_field']);
+                    }
                 }
                 continue;
             }
 
             if ($type === 'conditional') {
                 $condition = $action['condition'] ?? [];
-                $facts = $this->buildFacts($env['sender'], $env['text'], $env['message'], null, $context);
+                $facts = $this->buildFacts($env['sender'], $env['text'], null, $context, $env['message']);
                 if ($this->evaluateCondition($condition, $facts)) {
                     $result = $this->executeActions($action['then'] ?? [], $env + ['context' => $context]);
                     $context = $result['context'];

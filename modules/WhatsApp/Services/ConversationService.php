@@ -32,17 +32,23 @@ class ConversationService
 
     /**
      * @param array<string, mixed> $message
+     * @return bool True when the inbound message was persisted, false if it was skipped.
      */
-    public function recordIncoming(array $message): void
+    public function recordIncoming(array $message): bool
     {
         $number = $this->normalizeNumber($message['from'] ?? null);
         if ($number === null) {
-            return;
+            return false;
         }
 
         $profileName = null;
         if (isset($message['profile']['name'])) {
             $profileName = trim((string) $message['profile']['name']);
+        }
+
+        $messageId = isset($message['id']) ? trim((string) $message['id']) : '';
+        if ($messageId !== '' && $this->repository->messageExists($messageId)) {
+            return false;
         }
 
         $conversationId = $this->repository->upsertConversation($number, [
@@ -69,6 +75,8 @@ class ConversationService
             'last_message_preview' => $this->truncatePreview($body),
             'increment_unread' => 1,
         ]);
+
+        return true;
     }
 
     /**

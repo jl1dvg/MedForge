@@ -88,6 +88,19 @@ class ConversationRepository
         }
     }
 
+    public function messageExists(string $waMessageId): bool
+    {
+        $waMessageId = trim($waMessageId);
+        if ($waMessageId === '') {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare('SELECT id FROM whatsapp_messages WHERE wa_message_id = :id LIMIT 1');
+        $stmt->execute([':id' => $waMessageId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
     /**
      * @param array<string, mixed> $data
      */
