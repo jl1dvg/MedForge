@@ -221,6 +221,8 @@ class VerificationController extends BaseController
             return;
         }
 
+        $certification = $this->refreshBiometricTemplates($certification);
+
         if (empty($certification['face_template']) && empty($certification['signature_template'])) {
             $this->json([
                 'ok' => false,
@@ -544,6 +546,88 @@ class VerificationController extends BaseController
             $data[$key] = is_string($value) ? trim($value) : $value;
         }
         return $data;
+    }
+
+    private function refreshBiometricTemplates(array $certification): array
+    {
+        $updated = false;
+
+        if ($this->isHashOnlyTemplate($certification['face_template'] ?? null) && !empty($certification['face_image_path'])) {
+            $path = $this->absoluteStoragePath($certification['face_image_path']);
+            if ($path && is_file($path)) {
+                $template = $this->faceRecognition->createTemplateFromFile($path);
+                if (is_array($template) && !$this->isHashOnlyTemplate($template)) {
+                    $certification['face_template'] = $template;
+                    $updated = true;
+                }
+            }
+        }
+
+        if ($this->isHashOnlyTemplate($certification['signature_template'] ?? null) && !empty($certification['signature_path'])) {
+            $path = $this->absoluteStoragePath($certification['signature_path']);
+            if ($path && is_file($path)) {
+                $template = $this->signatureAnalysis->createTemplateFromFile($path);
+                if (is_array($template) && !$this->isHashOnlyTemplate($template)) {
+                    $certification['signature_template'] = $template;
+                    $updated = true;
+                }
+            }
+        }
+
+        if ($updated) {
+            $payload = [
+                'document_number' => $certification['document_number'],
+                'document_type' => $certification['document_type'] ?? 'cedula',
+                'signature_path' => $certification['signature_path'] ?? null,
+                'signature_template' => $certification['signature_template'] ?? null,
+                'document_signature_path' => $certification['document_signature_path'] ?? null,
+                'document_front_path' => $certification['document_front_path'] ?? null,
+                'document_back_path' => $certification['document_back_path'] ?? null,
+                'face_image_path' => $certification['face_image_path'] ?? null,
+                'face_template' => $certification['face_template'] ?? null,
+                'status' => $certification['status'] ?? 'pending',
+                'updated_by' => $_SESSION['user_id'] ?? null,
+            ];
+
+            $this->verifications->update((int) $certification['id'], $payload);
+        }
+
+        return $certification;
+    }
+
+    private function isHashOnlyTemplate($template): bool
+    {
+        if (!is_array($template)) {
+            return false;
+        }
+
+        if (($template['algorithm'] ?? null) === 'hash-only') {
+            return true;
+        }
+
+        $vector = $template['vector'] ?? null;
+        if (!is_array($vector)) {
+            return empty($vector);
+        }
+
+        foreach ($vector as $value) {
+            if (abs((float) $value) > 0.000001) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function absoluteStoragePath(?string $relativePath): ?string
+    {
+        if (!is_string($relativePath) || $relativePath === '') {
+            return null;
+        }
+
+        $cleanPath = ltrim($relativePath, '/');
+
+        return BASE_PATH . '/' . $cleanPath;
     }
 
     private function deleteStoragePath(?string $relativePath): void

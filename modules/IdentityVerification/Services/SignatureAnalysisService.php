@@ -34,26 +34,35 @@ class SignatureAnalysisService
             return null;
         }
 
+        $pythonFallback = null;
         if ($this->pythonClient) {
             $template = $this->pythonClient->generateTemplate('signature', $binary);
             if (is_array($template)) {
-                return $template;
+                if (($template['algorithm'] ?? null) !== 'hash-only' && !empty($template['vector'])) {
+                    return $template;
+                }
+
+                $pythonFallback = $template;
             }
         }
 
         if (!function_exists('imagecreatefromstring')) {
-            return [
+            $legacyTemplate = [
                 'algorithm' => 'hash-only',
                 'hash' => hash('sha256', $binary),
             ];
+
+            return $pythonFallback ?: $legacyTemplate;
         }
 
         $image = @imagecreatefromstring($binary);
         if (!$image) {
-            return [
+            $legacyTemplate = [
                 'algorithm' => 'hash-only',
                 'hash' => hash('sha256', $binary),
             ];
+
+            return $pythonFallback ?: $legacyTemplate;
         }
 
         $width = imagesx($image);
@@ -84,10 +93,12 @@ class SignatureAnalysisService
         imagedestroy($target);
         imagedestroy($image);
 
-        return [
+        $template = [
             'algorithm' => 'signature-grid',
             'vector' => $vector,
         ];
+
+        return $template ?: ($pythonFallback ?: null);
     }
 
     public function compareTemplates(?array $reference, ?array $sample): ?float
@@ -96,10 +107,14 @@ class SignatureAnalysisService
             return null;
         }
 
+        $pythonScore = null;
         if ($this->pythonClient) {
             $score = $this->pythonClient->compare('signature', $reference, $sample);
             if ($score !== null) {
-                return round($score, 2);
+                $pythonScore = round($score, 2);
+                if ($pythonScore > 0) {
+                    return $pythonScore;
+                }
             }
         }
 
@@ -115,7 +130,7 @@ class SignatureAnalysisService
         $b = $sample['vector'];
         $length = min(count($a), count($b));
         if ($length === 0) {
-            return 0.0;
+            return $pythonScore !== null ? $pythonScore : 0.0;
         }
 
         $diff = 0.0;
@@ -126,6 +141,8 @@ class SignatureAnalysisService
         $maxDiff = $length;
         $score = 1 - min(1.0, $diff / $maxDiff);
 
-        return round($score * 100, 2);
+        $legacyScore = round($score * 100, 2);
+
+        return $pythonScore !== null ? max($pythonScore, $legacyScore) : $legacyScore;
     }
 }

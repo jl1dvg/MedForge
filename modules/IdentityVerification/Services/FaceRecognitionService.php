@@ -33,26 +33,35 @@ class FaceRecognitionService
             return null;
         }
 
+        $pythonFallback = null;
         if ($this->pythonClient) {
             $template = $this->pythonClient->generateTemplate('face', $binary);
             if (is_array($template)) {
-                return $template;
+                if (($template['algorithm'] ?? null) !== 'hash-only' && !empty($template['vector'])) {
+                    return $template;
+                }
+
+                $pythonFallback = $template;
             }
         }
 
         if (!function_exists('imagecreatefromstring')) {
-            return [
+            $legacyTemplate = [
                 'algorithm' => 'hash-only',
                 'hash' => hash('sha256', $binary),
             ];
+
+            return $pythonFallback ?: $legacyTemplate;
         }
 
         $image = @imagecreatefromstring($binary);
         if (!$image) {
-            return [
+            $legacyTemplate = [
                 'algorithm' => 'hash-only',
                 'hash' => hash('sha256', $binary),
             ];
+
+            return $pythonFallback ?: $legacyTemplate;
         }
 
         $width = imagesx($image);
@@ -83,10 +92,12 @@ class FaceRecognitionService
             unset($value);
         }
 
-        return [
+        $template = [
             'algorithm' => 'gd-grayscale-' . self::TARGET_SIZE,
             'vector' => $vector,
         ];
+
+        return $template ?: ($pythonFallback ?: null);
     }
 
     public function compareTemplates(?array $reference, ?array $sample): ?float
@@ -95,10 +106,14 @@ class FaceRecognitionService
             return null;
         }
 
+        $pythonScore = null;
         if ($this->pythonClient) {
             $score = $this->pythonClient->compare('face', $reference, $sample);
             if ($score !== null) {
-                return round($score, 2);
+                $pythonScore = round($score, 2);
+                if ($pythonScore > 0) {
+                    return $pythonScore;
+                }
             }
         }
 
@@ -130,13 +145,15 @@ class FaceRecognitionService
         }
 
         if ($normA <= 0 || $normB <= 0) {
-            return 0.0;
+            return $pythonScore !== null ? $pythonScore : 0.0;
         }
 
         $similarity = $dot / (sqrt($normA) * sqrt($normB));
         $score = max(0.0, min(1.0, $similarity));
 
-        return round($score * 100, 2);
+        $legacyScore = round($score * 100, 2);
+
+        return $pythonScore !== null ? max($pythonScore, $legacyScore) : $legacyScore;
     }
 
     private function euclideanNorm(array $vector): float
