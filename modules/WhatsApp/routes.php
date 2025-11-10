@@ -3,6 +3,7 @@
 use Core\Router;
 use Modules\WhatsApp\Controllers\AutoresponderController;
 use Modules\WhatsApp\Controllers\ChatController;
+use Modules\WhatsApp\Controllers\InboxController;
 use Modules\WhatsApp\Controllers\TemplateController;
 use Modules\WhatsApp\Controllers\WebhookController;
 
@@ -29,6 +30,10 @@ return static function (Router $router): void {
 
     $router->get('/whatsapp/api/conversations/{conversationId}', static function (\PDO $pdo, string $conversationId): void {
         (new ChatController($pdo))->showConversation((int) $conversationId);
+    });
+
+    $router->get('/whatsapp/api/inbox', static function (\PDO $pdo): void {
+        (new InboxController($pdo))->index();
     });
 
     $router->post('/whatsapp/api/messages', static function (\PDO $pdo): void {

@@ -21,6 +21,24 @@ use function uniqid;
 class AutoresponderFlow
 {
     private const BUTTON_LIMIT = 3;
+    private const SCENARIO_STAGE_VALUES = [
+        'arrival',
+        'validation',
+        'consent',
+        'menu',
+        'scheduling',
+        'results',
+        'post',
+        'custom',
+    ];
+    private const SCENARIO_STAGE_DEFAULTS = [
+        'primer_contacto' => 'arrival',
+        'captura_cedula' => 'consent',
+        'validar_cedula' => 'validation',
+        'retorno' => 'arrival',
+        'acceso_menu_directo' => 'menu',
+        'fallback' => 'custom',
+    ];
 
     /**
      * @return array<int, string>
@@ -139,6 +157,7 @@ class AutoresponderFlow
                 'name' => 'Primer contacto (sin consentimiento)',
                 'description' => 'Saludo inicial y solicitud de autorización de datos.',
                 'intercept_menu' => true,
+                'stage' => self::defaultScenarioStage('primer_contacto'),
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => true],
                     ['type' => 'has_consent', 'value' => false],
@@ -170,6 +189,7 @@ class AutoresponderFlow
                 'name' => 'Captura de cédula',
                 'description' => 'Gestiona la aceptación del consentimiento y solicita el identificador.',
                 'intercept_menu' => true,
+                'stage' => self::defaultScenarioStage('captura_cedula'),
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'consentimiento_pendiente'],
                     ['type' => 'message_in', 'values' => ['acepto', 'si', 'sí']],
@@ -192,6 +212,7 @@ class AutoresponderFlow
                 'name' => 'Validar cédula',
                 'description' => 'Valida el formato y existencia del paciente.',
                 'intercept_menu' => true,
+                'stage' => self::defaultScenarioStage('validar_cedula'),
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'esperando_cedula'],
                     ['type' => 'message_matches', 'pattern' => '^\\d{6,10}$'],
@@ -232,6 +253,7 @@ class AutoresponderFlow
                 'name' => 'Retorno (ya conocido)',
                 'description' => 'Contactos conocidos con consentimiento.',
                 'intercept_menu' => true,
+                'stage' => self::defaultScenarioStage('retorno'),
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => false],
                     ['type' => 'has_consent', 'value' => true],
@@ -252,6 +274,7 @@ class AutoresponderFlow
                 'name' => 'Acceso directo al menú',
                 'description' => 'Permite abrir el menú cuando el contacto escribe un atajo como "menu" u "hola".',
                 'intercept_menu' => true,
+                'stage' => self::defaultScenarioStage('acceso_menu_directo'),
                 'conditions' => [
                     ['type' => 'has_consent', 'value' => true],
                     ['type' => 'message_in', 'values' => self::menuKeywords()],
@@ -265,6 +288,7 @@ class AutoresponderFlow
                 'id' => 'fallback',
                 'name' => 'Fallback',
                 'description' => 'Cuando ninguna regla aplica.',
+                'stage' => self::defaultScenarioStage('fallback'),
                 'conditions' => [
                     ['type' => 'always'],
                 ],
@@ -444,7 +468,30 @@ class AutoresponderFlow
             'conditions' => $conditions,
             'actions' => $actions,
             'intercept_menu' => (bool) $interceptMenu,
+            'stage' => self::sanitizeScenarioStage($scenario['stage'] ?? null, $id),
         ];
+    }
+
+    private static function sanitizeScenarioStage($value, string $scenarioId): string
+    {
+        if (is_string($value)) {
+            $normalized = mb_strtolower(trim($value));
+            if (in_array($normalized, self::SCENARIO_STAGE_VALUES, true)) {
+                return $normalized;
+            }
+        }
+
+        return self::defaultScenarioStage($scenarioId);
+    }
+
+    private static function defaultScenarioStage(string $scenarioId): string
+    {
+        $scenarioId = self::sanitizeKey($scenarioId);
+        if ($scenarioId === '') {
+            return 'custom';
+        }
+
+        return self::SCENARIO_STAGE_DEFAULTS[$scenarioId] ?? 'custom';
     }
 
     private static function shouldInterceptMenuByDefault(string $id): bool
