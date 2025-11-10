@@ -203,12 +203,9 @@ class VerificationModel
 
     public function findPatientSummary(string $patientId): ?array
     {
-        $stmt = $this->db->prepare("
-            SELECT hc_number, fname, mname, lname, lname2, cedula, celular, afiliacion
-            FROM patient_data
-            WHERE hc_number = :hc
-            LIMIT 1
-        ");
+        $stmt = $this->db->prepare(
+            'SELECT * FROM patient_data WHERE hc_number = :hc LIMIT 1'
+        );
         $stmt->bindValue(':hc', $patientId, PDO::PARAM_STR);
         $stmt->execute();
 
@@ -223,6 +220,10 @@ class VerificationModel
             $patient['lname'] ?? null,
             $patient['lname2'] ?? null,
         ])));
+
+        if (!isset($patient['cedula']) || $patient['cedula'] === '' || $patient['cedula'] === null) {
+            $patient['cedula'] = $patient['ci'] ?? null;
+        }
 
         return $patient;
     }
