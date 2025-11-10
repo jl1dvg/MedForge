@@ -3,21 +3,26 @@
 namespace Modules\CRM\Models;
 
 use PDO;
+use InvalidArgumentException;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\Shared\Services\PatientIdentityService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
+use RuntimeException;
 
 class LeadModel
 {
     private PDO $pdo;
     private LeadConfigurationService $configService;
     private WhatsAppMessenger $whatsapp;
+    private PatientIdentityService $identityService;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
         $this->configService = new LeadConfigurationService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
+        $this->identityService = new PatientIdentityService($pdo);
     }
 
     public function getStatuses(): array
@@ -37,6 +42,7 @@ class LeadModel
         $sql = "
             SELECT
                 l.id,
+                l.hc_number,
                 l.name,
                 l.email,
                 l.phone,
@@ -49,7 +55,8 @@ class LeadModel
                 l.created_at,
                 l.updated_at,
                 u.nombre AS assigned_name,
-                c.name AS customer_name
+                c.name AS customer_name,
+                c.hc_number AS customer_hc_number
             FROM crm_leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN crm_customers c ON l.customer_id = c.id
@@ -98,11 +105,12 @@ class LeadModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    public function find(int $id): ?array
+    public function findById(int $id): ?array
     {
         $stmt = $this->pdo->prepare("
             SELECT
                 l.id,
+                l.hc_number,
                 l.name,
                 l.email,
                 l.phone,
@@ -115,7 +123,8 @@ class LeadModel
                 l.created_at,
                 l.updated_at,
                 u.nombre AS assigned_name,
-                c.name AS customer_name
+                c.name AS customer_name,
+                c.hc_number AS customer_hc_number
             FROM crm_leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN crm_customers c ON l.customer_id = c.id
@@ -129,8 +138,53 @@ class LeadModel
         return $lead ?: null;
     }
 
+    public function findByHcNumber(string $hcNumber): ?array
+    {
+        $normalized = $this->identityService->normalizeHcNumber($hcNumber);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT
+                l.id,
+                l.hc_number,
+                l.name,
+                l.email,
+                l.phone,
+                l.status,
+                l.source,
+                l.notes,
+                l.customer_id,
+                l.assigned_to,
+                l.created_by,
+                l.created_at,
+                l.updated_at,
+                u.nombre AS assigned_name,
+                c.name AS customer_name,
+                c.hc_number AS customer_hc_number
+            FROM crm_leads l
+            LEFT JOIN users u ON l.assigned_to = u.id
+            LEFT JOIN crm_customers c ON l.customer_id = c.id
+            WHERE l.hc_number = :hc
+            LIMIT 1
+        ");
+
+        $stmt->execute([':hc' => $normalized]);
+        $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $lead ?: null;
+    }
+
     public function create(array $data, int $userId): array
     {
+        $hcNumber = $this->identityService->normalizeHcNumber((string) ($data['hc_number'] ?? ''));
+        if ($hcNumber === '') {
+            throw new InvalidArgumentException('El campo hc_number es obligatorio.');
+        }
+
+        $this->assertHcNumberAvailable($hcNumber);
+
         $status = $this->sanitizeStatus($data['status'] ?? null);
         $assignedTo = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
         $customerId = !empty($data['customer_id']) ? (int) $data['customer_id'] : null;
@@ -141,13 +195,31 @@ class LeadModel
         $source = $this->nullableString($data['source'] ?? null);
         $notes = $this->nullableString($data['notes'] ?? null);
 
+        $identity = $this->identityService->ensureIdentity($hcNumber, [
+            'customer' => [
+                'name' => $name,
+                'email' => $email,
+                'phone' => $phone,
+                'source' => $source,
+            ],
+            'patient' => [
+                'name' => $name,
+                'celular' => $phone,
+            ],
+        ]);
+
+        if (!$customerId && !empty($identity['customer_id'])) {
+            $customerId = (int) $identity['customer_id'];
+        }
+
         $stmt = $this->pdo->prepare("
             INSERT INTO crm_leads
-                (name, email, phone, status, source, notes, assigned_to, customer_id, created_by)
+                (hc_number, name, email, phone, status, source, notes, assigned_to, customer_id, created_by)
             VALUES
-                (:name, :email, :phone, :status, :source, :notes, :assigned_to, :customer_id, :created_by)
+                (:hc_number, :name, :email, :phone, :status, :source, :notes, :assigned_to, :customer_id, :created_by)
         ");
 
+        $stmt->bindValue(':hc_number', $hcNumber);
         $stmt->bindValue(':name', $name);
         $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
@@ -159,7 +231,7 @@ class LeadModel
         $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->execute();
 
-        $lead = $this->find((int) $this->pdo->lastInsertId());
+        $lead = $this->findByHcNumber($hcNumber);
         if ($lead) {
             $this->notifyLeadEvent('created', $lead, [
                 'created_by' => $userId,
@@ -169,16 +241,34 @@ class LeadModel
         return $lead;
     }
 
-    public function update(int $id, array $data): ?array
+    public function update(string $hcNumber, array $data): ?array
     {
-        $lead = $this->find($id);
+        $normalized = $this->identityService->normalizeHcNumber($hcNumber);
+        $lead = $this->findByHcNumber($normalized);
         if (!$lead) {
             return null;
         }
 
+        $targetHc = $lead['hc_number'];
+        if (array_key_exists('hc_number', $data)) {
+            $candidate = $this->identityService->normalizeHcNumber((string) $data['hc_number']);
+            if ($candidate === '') {
+                throw new InvalidArgumentException('El campo hc_number es obligatorio.');
+            }
+
+            $this->assertHcNumberAvailable($candidate, $lead['hc_number']);
+            $targetHc = $candidate;
+        }
+
         $fields = [];
-        $params = [':id' => $id];
-        $types = [':id' => PDO::PARAM_INT];
+        $params = [':current_hc' => $lead['hc_number']];
+        $types = [':current_hc' => PDO::PARAM_STR];
+
+        if ($targetHc !== $lead['hc_number']) {
+            $fields[] = 'hc_number = :hc_number';
+            $params[':hc_number'] = $targetHc;
+            $types[':hc_number'] = PDO::PARAM_STR;
+        }
 
         if (array_key_exists('name', $data)) {
             $fields[] = 'name = :name';
@@ -239,7 +329,7 @@ class LeadModel
             return $lead;
         }
 
-        $sql = 'UPDATE crm_leads SET ' . implode(', ', $fields) . ' WHERE id = :id';
+        $sql = 'UPDATE crm_leads SET ' . implode(', ', $fields) . ' WHERE hc_number = :current_hc';
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($params as $key => $value) {
@@ -249,8 +339,26 @@ class LeadModel
 
         $stmt->execute();
 
-        $actualizado = $this->find($id);
+        $actualizado = $this->findByHcNumber($targetHc);
         if ($actualizado) {
+            $identity = $this->identityService->ensureIdentity($targetHc, [
+                'customer' => [
+                    'name' => $actualizado['name'] ?? '',
+                    'email' => $actualizado['email'] ?? null,
+                    'phone' => $actualizado['phone'] ?? null,
+                    'source' => $actualizado['source'] ?? null,
+                ],
+                'patient' => [
+                    'name' => $actualizado['name'] ?? '',
+                    'celular' => $actualizado['phone'] ?? null,
+                ],
+            ]);
+
+            if (!empty($identity['customer_id']) && (int) ($actualizado['customer_id'] ?? 0) !== (int) $identity['customer_id']) {
+                $this->attachCustomer($actualizado['hc_number'], (int) $identity['customer_id']);
+                $actualizado = $this->findByHcNumber($actualizado['hc_number']);
+            }
+
             $this->notifyLeadEvent('updated', $actualizado, [
                 'previous' => $lead,
                 'changes' => $data,
@@ -260,18 +368,19 @@ class LeadModel
         return $actualizado;
     }
 
-    public function updateStatus(int $id, string $status): ?array
+    public function updateStatus(string $hcNumber, string $status): ?array
     {
-        $anterior = $this->find($id);
+        $normalized = $this->identityService->normalizeHcNumber($hcNumber);
+        $anterior = $this->findByHcNumber($normalized);
         if (!$anterior) {
             return null;
         }
 
         $status = $this->sanitizeStatus($status);
-        $stmt = $this->pdo->prepare('UPDATE crm_leads SET status = :status WHERE id = :id');
-        $stmt->execute([':status' => $status, ':id' => $id]);
+        $stmt = $this->pdo->prepare('UPDATE crm_leads SET status = :status WHERE hc_number = :hc');
+        $stmt->execute([':status' => $status, ':hc' => $anterior['hc_number']]);
 
-        $actualizado = $this->find($id);
+        $actualizado = $this->findByHcNumber($anterior['hc_number']);
         if ($actualizado) {
             $this->notifyLeadEvent('status_updated', $actualizado, [
                 'previous' => $anterior,
@@ -281,25 +390,50 @@ class LeadModel
         return $actualizado;
     }
 
-    public function attachCustomer(int $id, int $customerId): void
+    public function attachCustomer(string $hcNumber, int $customerId): void
     {
-        $stmt = $this->pdo->prepare('UPDATE crm_leads SET customer_id = :customer WHERE id = :id');
+        $normalized = $this->identityService->normalizeHcNumber($hcNumber);
+        if ($normalized === '') {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare('UPDATE crm_leads SET customer_id = :customer WHERE hc_number = :hc');
         $stmt->execute([
             ':customer' => $customerId,
-            ':id' => $id,
+            ':hc' => $normalized,
         ]);
     }
 
-    public function convertToCustomer(int $id, array $customerPayload): ?array
+    public function convertToCustomer(string $hcNumber, array $customerPayload): ?array
     {
-        $lead = $this->find($id);
+        $lead = $this->findByHcNumber($hcNumber);
         if (!$lead) {
             return null;
         }
 
-        $customerId = $lead['customer_id'] ? (int) $lead['customer_id'] : $this->upsertCustomer($lead, $customerPayload);
-        $this->attachCustomer($id, $customerId);
-        $actualizado = $this->updateStatus($id, $this->configService->getWonStage());
+        $identity = $this->identityService->ensureIdentity($lead['hc_number'], [
+            'customer' => array_merge(
+                [
+                    'name' => $lead['name'],
+                    'email' => $lead['email'],
+                    'phone' => $lead['phone'],
+                    'source' => $lead['source'],
+                ],
+                $customerPayload
+            ),
+            'patient' => [
+                'name' => $lead['name'],
+                'celular' => $lead['phone'],
+            ],
+        ]);
+
+        $customerId = $lead['customer_id'] ? (int) $lead['customer_id'] : (int) ($identity['customer_id'] ?? 0);
+        if ($customerId <= 0) {
+            $customerId = $this->upsertCustomer($lead, $customerPayload);
+        }
+
+        $this->attachCustomer($lead['hc_number'], $customerId);
+        $actualizado = $this->updateStatus($lead['hc_number'], $this->configService->getWonStage());
 
         if ($actualizado) {
             $this->notifyLeadEvent('converted', $actualizado, [
@@ -446,6 +580,16 @@ class LeadModel
 
     private function upsertCustomer(array $lead, array $payload): int
     {
+        $hcNumber = $this->identityService->normalizeHcNumber((string) ($lead['hc_number'] ?? ($payload['hc_number'] ?? '')));
+        if ($hcNumber !== '') {
+            $existingByHc = $this->findCustomerBy('hc_number', $hcNumber);
+            if ($existingByHc) {
+                return $existingByHc;
+            }
+        } else {
+            throw new RuntimeException('No se pudo determinar el hc_number para sincronizar el cliente.');
+        }
+
         if (!empty($payload['customer_id'])) {
             return (int) $payload['customer_id'];
         }
@@ -476,12 +620,13 @@ class LeadModel
 
         $stmt = $this->pdo->prepare("
             INSERT INTO crm_customers
-                (type, name, email, phone, document, gender, birthdate, city, address, marital_status, affiliation, nationality, workplace, source, external_ref)
+                (hc_number, type, name, email, phone, document, gender, birthdate, city, address, marital_status, affiliation, nationality, workplace, source, external_ref)
             VALUES
-                (:type, :name, :email, :phone, :document, :gender, :birthdate, :city, :address, :marital_status, :affiliation, :nationality, :workplace, :source, :external_ref)
+                (:hc_number, :type, :name, :email, :phone, :document, :gender, :birthdate, :city, :address, :marital_status, :affiliation, :nationality, :workplace, :source, :external_ref)
         ");
 
         $stmt->execute([
+            ':hc_number' => $hcNumber,
             ':type' => $payload['type'] ?? 'person',
             ':name' => trim((string) ($payload['name'] ?? $lead['name'] ?? 'Lead sin nombre')),
             ':email' => $email !== '' ? $email : null,
@@ -504,7 +649,7 @@ class LeadModel
 
     private function findCustomerBy(string $column, string $value): ?int
     {
-        $allowed = ['email', 'phone', 'external_ref'];
+        $allowed = ['hc_number', 'email', 'phone', 'external_ref'];
         if (!in_array($column, $allowed, true)) {
             return null;
         }
@@ -514,6 +659,22 @@ class LeadModel
         $id = $stmt->fetchColumn();
 
         return $id ? (int) $id : null;
+    }
+
+    private function assertHcNumberAvailable(string $hcNumber, ?string $current = null): void
+    {
+        $normalized = $this->identityService->normalizeHcNumber($hcNumber);
+        if ($normalized === '') {
+            throw new InvalidArgumentException('El campo hc_number es obligatorio.');
+        }
+
+        $stmt = $this->pdo->prepare('SELECT hc_number FROM crm_leads WHERE hc_number = :hc LIMIT 1');
+        $stmt->execute([':hc' => $normalized]);
+        $existing = $stmt->fetchColumn();
+
+        if ($existing && $existing !== $current) {
+            throw new RuntimeException('El número de historia clínica ya está asociado a otro lead.');
+        }
     }
 
     private function sanitizeStatus(?string $status): string

@@ -34,7 +34,7 @@
         ticketTableBody: root.querySelector('#crm-tickets-table tbody'),
         leadForm: root.querySelector('#lead-form'),
         convertForm: root.querySelector('#lead-convert-form'),
-        convertLeadId: root.querySelector('#convert-lead-id'),
+        convertLeadHc: root.querySelector('#convert-lead-hc'),
         convertHelper: root.querySelector('#convert-helper'),
         convertSelected: root.querySelector('#convert-lead-selected'),
         convertSubmit: root.querySelector('#lead-convert-form button[type="submit"]'),
@@ -57,6 +57,8 @@
         tasksCount: root.querySelector('#crm-tasks-count'),
         ticketsCount: root.querySelector('#crm-tickets-count'),
     };
+
+    state.leads = mapLeads(state.leads);
 
     const htmlEscapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
 
@@ -236,7 +238,16 @@
             state.leads.forEach((lead) => {
                 const option = document.createElement('option');
                 option.value = lead.id;
-                option.textContent = lead.name ? lead.name : `Lead #${lead.id}`;
+                const normalizedHc = normalizeHcNumber(lead.hc_number);
+                if (lead.name && normalizedHc) {
+                    option.textContent = `${lead.name} · ${normalizedHc}`;
+                } else if (lead.name) {
+                    option.textContent = lead.name;
+                } else if (normalizedHc) {
+                    option.textContent = `HC ${normalizedHc}`;
+                } else {
+                    option.textContent = `Lead #${lead.id}`;
+                }
                 select.appendChild(option);
             });
             if (currentValue && state.leads.some((lead) => String(lead.id) === String(currentValue))) {
@@ -292,8 +303,18 @@
 
                 const nameCell = document.createElement('td');
                 const nameStrong = document.createElement('strong');
-                nameStrong.textContent = lead.name || `Lead #${lead.id}`;
+                const normalizedHc = normalizeHcNumber(lead.hc_number);
+                if (lead.name) {
+                    nameStrong.textContent = lead.name;
+                } else if (normalizedHc) {
+                    nameStrong.textContent = `HC ${normalizedHc}`;
+                } else {
+                    nameStrong.textContent = `Lead #${lead.id}`;
+                }
                 nameCell.appendChild(nameStrong);
+                if (normalizedHc) {
+                    appendLine(nameCell, `HC ${normalizedHc}`, 'mdi mdi-card-account-details-outline');
+                }
                 appendLine(nameCell, `Creado ${formatDate(lead.created_at, true)}`, 'mdi mdi-calendar-clock');
                 row.appendChild(nameCell);
 
@@ -308,7 +329,7 @@
                 const statusCell = document.createElement('td');
                 const statusSelect = createStatusSelect(state.leadStatuses, lead.status);
                 statusSelect.classList.add('js-lead-status');
-                statusSelect.dataset.leadId = lead.id;
+                statusSelect.dataset.leadHc = normalizedHc;
                 statusCell.appendChild(statusSelect);
                 row.appendChild(statusCell);
 
@@ -329,7 +350,7 @@
                 const convertButton = document.createElement('button');
                 convertButton.type = 'button';
                 convertButton.className = 'btn btn-sm btn-success js-select-lead';
-                convertButton.dataset.leadId = lead.id;
+                convertButton.dataset.leadHc = normalizedHc;
                 convertButton.innerHTML = '<i class="mdi mdi-account-check-outline me-1"></i>Convertir';
                 actionsCell.appendChild(convertButton);
                 row.appendChild(actionsCell);
@@ -597,7 +618,9 @@
         if (!elements.convertForm) {
             return;
         }
-        elements.convertLeadId.value = '';
+        if (elements.convertLeadHc) {
+            elements.convertLeadHc.value = '';
+        }
         elements.convertSelected.textContent = 'Sin selección';
         elements.convertHelper.textContent = 'Selecciona un lead en la tabla para precargar los datos.';
         elements.convertSubmit.disabled = true;
@@ -613,8 +636,12 @@
         if (!elements.convertForm) {
             return;
         }
-        elements.convertLeadId.value = lead.id;
-        elements.convertSelected.textContent = lead.name || `Lead #${lead.id}`;
+        if (elements.convertLeadHc) {
+            elements.convertLeadHc.value = lead.hc_number || '';
+        }
+        const normalizedHc = normalizeHcNumber(lead.hc_number);
+        const label = lead.name ? `${lead.name} · ${normalizedHc || 'HC sin registrar'}` : (normalizedHc ? `HC ${normalizedHc}` : 'Lead sin nombre');
+        elements.convertSelected.textContent = label;
         elements.convertHelper.textContent = 'Completa los datos y confirma la conversión.';
         elements.convertSubmit.disabled = false;
         if (resetFields !== false) {
@@ -636,12 +663,12 @@
         if (!elements.convertForm) {
             return;
         }
-        const leadId = elements.convertLeadId.value;
-        if (!leadId) {
+        const hcNumber = elements.convertLeadHc ? normalizeHcNumber(elements.convertLeadHc.value) : '';
+        if (!hcNumber) {
             disableConvertForm();
             return;
         }
-        const lead = findLeadById(leadId);
+        const lead = findLeadByHcNumber(hcNumber);
         if (!lead) {
             disableConvertForm();
             return;
@@ -699,7 +726,7 @@
     function loadLeads() {
         return request('/crm/leads')
             .then((data) => {
-                state.leads = Array.isArray(data.data) ? data.data : [];
+                state.leads = mapLeads(data.data);
                 renderLeads();
             })
             .catch((error) => {
@@ -753,6 +780,35 @@
         return Number.isNaN(parsed) ? null : parsed;
     }
 
+    function normalizeHcNumber(value) {
+        return String(value || '').trim().toUpperCase();
+    }
+
+    function findLeadByHcNumber(hcNumber) {
+        const normalized = normalizeHcNumber(hcNumber);
+        if (!normalized) {
+            return null;
+        }
+        return (
+            state.leads.find(
+                (lead) => normalizeHcNumber(lead.hc_number) === normalized
+            ) || null
+        );
+    }
+
+    function normalizeLead(lead) {
+        if (!lead || typeof lead !== 'object') {
+            return {};
+        }
+        const normalized = { ...lead };
+        normalized.hc_number = normalizeHcNumber(lead.hc_number ?? lead.hcNumber ?? '');
+        return normalized;
+    }
+
+    function mapLeads(leads) {
+        return Array.isArray(leads) ? leads.map((lead) => normalizeLead(lead)) : [];
+    }
+
     if (elements.leadForm) {
         elements.leadForm.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -762,6 +818,12 @@
                 showToast('error', 'El nombre es obligatorio');
                 return;
             }
+            const hcNumber = normalizeHcNumber(formData.get('hc_number'));
+            if (!hcNumber) {
+                showToast('error', 'La historia clínica es obligatoria');
+                return;
+            }
+            payload.hc_number = hcNumber;
             const email = String(formData.get('email') || '').trim();
             if (email) {
                 payload.email = email;
@@ -803,8 +865,8 @@
     if (elements.convertForm) {
         elements.convertForm.addEventListener('submit', (event) => {
             event.preventDefault();
-            const leadId = serializeNumber(elements.convertLeadId.value);
-            if (!leadId) {
+            const hcNumber = normalizeHcNumber(elements.convertLeadHc.value);
+            if (!hcNumber) {
                 showToast('error', 'Selecciona un lead antes de convertir');
                 return;
             }
@@ -826,7 +888,7 @@
                 }
             });
 
-            request('/crm/leads/convert', { method: 'POST', body: { lead_id: leadId, customer } })
+            request('/crm/leads/convert', { method: 'POST', body: { hc_number: hcNumber, customer } })
                 .then(() => {
                     showToast('success', 'Lead convertido correctamente');
                     disableConvertForm();
@@ -1020,12 +1082,12 @@
     root.addEventListener('change', (event) => {
         const target = event.target;
         if (target.classList.contains('js-lead-status')) {
-            const leadId = serializeNumber(target.dataset.leadId);
+            const hcNumber = normalizeHcNumber(target.dataset.leadHc);
             const status = target.value;
-            if (!leadId || !status) {
+            if (!hcNumber || !status) {
                 return;
             }
-            request('/crm/leads/update', { method: 'POST', body: { lead_id: leadId, status } })
+            request('/crm/leads/update', { method: 'POST', body: { hc_number: hcNumber, status } })
                 .then(() => loadLeads())
                 .catch((error) => {
                     console.error('Error actualizando lead', error);
@@ -1066,11 +1128,11 @@
     root.addEventListener('click', (event) => {
         const leadButton = event.target.closest('.js-select-lead');
         if (leadButton) {
-            const leadId = serializeNumber(leadButton.dataset.leadId);
-            if (!leadId) {
+            const hcNumber = normalizeHcNumber(leadButton.dataset.leadHc);
+            if (!hcNumber) {
                 return;
             }
-            const lead = findLeadById(leadId);
+            const lead = findLeadByHcNumber(hcNumber);
             if (!lead) {
                 showToast('error', 'No pudimos cargar el lead seleccionado');
                 return;

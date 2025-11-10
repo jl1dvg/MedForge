@@ -3,12 +3,14 @@
 namespace Modules\CRM\Controllers;
 
 use Core\BaseController;
+use InvalidArgumentException;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Models\ProjectModel;
 use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use PDO;
+use RuntimeException;
 use Throwable;
 
 class CRMController extends BaseController
@@ -89,15 +91,17 @@ class CRMController extends BaseController
 
         $payload = $this->getBody();
         $name = trim((string) ($payload['name'] ?? ''));
+        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
 
-        if ($name === '') {
-            $this->json(['ok' => false, 'error' => 'El nombre es requerido'], 422);
+        if ($name === '' || $hcNumber === '') {
+            $this->json(['ok' => false, 'error' => 'Los campos name y hc_number son requeridos'], 422);
             return;
         }
 
         try {
             $lead = $this->leads->create(
                 [
+                    'hc_number' => $hcNumber,
                     'name' => $name,
                     'email' => $payload['email'] ?? null,
                     'phone' => $payload['phone'] ?? null,
@@ -111,6 +115,8 @@ class CRMController extends BaseController
             );
 
             $this->json(['ok' => true, 'data' => $lead], 201);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear el lead'], 500);
         }
@@ -121,21 +127,23 @@ class CRMController extends BaseController
         $this->requireAuth();
 
         $payload = $this->getBody();
-        $leadId = isset($payload['lead_id']) ? (int) $payload['lead_id'] : 0;
+        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
 
-        if ($leadId <= 0) {
-            $this->json(['ok' => false, 'error' => 'lead_id es requerido'], 422);
+        if ($hcNumber === '') {
+            $this->json(['ok' => false, 'error' => 'hc_number es requerido'], 422);
             return;
         }
 
         try {
-            $updated = $this->leads->update($leadId, $payload);
+            $updated = $this->leads->update($hcNumber, $payload);
             if (!$updated) {
                 $this->json(['ok' => false, 'error' => 'Lead no encontrado'], 404);
                 return;
             }
 
             $this->json(['ok' => true, 'data' => $updated]);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo actualizar el lead'], 500);
         }
@@ -146,21 +154,23 @@ class CRMController extends BaseController
         $this->requireAuth();
 
         $payload = $this->getBody();
-        $leadId = isset($payload['lead_id']) ? (int) $payload['lead_id'] : 0;
+        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
 
-        if ($leadId <= 0) {
-            $this->json(['ok' => false, 'error' => 'lead_id es requerido'], 422);
+        if ($hcNumber === '') {
+            $this->json(['ok' => false, 'error' => 'hc_number es requerido'], 422);
             return;
         }
 
         try {
-            $converted = $this->leads->convertToCustomer($leadId, $payload['customer'] ?? []);
+            $converted = $this->leads->convertToCustomer($hcNumber, $payload['customer'] ?? []);
             if (!$converted) {
                 $this->json(['ok' => false, 'error' => 'Lead no encontrado'], 404);
                 return;
             }
 
             $this->json(['ok' => true, 'data' => $converted]);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo convertir el lead'], 500);
         }
