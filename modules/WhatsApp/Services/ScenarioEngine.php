@@ -156,7 +156,7 @@ class ScenarioEngine
         }
 
         $facts = [
-            'is_first_time' => $session === null,
+            'is_first_time' => $session === null && !$hasConsent,
             'state' => $context['state'] ?? 'inicio',
             'awaiting_field' => $context['awaiting_field'] ?? null,
             'has_consent' => $hasConsent || !empty($context['consent']),
