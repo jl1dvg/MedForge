@@ -109,6 +109,10 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <label for="lead-name" class="form-label">Nombre del contacto *</label>
                                                     <input type="text" class="form-control" id="lead-name" name="name" required>
                                                 </div>
+                                                <div class="mb-2">
+                                                    <label for="lead-hc-number" class="form-label">Historia clínica *</label>
+                                                    <input type="text" class="form-control" id="lead-hc-number" name="hc_number" required>
+                                                </div>
                                                 <div class="row g-2">
                                                     <div class="col-md-6">
                                                         <label for="lead-email" class="form-label">Correo</label>
@@ -163,7 +167,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                         </div>
                                         <div class="box-body">
                                             <form id="lead-convert-form" class="space-y-2">
-                                                <input type="hidden" id="convert-lead-id" name="lead_id" value="">
+                                                <input type="hidden" id="convert-lead-hc" name="hc_number" value="">
                                                 <div class="alert alert-info mb-3" id="convert-helper">Selecciona un lead en la tabla para precargar los datos.</div>
                                                 <div class="mb-2">
                                                     <label for="convert-name" class="form-label">Nombre completo</label>

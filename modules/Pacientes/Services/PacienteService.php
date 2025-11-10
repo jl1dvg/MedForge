@@ -3,6 +3,7 @@
 namespace Modules\Pacientes\Services;
 
 use DateTime;
+use Modules\Shared\Services\PatientIdentityService;
 use PDO;
 use PDOException;
 
@@ -10,10 +11,12 @@ class PacienteService
 {
     private PDO $db;
     private ?bool $prefacturaTableExists = null;
+    private PatientIdentityService $identityService;
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
+        $this->identityService = new PatientIdentityService($pdo);
     }
 
     public function obtenerPacientesConUltimaConsulta(): array
@@ -411,6 +414,34 @@ class PacienteService
             ':celular' => $celular,
             ':hc_number' => $hcNumber,
         ]);
+
+        $fullName = trim(implode(' ', array_filter([$fname, $mname, $lname, $lname2], static fn($v) => $v !== '')));
+
+        $identity = $this->identityService->ensureIdentity($hcNumber, [
+            'customer' => [
+                'name' => $fullName !== '' ? $fullName : null,
+                'phone' => $celular !== '' ? $celular : null,
+                'affiliation' => $afiliacion !== '' ? $afiliacion : null,
+                'source' => 'clinical',
+            ],
+            'patient' => [
+                'fname' => $fname,
+                'mname' => $mname,
+                'lname' => $lname,
+                'lname2' => $lname2,
+                'afiliacion' => $afiliacion,
+                'fecha_nacimiento' => $fechaNacimiento,
+                'sexo' => $sexo,
+                'celular' => $celular,
+            ],
+        ]);
+
+        $this->identityService->syncLead($hcNumber, [
+            'name' => $fullName !== '' ? $fullName : ('Paciente ' . $this->identityService->normalizeHcNumber($hcNumber)),
+            'phone' => $celular !== '' ? $celular : null,
+            'source' => 'clinical',
+            'customer_id' => $identity['customer_id'] ?? null,
+        ], true);
     }
 
     public function getAfiliacionesDisponibles(): array
