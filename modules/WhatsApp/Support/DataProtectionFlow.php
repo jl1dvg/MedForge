@@ -510,14 +510,14 @@ class DataProtectionFlow
 
     private function isAcceptance(string $keyword): bool
     {
-        $variants = [
+        $variants = $this->normalizeVariants([
             'consent_yes',
             'si',
             'si autorizo',
             'autorizo',
             'autorizo si',
             'claro autorizo',
-        ];
+        ]);
 
         $button = $this->normalizeVariant($this->copyButton('accept'));
         if ($button !== '') {
@@ -533,13 +533,13 @@ class DataProtectionFlow
 
     private function isRejection(string $keyword): bool
     {
-        $variants = [
+        $variants = $this->normalizeVariants([
             'consent_no',
             'no',
             'no autorizo',
             'no gracias',
             'rechazo',
-        ];
+        ]);
 
         $button = $this->normalizeVariant($this->copyButton('decline'));
         if ($button !== '') {
@@ -649,6 +649,30 @@ class DataProtectionFlow
         }
 
         return $values;
+    }
+
+    /**
+     * @param array<int, string> $variants
+     * @return array<int, string>
+     */
+    private function normalizeVariants(array $variants): array
+    {
+        $normalized = [];
+
+        foreach ($variants as $variant) {
+            if (!is_string($variant)) {
+                continue;
+            }
+
+            $value = $this->normalizeVariant($variant);
+            if ($value === '') {
+                continue;
+            }
+
+            $normalized[] = $value;
+        }
+
+        return $normalized;
     }
 
     private function normalizeVariant(string $value): string
