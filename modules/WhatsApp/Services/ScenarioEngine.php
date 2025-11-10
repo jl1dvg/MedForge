@@ -14,6 +14,8 @@ use function mb_strtolower;
 use function preg_match;
 use function preg_replace;
 use function str_contains;
+use function str_pad;
+use function strlen;
 use function trim;
 
 class ScenarioEngine
@@ -334,23 +336,41 @@ class ScenarioEngine
                 $field = $action['field'] ?? 'cedula';
                 $source = $action['source'] ?? 'message';
                 $identifier = '';
+                $rawInput = '';
+
                 if ($source === 'context') {
                     $identifier = (string) ($context[$field] ?? '');
+                    $rawInput = (string) ($context[$field . '_input'] ?? $identifier);
                 } else {
-                    $identifier = $this->normalizeIdentifier($env['text'] ?? '');
-                    if ($identifier !== '') {
+                    $rawInput = $this->extractDigits($env['text'] ?? '');
+                    if ($rawInput !== '') {
+                        $identifier = $this->normalizeIdentifier($rawInput);
+                        $context[$field . '_input'] = $rawInput;
                         $context[$field] = $identifier;
                     }
                 }
 
                 if ($identifier !== '') {
-                    $patient = $this->patientLookup->findLocalByHistoryNumber($identifier);
-                    if ($patient !== null) {
-                        $context['patient'] = $patient;
+                    $candidates = $this->buildIdentifierCandidates($rawInput, $identifier);
+                    $foundPatient = null;
+
+                    foreach ($candidates as $candidate) {
+                        $patient = $this->patientLookup->findLocalByHistoryNumber($candidate);
+                        if ($patient !== null) {
+                            $foundPatient = $patient;
+                            $identifier = $patient['hc_number'] ?? $candidate;
+                            break;
+                        }
+                    }
+
+                    if ($foundPatient !== null) {
+                        $context['patient'] = $foundPatient;
                         $this->conversations->ensureConversation($env['sender'], [
-                            'patient_hc_number' => $patient['hc_number'] ?? $identifier,
-                            'patient_full_name' => $patient['full_name'] ?? null,
+                            'patient_hc_number' => $identifier,
+                            'patient_full_name' => $foundPatient['full_name'] ?? null,
                         ]);
+                    } else {
+                        unset($context['patient']);
                     }
 
                     if (($context['awaiting_field'] ?? null) === $field) {
@@ -492,9 +512,47 @@ class ScenarioEngine
 
     private function normalizeIdentifier(string $text): string
     {
+        $digits = $this->extractDigits($text);
+        if ($digits === '') {
+            return '';
+        }
+
+        $length = strlen($digits);
+        if ($length > 0 && $length < 10) {
+            return str_pad($digits, 10, '0', STR_PAD_LEFT);
+        }
+
+        return $digits;
+    }
+
+    private function extractDigits(string $text): string
+    {
         $digits = preg_replace('/\D+/', '', $text);
 
         return $digits ?? '';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildIdentifierCandidates(string $rawInput, string $normalized): array
+    {
+        $candidates = [];
+        if ($rawInput !== '') {
+            $candidates[] = $rawInput;
+        }
+        if ($normalized !== '') {
+            $candidates[] = $normalized;
+        }
+
+        $unique = [];
+        foreach ($candidates as $candidate) {
+            if (!isset($unique[$candidate])) {
+                $unique[$candidate] = true;
+            }
+        }
+
+        return array_keys($unique);
     }
 
     private function compileRegex(string $pattern): ?string

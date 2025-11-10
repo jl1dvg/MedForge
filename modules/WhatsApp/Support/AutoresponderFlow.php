@@ -191,7 +191,7 @@ class AutoresponderFlow
                 'description' => 'Valida el formato y existencia del paciente.',
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'esperando_cedula'],
-                    ['type' => 'message_matches', 'pattern' => '^\\d{10}$'],
+                    ['type' => 'message_matches', 'pattern' => '^\\d{6,10}$'],
                 ],
                 'actions' => [
                     ['type' => 'lookup_patient', 'field' => 'cedula', 'source' => 'message'],
