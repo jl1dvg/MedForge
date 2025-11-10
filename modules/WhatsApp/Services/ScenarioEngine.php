@@ -318,6 +318,19 @@ class ScenarioEngine
                 continue;
             }
 
+            if ($type === 'send_sequence') {
+                if (isset($action['messages']) && is_array($action['messages'])) {
+                    foreach ($action['messages'] as $sequenceMessage) {
+                        if (!is_array($sequenceMessage)) {
+                            continue;
+                        }
+                        $this->dispatchMessage($env['sender'], $sequenceMessage, $context);
+                    }
+                }
+
+                continue;
+            }
+
             if ($type === 'send_template') {
                 if (isset($action['template']) && is_array($action['template'])) {
                     $this->messenger->sendTemplateMessage($env['sender'], $action['template']);
@@ -453,6 +466,7 @@ class ScenarioEngine
     {
         $type = $message['type'] ?? 'text';
         $body = isset($message['body']) ? $this->renderPlaceholders((string) $message['body'], $context) : '';
+        $caption = isset($message['caption']) ? $this->renderPlaceholders((string) $message['caption'], $context) : '';
 
         if ($type === 'buttons') {
             $buttons = [];
@@ -488,6 +502,69 @@ class ScenarioEngine
                 'button' => $message['button'] ?? 'Seleccionar',
                 'footer' => isset($message['footer']) ? $this->renderPlaceholders((string) $message['footer'], $context) : null,
             ]);
+
+            return;
+        }
+
+        if ($type === 'image') {
+            $link = trim((string) ($message['link'] ?? ''));
+            if ($link === '') {
+                if ($body !== '') {
+                    $this->messenger->sendTextMessage($recipient, $body);
+                }
+
+                return;
+            }
+
+            $options = [];
+            if ($caption !== '') {
+                $options['caption'] = $caption;
+            }
+
+            $this->messenger->sendImageMessage($recipient, $link, $options);
+
+            return;
+        }
+
+        if ($type === 'document') {
+            $link = trim((string) ($message['link'] ?? ''));
+            if ($link === '') {
+                if ($body !== '') {
+                    $this->messenger->sendTextMessage($recipient, $body);
+                }
+
+                return;
+            }
+
+            $options = [];
+            if ($caption !== '') {
+                $options['caption'] = $caption;
+            }
+            if (!empty($message['filename'])) {
+                $options['filename'] = (string) $message['filename'];
+            }
+
+            $this->messenger->sendDocumentMessage($recipient, $link, $options);
+
+            return;
+        }
+
+        if ($type === 'location') {
+            $latitude = isset($message['latitude']) ? (float) $message['latitude'] : null;
+            $longitude = isset($message['longitude']) ? (float) $message['longitude'] : null;
+            if ($latitude === null || $longitude === null) {
+                return;
+            }
+
+            $options = [];
+            if (!empty($message['name'])) {
+                $options['name'] = $this->renderPlaceholders((string) $message['name'], $context);
+            }
+            if (!empty($message['address'])) {
+                $options['address'] = $this->renderPlaceholders((string) $message['address'], $context);
+            }
+
+            $this->messenger->sendLocationMessage($recipient, $latitude, $longitude, $options);
 
             return;
         }
