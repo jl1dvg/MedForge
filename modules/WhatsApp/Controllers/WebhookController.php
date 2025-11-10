@@ -8,9 +8,11 @@ use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\ConversationService;
+use Modules\WhatsApp\Services\ScenarioEngine;
 use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Support\DataProtectionFlow;
+use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
 use PDO;
 use function file_get_contents;
 use function hash_equals;
@@ -34,6 +36,7 @@ class WebhookController extends BaseController
     private array $flow;
     private DataProtectionFlow $dataProtection;
     private ConversationService $conversations;
+    private ?ScenarioEngine $scenarioEngine = null;
 
     public function __construct(PDO $pdo)
     {
@@ -49,9 +52,22 @@ class WebhookController extends BaseController
         }
 
         $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
+        if (!isset($this->flow['meta']) || !is_array($this->flow['meta'])) {
+            $this->flow['meta'] = [];
+        }
+        $this->flow['meta']['brand'] = $brand;
         $this->verifyToken = $this->resolveVerifyToken($config);
         $patientLookup = new PatientLookupService($pdo);
         $consentRepository = new ContactConsentRepository($pdo);
+        $sessionRepository = new AutoresponderSessionRepository($pdo);
+        $this->scenarioEngine = new ScenarioEngine(
+            $this->messenger,
+            $this->conversations,
+            $sessionRepository,
+            $patientLookup,
+            $consentRepository,
+            $this->flow
+        );
         $this->dataProtection = new DataProtectionFlow($this->messenger, $consentRepository, $patientLookup, $settings);
     }
 
@@ -166,6 +182,12 @@ class WebhookController extends BaseController
 
         if ($keyword === '') {
             return;
+        }
+
+        if ($this->scenarioEngine instanceof ScenarioEngine && !empty($this->flow['scenarios'])) {
+            if ($this->scenarioEngine->handleIncoming($sender, $text, $message)) {
+                return;
+            }
         }
 
         if ($this->dataProtection->handle($sender, $keyword, $message, $text)) {

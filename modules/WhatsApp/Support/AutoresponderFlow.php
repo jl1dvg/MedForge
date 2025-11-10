@@ -8,8 +8,12 @@ use function array_unique;
 use function array_values;
 use function is_array;
 use function is_string;
+use function in_array;
+use function is_scalar;
 use function mb_strlen;
+use function mb_strtolower;
 use function preg_replace;
+use function str_starts_with;
 use function trim;
 use function uniqid;
 
@@ -115,7 +119,661 @@ class AutoresponderFlow
                     "No logré identificar tu solicitud. Responde 'menu' para ver las opciones disponibles o 'horarios' para conocer nuestros horarios de atención.",
                 ]),
             ],
+            'scenarios' => self::defaultScenarios($brand),
+            'menu' => self::defaultMenu($brand),
+            'variables' => self::defaultVariables(),
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function defaultScenarios(string $brand): array
+    {
+        $brand = trim($brand) !== '' ? $brand : 'MedForge';
+
+        return [
+            [
+                'id' => 'primer_contacto',
+                'name' => 'Primer contacto (sin consentimiento)',
+                'description' => 'Saludo inicial y solicitud de autorización de datos.',
+                'conditions' => [
+                    ['type' => 'is_first_time', 'value' => true],
+                    ['type' => 'has_consent', 'value' => false],
+                ],
+                'actions' => [
+                    [
+                        'type' => 'send_message',
+                        'message' => [
+                            'type' => 'text',
+                            'body' => "Hola, soy el asistente virtual de {$brand} 👋. Para continuar, autoriza el uso protegido de tus datos.",
+                        ],
+                    ],
+                    [
+                        'type' => 'send_buttons',
+                        'message' => [
+                            'type' => 'buttons',
+                            'body' => '¿Nos autorizas a usar tus datos protegidos para brindarte atención?',
+                            'buttons' => [
+                                ['id' => 'acepto', 'title' => 'Acepto'],
+                                ['id' => 'no_acepto', 'title' => 'No acepto'],
+                            ],
+                        ],
+                    ],
+                    ['type' => 'set_state', 'state' => 'consentimiento_pendiente'],
+                ],
+            ],
+            [
+                'id' => 'captura_cedula',
+                'name' => 'Captura de cédula',
+                'description' => 'Gestiona la aceptación del consentimiento y solicita el identificador.',
+                'conditions' => [
+                    ['type' => 'state_is', 'value' => 'consentimiento_pendiente'],
+                    ['type' => 'message_in', 'values' => ['acepto', 'si', 'sí']],
+                ],
+                'actions' => [
+                    ['type' => 'store_consent', 'value' => true],
+                    [
+                        'type' => 'send_message',
+                        'message' => [
+                            'type' => 'text',
+                            'body' => 'Gracias. Por favor, escribe tu número de cédula.',
+                        ],
+                    ],
+                    ['type' => 'set_state', 'state' => 'esperando_cedula'],
+                    ['type' => 'set_context', 'values' => ['awaiting_field' => 'cedula']],
+                ],
+            ],
+            [
+                'id' => 'validar_cedula',
+                'name' => 'Validar cédula',
+                'description' => 'Valida el formato y existencia del paciente.',
+                'conditions' => [
+                    ['type' => 'state_is', 'value' => 'esperando_cedula'],
+                    ['type' => 'message_matches', 'pattern' => '^\\d{10}$'],
+                ],
+                'actions' => [
+                    ['type' => 'lookup_patient', 'field' => 'cedula', 'source' => 'message'],
+                    [
+                        'type' => 'conditional',
+                        'condition' => ['type' => 'patient_found'],
+                        'then' => [
+                            [
+                                'type' => 'send_message',
+                                'message' => [
+                                    'type' => 'text',
+                                    'body' => 'Hola {{context.patient.full_name}} 👋',
+                                ],
+                            ],
+                            ['type' => 'set_state', 'state' => 'menu_principal'],
+                            ['type' => 'goto_menu'],
+                        ],
+                        'else' => [
+                            ['type' => 'upsert_patient_from_context'],
+                            [
+                                'type' => 'send_message',
+                                'message' => [
+                                    'type' => 'text',
+                                    'body' => 'Te registré con tu cédula y tu número. ¿Deseas continuar?',
+                                ],
+                            ],
+                            ['type' => 'set_state', 'state' => 'menu_principal'],
+                            ['type' => 'goto_menu'],
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'id' => 'retorno',
+                'name' => 'Retorno (ya conocido)',
+                'description' => 'Contactos conocidos con consentimiento.',
+                'conditions' => [
+                    ['type' => 'is_first_time', 'value' => false],
+                    ['type' => 'has_consent', 'value' => true],
+                ],
+                'actions' => [
+                    [
+                        'type' => 'send_message',
+                        'message' => [
+                            'type' => 'text',
+                            'body' => 'Hola {{context.patient.full_name}} 👋, ¿en qué puedo ayudarte hoy?',
+                        ],
+                    ],
+                    ['type' => 'goto_menu'],
+                ],
+            ],
+            [
+                'id' => 'fallback',
+                'name' => 'Fallback',
+                'description' => 'Cuando ninguna regla aplica.',
+                'conditions' => [
+                    ['type' => 'always'],
+                ],
+                'actions' => [
+                    [
+                        'type' => 'send_message',
+                        'message' => [
+                            'type' => 'text',
+                            'body' => 'No te entendí. Escribe menú para ver opciones.',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function defaultMenu(string $brand): array
+    {
+        $brand = trim($brand) !== '' ? $brand : 'MedForge';
+
+        return [
+            'title' => 'Menú principal',
+            'message' => [
+                'type' => 'buttons',
+                'body' => "Soy el asistente virtual de {$brand}. Selecciona una opción:",
+                'buttons' => [
+                    ['id' => 'menu_agendar', 'title' => 'Agendar cita'],
+                    ['id' => 'menu_resultados', 'title' => 'Resultados'],
+                    ['id' => 'menu_facturacion', 'title' => 'Facturación'],
+                ],
+            ],
+            'options' => [
+                [
+                    'id' => 'menu_agendar',
+                    'title' => 'Agendar cita',
+                    'keywords' => ['agendar', 'cita', 'menu_agendar', '1'],
+                    'actions' => [
+                        [
+                            'type' => 'send_message',
+                            'message' => [
+                                'type' => 'text',
+                                'body' => 'Para agendar una cita responde con la especialidad que necesitas o escribe "agente" para asistencia humana.',
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'id' => 'menu_resultados',
+                    'title' => 'Resultados',
+                    'keywords' => ['resultados', 'examenes', 'menu_resultados', '2'],
+                    'actions' => [
+                        [
+                            'type' => 'send_message',
+                            'message' => [
+                                'type' => 'text',
+                                'body' => 'Si deseas tus resultados, indícanos tu número de historia clínica y el área que necesita revisar.',
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'id' => 'menu_facturacion',
+                    'title' => 'Facturación',
+                    'keywords' => ['facturacion', 'factura', 'menu_facturacion', '3'],
+                    'actions' => [
+                        [
+                            'type' => 'send_message',
+                            'message' => [
+                                'type' => 'text',
+                                'body' => 'Nuestro equipo de facturación puede ayudarte. Comparte el número de factura o paciente para continuar.',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function defaultVariables(): array
+    {
+        return [
+            'cedula' => [
+                'label' => 'Cédula',
+                'source' => 'context.cedula',
+                'persist' => true,
+            ],
+            'telefono' => [
+                'label' => 'Teléfono',
+                'source' => 'session.wa_number',
+                'persist' => true,
+            ],
+            'nombre' => [
+                'label' => 'Nombre completo',
+                'source' => 'patient.full_name',
+                'persist' => false,
+            ],
+            'consentimiento' => [
+                'label' => 'Consentimiento',
+                'source' => 'context.consent',
+                'persist' => true,
+            ],
+            'estado' => [
+                'label' => 'Estado',
+                'source' => 'context.state',
+                'persist' => false,
+            ],
+        ];
+    }
+
+    /**
+     * @param mixed $scenarios
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeScenarios($scenarios, string $brand): array
+    {
+        if (!is_array($scenarios)) {
+            return self::defaultScenarios($brand);
+        }
+
+        $normalized = [];
+        foreach ($scenarios as $index => $scenario) {
+            if (!is_array($scenario)) {
+                continue;
+            }
+
+            $normalized[] = self::sanitizeScenario($scenario, $index);
+        }
+
+        if (empty($normalized)) {
+            return self::defaultScenarios($brand);
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function sanitizeScenario(array $scenario, int $index): array
+    {
+        $id = isset($scenario['id']) ? self::sanitizeKey((string) $scenario['id']) : '';
+        if ($id === '') {
+            $id = 'scenario_' . ($index + 1);
+        }
+
+        $name = self::sanitizeLine((string) ($scenario['name'] ?? ''));
+        if ($name === '') {
+            $name = 'Escenario ' . ($index + 1);
+        }
+
+        $description = self::sanitizeLine((string) ($scenario['description'] ?? ''));
+
+        $conditions = self::sanitizeScenarioConditions($scenario['conditions'] ?? []);
+        if (empty($conditions)) {
+            $conditions = [['type' => 'always']];
+        }
+
+        $actions = self::sanitizeScenarioActions($scenario['actions'] ?? []);
+
+        return [
+            'id' => $id,
+            'name' => $name,
+            'description' => $description,
+            'conditions' => $conditions,
+            'actions' => $actions,
+        ];
+    }
+
+    /**
+     * @param mixed $conditions
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeScenarioConditions($conditions): array
+    {
+        if (!is_array($conditions)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($conditions as $condition) {
+            if (!is_array($condition)) {
+                continue;
+            }
+
+            $type = self::sanitizeKey((string) ($condition['type'] ?? ''));
+            if ($type === '') {
+                $type = 'always';
+            }
+
+            $entry = ['type' => $type];
+
+            switch ($type) {
+                case 'always':
+                    break;
+                case 'is_first_time':
+                case 'has_consent':
+                    $entry['value'] = (bool) ($condition['value'] ?? false);
+                    break;
+                case 'state_is':
+                    $entry['value'] = self::sanitizeKey((string) ($condition['value'] ?? ''));
+                    break;
+                case 'awaiting_is':
+                    $entry['value'] = self::sanitizeKey((string) ($condition['value'] ?? ''));
+                    break;
+                case 'message_in':
+                    $values = [];
+                    foreach (($condition['values'] ?? []) as $value) {
+                        if (!is_string($value)) {
+                            continue;
+                        }
+                        $clean = mb_strtolower(self::sanitizeLine($value));
+                        if ($clean !== '') {
+                            $values[] = $clean;
+                        }
+                    }
+                    if (!empty($values)) {
+                        $entry['values'] = array_values(array_unique($values));
+                    }
+                    break;
+                case 'message_contains':
+                    $keywords = [];
+                    foreach (($condition['keywords'] ?? []) as $value) {
+                        if (!is_string($value)) {
+                            continue;
+                        }
+                        $clean = mb_strtolower(self::sanitizeLine($value));
+                        if ($clean !== '') {
+                            $keywords[] = $clean;
+                        }
+                    }
+                    if (!empty($keywords)) {
+                        $entry['keywords'] = array_values(array_unique($keywords));
+                    }
+                    break;
+                case 'message_matches':
+                    $pattern = trim((string) ($condition['pattern'] ?? ''));
+                    if ($pattern !== '') {
+                        $entry['pattern'] = $pattern;
+                    }
+                    break;
+                case 'last_interaction_gt':
+                    $minutes = (int) ($condition['minutes'] ?? 0);
+                    if ($minutes > 0) {
+                        $entry['minutes'] = $minutes;
+                    }
+                    break;
+                case 'patient_found':
+                case 'identifier_exists':
+                case 'context_flag':
+                    if (isset($condition['key'])) {
+                        $entry['key'] = self::sanitizeKey((string) $condition['key']);
+                    }
+                    $entry['value'] = $condition['value'] ?? true;
+                    break;
+                default:
+                    $entry['type'] = 'custom';
+                    $entry['key'] = self::sanitizeKey((string) ($condition['key'] ?? ''));
+                    $entry['value'] = $condition['value'] ?? null;
+                    break;
+            }
+
+            $normalized[] = $entry;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $actions
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeScenarioActions($actions): array
+    {
+        if (!is_array($actions)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($actions as $action) {
+            if (!is_array($action)) {
+                continue;
+            }
+
+            $clean = self::sanitizeScenarioAction($action);
+            if (!empty($clean)) {
+                $normalized[] = $clean;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @return array<string, mixed>
+     */
+    private static function sanitizeScenarioAction(array $action): array
+    {
+        $type = self::sanitizeKey((string) ($action['type'] ?? ''));
+        if ($type === '') {
+            return [];
+        }
+
+        $payload = ['type' => $type];
+
+        if (in_array($type, ['send_message', 'send_buttons', 'send_list'], true)) {
+            $message = $action['message'] ?? null;
+            if (is_string($message)) {
+                $message = ['type' => 'text', 'body' => $message];
+            }
+            $messages = self::sanitizeMessages([$message]);
+            if (empty($messages)) {
+                return [];
+            }
+            $payload['message'] = $messages[0];
+
+            return $payload;
+        }
+
+        if ($type === 'send_template') {
+            $template = isset($action['template']) && is_array($action['template'])
+                ? self::sanitizeTemplateMessage($action['template'])
+                : [];
+            if (empty($template)) {
+                return [];
+            }
+            $payload['template'] = $template;
+
+            return $payload;
+        }
+
+        if ($type === 'set_state') {
+            $payload['state'] = self::sanitizeKey((string) ($action['state'] ?? ''));
+
+            return $payload;
+        }
+
+        if ($type === 'set_context') {
+            $values = [];
+            foreach (($action['values'] ?? []) as $key => $value) {
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                $cleanKey = self::sanitizeKey((string) $key);
+                if ($cleanKey === '') {
+                    continue;
+                }
+                $values[$cleanKey] = (string) $value;
+            }
+            if (!empty($values)) {
+                $payload['values'] = $values;
+            }
+
+            return $payload;
+        }
+
+        if (in_array($type, ['store_consent', 'lookup_patient', 'goto_menu', 'upsert_patient_from_context', 'handoff_agent'], true)) {
+            if ($type === 'store_consent') {
+                $payload['value'] = (bool) ($action['value'] ?? true);
+            }
+            if ($type === 'lookup_patient') {
+                $payload['field'] = self::sanitizeKey((string) ($action['field'] ?? 'cedula'));
+                $source = self::sanitizeKey((string) ($action['source'] ?? 'message'));
+                if (!in_array($source, ['message', 'context'], true)) {
+                    $source = 'message';
+                }
+                $payload['source'] = $source;
+            }
+
+            return $payload;
+        }
+
+        if ($type === 'conditional') {
+            $condition = self::sanitizeScenarioConditions([$action['condition'] ?? []]);
+            if (empty($condition)) {
+                return [];
+            }
+            $payload['condition'] = $condition[0];
+            $payload['then'] = self::sanitizeScenarioActions($action['then'] ?? []);
+            $payload['else'] = self::sanitizeScenarioActions($action['else'] ?? []);
+
+            return $payload;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $base
+     * @param array<string, mixed> $override
+     * @return array<string, mixed>
+     */
+    private static function mergeMenu(array $base, array $override): array
+    {
+        $menu = $base;
+
+        if (isset($override['title']) && is_string($override['title'])) {
+            $title = self::sanitizeLine($override['title']);
+            if ($title !== '') {
+                $menu['title'] = $title;
+            }
+        }
+
+        if (isset($override['message'])) {
+            $message = $override['message'];
+            if (is_string($message)) {
+                $message = ['type' => 'text', 'body' => $message];
+            }
+            $messages = self::sanitizeMessages([$message]);
+            if (!empty($messages)) {
+                $menu['message'] = $messages[0];
+            }
+        }
+
+        if (isset($override['options'])) {
+            $menu['options'] = self::sanitizeMenuOptions($override['options']);
+        }
+
+        return $menu;
+    }
+
+    /**
+     * @param mixed $options
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sanitizeMenuOptions($options): array
+    {
+        if (!is_array($options)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $id = self::sanitizeKey((string) ($option['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+
+            $title = self::sanitizeLine((string) ($option['title'] ?? ''));
+            if ($title === '') {
+                $title = ucfirst(str_replace('_', ' ', $id));
+            }
+
+            $keywords = self::sanitizeKeywords($option['keywords'] ?? []);
+            if (empty($keywords)) {
+                $keywords = [$id];
+            }
+
+            $actions = self::sanitizeScenarioActions($option['actions'] ?? []);
+
+            $normalized[] = [
+                'id' => $id,
+                'title' => $title,
+                'keywords' => $keywords,
+                'actions' => $actions,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $variables
+     * @return array<string, array<string, mixed>>
+     */
+    private static function sanitizeVariables($variables): array
+    {
+        if (!is_array($variables)) {
+            return self::defaultVariables();
+        }
+
+        $allowedSources = [
+            'context.cedula',
+            'context.state',
+            'context.consent',
+            'context.awaiting_field',
+            'session.wa_number',
+            'patient.full_name',
+            'patient.hc_number',
+        ];
+
+        $normalized = [];
+        foreach ($variables as $key => $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $cleanKey = self::sanitizeKey((string) $key);
+            if ($cleanKey === '') {
+                continue;
+            }
+
+            $label = self::sanitizeLine((string) ($definition['label'] ?? ''));
+            if ($label === '') {
+                $label = ucfirst(str_replace('_', ' ', $cleanKey));
+            }
+
+            $source = (string) ($definition['source'] ?? '');
+            if ($source === '' || (!in_array($source, $allowedSources, true) && !str_starts_with($source, 'context.'))) {
+                $source = 'context.' . $cleanKey;
+            }
+
+            $persist = (bool) ($definition['persist'] ?? false);
+
+            $normalized[$cleanKey] = [
+                'label' => $label,
+                'source' => $source,
+                'persist' => $persist,
+            ];
+        }
+
+        if (empty($normalized)) {
+            return self::defaultVariables();
+        }
+
+        return $normalized;
     }
 
     /**
@@ -141,6 +799,18 @@ class AutoresponderFlow
 
         if (isset($overrides['fallback']) && is_array($overrides['fallback'])) {
             $defaults['fallback'] = self::mergeSection($defaults['fallback'], $overrides['fallback']);
+        }
+
+        if (isset($overrides['scenarios']) && is_array($overrides['scenarios'])) {
+            $defaults['scenarios'] = self::sanitizeScenarios($overrides['scenarios'], $brand);
+        }
+
+        if (isset($overrides['menu']) && is_array($overrides['menu'])) {
+            $defaults['menu'] = self::mergeMenu($defaults['menu'], $overrides['menu']);
+        }
+
+        if (isset($overrides['variables']) && is_array($overrides['variables'])) {
+            $defaults['variables'] = self::sanitizeVariables($overrides['variables']);
         }
 
         $defaults['consent'] = DataProtectionCopy::sanitize($overrides['consent'] ?? [], $brand);
@@ -179,6 +849,9 @@ class AutoresponderFlow
         $resolved['fallback'] = self::mergeSection($defaults['fallback'], $flow['fallback']);
         $resolved['options'] = self::mergeOptions($defaults['options'], $flow['options']);
         $resolved['consent'] = DataProtectionCopy::sanitize($flow['consent'] ?? [], $brand);
+        $resolved['scenarios'] = self::sanitizeScenarios($flow['scenarios'] ?? $defaults['scenarios'], $brand);
+        $resolved['menu'] = self::mergeMenu($defaults['menu'], $flow['menu'] ?? []);
+        $resolved['variables'] = self::sanitizeVariables($flow['variables'] ?? $defaults['variables']);
 
         $storage = self::purgeAutomaticKeywords($resolved);
 

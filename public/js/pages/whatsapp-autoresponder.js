@@ -1,1033 +1,1161 @@
 (function () {
-        const form = document.querySelector('[data-autoresponder-form]');
-        if (!form) {
+    const form = document.querySelector('[data-autoresponder-form]');
+    if (!form) {
+        return;
+    }
+
+    const flowField = document.getElementById('flow_payload');
+    const validationAlert = form.querySelector('[data-validation-errors]');
+    const flowBootstrap = form.querySelector('[data-flow-bootstrap]');
+    const templateCatalogInput = form.querySelector('[data-template-catalog]');
+
+    const templates = {
+        variableRow: document.getElementById('variable-row-template'),
+        scenarioCard: document.getElementById('scenario-card-template'),
+        conditionRow: document.getElementById('condition-row-template'),
+        actionRow: document.getElementById('action-row-template'),
+        menuOption: document.getElementById('menu-option-template'),
+        buttonRow: document.getElementById('button-row-template'),
+        contextRow: document.getElementById('context-row-template'),
+    };
+
+    const VARIABLE_SOURCES = [
+        {value: 'context.cedula', label: 'Última cédula ingresada'},
+        {value: 'context.state', label: 'Estado actual del flujo'},
+        {value: 'context.consent', label: 'Consentimiento registrado'},
+        {value: 'context.awaiting_field', label: 'Campo pendiente'},
+        {value: 'session.wa_number', label: 'Número de WhatsApp'},
+        {value: 'patient.full_name', label: 'Nombre del paciente'},
+        {value: 'patient.hc_number', label: 'Historia clínica del paciente'},
+    ];
+
+    const CONDITION_OPTIONS = [
+        {value: 'always', label: 'Siempre'},
+        {value: 'is_first_time', label: 'Es primera vez', input: 'boolean'},
+        {value: 'has_consent', label: 'Tiene consentimiento', input: 'boolean'},
+        {value: 'state_is', label: 'Estado actual es', input: 'text', placeholder: 'menu_principal'},
+        {value: 'awaiting_is', label: 'Campo pendiente es', input: 'text', placeholder: 'cedula'},
+        {value: 'message_in', label: 'Mensaje coincide con lista', input: 'keywords', placeholder: 'acepto, si, sí'},
+        {value: 'message_contains', label: 'Mensaje contiene', input: 'keywords', placeholder: 'menu, ayuda'},
+        {value: 'message_matches', label: 'Mensaje coincide con regex', input: 'pattern', placeholder: '^\\\d{10}$'},
+        {value: 'last_interaction_gt', label: 'Última interacción mayor a (minutos)', input: 'number'},
+        {value: 'patient_found', label: 'Paciente localizado', input: 'boolean'},
+    ];
+
+    const ACTION_OPTIONS = [
+        {value: 'send_message', label: 'Enviar mensaje de texto'},
+        {value: 'send_buttons', label: 'Enviar botones'},
+        {value: 'set_state', label: 'Actualizar estado'},
+        {value: 'set_context', label: 'Guardar en contexto'},
+        {value: 'store_consent', label: 'Guardar consentimiento'},
+        {value: 'lookup_patient', label: 'Validar cédula en BD'},
+        {value: 'conditional', label: 'Condicional'},
+        {value: 'goto_menu', label: 'Redirigir al menú'},
+        {value: 'upsert_patient_from_context', label: 'Guardar paciente con datos actuales'},
+    ];
+
+    let templateCatalog = [];
+    if (templateCatalogInput) {
+        try {
+            templateCatalog = JSON.parse(templateCatalogInput.value || '[]');
+        } catch (error) {
+            console.warn('No fue posible interpretar el catálogo de plantillas', error);
+        }
+        templateCatalogInput.name = '';
+    }
+
+    const bootstrapPayload = parseBootstrap();
+    const state = initializeState(bootstrapPayload);
+    const defaults = JSON.parse(JSON.stringify(state));
+
+    const variablesPanel = form.querySelector('[data-variable-list]');
+    const scenariosPanel = form.querySelector('[data-scenario-list]');
+    const menuPanel = form.querySelector('[data-menu-editor]');
+
+    const simulateButton = form.querySelector('[data-action="simulate-flow"]');
+    const addScenarioButton = form.querySelector('[data-action="add-scenario"]');
+    const resetVariablesButton = form.querySelector('[data-action="reset-variables"]');
+    const resetMenuButton = form.querySelector('[data-action="reset-menu"]');
+
+    if (addScenarioButton) {
+        addScenarioButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            state.scenarios.push(createDefaultScenario());
+            renderScenarios();
+        });
+    }
+
+    if (simulateButton) {
+        simulateButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            simulateFlow();
+        });
+    }
+
+    if (resetVariablesButton) {
+        resetVariablesButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            state.variables = JSON.parse(JSON.stringify(defaults.variables));
+            renderVariables();
+        });
+    }
+
+    if (resetMenuButton) {
+        resetMenuButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            state.menu = JSON.parse(JSON.stringify(defaults.menu));
+            renderMenu();
+        });
+    }
+
+    form.addEventListener('submit', (event) => {
+        resetValidation();
+        normalizeScenarios();
+
+        const payload = buildPayload();
+        const errors = validatePayload(payload);
+
+        if (errors.length > 0) {
+            event.preventDefault();
+            presentErrors(errors);
+
             return;
         }
 
-        const flowField = document.getElementById('flow_payload');
-        const validationAlert = form.querySelector('[data-validation-errors]');
-        let validationErrors = [];
+        if (flowField) {
+            flowField.value = JSON.stringify(payload);
+        }
+    });
 
-        const slugify = (value) => {
-            if (!value) {
-                return '';
-            }
+    renderVariables();
+    renderScenarios();
+    renderMenu();
 
-            let base = value.toString();
-            if (typeof base.normalize === 'function') {
-                base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            }
+    function parseBootstrap() {
+        if (!flowBootstrap) {
+            return {};
+        }
+        try {
+            return JSON.parse(flowBootstrap.textContent || '{}');
+        } catch (error) {
+            console.warn('No fue posible interpretar la configuración del flujo', error);
 
-            const normalized = base.toLowerCase();
+            return {};
+        }
+    }
 
-            return normalized
-                .replace(/[^a-z0-9_-]+/g, '_')
-                .replace(/_+/g, '_')
-                .replace(/^_+|_+$/g, '')
-                .slice(0, 32);
-        };
-
-        const resetValidationState = () => {
-            validationErrors = [];
-            if (validationAlert) {
-                validationAlert.classList.add('d-none');
-                validationAlert.innerHTML = '';
-            }
-            form.querySelectorAll('[data-message].has-validation-error').forEach((element) => {
-                element.classList.remove('has-validation-error');
+    function initializeState(payload) {
+        const variables = [];
+        const rawVariables = payload.variables || {};
+        Object.keys(rawVariables).forEach((key) => {
+            const entry = rawVariables[key];
+            variables.push({
+                key,
+                label: entry.label || capitalize(key),
+                source: entry.source || 'context.' + key,
+                persist: Boolean(entry.persist),
             });
-            form.querySelectorAll('[data-consent-wrapper].has-validation-error').forEach((element) => {
-                element.classList.remove('has-validation-error');
-            });
-            form.querySelectorAll('[data-template-parameter].is-invalid').forEach((element) => {
-                element.classList.remove('is-invalid');
-            });
-            form.querySelectorAll('.template-selector.is-invalid').forEach((element) => {
-                element.classList.remove('is-invalid');
-            });
-            form.querySelectorAll('[data-consent-field].is-invalid').forEach((element) => {
-                element.classList.remove('is-invalid');
-            });
-        };
+        });
 
-        const recordValidationError = (message, element) => {
-            validationErrors.push({message, element});
-            if (element) {
-                element.classList.add('has-validation-error');
-            }
-        };
-
-        const presentValidationErrors = () => {
-            if (!validationAlert || validationErrors.length === 0) {
-                return;
-            }
-
-            const items = validationErrors.map((entry) => `<li>${entry.message}</li>`).join('');
-            validationAlert.innerHTML = `<strong>Revisa los siguientes puntos antes de guardar:</strong><ul class="mb-0">${items}</ul>`;
-            validationAlert.classList.remove('d-none');
-
-            const firstError = validationErrors[0];
-            if (firstError && firstError.element && typeof firstError.element.scrollIntoView === 'function') {
-                firstError.element.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        };
-
-        const messageTemplate = document.getElementById('message-template');
-        const buttonTemplate = document.getElementById('button-template');
-        const templateCatalogInput = form.querySelector('[data-template-catalog]');
-        let templateCatalog = [];
-        const consentSection = form.querySelector('[data-consent]');
-
-        if (templateCatalogInput) {
-            try {
-                templateCatalog = JSON.parse(templateCatalogInput.value || '[]');
-            } catch (error) {
-                console.warn('No fue posible interpretar el catálogo de plantillas', error);
-                templateCatalog = [];
-            }
-            templateCatalogInput.name = '';
+        if (variables.length === 0) {
+            variables.push(
+                {key: 'cedula', label: 'Cédula', source: 'context.cedula', persist: true},
+                {key: 'telefono', label: 'Teléfono', source: 'session.wa_number', persist: true},
+                {key: 'nombre', label: 'Nombre completo', source: 'patient.full_name', persist: false},
+                {key: 'consentimiento', label: 'Consentimiento', source: 'context.consent', persist: true},
+                {key: 'estado', label: 'Estado', source: 'context.state', persist: false},
+            );
         }
 
-        const addButtonRow = (messageElement, data = {}) => {
-            if (!buttonTemplate) {
-                return null;
-            }
-            const list = messageElement.querySelector('[data-button-list]');
-            if (!list) {
-                return null;
-            }
-            const clone = buttonTemplate.content.firstElementChild.cloneNode(true);
-            list.appendChild(clone);
-            const titleField = clone.querySelector('.button-title');
-            const idField = clone.querySelector('.button-id');
-            if (titleField && data.title) {
-                titleField.value = data.title;
-            }
-            if (idField && data.id) {
-                idField.value = data.id;
-            }
-            const removeBtn = clone.querySelector('[data-action="remove-button"]');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', () => clone.remove());
-            }
+        const scenarios = Array.isArray(payload.scenarios) && payload.scenarios.length > 0
+            ? payload.scenarios
+            : [createDefaultScenario()];
 
-            return clone;
+        const menu = Object.keys(payload.menu || {}).length > 0 ? payload.menu : createDefaultMenu();
+
+        return {
+            variables,
+            scenarios,
+            menu,
         };
+    }
 
-        const hasButton = (messageElement, title, id) => {
-            const list = messageElement.querySelectorAll('[data-button]');
-            for (const item of list) {
-                const existingTitle = item.querySelector('.button-title')?.value?.trim().toLowerCase();
-                const existingId = item.querySelector('.button-id')?.value?.trim().toLowerCase();
-                if ((title && existingTitle === title.toLowerCase()) || (id && existingId === id.toLowerCase())) {
-                    return true;
-                }
-            }
-            return false;
-        };
+    function renderVariables() {
+        if (!variablesPanel || !templates.variableRow) {
+            return;
+        }
+        variablesPanel.innerHTML = '';
 
-        const applyPreset = (messageElement, preset) => {
-            if (preset === 'yesno') {
-                if (!hasButton(messageElement, 'Sí', 'si')) {
-                    addButtonRow(messageElement, {title: 'Sí', id: 'si'});
-                }
-                if (!hasButton(messageElement, 'No', 'no')) {
-                    addButtonRow(messageElement, {title: 'No', id: 'no'});
-                }
-            }
-            if (preset === 'menu') {
-                if (!hasButton(messageElement, 'Menú', 'menu')) {
-                    addButtonRow(messageElement, {title: 'Menú', id: 'menu'});
-                }
-            }
-        };
+        state.variables.forEach((variable) => {
+            const clone = templates.variableRow.content.firstElementChild.cloneNode(true);
+            const keyLabel = clone.querySelector('[data-variable-key]');
+            const description = clone.querySelector('[data-variable-description]');
+            const labelInput = clone.querySelector('[data-variable-label]');
+            const sourceSelect = clone.querySelector('[data-variable-source]');
+            const persistInput = clone.querySelector('[data-variable-persist]');
 
-        const createRowElement = (data = {}) => {
-            const row = document.createElement('div');
-            row.className = 'input-group input-group-sm mb-2';
-            row.setAttribute('data-row', '');
-            row.innerHTML = `
-            <span class="input-group-text">Título</span>
-            <input type="text" class="form-control row-title" placeholder="Ej: Confirmar">
-            <span class="input-group-text">ID</span>
-            <input type="text" class="form-control row-id" placeholder="Identificador">
-            <input type="text" class="form-control row-description" placeholder="Descripción opcional">
-            <button type="button" class="btn btn-outline-danger" data-action="remove-row"><i class="mdi mdi-close"></i></button>
-        `;
-
-            if (data.title) {
-                row.querySelector('.row-title').value = data.title;
-            }
-            if (data.id) {
-                row.querySelector('.row-id').value = data.id;
-            }
-            if (data.description) {
-                row.querySelector('.row-description').value = data.description;
+            if (keyLabel) {
+                keyLabel.textContent = variable.key;
             }
 
-            return row;
-        };
-
-        const createSectionElement = (data = {}) => {
-            const section = document.createElement('div');
-            section.className = 'border rounded-3 p-3 mb-3';
-            section.setAttribute('data-section', '');
-            section.innerHTML = `
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <input type="text" class="form-control section-title" placeholder="Título de la sección (opcional)">
-                <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-section"><i class="mdi mdi-close"></i></button>
-            </div>
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <div class="small text-muted">Opciones</div>
-                <button type="button" class="btn btn-xs btn-outline-secondary" data-action="add-row">Añadir opción</button>
-            </div>
-            <div data-rows></div>
-        `;
-
-            if (data.title) {
-                section.querySelector('.section-title').value = data.title;
+            if (description) {
+                description.textContent = variableDescription(variable.key);
             }
 
-            const rowsContainer = section.querySelector('[data-rows]');
-            if (Array.isArray(data.rows)) {
-                data.rows.forEach((rowData) => {
-                    rowsContainer.appendChild(createRowElement(rowData));
+            if (labelInput) {
+                labelInput.value = variable.label || '';
+                labelInput.addEventListener('input', () => {
+                    variable.label = labelInput.value.trim();
                 });
             }
 
-            return section;
-        };
-
-        const hydrateRow = (rowElement) => {
-            const removeButton = rowElement.querySelector('[data-action="remove-row"]');
-            if (removeButton && !removeButton.dataset.bound) {
-                removeButton.dataset.bound = '1';
-                removeButton.addEventListener('click', () => rowElement.remove());
-            }
-        };
-
-        const hydrateSection = (sectionElement) => {
-            const removeButton = sectionElement.querySelector('[data-action="remove-section"]');
-            if (removeButton && !removeButton.dataset.bound) {
-                removeButton.dataset.bound = '1';
-                removeButton.addEventListener('click', () => sectionElement.remove());
-            }
-
-            const addRowButton = sectionElement.querySelector('[data-action="add-row"]');
-            if (addRowButton && !addRowButton.dataset.bound) {
-                addRowButton.dataset.bound = '1';
-                addRowButton.addEventListener('click', () => {
-                    const container = sectionElement.querySelector('[data-rows]');
-                    const row = createRowElement();
-                    container.appendChild(row);
-                    hydrateRow(row);
+            if (sourceSelect) {
+                sourceSelect.innerHTML = VARIABLE_SOURCES.map((option) => {
+                    const selected = option.value === variable.source ? 'selected' : '';
+                    return `<option value="${option.value}" ${selected}>${option.label}</option>`;
+                }).join('');
+                sourceSelect.value = variable.source;
+                sourceSelect.addEventListener('change', () => {
+                    variable.source = sourceSelect.value;
                 });
             }
 
-            sectionElement.querySelectorAll('[data-row]').forEach((row) => hydrateRow(row));
-        };
-
-        const ensureListControls = (messageElement) => {
-            const listContainer = messageElement.querySelector('[data-list]');
-            if (!listContainer) {
-                return;
-            }
-
-            const sectionsWrapper = listContainer.querySelector('[data-sections]');
-            if (!sectionsWrapper) {
-                return;
-            }
-
-            sectionsWrapper.querySelectorAll('[data-section]').forEach((section) => hydrateSection(section));
-
-            const addSectionButton = listContainer.querySelector('[data-action="add-section"]');
-            if (addSectionButton && !addSectionButton.dataset.bound) {
-                addSectionButton.dataset.bound = '1';
-                addSectionButton.addEventListener('click', () => {
-                    const section = createSectionElement();
-                    sectionsWrapper.appendChild(section);
-                    hydrateSection(section);
+            if (persistInput) {
+                persistInput.checked = Boolean(variable.persist);
+                persistInput.addEventListener('change', () => {
+                    variable.persist = persistInput.checked;
                 });
             }
-        };
 
-        const findTemplateMeta = (name, language) => {
-            if (!name || !language) {
-                return null;
+            variablesPanel.appendChild(clone);
+        });
+    }
+
+    function renderScenarios() {
+        if (!scenariosPanel || !templates.scenarioCard) {
+            return;
+        }
+        scenariosPanel.innerHTML = '';
+
+        state.scenarios.forEach((scenario, index) => {
+            const card = templates.scenarioCard.content.firstElementChild.cloneNode(true);
+            card.dataset.index = String(index);
+
+            const idInput = card.querySelector('[data-scenario-id]');
+            const nameInput = card.querySelector('[data-scenario-name]');
+            const descriptionInput = card.querySelector('[data-scenario-description]');
+            const addConditionButton = card.querySelector('[data-action="add-condition"]');
+            const addActionButton = card.querySelector('[data-action="add-action"]');
+            const moveUpButton = card.querySelector('[data-action="move-up"]');
+            const moveDownButton = card.querySelector('[data-action="move-down"]');
+            const removeButton = card.querySelector('[data-action="remove-scenario"]');
+            const conditionList = card.querySelector('[data-condition-list]');
+            const actionList = card.querySelector('[data-action-list]');
+
+            if (idInput) {
+                idInput.value = scenario.id || '';
             }
 
-            return templateCatalog.find((template) => {
-                return template.name === name && template.language === language;
-            }) || null;
-        };
-
-        const renderTemplateSummary = (summaryElement, meta, fallback) => {
-            if (!summaryElement) {
-                return;
+            if (nameInput) {
+                nameInput.value = scenario.name || '';
+                nameInput.addEventListener('input', () => {
+                    scenario.name = nameInput.value;
+                    if (!scenario.id && scenario.name.trim() !== '') {
+                        scenario.id = slugify(scenario.name);
+                    }
+                });
             }
 
-            if (!meta && !fallback) {
-                summaryElement.innerHTML = '<div class="fw-600">Sin plantilla seleccionada</div><div>Elige una plantilla para ver sus variables y completar los parámetros.</div>';
-                return;
+            if (descriptionInput) {
+                descriptionInput.value = scenario.description || '';
+                descriptionInput.addEventListener('input', () => {
+                    scenario.description = descriptionInput.value;
+                });
             }
 
-            const name = meta?.name || fallback?.name || '';
-            const language = meta?.language || fallback?.language || '';
-            const category = meta?.category || fallback?.category || '';
-
-            summaryElement.innerHTML = `
-            <div class="fw-600">${name} · ${language}</div>
-            <div class="text-muted">Categoría: ${category || 'Sin categoría'}</div>
-        `;
-        };
-
-        const extractExistingComponents = (componentField) => {
-            if (!componentField) {
-                return {body: [], header: [], buttons: {}};
+            if (addConditionButton) {
+                addConditionButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    scenario.conditions = scenario.conditions || [];
+                    scenario.conditions.push({type: 'always'});
+                    renderConditions(conditionList, scenario);
+                });
             }
 
-            try {
-                const parsed = JSON.parse(componentField.value || '[]');
-                const existing = {body: [], header: [], buttons: {}};
+            if (addActionButton) {
+                addActionButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    scenario.actions = scenario.actions || [];
+                    scenario.actions.push({type: 'send_message', message: {type: 'text', body: ''}});
+                    renderActions(actionList, scenario.actions, scenario);
+                });
+            }
 
-                parsed.forEach((component) => {
-                    if (!component || typeof component !== 'object') {
+            if (moveUpButton) {
+                moveUpButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    if (index === 0) {
                         return;
                     }
-
-                    const type = (component.type || '').toUpperCase();
-                    if (type === 'BODY' && Array.isArray(component.parameters)) {
-                        existing.body = component.parameters;
-                    }
-                    if (type === 'HEADER' && Array.isArray(component.parameters)) {
-                        existing.header = component.parameters;
-                    }
-                    if (type === 'BUTTON' && Array.isArray(component.parameters)) {
-                        const index = Number.isInteger(component.index) ? component.index : 0;
-                        existing.buttons[index] = component.parameters;
-                    }
+                    const temp = state.scenarios[index - 1];
+                    state.scenarios[index - 1] = state.scenarios[index];
+                    state.scenarios[index] = temp;
+                    renderScenarios();
                 });
-
-                return existing;
-            } catch (error) {
-                return {body: [], header: [], buttons: {}};
-            }
-        };
-
-        const buildTemplateParameters = (messageElement, meta) => {
-            const container = messageElement.querySelector('.template-parameters');
-            const componentsField = messageElement.querySelector('.template-components');
-            if (!container) {
-                return;
             }
 
-            container.innerHTML = '';
-
-            if (!meta) {
-                return;
-            }
-
-            const existing = extractExistingComponents(componentsField);
-            const blocks = [];
-
-            meta.components.forEach((component) => {
-                const type = (component.type || '').toUpperCase();
-                if (type === 'BODY' && Array.isArray(component.placeholders) && component.placeholders.length > 0) {
-                    const group = document.createElement('div');
-                    group.className = 'mb-3';
-                    group.innerHTML = '<label class="form-label small">Variables del cuerpo</label>';
-                    component.placeholders.forEach((placeholder) => {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'form-control mb-2';
-                        input.placeholder = `Valor para {{${placeholder}}}`;
-                        input.setAttribute('data-template-parameter', '');
-                        input.setAttribute('data-component', 'BODY');
-                        input.setAttribute('data-placeholder', String(placeholder));
-                        const existingParam = existing.body[placeholder - 1] || {};
-                        if (typeof existingParam.text === 'string') {
-                            input.value = existingParam.text;
-                        }
-                        group.appendChild(input);
-                    });
-                    blocks.push(group);
-                }
-
-                if (type === 'HEADER' && component.format === 'TEXT' && Array.isArray(component.placeholders) && component.placeholders.length > 0) {
-                    const group = document.createElement('div');
-                    group.className = 'mb-3';
-                    group.innerHTML = '<label class="form-label small">Variables del encabezado</label>';
-                    component.placeholders.forEach((placeholder) => {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'form-control mb-2';
-                        input.placeholder = `Valor para encabezado {{${placeholder}}}`;
-                        input.setAttribute('data-template-parameter', '');
-                        input.setAttribute('data-component', 'HEADER');
-                        input.setAttribute('data-placeholder', String(placeholder));
-                        const existingParam = existing.header[placeholder - 1] || {};
-                        if (typeof existingParam.text === 'string') {
-                            input.value = existingParam.text;
-                        }
-                        group.appendChild(input);
-                    });
-                    blocks.push(group);
-                }
-
-                if (type === 'BUTTONS' && Array.isArray(component.buttons)) {
-                    component.buttons.forEach((button) => {
-                        const subType = (button.type || '').toUpperCase();
-                        const index = Number.isInteger(button.index) ? button.index : 0;
-                        const placeholders = Array.isArray(button.placeholders) ? button.placeholders : [];
-                        if (placeholders.length === 0) {
-                            return;
-                        }
-
-                        const group = document.createElement('div');
-                        group.className = 'mb-3';
-                        const labelText = button.text ? `${button.text} (${subType})` : `Botón ${index + 1} (${subType})`;
-                        group.innerHTML = `<label class="form-label small">${labelText}</label>`;
-
-                        placeholders.forEach((placeholder) => {
-                            const input = document.createElement('input');
-                            input.type = 'text';
-                            input.className = 'form-control mb-2';
-                            input.placeholder = `Valor para botón {{${placeholder}}}`;
-                            input.setAttribute('data-template-parameter', '');
-                            input.setAttribute('data-component', 'BUTTON');
-                            input.setAttribute('data-index', String(index));
-                            input.setAttribute('data-placeholder', String(placeholder));
-                            const existingButtonParams = existing.buttons[index] || [];
-                            const existingParam = existingButtonParams[placeholder - 1] || {};
-                            const candidate = existingParam.text || existingParam.payload;
-                            if (typeof candidate === 'string') {
-                                input.value = candidate;
-                            }
-                            group.appendChild(input);
-                        });
-
-                        blocks.push(group);
-                    });
-                }
-            });
-
-            if (blocks.length === 0) {
-                const note = document.createElement('p');
-                note.className = 'small text-muted mb-0';
-                note.textContent = 'Esta plantilla no requiere variables. Se enviará tal como está configurada en Meta.';
-                container.appendChild(note);
-            } else {
-                blocks.forEach((block) => container.appendChild(block));
-            }
-
-        };
-
-        const ensureTemplateControls = (messageElement) => {
-            const templateContainer = messageElement.querySelector('[data-template]');
-            if (!templateContainer) {
-                return;
-            }
-
-            const select = templateContainer.querySelector('.template-selector');
-            const nameField = templateContainer.querySelector('.template-name');
-            const languageField = templateContainer.querySelector('.template-language');
-            const categoryField = templateContainer.querySelector('.template-category');
-            const summaryElement = templateContainer.querySelector('.template-summary');
-            const componentsField = templateContainer.querySelector('.template-components');
-
-            if (select && !select.dataset.loaded) {
-                templateCatalog.forEach((template) => {
-                    const option = document.createElement('option');
-                    option.value = `${template.name}::${template.language}`;
-                    const categoryLabel = template.category ? template.category : 'Sin categoría';
-                    option.textContent = `${template.name} · ${template.language} (${categoryLabel})`;
-                    select.appendChild(option);
-                });
-                select.dataset.loaded = '1';
-            }
-
-            const selectedName = nameField?.value?.trim();
-            const selectedLanguage = languageField?.value?.trim();
-            const meta = findTemplateMeta(selectedName, selectedLanguage);
-            if (select && selectedName && selectedLanguage) {
-                const value = `${selectedName}::${selectedLanguage}`;
-                if (!Array.from(select.options).some((option) => option.value === value)) {
-                    const fallbackOption = document.createElement('option');
-                    fallbackOption.value = value;
-                    fallbackOption.textContent = `${selectedName} · ${selectedLanguage} (no sincronizada)`;
-                    select.appendChild(fallbackOption);
-                }
-                select.value = value;
-            }
-
-            renderTemplateSummary(summaryElement, meta, {
-                name: selectedName,
-                language: selectedLanguage,
-                category: categoryField?.value?.trim() || '',
-            });
-
-            const parametersContainer = templateContainer.querySelector('.template-parameters');
-            const currentKey = templateContainer.dataset.renderedTemplate || '';
-            const nextKey = meta ? `${meta.name}::${meta.language}` : '';
-            if (!parametersContainer || parametersContainer.childElementCount === 0 || currentKey !== nextKey) {
-                buildTemplateParameters(messageElement, meta);
-                templateContainer.dataset.renderedTemplate = nextKey;
-            }
-
-            if (select && !select.dataset.bound) {
-                select.dataset.bound = '1';
-                select.addEventListener('change', () => {
-                    const value = select.value;
-                    if (!value) {
-                        if (nameField) nameField.value = '';
-                        if (languageField) languageField.value = '';
-                        if (categoryField) categoryField.value = '';
-                        renderTemplateSummary(summaryElement, null, null);
-                        buildTemplateParameters(messageElement, null);
-                        templateContainer.dataset.renderedTemplate = '';
-                        if (componentsField) {
-                            componentsField.value = '[]';
-                        }
+            if (moveDownButton) {
+                moveDownButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    if (index === state.scenarios.length - 1) {
                         return;
                     }
+                    const temp = state.scenarios[index + 1];
+                    state.scenarios[index + 1] = state.scenarios[index];
+                    state.scenarios[index] = temp;
+                    renderScenarios();
+                });
+            }
 
-                    const [name, language] = value.split('::');
-                    const selectedMeta = findTemplateMeta(name, language);
-                    if (nameField) nameField.value = name || '';
-                    if (languageField) languageField.value = language || '';
-                    if (categoryField) categoryField.value = selectedMeta?.category || '';
-                    renderTemplateSummary(summaryElement, selectedMeta, null);
-                    buildTemplateParameters(messageElement, selectedMeta);
-                    templateContainer.dataset.renderedTemplate = selectedMeta ? `${selectedMeta.name}::${selectedMeta.language}` : '';
-                    if (componentsField) {
-                        componentsField.value = '[]';
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    state.scenarios.splice(index, 1);
+                    if (state.scenarios.length === 0) {
+                        state.scenarios.push(createDefaultScenario());
+                    }
+                    renderScenarios();
+                });
+            }
+
+            renderConditions(conditionList, scenario);
+            renderActions(actionList, scenario.actions || [], scenario);
+
+            scenariosPanel.appendChild(card);
+        });
+    }
+
+    function renderConditions(container, scenario) {
+        if (!container || !templates.conditionRow) {
+            return;
+        }
+        container.innerHTML = '';
+        scenario.conditions = Array.isArray(scenario.conditions) && scenario.conditions.length > 0
+            ? scenario.conditions
+            : [{type: 'always'}];
+
+        scenario.conditions.forEach((condition, index) => {
+            const row = templates.conditionRow.content.firstElementChild.cloneNode(true);
+            const typeSelect = row.querySelector('[data-condition-type]');
+            const fieldsContainer = row.querySelector('[data-condition-fields]');
+            const removeButton = row.querySelector('[data-action="remove-condition"]');
+
+            if (typeSelect) {
+                typeSelect.innerHTML = CONDITION_OPTIONS.map((option) => {
+                    const selected = option.value === (condition.type || 'always') ? 'selected' : '';
+                    return `<option value="${option.value}" ${selected}>${option.label}</option>`;
+                }).join('');
+                typeSelect.value = condition.type || 'always';
+                typeSelect.addEventListener('change', () => {
+                    condition.type = typeSelect.value;
+                    delete condition.values;
+                    delete condition.keywords;
+                    delete condition.pattern;
+                    delete condition.minutes;
+                    delete condition.value;
+                    renderConditionFields(fieldsContainer, condition);
+                });
+            }
+
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    scenario.conditions.splice(index, 1);
+                    renderConditions(container, scenario);
+                });
+            }
+
+            renderConditionFields(fieldsContainer, condition);
+
+            container.appendChild(row);
+        });
+    }
+
+    function renderConditionFields(container, condition) {
+        if (!container) {
+            return;
+        }
+        container.innerHTML = '';
+        const option = CONDITION_OPTIONS.find((entry) => entry.value === condition.type);
+        const inputType = option ? option.input : null;
+
+        if (!inputType) {
+            return;
+        }
+
+        if (inputType === 'boolean') {
+            const select = document.createElement('select');
+            select.className = 'form-select form-select-sm';
+            select.innerHTML = '<option value="true">Sí</option><option value="false">No</option>';
+            select.value = String(condition.value ?? true);
+            select.addEventListener('change', () => {
+                condition.value = select.value === 'true';
+            });
+            container.appendChild(select);
+
+            return;
+        }
+
+        if (inputType === 'keywords') {
+            const textarea = document.createElement('textarea');
+            textarea.className = 'form-control form-control-sm';
+            textarea.rows = 2;
+            textarea.placeholder = option?.placeholder || 'opcion 1, opcion 2';
+            textarea.value = Array.isArray(condition.values || condition.keywords)
+                ? (condition.values || condition.keywords).join(', ')
+                : '';
+            textarea.addEventListener('input', () => {
+                const values = textarea.value.split(/[,\n]/).map((value) => value.trim()).filter(Boolean);
+                if (condition.type === 'message_contains') {
+                    condition.keywords = values;
+                    delete condition.values;
+                } else {
+                    condition.values = values.map((value) => value.toLowerCase());
+                    delete condition.keywords;
+                }
+            });
+            container.appendChild(textarea);
+
+            return;
+        }
+
+        if (inputType === 'pattern') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control form-control-sm';
+            input.placeholder = option?.placeholder || '';
+            input.value = condition.pattern || '';
+            input.addEventListener('input', () => {
+                condition.pattern = input.value.trim();
+            });
+            container.appendChild(input);
+
+            return;
+        }
+
+        if (inputType === 'number') {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.className = 'form-control form-control-sm';
+            input.value = condition.minutes ?? '';
+            input.addEventListener('input', () => {
+                const parsed = parseInt(input.value, 10);
+                condition.minutes = Number.isNaN(parsed) ? 0 : parsed;
+            });
+            container.appendChild(input);
+
+            return;
+        }
+
+        if (inputType === 'text') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control form-control-sm';
+            input.placeholder = option?.placeholder || '';
+            input.value = condition.value || '';
+            input.addEventListener('input', () => {
+                condition.value = input.value.trim();
+            });
+            container.appendChild(input);
+        }
+    }
+
+    function renderActions(container, actions, scope) {
+        if (!container || !templates.actionRow) {
+            return;
+        }
+        container.innerHTML = '';
+
+        actions.forEach((action, index) => {
+            const row = templates.actionRow.content.firstElementChild.cloneNode(true);
+            const typeSelect = row.querySelector('[data-action-type]');
+            const fieldsContainer = row.querySelector('[data-action-fields]');
+            const upButton = row.querySelector('[data-action="action-up"]');
+            const downButton = row.querySelector('[data-action="action-down"]');
+            const removeButton = row.querySelector('[data-action="remove-action"]');
+
+            if (!action.type) {
+                action.type = 'send_message';
+            }
+
+            if (typeSelect) {
+                typeSelect.innerHTML = ACTION_OPTIONS.map((option) => {
+                    const selected = option.value === action.type ? 'selected' : '';
+                    return `<option value="${option.value}" ${selected}>${option.label}</option>`;
+                }).join('');
+                typeSelect.value = action.type;
+                typeSelect.addEventListener('change', () => {
+                    action.type = typeSelect.value;
+                    if (action.type === 'send_message') {
+                        action.message = action.message || {type: 'text', body: ''};
+                    } else if (action.type === 'send_buttons') {
+                        action.message = action.message || {type: 'buttons', body: '', buttons: []};
+                    } else if (action.type === 'set_context') {
+                        action.values = action.values || {};
+                    } else if (action.type === 'store_consent') {
+                        action.value = action.value ?? true;
+                    } else if (action.type === 'lookup_patient') {
+                        action.field = action.field || 'cedula';
+                        action.source = action.source || 'message';
+                    } else if (action.type === 'conditional') {
+                        action.condition = action.condition || {type: 'patient_found', value: true};
+                        action.then = Array.isArray(action.then) ? action.then : [];
+                        action.else = Array.isArray(action.else) ? action.else : [];
+                    }
+                    renderActionFields(fieldsContainer, action, scope);
+                });
+            }
+
+            if (upButton) {
+                upButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    if (index === 0) {
+                        return;
+                    }
+                    const temp = actions[index - 1];
+                    actions[index - 1] = actions[index];
+                    actions[index] = temp;
+                    renderActions(container, actions, scope);
+                });
+            }
+
+            if (downButton) {
+                downButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    if (index === actions.length - 1) {
+                        return;
+                    }
+                    const temp = actions[index + 1];
+                    actions[index + 1] = actions[index];
+                    actions[index] = temp;
+                    renderActions(container, actions, scope);
+                });
+            }
+
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    actions.splice(index, 1);
+                    renderActions(container, actions, scope);
+                });
+            }
+
+            renderActionFields(fieldsContainer, action, scope);
+
+            container.appendChild(row);
+        });
+    }
+
+    function renderActionFields(container, action, scope) {
+        if (!container) {
+            return;
+        }
+        container.innerHTML = '';
+
+        if (action.type === 'send_message') {
+            action.message = action.message || {type: 'text', body: ''};
+            const textarea = document.createElement('textarea');
+            textarea.className = 'form-control form-control-sm';
+            textarea.rows = 3;
+            textarea.placeholder = 'Escribe el mensaje a enviar';
+            textarea.value = action.message.body || '';
+            textarea.addEventListener('input', () => {
+                action.message.type = 'text';
+                action.message.body = textarea.value;
+            });
+            container.appendChild(textarea);
+
+            return;
+        }
+
+        if (action.type === 'send_buttons') {
+            action.message = action.message || {type: 'buttons', body: '', buttons: []};
+            const bodyLabel = document.createElement('label');
+            bodyLabel.className = 'form-label small text-muted';
+            bodyLabel.textContent = 'Mensaje';
+
+            const bodyInput = document.createElement('textarea');
+            bodyInput.className = 'form-control form-control-sm mb-2';
+            bodyInput.rows = 3;
+            bodyInput.value = action.message.body || '';
+            bodyInput.addEventListener('input', () => {
+                action.message.type = 'buttons';
+                action.message.body = bodyInput.value;
+            });
+
+            const buttonsHeader = document.createElement('div');
+            buttonsHeader.className = 'd-flex justify-content-between align-items-center mb-2';
+            buttonsHeader.innerHTML = '<span class="small fw-600">Botones</span>';
+
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.className = 'btn btn-xs btn-outline-primary';
+            addButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir botón';
+            addButton.addEventListener('click', () => {
+                action.message.buttons = action.message.buttons || [];
+                action.message.buttons.push({id: '', title: ''});
+                renderButtonsList(buttonsContainer, action);
+            });
+            buttonsHeader.appendChild(addButton);
+
+            const buttonsContainer = document.createElement('div');
+            renderButtonsList(buttonsContainer, action);
+
+            container.appendChild(bodyLabel);
+            container.appendChild(bodyInput);
+            container.appendChild(buttonsHeader);
+            container.appendChild(buttonsContainer);
+
+            return;
+        }
+
+        if (action.type === 'set_state') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control form-control-sm';
+            input.placeholder = 'Ej. menu_principal';
+            input.value = action.state || '';
+            input.addEventListener('input', () => {
+                action.state = input.value.trim();
+            });
+            container.appendChild(input);
+
+            return;
+        }
+
+        if (action.type === 'set_context') {
+            action.values = action.values || {};
+            const wrapper = document.createElement('div');
+            renderContextList(wrapper, action);
+
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.className = 'btn btn-xs btn-outline-primary mt-2';
+            addButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir par clave-valor';
+            addButton.addEventListener('click', () => {
+                action.values['nuevo_campo'] = '';
+                renderContextList(wrapper, action);
+            });
+
+            container.appendChild(wrapper);
+            container.appendChild(addButton);
+
+            return;
+        }
+
+        if (action.type === 'store_consent') {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'form-check-input me-2';
+            checkbox.checked = action.value !== false;
+            checkbox.addEventListener('change', () => {
+                action.value = checkbox.checked;
+            });
+
+            const label = document.createElement('label');
+            label.className = 'form-check-label small';
+            label.textContent = 'Marcar como aceptado';
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'form-check form-switch';
+            wrapper.appendChild(checkbox);
+            wrapper.appendChild(label);
+
+            container.appendChild(wrapper);
+
+            return;
+        }
+
+        if (action.type === 'lookup_patient') {
+            action.field = action.field || 'cedula';
+            action.source = action.source || 'message';
+            const fieldSelect = document.createElement('select');
+            fieldSelect.className = 'form-select form-select-sm mb-2';
+            fieldSelect.innerHTML = '<option value="cedula">Cédula / Historia clínica</option>';
+            fieldSelect.value = action.field;
+            fieldSelect.addEventListener('change', () => {
+                action.field = fieldSelect.value;
+            });
+
+            const sourceSelect = document.createElement('select');
+            sourceSelect.className = 'form-select form-select-sm';
+            sourceSelect.innerHTML = '<option value="message">Usar mensaje actual</option><option value="context">Usar valor guardado</option>';
+            sourceSelect.value = action.source;
+            sourceSelect.addEventListener('change', () => {
+                action.source = sourceSelect.value;
+            });
+
+            container.appendChild(fieldSelect);
+            container.appendChild(sourceSelect);
+
+            return;
+        }
+
+        if (action.type === 'conditional') {
+            action.condition = action.condition || {type: 'patient_found', value: true};
+            action.then = Array.isArray(action.then) ? action.then : [];
+            action.else = Array.isArray(action.else) ? action.else : [];
+
+            const conditionSelect = document.createElement('select');
+            conditionSelect.className = 'form-select form-select-sm mb-2';
+            conditionSelect.innerHTML = '<option value="patient_found">Si existe paciente</option><option value="has_consent">Si tiene consentimiento</option>';
+            conditionSelect.value = action.condition.type || 'patient_found';
+            conditionSelect.addEventListener('change', () => {
+                action.condition.type = conditionSelect.value;
+            });
+
+            const thenLabel = document.createElement('div');
+            thenLabel.className = 'small text-muted mb-1';
+            thenLabel.textContent = 'Si la condición se cumple';
+
+            const thenContainer = document.createElement('div');
+            renderActions(thenContainer, action.then, scope);
+
+            const elseLabel = document.createElement('div');
+            elseLabel.className = 'small text-muted mt-3 mb-1';
+            elseLabel.textContent = 'Si la condición no se cumple';
+
+            const elseContainer = document.createElement('div');
+            renderActions(elseContainer, action.else, scope);
+
+            container.appendChild(conditionSelect);
+            container.appendChild(thenLabel);
+            container.appendChild(thenContainer);
+            container.appendChild(elseLabel);
+            container.appendChild(elseContainer);
+
+            return;
+        }
+
+        if (action.type === 'goto_menu' || action.type === 'upsert_patient_from_context') {
+            const info = document.createElement('div');
+            info.className = 'text-muted small';
+            info.textContent = action.type === 'goto_menu'
+                ? 'Mostrará el menú configurado debajo.'
+                : 'Asocia la conversación con la cédula actual si no existe en la base local.';
+            container.appendChild(info);
+        }
+    }
+
+    function renderButtonsList(container, action) {
+        if (!container || !templates.buttonRow) {
+            return;
+        }
+        container.innerHTML = '';
+        action.message.buttons = Array.isArray(action.message.buttons) ? action.message.buttons : [];
+
+        action.message.buttons.forEach((button, index) => {
+            const row = templates.buttonRow.content.firstElementChild.cloneNode(true);
+            const titleInput = row.querySelector('[data-button-title]');
+            const idInput = row.querySelector('[data-button-id]');
+            const removeButton = row.querySelector('[data-action="remove-button"]');
+
+            if (titleInput) {
+                titleInput.value = button.title || '';
+                titleInput.addEventListener('input', () => {
+                    button.title = titleInput.value;
+                });
+            }
+
+            if (idInput) {
+                idInput.value = button.id || '';
+                idInput.addEventListener('input', () => {
+                    button.id = idInput.value;
+                });
+            }
+
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    action.message.buttons.splice(index, 1);
+                    renderButtonsList(container, action);
+                });
+            }
+
+            container.appendChild(row);
+        });
+    }
+
+    function renderContextList(container, action) {
+        if (!container || !templates.contextRow) {
+            return;
+        }
+        container.innerHTML = '';
+        const entries = Object.keys(action.values || {});
+        if (entries.length === 0) {
+            action.values = {'estado': 'menu_principal'};
+        }
+
+        Object.keys(action.values).forEach((key) => {
+            const row = templates.contextRow.content.firstElementChild.cloneNode(true);
+            const keyInput = row.querySelector('[data-context-key]');
+            const valueInput = row.querySelector('[data-context-value]');
+            const removeButton = row.querySelector('[data-action="remove-context"]');
+
+            if (keyInput) {
+                keyInput.value = key;
+                keyInput.addEventListener('input', () => {
+                    const newKey = keyInput.value.trim();
+                    if (newKey && newKey !== key) {
+                        action.values[newKey] = action.values[key];
+                        delete action.values[key];
+                        renderContextList(container, action);
                     }
                 });
             }
-        };
 
-        const toggleMessageFields = (messageElement) => {
-            const type = messageElement.querySelector('.message-type')?.value || 'text';
-            const buttonsContainer = messageElement.querySelector('[data-buttons]');
-            const listContainer = messageElement.querySelector('[data-list]');
-            const templateContainer = messageElement.querySelector('[data-template]');
-            const headerField = messageElement.querySelector('.message-header');
-            const footerField = messageElement.querySelector('.message-footer');
-
-            if (buttonsContainer) {
-                buttonsContainer.classList.toggle('d-none', type !== 'buttons');
-            }
-            if (listContainer) {
-                listContainer.classList.toggle('d-none', type !== 'list');
-            }
-            if (templateContainer) {
-                templateContainer.classList.toggle('d-none', type !== 'template');
-            }
-
-            if (type === 'template') {
-                if (headerField) headerField.setAttribute('disabled', 'disabled');
-                if (footerField) footerField.setAttribute('disabled', 'disabled');
-                ensureTemplateControls(messageElement);
-            } else {
-                if (headerField) headerField.removeAttribute('disabled');
-                if (footerField) footerField.removeAttribute('disabled');
-            }
-
-            if (type === 'list') {
-                ensureListControls(messageElement);
-                const wrapper = messageElement.querySelector('[data-sections]');
-                if (wrapper && !wrapper.querySelector('[data-section]')) {
-                    const section = createSectionElement();
-                    wrapper.appendChild(section);
-                    hydrateSection(section);
-                }
-            }
-        };
-
-        const hydrateMessage = (messageElement) => {
-            const typeField = messageElement.querySelector('.message-type');
-            const removeMessageButton = messageElement.querySelector('[data-action="remove-message"]');
-            const addButton = messageElement.querySelector('[data-action="add-button"]');
-            const presetButtons = messageElement.querySelectorAll('[data-action="preset"]');
-
-            if (typeField) {
-                typeField.addEventListener('change', () => toggleMessageFields(messageElement));
-            }
-            if (removeMessageButton) {
-                removeMessageButton.addEventListener('click', () => messageElement.remove());
-            }
-            if (addButton) {
-                addButton.addEventListener('click', () => addButtonRow(messageElement));
-            }
-            presetButtons.forEach((button) => {
-                button.addEventListener('click', () => {
-                    const preset = button.getAttribute('data-preset');
-                    if (preset) {
-                        applyPreset(messageElement, preset);
-                    }
+            if (valueInput) {
+                valueInput.value = action.values[key] || '';
+                valueInput.addEventListener('input', () => {
+                    action.values[key] = valueInput.value;
                 });
-            });
-            messageElement.querySelectorAll('[data-button]').forEach((item) => {
-                const remove = item.querySelector('[data-action="remove-button"]');
-                if (remove) {
-                    remove.addEventListener('click', () => item.remove());
-                }
-            });
+            }
 
-            ensureListControls(messageElement);
-            ensureTemplateControls(messageElement);
-            toggleMessageFields(messageElement);
-        };
-
-        form.querySelectorAll('[data-messages]').forEach((container) => {
-            container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
-            const addMessageButton = container.parentElement?.querySelector('[data-action="add-message"]');
-            if (addMessageButton && messageTemplate) {
-                addMessageButton.addEventListener('click', () => {
-                    const clone = messageTemplate.content.firstElementChild.cloneNode(true);
-                    container.appendChild(clone);
-                    hydrateMessage(clone);
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    delete action.values[key];
+                    renderContextList(container, action);
                 });
+            }
+
+            container.appendChild(row);
+        });
+    }
+
+    function renderMenu() {
+        if (!menuPanel) {
+            return;
+        }
+        menuPanel.innerHTML = '';
+        state.menu = state.menu || createDefaultMenu();
+        state.menu.message = state.menu.message || {type: 'buttons', body: '', buttons: []};
+        state.menu.options = Array.isArray(state.menu.options) ? state.menu.options : [];
+
+        const messageGroup = document.createElement('div');
+        messageGroup.className = 'mb-4';
+
+        const messageLabel = document.createElement('label');
+        messageLabel.className = 'form-label';
+        messageLabel.textContent = 'Mensaje principal';
+
+        const messageTextarea = document.createElement('textarea');
+        messageTextarea.className = 'form-control';
+        messageTextarea.rows = 3;
+        messageTextarea.value = state.menu.message.body || '';
+        messageTextarea.addEventListener('input', () => {
+            state.menu.message.body = messageTextarea.value;
+        });
+
+        const buttonsHeader = document.createElement('div');
+        buttonsHeader.className = 'd-flex justify-content-between align-items-center mt-3 mb-2';
+        buttonsHeader.innerHTML = '<span class="fw-600">Botones del menú</span>';
+
+        const addMenuButton = document.createElement('button');
+        addMenuButton.type = 'button';
+        addMenuButton.className = 'btn btn-sm btn-outline-primary';
+        addMenuButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir botón';
+        addMenuButton.addEventListener('click', () => {
+            state.menu.message.buttons = state.menu.message.buttons || [];
+            state.menu.message.buttons.push({id: '', title: ''});
+            renderButtonsList(buttonsContainer, {message: state.menu.message});
+        });
+        buttonsHeader.appendChild(addMenuButton);
+
+        const buttonsContainer = document.createElement('div');
+        renderButtonsList(buttonsContainer, {message: state.menu.message});
+
+        messageGroup.appendChild(messageLabel);
+        messageGroup.appendChild(messageTextarea);
+        messageGroup.appendChild(buttonsHeader);
+        messageGroup.appendChild(buttonsContainer);
+
+        menuPanel.appendChild(messageGroup);
+
+        const optionsHeader = document.createElement('div');
+        optionsHeader.className = 'd-flex justify-content-between align-items-center mb-2';
+        optionsHeader.innerHTML = '<h6 class="mb-0">Opciones del menú</h6>';
+
+        const addOptionButton = document.createElement('button');
+        addOptionButton.type = 'button';
+        addOptionButton.className = 'btn btn-sm btn-outline-primary';
+        addOptionButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir opción';
+        addOptionButton.addEventListener('click', () => {
+            state.menu.options.push({id: '', title: '', keywords: [], actions: []});
+            renderMenuOptions(optionsContainer);
+        });
+        optionsHeader.appendChild(addOptionButton);
+
+        const optionsContainer = document.createElement('div');
+        renderMenuOptions(optionsContainer);
+
+        menuPanel.appendChild(optionsHeader);
+        menuPanel.appendChild(optionsContainer);
+    }
+
+    function renderMenuOptions(container) {
+        if (!container || !templates.menuOption) {
+            return;
+        }
+        container.innerHTML = '';
+
+        state.menu.options.forEach((option, index) => {
+            const node = templates.menuOption.content.firstElementChild.cloneNode(true);
+            const idInput = node.querySelector('[data-option-id]');
+            const titleInput = node.querySelector('[data-option-title]');
+            const keywordsInput = node.querySelector('[data-option-keywords]');
+            const removeButton = node.querySelector('[data-action="remove-menu-option"]');
+            const addActionButton = node.querySelector('[data-action="add-option-action"]');
+            const actionList = node.querySelector('[data-option-action-list]');
+
+            if (idInput) {
+                idInput.value = option.id || '';
+                idInput.addEventListener('input', () => {
+                    option.id = idInput.value.trim();
+                });
+            }
+
+            if (titleInput) {
+                titleInput.value = option.title || '';
+                titleInput.addEventListener('input', () => {
+                    option.title = titleInput.value;
+                });
+            }
+
+            if (keywordsInput) {
+                keywordsInput.value = Array.isArray(option.keywords) ? option.keywords.join(', ') : '';
+                keywordsInput.addEventListener('input', () => {
+                    option.keywords = keywordsInput.value.split(/[,\n]/).map((value) => value.trim()).filter(Boolean);
+                });
+            }
+
+            if (removeButton) {
+                removeButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    state.menu.options.splice(index, 1);
+                    renderMenuOptions(container);
+                });
+            }
+
+            if (addActionButton) {
+                addActionButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    option.actions = option.actions || [];
+                    option.actions.push({type: 'send_message', message: {type: 'text', body: ''}});
+                    renderActions(actionList, option.actions, option);
+                });
+            }
+
+            renderActions(actionList, option.actions || [], option);
+
+            container.appendChild(node);
+        });
+    }
+
+    function buildPayload() {
+        const variablesPayload = {};
+        state.variables.forEach((variable) => {
+            variablesPayload[variable.key] = {
+                label: variable.label || capitalize(variable.key),
+                source: variable.source || 'context.' + variable.key,
+                persist: Boolean(variable.persist),
+            };
+        });
+
+        return {
+            variables: variablesPayload,
+            scenarios: state.scenarios,
+            menu: state.menu,
+        };
+    }
+
+    function validatePayload(payload) {
+        const errors = [];
+        if (!Array.isArray(payload.scenarios) || payload.scenarios.length === 0) {
+            errors.push('Debes definir al menos un escenario.');
+        }
+
+        payload.scenarios.forEach((scenario, index) => {
+            if (!Array.isArray(scenario.actions) || scenario.actions.length === 0) {
+                errors.push(`El escenario "${scenario.name || 'Escenario ' + (index + 1)}" no tiene acciones.`);
             }
         });
 
-        const collectButtons = (messageElement) => {
-            const buttons = [];
-            messageElement.querySelectorAll('[data-button]').forEach((item) => {
-                const title = item.querySelector('.button-title')?.value?.trim() || '';
-                if (title === '') {
-                    return;
-                }
+        return errors;
+    }
 
-                const idField = item.querySelector('.button-id');
-                let id = idField?.value?.trim() || '';
+    function presentErrors(errors) {
+        if (!validationAlert) {
+            return;
+        }
+        validationAlert.innerHTML = `<strong>Revisa los siguientes puntos:</strong><ul class="mb-0">${errors.map((error) => `<li>${error}</li>`).join('')}</ul>`;
+        validationAlert.classList.remove('d-none');
+        validationAlert.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
 
-                if (id === '') {
-                    id = slugify(title);
-                    if (idField) {
-                        idField.value = id;
-                    }
-                }
+    function resetValidation() {
+        if (validationAlert) {
+            validationAlert.classList.add('d-none');
+            validationAlert.innerHTML = '';
+        }
+    }
 
-                if (id === '') {
-                    return;
-                }
-
-                buttons.push({title, id});
-            });
-            return buttons;
-        };
-
-        const collectListData = (messageElement) => {
-            const buttonLabel = messageElement.querySelector('.list-button')?.value?.trim() || 'Ver opciones';
-            const sections = [];
-            messageElement.querySelectorAll('[data-section]').forEach((sectionElement) => {
-                const rows = [];
-                sectionElement.querySelectorAll('[data-row]').forEach((rowElement) => {
-                    const title = rowElement.querySelector('.row-title')?.value?.trim() || '';
-                    if (title === '') {
-                        return;
-                    }
-                    const idField = rowElement.querySelector('.row-id');
-                    let id = idField?.value?.trim() || '';
-                    if (id === '') {
-                        id = slugify(title);
-                        if (idField) {
-                            idField.value = id;
-                        }
-                    }
-                    if (id === '') {
-                        return;
-                    }
-                    const description = rowElement.querySelector('.row-description')?.value?.trim() || '';
-                    const row = {title, id};
-                    if (description !== '') {
-                        row.description = description;
-                    }
-                    rows.push(row);
-                });
-
-                if (rows.length === 0) {
-                    return;
-                }
-
-                const title = sectionElement.querySelector('.section-title')?.value?.trim() || '';
-                sections.push({title, rows});
-            });
-
-            return {button: buttonLabel, sections};
-        };
-
-        const collectTemplateData = (messageElement, contextLabel, messageIndex) => {
-            const sectionDescription = contextLabel ? `en la sección "${contextLabel}"` : 'en esta sección';
-            const messageDescription = `${sectionDescription} (mensaje ${messageIndex + 1})`;
-            const name = messageElement.querySelector('.template-name')?.value?.trim() || '';
-            const language = messageElement.querySelector('.template-language')?.value?.trim() || '';
-
-            if (name === '' || language === '') {
-                recordValidationError(`Selecciona una plantilla aprobada ${messageDescription}.`, messageElement);
-                return null;
+    function normalizeScenarios() {
+        state.scenarios.forEach((scenario, index) => {
+            if (!scenario.id || scenario.id.trim() === '') {
+                scenario.id = slugify(scenario.name || `scenario_${index + 1}`);
             }
-
-            const category = messageElement.querySelector('.template-category')?.value?.trim() || '';
-            const componentsField = messageElement.querySelector('.template-components');
-            const meta = findTemplateMeta(name, language);
-            const select = messageElement.querySelector('.template-selector');
-
-            messageElement.querySelectorAll('[data-template-parameter]').forEach((input) => {
-                input.classList.remove('is-invalid');
-            });
-            if (select) {
-                select.classList.remove('is-invalid');
-            }
-
-            if (!meta) {
-                recordValidationError(`La plantilla "${name}" (${language}) ya no está disponible; vuelve a seleccionarla ${messageDescription}.`, messageElement);
-                if (select) {
-                    select.classList.add('is-invalid');
-                }
-                return null;
-            }
-
-            const components = [];
-            let messageHasErrors = false;
-
-            const appendParameters = (type, parameters, extra = {}) => {
-                if (!parameters || parameters.length === 0) {
-                    return;
-                }
-                components.push(Object.assign({type, parameters}, extra));
-            };
-
-            const bodyComponent = meta.components.find((component) => component.type === 'BODY');
-            if (bodyComponent && Array.isArray(bodyComponent.placeholders) && bodyComponent.placeholders.length > 0) {
-                const missing = [];
-                const parameters = [];
-                bodyComponent.placeholders.forEach((placeholder) => {
-                    const input = messageElement.querySelector(`[data-template-parameter][data-component="BODY"][data-placeholder="${placeholder}"]`);
-                    const value = input?.value?.trim() || '';
-                    if (!input || value === '') {
-                        missing.push(placeholder);
-                        if (input) {
-                            input.classList.add('is-invalid');
-                        }
-                        return;
-                    }
-                    parameters.push({type: 'text', text: value});
-                });
-                if (missing.length > 0) {
-                    messageHasErrors = true;
-                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del cuerpo de la plantilla ${messageDescription}.`, messageElement);
-                } else {
-                    appendParameters('BODY', parameters);
-                }
-            }
-
-            const headerComponent = meta.components.find((component) => component.type === 'HEADER' && component.format === 'TEXT');
-            if (headerComponent && Array.isArray(headerComponent.placeholders) && headerComponent.placeholders.length > 0) {
-                const missing = [];
-                const parameters = [];
-                headerComponent.placeholders.forEach((placeholder) => {
-                    const input = messageElement.querySelector(`[data-template-parameter][data-component="HEADER"][data-placeholder="${placeholder}"]`);
-                    const value = input?.value?.trim() || '';
-                    if (!input || value === '') {
-                        missing.push(placeholder);
-                        if (input) {
-                            input.classList.add('is-invalid');
-                        }
-                        return;
-                    }
-                    parameters.push({type: 'text', text: value});
-                });
-                if (missing.length > 0) {
-                    messageHasErrors = true;
-                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del encabezado ${messageDescription}.`, messageElement);
-                } else {
-                    appendParameters('HEADER', parameters);
-                }
-            }
-
-            meta.components
-                .filter((component) => component.type === 'BUTTONS' && Array.isArray(component.buttons))
-                .forEach((component) => {
-                    component.buttons.forEach((button) => {
-                        if (!Array.isArray(button.placeholders) || button.placeholders.length === 0) {
-                            return;
-                        }
-
-                        const missing = [];
-                        const parameters = [];
-                        button.placeholders.forEach((placeholder) => {
-                            const input = messageElement.querySelector(`[data-template-parameter][data-component="BUTTON"][data-index="${button.index}"][data-placeholder="${placeholder}"]`);
-                            const value = input?.value?.trim() || '';
-                            if (!input || value === '') {
-                                missing.push(placeholder);
-                                if (input) {
-                                    input.classList.add('is-invalid');
-                                }
-                                return;
-                            }
-                            parameters.push({type: 'text', text: value});
-                        });
-
-                        if (missing.length > 0) {
-                            messageHasErrors = true;
-                            const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                            const buttonLabel = button.text ? ` del botón "${button.text}"` : '';
-                            recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders}${buttonLabel} ${messageDescription}.`, messageElement);
-                        } else {
-                            appendParameters('BUTTON', parameters, {
-                                sub_type: button.type,
-                                index: button.index,
-                            });
-                        }
-                    });
-                });
-
-            if (messageHasErrors) {
-                return null;
-            }
-
-            if (componentsField) {
-                componentsField.value = JSON.stringify(components);
-            }
-
-            return {
-                name,
-                language,
-                category,
-                components,
-            };
-        };
-
-        const collectMessages = (container, contextLabel = '') => {
-            const messages = [];
-            container.querySelectorAll('[data-message]').forEach((messageElement, index) => {
-                messageElement.classList.remove('has-validation-error');
-                const type = messageElement.querySelector('.message-type')?.value || 'text';
-                const body = messageElement.querySelector('.message-body')?.value?.trim() || '';
-                const header = messageElement.querySelector('.message-header')?.value?.trim() || '';
-                const footer = messageElement.querySelector('.message-footer')?.value?.trim() || '';
-
-                const payload = {type, body};
-                const sectionDescription = contextLabel ? `en la sección "${contextLabel}"` : 'en esta sección';
-                const messageDescription = `${sectionDescription} (mensaje ${index + 1})`;
-                let messageHasErrors = false;
-
-                if (header !== '') {
-                    payload.header = header;
-                }
-                if (footer !== '') {
-                    payload.footer = footer;
-                }
-                if (type === 'buttons') {
-                    const buttonElements = messageElement.querySelectorAll('[data-button]');
-                    const buttons = collectButtons(messageElement);
-                    if (buttonElements.length === 0) {
-                        recordValidationError(`Agrega al menos un botón ${messageDescription}.`, messageElement);
-                        messageHasErrors = true;
-                    } else if (buttons.length === 0) {
-                        recordValidationError(`Completa el título de los botones ${messageDescription}.`, messageElement);
-                        messageHasErrors = true;
-                    } else {
-                        payload.buttons = buttons;
-                    }
-                } else if (type === 'list') {
-                    const listData = collectListData(messageElement);
-                    const sectionsWrapper = messageElement.querySelector('[data-sections]');
-                    const totalSections = sectionsWrapper ? sectionsWrapper.querySelectorAll('[data-section]').length : 0;
-                    if (totalSections === 0) {
-                        recordValidationError(`Agrega al menos una sección con opciones ${messageDescription}.`, messageElement);
-                        messageHasErrors = true;
-                    } else if (!listData.sections.length) {
-                        recordValidationError(`Completa al menos una opción con título ${messageDescription}.`, messageElement);
-                        messageHasErrors = true;
-                    } else {
-                        payload.button = listData.button;
-                        payload.sections = listData.sections;
-                        if (payload.body === '') {
-                            payload.body = 'Selecciona una opción para continuar';
-                        }
-                    }
-                } else if (type === 'template') {
-                    const template = collectTemplateData(messageElement, contextLabel, index);
-                    if (!template) {
-                        messageHasErrors = true;
-                    } else {
-                        payload.template = template;
-                    }
-                } else if (body === '') {
-                    return;
-                }
-
-                if (messageHasErrors) {
-                    return;
-                }
-
-                messages.push(payload);
-            });
-            return messages;
-        };
-
-        const collectSection = (sectionElement, defaultLabel = '') => {
-            if (!sectionElement) {
-                return {};
-            }
-            const data = {};
-            sectionElement.querySelectorAll('[data-field]').forEach((field) => {
-                const key = field.getAttribute('data-field');
-                if (!key) {
-                    return;
-                }
-                data[key] = field.value;
-            });
-            const messagesContainer = sectionElement.querySelector('[data-messages]');
-            if (messagesContainer) {
-                const titleField = sectionElement.querySelector('[data-field="title"]');
-                const rawTitle = titleField?.value?.trim() || '';
-                const contextLabel = rawTitle !== '' ? rawTitle : defaultLabel;
-                data.messages = collectMessages(messagesContainer, contextLabel);
-            }
-            return data;
-        };
-
-        const collectOption = (optionElement) => {
-            const option = collectSection(optionElement, 'Opción del menú');
-            option.id = optionElement.querySelector('.option-id')?.value || '';
-            return option;
-        };
-
-        const collectConsent = (section) => {
-            const config = {
-                intro_lines: [],
-                consent_prompt: '',
-                consent_retry: '',
-                consent_declined: '',
-                identifier_request: '',
-                identifier_retry: '',
-                confirmation_check: '',
-                confirmation_review: '',
-                confirmation_menu: '',
-                confirmation_recorded: '',
-                buttons: {
-                    accept: '',
-                    decline: '',
-                },
-            };
-
-            if (!section) {
-                return config;
-            }
-
-            section.querySelectorAll('[data-consent-field]').forEach((field) => {
-                const key = field.getAttribute('data-consent-field');
-                if (!key) {
-                    return;
-                }
-
-                const raw = field.value || '';
-                const value = raw.trim();
-
-                if (key === 'intro_lines') {
-                    if (value === '') {
-                        config.intro_lines = [];
-                    } else {
-                        config.intro_lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '');
-                    }
-
-                    return;
-                }
-
-                if (key === 'button_accept') {
-                    config.buttons.accept = value;
-                    return;
-                }
-
-                if (key === 'button_decline') {
-                    config.buttons.decline = value;
-                    return;
-                }
-
-                config[key] = value;
-            });
-
-            return config;
-        };
-
-        const validateConsent = (consent) => {
-            if (!consentSection) {
-                return;
-            }
-
-            const findField = (name) => consentSection.querySelector(`[data-consent-field="${name}"]`);
-            const markFieldError = (name, message) => {
-                const field = findField(name);
-                if (field) {
-                    field.classList.add('is-invalid');
-                    const wrapper = field.closest('[data-consent-wrapper]') || field;
-                    recordValidationError(message, wrapper);
-                } else {
-                    recordValidationError(message, consentSection);
-                }
-            };
-
-            if (!Array.isArray(consent.intro_lines) || consent.intro_lines.length === 0) {
-                markFieldError('intro_lines', 'Añade al menos una línea para la introducción del consentimiento.');
-            }
-
-            const required = [
-                ['consent_prompt', 'Define el mensaje que solicitará la autorización.'],
-                ['button_accept', 'Indica el texto del botón de aceptación.'],
-                ['button_decline', 'Indica el texto del botón de rechazo.'],
-                ['identifier_request', 'Define la solicitud del número de historia clínica.'],
-                ['identifier_retry', 'Incluye el mensaje para cuando el número no coincide.'],
-                ['confirmation_check', 'Añade el mensaje de verificación final.'],
-                ['confirmation_review', 'Incluye la confirmación con el número de historia clínica.'],
-                ['confirmation_menu', 'Explica cómo continuar después de validar la información.'],
-                ['confirmation_recorded', 'Añade el mensaje que confirma el registro del consentimiento.'],
-            ];
-
-            required.forEach(([fieldName, message]) => {
-                let candidate = '';
-                if (fieldName === 'button_accept') {
-                    candidate = consent.buttons.accept || '';
-                } else if (fieldName === 'button_decline') {
-                    candidate = consent.buttons.decline || '';
-                } else {
-                    candidate = consent[fieldName] || '';
-                }
-
-                if (!candidate || candidate.trim() === '') {
-                    markFieldError(fieldName, message);
-                }
-            });
-        };
-
-        form.addEventListener('submit', (event) => {
-            resetValidationState();
-
-            const entrySection = form.querySelector('[data-section="entry"]');
-            const fallbackSection = form.querySelector('[data-section="fallback"]');
-            const optionSections = Array.from(form.querySelectorAll('[data-option]'));
-
-            const payload = {
-                entry: collectSection(entrySection, 'Mensaje de bienvenida'),
-                fallback: collectSection(fallbackSection, 'Fallback'),
-                options: optionSections.map((element) => collectOption(element)),
-            };
-
-            const consentConfig = collectConsent(consentSection);
-            validateConsent(consentConfig);
-            payload.consent = consentConfig;
-
-            if (validationErrors.length > 0) {
-                event.preventDefault();
-                presentValidationErrors();
-                return;
-            }
-
-            flowField.value = JSON.stringify(payload);
+            scenario.conditions = Array.isArray(scenario.conditions) && scenario.conditions.length > 0
+                ? scenario.conditions
+                : [{type: 'always'}];
         });
-    })();
+    }
+
+    function simulateFlow() {
+        const message = window.prompt('Ingresa un mensaje de prueba');
+        if (message === null) {
+            return;
+        }
+        const normalized = normalizeText(message);
+        const facts = {
+            is_first_time: true,
+            has_consent: false,
+            state: 'inicio',
+            awaiting_field: null,
+            message: normalized,
+            raw_message: message,
+            minutes_since_last: 999,
+            patient_found: false,
+        };
+
+        const match = state.scenarios.find((scenario) => {
+            return (scenario.conditions || [{type: 'always'}]).every((condition) => evaluateCondition(condition, facts));
+        });
+
+        if (match) {
+            window.alert(`Se activaría el escenario "${match.name || match.id}" con ${match.actions?.length || 0} acciones.`);
+        } else {
+            window.alert('Ningún escenario coincide con el mensaje proporcionado.');
+        }
+    }
+
+    function evaluateCondition(condition, facts) {
+        const type = condition.type || 'always';
+        switch (type) {
+            case 'always':
+                return true;
+            case 'is_first_time':
+                return Boolean(facts.is_first_time) === Boolean(condition.value);
+            case 'has_consent':
+                return Boolean(facts.has_consent) === Boolean(condition.value);
+            case 'state_is':
+                return (facts.state || '') === (condition.value || '');
+            case 'awaiting_is':
+                return (facts.awaiting_field || '') === (condition.value || '');
+            case 'message_in':
+                return Array.isArray(condition.values)
+                    ? condition.values.some((value) => value === facts.message)
+                    : false;
+            case 'message_contains':
+                return Array.isArray(condition.keywords)
+                    ? condition.keywords.some((value) => value && facts.message.includes(value))
+                    : false;
+            case 'message_matches':
+                if (!condition.pattern) {
+                    return false;
+                }
+                try {
+                    const regex = new RegExp(condition.pattern, 'i');
+                    return regex.test(facts.raw_message || '');
+                } catch (error) {
+                    console.warn('Expresión regular inválida en simulación', error);
+                    return false;
+                }
+            case 'last_interaction_gt':
+                return (facts.minutes_since_last || 0) >= (condition.minutes || 0);
+            case 'patient_found':
+                return Boolean(facts.patient_found) === Boolean(condition.value ?? true);
+            default:
+                return false;
+        }
+    }
+
+    function createDefaultScenario() {
+        return {
+            id: '',
+            name: 'Nuevo escenario',
+            description: '',
+            conditions: [{type: 'always'}],
+            actions: [{type: 'send_message', message: {type: 'text', body: 'Mensaje de ejemplo.'}}],
+        };
+    }
+
+    function createDefaultMenu() {
+        return {
+            message: {
+                type: 'buttons',
+                body: 'Selecciona una opción:',
+                buttons: [
+                    {id: 'menu_agendar', title: 'Agendar cita'},
+                    {id: 'menu_resultados', title: 'Resultados'},
+                ],
+            },
+            options: [
+                {id: 'menu_agendar', title: 'Agendar cita', keywords: ['agendar', 'cita'], actions: [{type: 'send_message', message: {type: 'text', body: 'Estamos listos para agendar tu cita.'}}]},
+            ],
+        };
+    }
+
+    function variableDescription(key) {
+        switch (key) {
+            case 'cedula':
+                return 'Última cédula capturada durante la conversación.';
+            case 'telefono':
+                return 'Número de WhatsApp del contacto.';
+            case 'nombre':
+                return 'Nombre completo obtenido de la base de pacientes.';
+            case 'consentimiento':
+                return 'Estado actual del consentimiento de datos.';
+            case 'estado':
+                return 'Paso actual del flujo.';
+            default:
+                return 'Variable personalizada.';
+        }
+    }
+
+    function slugify(value) {
+        if (!value) {
+            return '';
+        }
+        return value
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .substring(0, 48);
+    }
+
+    function capitalize(value) {
+        if (!value) {
+            return '';
+        }
+        return value.charAt(0).toUpperCase() + value.slice(1);
+    }
+
+    function normalizeText(value) {
+        return value.toLowerCase().trim().replace(/\s+/g, ' ');
+    }
+})();
