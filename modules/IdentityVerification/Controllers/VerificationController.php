@@ -6,8 +6,10 @@ use Core\BaseController;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\ConsentDocumentService;
 use Modules\IdentityVerification\Services\FaceRecognitionService;
+use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\PythonBiometricClient;
 use Modules\IdentityVerification\Services\SignatureAnalysisService;
+use Modules\IdentityVerification\Services\VerificationPolicyService;
 use PDO;
 
 class VerificationController extends BaseController
@@ -19,6 +21,8 @@ class VerificationController extends BaseController
     private SignatureAnalysisService $signatureAnalysis;
     private PythonBiometricClient $pythonBiometricClient;
     private ConsentDocumentService $consentDocumentService;
+    private VerificationPolicyService $policy;
+    private MissingEvidenceEscalationService $escalationService;
 
     public function __construct(PDO $pdo)
     {
@@ -27,7 +31,9 @@ class VerificationController extends BaseController
         $this->pythonBiometricClient = new PythonBiometricClient();
         $this->faceRecognition = new FaceRecognitionService($this->pythonBiometricClient);
         $this->signatureAnalysis = new SignatureAnalysisService($this->pythonBiometricClient);
-        $this->consentDocumentService = new ConsentDocumentService();
+        $this->policy = new VerificationPolicyService($pdo);
+        $this->consentDocumentService = new ConsentDocumentService($this->policy);
+        $this->escalationService = new MissingEvidenceEscalationService($pdo, $this->policy);
     }
 
     public function index(): void
@@ -152,11 +158,16 @@ class VerificationController extends BaseController
                 'face_image_path' => $facePath,
                 'face_template' => $faceTemplate,
                 'document_number' => $input['document_number'],
+                'existing_status' => $existing['status'] ?? null,
             ]),
             'updated_by' => $_SESSION['user_id'] ?? null,
+            'expired_at' => null,
         ];
 
         if ($existing) {
+            if (($payload['status'] ?? null) === 'expired') {
+                $payload['expired_at'] = $existing['expired_at'] ?? null;
+            }
             $this->verifications->update((int) $existing['id'], $payload);
         } else {
             $payload['created_by'] = $_SESSION['user_id'] ?? null;
@@ -224,6 +235,10 @@ class VerificationController extends BaseController
         $certification = $this->refreshBiometricTemplates($certification);
 
         if (empty($certification['face_template']) && empty($certification['signature_template'])) {
+            $this->escalateMissingEvidence($certification, 'missing_biometrics', [
+                'metadata' => $metadata,
+                'user_id' => $_SESSION['user_id'] ?? null,
+            ]);
             $this->json([
                 'ok' => false,
                 'message' => 'La certificación no cuenta con datos biométricos suficientes. Complete el registro antes de continuar.',
@@ -287,6 +302,10 @@ class VerificationController extends BaseController
         }
 
         if ($requiresFace && !$hasFaceCapture) {
+            $this->escalateMissingEvidence($certification, 'missing_face_capture', [
+                'metadata' => $metadata,
+                'user_id' => $_SESSION['user_id'] ?? null,
+            ]);
             $this->json([
                 'ok' => false,
                 'message' => 'Debe capturar el rostro del paciente para realizar el check-in.',
@@ -295,6 +314,10 @@ class VerificationController extends BaseController
         }
 
         if ($requiresSignature && !$hasSignatureCapture) {
+            $this->escalateMissingEvidence($certification, 'missing_signature_capture', [
+                'metadata' => $metadata,
+                'user_id' => $_SESSION['user_id'] ?? null,
+            ]);
             $this->json([
                 'ok' => false,
                 'message' => 'Debe capturar la firma del paciente para realizar el check-in.',
@@ -303,6 +326,10 @@ class VerificationController extends BaseController
         }
 
         if (!$hasSignatureCapture && !$hasFaceCapture) {
+            $this->escalateMissingEvidence($certification, 'missing_biometrics', [
+                'metadata' => $metadata,
+                'user_id' => $_SESSION['user_id'] ?? null,
+            ]);
             $this->json([
                 'ok' => false,
                 'message' => 'Debe adjuntar una captura válida para verificar.',
@@ -435,7 +462,20 @@ class VerificationController extends BaseController
         $hasFace = !empty($data['face_image_path']) && !empty($data['face_template']);
         $hasDocument = !empty($data['document_number']);
 
-        return ($hasSignature && $hasFace && $hasDocument) ? 'verified' : 'pending';
+        if ($hasSignature && $hasFace && $hasDocument) {
+            return 'verified';
+        }
+
+        $existing = $data['existing_status'] ?? null;
+        if ($existing === 'revoked') {
+            return 'revoked';
+        }
+
+        if ($existing === 'expired') {
+            return 'expired';
+        }
+
+        return 'pending';
     }
 
     private function normalizePatientId(?string $value): string
@@ -664,11 +704,16 @@ class VerificationController extends BaseController
         $hasFace = $faceScore !== null;
 
         if ($hasSignature && $hasFace) {
-            if ($signatureScore >= 80 && $faceScore >= 80) {
+            $signatureApprove = $this->policy->getSignatureApproveThreshold();
+            $faceApprove = $this->policy->getFaceApproveThreshold();
+            $signatureReject = $this->policy->getSignatureRejectThreshold();
+            $faceReject = $this->policy->getFaceRejectThreshold();
+
+            if ($signatureScore >= $signatureApprove && $faceScore >= $faceApprove) {
                 return 'approved';
             }
 
-            if ($signatureScore < 40 || $faceScore < 40) {
+            if ($signatureScore < $signatureReject || $faceScore < $faceReject) {
                 return 'rejected';
             }
 
@@ -680,14 +725,23 @@ class VerificationController extends BaseController
             return 'manual_review';
         }
 
-        if ($score >= 85) {
+        if ($score >= $this->policy->getSingleApproveThreshold()) {
             return 'approved';
         }
 
-        if ($score < 40) {
+        if ($score < $this->policy->getSingleRejectThreshold()) {
             return 'rejected';
         }
 
         return 'manual_review';
+    }
+
+    private function escalateMissingEvidence(array $certification, string $reason, array $context = []): void
+    {
+        try {
+            $this->escalationService->escalate($certification, $reason, $context);
+        } catch (\Throwable) {
+            // Evitar fallos en el flujo principal si la escalación falla
+        }
     }
 }

@@ -293,6 +293,7 @@
                                                 'verified' => 'success',
                                                 'pending' => 'warning',
                                                 'revoked' => 'danger',
+                                                'expired' => 'danger',
                                             ];
                                             $badge = $statusBadge[$cert['status']] ?? 'secondary';
                                             ?>

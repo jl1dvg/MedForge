@@ -1,6 +1,27 @@
 <?php
 /** @var array<string, mixed> $visita */
 $procedimientos = $visita['procedimientos'] ?? [];
+$identityVerification = $identityVerification ?? ['summary' => null, 'requires_checkin' => true, 'validity_days' => null];
+$verificationSummary = $identityVerification['summary'] ?? null;
+$requiresBiometricCheckin = (bool) ($identityVerification['requires_checkin'] ?? true);
+$verificationStatus = strtolower((string) ($verificationSummary['status'] ?? 'sin_registro'));
+$verificationBadge = match ($verificationStatus) {
+    'verified' => 'badge bg-success',
+    'expired' => 'badge bg-danger',
+    'revoked' => 'badge bg-danger',
+    'pending' => 'badge bg-warning text-dark',
+    default => 'badge bg-secondary',
+};
+$verificationLabel = match ($verificationStatus) {
+    'verified' => 'Verificada',
+    'expired' => 'Vencida',
+    'revoked' => 'Revocada',
+    'pending' => 'Pendiente',
+    default => 'Sin certificación',
+};
+$lastVerificationAt = $verificationSummary['last_verification_at'] ?? null;
+$lastVerificationResult = $verificationSummary['last_verification_result'] ?? null;
+$expiredAt = $verificationSummary['expired_at'] ?? null;
 
 if (!function_exists('agenda_badge_class')) {
     function agenda_badge_class(?string $estado): string
@@ -32,6 +53,7 @@ $fechaVisita = $visita['fecha_visita'] ? date('d/m/Y', strtotime((string) $visit
 $horaLlegada = $visita['hora_llegada'] ? date('H:i', strtotime((string) $visita['hora_llegada'])) : '—';
 $nombrePaciente = $visita['paciente'] ?: 'Paciente sin nombre';
 $hcNumber = $visita['hc_number'] ?? '—';
+$hcNumberRaw = (string) ($visita['hc_number'] ?? '');
 $pacienteContexto = $visita['paciente_contexto'] ?? [];
 $estadoCobertura = $pacienteContexto['coverageStatus'] ?? ($visita['estado_cobertura'] ?? 'N/A');
 $timelineResumen = array_slice($pacienteContexto['timelineItems'] ?? [], 0, 5);
@@ -67,6 +89,61 @@ $timelineResumen = array_slice($pacienteContexto['timelineItems'] ?? [], 0, 5);
                     <h4 class="box-title">Datos del encuentro</h4>
                 </div>
                 <div class="box-body">
+                    <?php
+                    $verificationUrl = $hcNumberRaw !== ''
+                        ? '/pacientes/certificaciones?patient_id=' . urlencode($hcNumberRaw)
+                        : '/pacientes/certificaciones';
+                    $validityDays = $identityVerification['validity_days'] ?? null;
+                    ?>
+                    <?php if ($hcNumberRaw === ''): ?>
+                        <div class="alert alert-info">
+                            <strong>Historia clínica no asignada.</strong> Vincule el encuentro con un paciente para habilitar la certificación biométrica.
+                        </div>
+                    <?php elseif ($verificationSummary === null): ?>
+                        <div class="alert alert-danger d-flex justify-content-between align-items-center flex-wrap gap-3">
+                            <div>
+                                <strong>Certificación biométrica pendiente.</strong>
+                                Debe registrar firma y rostro del paciente antes de continuar con la atención.
+                            </div>
+                            <a class="btn btn-sm btn-primary" href="<?= $verificationUrl ?>">
+                                <i class="mdi mdi-face-recognition"></i> Abrir módulo de certificación
+                            </a>
+                        </div>
+                    <?php else: ?>
+                        <?php if ($requiresBiometricCheckin): ?>
+                            <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-3">
+                                <div>
+                                    <strong>Revisar certificación biométrica.</strong>
+                                    <span class="<?= $verificationBadge ?> ms-2">Estado: <?= htmlspecialchars($verificationLabel) ?></span>
+                                    <?php if ($expiredAt): ?>
+                                        <div class="small text-muted">Vencida desde <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $expiredAt))) ?>.</div>
+                                    <?php endif; ?>
+                                    <?php if ($lastVerificationAt): ?>
+                                        <div class="small text-muted">Última verificación: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $lastVerificationAt))) ?> · Resultado: <?= htmlspecialchars((string) ($lastVerificationResult ?? 'N/A')) ?></div>
+                                    <?php endif; ?>
+                                    <?php if ($validityDays): ?>
+                                        <div class="small text-muted">Vigencia configurada: <?= (int) $validityDays ?> días.</div>
+                                    <?php endif; ?>
+                                </div>
+                                <a class="btn btn-sm btn-outline-primary" href="<?= $verificationUrl ?>">
+                                    <i class="mdi mdi-face-recognition"></i> Actualizar datos biométricos
+                                </a>
+                            </div>
+                        <?php else: ?>
+                            <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-3">
+                                <div>
+                                    <strong>Certificación biométrica vigente.</strong>
+                                    <span class="<?= $verificationBadge ?> ms-2">Estado: <?= htmlspecialchars($verificationLabel) ?></span>
+                                    <?php if ($lastVerificationAt): ?>
+                                        <div class="small text-muted">Última verificación: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $lastVerificationAt))) ?> · Resultado: <?= htmlspecialchars((string) ($lastVerificationResult ?? 'N/A')) ?></div>
+                                    <?php endif; ?>
+                                </div>
+                                <a class="btn btn-sm btn-outline-secondary" href="<?= $verificationUrl ?>">
+                                    <i class="mdi mdi-file-document"></i> Ver detalle de certificación
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
                     <dl class="row mb-0">
                         <dt class="col-sm-5">Paciente</dt>
                         <dd class="col-sm-7 fw-600"><?= htmlspecialchars($nombrePaciente) ?></dd>

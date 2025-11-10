@@ -8,6 +8,9 @@ use DateInterval;
 use DateTimeImmutable;
 use Models\BillingMainModel;
 use Modules\CronManager\Repositories\CronTaskRepository;
+use Modules\IdentityVerification\Models\VerificationModel;
+use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
+use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use PDO;
@@ -188,6 +191,15 @@ class CronRunner
                 'interval' => 1800,
                 'callback' => function (): array {
                     return $this->runAiSyncTask();
+                },
+            ],
+            [
+                'slug' => 'identity-verification-expiration',
+                'name' => 'Caducidad de certificaciones biométricas',
+                'description' => 'Marca certificaciones vencidas según la vigencia configurada y notifica al equipo.',
+                'interval' => 86400,
+                'callback' => function (): array {
+                    return $this->runIdentityVerificationExpirationTask();
                 },
             ],
         ];
@@ -452,6 +464,50 @@ class CronRunner
         return [
             'message' => 'Sincronización IA completada correctamente.',
             'details' => $details,
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runIdentityVerificationExpirationTask(): array
+    {
+        $policy = new VerificationPolicyService($this->pdo);
+        $validity = $policy->getValidityDays();
+
+        if ($validity <= 0) {
+            return [
+                'status' => 'skipped',
+                'message' => 'La vigencia automática de certificaciones está deshabilitada.',
+            ];
+        }
+
+        $verifications = new VerificationModel($this->pdo);
+        $result = $verifications->expireOlderThan($validity);
+
+        if (($result['expired'] ?? 0) === 0) {
+            return [
+                'status' => 'success',
+                'message' => 'No se encontraron certificaciones para marcar como vencidas.',
+                'details' => ['expired' => 0],
+            ];
+        }
+
+        $escalation = new MissingEvidenceEscalationService($this->pdo, $policy);
+        foreach ($result['certifications'] as $certification) {
+            $escalation->escalate($certification, 'expired_certification', [
+                'metadata' => [
+                    'vigencia_dias' => $validity,
+                    'ultima_verificacion' => $certification['last_verification_at'] ?? null,
+                ],
+                'patient_name' => $certification['full_name'] ?? null,
+            ]);
+        }
+
+        return [
+            'status' => 'success',
+            'message' => sprintf('Se marcaron %d certificaciones como vencidas.', (int) $result['expired']),
+            'details' => ['expired' => (int) $result['expired']],
         ];
     }
 
