@@ -115,7 +115,7 @@ class SignatureAnalysisService
         $b = $sample['vector'];
         $length = min(count($a), count($b));
         if ($length === 0) {
-            return null;
+            return 0.0;
         }
 
         $diff = 0.0;

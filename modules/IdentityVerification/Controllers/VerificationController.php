@@ -12,6 +12,8 @@ use PDO;
 
 class VerificationController extends BaseController
 {
+    private const STORAGE_PREFIX = 'storage/patient_verification/';
+
     private VerificationModel $verifications;
     private FaceRecognitionService $faceRecognition;
     private SignatureAnalysisService $signatureAnalysis;
@@ -333,6 +335,71 @@ class VerificationController extends BaseController
         ]);
     }
 
+    public function destroy(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['administrativo', 'pacientes.verification.manage']);
+
+        $certificationId = isset($_POST['certification_id']) ? (int) $_POST['certification_id'] : 0;
+        $patientId = isset($_POST['patient_id']) ? $this->normalizePatientId((string) $_POST['patient_id']) : '';
+
+        $certification = null;
+        if ($certificationId > 0) {
+            $certification = $this->verifications->find($certificationId);
+        }
+
+        if (!$certification && $patientId !== '') {
+            $certification = $this->verifications->findByPatient($patientId);
+        }
+
+        if (!$certification) {
+            $this->json([
+                'ok' => false,
+                'message' => 'No se encontró la certificación solicitada.',
+            ], 404);
+            return;
+        }
+
+        $paths = [];
+        foreach ([
+            $certification['signature_path'] ?? null,
+            $certification['document_signature_path'] ?? null,
+            $certification['document_front_path'] ?? null,
+            $certification['document_back_path'] ?? null,
+            $certification['face_image_path'] ?? null,
+        ] as $path) {
+            if (is_string($path) && $path !== '') {
+                $paths[] = $path;
+            }
+        }
+
+        $capturePaths = $this->verifications->getCheckinCapturePaths((int) $certification['id']);
+        if (!empty($capturePaths)) {
+            $paths = array_merge($paths, $capturePaths);
+        }
+
+        $paths = array_values(array_unique($paths));
+
+        if (!$this->verifications->delete((int) $certification['id'])) {
+            $this->json([
+                'ok' => false,
+                'message' => 'No fue posible eliminar la certificación. Intente nuevamente.',
+            ], 500);
+            return;
+        }
+
+        foreach ($paths as $relativePath) {
+            $this->deleteStoragePath($relativePath);
+        }
+
+        $this->json([
+            'ok' => true,
+            'message' => 'La certificación biométrica se eliminó correctamente.',
+            'patient_id' => $certification['patient_id'],
+            'document_number' => $certification['document_number'],
+        ]);
+    }
+
     private function validateCertificationInput(array $input, ?array $patient, ?array $existing): array
     {
         $errors = [];
@@ -477,6 +544,34 @@ class VerificationController extends BaseController
             $data[$key] = is_string($value) ? trim($value) : $value;
         }
         return $data;
+    }
+
+    private function deleteStoragePath(?string $relativePath): void
+    {
+        if (!is_string($relativePath) || $relativePath === '') {
+            return;
+        }
+
+        $cleanPath = ltrim($relativePath, '/');
+        if (strncmp($cleanPath, self::STORAGE_PREFIX, strlen(self::STORAGE_PREFIX)) !== 0) {
+            return;
+        }
+
+        $fullPath = BASE_PATH . '/' . $cleanPath;
+        if (!file_exists($fullPath)) {
+            return;
+        }
+
+        $baseDirectory = realpath(BASE_PATH . '/' . self::STORAGE_PREFIX);
+        $realPath = realpath($fullPath);
+        if ($realPath === false || $baseDirectory === false) {
+            @unlink($fullPath);
+            return;
+        }
+
+        if (strncmp($realPath, $baseDirectory, strlen($baseDirectory)) === 0) {
+            @unlink($realPath);
+        }
     }
 
     private function determineResult(?float $signatureScore, ?float $faceScore): string

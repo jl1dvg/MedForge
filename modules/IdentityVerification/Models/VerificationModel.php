@@ -201,6 +201,36 @@ class VerificationModel
         return $row;
     }
 
+    public function getCheckinCapturePaths(int $certificationId): array
+    {
+        $stmt = $this->db->prepare("
+            SELECT metadata
+            FROM patient_identity_checkins
+            WHERE certification_id = :id
+        ");
+        $stmt->bindValue(':id', $certificationId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $paths = [];
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($rows as $row) {
+            $metadata = $this->decodeTemplate($row['metadata'] ?? null) ?: [];
+            foreach (['face_capture', 'signature_capture'] as $key) {
+                if (!empty($metadata[$key]) && is_string($metadata[$key])) {
+                    $paths[] = $metadata[$key];
+                }
+            }
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    public function delete(int $id): bool
+    {
+        $stmt = $this->db->prepare('DELETE FROM patient_identity_certifications WHERE id = :id');
+        return $stmt->execute([':id' => $id]);
+    }
+
     public function findPatientSummary(string $patientId): ?array
     {
         $stmt = $this->db->prepare(

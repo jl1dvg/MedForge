@@ -130,7 +130,7 @@ class FaceRecognitionService
         }
 
         if ($normA <= 0 || $normB <= 0) {
-            return null;
+            return 0.0;
         }
 
         $similarity = $dot / (sqrt($normA) * sqrt($normB));
