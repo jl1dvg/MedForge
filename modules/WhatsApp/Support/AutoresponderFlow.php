@@ -243,6 +243,19 @@ class AutoresponderFlow
                 ],
             ],
             [
+                'id' => 'acceso_menu_directo',
+                'name' => 'Acceso directo al menú',
+                'description' => 'Permite abrir el menú cuando el contacto escribe un atajo como "menu" u "hola".',
+                'conditions' => [
+                    ['type' => 'has_consent', 'value' => true],
+                    ['type' => 'message_in', 'values' => self::menuKeywords()],
+                ],
+                'actions' => [
+                    ['type' => 'set_state', 'state' => 'menu_principal'],
+                    ['type' => 'goto_menu'],
+                ],
+            ],
+            [
                 'id' => 'fallback',
                 'name' => 'Fallback',
                 'description' => 'Cuando ninguna regla aplica.',
