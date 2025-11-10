@@ -33,7 +33,7 @@ class DataProtectionCopy
             'confirmation_menu' => 'Cuando confirmes la información, responde con la opción que necesites o escribe "menu" para ver las alternativas disponibles.',
             'confirmation_recorded' => 'Tu autorización quedó registrada en nuestro sistema. Continuemos con la atención. ✅',
             'buttons' => [
-                'autorizo' => 'Autorizo',
+                'accept' => 'Sí, autorizo',
                 'decline' => 'No, gracias',
             ],
         ];
@@ -101,7 +101,7 @@ class DataProtectionCopy
 
         if (isset($overrides['buttons']) && is_array($overrides['buttons'])) {
             $buttons = $base['buttons'];
-            foreach (['autorizo', 'decline'] as $buttonKey) {
+            foreach (['accept', 'decline'] as $buttonKey) {
                 if (!isset($overrides['buttons'][$buttonKey])) {
                     continue;
                 }

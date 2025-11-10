@@ -5,9 +5,11 @@ namespace Modules\WhatsApp\Controllers;
 use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
+use Modules\WhatsApp\Repositories\InboxRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Services\TemplateManager;
 use PDO;
+use function array_reverse;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -58,6 +60,9 @@ class AutoresponderController extends BaseController
             $templatesError = $exception->getMessage();
         }
 
+        $inboxRepository = new InboxRepository($this->pdo);
+        $inboxMessages = array_reverse($inboxRepository->fetchRecent(25));
+
         $this->render(BASE_PATH . '/modules/WhatsApp/views/autoresponder.php', [
             'pageTitle' => 'Flujo de autorespuesta de WhatsApp',
             'config' => $config,
@@ -66,7 +71,8 @@ class AutoresponderController extends BaseController
             'status' => $status,
             'templates' => $templates,
             'templatesError' => $templatesError,
-            'scripts' => ['js/pages/whatsapp-autoresponder.js'],
+            'inboxMessages' => $inboxMessages,
+            'scripts' => ['js/pages/whatsapp-autoresponder.js', 'js/pages/whatsapp-inbox.js'],
             'styles' => ['css/pages/whatsapp-autoresponder.css'],
         ]);
     }

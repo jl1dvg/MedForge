@@ -8,16 +8,44 @@
         const validationAlert = form.querySelector('[data-validation-errors]');
         let validationErrors = [];
 
+        const slugify = (value) => {
+            if (!value) {
+                return '';
+            }
+
+            let base = value.toString();
+            if (typeof base.normalize === 'function') {
+                base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            }
+
+            const normalized = base.toLowerCase();
+
+            return normalized
+                .replace(/[^a-z0-9_-]+/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, 32);
+        };
+
         const resetValidationState = () => {
             validationErrors = [];
             if (validationAlert) {
                 validationAlert.classList.add('d-none');
                 validationAlert.innerHTML = '';
             }
-            form.querySelectorAll('.has-validation-error').forEach((element) => {
+            form.querySelectorAll('[data-message].has-validation-error').forEach((element) => {
                 element.classList.remove('has-validation-error');
             });
-            form.querySelectorAll('.is-invalid').forEach((element) => {
+            form.querySelectorAll('[data-consent-wrapper].has-validation-error').forEach((element) => {
+                element.classList.remove('has-validation-error');
+            });
+            form.querySelectorAll('[data-template-parameter].is-invalid').forEach((element) => {
+                element.classList.remove('is-invalid');
+            });
+            form.querySelectorAll('.template-selector.is-invalid').forEach((element) => {
+                element.classList.remove('is-invalid');
+            });
+            form.querySelectorAll('[data-consent-field].is-invalid').forEach((element) => {
                 element.classList.remove('is-invalid');
             });
         };
@@ -44,36 +72,17 @@
             }
         };
 
-        const parseKeywords = (value) => {
-            return (value || '')
-                .split(/[\,\n]/)
-                .map((item) => item.trim())
-                .filter((item) => item !== '')
-                .map((item) => item.toLowerCase());
-        };
-
-        const flowSource = form.querySelector('[data-flow-source]');
-        let initialFlow = {};
-        try {
-            initialFlow = JSON.parse(flowSource?.value || '{}');
-        } catch (error) {
-            initialFlow = {};
-        }
-
         const messageTemplate = document.getElementById('message-template');
         const buttonTemplate = document.getElementById('button-template');
-        const shortcutTemplate = document.getElementById('shortcut-template');
-        const nodeTemplate = document.getElementById('node-template');
-        const responseTemplate = document.getElementById('response-template');
-        const branchTemplate = document.getElementById('branch-template');
-        const errorMessageTemplate = document.getElementById('error-message-template');
-
         const templateCatalogInput = form.querySelector('[data-template-catalog]');
         let templateCatalog = [];
+        const consentSection = form.querySelector('[data-consent]');
+
         if (templateCatalogInput) {
             try {
                 templateCatalog = JSON.parse(templateCatalogInput.value || '[]');
             } catch (error) {
+                console.warn('No fue posible interpretar el catálogo de plantillas', error);
                 templateCatalog = [];
             }
             templateCatalogInput.name = '';
@@ -536,203 +545,253 @@
         };
 
         const hydrateMessage = (messageElement) => {
-            if (!messageElement || messageElement.dataset.hydrated) {
-                return;
-            }
-            messageElement.dataset.hydrated = '1';
-
-            const typeSelector = messageElement.querySelector('.message-type');
-            if (typeSelector) {
-                typeSelector.addEventListener('change', () => {
-                    toggleMessageFields(messageElement);
-                });
-            }
-
+            const typeField = messageElement.querySelector('.message-type');
+            const removeMessageButton = messageElement.querySelector('[data-action="remove-message"]');
+            const addButton = messageElement.querySelector('[data-action="add-button"]');
             const presetButtons = messageElement.querySelectorAll('[data-action="preset"]');
+
+            if (typeField) {
+                typeField.addEventListener('change', () => toggleMessageFields(messageElement));
+            }
+            if (removeMessageButton) {
+                removeMessageButton.addEventListener('click', () => messageElement.remove());
+            }
+            if (addButton) {
+                addButton.addEventListener('click', () => addButtonRow(messageElement));
+            }
             presetButtons.forEach((button) => {
                 button.addEventListener('click', () => {
                     const preset = button.getAttribute('data-preset');
-                    applyPreset(messageElement, preset);
+                    if (preset) {
+                        applyPreset(messageElement, preset);
+                    }
                 });
             });
-
-            const addButton = messageElement.querySelector('[data-action="add-button"]');
-            if (addButton) {
-                addButton.addEventListener('click', () => {
-                    addButtonRow(messageElement);
-                });
-            }
+            messageElement.querySelectorAll('[data-button]').forEach((item) => {
+                const remove = item.querySelector('[data-action="remove-button"]');
+                if (remove) {
+                    remove.addEventListener('click', () => item.remove());
+                }
+            });
 
             ensureListControls(messageElement);
             ensureTemplateControls(messageElement);
             toggleMessageFields(messageElement);
+        };
 
-            const removeButton = messageElement.querySelector('[data-action="remove-message"]');
-            if (removeButton) {
-                removeButton.addEventListener('click', () => {
-                    messageElement.remove();
+        form.querySelectorAll('[data-messages]').forEach((container) => {
+            container.querySelectorAll('[data-message]').forEach((message) => hydrateMessage(message));
+            const addMessageButton = container.parentElement?.querySelector('[data-action="add-message"]');
+            if (addMessageButton && messageTemplate) {
+                addMessageButton.addEventListener('click', () => {
+                    const clone = messageTemplate.content.firstElementChild.cloneNode(true);
+                    container.appendChild(clone);
+                    hydrateMessage(clone);
                 });
             }
-        };
+        });
 
         const collectButtons = (messageElement) => {
             const buttons = [];
-            messageElement.querySelectorAll('[data-button]').forEach((buttonElement) => {
-                const title = buttonElement.querySelector('.button-title')?.value?.trim() || '';
-                const id = buttonElement.querySelector('.button-id')?.value?.trim() || '';
+            messageElement.querySelectorAll('[data-button]').forEach((item) => {
+                const title = item.querySelector('.button-title')?.value?.trim() || '';
                 if (title === '') {
                     return;
                 }
+
+                const idField = item.querySelector('.button-id');
+                let id = idField?.value?.trim() || '';
+
+                if (id === '') {
+                    id = slugify(title);
+                    if (idField) {
+                        idField.value = id;
+                    }
+                }
+
+                if (id === '') {
+                    return;
+                }
+
                 buttons.push({title, id});
             });
             return buttons;
         };
 
         const collectListData = (messageElement) => {
-            const button = messageElement.querySelector('.list-button')?.value?.trim() || 'Seleccionar';
+            const buttonLabel = messageElement.querySelector('.list-button')?.value?.trim() || 'Ver opciones';
             const sections = [];
             messageElement.querySelectorAll('[data-section]').forEach((sectionElement) => {
-                const title = sectionElement.querySelector('.section-title')?.value?.trim() || '';
                 const rows = [];
                 sectionElement.querySelectorAll('[data-row]').forEach((rowElement) => {
-                    const rowTitle = rowElement.querySelector('.row-title')?.value?.trim() || '';
-                    const rowId = rowElement.querySelector('.row-id')?.value?.trim() || '';
-                    const rowDescription = rowElement.querySelector('.row-description')?.value?.trim() || '';
-                    if (rowTitle === '' || rowId === '') {
+                    const title = rowElement.querySelector('.row-title')?.value?.trim() || '';
+                    if (title === '') {
                         return;
                     }
-                    const entry = {id: rowId, title: rowTitle};
-                    if (rowDescription !== '') {
-                        entry.description = rowDescription;
+                    const idField = rowElement.querySelector('.row-id');
+                    let id = idField?.value?.trim() || '';
+                    if (id === '') {
+                        id = slugify(title);
+                        if (idField) {
+                            idField.value = id;
+                        }
                     }
-                    rows.push(entry);
+                    if (id === '') {
+                        return;
+                    }
+                    const description = rowElement.querySelector('.row-description')?.value?.trim() || '';
+                    const row = {title, id};
+                    if (description !== '') {
+                        row.description = description;
+                    }
+                    rows.push(row);
                 });
-                if (rows.length > 0) {
-                    sections.push({title, rows});
+
+                if (rows.length === 0) {
+                    return;
                 }
+
+                const title = sectionElement.querySelector('.section-title')?.value?.trim() || '';
+                sections.push({title, rows});
             });
-            return {button, sections};
+
+            return {button: buttonLabel, sections};
         };
 
-        const collectTemplateData = (messageElement, messageDescription) => {
-            const nameField = messageElement.querySelector('.template-name');
-            const languageField = messageElement.querySelector('.template-language');
-            const categoryField = messageElement.querySelector('.template-category');
-            const componentsField = messageElement.querySelector('.template-components');
-            const selector = messageElement.querySelector('.template-selector');
-
-            const name = nameField?.value?.trim() || '';
-            const language = languageField?.value?.trim() || '';
-            const category = categoryField?.value?.trim() || '';
+        const collectTemplateData = (messageElement, contextLabel, messageIndex) => {
+            const sectionDescription = contextLabel ? `en la sección "${contextLabel}"` : 'en esta sección';
+            const messageDescription = `${sectionDescription} (mensaje ${messageIndex + 1})`;
+            const name = messageElement.querySelector('.template-name')?.value?.trim() || '';
+            const language = messageElement.querySelector('.template-language')?.value?.trim() || '';
 
             if (name === '' || language === '') {
                 recordValidationError(`Selecciona una plantilla aprobada ${messageDescription}.`, messageElement);
-                if (selector) {
-                    selector.classList.add('is-invalid');
+                return null;
+            }
+
+            const category = messageElement.querySelector('.template-category')?.value?.trim() || '';
+            const componentsField = messageElement.querySelector('.template-components');
+            const meta = findTemplateMeta(name, language);
+            const select = messageElement.querySelector('.template-selector');
+
+            messageElement.querySelectorAll('[data-template-parameter]').forEach((input) => {
+                input.classList.remove('is-invalid');
+            });
+            if (select) {
+                select.classList.remove('is-invalid');
+            }
+
+            if (!meta) {
+                recordValidationError(`La plantilla "${name}" (${language}) ya no está disponible; vuelve a seleccionarla ${messageDescription}.`, messageElement);
+                if (select) {
+                    select.classList.add('is-invalid');
                 }
                 return null;
             }
 
-            const meta = findTemplateMeta(name, language);
             const components = [];
+            let messageHasErrors = false;
 
-            const componentInputs = messageElement.querySelectorAll('[data-template-parameter]');
-            componentInputs.forEach((input) => input.classList.remove('is-invalid'));
-
-            if (componentInputs.length > 0 && meta) {
-                meta.components
-                    .filter((component) => component.type === 'BODY' && Array.isArray(component.placeholders) && component.placeholders.length > 0)
-                    .forEach((component) => {
-                        const placeholders = component.placeholders || [];
-                        const missing = [];
-                        const parameters = [];
-                        placeholders.forEach((placeholder) => {
-                            const input = messageElement.querySelector(`[data-template-parameter][data-component="BODY"][data-placeholder="${placeholder}"]`);
-                            const value = input?.value?.trim() || '';
-                            if (!input || value === '') {
-                                missing.push(placeholder);
-                                if (input) {
-                                    input.classList.add('is-invalid');
-                                }
-                                return;
-                            }
-                            parameters.push({type: 'text', text: value});
-                        });
-                        if (missing.length > 0) {
-                            const placeholdersList = missing.map((value) => `{{${value}}}`).join(', ');
-                            recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholdersList} del cuerpo ${messageDescription}.`, messageElement);
-                        } else {
-                            components.push({type: 'BODY', parameters});
-                        }
-                    });
-
-                meta.components
-                    .filter((component) => component.type === 'HEADER' && component.format === 'TEXT' && Array.isArray(component.placeholders) && component.placeholders.length > 0)
-                    .forEach((component) => {
-                        const placeholders = component.placeholders || [];
-                        const missing = [];
-                        const parameters = [];
-                        placeholders.forEach((placeholder) => {
-                            const input = messageElement.querySelector(`[data-template-parameter][data-component="HEADER"][data-placeholder="${placeholder}"]`);
-                            const value = input?.value?.trim() || '';
-                            if (!input || value === '') {
-                                missing.push(placeholder);
-                                if (input) {
-                                    input.classList.add('is-invalid');
-                                }
-                                return;
-                            }
-                            parameters.push({type: 'text', text: value});
-                        });
-                        if (missing.length > 0) {
-                            const placeholdersList = missing.map((value) => `{{${value}}}`).join(', ');
-                            recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholdersList} del encabezado ${messageDescription}.`, messageElement);
-                        } else {
-                            components.push({type: 'HEADER', parameters});
-                        }
-                    });
-
-                meta.components
-                    .filter((component) => component.type === 'BUTTONS' && Array.isArray(component.buttons))
-                    .forEach((component) => {
-                        component.buttons.forEach((button) => {
-                            if (!Array.isArray(button.placeholders) || button.placeholders.length === 0) {
-                                return;
-                            }
-
-                            const missing = [];
-                            const parameters = [];
-                            button.placeholders.forEach((placeholder) => {
-                                const input = messageElement.querySelector(`[data-template-parameter][data-component="BUTTON"][data-index="${button.index}"][data-placeholder="${placeholder}"]`);
-                                const value = input?.value?.trim() || '';
-                                if (!input || value === '') {
-                                    missing.push(placeholder);
-                                    if (input) {
-                                        input.classList.add('is-invalid');
-                                    }
-                                    return;
-                                }
-                                parameters.push({type: 'text', text: value});
-                            });
-
-                            if (missing.length > 0) {
-                                const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
-                                const buttonLabel = button.text ? ` del botón "${button.text}"` : '';
-                                recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders}${buttonLabel} ${messageDescription}.`, messageElement);
-                            } else {
-                                components.push({
-                                    type: 'BUTTON',
-                                    parameters,
-                                    sub_type: button.type,
-                                    index: button.index,
-                                });
-                            }
-                        });
-                    });
-
-                if (componentsField) {
-                    componentsField.value = JSON.stringify(components);
+            const appendParameters = (type, parameters, extra = {}) => {
+                if (!parameters || parameters.length === 0) {
+                    return;
                 }
+                components.push(Object.assign({type, parameters}, extra));
+            };
+
+            const bodyComponent = meta.components.find((component) => component.type === 'BODY');
+            if (bodyComponent && Array.isArray(bodyComponent.placeholders) && bodyComponent.placeholders.length > 0) {
+                const missing = [];
+                const parameters = [];
+                bodyComponent.placeholders.forEach((placeholder) => {
+                    const input = messageElement.querySelector(`[data-template-parameter][data-component="BODY"][data-placeholder="${placeholder}"]`);
+                    const value = input?.value?.trim() || '';
+                    if (!input || value === '') {
+                        missing.push(placeholder);
+                        if (input) {
+                            input.classList.add('is-invalid');
+                        }
+                        return;
+                    }
+                    parameters.push({type: 'text', text: value});
+                });
+                if (missing.length > 0) {
+                    messageHasErrors = true;
+                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
+                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del cuerpo de la plantilla ${messageDescription}.`, messageElement);
+                } else {
+                    appendParameters('BODY', parameters);
+                }
+            }
+
+            const headerComponent = meta.components.find((component) => component.type === 'HEADER' && component.format === 'TEXT');
+            if (headerComponent && Array.isArray(headerComponent.placeholders) && headerComponent.placeholders.length > 0) {
+                const missing = [];
+                const parameters = [];
+                headerComponent.placeholders.forEach((placeholder) => {
+                    const input = messageElement.querySelector(`[data-template-parameter][data-component="HEADER"][data-placeholder="${placeholder}"]`);
+                    const value = input?.value?.trim() || '';
+                    if (!input || value === '') {
+                        missing.push(placeholder);
+                        if (input) {
+                            input.classList.add('is-invalid');
+                        }
+                        return;
+                    }
+                    parameters.push({type: 'text', text: value});
+                });
+                if (missing.length > 0) {
+                    messageHasErrors = true;
+                    const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
+                    recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders} del encabezado ${messageDescription}.`, messageElement);
+                } else {
+                    appendParameters('HEADER', parameters);
+                }
+            }
+
+            meta.components
+                .filter((component) => component.type === 'BUTTONS' && Array.isArray(component.buttons))
+                .forEach((component) => {
+                    component.buttons.forEach((button) => {
+                        if (!Array.isArray(button.placeholders) || button.placeholders.length === 0) {
+                            return;
+                        }
+
+                        const missing = [];
+                        const parameters = [];
+                        button.placeholders.forEach((placeholder) => {
+                            const input = messageElement.querySelector(`[data-template-parameter][data-component="BUTTON"][data-index="${button.index}"][data-placeholder="${placeholder}"]`);
+                            const value = input?.value?.trim() || '';
+                            if (!input || value === '') {
+                                missing.push(placeholder);
+                                if (input) {
+                                    input.classList.add('is-invalid');
+                                }
+                                return;
+                            }
+                            parameters.push({type: 'text', text: value});
+                        });
+
+                        if (missing.length > 0) {
+                            messageHasErrors = true;
+                            const placeholders = missing.map((value) => `{{${value}}}`).join(', ');
+                            const buttonLabel = button.text ? ` del botón "${button.text}"` : '';
+                            recordValidationError(`Completa ${missing.length > 1 ? 'los parámetros' : 'el parámetro'} ${placeholders}${buttonLabel} ${messageDescription}.`, messageElement);
+                        } else {
+                            appendParameters('BUTTON', parameters, {
+                                sub_type: button.type,
+                                index: button.index,
+                            });
+                        }
+                    });
+                });
+
+            if (messageHasErrors) {
+                return null;
+            }
+
+            if (componentsField) {
+                componentsField.value = JSON.stringify(components);
             }
 
             return {
@@ -745,9 +804,6 @@
 
         const collectMessages = (container, contextLabel = '') => {
             const messages = [];
-            if (!container) {
-                return messages;
-            }
             container.querySelectorAll('[data-message]').forEach((messageElement, index) => {
                 messageElement.classList.remove('has-validation-error');
                 const type = messageElement.querySelector('.message-type')?.value || 'text';
@@ -786,7 +842,7 @@
                         recordValidationError(`Agrega al menos una sección con opciones ${messageDescription}.`, messageElement);
                         messageHasErrors = true;
                     } else if (!listData.sections.length) {
-                        recordValidationError(`Completa al menos una opción con título e ID ${messageDescription}.`, messageElement);
+                        recordValidationError(`Completa al menos una opción con título ${messageDescription}.`, messageElement);
                         messageHasErrors = true;
                     } else {
                         payload.button = listData.button;
@@ -796,552 +852,175 @@
                         }
                     }
                 } else if (type === 'template') {
-                    const templateData = collectTemplateData(messageElement, messageDescription);
-                    if (!templateData) {
+                    const template = collectTemplateData(messageElement, contextLabel, index);
+                    if (!template) {
                         messageHasErrors = true;
                     } else {
-                        payload.template = templateData;
-                        if (!payload.body || payload.body.trim() === '') {
-                            payload.body = `Plantilla: ${templateData.name}`;
-                        }
+                        payload.template = template;
                     }
+                } else if (body === '') {
+                    return;
+                }
+
+                if (messageHasErrors) {
+                    return;
+                }
+
+                messages.push(payload);
+            });
+            return messages;
+        };
+
+        const collectSection = (sectionElement, defaultLabel = '') => {
+            if (!sectionElement) {
+                return {};
+            }
+            const data = {};
+            sectionElement.querySelectorAll('[data-field]').forEach((field) => {
+                const key = field.getAttribute('data-field');
+                if (!key) {
+                    return;
+                }
+                data[key] = field.value;
+            });
+            const messagesContainer = sectionElement.querySelector('[data-messages]');
+            if (messagesContainer) {
+                const titleField = sectionElement.querySelector('[data-field="title"]');
+                const rawTitle = titleField?.value?.trim() || '';
+                const contextLabel = rawTitle !== '' ? rawTitle : defaultLabel;
+                data.messages = collectMessages(messagesContainer, contextLabel);
+            }
+            return data;
+        };
+
+        const collectOption = (optionElement) => {
+            const option = collectSection(optionElement, 'Opción del menú');
+            option.id = optionElement.querySelector('.option-id')?.value || '';
+            return option;
+        };
+
+        const collectConsent = (section) => {
+            const config = {
+                intro_lines: [],
+                consent_prompt: '',
+                consent_retry: '',
+                consent_declined: '',
+                identifier_request: '',
+                identifier_retry: '',
+                confirmation_check: '',
+                confirmation_review: '',
+                confirmation_menu: '',
+                confirmation_recorded: '',
+                buttons: {
+                    accept: '',
+                    decline: '',
+                },
+            };
+
+            if (!section) {
+                return config;
+            }
+
+            section.querySelectorAll('[data-consent-field]').forEach((field) => {
+                const key = field.getAttribute('data-consent-field');
+                if (!key) {
+                    return;
+                }
+
+                const raw = field.value || '';
+                const value = raw.trim();
+
+                if (key === 'intro_lines') {
+                    if (value === '') {
+                        config.intro_lines = [];
+                    } else {
+                        config.intro_lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '');
+                    }
+
+                    return;
+                }
+
+                if (key === 'button_accept') {
+                    config.buttons.accept = value;
+                    return;
+                }
+
+                if (key === 'button_decline') {
+                    config.buttons.decline = value;
+                    return;
+                }
+
+                config[key] = value;
+            });
+
+            return config;
+        };
+
+        const validateConsent = (consent) => {
+            if (!consentSection) {
+                return;
+            }
+
+            const findField = (name) => consentSection.querySelector(`[data-consent-field="${name}"]`);
+            const markFieldError = (name, message) => {
+                const field = findField(name);
+                if (field) {
+                    field.classList.add('is-invalid');
+                    const wrapper = field.closest('[data-consent-wrapper]') || field;
+                    recordValidationError(message, wrapper);
                 } else {
-                    if (payload.body === '') {
-                        recordValidationError(`Completa el contenido del mensaje ${messageDescription}.`, messageElement);
-                        messageHasErrors = true;
-                    }
-                }
-
-                if (!messageHasErrors) {
-                    messages.push(payload);
-                }
-            });
-            return messages;
-        };
-
-        const appendMessage = (container, defaults = {}) => {
-            if (!messageTemplate) {
-                return null;
-            }
-            const element = messageTemplate.content.firstElementChild.cloneNode(true);
-            container.appendChild(element);
-            hydrateMessage(element);
-            if (defaults.type) {
-                const typeSelect = element.querySelector('.message-type');
-                if (typeSelect) {
-                    typeSelect.value = defaults.type;
-                }
-            }
-            if (defaults.body) {
-                const bodyField = element.querySelector('.message-body');
-                if (bodyField) {
-                    bodyField.value = defaults.body;
-                }
-            }
-            toggleMessageFields(element);
-            return element;
-        };
-
-        const renderMessages = (container, messages) => {
-            container.innerHTML = '';
-            (messages || []).forEach((message) => {
-                const element = appendMessage(container, message);
-                if (!element) {
-                    return;
-                }
-                const typeSelect = element.querySelector('.message-type');
-                if (typeSelect) {
-                    typeSelect.value = message.type || 'text';
-                }
-                const bodyField = element.querySelector('.message-body');
-                if (bodyField) {
-                    bodyField.value = message.body || '';
-                }
-                const headerField = element.querySelector('.message-header');
-                if (headerField) {
-                    headerField.value = message.header || '';
-                }
-                const footerField = element.querySelector('.message-footer');
-                if (footerField) {
-                    footerField.value = message.footer || '';
-                }
-
-                toggleMessageFields(element);
-
-                if (message.type === 'buttons' && Array.isArray(message.buttons)) {
-                    message.buttons.forEach((button) => addButtonRow(element, button));
-                }
-
-                if (message.type === 'list' && Array.isArray(message.sections)) {
-                    const wrapper = element.querySelector('[data-sections]');
-                    if (wrapper) {
-                        message.sections.forEach((section) => {
-                            const sectionElement = createSectionElement(section);
-                            wrapper.appendChild(sectionElement);
-                            hydrateSection(sectionElement);
-                        });
-                    }
-                    const buttonField = element.querySelector('.list-button');
-                    if (buttonField) {
-                        buttonField.value = message.button || 'Seleccionar';
-                    }
-                }
-
-                if (message.type === 'template' && message.template) {
-                    const nameField = element.querySelector('.template-name');
-                    const languageField = element.querySelector('.template-language');
-                    const categoryField = element.querySelector('.template-category');
-                    const componentsField = element.querySelector('.template-components');
-                    if (nameField) nameField.value = message.template.name || '';
-                    if (languageField) languageField.value = message.template.language || '';
-                    if (categoryField) categoryField.value = message.template.category || '';
-                    if (componentsField) componentsField.value = JSON.stringify(message.template.components || []);
-                    ensureTemplateControls(element);
-                }
-            });
-        };
-
-        const shortcutList = form.querySelector('[data-shortcut-list]');
-        const nodeList = form.querySelector('[data-node-list]');
-        const fallbackContainer = form.querySelector('[data-fallback-editor]');
-        const fallbackMessagesContainer = fallbackContainer?.querySelector('[data-fallback-messages]');
-        const entryKeywordsField = form.querySelector('[data-entry-keywords]');
-
-        const renderShortcut = (data = {}) => {
-            if (!shortcutTemplate || !shortcutList) {
-                return null;
-            }
-            const element = shortcutTemplate.content.firstElementChild.cloneNode(true);
-            shortcutList.appendChild(element);
-            element.querySelector('[data-field="id"]').value = data.id || '';
-            element.querySelector('[data-field="title"]').value = data.title || '';
-            element.querySelector('[data-field="target"]').value = data.target || '';
-            element.querySelector('[data-field="keywords"]').value = (data.keywords || []).join(', ');
-            element.querySelector('[data-field="clear_context"]').value = (data.clear_context || []).join(', ');
-            const removeButton = element.querySelector('[data-action="remove-shortcut"]');
-            if (removeButton) {
-                removeButton.addEventListener('click', () => element.remove());
-            }
-            return element;
-        };
-
-        const renderResponse = (container, data = {}) => {
-            if (!responseTemplate) {
-                return null;
-            }
-            const element = responseTemplate.content.firstElementChild.cloneNode(true);
-            container.appendChild(element);
-            element.querySelector('[data-field="id"]').value = data.id || '';
-            element.querySelector('[data-field="title"]').value = data.title || '';
-            element.querySelector('[data-field="target"]').value = data.target || '';
-            element.querySelector('[data-field="keywords"]').value = (data.keywords || []).join(', ');
-            element.querySelector('[data-field="clear_context"]').value = (data.clear_context || []).join(', ');
-            const removeButton = element.querySelector('[data-action="remove-response"]');
-            if (removeButton) {
-                removeButton.addEventListener('click', () => element.remove());
-            }
-            const messageContainer = element.querySelector('[data-response-message-list]');
-            const addMessageButton = element.querySelector('[data-action="add-response-message"]');
-            if (addMessageButton && messageContainer) {
-                addMessageButton.addEventListener('click', () => {
-                    appendMessage(messageContainer, {type: 'text'});
-                });
-            }
-            renderMessages(messageContainer, data.messages || []);
-            return element;
-        };
-
-        const renderErrorMessages = (container, messages = []) => {
-            container.innerHTML = '';
-            messages.forEach((message) => {
-                const entry = errorMessageTemplate.content.firstElementChild.cloneNode(true);
-                entry.querySelector('textarea').value = message.body || message || '';
-                const removeButton = entry.querySelector('[data-action="remove-error-message"]');
-                if (removeButton) {
-                    removeButton.addEventListener('click', () => entry.remove());
-                }
-                container.appendChild(entry);
-            });
-        };
-
-        const renderBranch = (container, data = {}) => {
-            if (!branchTemplate) {
-                return null;
-            }
-            const element = branchTemplate.content.firstElementChild.cloneNode(true);
-            container.appendChild(element);
-            element.querySelector('[data-field="id"]').value = data.id || '';
-            element.querySelector('[data-field="condition.type"]').value = data.condition?.type || 'always';
-            element.querySelector('[data-field="next"]').value = data.next || '';
-            const extraContainer = element.querySelector('[data-branch-extra]');
-
-            const updateExtraFields = () => {
-                if (!extraContainer) {
-                    return;
-                }
-                extraContainer.innerHTML = '';
-                const type = element.querySelector('[data-field="condition.type"]').value;
-                if (['patient_exists', 'has_value', 'equals', 'not_equals'].includes(type)) {
-                    const fieldCol = document.createElement('div');
-                    fieldCol.className = 'col-md-6';
-                    fieldCol.innerHTML = '<label class="form-label-sm">Campo de contexto</label><input type="text" class="form-control form-control-sm" data-field="condition.field" placeholder="Ej: hc_number">';
-                    extraContainer.appendChild(fieldCol);
-                }
-                if (['equals', 'not_equals'].includes(type)) {
-                    const valueCol = document.createElement('div');
-                    valueCol.className = 'col-md-6';
-                    valueCol.innerHTML = '<label class="form-label-sm">Valor de comparación</label><input type="text" class="form-control form-control-sm" data-field="condition.value" placeholder="Valor a comparar">';
-                    extraContainer.appendChild(valueCol);
-                }
-                if (type === 'patient_exists') {
-                    const sourceCol = document.createElement('div');
-                    sourceCol.className = 'col-md-6';
-                    sourceCol.innerHTML = '<label class="form-label-sm">Fuente de búsqueda</label><select class="form-select form-select-sm" data-field="condition.source"><option value="local">Base de datos local</option><option value="registry">Registro Civil</option><option value="any">Cualquiera disponible</option></select>';
-                    extraContainer.appendChild(sourceCol);
-                }
-
-                if (data.condition) {
-                    const fieldInput = element.querySelector('[data-field="condition.field"]');
-                    const valueInput = element.querySelector('[data-field="condition.value"]');
-                    const sourceSelect = element.querySelector('[data-field="condition.source"]');
-                    if (fieldInput) fieldInput.value = data.condition.field || '';
-                    if (valueInput) valueInput.value = data.condition.value || '';
-                    if (sourceSelect) sourceSelect.value = data.condition.source || 'any';
+                    recordValidationError(message, consentSection);
                 }
             };
 
-            updateExtraFields();
-            const typeSelect = element.querySelector('[data-field="condition.type"]');
-            if (typeSelect) {
-                typeSelect.addEventListener('change', updateExtraFields);
+            if (!Array.isArray(consent.intro_lines) || consent.intro_lines.length === 0) {
+                markFieldError('intro_lines', 'Añade al menos una línea para la introducción del consentimiento.');
             }
 
-            const removeButton = element.querySelector('[data-action="remove-branch"]');
-            if (removeButton) {
-                removeButton.addEventListener('click', () => element.remove());
-            }
+            const required = [
+                ['consent_prompt', 'Define el mensaje que solicitará la autorización.'],
+                ['button_accept', 'Indica el texto del botón de aceptación.'],
+                ['button_decline', 'Indica el texto del botón de rechazo.'],
+                ['identifier_request', 'Define la solicitud del número de historia clínica.'],
+                ['identifier_retry', 'Incluye el mensaje para cuando el número no coincide.'],
+                ['confirmation_check', 'Añade el mensaje de verificación final.'],
+                ['confirmation_review', 'Incluye la confirmación con el número de historia clínica.'],
+                ['confirmation_menu', 'Explica cómo continuar después de validar la información.'],
+                ['confirmation_recorded', 'Añade el mensaje que confirma el registro del consentimiento.'],
+            ];
 
-            const addMessageButton = element.querySelector('[data-action="add-branch-message"]');
-            const messageContainer = element.querySelector('[data-branch-message-list]');
-            if (addMessageButton && messageContainer) {
-                addMessageButton.addEventListener('click', () => {
-                    appendMessage(messageContainer, {type: 'text'});
-                });
-            }
-            renderMessages(messageContainer, data.messages || []);
-
-            return element;
-        };
-
-        const renderNode = (data = {}) => {
-            if (!nodeTemplate || !nodeList) {
-                return null;
-            }
-            const element = nodeTemplate.content.firstElementChild.cloneNode(true);
-            nodeList.appendChild(element);
-
-            const idField = element.querySelector('[data-field="id"]');
-            const typeField = element.querySelector('[data-field="type"]');
-            const titleField = element.querySelector('[data-field="title"]');
-            const descriptionField = element.querySelector('[data-field="description"]');
-            if (idField) idField.value = data.id || '';
-            if (typeField) typeField.value = data.type || 'message';
-            if (titleField) titleField.value = data.title || '';
-            if (descriptionField) descriptionField.value = data.description || '';
-
-            const messageSection = element.querySelector('[data-node-section="message"]');
-            const inputSection = element.querySelector('[data-node-section="input"]');
-            const decisionSection = element.querySelector('[data-node-section="decision"]');
-
-            const toggleSections = () => {
-                const type = typeField.value;
-                if (messageSection) messageSection.classList.toggle('d-none', type !== 'message');
-                if (inputSection) inputSection.classList.toggle('d-none', type !== 'input');
-                if (decisionSection) decisionSection.classList.toggle('d-none', type !== 'decision');
-            };
-            toggleSections();
-            typeField.addEventListener('change', toggleSections);
-
-            const removeButton = element.querySelector('[data-action="remove-node"]');
-            if (removeButton) {
-                removeButton.addEventListener('click', () => element.remove());
-            }
-
-            if (messageSection) {
-                const messagesContainer = messageSection.querySelector('[data-message-list]');
-                const addMessageButton = messageSection.querySelector('[data-action="add-message"]');
-                if (addMessageButton && messagesContainer) {
-                    addMessageButton.addEventListener('click', () => {
-                        appendMessage(messagesContainer, {type: 'text'});
-                    });
+            required.forEach(([fieldName, message]) => {
+                let candidate = '';
+                if (fieldName === 'button_accept') {
+                    candidate = consent.buttons.accept || '';
+                } else if (fieldName === 'button_decline') {
+                    candidate = consent.buttons.decline || '';
+                } else {
+                    candidate = consent[fieldName] || '';
                 }
-                renderMessages(messagesContainer, data.messages || []);
 
-                const responseList = messageSection.querySelector('[data-response-list]');
-                const addResponseButton = messageSection.querySelector('[data-action="add-response"]');
-                if (addResponseButton && responseList) {
-                    addResponseButton.addEventListener('click', () => {
-                        renderResponse(responseList, {keywords: []});
-                    });
-                }
-                (data.responses || []).forEach((response) => renderResponse(responseList, response));
-
-                const nextField = messageSection.querySelector('[data-field="next"]');
-                if (nextField) {
-                    nextField.value = data.next || '';
-                }
-            }
-
-            if (inputSection) {
-                const messagesContainer = inputSection.querySelector('[data-message-list]');
-                const addMessageButton = inputSection.querySelector('[data-action="add-message"]');
-                if (addMessageButton && messagesContainer) {
-                    addMessageButton.addEventListener('click', () => appendMessage(messagesContainer, {type: 'text'}));
-                }
-                renderMessages(messagesContainer, data.messages || []);
-
-                inputSection.querySelector('[data-field="input.field"]').value = data.input?.field || '';
-                inputSection.querySelector('[data-field="input.normalize"]').value = data.input?.normalize || 'trim';
-                inputSection.querySelector('[data-field="input.pattern"]').value = data.input?.pattern || '';
-
-                const errorContainer = inputSection.querySelector('[data-error-message-list]');
-                const addErrorButton = inputSection.querySelector('[data-action="add-error-message"]');
-                if (addErrorButton && errorContainer) {
-                    addErrorButton.addEventListener('click', () => {
-                        const entry = errorMessageTemplate.content.firstElementChild.cloneNode(true);
-                        const removeButton = entry.querySelector('[data-action="remove-error-message"]');
-                        if (removeButton) {
-                            removeButton.addEventListener('click', () => entry.remove());
-                        }
-                        errorContainer.appendChild(entry);
-                    });
-                }
-                renderErrorMessages(errorContainer, data.input?.error_messages || []);
-
-                const nextField = inputSection.querySelector('[data-field="next"]');
-                if (nextField) {
-                    nextField.value = data.next || '';
-                }
-            }
-
-            if (decisionSection) {
-                const branchList = decisionSection.querySelector('[data-branch-list]');
-                const addBranchButton = decisionSection.querySelector('[data-action="add-branch"]');
-                if (addBranchButton && branchList) {
-                    addBranchButton.addEventListener('click', () => renderBranch(branchList, {condition: {type: 'always'}}));
-                }
-                (data.branches || []).forEach((branch) => renderBranch(branchList, branch));
-            }
-
-            return element;
-        };
-
-        const populateInitialData = () => {
-            if (entryKeywordsField) {
-                entryKeywordsField.value = (initialFlow.entry_keywords || []).join(', ');
-            }
-
-            (initialFlow.shortcuts || []).forEach((shortcut) => renderShortcut(shortcut));
-
-            (initialFlow.nodes || []).forEach((node) => renderNode(node));
-
-            if (fallbackMessagesContainer) {
-                renderMessages(fallbackMessagesContainer, initialFlow.fallback?.messages || []);
-                const addFallbackButton = document.createElement('button');
-                addFallbackButton.type = 'button';
-                addFallbackButton.className = 'btn btn-xs btn-outline-primary mt-2';
-                addFallbackButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir mensaje';
-                addFallbackButton.addEventListener('click', () => appendMessage(fallbackMessagesContainer, {type: 'text'}));
-                fallbackMessagesContainer.parentElement.appendChild(addFallbackButton);
-            }
-
-            const addShortcutButton = form.querySelector('[data-action="add-shortcut"]');
-            if (addShortcutButton) {
-                addShortcutButton.addEventListener('click', () => renderShortcut({keywords: []}));
-            }
-
-            const addNodeButton = form.querySelector('[data-action="add-node"]');
-            if (addNodeButton) {
-                addNodeButton.addEventListener('click', () => renderNode({type: 'message', responses: [], messages: []}));
-            }
-        };
-
-        const collectShortcuts = () => {
-            const shortcuts = [];
-            shortcutList?.querySelectorAll('[data-shortcut]').forEach((element) => {
-                const id = element.querySelector('[data-field="id"]').value.trim();
-                const title = element.querySelector('[data-field="title"]').value.trim();
-                const target = element.querySelector('[data-field="target"]').value.trim();
-                const keywords = parseKeywords(element.querySelector('[data-field="keywords"]').value);
-                const clearContext = parseKeywords(element.querySelector('[data-field="clear_context"]').value);
-                if (title === '' || target === '' || keywords.length === 0) {
-                    recordValidationError('Completa el identificador, título, destino y palabras clave de cada acceso directo.', element);
-                    return;
-                }
-                shortcuts.push({id, title, target, keywords, clear_context: clearContext});
-            });
-            return shortcuts;
-        };
-
-        const collectResponses = (container, contextLabel) => {
-            const responses = [];
-            container?.querySelectorAll('[data-response]').forEach((element, index) => {
-                const id = element.querySelector('[data-field="id"]').value.trim();
-                const title = element.querySelector('[data-field="title"]').value.trim();
-                const target = element.querySelector('[data-field="target"]').value.trim();
-                const keywords = parseKeywords(element.querySelector('[data-field="keywords"]').value);
-                const clearContext = parseKeywords(element.querySelector('[data-field="clear_context"]').value);
-                if (title === '' || target === '' || keywords.length === 0) {
-                    recordValidationError(`Completa identificador, destino y palabras clave en la respuesta ${index + 1} de "${contextLabel}".`, element);
-                    return;
-                }
-                const messages = collectMessages(element.querySelector('[data-response-message-list]'), `respuesta ${index + 1} de "${contextLabel}"`);
-                const response = {id, title, target, keywords, clear_context: clearContext};
-                if (messages.length > 0) {
-                    response.messages = messages;
-                }
-                responses.push(response);
-            });
-            return responses;
-        };
-
-        const collectErrorMessages = (container) => {
-            const messages = [];
-            container?.querySelectorAll('[data-error-message] textarea').forEach((textarea) => {
-                const value = textarea.value.trim();
-                if (value !== '') {
-                    messages.push({type: 'text', body: value});
+                if (!candidate || candidate.trim() === '') {
+                    markFieldError(fieldName, message);
                 }
             });
-            return messages;
         };
-
-        const collectBranches = (container, contextLabel) => {
-            const branches = [];
-            container?.querySelectorAll('[data-branch]').forEach((element, index) => {
-                const id = element.querySelector('[data-field="id"]').value.trim();
-                const type = element.querySelector('[data-field="condition.type"]').value;
-                const next = element.querySelector('[data-field="next"]').value.trim();
-                if (next === '') {
-                    recordValidationError(`Define el escenario siguiente en la condición ${index + 1} de "${contextLabel}".`, element);
-                    return;
-                }
-                const condition = {type};
-                const fieldInput = element.querySelector('[data-field="condition.field"]');
-                const valueInput = element.querySelector('[data-field="condition.value"]');
-                const sourceSelect = element.querySelector('[data-field="condition.source"]');
-                if (fieldInput) {
-                    const fieldValue = fieldInput.value.trim();
-                    if (fieldValue === '') {
-                        recordValidationError(`Indica el campo de contexto para la condición ${index + 1} de "${contextLabel}".`, element);
-                        return;
-                    }
-                    condition.field = fieldValue;
-                }
-                if (valueInput) {
-                    condition.value = valueInput.value.trim();
-                }
-                if (sourceSelect) {
-                    condition.source = sourceSelect.value;
-                }
-                const messages = collectMessages(element.querySelector('[data-branch-message-list]'), `condición ${index + 1} de "${contextLabel}"`);
-                const branch = {id, next, condition};
-                if (messages.length > 0) {
-                    branch.messages = messages;
-                }
-                branches.push(branch);
-            });
-            return branches;
-        };
-
-        const collectNodes = () => {
-            const nodes = [];
-            nodeList?.querySelectorAll('[data-node]').forEach((element, index) => {
-                const id = element.querySelector('[data-field="id"]').value.trim();
-                const type = element.querySelector('[data-field="type"]').value;
-                const title = element.querySelector('[data-field="title"]').value.trim();
-                const description = element.querySelector('[data-field="description"]').value.trim();
-                if (id === '') {
-                    recordValidationError(`El escenario ${index + 1} necesita un identificador.`, element);
-                    return;
-                }
-                const node = {id, type, title, description};
-                if (type === 'message') {
-                    const messageSection = element.querySelector('[data-node-section="message"]');
-                    const messages = collectMessages(messageSection.querySelector('[data-message-list]'), `escenario "${title || id}"`);
-                    if (messages.length === 0) {
-                        recordValidationError(`Añade al menos un mensaje en el escenario "${title || id}".`, messageSection);
-                        return;
-                    }
-                    node.messages = messages;
-                    const responses = collectResponses(messageSection.querySelector('[data-response-list]'), title || id);
-                    if (responses.length > 0) {
-                        node.responses = responses;
-                    }
-                    const nextField = messageSection.querySelector('[data-field="next"]');
-                    if (nextField && nextField.value.trim() !== '') {
-                        node.next = nextField.value.trim();
-                    }
-                } else if (type === 'input') {
-                    const inputSection = element.querySelector('[data-node-section="input"]');
-                    const messages = collectMessages(inputSection.querySelector('[data-message-list]'), `escenario "${title || id}"`);
-                    if (messages.length === 0) {
-                        recordValidationError(`Añade al menos un mensaje de solicitud en el escenario "${title || id}".`, inputSection);
-                        return;
-                    }
-                    node.messages = messages;
-                    const field = inputSection.querySelector('[data-field="input.field"]').value.trim();
-                    const normalize = inputSection.querySelector('[data-field="input.normalize"]').value;
-                    const pattern = inputSection.querySelector('[data-field="input.pattern"]').value.trim();
-                    if (field === '') {
-                        recordValidationError(`Indica el campo de contexto en el escenario "${title || id}".`, inputSection);
-                        return;
-                    }
-                    node.input = {field, normalize, pattern};
-                    const errors = collectErrorMessages(inputSection.querySelector('[data-error-message-list]'));
-                    if (errors.length > 0) {
-                        node.input.error_messages = errors;
-                    }
-                    const nextField = inputSection.querySelector('[data-field="next"]');
-                    if (!nextField || nextField.value.trim() === '') {
-                        recordValidationError(`Define el escenario siguiente para "${title || id}".`, inputSection);
-                        return;
-                    }
-                    node.next = nextField.value.trim();
-                } else if (type === 'decision') {
-                    const branches = collectBranches(element.querySelector('[data-branch-list]'), title || id);
-                    if (branches.length === 0) {
-                        recordValidationError(`Añade al menos una condición al escenario "${title || id}".`, element);
-                        return;
-                    }
-                    node.branches = branches;
-                }
-                nodes.push(node);
-            });
-            return nodes;
-        };
-
-        populateInitialData();
 
         form.addEventListener('submit', (event) => {
             resetValidationState();
 
-            const payload = {
-                version: initialFlow.version || 2,
-                entry_keywords: parseKeywords(entryKeywordsField?.value || ''),
-                shortcuts: collectShortcuts(),
-                nodes: collectNodes(),
-                const fallbackMessages = collectMessages(fallbackMessagesContainer, 'fallback');
-                if (fallbackMessages.length === 0) {
-                    recordValidationError('Define al menos un mensaje en la respuesta por defecto.', fallbackMessagesContainer?.parentElement || null);
-                }
+            const entrySection = form.querySelector('[data-section="entry"]');
+            const fallbackSection = form.querySelector('[data-section="fallback"]');
+            const optionSections = Array.from(form.querySelectorAll('[data-option]'));
 
-                fallback: {
-                    title: fallbackContainer?.dataset.fallbackTitle || 'Sin coincidencia',
-                    description: fallbackContainer?.dataset.fallbackDescription || 'Mensaje por defecto.',
-                    messages: fallbackMessages,
-                },
+            const payload = {
+                entry: collectSection(entrySection, 'Mensaje de bienvenida'),
+                fallback: collectSection(fallbackSection, 'Fallback'),
+                options: optionSections.map((element) => collectOption(element)),
             };
+
+            const consentConfig = collectConsent(consentSection);
+            validateConsent(consentConfig);
+            payload.consent = consentConfig;
 
             if (validationErrors.length > 0) {
                 event.preventDefault();

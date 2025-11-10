@@ -2,7 +2,7 @@
 
 use Core\Router;
 use Modules\WhatsApp\Controllers\AutoresponderController;
-use Modules\WhatsApp\Controllers\ChatController;
+use Modules\WhatsApp\Controllers\InboxController;
 use Modules\WhatsApp\Controllers\TemplateController;
 use Modules\WhatsApp\Controllers\WebhookController;
 
@@ -19,22 +19,6 @@ return static function (Router $router): void {
         (new TemplateController($pdo))->index();
     });
 
-    $router->get('/whatsapp/chat', static function (\PDO $pdo): void {
-        (new ChatController($pdo))->index();
-    });
-
-    $router->get('/whatsapp/api/conversations', static function (\PDO $pdo): void {
-        (new ChatController($pdo))->listConversations();
-    });
-
-    $router->get('/whatsapp/api/conversations/{conversationId}', static function (\PDO $pdo, string $conversationId): void {
-        (new ChatController($pdo))->showConversation((int) $conversationId);
-    });
-
-    $router->post('/whatsapp/api/messages', static function (\PDO $pdo): void {
-        (new ChatController($pdo))->sendMessage();
-    });
-
     $router->get('/whatsapp/api/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->listTemplates();
     });
@@ -49,6 +33,10 @@ return static function (Router $router): void {
 
     $router->post('/whatsapp/api/templates/{templateId}/delete', static function (\PDO $pdo, string $templateId): void {
         (new TemplateController($pdo))->deleteTemplate($templateId);
+    });
+
+    $router->get('/whatsapp/api/inbox', static function (\PDO $pdo): void {
+        (new InboxController($pdo))->index();
     });
 
     $router->match(['GET', 'POST'], '/whatsapp/webhook', static function (\PDO $pdo): void {

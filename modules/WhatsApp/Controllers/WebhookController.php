@@ -5,11 +5,9 @@ namespace Modules\WhatsApp\Controllers;
 use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
-use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
-use Modules\WhatsApp\Services\AutoresponderEngine;
+use Modules\WhatsApp\Repositories\InboxRepository;
 use Modules\WhatsApp\Services\Messenger;
-use Modules\WhatsApp\Services\ConversationService;
 use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Support\DataProtectionFlow;
@@ -21,6 +19,8 @@ use function json_decode;
 use function ltrim;
 use function mb_strtolower;
 use function preg_replace;
+use function strlen;
+use function str_contains;
 use function strtr;
 use function trim;
 
@@ -28,15 +28,17 @@ class WebhookController extends BaseController
 {
     private Messenger $messenger;
     private string $verifyToken;
+    /**
+     * @var array<string, mixed>
+     */
+    private array $flow;
     private DataProtectionFlow $dataProtection;
-    private ConversationService $conversations;
-    private AutoresponderEngine $autoresponder;
+    private InboxRepository $inbox;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->messenger = new Messenger($pdo);
-        $this->conversations = new ConversationService($pdo);
         $repository = new AutoresponderFlowRepository($pdo);
         $settings = new WhatsAppSettings($pdo);
         $config = $settings->get();
@@ -45,13 +47,12 @@ class WebhookController extends BaseController
             $brand = $this->messenger->getBrandName();
         }
 
-        $flow = AutoresponderFlow::resolve($brand, $repository->load());
+        $this->flow = AutoresponderFlow::resolve($brand, $repository->load());
         $this->verifyToken = $this->resolveVerifyToken($config);
         $patientLookup = new PatientLookupService($pdo);
         $consentRepository = new ContactConsentRepository($pdo);
         $this->dataProtection = new DataProtectionFlow($this->messenger, $consentRepository, $patientLookup, $settings);
-        $sessionRepository = new AutoresponderSessionRepository($pdo);
-        $this->autoresponder = new AutoresponderEngine($this->messenger, $this->conversations, $sessionRepository, $patientLookup, $flow);
+        $this->inbox = new InboxRepository($pdo);
     }
 
     public function handle(): void
@@ -150,28 +151,44 @@ class WebhookController extends BaseController
             return;
         }
 
-        try {
-            $this->conversations->recordIncoming($message);
-        } catch (\Throwable $exception) {
-            error_log('No se pudo registrar el mensaje entrante de WhatsApp: ' . $exception->getMessage());
-        }
-
         $text = $this->extractText($message);
         if ($text === null) {
             return;
         }
 
-        if ($text === '') {
-            return;
-        }
+        $this->recordIncomingMessage($sender, $message, $text);
 
         $keyword = $this->normalize($text);
 
-        if ($keyword === '' || $this->dataProtection->handle($sender, $keyword, $message, $text)) {
+        if ($keyword === '') {
             return;
         }
 
-        $this->autoresponder->handleIncoming($sender, $text, $message);
+        if ($this->dataProtection->handle($sender, $keyword, $message, $text)) {
+            return;
+        }
+
+        foreach ($this->flow['options'] ?? [] as $option) {
+            $keywords = $option['keywords'] ?? [];
+            if (!$this->matchesKeyword($keyword, $keywords, true)) {
+                continue;
+            }
+
+            $this->dispatchMessages($sender, $option['messages'] ?? []);
+
+            return;
+        }
+
+        $entry = $this->flow['entry'] ?? [];
+
+        if ($this->matchesKeyword($keyword, $entry['keywords'] ?? [], true)) {
+            $this->dispatchMessages($sender, $entry['messages'] ?? []);
+
+            return;
+        }
+
+        $fallback = $this->flow['fallback'] ?? [];
+        $this->dispatchMessages($sender, $fallback['messages'] ?? []);
     }
 
     /**
@@ -223,6 +240,191 @@ class WebhookController extends BaseController
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, string> $keywords
+     */
+    private function matchesKeyword(string $text, array $keywords, bool $allowPartial = false): bool
+    {
+        foreach ($keywords as $keyword) {
+            if (!is_string($keyword)) {
+                continue;
+            }
+
+            $normalizedKeyword = $this->normalize($keyword);
+            if ($normalizedKeyword === '') {
+                continue;
+            }
+
+            if ($text === $normalizedKeyword) {
+                return true;
+            }
+
+            if ($allowPartial && strlen($normalizedKeyword) > 1 && str_contains($text, $normalizedKeyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, mixed> $messages
+     */
+    private function dispatchMessages(string $recipient, array $messages): void
+    {
+        foreach ($messages as $message) {
+            if (is_string($message)) {
+                $sent = $this->messenger->sendTextMessage($recipient, $message);
+                $this->recordOutgoingMessage($recipient, 'text', $message, [
+                    'source' => 'autoresponder',
+                ], $sent);
+
+                continue;
+            }
+
+            if (!is_array($message)) {
+                continue;
+            }
+
+            $type = isset($message['type']) ? (string) $message['type'] : 'text';
+            $body = isset($message['body']) ? (string) $message['body'] : '';
+            if ($type === 'buttons') {
+                $buttons = [];
+                foreach ($message['buttons'] ?? [] as $button) {
+                    if (!is_array($button)) {
+                        continue;
+                    }
+
+                    $id = isset($button['id']) ? (string) $button['id'] : '';
+                    $title = isset($button['title']) ? (string) $button['title'] : '';
+                    if ($id === '' || $title === '') {
+                        continue;
+                    }
+
+                    $buttons[] = ['id' => $id, 'title' => $title];
+                }
+
+                if (empty($buttons)) {
+                    continue;
+                }
+
+                $options = [];
+                if (!empty($message['header']) && is_string($message['header'])) {
+                    $options['header'] = $message['header'];
+                }
+                if (!empty($message['footer']) && is_string($message['footer'])) {
+                    $options['footer'] = $message['footer'];
+                }
+
+                $sent = $this->messenger->sendInteractiveButtons($recipient, $body, $buttons, $options);
+                $this->recordOutgoingMessage($recipient, 'buttons', $body, [
+                    'buttons' => $buttons,
+                    'options' => $options,
+                    'source' => 'autoresponder',
+                ], $sent);
+
+                continue;
+            }
+
+            if ($type === 'list') {
+                $sections = $message['sections'] ?? [];
+                if (!is_array($sections) || empty($sections)) {
+                    continue;
+                }
+
+                $options = [];
+                if (!empty($message['button']) && is_string($message['button'])) {
+                    $options['button'] = $message['button'];
+                }
+                if (!empty($message['header']) && is_string($message['header'])) {
+                    $options['header'] = $message['header'];
+                }
+                if (!empty($message['footer']) && is_string($message['footer'])) {
+                    $options['footer'] = $message['footer'];
+                }
+
+                if ($body === '') {
+                    $body = 'Selecciona una opción para continuar';
+                }
+
+                $sent = $this->messenger->sendInteractiveList($recipient, $body, $sections, $options);
+                $this->recordOutgoingMessage($recipient, 'list', $body, [
+                    'sections' => $sections,
+                    'options' => $options,
+                    'source' => 'autoresponder',
+                ], $sent);
+
+                continue;
+            }
+
+            if ($type === 'template') {
+                $template = $message['template'] ?? null;
+                if (!is_array($template)) {
+                    continue;
+                }
+
+                $sent = $this->messenger->sendTemplateMessage($recipient, $template);
+                $this->recordOutgoingMessage($recipient, 'template', $template['name'] ?? '', [
+                    'template' => $template,
+                    'source' => 'autoresponder',
+                ], $sent);
+
+                continue;
+            }
+
+            if ($body === '') {
+                continue;
+            }
+
+            $sent = $this->messenger->sendTextMessage($recipient, $body);
+            $this->recordOutgoingMessage($recipient, $type, $body, [
+                'source' => 'autoresponder',
+            ], $sent);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function recordIncomingMessage(string $number, array $message, string $text): void
+    {
+        $type = $this->resolveIncomingType($message);
+        $messageId = isset($message['id']) ? (string) $message['id'] : null;
+
+        $payload = [
+            'raw_type' => $message['type'] ?? null,
+            'raw' => $message,
+        ];
+
+        $this->inbox->recordIncoming($number, $type, $text, $messageId, $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function recordOutgoingMessage(string $number, string $type, string $body, array $payload, bool $success): void
+    {
+        $payload['success'] = $success;
+        $this->inbox->recordOutgoing($number, $type, $body, $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function resolveIncomingType(array $message): string
+    {
+        $type = isset($message['type']) ? (string) $message['type'] : 'text';
+
+        if ($type === 'interactive' && isset($message['interactive']) && is_array($message['interactive'])) {
+            $interactiveType = (string) ($message['interactive']['type'] ?? '');
+            if ($interactiveType !== '') {
+                return 'interactive_' . $interactiveType;
+            }
+        }
+
+        return $type;
     }
 
     private function normalize(string $text): string
