@@ -7,7 +7,6 @@ use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\PatientLookupService;
-use RuntimeException;
 
 class DataProtectionFlow
 {
@@ -73,30 +72,6 @@ class DataProtectionFlow
         }
 
         $patient = $this->patients->findLocalByCedula($cedula);
-        $source = 'local';
-        $rawPayload = null;
-
-        if ($patient === null) {
-            try {
-                $registry = $this->patients->lookupInRegistry($cedula);
-                if ($registry !== null) {
-                    $patient = [
-                        'hc_number' => $registry['hc_number'] ?? null,
-                        'cedula' => $cedula,
-                        'full_name' => $registry['full_name'] ?? null,
-                    ];
-                    $rawPayload = $registry['raw'] ?? $registry;
-                    $source = 'registry';
-                }
-            } catch (RuntimeException $exception) {
-                $this->messenger->sendTextMessage(
-                    $number,
-                    'No pudimos validar tus datos en este momento (' . $exception->getMessage() . '). Intenta nuevamente más tarde o comunícate con nuestro equipo.'
-                );
-
-                return true;
-            }
-        }
 
         if ($patient === null) {
             $this->messenger->sendTextMessage(
@@ -115,9 +90,9 @@ class DataProtectionFlow
             'patient_hc_number' => $patient['hc_number'] ?? null,
             'patient_full_name' => $name,
             'consent_status' => 'pending',
-            'consent_source' => $source,
+            'consent_source' => 'local',
             'consent_asked_at' => $now,
-            'extra_payload' => $rawPayload,
+            'extra_payload' => null,
         ]);
 
         $intro = $name !== ''
