@@ -62,6 +62,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
                     $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
+                    $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -106,7 +107,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Atención al paciente</span>
@@ -118,6 +119,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
                                 </a>
                             </li>
+                            <?php if ($canAccessPatientVerification): ?>
+                                <li class="<?= isActive('/pacientes/certificaciones') ?: isActivePrefix('/pacientes/certificaciones') ?>">
+                                    <a href="/pacientes/certificaciones">
+                                        <i class="mdi mdi-account-check-outline"></i>Certificación biométrica
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <?php if ($canAccessWhatsApp): ?>
                                 <li class="<?= isActive('/whatsapp/chat') ?>">
                                     <a href="/whatsapp/chat">
