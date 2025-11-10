@@ -167,6 +167,11 @@ class ScenarioEngine
             'patient_found' => isset($context['patient']),
         ];
 
+        $digits = $this->extractDigits($text);
+        if ($digits !== '') {
+            $facts['digits'] = $digits;
+        }
+
         if ($lastInteraction instanceof DateTimeImmutable) {
             $diff = $lastInteraction->diff($now);
             $facts['minutes_since_last'] = ($diff->days * 24 * 60) + ($diff->h * 60) + $diff->i;
@@ -256,7 +261,16 @@ class ScenarioEngine
 
                 $normalized = (string) ($facts['message'] ?? '');
 
-                return $normalized !== '' && preg_match($regex, $normalized) === 1;
+                if ($normalized !== '' && preg_match($regex, $normalized) === 1) {
+                    return true;
+                }
+
+                $digits = (string) ($facts['digits'] ?? '');
+                if ($digits !== '' && preg_match($regex, $digits) === 1) {
+                    return true;
+                }
+
+                return false;
             case 'last_interaction_gt':
                 $minutes = (int) ($condition['minutes'] ?? 0);
                 if ($minutes <= 0) {
@@ -364,6 +378,19 @@ class ScenarioEngine
                     }
 
                     if ($foundPatient !== null) {
+                        if (!isset($foundPatient['full_name']) || !is_string($foundPatient['full_name']) || trim($foundPatient['full_name']) === '') {
+                            $fallbackName = $this->resolveKnownPatientName($context, $env['sender']);
+                            if ($fallbackName !== null) {
+                                $foundPatient['full_name'] = $fallbackName;
+                            }
+                        } else {
+                            $foundPatient['full_name'] = $this->formatFullName($foundPatient['full_name']);
+                        }
+
+                        if (!isset($foundPatient['full_name']) || !is_string($foundPatient['full_name']) || $foundPatient['full_name'] === '') {
+                            $foundPatient['full_name'] = $context['cedula'] ?? $identifier;
+                        }
+
                         $context['patient'] = $foundPatient;
                         $this->conversations->ensureConversation($env['sender'], [
                             'patient_hc_number' => $identifier,
@@ -384,10 +411,10 @@ class ScenarioEngine
                 $condition = $action['condition'] ?? [];
                 $facts = $this->buildFacts($env['sender'], $env['text'], null, $context, $env['message']);
                 if ($this->evaluateCondition($condition, $facts)) {
-                    $result = $this->executeActions($action['then'] ?? [], $env + ['context' => $context]);
+                    $result = $this->executeActions($action['then'] ?? [], array_merge($env, ['context' => $context]));
                     $context = $result['context'];
                 } else {
-                    $result = $this->executeActions($action['else'] ?? [], $env + ['context' => $context]);
+                    $result = $this->executeActions($action['else'] ?? [], array_merge($env, ['context' => $context]));
                     $context = $result['context'];
                 }
                 continue;
@@ -491,16 +518,71 @@ class ScenarioEngine
             return;
         }
 
+        $fullName = $this->resolveKnownPatientName($context, $sender);
+
         $payload = [
             'wa_number' => $sender,
             'identifier' => $identifier,
             'cedula' => $identifier,
+            'patient_hc_number' => $context['patient']['hc_number'] ?? ($context['cedula'] ?? null),
             'consent_status' => ($context['consent'] ?? false) ? 'accepted' : 'declined',
             'consent_source' => 'scenario',
         ];
 
+        if ($fullName !== null && $fullName !== '') {
+            $payload['patient_full_name'] = $fullName;
+        }
+
         $this->consentRepository->startOrUpdate($payload);
         $this->consentRepository->markConsent($sender, $identifier, (bool) ($context['consent'] ?? false));
+    }
+
+    private function formatFullName(string $value): string
+    {
+        return trim(preg_replace('/\s+/', ' ', $value) ?? '');
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function resolveKnownPatientName(array $context, string $sender): ?string
+    {
+        $candidates = [];
+
+        if (isset($context['patient']['full_name']) && is_string($context['patient']['full_name'])) {
+            $candidates[] = $context['patient']['full_name'];
+        }
+
+        if (isset($context['nombre']) && is_string($context['nombre'])) {
+            $candidates[] = $context['nombre'];
+        }
+
+        foreach ($candidates as $candidate) {
+            $formatted = $this->formatFullName($candidate);
+            if ($formatted !== '') {
+                return $formatted;
+            }
+        }
+
+        $consent = $this->consentRepository->findByNumber($sender);
+        if ($consent !== null) {
+            foreach (['patient_full_name', 'full_name', 'nombre'] as $key) {
+                if (!isset($consent[$key]) || !is_string($consent[$key])) {
+                    continue;
+                }
+
+                $formatted = $this->formatFullName($consent[$key]);
+                if ($formatted !== '') {
+                    return $formatted;
+                }
+            }
+        }
+
+        if (isset($context['cedula']) && is_string($context['cedula'])) {
+            return $this->formatFullName($context['cedula']);
+        }
+
+        return null;
     }
 
     private function normalizeText(string $text): string

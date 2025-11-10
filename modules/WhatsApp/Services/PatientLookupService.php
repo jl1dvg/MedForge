@@ -4,6 +4,11 @@ namespace Modules\WhatsApp\Services;
 
 use PDO;
 
+use function array_key_exists;
+use function is_string;
+use function preg_replace;
+use function trim;
+
 class PatientLookupService
 {
     private PDO $pdo;
@@ -23,9 +28,7 @@ class PatientLookupService
             return null;
         }
 
-        $stmt = $this->pdo->prepare(
-            'SELECT hc_number, CONCAT_WS(" ", fname, mname, lname, lname2) AS full_name FROM patient_data WHERE hc_number = :hc LIMIT 1'
-        );
+        $stmt = $this->pdo->prepare('SELECT * FROM patient_data WHERE hc_number = :hc LIMIT 1');
         $stmt->execute([':hc' => $historyNumber]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -33,12 +36,88 @@ class PatientLookupService
             return null;
         }
 
-        $fullName = trim(preg_replace('/\s+/', ' ', (string) ($row['full_name'] ?? '')));
+        $fullName = $this->resolveFullName($row);
 
-        return [
+        $result = [
             'hc_number' => $row['hc_number'],
             'identifier' => $row['hc_number'],
-            'full_name' => $fullName,
         ];
+
+        if ($fullName !== '') {
+            $result['full_name'] = $fullName;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveFullName(array $row): string
+    {
+        $preferredKeys = [
+            'full_name',
+            'fullname',
+            'nombre_completo',
+            'nombreCompleto',
+            'razon_social',
+            'business_name',
+            'name',
+            'nombre',
+        ];
+
+        foreach ($preferredKeys as $key) {
+            if (!array_key_exists($key, $row)) {
+                continue;
+            }
+
+            $value = trim((string) $row[$key]);
+            if ($value !== '') {
+                return $this->normalizeWhitespace($value);
+            }
+        }
+
+        $parts = [];
+        $partKeys = [
+            'fname',
+            'mname',
+            'lname',
+            'lname2',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'second_last_name',
+            'primer_nombre',
+            'segundo_nombre',
+            'primer_apellido',
+            'segundo_apellido',
+        ];
+
+        foreach ($partKeys as $key) {
+            if (!array_key_exists($key, $row)) {
+                continue;
+            }
+
+            $value = trim((string) $row[$key]);
+            if ($value !== '') {
+                $parts[] = $value;
+            }
+        }
+
+        $fullName = $this->normalizeWhitespace(implode(' ', $parts));
+        if ($fullName !== '') {
+            return $fullName;
+        }
+
+        if (isset($row['hc_number']) && is_string($row['hc_number'])) {
+            return trim($row['hc_number']);
+        }
+
+        return '';
+    }
+
+    private function normalizeWhitespace(string $value): string
+    {
+        return trim(preg_replace('/\s+/', ' ', $value) ?? '');
     }
 }

@@ -19,6 +19,8 @@
         contextRow: document.getElementById('context-row-template'),
     };
 
+    const MENU_BUTTON_LIMIT = 3;
+
     const VARIABLE_SOURCES = [
         {value: 'context.cedula', label: 'Última cédula ingresada'},
         {value: 'context.state', label: 'Estado actual del flujo'},
@@ -753,6 +755,16 @@
             return;
         }
         container.innerHTML = '';
+        const type = action.message.type || 'text';
+        if (type !== 'buttons') {
+            const hint = document.createElement('p');
+            hint.className = 'text-muted small mb-0';
+            hint.textContent = 'Este mensaje se enviará como texto simple. Cambia el tipo a "Botones interactivos" para añadir botones.';
+            container.appendChild(hint);
+
+            return;
+        }
+
         action.message.buttons = Array.isArray(action.message.buttons) ? action.message.buttons : [];
 
         action.message.buttons.forEach((button, index) => {
@@ -840,11 +852,41 @@
         }
         menuPanel.innerHTML = '';
         state.menu = state.menu || createDefaultMenu();
-        state.menu.message = state.menu.message || {type: 'buttons', body: '', buttons: []};
+        state.menu.message = state.menu.message || {type: 'text', body: '', buttons: []};
+        state.menu.message.type = state.menu.message.type === 'buttons' ? 'buttons' : 'text';
+        if (state.menu.message.type === 'buttons') {
+            state.menu.message.buttons = Array.isArray(state.menu.message.buttons) ? state.menu.message.buttons : [];
+        } else {
+            state.menu.message.buttons = [];
+        }
         state.menu.options = Array.isArray(state.menu.options) ? state.menu.options : [];
 
         const messageGroup = document.createElement('div');
         messageGroup.className = 'mb-4';
+
+        const typeLabel = document.createElement('label');
+        typeLabel.className = 'form-label';
+        typeLabel.textContent = 'Tipo de mensaje';
+
+        const typeSelect = document.createElement('select');
+        typeSelect.className = 'form-select mb-3';
+        ['text', 'buttons'].forEach((value) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value === 'buttons' ? 'Botones interactivos' : 'Mensaje de texto';
+            if (state.menu.message.type === value) {
+                option.selected = true;
+            }
+            typeSelect.appendChild(option);
+        });
+
+        typeSelect.addEventListener('change', () => {
+            state.menu.message.type = typeSelect.value === 'buttons' ? 'buttons' : 'text';
+            if (state.menu.message.type !== 'buttons') {
+                state.menu.message.buttons = [];
+            }
+            updateButtonsVisibility();
+        });
 
         const messageLabel = document.createElement('label');
         messageLabel.className = 'form-label';
@@ -867,15 +909,34 @@
         addMenuButton.className = 'btn btn-sm btn-outline-primary';
         addMenuButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir botón';
         addMenuButton.addEventListener('click', () => {
-            state.menu.message.buttons = state.menu.message.buttons || [];
+            if (state.menu.message.type !== 'buttons') {
+                window.alert('Cambia el tipo de mensaje a "Botones interactivos" para añadir botones.');
+                return;
+            }
+
+            state.menu.message.buttons = Array.isArray(state.menu.message.buttons) ? state.menu.message.buttons : [];
+            if (state.menu.message.buttons.length >= MENU_BUTTON_LIMIT) {
+                window.alert(`Solo puedes añadir hasta ${MENU_BUTTON_LIMIT} botones.`);
+                return;
+            }
+
             state.menu.message.buttons.push({id: '', title: ''});
             renderButtonsList(buttonsContainer, {message: state.menu.message});
+            updateButtonsVisibility();
         });
         buttonsHeader.appendChild(addMenuButton);
 
         const buttonsContainer = document.createElement('div');
         renderButtonsList(buttonsContainer, {message: state.menu.message});
 
+        const updateButtonsVisibility = () => {
+            const showButtons = state.menu.message.type === 'buttons';
+            buttonsHeader.classList.toggle('d-none', !showButtons);
+            buttonsContainer.classList.toggle('d-none', !showButtons);
+        };
+
+        messageGroup.appendChild(typeLabel);
+        messageGroup.appendChild(typeSelect);
         messageGroup.appendChild(messageLabel);
         messageGroup.appendChild(messageTextarea);
         messageGroup.appendChild(buttonsHeader);
@@ -902,6 +963,8 @@
 
         menuPanel.appendChild(optionsHeader);
         menuPanel.appendChild(optionsContainer);
+
+        updateButtonsVisibility();
     }
 
     function renderMenuOptions(container) {
@@ -973,11 +1036,33 @@
             };
         });
 
+        normalizeMenu();
+
         return {
             variables: variablesPayload,
             scenarios: state.scenarios,
             menu: state.menu,
         };
+    }
+
+    function normalizeMenu() {
+        state.menu = state.menu || {};
+        state.menu.message = state.menu.message || {};
+        const type = state.menu.message.type === 'buttons' ? 'buttons' : 'text';
+        state.menu.message.type = type;
+        state.menu.message.body = state.menu.message.body || '';
+
+        if (type === 'buttons') {
+            state.menu.message.buttons = Array.isArray(state.menu.message.buttons)
+                ? state.menu.message.buttons.filter((button) => button && (button.title || button.id)).slice(0, MENU_BUTTON_LIMIT)
+                : [];
+        } else {
+            delete state.menu.message.buttons;
+        }
+
+        state.menu.options = Array.isArray(state.menu.options)
+            ? state.menu.options.filter((option) => option && (option.id || option.title))
+            : [];
     }
 
     function validatePayload(payload) {

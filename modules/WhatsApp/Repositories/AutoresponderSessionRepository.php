@@ -56,7 +56,17 @@ class AutoresponderSessionRepository
      */
     public function upsert(int $conversationId, string $waNumber, array $data): void
     {
-        $existing = $this->findByConversationId($conversationId);
+        $sql = 'INSERT INTO whatsapp_autoresponder_sessions '
+            . '(conversation_id, wa_number, scenario_id, node_id, awaiting, context, last_payload, last_interaction_at) '
+            . 'VALUES (:conversation_id, :wa_number, :scenario_id, :node_id, :awaiting, :context, :last_payload, :last_interaction_at) '
+            . 'ON DUPLICATE KEY UPDATE '
+            . 'wa_number = VALUES(wa_number), '
+            . 'scenario_id = VALUES(scenario_id), '
+            . 'node_id = VALUES(node_id), '
+            . 'awaiting = VALUES(awaiting), '
+            . 'context = VALUES(context), '
+            . 'last_payload = VALUES(last_payload), '
+            . 'last_interaction_at = VALUES(last_interaction_at)';
 
         $payload = [
             ':conversation_id' => $conversationId,
@@ -68,26 +78,6 @@ class AutoresponderSessionRepository
             ':last_payload' => $this->encodeJson($data['last_payload'] ?? null),
             ':last_interaction_at' => $data['last_interaction_at'] ?? date('Y-m-d H:i:s'),
         ];
-
-        if ($existing === null) {
-            $sql = 'INSERT INTO whatsapp_autoresponder_sessions '
-                . '(conversation_id, wa_number, scenario_id, node_id, awaiting, context, last_payload, last_interaction_at, created_at, updated_at) '
-                . 'VALUES (:conversation_id, :wa_number, :scenario_id, :node_id, :awaiting, :context, :last_payload, :last_interaction_at, NOW(), NOW())';
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($payload);
-
-            return;
-        }
-
-        $sql = 'UPDATE whatsapp_autoresponder_sessions SET '
-            . 'scenario_id = :scenario_id, '
-            . 'node_id = :node_id, '
-            . 'awaiting = :awaiting, '
-            . 'context = :context, '
-            . 'last_payload = :last_payload, '
-            . 'last_interaction_at = :last_interaction_at, '
-            . 'updated_at = NOW() '
-            . 'WHERE conversation_id = :conversation_id';
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($payload);
