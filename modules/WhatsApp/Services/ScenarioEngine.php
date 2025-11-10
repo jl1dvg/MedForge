@@ -167,6 +167,11 @@ class ScenarioEngine
             'patient_found' => isset($context['patient']),
         ];
 
+        $digits = $this->extractDigits($text);
+        if ($digits !== '') {
+            $facts['digits'] = $digits;
+        }
+
         if ($lastInteraction instanceof DateTimeImmutable) {
             $diff = $lastInteraction->diff($now);
             $facts['minutes_since_last'] = ($diff->days * 24 * 60) + ($diff->h * 60) + $diff->i;
@@ -256,7 +261,16 @@ class ScenarioEngine
 
                 $normalized = (string) ($facts['message'] ?? '');
 
-                return $normalized !== '' && preg_match($regex, $normalized) === 1;
+                if ($normalized !== '' && preg_match($regex, $normalized) === 1) {
+                    return true;
+                }
+
+                $digits = (string) ($facts['digits'] ?? '');
+                if ($digits !== '' && preg_match($regex, $digits) === 1) {
+                    return true;
+                }
+
+                return false;
             case 'last_interaction_gt':
                 $minutes = (int) ($condition['minutes'] ?? 0);
                 if ($minutes <= 0) {
