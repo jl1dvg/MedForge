@@ -138,6 +138,7 @@ class AutoresponderFlow
                 'id' => 'primer_contacto',
                 'name' => 'Primer contacto (sin consentimiento)',
                 'description' => 'Saludo inicial y solicitud de autorización de datos.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => true],
                     ['type' => 'has_consent', 'value' => false],
@@ -168,6 +169,7 @@ class AutoresponderFlow
                 'id' => 'captura_cedula',
                 'name' => 'Captura de cédula',
                 'description' => 'Gestiona la aceptación del consentimiento y solicita el identificador.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'consentimiento_pendiente'],
                     ['type' => 'message_in', 'values' => ['acepto', 'si', 'sí']],
@@ -189,6 +191,7 @@ class AutoresponderFlow
                 'id' => 'validar_cedula',
                 'name' => 'Validar cédula',
                 'description' => 'Valida el formato y existencia del paciente.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'esperando_cedula'],
                     ['type' => 'message_matches', 'pattern' => '^\\d{6,10}$'],
@@ -228,6 +231,7 @@ class AutoresponderFlow
                 'id' => 'retorno',
                 'name' => 'Retorno (ya conocido)',
                 'description' => 'Contactos conocidos con consentimiento.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => false],
                     ['type' => 'has_consent', 'value' => true],
@@ -247,6 +251,7 @@ class AutoresponderFlow
                 'id' => 'acceso_menu_directo',
                 'name' => 'Acceso directo al menú',
                 'description' => 'Permite abrir el menú cuando el contacto escribe un atajo como "menu" u "hola".',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'has_consent', 'value' => true],
                     ['type' => 'message_in', 'values' => self::menuKeywords()],
@@ -427,13 +432,30 @@ class AutoresponderFlow
 
         $actions = self::sanitizeScenarioActions($scenario['actions'] ?? []);
 
+        $interceptMenu = $scenario['intercept_menu'] ?? $scenario['interceptMenu'] ?? null;
+        if ($interceptMenu === null) {
+            $interceptMenu = self::shouldInterceptMenuByDefault($id);
+        }
+
         return [
             'id' => $id,
             'name' => $name,
             'description' => $description,
             'conditions' => $conditions,
             'actions' => $actions,
+            'intercept_menu' => (bool) $interceptMenu,
         ];
+    }
+
+    private static function shouldInterceptMenuByDefault(string $id): bool
+    {
+        return in_array($id, [
+            'primer_contacto',
+            'captura_cedula',
+            'validar_cedula',
+            'retorno',
+            'acceso_menu_directo',
+        ], true);
     }
 
     /**
@@ -589,6 +611,16 @@ class AutoresponderFlow
             return $payload;
         }
 
+        if ($type === 'send_sequence') {
+            $messages = self::sanitizeMessages($action['messages'] ?? []);
+            if (empty($messages)) {
+                return [];
+            }
+            $payload['messages'] = $messages;
+
+            return $payload;
+        }
+
         if ($type === 'send_template') {
             $template = isset($action['template']) && is_array($action['template'])
                 ? self::sanitizeTemplateMessage($action['template'])
@@ -688,7 +720,269 @@ class AutoresponderFlow
             $menu['options'] = self::sanitizeMenuOptions($override['options']);
         }
 
+        if (isset($override['fallback']) && is_array($override['fallback'])) {
+            $fallbackMessages = self::sanitizeMessages($override['fallback']['messages'] ?? []);
+            if (!empty($fallbackMessages)) {
+                $menu['fallback'] = ['messages' => $fallbackMessages];
+            }
+        }
+
         return $menu;
+    }
+
+    /**
+     * @param array<string, mixed> $flow
+     * @param array<string, mixed> $defaults
+     * @return array<string, mixed>
+     */
+    private static function hydrateLegacySections(array $flow, array $defaults): array
+    {
+        $flow = self::ensureMenuBackfills($flow, $defaults);
+
+        if (!isset($flow['entry']) || !is_array($flow['entry'])) {
+            $flow['entry'] = $defaults['entry'];
+        }
+
+        if (!isset($flow['fallback']) || !is_array($flow['fallback'])) {
+            $flow['fallback'] = $defaults['fallback'];
+        }
+
+        if (!isset($flow['options']) || !is_array($flow['options']) || empty($flow['options'])) {
+            $flow['options'] = $defaults['options'];
+        }
+
+        return $flow;
+    }
+
+    /**
+     * @param array<string, mixed> $flow
+     * @param array<string, mixed> $defaults
+     * @return array<string, mixed>
+     */
+    private static function ensureMenuBackfills(array $flow, array $defaults): array
+    {
+        $menu = isset($flow['menu']) && is_array($flow['menu']) ? $flow['menu'] : [];
+
+        if ((!isset($flow['entry']) || !is_array($flow['entry'])) && !empty($menu)) {
+            $entry = self::deriveEntryFromMenu($menu, $defaults['entry']);
+            if (!empty($entry)) {
+                $flow['entry'] = $entry;
+            }
+        }
+
+        if ((!isset($flow['options']) || !is_array($flow['options']) || empty($flow['options'])) && !empty($menu)) {
+            $options = self::deriveOptionsFromMenu($menu['options'] ?? [], $defaults['options']);
+            if (!empty($options)) {
+                $flow['options'] = $options;
+            }
+        }
+
+        if ((!isset($flow['fallback']) || !is_array($flow['fallback'])) && !empty($menu)) {
+            $fallback = self::deriveFallbackFromMenu($menu, $defaults['fallback']);
+            if (!empty($fallback)) {
+                $flow['fallback'] = $fallback;
+            }
+        }
+
+        return $flow;
+    }
+
+    /**
+     * @param array<string, mixed> $menu
+     * @param array<string, mixed> $defaults
+     * @return array<string, mixed>
+     */
+    private static function deriveEntryFromMenu(array $menu, array $defaults): array
+    {
+        $entry = [];
+
+        if (isset($menu['title']) && is_string($menu['title'])) {
+            $title = self::sanitizeLine($menu['title']);
+            if ($title !== '') {
+                $entry['title'] = $title;
+            }
+        }
+
+        if (isset($menu['message'])) {
+            $messages = self::sanitizeMessages([$menu['message']]);
+            if (!empty($messages)) {
+                $entry['messages'] = $messages;
+            }
+        }
+
+        if (isset($menu['keywords'])) {
+            $keywords = self::sanitizeKeywords($menu['keywords']);
+            if (!empty($keywords)) {
+                $entry['keywords'] = $keywords;
+            }
+        }
+
+        if (empty($entry['messages'])) {
+            return [];
+        }
+
+        if (!isset($entry['description']) && isset($defaults['description'])) {
+            $entry['description'] = $defaults['description'];
+        }
+
+        return $entry;
+    }
+
+    /**
+     * @param mixed $options
+     * @param array<int, array<string, mixed>> $defaults
+     * @return array<int, array<string, mixed>>
+     */
+    private static function deriveOptionsFromMenu($options, array $defaults): array
+    {
+        if (!is_array($options)) {
+            return [];
+        }
+
+        $derived = [];
+
+        foreach ($options as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $id = self::sanitizeKey((string) ($option['id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+
+            $entry = ['id' => $id];
+
+            if (isset($option['title']) && is_string($option['title'])) {
+                $title = self::sanitizeLine($option['title']);
+                if ($title !== '') {
+                    $entry['title'] = $title;
+                }
+            }
+
+            if (isset($option['keywords'])) {
+                $keywords = self::sanitizeKeywords($option['keywords']);
+                if (!empty($keywords)) {
+                    $entry['keywords'] = $keywords;
+                }
+            }
+
+            if (isset($option['followup']) && is_string($option['followup'])) {
+                $followup = self::sanitizeLine($option['followup']);
+                if ($followup !== '') {
+                    $entry['followup'] = $followup;
+                }
+            }
+
+            $messages = self::extractMessagesFromActions($option['actions'] ?? []);
+            if (empty($messages) && isset($option['messages'])) {
+                $messages = self::sanitizeMessages($option['messages']);
+            }
+
+            if (!empty($messages)) {
+                $entry['messages'] = $messages;
+            }
+
+            $derived[] = $entry;
+        }
+
+        if (!empty($derived)) {
+            return $derived;
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $menu
+     * @param array<string, mixed> $defaults
+     * @return array<string, mixed>
+     */
+    private static function deriveFallbackFromMenu(array $menu, array $defaults): array
+    {
+        if (!isset($menu['fallback']) || !is_array($menu['fallback'])) {
+            return [];
+        }
+
+        $fallback = [];
+        $messages = self::sanitizeMessages($menu['fallback']['messages'] ?? []);
+        if (!empty($messages)) {
+            $fallback['messages'] = $messages;
+        }
+
+        if (isset($menu['fallback']['title']) && is_string($menu['fallback']['title'])) {
+            $title = self::sanitizeLine($menu['fallback']['title']);
+            if ($title !== '') {
+                $fallback['title'] = $title;
+            }
+        }
+
+        if (isset($menu['fallback']['description']) && is_string($menu['fallback']['description'])) {
+            $description = self::sanitizeLine($menu['fallback']['description']);
+            if ($description !== '') {
+                $fallback['description'] = $description;
+            }
+        }
+
+        if (empty($fallback['messages'])) {
+            return [];
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * @param mixed $actions
+     * @return array<int, array<string, mixed>>
+     */
+    private static function extractMessagesFromActions($actions): array
+    {
+        if (!is_array($actions)) {
+            return [];
+        }
+
+        $messages = [];
+        foreach (self::sanitizeScenarioActions($actions) as $action) {
+            $type = $action['type'] ?? '';
+
+            if (in_array($type, ['send_message', 'send_buttons', 'send_list'], true)) {
+                if (isset($action['message']) && is_array($action['message'])) {
+                    $messages[] = $action['message'];
+                }
+                continue;
+            }
+
+            if ($type === 'send_sequence') {
+                foreach ($action['messages'] ?? [] as $message) {
+                    if (is_array($message)) {
+                        $messages[] = $message;
+                    }
+                }
+                continue;
+            }
+
+            if ($type === 'send_template' && isset($action['template']) && is_array($action['template'])) {
+                $messages[] = ['type' => 'template', 'template' => $action['template']];
+            }
+        }
+
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed>|null $section
+     */
+    private static function hasValidMessages(?array $section): bool
+    {
+        if (!is_array($section)) {
+            return false;
+        }
+
+        if (empty($section['messages']) || !is_array($section['messages'])) {
+            return false;
+        }
+
+        return count($section['messages']) > 0;
     }
 
     /**
@@ -863,6 +1157,8 @@ class AutoresponderFlow
             return self::finalize($defaults);
         }
 
+        $overrides = self::hydrateLegacySections($overrides, $defaults);
+
         if (isset($overrides['entry']) && is_array($overrides['entry'])) {
             $defaults['entry'] = self::mergeSection($defaults['entry'], $overrides['entry']);
         }
@@ -902,15 +1198,17 @@ class AutoresponderFlow
         $brand = trim($brand) !== '' ? $brand : 'MedForge';
         $defaults = self::defaultConfig($brand);
 
-        if (!isset($flow['entry']) || !is_array($flow['entry'])) {
+        $flow = self::hydrateLegacySections($flow, $defaults);
+
+        if (!self::hasValidMessages($flow['entry'] ?? null)) {
             $errors[] = 'Falta la configuración del mensaje de bienvenida.';
         }
 
-        if (!isset($flow['fallback']) || !is_array($flow['fallback'])) {
+        if (!self::hasValidMessages($flow['fallback'] ?? null)) {
             $errors[] = 'Falta la configuración del mensaje de fallback.';
         }
 
-        if (!isset($flow['options']) || !is_array($flow['options'])) {
+        if (empty($flow['options']) || !is_array($flow['options'])) {
             $errors[] = 'Debes definir al menos una opción del menú.';
         }
 
@@ -1141,7 +1439,7 @@ class AutoresponderFlow
                 ? strtolower(self::sanitizeLine($message['type']))
                 : 'text';
 
-            if (!in_array($type, ['text', 'buttons', 'list', 'template'], true)) {
+            if (!in_array($type, ['text', 'buttons', 'list', 'template', 'image', 'document', 'location'], true)) {
                 $type = 'text';
             }
 
@@ -1150,6 +1448,69 @@ class AutoresponderFlow
                 if (!empty($entry)) {
                     $normalized[] = $entry;
                 }
+
+                continue;
+            }
+
+            if ($type === 'image' || $type === 'document') {
+                $link = self::sanitizeUrl($message['link'] ?? '');
+                if ($link === '') {
+                    continue;
+                }
+
+                $entry = [
+                    'type' => $type,
+                    'link' => $link,
+                ];
+
+                if (isset($message['caption']) && is_string($message['caption'])) {
+                    $caption = self::sanitizeMultiline($message['caption']);
+                    if ($caption !== '') {
+                        $entry['caption'] = $caption;
+                    }
+                }
+
+                if ($type === 'document' && isset($message['filename']) && is_string($message['filename'])) {
+                    $filename = self::sanitizeLine($message['filename']);
+                    if ($filename !== '') {
+                        $entry['filename'] = $filename;
+                    }
+                }
+
+                $normalized[] = $entry;
+
+                continue;
+            }
+
+            if ($type === 'location') {
+                $latitude = isset($message['latitude']) ? (float) $message['latitude'] : null;
+                $longitude = isset($message['longitude']) ? (float) $message['longitude'] : null;
+
+                if ($latitude === null || $longitude === null || $latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
+                    continue;
+                }
+
+                $entry = [
+                    'type' => 'location',
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                ];
+
+                if (isset($message['name']) && is_string($message['name'])) {
+                    $name = self::sanitizeLine($message['name']);
+                    if ($name !== '') {
+                        $entry['name'] = $name;
+                    }
+                }
+
+                if (isset($message['address']) && is_string($message['address'])) {
+                    $address = self::sanitizeMultiline($message['address']);
+                    if ($address !== '') {
+                        $entry['address'] = $address;
+                    }
+                }
+
+                $normalized[] = $entry;
 
                 continue;
             }
@@ -1626,6 +1987,25 @@ class AutoresponderFlow
     private static function sanitizeLine($value): string
     {
         $value = trim((string) $value);
+
+        return $value;
+    }
+
+    private static function sanitizeUrl($value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_URL) === false) {
+            return '';
+        }
+
+        $scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return '';
+        }
 
         return $value;
     }

@@ -193,6 +193,12 @@ $renderPreviewMessage = static function ($message) use ($escape, $renderLines): 
         $badge = '<span class="badge bg-success-light text-success ms-1">Lista</span>';
     } elseif ($type === 'template') {
         $badge = '<span class="badge bg-info-light text-info ms-1">Plantilla</span>';
+    } elseif ($type === 'image') {
+        $badge = '<span class="badge bg-purple-light text-purple ms-1">Imagen</span>';
+    } elseif ($type === 'document') {
+        $badge = '<span class="badge bg-indigo-light text-indigo ms-1">Documento</span>';
+    } elseif ($type === 'location') {
+        $badge = '<span class="badge bg-secondary-light text-secondary ms-1">Ubicación</span>';
     }
 
     $extras = [];
@@ -259,6 +265,43 @@ $renderPreviewMessage = static function ($message) use ($escape, $renderLines): 
 
         if (!empty($sectionBlocks)) {
             $extras[] = '<div class="mt-2">' . implode('', $sectionBlocks) . '</div>';
+        }
+    }
+
+    if ($type === 'image') {
+        $link = isset($message['link']) ? $escape((string)$message['link']) : '';
+        if ($link !== '') {
+            $extras[] = '<div class="small text-muted">URL de imagen: <a href="' . $link . '" target="_blank" rel="noopener">' . $link . '</a></div>';
+        }
+        if (!empty($message['caption'])) {
+            $extras[] = '<div class="small text-muted">Pie: ' . $renderLines((string)$message['caption']) . '</div>';
+        }
+    }
+
+    if ($type === 'document') {
+        $link = isset($message['link']) ? $escape((string)$message['link']) : '';
+        $filename = isset($message['filename']) ? $escape((string)$message['filename']) : '';
+        if ($link !== '') {
+            $label = $filename !== '' ? $filename : $link;
+            $extras[] = '<div class="small text-muted">Archivo: <a href="' . $link . '" target="_blank" rel="noopener">' . $label . '</a></div>';
+        }
+        if (!empty($message['caption'])) {
+            $extras[] = '<div class="small text-muted">Descripción: ' . $renderLines((string)$message['caption']) . '</div>';
+        }
+    }
+
+    if ($type === 'location') {
+        $latitude = isset($message['latitude']) ? (float)$message['latitude'] : null;
+        $longitude = isset($message['longitude']) ? (float)$message['longitude'] : null;
+        if ($latitude !== null && $longitude !== null) {
+            $coords = $escape(number_format($latitude, 6)) . ', ' . $escape(number_format($longitude, 6));
+            $extras[] = '<div class="small text-muted">Coordenadas: ' . $coords . '</div>';
+        }
+        if (!empty($message['name'])) {
+            $extras[] = '<div class="small text-muted">Nombre: ' . $escape((string)$message['name']) . '</div>';
+        }
+        if (!empty($message['address'])) {
+            $extras[] = '<div class="small text-muted">Dirección: ' . $renderLines((string)$message['address']) . '</div>';
         }
     }
 
@@ -452,6 +495,59 @@ switch ($statusType) {
         <?php endif; ?>
 
         <div class="col-12 col-xl-4">
+            <div class="box mb-4">
+                <div class="box-header with-border d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                    <div>
+                        <h4 class="box-title mb-1">Guía rápida del autorespondedor</h4>
+                        <p class="text-muted small mb-0">Sigue estos recursos antes de publicar cambios.</p>
+                    </div>
+                    <span class="badge bg-light text-muted fw-600">Nuevo</span>
+                </div>
+                <div class="box-body">
+                    <div class="ratio ratio-16x9 rounded overflow-hidden mb-3 bg-dark position-relative">
+                        <div class="position-absolute top-50 start-50 translate-middle text-center">
+                            <i class="mdi mdi-play-circle-outline text-white fs-1"></i>
+                            <div class="text-white-50 small">Video introductorio (2 min)</div>
+                        </div>
+                        <a class="stretched-link" target="_blank" rel="noopener"
+                           href="https://medforge.help/whatsapp/autoresponder" aria-label="Ver video de introducción"></a>
+                    </div>
+                    <ul class="list-unstyled small mb-3 d-flex flex-column gap-2">
+                        <li class="d-flex align-items-start gap-2">
+                            <i class="mdi mdi-check-circle-outline text-success fs-5"></i>
+                            <div>
+                                <span class="fw-600">Checklist de publicación</span>
+                                <div class="text-muted">Verifica variables, escenarios y menú antes de guardar.</div>
+                            </div>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <i class="mdi mdi-file-document-outline text-primary fs-5"></i>
+                            <div>
+                                <span class="fw-600">Guía paso a paso</span>
+                                <div class="text-muted">Aprende cómo se evalúan los mensajes entrantes y el orden de ejecución.</div>
+                            </div>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <i class="mdi mdi-whatsapp text-success fs-5"></i>
+                            <div>
+                                <span class="fw-600">Buenas prácticas de Meta</span>
+                                <div class="text-muted">Plantillas, tiempos de respuesta y políticas actualizadas.</div>
+                            </div>
+                        </li>
+                    </ul>
+                    <div class="d-flex flex-column gap-2">
+                        <a class="btn btn-sm btn-primary" target="_blank" rel="noopener"
+                           href="https://medforge.help/whatsapp/autoresponder#checklist">
+                            <i class="mdi mdi-clipboard-check-outline me-1"></i>Ver checklist
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
+                           href="https://www.facebook.com/business/help/2055875911190067">
+                            <i class="mdi mdi-book-open-variant-outline me-1"></i>Políticas de plantillas Meta
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             <?php if (!empty($missingCredentials)): ?>
                 <div class="alert alert-warning mb-4" role="alert">
                     <strong>Completa la configuración de Meta.</strong>
@@ -715,12 +811,93 @@ switch ($statusType) {
                                     </button>
                                 </div>
                             </div>
-                            <div class="box-body" data-scenario-list></div>
-                        </div>
-
-                        <div class="box" data-menu-panel>
-                            <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="box-body">
+                            <div class="alert alert-info d-flex align-items-start gap-2 small">
+                                <i class="mdi mdi-lightbulb-on-outline fs-4 text-info"></i>
                                 <div>
+                                    <strong>Tip:</strong> describe qué resuelve cada escenario, añade condiciones claras y confirma las acciones esperadas. Puedes duplicar ejemplos sugeridos o crear los tuyos desde cero.
+                                </div>
+                            </div>
+                            <div class="row g-3 align-items-stretch" data-scenarios-layout>
+                                <div class="col-12 col-xxl-8">
+                                    <div class="d-flex flex-column gap-3" data-scenario-canvas>
+                                        <div class="card border-0 shadow-sm" data-scenario-overview>
+                                            <div class="card-body py-3">
+                                                <h6 class="fw-600 mb-2">Orden de evaluación</h6>
+                                                <p class="text-muted small mb-3">Los escenarios se evalúan de arriba hacia abajo. El primero que cumpla todas sus condiciones será el que responda al contacto.</p>
+                                                <div class="d-flex flex-column gap-2" data-scenario-summary></div>
+                                            </div>
+                                        </div>
+                                        <div class="card border-0 shadow-sm" data-suggested-scenarios></div>
+                                        <div data-scenario-list></div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-xxl-4">
+                                    <div class="card border-0 shadow-sm h-100" data-simulation-panel>
+                                        <div class="card-body d-flex flex-column">
+                                            <h6 class="fw-600 mb-1">Simulador paso a paso</h6>
+                                            <p class="text-muted small mb-3">Escribe uno o más mensajes y revisa qué escenario se activaría, con sus condiciones evaluadas.</p>
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">Mensaje de prueba</label>
+                                                <textarea class="form-control form-control-sm" rows="3" placeholder="Hola, quiero agendar una cita" data-simulation-input></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label small text-muted">Usar mensaje reciente</label>
+                                                <select class="form-select form-select-sm" data-simulation-replay>
+                                                    <option value="">Selecciona un mensaje de la bandeja</option>
+                                                </select>
+                                            </div>
+                                            <div class="row g-2 mb-3">
+                                                <div class="col-6">
+                                                    <div class="form-check form-switch small">
+                                                        <input class="form-check-input" type="checkbox" checked data-simulation-first-time>
+                                                        <label class="form-check-label">Es primera vez</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-check form-switch small">
+                                                        <input class="form-check-input" type="checkbox" data-simulation-has-consent>
+                                                        <label class="form-check-label">Tiene consentimiento</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small text-muted mb-1">Estado actual</label>
+                                                    <input type="text" class="form-control form-control-sm" value="inicio" data-simulation-state>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small text-muted mb-1">Campo pendiente</label>
+                                                    <input type="text" class="form-control form-control-sm" placeholder="cedula" data-simulation-awaiting>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small text-muted mb-1">Minutos desde última interacción</label>
+                                                    <input type="number" class="form-control form-control-sm" value="999" min="0" data-simulation-minutes>
+                                                </div>
+                                                <div class="col-6">
+                                                    <div class="form-check form-switch small mt-3">
+                                                        <input class="form-check-input" type="checkbox" data-simulation-patient-found>
+                                                        <label class="form-check-label">Paciente localizado</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex gap-2">
+                                                <button type="button" class="btn btn-sm btn-primary flex-grow-1" data-action="run-simulation">
+                                                    <i class="mdi mdi-play-circle-outline me-1"></i>Probar flujo
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-simulation">
+                                                    <i class="mdi mdi-delete-outline"></i>
+                                                </button>
+                                            </div>
+                                            <div class="mt-3 border-top pt-3 overflow-auto" style="max-height: 240px;" data-simulation-log></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="box" data-menu-panel>
+                        <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
                                     <h5 class="mb-1">Constructor de menú</h5>
                                     <p class="text-muted small mb-0">Define el mensaje principal y las opciones disponibles.</p>
                                 </div>
@@ -728,7 +905,11 @@ switch ($statusType) {
                                     <i class="mdi mdi-restore"></i> Restaurar
                                 </button>
                             </div>
-                            <div class="box-body" data-menu-editor></div>
+                            <div class="box-body" data-menu-editor>
+                                <div class="alert alert-info small" role="alert">
+                                    Diseña el mensaje de bienvenida con botones o listas interactivas. Agrega etiquetas y palabras clave para que el sistema identifique cada intención.
+                                </div>
+                            </div>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
@@ -774,6 +955,13 @@ switch ($statusType) {
             <div class="flex-grow-1">
                 <input type="text" class="form-control form-control-sm mb-2" placeholder="Nombre del escenario" data-scenario-name>
                 <textarea class="form-control form-control-sm" rows="2" placeholder="Descripción" data-scenario-description></textarea>
+                <div class="form-check form-switch form-switch-sm mt-2">
+                    <input class="form-check-input" type="checkbox" data-scenario-intercept>
+                    <label class="form-check-label small">Responder antes que el menú de bienvenida</label>
+                </div>
+                <p class="text-muted small mb-0" data-scenario-intercept-help>
+                    Cuando está desactivado, el mensaje de bienvenida y el menú responderán primero a palabras como 'hola' o 'menú'.
+                </p>
             </div>
             <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-secondary" data-action="move-up"><i class="mdi mdi-arrow-up"></i></button>
@@ -809,6 +997,9 @@ switch ($statusType) {
                 <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-condition"><i class="mdi mdi-close"></i></button>
             </div>
         </div>
+        <div class="mt-2">
+            <div class="text-muted small" data-condition-help></div>
+        </div>
     </div>
 </template>
 
@@ -824,6 +1015,9 @@ switch ($statusType) {
                 <button type="button" class="btn btn-outline-secondary" data-action="action-down"><i class="mdi mdi-arrow-down"></i></button>
                 <button type="button" class="btn btn-outline-danger" data-action="remove-action"><i class="mdi mdi-close"></i></button>
             </div>
+        </div>
+        <div class="mt-2">
+            <div class="text-muted small" data-action-help></div>
         </div>
     </div>
 </template>
@@ -883,6 +1077,46 @@ switch ($statusType) {
         </div>
         <div class="col-md-2 text-end">
             <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-context"><i class="mdi mdi-close"></i></button>
+        </div>
+    </div>
+</template>
+
+<template id="menu-list-section-template">
+    <div class="border rounded-3 p-3 mb-3" data-list-section>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="flex-grow-1">
+                <label class="form-label small text-muted mb-1">Título de la sección</label>
+                <input type="text" class="form-control form-control-sm" data-section-title placeholder="Opciones generales">
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary" data-action="section-up"><i class="mdi mdi-arrow-up"></i></button>
+                <button type="button" class="btn btn-outline-secondary" data-action="section-down"><i class="mdi mdi-arrow-down"></i></button>
+                <button type="button" class="btn btn-outline-danger" data-action="remove-section"><i class="mdi mdi-close"></i></button>
+            </div>
+        </div>
+        <div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-600">Opciones</span>
+                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-row"><i class="mdi mdi-plus"></i> Añadir opción</button>
+            </div>
+            <div data-section-rows></div>
+        </div>
+    </div>
+</template>
+
+<template id="menu-list-row-template">
+    <div class="row g-2 align-items-center mb-2" data-list-row>
+        <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm" placeholder="Identificador" data-row-id>
+        </div>
+        <div class="col-md-5">
+            <input type="text" class="form-control form-control-sm" placeholder="Título" data-row-title>
+        </div>
+        <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm" placeholder="Descripción" data-row-description>
+        </div>
+        <div class="col-md-1 text-end">
+            <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-row"><i class="mdi mdi-close"></i></button>
         </div>
     </div>
 </template>
