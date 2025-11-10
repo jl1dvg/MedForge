@@ -4,6 +4,7 @@ namespace Modules\WhatsApp\Support;
 
 use function array_map;
 use function array_merge;
+use function array_splice;
 use function array_unique;
 use function array_values;
 use function is_array;
@@ -397,6 +398,8 @@ class AutoresponderFlow
             return self::defaultScenarios($brand);
         }
 
+        $normalized = self::ensureRequiredScenarios($normalized, $brand);
+
         return array_values($normalized);
     }
 
@@ -730,6 +733,64 @@ class AutoresponderFlow
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $scenarios
+     * @return array<int, array<string, mixed>>
+     */
+    private static function ensureRequiredScenarios(array $scenarios, string $brand): array
+    {
+        $defaults = self::defaultScenarios($brand);
+
+        $scenarios = self::injectDefaultScenario($scenarios, $defaults, 'fallback');
+        $scenarios = self::injectDefaultScenario($scenarios, $defaults, 'acceso_menu_directo', 'fallback');
+
+        return $scenarios;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $scenarios
+     * @param array<int, array<string, mixed>> $defaults
+     * @return array<int, array<string, mixed>>
+     */
+    private static function injectDefaultScenario(
+        array $scenarios,
+        array $defaults,
+        string $identifier,
+        ?string $before = null
+    ): array {
+        foreach ($scenarios as $scenario) {
+            if (($scenario['id'] ?? '') === $identifier) {
+                return $scenarios;
+            }
+        }
+
+        $fallback = null;
+        foreach ($defaults as $scenario) {
+            if (($scenario['id'] ?? '') === $identifier) {
+                $fallback = $scenario;
+                break;
+            }
+        }
+
+        if ($fallback === null) {
+            return $scenarios;
+        }
+
+        if ($before !== null) {
+            foreach ($scenarios as $index => $scenario) {
+                if (($scenario['id'] ?? '') === $before) {
+                    array_splice($scenarios, $index, 0, [$fallback]);
+
+                    return $scenarios;
+                }
+            }
+        }
+
+        $scenarios[] = $fallback;
+
+        return $scenarios;
     }
 
     /**
