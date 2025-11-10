@@ -248,24 +248,28 @@ class PacienteService
 
     public function verificarCoberturaPaciente(string $hcNumber): string
     {
-        $stmt = $this->db->prepare(
-            <<<'SQL'
-            SELECT cod_derivacion, fecha_vigencia
-            FROM prefactura_paciente
-            WHERE hc_number = ?
-              AND cod_derivacion IS NOT NULL AND cod_derivacion != ''
-            ORDER BY fecha_vigencia DESC
-            LIMIT 1
-            SQL
-        );
-        $stmt->execute([$hcNumber]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $this->db->prepare(
+                <<<'SQL'
+                SELECT cod_derivacion, fecha_vigencia
+                FROM prefactura_paciente
+                WHERE hc_number = ?
+                  AND cod_derivacion IS NOT NULL AND cod_derivacion != ''
+                ORDER BY fecha_vigencia DESC
+                LIMIT 1
+                SQL
+            );
+            $stmt->execute([$hcNumber]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException) {
+            return 'N/A';
+        }
 
         if (!$row) {
             return 'N/A';
         }
 
-        $fechaVigencia = strtotime($row['fecha_vigencia']);
+        $fechaVigencia = strtotime((string) $row['fecha_vigencia']);
         $fechaActual = time();
 
         return $fechaVigencia >= $fechaActual ? 'Con Cobertura' : 'Sin Cobertura';
@@ -344,6 +348,7 @@ class PacienteService
             'documentos' => $this->getDocumentosDescargables($hcNumber),
             'estadisticas' => $this->getEstadisticasProcedimientos($hcNumber),
             'patientAge' => $this->calcularEdad($patientData['fecha_nacimiento'] ?? null),
+            'coverageStatus' => $this->verificarCoberturaPaciente($hcNumber),
         ];
     }
 
@@ -415,16 +420,38 @@ class PacienteService
 
     public function getAfiliacionesDisponibles(): array
     {
-        $stmt = $this->db->query(
-            <<<'SQL'
-            SELECT DISTINCT afiliacion
-            FROM patient_data
-            WHERE afiliacion IS NOT NULL
-              AND afiliacion != ''
-              AND afiliacion REGEXP '^[A-Za-z]'
-            ORDER BY afiliacion ASC
-            SQL
-        );
+        $driver = null;
+
+        try {
+            $driver = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        } catch (PDOException) {
+            // Si el driver no puede obtenerse seguimos con la consulta genérica
+        }
+
+        if ($driver === 'sqlite') {
+            $sql = <<<'SQL'
+                SELECT DISTINCT afiliacion
+                FROM patient_data
+                WHERE afiliacion IS NOT NULL
+                  AND afiliacion != ''
+                  AND SUBSTR(afiliacion, 1, 1) GLOB '[A-Za-z]'
+                ORDER BY afiliacion ASC
+            SQL;
+        } else {
+            $sql = <<<'SQL'
+                SELECT DISTINCT afiliacion
+                FROM patient_data
+                WHERE afiliacion IS NOT NULL
+                  AND afiliacion != ''
+                  AND afiliacion REGEXP '^[A-Za-z]'
+                ORDER BY afiliacion ASC
+            SQL;
+        }
+
+        $stmt = $this->db->query($sql);
+        if ($stmt === false) {
+            return [];
+        }
 
         return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'afiliacion');
     }
@@ -486,6 +513,13 @@ class PacienteService
 
         $columns = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
         $orderBy = in_array($orderColumn, $columns, true) ? $orderColumn : 'hc_number';
+        $orderableMap = [
+            'hc_number' => 'p.hc_number',
+            'ultima_fecha' => 'ultima.ultima_fecha',
+            'full_name' => 'full_name',
+            'afiliacion' => 'p.afiliacion',
+        ];
+        $orderBySql = $orderableMap[$orderBy] ?? 'p.hc_number';
         $orderDirection = strtoupper($orderDir) === 'DESC' ? 'DESC' : 'ASC';
 
         $searchSql = '';
@@ -535,7 +569,7 @@ class PacienteService
             ) AS ultima ON ultima.hc_number = p.hc_number
             $coberturaJoin
             $searchSql
-            ORDER BY $orderBy $orderDirection
+            ORDER BY $orderBySql $orderDirection
             LIMIT $start, $length
         SQL;
 

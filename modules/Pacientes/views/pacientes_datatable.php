@@ -1,32 +1,41 @@
 <?php
-use Modules\Pacientes\Controllers\Pacientes;
+use Modules\Pacientes\Services\PacienteService;
+use Throwable;
 
 header('Content-Type: application/json');
 
 try {
-    $controller = new PacienteController($pdo);
+    $service = new PacienteService($pdo);
 
-    // DataTables parameters
-    $draw = $_POST['draw'] ?? 1;
-    $start = $_POST['start'] ?? 0;
-    $length = $_POST['length'] ?? 10;
+    $draw = isset($_POST['draw']) ? (int) $_POST['draw'] : 1;
+    $start = isset($_POST['start']) ? (int) $_POST['start'] : 0;
+    $length = isset($_POST['length']) ? (int) $_POST['length'] : 10;
     $search = $_POST['search']['value'] ?? '';
-    $orderColumnIndex = $_POST['order'][0]['column'] ?? 0;
-    $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+    $orderColumnIndex = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+    $orderDir = isset($_POST['order'][0]['dir']) ? (string) $_POST['order'][0]['dir'] : 'asc';
 
     $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
     $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-    $response = $controller->obtenerPacientesPaginados($start, $length, $search, $orderColumn, strtoupper($orderDir));
-    $response['draw'] = intval($draw);
+    $response = $service->obtenerPacientesPaginados(
+        $start,
+        $length,
+        $search,
+        $orderColumn,
+        strtoupper($orderDir)
+    );
 
-    echo json_encode($response);
-} catch (Exception $e) {
+    $response['draw'] = $draw;
+
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
+} catch (Throwable $e) {
+    http_response_code(500);
+
     echo json_encode([
-        'draw' => intval($_POST['draw'] ?? 1),
+        'draw' => isset($_POST['draw']) ? (int) $_POST['draw'] : 1,
         'recordsTotal' => 0,
         'recordsFiltered' => 0,
         'data' => [],
-        'error' => $e->getMessage()
-    ]);
+        'error' => 'No se pudo recuperar la información de pacientes',
+    ], JSON_UNESCAPED_UNICODE);
 }

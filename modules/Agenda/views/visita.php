@@ -17,10 +17,24 @@ if (!function_exists('agenda_badge_class')) {
     }
 }
 
+if (!function_exists('agenda_cobertura_badge')) {
+    function agenda_cobertura_badge(?string $estado): string
+    {
+        return match ($estado) {
+            'Con Cobertura' => 'badge bg-success',
+            'Sin Cobertura' => 'badge bg-danger',
+            default => 'badge bg-secondary',
+        };
+    }
+}
+
 $fechaVisita = $visita['fecha_visita'] ? date('d/m/Y', strtotime((string) $visita['fecha_visita'])) : '—';
 $horaLlegada = $visita['hora_llegada'] ? date('H:i', strtotime((string) $visita['hora_llegada'])) : '—';
 $nombrePaciente = $visita['paciente'] ?: 'Paciente sin nombre';
 $hcNumber = $visita['hc_number'] ?? '—';
+$pacienteContexto = $visita['paciente_contexto'] ?? [];
+$estadoCobertura = $pacienteContexto['coverageStatus'] ?? ($visita['estado_cobertura'] ?? 'N/A');
+$timelineResumen = array_slice($pacienteContexto['timelineItems'] ?? [], 0, 5);
 ?>
 
 <section class="content-header">
@@ -74,6 +88,13 @@ $hcNumber = $visita['hc_number'] ?? '—';
 
                         <dt class="col-sm-5">Contacto</dt>
                         <dd class="col-sm-7"><?= htmlspecialchars((string) ($visita['celular'] ?? '—')) ?></dd>
+
+                        <dt class="col-sm-5">Estado de cobertura</dt>
+                        <dd class="col-sm-7">
+                            <span class="<?= agenda_cobertura_badge($estadoCobertura) ?>">
+                                <?= htmlspecialchars((string) $estadoCobertura) ?>
+                            </span>
+                        </dd>
                     </dl>
                 </div>
             </div>
@@ -156,6 +177,46 @@ $hcNumber = $visita['hc_number'] ?? '—';
                     <?php endif; ?>
                 </div>
             </div>
+            <?php if ($timelineResumen): ?>
+                <div class="box mt-4">
+                    <div class="box-header with-border d-flex align-items-center justify-content-between">
+                        <h4 class="box-title mb-0">Últimos movimientos del paciente</h4>
+                        <span class="badge bg-secondary-light text-secondary">
+                            <?= count($timelineResumen) ?> registros recientes
+                        </span>
+                    </div>
+                    <div class="box-body">
+                        <ul class="list-unstyled mb-0">
+                            <?php foreach ($timelineResumen as $item): ?>
+                                <?php
+                                $fechaItem = isset($item['fecha']) && $item['fecha'] !== ''
+                                    ? date('d/m/Y H:i', strtotime((string) $item['fecha']))
+                                    : 'Fecha no disponible';
+                                $tipoItem = strtoupper((string) ($item['tipo'] ?? $item['origen'] ?? '')); 
+                                $nombreItem = $item['nombre'] ?? $item['procedimiento'] ?? 'Movimiento';
+                                ?>
+                                <li class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <div class="fw-600 text-dark">
+                                                <?= htmlspecialchars((string) $nombreItem) ?>
+                                            </div>
+                                            <div class="text-muted small">
+                                                <?= htmlspecialchars($fechaItem) ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($tipoItem !== ''): ?>
+                                            <span class="badge bg-primary-light text-primary ms-3">
+                                                <?= htmlspecialchars($tipoItem) ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </section>
