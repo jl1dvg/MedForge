@@ -76,3 +76,82 @@
 .wa-inbox-empty {
     padding: 0.75rem 0;
 }
+
+.scenario-toolbar .btn-group .btn {
+    min-width: 2.5rem;
+}
+
+.scenario-stage {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 1rem;
+}
+
+.scenario-stage__header {
+    padding: 1rem 1.25rem 0.75rem;
+}
+
+.scenario-stage__body {
+    padding: 0 1.25rem 1.25rem;
+}
+
+.scenario-stage__list {
+    min-height: 1rem;
+}
+
+.scenario-stage__empty {
+    border: 1px dashed rgba(15, 23, 42, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+.scenario-card {
+    border-radius: 0.9rem;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.scenario-card.is-collapsed .scenario-card__body {
+    display: none;
+}
+
+.scenario-card__header .drag-handle {
+    cursor: grab;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+}
+
+.scenario-card__header .drag-handle:hover {
+    background-color: rgba(15, 23, 42, 0.06);
+}
+
+.scenario-card.is-invalid {
+    border: 2px solid #f8d7da;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+}
+
+.scenario-card--dragging {
+    opacity: 0.75;
+    border-style: dashed;
+}
+
+.requires-advanced {
+    position: relative;
+}
+
+.requires-advanced::after {
+    content: 'Modo avanzado requerido';
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.7rem;
+    background-color: rgba(99, 102, 241, 0.12);
+    color: #4338ca;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}

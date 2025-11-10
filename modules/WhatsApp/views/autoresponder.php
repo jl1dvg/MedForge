@@ -818,6 +818,32 @@ switch ($statusType) {
                                     <strong>Tip:</strong> describe qué resuelve cada escenario, añade condiciones claras y confirma las acciones esperadas. Puedes duplicar ejemplos sugeridos o crear los tuyos desde cero.
                                 </div>
                             </div>
+                            <div class="scenario-toolbar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action="apply-journey-preset">
+                                        <i class="mdi mdi-timeline-clock-outline me-1"></i> Aplicar recorrido paciente
+                                    </button>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-secondary" data-action="expand-all-scenarios" title="Expandir todos los escenarios" aria-label="Expandir todos los escenarios">
+                                            <i class="mdi mdi-arrow-expand-all"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" data-action="collapse-all-scenarios" title="Colapsar todos los escenarios" aria-label="Colapsar todos los escenarios">
+                                            <i class="mdi mdi-arrow-collapse-all"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" data-action="expand-advanced-scenarios" title="Expandir solo los escenarios avanzados" aria-label="Expandir solo los escenarios avanzados">
+                                            <i class="mdi mdi-star-circle-outline"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="btn-group btn-group-sm" data-scenario-mode-toggle>
+                                    <button type="button" class="btn btn-outline-secondary active" data-mode="simple">
+                                        <i class="mdi mdi-account-check-outline me-1"></i> Modo simple
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" data-mode="advanced">
+                                        <i class="mdi mdi-cog-outline me-1"></i> Modo avanzado
+                                    </button>
+                                </div>
+                            </div>
                             <div class="row g-3 align-items-stretch" data-scenarios-layout>
                                 <div class="col-12 col-xxl-8">
                                     <div class="d-flex flex-column gap-3" data-scenario-canvas>
@@ -949,39 +975,69 @@ switch ($statusType) {
 </template>
 
 <template id="scenario-card-template">
-    <div class="scenario-card border rounded-3 p-3 mb-3" data-scenario>
+    <div class="scenario-card border rounded-3 shadow-sm p-3" data-scenario>
         <input type="hidden" data-scenario-id>
-        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
-            <div class="flex-grow-1">
-                <input type="text" class="form-control form-control-sm mb-2" placeholder="Nombre del escenario" data-scenario-name>
-                <textarea class="form-control form-control-sm" rows="2" placeholder="Descripción" data-scenario-description></textarea>
-                <div class="form-check form-switch form-switch-sm mt-2">
-                    <input class="form-check-input" type="checkbox" data-scenario-intercept>
-                    <label class="form-check-label small">Responder antes que el menú de bienvenida</label>
+        <div class="scenario-card__header d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div class="d-flex align-items-start gap-2 flex-grow-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-action="toggle-scenario" aria-expanded="false">
+                    <i class="mdi mdi-chevron-right"></i>
+                </button>
+                <div class="flex-grow-1">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="fw-600" data-scenario-title>Nuevo escenario</span>
+                        <span class="badge bg-secondary-subtle text-secondary" data-scenario-stage-label>Personalizado</span>
+                    </div>
+                    <div class="text-muted small" data-scenario-summary-preview></div>
                 </div>
-                <p class="text-muted small mb-0" data-scenario-intercept-help>
-                    Cuando está desactivado, el mensaje de bienvenida y el menú responderán primero a palabras como 'hola' o 'menú'.
-                </p>
             </div>
-            <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary" data-action="move-up"><i class="mdi mdi-arrow-up"></i></button>
-                <button type="button" class="btn btn-outline-secondary" data-action="move-down"><i class="mdi mdi-arrow-down"></i></button>
-                <button type="button" class="btn btn-outline-danger" data-action="remove-scenario"><i class="mdi mdi-close"></i></button>
+            <div class="d-flex align-items-center gap-2">
+                <span class="drag-handle text-muted" data-drag-handle title="Arrastra para reordenar">
+                    <i class="mdi mdi-drag-vertical"></i>
+                </span>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" data-action="move-up"><i class="mdi mdi-arrow-up"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" data-action="move-down"><i class="mdi mdi-arrow-down"></i></button>
+                    <button type="button" class="btn btn-outline-danger" data-action="remove-scenario"><i class="mdi mdi-close"></i></button>
+                </div>
             </div>
         </div>
-        <div class="scenario-conditions mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0">Condiciones</h6>
-                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-condition"><i class="mdi mdi-plus"></i> Añadir condición</button>
+        <div class="scenario-card__body mt-3" data-scenario-body>
+            <div class="row g-3 mb-3">
+                <div class="col-lg-7">
+                    <label class="form-label small text-muted mb-1">Nombre del escenario</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="Nombre del escenario" data-scenario-name>
+                </div>
+                <div class="col-lg-5">
+                    <label class="form-label small text-muted mb-1">Etapa del recorrido</label>
+                    <select class="form-select form-select-sm" data-scenario-stage></select>
+                    <div class="text-muted small mt-1" data-scenario-stage-help></div>
+                </div>
             </div>
-            <div data-condition-list></div>
-        </div>
-        <div class="scenario-actions">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0">Acciones</h6>
-                <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-action"><i class="mdi mdi-plus"></i> Añadir acción</button>
+            <div class="mb-3">
+                <label class="form-label small text-muted mb-1">Descripción</label>
+                <textarea class="form-control form-control-sm" rows="2" placeholder="Describe el objetivo" data-scenario-description></textarea>
             </div>
-            <div data-action-list></div>
+            <div class="form-check form-switch form-switch-sm mb-3">
+                <input class="form-check-input" type="checkbox" data-scenario-intercept>
+                <label class="form-check-label small">Responder antes que el menú de bienvenida</label>
+            </div>
+            <p class="text-muted small" data-scenario-intercept-help>
+                Cuando está desactivado, el mensaje de bienvenida y el menú responderán primero a palabras como 'hola' o 'menú'.
+            </p>
+            <div class="scenario-conditions mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Condiciones</h6>
+                    <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-condition"><i class="mdi mdi-plus"></i> Añadir condición</button>
+                </div>
+                <div data-condition-list></div>
+            </div>
+            <div class="scenario-actions">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Acciones</h6>
+                    <button type="button" class="btn btn-xs btn-outline-primary" data-action="add-action"><i class="mdi mdi-plus"></i> Añadir acción</button>
+                </div>
+                <div data-action-list></div>
+            </div>
         </div>
     </div>
 </template>
