@@ -4,16 +4,19 @@ namespace Modules\Agenda\Controllers;
 
 use Core\BaseController;
 use Modules\Agenda\Models\AgendaModel;
+use Modules\Pacientes\Services\PacienteService;
 use PDO;
 
 class AgendaController extends BaseController
 {
     private AgendaModel $agenda;
+    private PacienteService $pacienteService;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->agenda = new AgendaModel($pdo);
+        $this->pacienteService = new PacienteService($pdo);
     }
 
     public function index(): void
@@ -60,6 +63,12 @@ class AgendaController extends BaseController
                 ]
             );
             return;
+        }
+
+        if (!empty($detalle['hc_number'])) {
+            $hcNumber = (string) $detalle['hc_number'];
+            $detalle['estado_cobertura'] = $this->pacienteService->verificarCoberturaPaciente($hcNumber);
+            $detalle['paciente_contexto'] = $this->pacienteService->obtenerContextoPaciente($hcNumber);
         }
 
         $this->render(
