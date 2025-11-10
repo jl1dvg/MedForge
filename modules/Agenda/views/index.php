@@ -1,6 +1,6 @@
 <?php
 /** @var array{fecha_inicio: string, fecha_fin: string, doctor: ?string, estado: ?string, sede: ?string, solo_con_visita: bool} $filters */
-/** @var array<int, array<string, mixed>> $agenda */
+/** @var \Models\Agenda\ProcedimientoProyectado[] $agenda */
 /** @var array<int, string> $estadosDisponibles */
 /** @var array<int, string> $doctoresDisponibles */
 /** @var array<int, array{id_sede: ?string, sede_departamento: ?string}> $sedesDisponibles */
@@ -158,38 +158,42 @@ function agenda_badge_class(?string $estado): string
                             <?php if ($agenda): ?>
                                 <?php foreach ($agenda as $registro): ?>
                                     <?php
-                                    $fechaAgenda = $registro['fecha_agenda'] ? date('d/m/Y', strtotime((string) $registro['fecha_agenda'])) : '—';
-                                    $horaAgenda = $registro['hora_agenda'] ?? '—';
-                                    $paciente = $registro['paciente'] ?: 'Sin registro';
-                                    $sedeNombre = $registro['sede_departamento'] ?: ($registro['id_sede'] ?: '—');
-                                    $estado = $registro['estado_agenda'] ?? 'Sin estado';
-                                    $visitaId = $registro['visita_id'] ?? null;
+                                    $fechaAgenda = $registro->getFechaAgendaFormatted();
+                                    $horaAgenda = $registro->getHoraAgenda() ?? '—';
+                                    $paciente = $registro->getPacienteNombre();
+                                    $hcNumber = $registro->getHcNumber() ?? '—';
+                                    $sedeNombre = $registro->getSedeNombre();
+                                    $estado = $registro->getEstadoAgenda() ?? 'Sin estado';
+                                    $visitaId = $registro->getVisitaId();
+                                    $formId = $registro->getFormId();
+                                    $procedimiento = $registro->getProcedimiento() ?? '—';
+                                    $doctor = $registro->getDoctor() ?? '—';
                                     ?>
                                     <tr>
                                         <td><?= htmlspecialchars($fechaAgenda) ?></td>
                                         <td><?= htmlspecialchars($horaAgenda) ?></td>
                                         <td>
                                             <span class="badge bg-info-light text-primary fw-600">
-                                                <?= htmlspecialchars((string) $registro['form_id']) ?>
+                                                <?= htmlspecialchars((string) ($formId ?? '—')) ?>
                                             </span>
                                         </td>
                                         <td>
                                             <div class="fw-600 text-dark"><?= htmlspecialchars($paciente) ?></div>
-                                            <div class="text-muted small">HC <?= htmlspecialchars((string) $registro['hc_number']) ?></div>
+                                            <div class="text-muted small">HC <?= htmlspecialchars((string) $hcNumber) ?></div>
                                             <div>
-                                                <a class="small" href="/pacientes/detalles?hc_number=<?= urlencode((string) $registro['hc_number']) ?>">
+                                                <a class="small" href="/pacientes/detalles?hc_number=<?= urlencode((string) $hcNumber) ?>">
                                                     Ver ficha
                                                 </a>
                                             </div>
                                         </td>
-                                        <td><?= htmlspecialchars((string) ($registro['procedimiento'] ?? '—')) ?></td>
-                                        <td><?= htmlspecialchars((string) ($registro['doctor'] ?? '—')) ?></td>
+                                        <td><?= htmlspecialchars($procedimiento) ?></td>
+                                        <td><?= htmlspecialchars($doctor) ?></td>
                                         <td>
                                             <span class="<?= agenda_badge_class($estado) ?>">
                                                 <?= htmlspecialchars($estado) ?>
                                             </span>
                                         </td>
-                                        <td><?= htmlspecialchars((string) $sedeNombre) ?></td>
+                                        <td><?= htmlspecialchars($sedeNombre) ?></td>
                                         <td>
                                             <?php if ($visitaId): ?>
                                                 <a class="btn btn-sm btn-outline-primary" href="/agenda/visitas/<?= urlencode((string) $visitaId) ?>">

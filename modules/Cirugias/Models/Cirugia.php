@@ -13,7 +13,26 @@ class Cirugia
 
     public function getNombreCompleto(): string
     {
-        return trim("{$this->data['fname']} {$this->data['lname']} {$this->data['lname2']}");
+        $patient = $this->patient();
+        if (is_array($patient)) {
+            $fullName = $patient['full_name'] ?? trim(implode(' ', array_filter([
+                $patient['fname'] ?? null,
+                $patient['mname'] ?? null,
+                $patient['lname'] ?? null,
+                $patient['lname2'] ?? null,
+            ])));
+
+            if ($fullName !== '') {
+                return $fullName;
+            }
+        }
+
+        return trim(implode(' ', array_filter([
+            $this->data['fname'] ?? null,
+            $this->data['mname'] ?? null,
+            $this->data['lname'] ?? null,
+            $this->data['lname2'] ?? null,
+        ])));
     }
 
     public function getDuracion(): string
@@ -79,5 +98,46 @@ class Cirugia
     public function toArray(): array
     {
         return $this->data;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getPatientContext(): array
+    {
+        return $this->data['patient_context'] ?? [
+            'hc_number' => $this->data['hc_number'] ?? '',
+            'clinic' => ['patient' => null],
+            'crm' => [
+                'customers' => [],
+                'primary_customer' => null,
+                'leads' => [],
+                'primary_lead' => null,
+            ],
+            'communications' => [
+                'conversations' => [],
+                'primary_conversation' => null,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function patient(): ?array
+    {
+        $context = $this->getPatientContext();
+
+        return $context['clinic']['patient'] ?? null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function customer(): ?array
+    {
+        $context = $this->getPatientContext();
+
+        return $context['crm']['primary_customer'] ?? null;
     }
 }

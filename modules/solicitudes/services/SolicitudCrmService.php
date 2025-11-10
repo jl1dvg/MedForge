@@ -5,6 +5,7 @@ namespace Modules\Solicitudes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\Shared\Services\PatientContextService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use PDO;
@@ -20,6 +21,7 @@ class SolicitudCrmService
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
     private WhatsAppMessenger $whatsapp;
+    private PatientContextService $patientContext;
 
     public function __construct(PDO $pdo)
     {
@@ -27,6 +29,7 @@ class SolicitudCrmService
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
+        $this->patientContext = new PatientContextService($pdo);
     }
 
     public function obtenerResponsables(): array
@@ -324,12 +327,17 @@ class SolicitudCrmService
             }
         }
 
-        $telefonos = $this->collectWhatsappPhones($detalle, $contexto);
+        $hcContext = $detalle['hc_number']
+            ?? ($contexto['payload']['hc_number'] ?? ($contexto['detalle_anterior']['hc_number'] ?? null));
+        $patientContext = $this->patientContext->getContext((string) ($hcContext ?? ''));
+        $contexto['patient_context'] = $patientContext;
+
+        $telefonos = $this->collectWhatsappPhones($detalle, $contexto, $patientContext);
         if (empty($telefonos)) {
             return;
         }
 
-        $mensaje = $this->buildWhatsAppMessage($evento, $contexto);
+        $mensaje = $this->buildWhatsAppMessage($evento, $contexto, $patientContext);
         if ($mensaje === '') {
             return;
         }
@@ -343,9 +351,41 @@ class SolicitudCrmService
      *
      * @return string[]
      */
-    private function collectWhatsappPhones(array $detalle, array $contexto): array
+    private function collectWhatsappPhones(array $detalle, array $contexto, array $patientContext): array
     {
         $telefonos = [];
+
+        $patient = $patientContext['clinic']['patient'] ?? null;
+        if (is_array($patient)) {
+            foreach (['celular', 'telefono'] as $campo) {
+                if (!empty($patient[$campo])) {
+                    $telefonos[] = (string) $patient[$campo];
+                }
+            }
+        }
+
+        $customer = $patientContext['crm']['primary_customer'] ?? null;
+        if (is_array($customer)) {
+            if (!empty($customer['normalized_phone'])) {
+                $telefonos[] = (string) $customer['normalized_phone'];
+            }
+            if (!empty($customer['phone'])) {
+                $telefonos[] = (string) $customer['phone'];
+            }
+        }
+
+        $primaryConversation = $patientContext['communications']['primary_conversation'] ?? null;
+        if (is_array($primaryConversation) && !empty($primaryConversation['wa_number'])) {
+            $telefonos[] = (string) $primaryConversation['wa_number'];
+        }
+
+        if (!empty($patientContext['communications']['conversations']) && is_array($patientContext['communications']['conversations'])) {
+            foreach ($patientContext['communications']['conversations'] as $conversation) {
+                if (is_array($conversation) && !empty($conversation['wa_number'])) {
+                    $telefonos[] = (string) $conversation['wa_number'];
+                }
+            }
+        }
 
         foreach (['crm_contacto_telefono', 'paciente_celular', 'contacto_telefono'] as $clave) {
             if (!empty($detalle[$clave])) {
@@ -375,11 +415,14 @@ class SolicitudCrmService
     /**
      * @param array<string, mixed> $contexto
      */
-    private function buildWhatsAppMessage(string $evento, array $contexto): string
+    private function buildWhatsAppMessage(string $evento, array $contexto, array $patientContext = []): string
     {
         $detalle = $contexto['detalle'] ?? [];
         $solicitudId = isset($detalle['id']) ? (int) $detalle['id'] : 0;
         $paciente = trim((string) ($detalle['paciente_nombre'] ?? ''));
+        if ($paciente === '' && isset($patientContext['clinic']['patient']['full_name'])) {
+            $paciente = trim((string) $patientContext['clinic']['patient']['full_name']);
+        }
         $marca = $this->whatsapp->getBrandName();
         $tituloSolicitud = $solicitudId > 0
             ? 'Solicitud #' . $solicitudId . ($paciente !== '' ? ' · ' . $paciente : '')

@@ -2,15 +2,20 @@
 
 namespace Modules\Agenda\Models;
 
+use Models\Agenda\ProcedimientoProyectado;
+use Models\Agenda\Visita;
+use Modules\Shared\Services\PatientContextService;
 use PDO;
 
 class AgendaModel
 {
     private PDO $db;
+    private PatientContextService $patientContext;
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
+        $this->patientContext = new PatientContextService($pdo);
     }
 
     /**
@@ -23,7 +28,7 @@ class AgendaModel
      *     solo_con_visita: bool
      * } $filters
      *
-     * @return array<int, array<string, mixed>>
+     * @return ProcedimientoProyectado[]
      */
     public function listarAgenda(array $filters): array
     {
@@ -32,7 +37,6 @@ class AgendaModel
                 pp.id,
                 pp.form_id,
                 pp.hc_number,
-                TRIM(CONCAT_WS(' ', pd.fname, pd.mname, pd.lname, pd.lname2)) AS paciente,
                 pp.procedimiento_proyectado AS procedimiento,
                 pp.doctor,
                 pp.fecha,
@@ -46,7 +50,6 @@ class AgendaModel
                 v.hora_llegada,
                 COALESCE(DATE(pp.fecha), v.fecha_visita) AS fecha_agenda
             FROM procedimiento_proyectado pp
-            LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             LEFT JOIN visitas v ON v.id = pp.visita_id
             WHERE 1 = 1
         SQL;
@@ -84,14 +87,11 @@ class AgendaModel
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        foreach ($rows as &$row) {
-            $row['paciente'] = $row['paciente'] !== null && trim((string) $row['paciente']) !== ''
-                ? trim((string) $row['paciente'])
-                : null;
+        return array_map(function (array $row): ProcedimientoProyectado {
             $row['hora_agenda'] = $this->resolverHoraDesdeRow($row);
-        }
 
-        return $rows;
+            return new ProcedimientoProyectado($row, $this->patientContext);
+        }, $rows);
     }
 
     /**
@@ -149,10 +149,7 @@ class AgendaModel
         }, $rows);
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function obtenerVisita(int $visitaId): ?array
+    public function obtenerVisita(int $visitaId): ?Visita
     {
         $stmt = $this->db->prepare(
             <<<'SQL'
@@ -161,49 +158,37 @@ class AgendaModel
                 v.hc_number,
                 v.fecha_visita,
                 v.hora_llegada,
-                v.usuario_registro,
-                pd.fname,
-                pd.mname,
-                pd.lname,
-                pd.lname2,
-                pd.afiliacion,
-                pd.celular,
-                pd.fecha_nacimiento
+                v.usuario_registro
             FROM visitas v
-            LEFT JOIN patient_data pd ON pd.hc_number = v.hc_number
             WHERE v.id = :visita
             LIMIT 1
             SQL
         );
         $stmt->execute([':visita' => $visitaId]);
-        $visita = $stmt->fetch(PDO::FETCH_ASSOC);
+        $visita = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        if (!$visita) {
+        if ($visita === null) {
             return null;
         }
 
-        $visita['paciente'] = trim(implode(' ', array_filter([
-            $visita['fname'] ?? null,
-            $visita['mname'] ?? null,
-            $visita['lname'] ?? null,
-            $visita['lname2'] ?? null,
-        ])));
+        $procedimientos = $this->obtenerProcedimientosPorVisita($visitaId, $visita['hc_number'] ?? null);
 
-        $visita['procedimientos'] = $this->obtenerProcedimientosPorVisita($visitaId);
-
-        return $visita;
+        return new Visita($visita, $procedimientos, $this->patientContext);
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * @param string|null $hcNumber
+     *
+     * @return ProcedimientoProyectado[]
      */
-    private function obtenerProcedimientosPorVisita(int $visitaId): array
+    private function obtenerProcedimientosPorVisita(int $visitaId, ?string $hcNumber = null): array
     {
         $stmt = $this->db->prepare(
             <<<'SQL'
             SELECT
                 pp.id,
                 pp.form_id,
+                pp.hc_number,
                 pp.procedimiento_proyectado AS procedimiento,
                 pp.doctor,
                 pp.fecha,
@@ -226,13 +211,22 @@ class AgendaModel
         $formIds = array_column($procedimientos, 'form_id');
         $historial = $this->obtenerHistorialEstados($formIds);
 
-        foreach ($procedimientos as &$procedimiento) {
+        $objects = [];
+
+        foreach ($procedimientos as $procedimiento) {
             $formId = $procedimiento['form_id'];
             $procedimiento['historial_estados'] = $historial[$formId] ?? [];
             $procedimiento['hora_agenda'] = $this->resolverHoraDesdeRow($procedimiento);
+            $procedimiento['visita_id'] = $visitaId;
+
+            if (!isset($procedimiento['hc_number']) || $procedimiento['hc_number'] === null) {
+                $procedimiento['hc_number'] = $hcNumber;
+            }
+
+            $objects[] = new ProcedimientoProyectado($procedimiento, $this->patientContext);
         }
 
-        return $procedimientos;
+        return $objects;
     }
 
     /**

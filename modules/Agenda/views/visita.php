@@ -1,6 +1,6 @@
 <?php
-/** @var array<string, mixed> $visita */
-$procedimientos = $visita['procedimientos'] ?? [];
+/** @var \Models\Agenda\Visita $visita */
+$procedimientos = $visita->getProcedimientos();
 
 if (!function_exists('agenda_badge_class')) {
     function agenda_badge_class(?string $estado): string
@@ -17,16 +17,18 @@ if (!function_exists('agenda_badge_class')) {
     }
 }
 
-$fechaVisita = $visita['fecha_visita'] ? date('d/m/Y', strtotime((string) $visita['fecha_visita'])) : '—';
-$horaLlegada = $visita['hora_llegada'] ? date('H:i', strtotime((string) $visita['hora_llegada'])) : '—';
-$nombrePaciente = $visita['paciente'] ?: 'Paciente sin nombre';
-$hcNumber = $visita['hc_number'] ?? '—';
+$fechaVisita = $visita->getFechaVisitaFormatted();
+$horaLlegada = $visita->getHoraLlegadaFormatted();
+$nombrePaciente = $visita->getPacienteNombre();
+$hcNumber = $visita->getHcNumber() ?? '—';
+$afiliacion = $visita->getAfiliacion() ?? '—';
+$contacto = $visita->getContacto() ?? '—';
 ?>
 
 <section class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Encuentro #<?= htmlspecialchars((string) $visita['id']) ?></h3>
+            <h3 class="page-title">Encuentro #<?= htmlspecialchars((string) ($visita->getId() ?? '—')) ?></h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb">
@@ -61,7 +63,7 @@ $hcNumber = $visita['hc_number'] ?? '—';
                         <dd class="col-sm-7"><?= htmlspecialchars((string) $hcNumber) ?></dd>
 
                         <dt class="col-sm-5">Afiliación</dt>
-                        <dd class="col-sm-7"><?= htmlspecialchars((string) ($visita['afiliacion'] ?? '—')) ?></dd>
+                        <dd class="col-sm-7"><?= htmlspecialchars((string) $afiliacion) ?></dd>
 
                         <dt class="col-sm-5">Fecha de visita</dt>
                         <dd class="col-sm-7"><?= htmlspecialchars($fechaVisita) ?></dd>
@@ -70,10 +72,10 @@ $hcNumber = $visita['hc_number'] ?? '—';
                         <dd class="col-sm-7"><?= htmlspecialchars($horaLlegada) ?></dd>
 
                         <dt class="col-sm-5">Usuario que registró</dt>
-                        <dd class="col-sm-7"><?= htmlspecialchars((string) ($visita['usuario_registro'] ?? '—')) ?></dd>
+                        <dd class="col-sm-7"><?= htmlspecialchars((string) ($visita->getUsuarioRegistro() ?? '—')) ?></dd>
 
                         <dt class="col-sm-5">Contacto</dt>
-                        <dd class="col-sm-7"><?= htmlspecialchars((string) ($visita['celular'] ?? '—')) ?></dd>
+                        <dd class="col-sm-7"><?= htmlspecialchars((string) $contacto) ?></dd>
                     </dl>
                 </div>
             </div>
@@ -101,25 +103,29 @@ $hcNumber = $visita['hc_number'] ?? '—';
                                 <tbody>
                                 <?php foreach ($procedimientos as $procedimiento): ?>
                                     <?php
-                                    $estado = $procedimiento['estado_agenda'] ?? 'Sin estado';
-                                    $hora = $procedimiento['hora_agenda'] ?? '—';
-                                    $historial = $procedimiento['historial_estados'] ?? [];
+                                    $estado = $procedimiento->getEstadoAgenda() ?? 'Sin estado';
+                                    $hora = $procedimiento->getHoraAgenda() ?? '—';
+                                    $historial = $procedimiento->getHistorialEstados();
+                                    $formId = $procedimiento->getFormId();
+                                    $procedimientoNombre = $procedimiento->getProcedimiento() ?? '—';
+                                    $sedeNombre = $procedimiento->getSedeNombre();
+                                    $doctor = $procedimiento->getDoctor() ?? '—';
                                     ?>
                                     <tr>
                                         <td>
                                             <span class="badge bg-info-light text-primary fw-600">
-                                                <?= htmlspecialchars((string) $procedimiento['form_id']) ?>
+                                                <?= htmlspecialchars((string) ($formId ?? '—')) ?>
                                             </span>
                                         </td>
                                         <td>
                                             <div class="fw-600 text-dark">
-                                                <?= htmlspecialchars((string) ($procedimiento['procedimiento'] ?? '—')) ?>
+                                                <?= htmlspecialchars($procedimientoNombre) ?>
                                             </div>
                                             <div class="text-muted small">
-                                                <?= htmlspecialchars((string) ($procedimiento['sede_departamento'] ?? ($procedimiento['id_sede'] ?? '—'))) ?>
+                                                <?= htmlspecialchars($sedeNombre) ?>
                                             </div>
                                         </td>
-                                        <td><?= htmlspecialchars((string) ($procedimiento['doctor'] ?? '—')) ?></td>
+                                        <td><?= htmlspecialchars($doctor) ?></td>
                                         <td><?= htmlspecialchars($hora) ?></td>
                                         <td>
                                             <span class="<?= agenda_badge_class($estado) ?>">
