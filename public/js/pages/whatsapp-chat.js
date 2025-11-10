@@ -140,61 +140,92 @@
                 return;
             }
 
-            var list = createElement('div', 'list-group list-group-flush');
+            // Ensure empty state is hidden when there is data
+            if (emptyListState) {
+                emptyListState.classList.add('d-none');
+            }
 
+            // Append each conversation as a .media item (demo look & feel)
             state.conversations.forEach(function (conversation) {
-                var item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'list-group-item list-group-item-action';
-                item.setAttribute('data-id', conversation.id);
+                var media = createElement('div', 'media');
+                media.setAttribute('data-id', conversation.id);
 
-                var title = conversation.display_name || conversation.patient_full_name || conversation.wa_number;
-                var subtitleText = conversation.wa_number;
-                if (conversation.patient_full_name && conversation.patient_full_name !== title) {
-                    subtitleText = conversation.patient_full_name + ' · ' + conversation.wa_number;
+                // Avatar/link
+                var a = document.createElement('a');
+                a.className = 'align-self-center me-0';
+                a.href = '#';
+
+                // Prefer avatar_url if provided; otherwise use an icon avatar
+                var avatarEl;
+                if (conversation.avatar_url) {
+                    avatarEl = document.createElement('img');
+                    avatarEl.className = 'avatar avatar-lg';
+                    avatarEl.src = conversation.avatar_url;
+                    avatarEl.alt = '...';
+                } else {
+                    avatarEl = createElement('span', 'avatar avatar-lg bg-primary-light d-inline-flex align-items-center justify-content-center');
+                    var icon = createElement('i', 'mdi mdi-account text-primary');
+                    avatarEl.appendChild(icon);
                 }
+                a.appendChild(avatarEl);
+                media.appendChild(a);
 
-                var content = createElement('div', 'd-flex w-100 justify-content-between align-items-start');
-                var body = createElement('div', 'me-2');
-                var heading = createElement('h6', 'mb-1 fw-600 text-start', title);
-                body.appendChild(heading);
-                body.appendChild(createElement('div', 'text-muted small text-start', subtitleText));
+                // Body
+                var body = createElement('div', 'media-body');
 
+                var title = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
+                var lastAt = (conversation.last_message && conversation.last_message.at) ? new Date(conversation.last_message.at) : null;
+                var timeText = lastAt && !isNaN(lastAt.getTime()) ? lastAt.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }) : '';
+
+                var pTop = document.createElement('p');
+                var nameLink = document.createElement('a');
+                nameLink.className = 'hover-primary';
+                nameLink.href = '#';
+                var strong = document.createElement('strong');
+                strong.textContent = title;
+                nameLink.appendChild(strong);
+                pTop.appendChild(nameLink);
+
+                var timeSpan = createElement('span', 'float-end fs-10', timeText);
+                pTop.appendChild(timeSpan);
+                body.appendChild(pTop);
+
+                var previewText = '';
                 if (conversation.last_message && conversation.last_message.preview) {
-                    body.appendChild(createElement('div', 'small text-truncate text-start mt-1', conversation.last_message.preview));
+                    previewText = conversation.last_message.preview;
+                } else if (conversation.last_message && conversation.last_message.body) {
+                    previewText = conversation.last_message.body;
+                } else {
+                    previewText = '';
                 }
 
-                content.appendChild(body);
+                var pPreview = document.createElement('p');
+                pPreview.textContent = previewText;
+                body.appendChild(pPreview);
 
-                var meta = createElement('div', 'text-end');
-                if (conversation.last_message && conversation.last_message.at) {
-                    meta.appendChild(createElement('div', 'small text-muted', formatDate(conversation.last_message.at)));
-                }
+                media.appendChild(body);
 
-                if (conversation.unread_count > 0) {
-                    var badge = createElement('span', 'badge bg-primary');
-                    badge.textContent = conversation.unread_count;
-                    meta.appendChild(badge);
-                }
-
-                content.appendChild(meta);
-                item.appendChild(content);
-
+                // Active state styling
                 if (state.selectedId === conversation.id) {
-                    item.classList.add('active');
+                    media.classList.add('active');
+                    media.classList.add('bg-light');
+                    media.classList.add('rounded');
                 }
 
-                item.addEventListener('click', function () {
+                // Click handler
+                media.addEventListener('click', function (evt) {
+                    evt.preventDefault();
                     if (state.loadingConversation) {
                         return;
                     }
                     openConversation(conversation.id);
                 });
 
-                list.appendChild(item);
+                listContainer.appendChild(media);
             });
-
-            listContainer.appendChild(list);
         }
 
         function renderMessages(data) {
@@ -215,44 +246,86 @@
                 emptyChatState.classList.add('d-none');
             }
 
+            var formatTime = function (value) {
+                try {
+                    var d = new Date(value);
+                    if (!isNaN(d.getTime())) {
+                        return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                    }
+                } catch (e) {
+                }
+                return '';
+            };
+
             data.messages.forEach(function (message) {
                 var isOutbound = message.direction === 'outbound';
-                var cardClass = isOutbound
-                    ? 'card d-inline-block mb-3 float-end me-2 bg-primary text-white max-w-p80'
-                    : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80';
 
+                // Card container with left/right float and background per sample
+                var cardClass = isOutbound
+                    ? 'card d-inline-block mb-3 float-end me-2 bg-primary max-w-p80'
+                    : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80';
                 var card = createElement('div', cardClass);
+
+                // Absolute timestamp at top-right
+                var stampWrap = createElement('div', 'position-absolute pt-1 pe-2 r-0');
+                var stamp = createElement('span', 'text-extra-small' + (isOutbound ? '' : ' text-muted'), formatTime(message.timestamp));
+                stampWrap.appendChild(stamp);
+                card.appendChild(stampWrap);
+
                 var body = createElement('div', 'card-body');
 
-                var headerRow = createElement('div', 'd-flex justify-content-between align-items-center mb-2');
-                var senderName = isOutbound ? 'Tú' : 'Contacto';
-                if (message.sender_name) {
-                    senderName = message.sender_name;
+                // Header row: avatar + sender name
+                var headerRow = createElement('div', 'd-flex flex-row pb-2');
+
+                var avatarLink = createElement('a', 'd-flex');
+                avatarLink.href = '#';
+
+                // Choose avatar (prefer message.sender_avatar if present)
+                var avatarEl;
+                if (message.sender_avatar) {
+                    avatarEl = document.createElement('img');
+                    avatarEl.alt = 'Profile';
+                    avatarEl.src = appendCacheBuster(message.sender_avatar);
+                    avatarEl.className = 'avatar me-10';
+                } else {
+                    // Fallback avatar as a circle with icon
+                    avatarEl = createElement('span', 'avatar me-10 bg-primary-light d-inline-flex align-items-center justify-content-center');
+                    var ic = createElement('i', 'mdi mdi-account text-primary');
+                    avatarEl.appendChild(ic);
                 }
-                headerRow.appendChild(createElement('span', 'fw-600' + (isOutbound ? ' text-white' : ''), senderName));
-                headerRow.appendChild(createElement('span', 'small ' + (isOutbound ? 'text-white-50' : 'text-muted'), formatDate(message.timestamp)));
+                avatarLink.appendChild(avatarEl);
+                headerRow.appendChild(avatarLink);
+
+                var flexGrow = createElement('div', 'd-flex flex-grow-1 min-width-zero');
+                var nameWrap = createElement('div', 'm-2 ps-0 align-self-center d-flex flex-column flex-lg-row justify-content-between');
+                var inner = createElement('div', 'min-width-zero');
+                var nameP = createElement('p', 'mb-0 fs-16' + (isOutbound ? '' : ' text-dark'));
+                var senderName = message.sender_name || (isOutbound ? 'Tú' : (data.patient_full_name || data.display_name || data.wa_number || 'Contacto'));
+                nameP.textContent = senderName;
+                inner.appendChild(nameP);
+                nameWrap.appendChild(inner);
+                flexGrow.appendChild(nameWrap);
+                headerRow.appendChild(flexGrow);
+
                 body.appendChild(headerRow);
 
+                // Message text block with left padding (ps-55)
+                var textWrap = createElement('div', 'chat-text-start ps-55');
+                var paragraph = createElement('p', 'mb-0 text-semi-muted');
                 if (message.body) {
-                    var paragraph = createElement('p', 'mb-2' + (isOutbound ? ' text-white' : ' text-dark'));
                     paragraph.textContent = message.body;
-                    body.appendChild(paragraph);
                 } else {
-                    var placeholderClass = 'mb-2 fst-italic' + (isOutbound ? ' text-white-50' : ' text-muted');
-                    body.appendChild(createElement('p', placeholderClass, '[Contenido sin vista previa]'));
+                    paragraph.textContent = '[Contenido sin vista previa]';
                 }
-
-                if (message.status) {
-                    var footerRow = createElement('div', 'd-flex justify-content-end small ' + (isOutbound ? 'text-white-50' : 'text-muted'));
-                    footerRow.appendChild(createElement('span', '', 'Estado: ' + message.status));
-                    body.appendChild(footerRow);
-                }
+                textWrap.appendChild(paragraph);
+                body.appendChild(textWrap);
 
                 card.appendChild(body);
                 messageContainer.appendChild(card);
                 messageContainer.appendChild(createElement('div', 'clearfix'));
             });
 
+            // Scroll to bottom after rendering
             messageContainer.scrollTop = messageContainer.scrollHeight;
         }
 
@@ -533,7 +606,7 @@
                         messageInput.value = '';
                     }
                     loadConversations().then(function () {
-                        openConversation(state.selectedId, { silent: true });
+                        openConversation(state.selectedId, {silent: true});
                     });
                 }).catch(function (error) {
                     console.error('No fue posible enviar el mensaje', error);
@@ -571,7 +644,7 @@
 
                 var promises = [loadConversations()];
                 if (state.selectedId) {
-                    promises.push(openConversation(state.selectedId, { silent: true }));
+                    promises.push(openConversation(state.selectedId, {silent: true}));
                 }
 
                 Promise.all(promises).catch(function (error) {
