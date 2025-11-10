@@ -7,12 +7,15 @@ use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 
 use function array_map;
+use function array_unique;
+use function array_values;
 use function is_array;
 use function is_scalar;
 use function is_string;
 use function mb_strtolower;
 use function preg_match;
 use function preg_replace;
+use function in_array;
 use function str_contains;
 use function str_pad;
 use function strlen;
@@ -29,6 +32,10 @@ class ScenarioEngine
      * @var array<string, mixed>
      */
     private array $flow;
+    /**
+     * @var array<int, string>
+     */
+    private array $menuKeywords;
 
     public function __construct(
         Messenger $messenger,
@@ -44,6 +51,7 @@ class ScenarioEngine
         $this->patientLookup = $patientLookup;
         $this->consentRepository = $consentRepository;
         $this->flow = $flow;
+        $this->menuKeywords = $this->collectMenuKeywords($flow);
     }
 
     /**
@@ -70,6 +78,10 @@ class ScenarioEngine
         $handled = false;
 
         foreach ($this->flow['scenarios'] ?? [] as $scenario) {
+            if ($this->shouldBypassScenario($scenario, $facts)) {
+                continue;
+            }
+
             if (!$this->scenarioMatches($scenario, $facts)) {
                 continue;
             }
@@ -104,6 +116,24 @@ class ScenarioEngine
         }
 
         return false;
+    }
+
+    /**
+     * @param array<string, mixed> $scenario
+     * @param array<string, mixed> $facts
+     */
+    private function shouldBypassScenario(array $scenario, array $facts): bool
+    {
+        if (!empty($scenario['intercept_menu'])) {
+            return false;
+        }
+
+        $message = $facts['message'] ?? '';
+        if (!is_string($message) || $message === '') {
+            return false;
+        }
+
+        return $this->isMenuKeyword($message);
     }
 
     /**
@@ -660,6 +690,66 @@ class ScenarioEngine
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $flow
+     * @return array<int, string>
+     */
+    private function collectMenuKeywords(array $flow): array
+    {
+        $keywords = [];
+
+        $sections = [];
+        if (isset($flow['entry']) && is_array($flow['entry']) && isset($flow['entry']['keywords']) && is_array($flow['entry']['keywords'])) {
+            $sections[] = $flow['entry']['keywords'];
+        }
+
+        foreach ($flow['options'] ?? [] as $option) {
+            if (!is_array($option) || !isset($option['keywords']) || !is_array($option['keywords'])) {
+                continue;
+            }
+
+            $sections[] = $option['keywords'];
+        }
+
+        if (isset($flow['menu']['options']) && is_array($flow['menu']['options'])) {
+            foreach ($flow['menu']['options'] as $option) {
+                if (!is_array($option) || !isset($option['keywords']) || !is_array($option['keywords'])) {
+                    continue;
+                }
+
+                $sections[] = $option['keywords'];
+            }
+        }
+
+        foreach ($sections as $list) {
+            foreach ($list as $keyword) {
+                if (!is_string($keyword)) {
+                    continue;
+                }
+
+                $normalized = $this->normalizeText($keyword);
+                if ($normalized !== '') {
+                    $keywords[] = $normalized;
+                }
+            }
+        }
+
+        if (empty($keywords)) {
+            return [];
+        }
+
+        return array_values(array_unique($keywords));
+    }
+
+    private function isMenuKeyword(string $keyword): bool
+    {
+        if ($keyword === '') {
+            return false;
+        }
+
+        return in_array($keyword, $this->menuKeywords, true);
     }
 
     private function normalizeText(string $text): string

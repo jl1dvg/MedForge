@@ -1,9 +1,21 @@
 (function () {
     const form = document.querySelector('[data-autoresponder-form]');
     if (!form) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                const readyForm = document.querySelector('[data-autoresponder-form]');
+                if (readyForm) {
+                    initializeAutoresponder(readyForm);
+                }
+            });
+        }
+
         return;
     }
 
+    initializeAutoresponder(form);
+
+    function initializeAutoresponder(form) {
     const flowField = document.getElementById('flow_payload');
     const validationAlert = form.querySelector('[data-validation-errors]');
     const flowBootstrap = form.querySelector('[data-flow-bootstrap]');
@@ -169,6 +181,7 @@
                 id: 'consent_confirmation',
                 name: 'Consentimiento aceptado',
                 description: 'Guarda la autorización y retoma el flujo principal.',
+                intercept_menu: true,
                 conditions: [
                     {type: 'message_in', values: ['acepto', 'autorizo', 'si autorizo', 'sí autorizo']},
                 ],
@@ -188,6 +201,7 @@
                 id: 'schedule_request',
                 name: 'Solicita agendamiento',
                 description: 'Envía botones para elegir acción y marca el estado del flujo.',
+                intercept_menu: true,
                 conditions: [
                     {type: 'message_contains', keywords: ['agendar', 'cita', 'agendamiento']},
                 ],
@@ -208,6 +222,7 @@
                 id: 'handoff_to_agent',
                 name: 'Transferir a agente',
                 description: 'Confirma la derivación y conserva el contexto.',
+                intercept_menu: true,
                 conditions: [
                     {type: 'message_contains', keywords: ['asesor', 'agente', 'humano', 'persona']},
                 ],
@@ -219,6 +234,16 @@
             },
         },
     ];
+
+    const DEFAULT_INTERCEPT_IDS = new Set([
+        'primer_contacto',
+        'captura_cedula',
+        'validar_cedula',
+        'retorno',
+        'acceso_menu_directo',
+    ]);
+
+    let scenarioSeed = Date.now();
 
     let templateCatalog = [];
     if (templateCatalogInput) {
@@ -357,10 +382,12 @@
         }
 
         const scenarios = Array.isArray(payload.scenarios) && payload.scenarios.length > 0
-            ? payload.scenarios
+            ? payload.scenarios.map((scenario) => cloneScenario(scenario))
             : [createDefaultScenario()];
 
-        const menu = Object.keys(payload.menu || {}).length > 0 ? payload.menu : createDefaultMenu();
+        const menu = Object.keys(payload.menu || {}).length > 0
+            ? JSON.parse(JSON.stringify(payload.menu))
+            : createDefaultMenu();
 
         return {
             variables,
@@ -433,6 +460,8 @@
             const idInput = card.querySelector('[data-scenario-id]');
             const nameInput = card.querySelector('[data-scenario-name]');
             const descriptionInput = card.querySelector('[data-scenario-description]');
+            const interceptToggle = card.querySelector('[data-scenario-intercept]');
+            const interceptHelp = card.querySelector('[data-scenario-intercept-help]');
             const addConditionButton = card.querySelector('[data-action="add-condition"]');
             const addActionButton = card.querySelector('[data-action="add-action"]');
             const moveUpButton = card.querySelector('[data-action="move-up"]');
@@ -460,6 +489,21 @@
                 descriptionInput.addEventListener('input', () => {
                     scenario.description = descriptionInput.value;
                 });
+            }
+
+            if (interceptToggle) {
+                interceptToggle.checked = Boolean(scenario.intercept_menu);
+                interceptToggle.addEventListener('change', () => {
+                    scenario.intercept_menu = interceptToggle.checked;
+                    if (interceptHelp) {
+                        interceptHelp.classList.toggle('d-none', interceptToggle.checked);
+                    }
+                    renderScenarioSummary();
+                });
+            }
+
+            if (interceptHelp) {
+                interceptHelp.classList.toggle('d-none', Boolean(scenario.intercept_menu));
             }
 
             if (addConditionButton) {
@@ -550,6 +594,12 @@
             const title = document.createElement('div');
             title.className = 'fw-600';
             title.textContent = `${index + 1}. ${scenario.name || scenario.id || 'Escenario sin nombre'}`;
+            if (scenario.intercept_menu) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-warning-light text-warning ms-2 align-middle';
+                badge.textContent = 'Responde antes del menú';
+                title.appendChild(badge);
+            }
 
             const meta = document.createElement('div');
             meta.className = 'text-muted small';
@@ -641,8 +691,7 @@
             }
 
             button.addEventListener('click', () => {
-                const clone = JSON.parse(JSON.stringify(entry.scenario));
-                state.scenarios.push(clone);
+                state.scenarios.push(cloneScenario(entry.scenario));
                 renderScenarios();
             });
 
@@ -2911,7 +2960,7 @@
 
         return {
             variables: variablesPayload,
-            scenarios: state.scenarios,
+            scenarios: state.scenarios.map((scenario) => prepareScenarioPayload(scenario)),
             menu: state.menu,
         };
     }
@@ -3084,6 +3133,7 @@
             scenario.conditions = Array.isArray(scenario.conditions) && scenario.conditions.length > 0
                 ? scenario.conditions
                 : [{type: 'always'}];
+            scenario.intercept_menu = Boolean(scenario.intercept_menu);
         });
     }
 
@@ -3163,13 +3213,69 @@
         }
     }
 
+    function generateScenarioId() {
+        scenarioSeed += 1;
+
+        return `scenario_${scenarioSeed}`;
+    }
+
+    function bumpScenarioSeedFromId(id) {
+        if (typeof id !== 'string') {
+            return;
+        }
+
+        const match = id.match(/_(\d+)$/);
+        if (!match) {
+            return;
+        }
+
+        const value = parseInt(match[1], 10);
+        if (Number.isNaN(value)) {
+            return;
+        }
+
+        scenarioSeed = Math.max(scenarioSeed, value);
+    }
+
+    function cloneScenario(source) {
+        const base = source ? JSON.parse(JSON.stringify(source)) : {};
+        const scenario = {
+            id: typeof base.id === 'string' && base.id.trim() !== '' ? base.id.trim() : generateScenarioId(),
+            name: typeof base.name === 'string' ? base.name : '',
+            description: typeof base.description === 'string' ? base.description : '',
+            conditions: Array.isArray(base.conditions) && base.conditions.length > 0 ? base.conditions : [{type: 'always'}],
+            actions: Array.isArray(base.actions) && base.actions.length > 0
+                ? base.actions
+                : [{type: 'send_message', message: {type: 'text', body: ''}}],
+            intercept_menu: base.intercept_menu ?? base.interceptMenu,
+        };
+
+        if (scenario.intercept_menu === undefined) {
+            scenario.intercept_menu = DEFAULT_INTERCEPT_IDS.has(scenario.id);
+        } else {
+            scenario.intercept_menu = Boolean(scenario.intercept_menu);
+        }
+
+        bumpScenarioSeedFromId(scenario.id);
+
+        return scenario;
+    }
+
+    function prepareScenarioPayload(scenario) {
+        const copy = JSON.parse(JSON.stringify(scenario || {}));
+        copy.intercept_menu = Boolean(scenario && scenario.intercept_menu);
+
+        return copy;
+    }
+
     function createDefaultScenario() {
         return {
-            id: '',
+            id: generateScenarioId(),
             name: 'Nuevo escenario',
             description: '',
             conditions: [{type: 'always'}],
             actions: [{type: 'send_message', message: {type: 'text', body: 'Mensaje de ejemplo.'}}],
+            intercept_menu: false,
         };
     }
 
@@ -3230,4 +3336,5 @@
     function normalizeText(value) {
         return value.toLowerCase().trim().replace(/\s+/g, ' ');
     }
+}
 })();

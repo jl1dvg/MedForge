@@ -138,6 +138,7 @@ class AutoresponderFlow
                 'id' => 'primer_contacto',
                 'name' => 'Primer contacto (sin consentimiento)',
                 'description' => 'Saludo inicial y solicitud de autorización de datos.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => true],
                     ['type' => 'has_consent', 'value' => false],
@@ -168,6 +169,7 @@ class AutoresponderFlow
                 'id' => 'captura_cedula',
                 'name' => 'Captura de cédula',
                 'description' => 'Gestiona la aceptación del consentimiento y solicita el identificador.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'consentimiento_pendiente'],
                     ['type' => 'message_in', 'values' => ['acepto', 'si', 'sí']],
@@ -189,6 +191,7 @@ class AutoresponderFlow
                 'id' => 'validar_cedula',
                 'name' => 'Validar cédula',
                 'description' => 'Valida el formato y existencia del paciente.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'esperando_cedula'],
                     ['type' => 'message_matches', 'pattern' => '^\\d{6,10}$'],
@@ -228,6 +231,7 @@ class AutoresponderFlow
                 'id' => 'retorno',
                 'name' => 'Retorno (ya conocido)',
                 'description' => 'Contactos conocidos con consentimiento.',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => false],
                     ['type' => 'has_consent', 'value' => true],
@@ -247,6 +251,7 @@ class AutoresponderFlow
                 'id' => 'acceso_menu_directo',
                 'name' => 'Acceso directo al menú',
                 'description' => 'Permite abrir el menú cuando el contacto escribe un atajo como "menu" u "hola".',
+                'intercept_menu' => true,
                 'conditions' => [
                     ['type' => 'has_consent', 'value' => true],
                     ['type' => 'message_in', 'values' => self::menuKeywords()],
@@ -427,13 +432,30 @@ class AutoresponderFlow
 
         $actions = self::sanitizeScenarioActions($scenario['actions'] ?? []);
 
+        $interceptMenu = $scenario['intercept_menu'] ?? $scenario['interceptMenu'] ?? null;
+        if ($interceptMenu === null) {
+            $interceptMenu = self::shouldInterceptMenuByDefault($id);
+        }
+
         return [
             'id' => $id,
             'name' => $name,
             'description' => $description,
             'conditions' => $conditions,
             'actions' => $actions,
+            'intercept_menu' => (bool) $interceptMenu,
         ];
+    }
+
+    private static function shouldInterceptMenuByDefault(string $id): bool
+    {
+        return in_array($id, [
+            'primer_contacto',
+            'captura_cedula',
+            'validar_cedula',
+            'retorno',
+            'acceso_menu_directo',
+        ], true);
     }
 
     /**

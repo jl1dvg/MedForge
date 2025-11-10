@@ -955,6 +955,13 @@ switch ($statusType) {
             <div class="flex-grow-1">
                 <input type="text" class="form-control form-control-sm mb-2" placeholder="Nombre del escenario" data-scenario-name>
                 <textarea class="form-control form-control-sm" rows="2" placeholder="Descripción" data-scenario-description></textarea>
+                <div class="form-check form-switch form-switch-sm mt-2">
+                    <input class="form-check-input" type="checkbox" data-scenario-intercept>
+                    <label class="form-check-label small">Responder antes que el menú de bienvenida</label>
+                </div>
+                <p class="text-muted small mb-0" data-scenario-intercept-help>
+                    Cuando está desactivado, el mensaje de bienvenida y el menú responderán primero a palabras como 'hola' o 'menú'.
+                </p>
             </div>
             <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-secondary" data-action="move-up"><i class="mdi mdi-arrow-up"></i></button>
