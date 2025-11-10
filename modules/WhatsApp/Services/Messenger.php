@@ -307,6 +307,162 @@ class Messenger
 
     /**
      * @param string|array<int, string> $recipients
+     * @param array<string, mixed> $options
+     */
+    public function sendImageMessage($recipients, string $url, array $options = []): bool
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return false;
+        }
+
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+
+        $caption = isset($options['caption']) ? MessageSanitizer::sanitize((string) $options['caption']) : '';
+
+        $recipients = PhoneNumberFormatter::normalizeRecipients($recipients, $config);
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $allSucceeded = true;
+        foreach ($recipients as $recipient) {
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to' => $recipient,
+                'type' => 'image',
+                'image' => [
+                    'link' => $url,
+                ],
+            ];
+
+            if ($caption !== '') {
+                $payload['image']['caption'] = $caption;
+            }
+
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $preview = $caption !== '' ? $caption : '[Imagen]';
+                $this->conversations->recordOutgoing($recipient, 'image', $preview, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
+        }
+
+        return $allSucceeded;
+    }
+
+    /**
+     * @param string|array<int, string> $recipients
+     * @param array<string, mixed> $options
+     */
+    public function sendDocumentMessage($recipients, string $url, array $options = []): bool
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return false;
+        }
+
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+
+        $caption = isset($options['caption']) ? MessageSanitizer::sanitize((string) $options['caption']) : '';
+        $filename = isset($options['filename']) ? MessageSanitizer::sanitize((string) $options['filename']) : '';
+
+        $recipients = PhoneNumberFormatter::normalizeRecipients($recipients, $config);
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $allSucceeded = true;
+        foreach ($recipients as $recipient) {
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to' => $recipient,
+                'type' => 'document',
+                'document' => [
+                    'link' => $url,
+                ],
+            ];
+
+            if ($caption !== '') {
+                $payload['document']['caption'] = $caption;
+            }
+
+            if ($filename !== '') {
+                $payload['document']['filename'] = $filename;
+            }
+
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $preview = $filename !== '' ? $filename : '[Documento]';
+                $this->conversations->recordOutgoing($recipient, 'document', $preview, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
+        }
+
+        return $allSucceeded;
+    }
+
+    /**
+     * @param string|array<int, string> $recipients
+     * @param array<string, mixed> $options
+     */
+    public function sendLocationMessage($recipients, float $latitude, float $longitude, array $options = []): bool
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return false;
+        }
+
+        $name = isset($options['name']) ? MessageSanitizer::sanitize((string) $options['name']) : '';
+        $address = isset($options['address']) ? MessageSanitizer::sanitize((string) $options['address']) : '';
+
+        $recipients = PhoneNumberFormatter::normalizeRecipients($recipients, $config);
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $allSucceeded = true;
+        foreach ($recipients as $recipient) {
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to' => $recipient,
+                'type' => 'location',
+                'location' => [
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                ],
+            ];
+
+            if ($name !== '') {
+                $payload['location']['name'] = $name;
+            }
+
+            if ($address !== '') {
+                $payload['location']['address'] = $address;
+            }
+
+            $sent = $this->transport->send($config, $payload);
+            if ($sent) {
+                $preview = sprintf('[Ubicación] %.6f, %.6f', $latitude, $longitude);
+                $this->conversations->recordOutgoing($recipient, 'location', $preview, $payload);
+            }
+
+            $allSucceeded = $sent && $allSucceeded;
+        }
+
+        return $allSucceeded;
+    }
+
+    /**
+     * @param string|array<int, string> $recipients
      * @param array<string, mixed> $template
      */
     public function sendTemplateMessage($recipients, array $template): bool
