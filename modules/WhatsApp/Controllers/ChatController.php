@@ -42,6 +42,7 @@ class ChatController extends BaseController
     public function listConversations(): void
     {
         $this->requireAuth();
+        $this->preventCaching();
 
         $search = $this->getQuery('search');
         $limit = $this->getQueryInt('limit');
@@ -56,6 +57,7 @@ class ChatController extends BaseController
     public function showConversation(int $conversationId): void
     {
         $this->requireAuth();
+        $this->preventCaching();
 
         $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
         if ($conversation === null) {
@@ -70,6 +72,7 @@ class ChatController extends BaseController
     public function sendMessage(): void
     {
         $this->requireAuth();
+        $this->preventCaching();
 
         $payload = $this->getBody();
         $message = isset($payload['message']) ? trim((string) $payload['message']) : '';
@@ -138,6 +141,17 @@ class ChatController extends BaseController
                 'conversation' => $conversation,
             ],
         ]);
+    }
+
+    private function preventCaching(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
     }
 
     private function getQuery(string $key): ?string
