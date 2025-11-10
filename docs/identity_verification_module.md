@@ -4,7 +4,7 @@ Esta guía describe cómo habilitar y utilizar el módulo **IdentityVerification
 
 ## 1. Requisitos previos
 
-1. **Migraciones ejecutadas**: Aplique el script [`database/migrations/20241201_patient_identity_verification.sql`](../database/migrations/20241201_patient_identity_verification.sql) en su base de datos MySQL/MariaDB. Esto crea las tablas:
+1. **Migraciones ejecutadas**: Aplique los scripts [`database/migrations/20241201_patient_identity_verification.sql`](../database/migrations/20241201_patient_identity_verification.sql) y [`database/migrations/20250116_identity_verification_policies.sql`](../database/migrations/20250116_identity_verification_policies.sql) en su base de datos MySQL/MariaDB. El primero crea las tablas base y el segundo añade el estado `expired`, la columna `expired_at` y amplía el catálogo de resultados para gestionar la caducidad automática.
    - `patient_identity_certifications` (registros maestros de cada paciente)
    - `patient_identity_checkins` (historial de verificaciones)
 
@@ -55,11 +55,18 @@ La vista principal del módulo se encuentra en [`modules/IdentityVerification/vi
    - Firma extraída de la cédula (opcional) para mantener evidencia documental.
 3. **Captura de documento**: Se registran número y tipo de documento, además de fotografías del anverso y reverso. Ambos lados son necesarios para que la certificación quede en estado `verified`.
 4. **Captura facial**: La interfaz permite usar la cámara integrada o subir una imagen existente. El sistema genera una plantilla biométrica que se utilizará en los check-ins.
-5. **Almacenamiento**: Al guardar, el módulo crea o actualiza el registro en `patient_identity_certifications`. Si falta alguno de los elementos obligatorios (firma manuscrita, plantilla facial o fotos del documento), el estado queda en `pending`; de lo contrario pasa a `verified`.
+5. **Almacenamiento**: Al guardar, el módulo crea o actualiza el registro en `patient_identity_certifications`. Si falta alguno de los elementos obligatorios (firma manuscrita, plantilla facial o fotos del documento), el estado queda en `pending`; de lo contrario pasa a `verified`. Cuando una certificación supera la vigencia configurada en Ajustes, el proceso programado de caducidad la marca como `expired` hasta que se recapture la biometría.
 6. **Check-in facial**: Durante la admisión, el personal captura únicamente el rostro del paciente. `VerificationController::verify()` compara la plantilla facial y almacena un registro en `patient_identity_checkins` con el resultado (`approved`, `manual_review` o `rejected`).
-7. **Comprobante de atención**: Para resultados `approved` (y `manual_review` si la política lo permite) puede generarse un documento HTML/PDF desde `/pacientes/certificaciones/comprobante?checkin_id={id}` que incrusta la firma registrada, los datos del documento y los detalles del check-in.
+7. **Comprobante de atención**: Para resultados `approved` (y `manual_review` si la política lo permite) puede generarse un comprobante desde `/pacientes/certificaciones/comprobante?checkin_id={id}`. La configuración permite emitir tanto HTML como PDF firmado digitalmente, incorporando firma, documento y metadatos del check-in.
 
-## 5. Buenas prácticas operativas
+## 5. Configuración y automatizaciones
+
+- **Panel de ajustes**: en **Configuración → Verificación de identidad** se definen la vigencia en días, umbrales mínimos de aprobación/rechazo y el canal de escalamiento interno. Los umbrales alimentan la lógica de `VerificationController::determineResult()`; modificarlos permite calibrar el riesgo por sede o tipo de procedimiento.
+- **Escalamiento automático**: cuando falta evidencia (firma o rostro) o la certificación está vencida, el controlador registra un ticket interno en CRM (prioridad configurable) para alertar al personal. El ajuste puede desactivarse o cambiar el responsable por defecto.
+- **Caducidad programada**: la tarea de cron `identity-verification-expiration` se ejecuta cada 24 horas (`php cron.php --task=identity-verification-expiration`) y marca como `expired` las certificaciones cuyo último check-in exceda la vigencia definida. Cada caducidad genera un ticket o alerta según la política configurada.
+- **Integración con Agenda**: la pantalla de visitas destaca el estado biométrico del paciente y bloquea el flujo mostrando alertas cuando la certificación está pendiente o vencida. El enlace dirige directamente al módulo de certificación para completar el proceso antes de continuar con la atención.
+
+## 6. Buenas prácticas operativas
 
 - Valide que los pacientes actualicen su cédula en `patient_data` antes de iniciar la captura biométrica para evitar rechazos por inconsistencia documental.
  - Mantenga políticas de retención acordes a la legislación local sobre datos biométricos; el directorio `storage/patient_verification/` puede configurarse con rotaciones o cifrado.
@@ -67,7 +74,7 @@ La vista principal del módulo se encuentra en [`modules/IdentityVerification/vi
 - Registre capacitaciones al personal administrativo para garantizar capturas limpias (buena iluminación, documentos legibles, etc.).
 - Antes de cada atención confirme en la tabla de certificaciones que el estado sea `verified`; si se mantiene en `pending`, capture los elementos faltantes para evitar rechazos en el check-in.
 
-## 6. Solución de problemas
+## 7. Solución de problemas
 
 | Problema | Posible causa | Acción recomendada |
 | --- | --- | --- |

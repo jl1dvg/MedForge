@@ -4,6 +4,8 @@ namespace Modules\Agenda\Controllers;
 
 use Core\BaseController;
 use Modules\Agenda\Models\AgendaModel;
+use Modules\IdentityVerification\Models\VerificationModel;
+use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
 
@@ -11,12 +13,16 @@ class AgendaController extends BaseController
 {
     private AgendaModel $agenda;
     private PacienteService $pacienteService;
+    private VerificationModel $verificationModel;
+    private VerificationPolicyService $verificationPolicy;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->agenda = new AgendaModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
+        $this->verificationModel = new VerificationModel($pdo);
+        $this->verificationPolicy = new VerificationPolicyService($pdo);
     }
 
     public function index(): void
@@ -65,10 +71,20 @@ class AgendaController extends BaseController
             return;
         }
 
+        $identityVerification = [
+            'summary' => null,
+            'requires_checkin' => true,
+            'validity_days' => $this->verificationPolicy->getValidityDays(),
+        ];
+
         if (!empty($detalle['hc_number'])) {
             $hcNumber = (string) $detalle['hc_number'];
             $detalle['estado_cobertura'] = $this->pacienteService->verificarCoberturaPaciente($hcNumber);
             $detalle['paciente_contexto'] = $this->pacienteService->obtenerContextoPaciente($hcNumber);
+
+            $summary = $this->verificationModel->getStatusSummaryByPatient($hcNumber);
+            $identityVerification['summary'] = $summary;
+            $identityVerification['requires_checkin'] = $summary === null || ($summary['status'] ?? '') !== 'verified';
         }
 
         $this->render(
@@ -76,6 +92,7 @@ class AgendaController extends BaseController
             [
                 'pageTitle' => 'Encuentro #' . $visitaId,
                 'visita' => $detalle,
+                'identityVerification' => $identityVerification,
             ]
         );
     }

@@ -138,7 +138,7 @@ class TicketModel
         return $ticket;
     }
 
-    public function create(array $data, int $userId): array
+    public function create(array $data, ?int $userId): array
     {
         $status = $this->sanitizeStatus($data['status'] ?? null);
         $priority = $this->sanitizePriority($data['priority'] ?? null);
@@ -146,6 +146,7 @@ class TicketModel
         $assigned = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
         $lead = !empty($data['related_lead_id']) ? (int) $data['related_lead_id'] : null;
         $project = !empty($data['related_project_id']) ? (int) $data['related_project_id'] : null;
+        $creator = $userId !== null ? (int) $userId : null;
 
         $stmt = $this->pdo->prepare("
             INSERT INTO crm_tickets
@@ -161,7 +162,7 @@ class TicketModel
         $stmt->bindValue(':assigned_to', $assigned, $assigned ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':related_lead_id', $lead, $lead ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':related_project_id', $project, $project ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':created_by', $creator, $creator !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->execute();
 
         $ticketId = (int) $this->pdo->lastInsertId();

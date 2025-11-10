@@ -587,6 +587,61 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'identity_verification' => [
+                'title' => 'Verificación de identidad',
+                'icon' => 'fa-solid fa-user-check',
+                'description' => 'Configura políticas de vigencia, umbrales biométricos y el escalamiento automático del módulo de certificación.',
+                'groups' => [
+                    [
+                        'id' => 'policies',
+                        'title' => 'Políticas y umbrales biométricos',
+                        'description' => 'Define cuánto tiempo permanece vigente una certificación y los puntajes requeridos para aprobar o rechazar un check-in.',
+                        'fields' => [
+                            self::numberField('identity_verification_validity_days', 'Días de vigencia de una certificación', 365, 'Usa 0 para desactivar la caducidad automática.'),
+                            self::numberField('identity_verification_face_approve_threshold', 'Puntaje mínimo rostro (aprobación)', 80),
+                            self::numberField('identity_verification_face_reject_threshold', 'Puntaje mínimo rostro (rechazo)', 40),
+                            self::numberField('identity_verification_signature_approve_threshold', 'Puntaje mínimo firma (aprobación)', 80),
+                            self::numberField('identity_verification_signature_reject_threshold', 'Puntaje mínimo firma (rechazo)', 40),
+                            self::numberField('identity_verification_single_approve_threshold', 'Puntaje mínimo biometría única (aprobación)', 85),
+                            self::numberField('identity_verification_single_reject_threshold', 'Puntaje mínimo biometría única (rechazo)', 40),
+                        ],
+                    ],
+                    [
+                        'id' => 'escalation',
+                        'title' => 'Escalamiento automático',
+                        'description' => 'Controla la generación de tickets internos cuando falte evidencia biométrica o venza una certificación.',
+                        'fields' => [
+                            self::checkboxField('identity_verification_auto_escalate', 'Habilitar escalamiento automático', true, 'Genera avisos internos cuando se detecten incidentes en el check-in.'),
+                            self::selectField('identity_verification_escalation_channel', 'Canal de escalamiento', [
+                                'crm_ticket' => 'Ticket CRM interno',
+                                'none' => 'Sin escalamiento',
+                            ], 'crm_ticket'),
+                            self::selectField('identity_verification_escalation_priority', 'Prioridad de tickets', [
+                                'baja' => 'Baja',
+                                'media' => 'Media',
+                                'alta' => 'Alta',
+                                'critica' => 'Crítica',
+                            ], 'alta'),
+                            self::numberField('identity_verification_escalation_assignee', 'Asignar tickets al usuario ID', 0, 'Utiliza 0 para dejar el ticket sin asignar.'),
+                        ],
+                    ],
+                    [
+                        'id' => 'consents',
+                        'title' => 'Consentimientos y comprobantes',
+                        'description' => 'Configura la generación de documentos PDF firmados digitalmente para respaldar cada check-in.',
+                        'fields' => [
+                            self::checkboxField('identity_verification_generate_pdf', 'Generar PDF firmado digitalmente', true),
+                            self::textField('identity_verification_pdf_signature_certificate', 'Certificado digital (ruta)'),
+                            self::textField('identity_verification_pdf_signature_key', 'Clave privada (ruta)'),
+                            self::passwordField('identity_verification_pdf_signature_password', 'Contraseña del certificado'),
+                            self::textField('identity_verification_pdf_signature_name', 'Nombre del firmante digital'),
+                            self::textField('identity_verification_pdf_signature_location', 'Ubicación de la firma'),
+                            self::textField('identity_verification_pdf_signature_reason', 'Motivo registrado en el PDF', false, 'Se mostrará en el panel de firma digital.'),
+                            self::textField('identity_verification_pdf_signature_image', 'Imagen de la firma digital (ruta)'),
+                        ],
+                    ],
+                ],
+            ],
         ];
     }
 

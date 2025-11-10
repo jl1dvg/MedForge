@@ -456,9 +456,23 @@
             if (!certification.document_number) {
                 missing.push('Número de documento');
             }
-            const missingHtml = missing.length > 0
-                ? `<div class="alert alert-warning mt-3"><strong>Datos faltantes:</strong> ${missing.map(escapeHtml).join(' · ')}</div>`
-                : '<div class="alert alert-success mt-3 mb-0"><strong>Certificación completa.</strong> Puede continuar con el check-in facial.</div>';
+
+            const statusKey = String(certification.status ?? 'pending').toLowerCase();
+            const statusInfo = {
+                verified: { badge: 'success', label: 'Verificada' },
+                pending: { badge: 'warning', label: 'Pendiente' },
+                expired: { badge: 'danger', label: 'Vencida' },
+                revoked: { badge: 'danger', label: 'Revocada' },
+            }[statusKey] || { badge: 'secondary', label: 'Sin certificación' };
+
+            let statusAlert;
+            if (statusKey === 'expired') {
+                statusAlert = '<div class="alert alert-danger mt-3 mb-0"><strong>Certificación vencida.</strong> Capture nuevamente rostro y firma para habilitar el check-in.</div>';
+            } else if (missing.length > 0) {
+                statusAlert = `<div class="alert alert-warning mt-3"><strong>Datos faltantes:</strong> ${missing.map(escapeHtml).join(' · ')}</div>`;
+            } else {
+                statusAlert = '<div class="alert alert-success mt-3 mb-0"><strong>Certificación completa.</strong> Puede continuar con el check-in facial.</div>';
+            }
             const lastVerification = certification.last_verification_at
                 ? `<span class="d-block">${escapeHtml(certification.last_verification_at)}</span><small class="text-muted">Resultado: ${escapeHtml(certification.last_verification_result ?? 'N/A')}</small>`
                 : '<span class="text-muted">Sin verificaciones registradas</span>';
@@ -477,7 +491,7 @@
                         </div>
                         <div class="mb-2">
                             <strong>Estado de certificación:</strong>
-                            <span class="badge bg-${certification.status === 'verified' ? 'success' : 'warning'}">${escapeHtml(certification.status === 'verified' ? 'Verificada' : 'Pendiente')}</span>
+                            <span class="badge bg-${statusInfo.badge}">${escapeHtml(statusInfo.label)}</span>
                         </div>
                         <div>
                             <strong>Última verificación:</strong>
@@ -490,8 +504,8 @@
                         </button>
                         <small class="d-block text-muted mt-2">Se eliminarán las capturas actuales y podrá registrar nuevamente los datos biométricos.</small>
                     </div>
-                </div>
-                ${missingHtml}
+                    </div>
+                ${statusAlert}
             `;
 
             const deleteButton = summaryContainer.querySelector('[data-action="delete-certification"]');
