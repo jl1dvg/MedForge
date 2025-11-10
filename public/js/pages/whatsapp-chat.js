@@ -331,25 +331,37 @@
             });
         }
 
-        function openConversation(id) {
+        function openConversation(id, options) {
             if (!endpoints.conversation) {
                 return;
             }
 
-            state.loadingConversation = true;
-            state.selectedId = id;
-            toggleComposer(false);
-            if (errorAlert) {
-                errorAlert.classList.add('d-none');
+            var opts = options || {};
+            var silent = !!opts.silent;
+
+            if (state.loadingConversation && !silent) {
+                return;
             }
-            renderConversations();
+
+            state.selectedId = id;
+
+            if (!silent) {
+                state.loadingConversation = true;
+                toggleComposer(false);
+                if (errorAlert) {
+                    errorAlert.classList.add('d-none');
+                }
+                renderConversations();
+            }
 
             fetch(getConversationEndpoint(id), {
                 headers: {
                     'Accept': 'application/json'
                 }
             }).then(function (response) {
-                state.loadingConversation = false;
+                if (!silent) {
+                    state.loadingConversation = false;
+                }
                 return response.json();
             }).then(function (payload) {
                 if (!payload || !payload.ok) {
@@ -359,14 +371,18 @@
                 updateHeader(payload.data);
                 renderMessages(payload.data);
             }).catch(function (error) {
-                state.loadingConversation = false;
-                state.selectedId = null;
-                console.error('No fue posible cargar la conversación', error);
-                toggleComposer(true);
-                renderConversations();
-                if (errorAlert) {
-                    errorAlert.textContent = error.message || 'No fue posible cargar la conversación seleccionada.';
-                    errorAlert.classList.remove('d-none');
+                if (!silent) {
+                    state.loadingConversation = false;
+                    state.selectedId = null;
+                    console.error('No fue posible cargar la conversación', error);
+                    toggleComposer(true);
+                    renderConversations();
+                    if (errorAlert) {
+                        errorAlert.textContent = error.message || 'No fue posible cargar la conversación seleccionada.';
+                        errorAlert.classList.remove('d-none');
+                    }
+                } else {
+                    console.error('No fue posible actualizar la conversación en segundo plano', error);
                 }
             });
         }
@@ -486,7 +502,7 @@
                         messageInput.value = '';
                     }
                     loadConversations();
-                    openConversation(state.selectedId);
+                    openConversation(state.selectedId, { silent: true });
                 }).catch(function (error) {
                     console.error('No fue posible enviar el mensaje', error);
                     if (errorAlert) {
@@ -506,7 +522,32 @@
             }, 300));
         }
 
+        var autoRefreshId = null;
+
+        function startAutoRefresh() {
+            if (autoRefreshId !== null) {
+                return;
+            }
+
+            autoRefreshId = window.setInterval(function () {
+                loadConversations();
+                if (state.selectedId) {
+                    openConversation(state.selectedId, { silent: true });
+                }
+            }, 5000);
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshId !== null) {
+                window.clearInterval(autoRefreshId);
+                autoRefreshId = null;
+            }
+        }
+
+        window.addEventListener('beforeunload', stopAutoRefresh);
+
         toggleComposer(true);
         loadConversations();
+        startAutoRefresh();
     });
 })();
