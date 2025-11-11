@@ -232,17 +232,53 @@ class DashboardController
 
     public function getTopDoctores()
     {
-        $sql = "SELECT cirujano_1, COUNT(*) as total
-            FROM protocolo_data
-            WHERE cirujano_1 IS NOT NULL 
-              AND cirujano_1 != ''
-              AND fecha_inicio >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
-            GROUP BY cirujano_1
+        $sql = "SELECT
+                pr.cirujano_1,
+                COUNT(*) AS total,
+                (
+                    SELECT u.profile_photo
+                    FROM users u
+                    WHERE u.profile_photo IS NOT NULL
+                      AND u.profile_photo <> ''
+                      AND (
+                        LOWER(TRIM(u.nombre)) = LOWER(TRIM(pr.cirujano_1))
+                        OR LOWER(TRIM(pr.cirujano_1)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                        OR LOWER(TRIM(u.username)) = LOWER(TRIM(pr.cirujano_1))
+                        OR LOWER(TRIM(u.email)) = LOWER(TRIM(pr.cirujano_1))
+                      )
+                    ORDER BY u.id ASC
+                    LIMIT 1
+                ) AS avatar_path
+            FROM protocolo_data pr
+            WHERE pr.cirujano_1 IS NOT NULL
+              AND pr.cirujano_1 != ''
+              AND pr.fecha_inicio >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+            GROUP BY pr.cirujano_1
             ORDER BY total DESC
             LIMIT 5";
 
         $stmt = $this->db->query($sql);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $doctores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($doctores as &$doctor) {
+            $doctor['avatar'] = $this->formatProfilePhoto($doctor['avatar_path'] ?? null);
+            unset($doctor['avatar_path']);
+        }
+
+        return $doctores;
+    }
+
+    private function formatProfilePhoto(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        if (preg_match('#^(?:https?:)?//#i', $path)) {
+            return $path;
+        }
+
+        return asset(ltrim($path, '/'));
     }
 
     public function getEstadisticasPorAfiliacion()

@@ -1,4 +1,22 @@
 <?php // views/layout.php ?>
+<?php
+if (!function_exists('format_profile_photo_url')) {
+    function format_profile_photo_url(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+
+        if (preg_match('#^(?:https?:)?//#i', $path)) {
+            return $path;
+        }
+
+        $normalized = ltrim($path, '/');
+
+        return asset($normalized);
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -63,6 +81,52 @@
     ?>
 
     <?php if (!$isAuthView): ?>
+
+        <?php
+        $currentUser = isset($currentUser) && is_array($currentUser) ? $currentUser : [];
+        if (!array_key_exists('id', $currentUser)) {
+            $currentUser['id'] = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        }
+
+        $pdoInstance = $GLOBALS['pdo'] ?? null;
+
+        if (($currentUser['id'] ?? null) && $pdoInstance instanceof \PDO) {
+            try {
+                $stmt = $pdoInstance->prepare('SELECT u.id, u.username, u.nombre, u.email, u.profile_photo, r.name AS role_name FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = :id LIMIT 1');
+                $stmt->execute([':id' => $currentUser['id']]);
+                $userRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                if ($userRow) {
+                    $currentUser = array_merge($currentUser, $userRow);
+                }
+            } catch (\Throwable $exception) {
+                error_log('No fue posible cargar el usuario autenticado: ' . $exception->getMessage());
+            }
+        }
+
+        $currentUser['profile_photo_url'] = format_profile_photo_url($currentUser['profile_photo'] ?? null);
+
+        $displayNameCandidates = [
+            $currentUser['nombre'] ?? null,
+            $currentUser['username'] ?? null,
+            $username ?? null,
+        ];
+
+        foreach ($displayNameCandidates as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $currentUser['display_name'] = trim($candidate);
+                break;
+            }
+        }
+
+        if (!isset($currentUser['display_name']) || $currentUser['display_name'] === '') {
+            $currentUser['display_name'] = 'Usuario';
+        }
+
+        if (!isset($username) || trim((string) $username) === '') {
+            $username = $currentUser['display_name'];
+        }
+        ?>
 
         <!-- Encabezado -->
         <?php include __DIR__ . '/partials/header.php'; ?>
