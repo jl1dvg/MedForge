@@ -17,17 +17,17 @@ $checks = [
     'models/IplPlanificadorModel.php' => [
         'LOWER(p.afiliacion)' => 'Evitar LOWER en filtros de afiliación (IPL planificador)',
     ],
-    'models/SolicitudModel.php' => [
-        'LOWER(pd.afiliacion)' => 'Usar colaciones en filtros de afiliación (SolicitudModel)',
-        'LOWER(sp.doctor)' => 'Usar colaciones en filtros de doctor (SolicitudModel)',
-        'LOWER(sp.prioridad)' => 'Usar colaciones en filtros de prioridad (SolicitudModel)',
-        'TRIM(sp.procedimiento)' => 'Evitar TRIM en columnas indexadas (SolicitudModel)',
+    'models/ExamenesModel.php' => [
+        'LOWER(pd.afiliacion)' => 'Usar colaciones en filtros de afiliación (ExamenesModel)',
+        'LOWER(sp.doctor)' => 'Usar colaciones en filtros de doctor (ExamenesModel)',
+        'LOWER(sp.prioridad)' => 'Usar colaciones en filtros de prioridad (ExamenesModel)',
+        'TRIM(sp.procedimiento)' => 'Evitar TRIM en columnas indexadas (ExamenesModel)',
     ],
-    'modules/solicitudes/models/SolicitudModel.php' => [
-        'LOWER(pd.afiliacion)' => 'Usar colaciones en filtros de afiliación (mod SolicitudModel)',
-        'LOWER(sp.doctor)' => 'Usar colaciones en filtros de doctor (mod SolicitudModel)',
-        'LOWER(sp.prioridad)' => 'Usar colaciones en filtros de prioridad (mod SolicitudModel)',
-        'TRIM(sp.procedimiento)' => 'Evitar TRIM en columnas indexadas (mod SolicitudModel)',
+    'modules/solicitudes/models/ExamenesModel.php' => [
+        'LOWER(pd.afiliacion)' => 'Usar colaciones en filtros de afiliación (mod ExamenesModel)',
+        'LOWER(sp.doctor)' => 'Usar colaciones en filtros de doctor (mod ExamenesModel)',
+        'LOWER(sp.prioridad)' => 'Usar colaciones en filtros de prioridad (mod ExamenesModel)',
+        'TRIM(sp.procedimiento)' => 'Evitar TRIM en columnas indexadas (mod ExamenesModel)',
     ],
 ];
 

@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
 
-use Controllers\SolicitudController;
+use Controllers\ExamenesController;
 
-$controller = new SolicitudController($pdo);
+$controller = new ExamenesController($pdo);
 
 $filtros = [
     'afiliacion' => $_POST['afiliacion'] ?? '',

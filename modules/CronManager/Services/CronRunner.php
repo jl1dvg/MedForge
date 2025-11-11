@@ -13,7 +13,7 @@ use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Solicitudes\Services\SolicitudReminderService;
+use Modules\Solicitudes\Services\ExamenesReminderService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -303,7 +303,7 @@ class CronRunner
         }
 
         $this->ensureSolicitudModuleLoaded();
-        $service = new SolicitudReminderService($this->pdo, $pusher);
+        $service = new ExamenesReminderService($this->pdo, $pusher);
         $sent = $service->dispatchUpcoming(72, 48);
 
         return [
@@ -557,7 +557,7 @@ class CronRunner
         }
 
         $bootstrap = BASE_PATH . '/modules/solicitudes/index.php';
-        $model = BASE_PATH . '/modules/solicitudes/models/SolicitudModel.php';
+        $model = BASE_PATH . '/modules/solicitudes/models/ExamenesModel.php';
 
         if (is_file($bootstrap)) {
             require_once $bootstrap;

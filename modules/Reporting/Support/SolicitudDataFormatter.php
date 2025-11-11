@@ -5,7 +5,7 @@ namespace Modules\Reporting\Support;
 use DateTimeImmutable;
 
 /**
- * Normaliza y enriquece los datos provenientes de SolicitudController para que todas las
+ * Normaliza y enriquece los datos provenientes de ExamenesController para que todas las
  * plantillas PDF dispongan del mismo contrato de información.
  */
 class SolicitudDataFormatter

@@ -2,7 +2,7 @@
 
 namespace Modules\Reporting\Services;
 
-use Controllers\SolicitudController;
+use Controllers\ExamenesController;
 use Helpers\ProtocoloHelper;
 use Models\ProtocoloModel;
 use Modules\Reporting\Controllers\ReportController;
@@ -27,7 +27,7 @@ class ProtocolReportService
 
     private PDO $db;
     private ProtocoloModel $protocoloModel;
-    private SolicitudController $solicitudController;
+    private ExamenesController $solicitudController;
     private ReportController $reportController;
     private SolicitudTemplateRegistry $solicitudTemplateRegistry;
 
@@ -35,14 +35,14 @@ class ProtocolReportService
         PDO                        $db,
         ReportController           $reportController,
         ?ProtocoloModel            $protocoloModel = null,
-        ?SolicitudController       $solicitudController = null,
+        ?ExamenesController        $solicitudController = null,
         ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null
     )
     {
         $this->db = $db;
         $this->reportController = $reportController;
         $this->protocoloModel = $protocoloModel ?? new ProtocoloModel($db);
-        $this->solicitudController = $solicitudController ?? new SolicitudController($db);
+        $this->solicitudController = $solicitudController ?? new ExamenesController($db);
         $this->solicitudTemplateRegistry = $solicitudTemplateRegistry ?? SolicitudTemplateRegistry::fromConfig();
     }
 

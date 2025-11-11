@@ -2,15 +2,19 @@
 
 namespace Controllers;
 
+use Modules\Examenes\Services\ConsultaExamenSyncService;
 use PDO;
+use Throwable;
 
 class GuardarConsultaController
 {
     private $db;
+    private ConsultaExamenSyncService $examenSync;
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
+        $this->examenSync = new ConsultaExamenSyncService($pdo);
     }
 
     public function guardar(array $data): array
@@ -114,6 +118,25 @@ class GuardarConsultaController
             if (!$ok) {
                 $this->db->rollBack();
                 return ["success" => false, "message" => "Error al guardar en consulta_data"];
+            }
+
+            $examenes = $data['examenes'] ?? [];
+            if (!is_array($examenes)) {
+                $examenes = [];
+            }
+
+            try {
+                $this->examenSync->syncFromPayload(
+                    $form_id,
+                    $hcNumber,
+                    $data['doctor'] ?? $data['doctorTratante'] ?? null,
+                    $data['solicitanteExamen'] ?? $data['referidoPor'] ?? null,
+                    $fechaActual,
+                    $examenes
+                );
+            } catch (Throwable $e) {
+                // No interrumpimos la consulta si la normalización falla; el log ayuda a depurar.
+                error_log('No se pudo sincronizar exámenes normalizados: ' . $e->getMessage());
             }
 
             // 3) Asegurar form_id en procedimiento_proyectado

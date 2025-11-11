@@ -161,7 +161,7 @@ if (!function_exists('isTreeOpen')) {
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/solicitudes') ?: isActive('/views/solicitudes/solicitudes.php') ?>">
+                            <li class="<?= isActive('/solicitudes') ?: isActive('/views/solicitudes/examenes.php') ?>">
                                 <a href="/solicitudes">
                                     <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>

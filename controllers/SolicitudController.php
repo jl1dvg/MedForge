@@ -2,7 +2,7 @@
 
 namespace Controllers;
 
-use Models\SolicitudModel;
+use Models\ExamenesModel;
 use Modules\Pacientes\Services\PacienteService;
 
 class SolicitudController
@@ -14,7 +14,7 @@ class SolicitudController
 
     public function __construct($pdo)
     {
-        $this->solicitudModel = new SolicitudModel($pdo);
+        $this->solicitudModel = new ExamenesModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
     }
 

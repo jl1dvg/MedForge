@@ -12,7 +12,7 @@ use Modules\Solicitudes\Services\ExamenesReminderService;
 use PDO;
 use Throwable;
 
-class SolicitudController extends BaseController
+class ExamenesController extends BaseController
 {
     private ExamenesModel $solicitudModel;
     private PacienteService $pacienteService;
@@ -36,7 +36,7 @@ class SolicitudController extends BaseController
         $this->requireAuth();
 
         $this->render(
-            __DIR__ . '/../views/solicitudes.php',
+            __DIR__ . '/../views/examenes.php',
             [
                 'pageTitle' => 'Solicitudes Quirúrgicas',
                 'realtime' => $this->pusherConfig->getPublicConfig(),

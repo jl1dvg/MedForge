@@ -8,7 +8,7 @@ use Modules\Notifications\Services\PusherConfigService;
 use Models\ExamenesModel;
 use PDO;
 
-class SolicitudReminderService
+class ExamenesReminderService
 {
     private const CACHE_FILENAME = '/storage/cache/surgery_reminders.json';
 
