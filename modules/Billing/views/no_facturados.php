@@ -69,6 +69,11 @@ $noQuirurgicos = $noQuirurgicos ?? [];
                     }
 
                     const data = await res.json();
+                    if (!data.success) {
+                        const message = data.message ? String(data.message) : 'No fue posible generar el preview.';
+                        previewContent.innerHTML = `<p class='text-danger'>❌ ${message}</p>`;
+                        return;
+                    }
                     let total = 0;
                     let html = "";
 

@@ -86,8 +86,24 @@ class PreviewService
             ]
         ];
         $context = stream_context_create($opts);
-        $result = file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
-        $responseData = json_decode($result, true);
+
+        $responseData = [];
+        try {
+            $result = @file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
+            if ($result === false) {
+                throw new \RuntimeException('No se pudo contactar con el servicio de insumos.');
+            }
+
+            $decoded = json_decode($result, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                throw new \RuntimeException('Respuesta inválida del servicio de insumos.');
+            }
+
+            $responseData = $decoded;
+        } catch (\Throwable $e) {
+            error_log("❌ Error al obtener insumos para el preview: " . $e->getMessage());
+            $responseData = [];
+        }
 
         if (!empty($responseData['insumos'])) {
             $insumosDecodificados = $responseData['insumos'];
