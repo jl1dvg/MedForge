@@ -719,6 +719,8 @@
 
     const variablesPanel = form.querySelector('[data-variable-list]');
     const scenariosPanel = form.querySelector('[data-scenario-list]');
+    const journeyMapCard = form.querySelector('[data-journey-map-card]');
+    const journeyMapContainer = journeyMapCard?.querySelector('[data-journey-map]') || null;
     const menuPanel = form.querySelector('[data-menu-editor]');
     const scenarioSummaryContainer = form.querySelector('[data-scenario-summary]');
     const suggestedScenariosContainer = form.querySelector('[data-suggested-scenarios]');
@@ -990,6 +992,321 @@
         parts.push(`${actionCount} ${actionCount === 1 ? 'acción' : 'acciones'}`);
 
         return parts.join(' · ');
+    }
+
+    function collectScenarioDiagnostics(scenario) {
+        const issues = [];
+        const pushIssue = (message) => {
+            if (!issues.includes(message)) {
+                issues.push(message);
+            }
+        };
+
+        if (!scenario || typeof scenario !== 'object') {
+            pushIssue('Configura los detalles del escenario.');
+
+            return issues;
+        }
+
+        if (!Array.isArray(scenario.actions) || scenario.actions.length === 0) {
+            pushIssue('Añade al menos una acción.');
+        }
+
+        const conditions = Array.isArray(scenario.conditions) ? scenario.conditions : [];
+        conditions.forEach((condition) => {
+            const type = condition?.type || 'always';
+            if (type === 'message_in') {
+                const values = Array.isArray(condition.values) ? condition.values.filter((value) => typeof value === 'string' && value.trim() !== '') : [];
+                if (values.length === 0) {
+                    pushIssue('Completa la lista de palabras clave.');
+                }
+            }
+            if (type === 'message_contains') {
+                const keywords = Array.isArray(condition.keywords) ? condition.keywords.filter((value) => typeof value === 'string' && value.trim() !== '') : [];
+                if (keywords.length === 0) {
+                    pushIssue('Añade palabras clave a "Mensaje contiene".');
+                }
+            }
+            if (type === 'message_matches') {
+                const pattern = typeof condition.pattern === 'string' ? condition.pattern.trim() : '';
+                if (pattern === '') {
+                    pushIssue('Define la expresión regular requerida.');
+                }
+            }
+        });
+
+        const actions = Array.isArray(scenario.actions) ? scenario.actions : [];
+        actions.forEach((action) => {
+            if (!action || typeof action !== 'object') {
+                return;
+            }
+            const type = action.type || 'send_message';
+            if (type === 'send_message') {
+                if (validateSimpleMessagePayload(action.message, 'mensaje').length > 0) {
+                    pushIssue('Revisa el contenido del mensaje.');
+                }
+                return;
+            }
+            if (type === 'send_sequence') {
+                if (!Array.isArray(action.messages) || action.messages.length === 0) {
+                    pushIssue('Añade mensajes a la secuencia.');
+                } else if (action.messages.some((message) => validateSimpleMessagePayload(message, 'mensaje').length > 0)) {
+                    pushIssue('Revisa la secuencia de mensajes.');
+                }
+                return;
+            }
+            if (type === 'send_template') {
+                const template = action.template || {};
+                if (!template.name || !template.language) {
+                    pushIssue('Selecciona una plantilla aprobada.');
+                }
+                return;
+            }
+            if (type === 'send_buttons') {
+                const message = action.message || {};
+                const body = typeof message.body === 'string' ? message.body.trim() : '';
+                const buttons = Array.isArray(message.buttons)
+                    ? message.buttons.filter((button) => button && (button.title || button.id))
+                    : [];
+                if (body === '' || buttons.length === 0) {
+                    pushIssue('Configura el mensaje y los botones.');
+                }
+                return;
+            }
+            if (type === 'send_list') {
+                const message = action.message || {};
+                const body = typeof message.body === 'string' ? message.body.trim() : '';
+                const button = typeof message.button === 'string' ? message.button.trim() : '';
+                const sections = Array.isArray(message.sections)
+                    ? message.sections.filter((section) => Array.isArray(section?.rows) && section.rows.length > 0)
+                    : [];
+                if (body === '' || button === '' || sections.length === 0) {
+                    pushIssue('Completa la lista interactiva.');
+                }
+            }
+        });
+
+        return issues;
+    }
+
+    function renderJourneyMap() {
+        if (!journeyMapContainer) {
+            return;
+        }
+
+        const stageEntries = SCENARIO_STAGE_OPTIONS.map((option) => ({
+            ...option,
+            scenarios: [],
+        }));
+        const stageMap = new Map(stageEntries.map((entry) => [entry.value, entry]));
+        const fallbackStage = stageMap.get('custom');
+        const scenarios = Array.isArray(state.scenarios) ? state.scenarios : [];
+
+        scenarios.forEach((scenario, index) => {
+            if (!scenario || typeof scenario !== 'object') {
+                return;
+            }
+
+            const stageValue = readScenarioStage(scenario);
+            const target = stageMap.get(stageValue) || fallbackStage;
+            if (!target) {
+                return;
+            }
+
+            target.scenarios.push({scenario, index});
+        });
+
+        journeyMapContainer.innerHTML = '';
+        journeyMapContainer.style.setProperty('--journey-stage-count', String(stageEntries.length));
+
+        const totalScenarios = stageEntries.reduce((carry, entry) => carry + entry.scenarios.length, 0);
+        if (totalScenarios === 0) {
+            journeyMapContainer.classList.add('journey-map--empty');
+            if (journeyMapCard) {
+                journeyMapCard.classList.add('journey-map-card--empty');
+            }
+
+            const empty = document.createElement('div');
+            empty.className = 'journey-map__empty';
+            empty.innerHTML = '<i class="mdi mdi-map-clock-outline display-6 d-block mb-2"></i><p class="text-muted small mb-0">Añade escenarios para visualizar el recorrido.</p>';
+            journeyMapContainer.appendChild(empty);
+
+            return;
+        }
+
+        journeyMapContainer.classList.remove('journey-map--empty');
+        if (journeyMapCard) {
+            journeyMapCard.classList.remove('journey-map-card--empty');
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        stageEntries.forEach((stageEntry) => {
+            const lane = document.createElement('div');
+            lane.className = 'journey-map__lane';
+            lane.dataset.stage = stageEntry.value;
+
+            const heading = document.createElement('div');
+            heading.className = 'journey-map__lane-heading';
+
+            const headingText = document.createElement('div');
+            const headingTitle = document.createElement('div');
+            headingTitle.className = 'journey-map__lane-title';
+            headingTitle.textContent = stageEntry.label;
+            const headingDescription = document.createElement('div');
+            headingDescription.className = 'journey-map__lane-description';
+            headingDescription.textContent = stageEntry.description;
+            headingText.appendChild(headingTitle);
+            headingText.appendChild(headingDescription);
+
+            const countBadge = document.createElement('span');
+            countBadge.className = 'journey-map__lane-count';
+            const countValue = stageEntry.scenarios.length;
+            countBadge.textContent = `${countValue} ${countValue === 1 ? 'escenario' : 'escenarios'}`;
+
+            heading.appendChild(headingText);
+            heading.appendChild(countBadge);
+
+            const body = document.createElement('div');
+            body.className = 'journey-map__lane-body';
+
+            if (stageEntry.scenarios.length === 0) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'journey-map__placeholder';
+                placeholder.innerHTML = '<i class="mdi mdi-dots-square"></i>Sin escenarios en esta etapa';
+                body.appendChild(placeholder);
+            } else {
+                stageEntry.scenarios.forEach((entry) => {
+                    const node = createJourneyNode(entry, stageEntry);
+                    body.appendChild(node);
+                });
+            }
+
+            lane.appendChild(heading);
+            lane.appendChild(body);
+            fragment.appendChild(lane);
+        });
+
+        journeyMapContainer.appendChild(fragment);
+
+        function createJourneyNode(entry, stageEntry) {
+            const {scenario, index} = entry;
+            const node = document.createElement('button');
+            node.type = 'button';
+            node.className = 'journey-node';
+            const scenarioId = scenario?.id ? String(scenario.id) : '';
+            if (scenarioId) {
+                node.dataset.scenarioId = scenarioId;
+            }
+            node.dataset.index = String(index);
+            node.dataset.stage = stageEntry.value;
+
+            if (scenario?.intercept_menu) {
+                node.classList.add('journey-node--intercept');
+            }
+            if (scenarioId && isScenarioExpanded(scenarioId)) {
+                node.classList.add('journey-node--active');
+            }
+
+            const diagnostics = collectScenarioDiagnostics(scenario);
+            if (diagnostics.length > 0) {
+                node.classList.add('journey-node--invalid');
+                node.title = diagnostics.join('\n');
+            } else {
+                node.title = scenarioSummaryText(scenario);
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'journey-node__content-wrapper';
+
+            const indexBadge = document.createElement('div');
+            indexBadge.className = 'journey-node__index';
+            indexBadge.textContent = String(index + 1);
+            wrapper.appendChild(indexBadge);
+
+            const content = document.createElement('div');
+            content.className = 'journey-node__content';
+
+            const title = document.createElement('div');
+            title.className = 'journey-node__title';
+            title.textContent = scenario?.name || `Escenario ${index + 1}`;
+            content.appendChild(title);
+
+            const badges = document.createElement('div');
+            badges.className = 'journey-node__badges';
+            const stageBadge = document.createElement('span');
+            stageBadge.className = 'journey-node__badge';
+            stageBadge.textContent = stageEntry.label;
+            badges.appendChild(stageBadge);
+            if (scenario?.intercept_menu) {
+                const interceptBadge = document.createElement('span');
+                interceptBadge.className = 'journey-node__badge journey-node__badge--intercept';
+                interceptBadge.textContent = 'Intercepta menú';
+                badges.appendChild(interceptBadge);
+            }
+            content.appendChild(badges);
+
+            const meta = document.createElement('div');
+            meta.className = 'journey-node__meta';
+            meta.textContent = scenarioSummaryText(scenario);
+            content.appendChild(meta);
+
+            const description = typeof scenario?.description === 'string' ? scenario.description.trim() : '';
+            if (description !== '') {
+                const descriptionEl = document.createElement('div');
+                descriptionEl.className = 'journey-node__description';
+                descriptionEl.textContent = description;
+                content.appendChild(descriptionEl);
+            }
+
+            wrapper.appendChild(content);
+            node.appendChild(wrapper);
+
+            node.addEventListener('click', (event) => {
+                event.preventDefault();
+                focusScenarioCardFromMap(scenario, index);
+            });
+            node.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    focusScenarioCardFromMap(scenario, index);
+                }
+            });
+
+            return node;
+        }
+    }
+
+    function focusScenarioCardFromMap(scenario, index) {
+        const scenarioId = scenario?.id ? String(scenario.id) : '';
+        const wasExpanded = scenarioId ? isScenarioExpanded(scenarioId) : false;
+
+        if (scenarioId) {
+            setScenarioExpanded(scenarioId, true);
+        }
+
+        if (!wasExpanded) {
+            renderScenarios();
+        } else if (journeyMapContainer) {
+            renderJourneyMap();
+        }
+
+        window.requestAnimationFrame(() => {
+            const refreshedId = scenarioId || (state.scenarios[index]?.id ? String(state.scenarios[index].id) : '');
+            const selector = refreshedId
+                ? `[data-scenario][data-scenario-id="${escapeSelector(refreshedId)}"]`
+                : `[data-scenario][data-index="${index}"]`;
+            const card = scenariosPanel?.querySelector(selector);
+            if (!card) {
+                return;
+            }
+
+            card.classList.add('scenario-card--pulse');
+            card.scrollIntoView({behavior: 'smooth', block: 'center'});
+            window.setTimeout(() => {
+                card.classList.remove('scenario-card--pulse');
+            }, 1200);
+        });
     }
 
     function renderScenarios() {
@@ -1289,6 +1606,7 @@
 
         scenariosPanel.appendChild(fragment);
 
+        renderJourneyMap();
         updateScenarioControls();
         setupScenarioSortable();
         renderScenarioSummary();

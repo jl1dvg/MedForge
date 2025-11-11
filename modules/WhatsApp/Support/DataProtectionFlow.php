@@ -177,8 +177,15 @@ class DataProtectionFlow
     private function handleConsentStage(string $number, array $record, string $keyword): bool
     {
         if ($this->isAcceptance($keyword)) {
+            $identifierValue = (string) ($record['identifier'] ?? $record['cedula'] ?? '');
+            if ($identifierValue === '') {
+                $identifierValue = $this->placeholderIdentifier($number);
+            }
+
+            $this->repository->markConsent($number, $identifierValue, true);
             $this->updateStage($record, self::STAGE_AWAITING_IDENTIFIER, [
                 'accepted_at' => (new DateTimeImmutable())->format('c'),
+                'consent_status' => 'accepted',
             ]);
             $message = $this->renderCopy($this->copyString('identifier_request'), ['brand' => $this->brand]);
             if ($message !== '') {
