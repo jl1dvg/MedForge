@@ -305,7 +305,7 @@
     }
 
     function enviarDatosAHC(hcNumber, lname, lname2, fname, mname, afiliacion, doctor, procedimiento_proyectado, fechaCaducidad, form_id) {
-        const url = 'https://cive.consulmed.me/interface/guardar_datos.php';
+        const url = 'https://asistentecive.consulmed.me/interface/guardar_datos.php';
 
         const data = {
             hcNumber, lname, lname2, fname, mname, afiliacion, doctor, procedimiento_proyectado, fechaCaducidad, form_id
@@ -341,7 +341,7 @@
 
         // Determinar el URL según el tipo de formato
         const isProtocoloQuirurgico = document.querySelector('#consultasubsecuente-membrete') !== null;
-        const url = isProtocoloQuirurgico ? 'https://cive.consulmed.me/interface/protocolos_datos.php' : 'https://cive.consulmed.me/interface/datos_consulta.php';
+        const url = isProtocoloQuirurgico ? 'https://asistentecive.consulmed.me/interface/protocolos_datos.php' : 'https://cive.consulmed.me/interface/datos_consulta.php';
 
         if (isProtocoloQuirurgico) {
             // Extraer datos para protocolo quirúrgico
@@ -794,7 +794,7 @@
         console.log('Datos extraídos del modal:', modalData);
 
         // URL de la API para enviar los datos
-        const url = 'https://cive.consulmed.me/interface/formulario_datos_modal.php';
+        const url = 'https://asistentecive.consulmed.me/interface/formulario_datos_modal.php';
 
         // Enviar los datos al backend usando fetch
         fetch(url, {
