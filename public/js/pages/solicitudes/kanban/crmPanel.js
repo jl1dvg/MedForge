@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { getKanbanConfig } from './config.js';
 
 let crmOptions = {
     responsables: [],
@@ -193,7 +194,8 @@ function bindForms() {
             }
 
             const payload = collectDetallePayload(detalleForm);
-            await submitJson(`/solicitudes/${currentSolicitudId}/crm`, payload, 'Detalles CRM actualizados');
+            const { basePath } = getKanbanConfig();
+            await submitJson(`${basePath}/${currentSolicitudId}/crm`, payload, 'Detalles CRM actualizados');
         });
     }
 
@@ -217,7 +219,8 @@ function bindForms() {
             }
 
             const payload = { nota: texto };
-            const ok = await submitJson(`/solicitudes/${currentSolicitudId}/crm/notas`, payload, 'Nota registrada');
+            const { basePath } = getKanbanConfig();
+            const ok = await submitJson(`${basePath}/${currentSolicitudId}/crm/notas`, payload, 'Nota registrada');
             if (ok && textarea) {
                 textarea.value = '';
             }
@@ -246,7 +249,8 @@ function bindForms() {
                 formData.append('descripcion', descripcion);
             }
 
-            const ok = await submitFormData(`/solicitudes/${currentSolicitudId}/crm/adjuntos`, formData, 'Documento cargado');
+            const { basePath } = getKanbanConfig();
+            const ok = await submitFormData(`${basePath}/${currentSolicitudId}/crm/adjuntos`, formData, 'Documento cargado');
             if (ok) {
                 adjuntoForm.reset();
             }
@@ -268,7 +272,8 @@ function bindForms() {
                 return;
             }
 
-            const ok = await submitJson(`/solicitudes/${currentSolicitudId}/crm/tareas`, payload, 'Tarea agregada');
+            const { basePath } = getKanbanConfig();
+            const ok = await submitJson(`${basePath}/${currentSolicitudId}/crm/tareas`, payload, 'Tarea agregada');
             if (ok) {
                 tareaForm.reset();
             }
@@ -585,7 +590,8 @@ function openCrmPanel(solicitudId, nombrePaciente) {
 
 async function loadCrmData(solicitudId) {
     try {
-        const response = await fetch(`/solicitudes/${solicitudId}/crm`, { credentials: 'same-origin' });
+        const { basePath } = getKanbanConfig();
+        const response = await fetch(`${basePath}/${solicitudId}/crm`, { credentials: 'same-origin' });
 
         // Intenta parsear JSON; si falla, intenta leer texto para mostrar un error útil
         let data;
@@ -915,7 +921,8 @@ async function actualizarEstadoTarea(tareaId, estado) {
         return;
     }
 
-    await submitJson(`/solicitudes/${currentSolicitudId}/crm/tareas/estado`, {
+    const { basePath } = getKanbanConfig();
+    await submitJson(`${basePath}/${currentSolicitudId}/crm/tareas/estado`, {
         tarea_id: tareaId,
         estado,
     }, 'Tarea actualizada');

@@ -538,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newEventName = events.new_request || realtimeConfig.event || 'nueva-examen';
             const statusEventName = events.status_updated || null;
             const crmEventName = events.crm_updated || null;
-            const reminderEventName = events.surgery_reminder || null;
+            const reminderEventName = events.exam_reminder || events.surgery_reminder || null;
 
             notificationPanel.setIntegrationWarning('');
 

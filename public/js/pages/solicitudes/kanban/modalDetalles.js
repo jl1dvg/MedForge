@@ -1,3 +1,5 @@
+import { getKanbanConfig, getTableBodySelector } from './config.js';
+
 let prefacturaListenerAttached = false;
 
 function cssEscape(value) {
@@ -10,7 +12,8 @@ function cssEscape(value) {
 
 function highlightSelection({ cardId, rowId }) {
     document.querySelectorAll('.kanban-card').forEach(element => element.classList.remove('active'));
-    document.querySelectorAll('#solicitudesTable tbody tr').forEach(row => row.classList.remove('table-active'));
+    const tableSelector = getTableBodySelector();
+    document.querySelectorAll(`${tableSelector} tr`).forEach(row => row.classList.remove('table-active'));
 
     if (cardId) {
         const card = document.querySelector(`.kanban-card[data-id="${cssEscape(cardId)}"]`);
@@ -20,7 +23,7 @@ function highlightSelection({ cardId, rowId }) {
     }
 
     if (rowId) {
-        const row = document.querySelector(`#solicitudesTable tbody tr[data-id="${cssEscape(rowId)}"]`);
+        const row = document.querySelector(`${tableSelector} tr[data-id="${cssEscape(rowId)}"]`);
         if (row) {
             row.classList.add('table-active');
         }
@@ -55,7 +58,8 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
 
     modal.show();
 
-    fetch(`/solicitudes/prefactura?hc_number=${encodeURIComponent(hc)}&form_id=${encodeURIComponent(formId)}`)
+    const { basePath } = getKanbanConfig();
+    fetch(`${basePath}/prefactura?hc_number=${encodeURIComponent(hc)}&form_id=${encodeURIComponent(formId)}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error('No se encontró la prefactura');
@@ -72,7 +76,8 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
 
     modalElement.addEventListener('hidden.bs.modal', () => {
         document.querySelectorAll('.kanban-card').forEach(element => element.classList.remove('active'));
-        document.querySelectorAll('#solicitudesTable tbody tr').forEach(row => row.classList.remove('table-active'));
+        const tableSelector = getTableBodySelector();
+        document.querySelectorAll(`${tableSelector} tr`).forEach(row => row.classList.remove('table-active'));
     }, { once: true });
 }
 

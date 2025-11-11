@@ -633,6 +633,26 @@ $realtime = array_merge(
     ?>
 
     <script>
+        window.__KANBAN_MODULE__ = {
+            key: 'solicitudes',
+            basePath: '/solicitudes',
+            storageKeyView: 'solicitudes:view-mode',
+            dataKey: '__solicitudesKanban',
+            estadosMetaKey: '__solicitudesEstadosMeta',
+            selectors: {
+                prefix: 'solicitudes',
+            },
+            strings: {
+                singular: 'solicitud',
+                plural: 'solicitudes',
+                capitalizedPlural: 'Solicitudes',
+                articleSingular: 'la',
+                articleSingularShort: 'la',
+            },
+        };
+    </script>
+
+    <script>
         window.__solicitudesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 

@@ -7,6 +7,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Modules\AI\Services\AIConfigService;
+use Modules\KPI\Services\KpiQueryService;
 use PDO;
 use Throwable;
 
@@ -41,6 +42,7 @@ class DashboardController
 
             $dateRange = $this->resolveDateRange();
             $username = $this->getAuthenticatedUser();
+            $kpiService = new KpiQueryService($this->db);
 
             $procedimientos_dia = $this->getProcedimientosPorDia($dateRange['start'], $dateRange['end']);
             $top_procedimientos = $this->getTopProcedimientosDelPeriodo($dateRange['start'], $dateRange['end']);
@@ -49,6 +51,7 @@ class DashboardController
             $solicitudes_funnel = $this->getSolicitudesFunnel($dateRange['start'], $dateRange['end']);
             $crm_backlog = $this->getCrmBacklogStats($dateRange['start'], $dateRange['end']);
             $ai_summary = $this->getAiSummary();
+            $kpiAggregates = $this->fetchDashboardKpiAggregates($kpiService, $dateRange['start'], $dateRange['end']);
 
             $data = [
                 'username' => $username,
@@ -74,7 +77,7 @@ class DashboardController
                 'total_protocols' => $this->totalProtocolos(),
                 'total_patients' => $this->totalPacientes(),
                 'total_users' => $this->totalUsuarios(),
-                'kpi_cards' => $this->buildKpiCards($solicitudes_funnel, $crm_backlog, $revision_estados, $ai_summary),
+                'kpi_cards' => $this->buildKpiCards($kpiAggregates, $ai_summary),
                 'ai_summary' => $ai_summary,
                 'cirugias_recientes' => $cirugias_recientes,
             ];
@@ -692,13 +695,44 @@ class DashboardController
         ];
     }
 
-    private function buildKpiCards(array $solicitudesFunnel, array $crmBacklog, array $revisionEstados, array $aiSummary): array
+    /**
+     * @param array<string, array<string, mixed>> $kpiAggregates
+     */
+    private function fetchDashboardKpiAggregates(KpiQueryService $service, DateTimeInterface $start, DateTimeInterface $end): array
     {
-        $registradas = $solicitudesFunnel['totales']['registradas'] ?? 0;
-        $agendadas = $solicitudesFunnel['totales']['agendadas'] ?? 0;
-        $conversion = $solicitudesFunnel['totales']['conversion_agendada'] ?? 0;
-        $conCirugia = $solicitudesFunnel['totales']['con_cirugia'] ?? 0;
-        $urgentesSinTurno = $solicitudesFunnel['totales']['urgentes_sin_turno'] ?? 0;
+        $keys = [
+            'solicitudes.registradas',
+            'solicitudes.agendadas',
+            'solicitudes.urgentes_sin_turno',
+            'solicitudes.con_cirugia',
+            'solicitudes.conversion_agendada',
+            'crm.tareas.vencidas',
+            'crm.tareas.avance',
+            'protocolos.revision.no_revisados',
+            'protocolos.revision.incompletos',
+        ];
+
+        $aggregates = [];
+
+        foreach ($keys as $key) {
+            $aggregates[$key] = $service->getAggregatedValue($key, $start, $end, [], true) ?? ['value' => 0.0];
+        }
+
+        return $aggregates;
+    }
+
+    private function buildKpiCards(array $kpiAggregates, array $aiSummary): array
+    {
+        $registradas = (int) round($kpiAggregates['solicitudes.registradas']['value'] ?? 0);
+        $agendadas = (int) round($kpiAggregates['solicitudes.agendadas']['value'] ?? 0);
+        $conversion = (float) ($kpiAggregates['solicitudes.conversion_agendada']['value'] ?? 0.0);
+        $conCirugia = (int) round($kpiAggregates['solicitudes.con_cirugia']['value'] ?? 0);
+        $urgentesSinTurno = (int) round($kpiAggregates['solicitudes.urgentes_sin_turno']['value'] ?? 0);
+
+        $crmVencidas = (int) round($kpiAggregates['crm.tareas.vencidas']['value'] ?? 0);
+        $crmAvance = (float) ($kpiAggregates['crm.tareas.avance']['value'] ?? 0.0);
+        $protocolosNoRevisados = (int) round($kpiAggregates['protocolos.revision.no_revisados']['value'] ?? 0);
+        $protocolosIncompletos = (int) round($kpiAggregates['protocolos.revision.incompletos']['value'] ?? 0);
 
         $cards = [
             [
@@ -726,18 +760,18 @@ class DashboardController
 
         $cards[] = [
             'title' => 'Tareas CRM vencidas',
-            'value' => $crmBacklog['vencidas'] ?? 0,
+            'value' => $crmVencidas,
             'description' => 'Pendientes de seguimiento',
             'icon' => 'svg-icon/color-svg/custom-21.svg',
-            'tag' => ($crmBacklog['avance'] ?? 0) . '% completadas',
+            'tag' => $crmAvance . '% completadas',
         ];
 
         $cards[] = [
             'title' => 'Protocolos sin revisar',
-            'value' => $revisionEstados['no_revisados'] ?? 0,
+            'value' => $protocolosNoRevisados,
             'description' => 'Listos para auditoría final',
             'icon' => 'svg-icon/color-svg/custom-22.svg',
-            'tag' => ($revisionEstados['incompletos'] ?? 0) . ' incompletos',
+            'tag' => $protocolosIncompletos . ' incompletos',
         ];
 
         $cards[] = [

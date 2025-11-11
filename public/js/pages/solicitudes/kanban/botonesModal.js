@@ -1,5 +1,6 @@
 import { actualizarEstadoSolicitud } from './estado.js';
 import { showToast } from './toast.js';
+import { getDataStore } from './config.js';
 
 function obtenerTarjetaActiva() {
     return document.querySelector('.kanban-card.view-details.active');
@@ -48,7 +49,7 @@ function actualizarDesdeBoton(nuevoEstado) {
         tarjeta.dataset.id,
         tarjeta.dataset.form,
         nuevoEstado,
-        window.__solicitudesKanban || [],
+        getDataStore(),
         window.aplicarFiltros
     ).then(() => cerrarModal());
 }

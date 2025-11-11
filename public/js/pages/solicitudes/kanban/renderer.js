@@ -1,5 +1,6 @@
 import { showToast } from './toast.js';
 import { llamarTurnoSolicitud, formatTurno } from './turnero.js';
+import { getDataStore } from './config.js';
 
 const ESCAPE_MAP = {
     '&': '&amp;',
@@ -71,6 +72,71 @@ function formatBadge(label, value, icon) {
     return `<span class="badge">${safeIcon}${safeLabel !== '' ? `${safeLabel}: ` : ''}${safeValue}</span>`;
 }
 
+const SLA_META = {
+    en_rango: { label: 'En rango', badgeClass: 'badge-sla badge bg-success text-white', icon: 'mdi-check-circle-outline' },
+    advertencia: { label: 'Seguimiento 72h', badgeClass: 'badge-sla badge bg-warning text-dark', icon: 'mdi-timer-sand' },
+    critico: { label: 'Crítico 24h', badgeClass: 'badge-sla badge bg-danger', icon: 'mdi-alert-octagon' },
+    vencido: { label: 'SLA vencido', badgeClass: 'badge-sla badge bg-dark', icon: 'mdi-alert' },
+    sin_fecha: { label: 'Sin programación', badgeClass: 'badge-sla badge bg-secondary', icon: 'mdi-calendar-question' },
+    cerrado: { label: 'Cerrado', badgeClass: 'badge-sla badge bg-secondary', icon: 'mdi-lock-outline' },
+};
+
+const PRIORIDAD_META = {
+    urgente: { label: 'Urgente', badgeClass: 'badge bg-danger text-white', icon: 'mdi-flash-alert' },
+    pendiente: { label: 'Pendiente', badgeClass: 'badge bg-warning text-dark', icon: 'mdi-progress-clock' },
+    normal: { label: 'Normal', badgeClass: 'badge bg-success text-white', icon: 'mdi-check' },
+};
+
+function getSlaMeta(status) {
+    const normalized = (status || '').toString().trim();
+    return SLA_META[normalized] || SLA_META.sin_fecha;
+}
+
+function getPrioridadMeta(priority) {
+    const normalized = (priority || '').toString().trim().toLowerCase();
+    return PRIORIDAD_META[normalized] || PRIORIDAD_META.normal;
+}
+
+function formatIsoDate(iso, formatter = 'DD-MM-YYYY HH:mm') {
+    if (!iso) {
+        return null;
+    }
+
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    return typeof moment === 'function' ? moment(date).format(formatter) : date.toLocaleString();
+}
+
+function formatHours(value) {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+        return null;
+    }
+
+    const rounded = Math.round(value);
+    if (Math.abs(rounded) >= 48) {
+        return `${(rounded / 24).toFixed(1)} día(s)`;
+    }
+
+    return `${rounded} h`;
+}
+
+function getAlertBadges(item = {}) {
+    const alerts = [];
+
+    if (item.alert_reprogramacion) {
+        alerts.push({ label: 'Reprogramar', icon: 'mdi-calendar-alert', className: 'badge bg-danger text-white' });
+    }
+
+    if (item.alert_pendiente_consentimiento) {
+        alerts.push({ label: 'Consentimiento', icon: 'mdi-shield-alert', className: 'badge bg-warning text-dark' });
+    }
+
+    return alerts;
+}
+
 export function renderKanban(data, callbackEstadoActualizado) {
     document.querySelectorAll('.kanban-items').forEach(col => {
         col.innerHTML = '';
@@ -91,10 +157,31 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.aseguradora = solicitud.aseguradora ?? solicitud.aseguradoraNombre ?? '';
         tarjeta.dataset.prefacturaTrigger = 'kanban';
 
-        const fecha = solicitud.fecha ? new Date(solicitud.fecha) : null;
-        const fechaFormateada = fecha ? moment(fecha).format('DD-MM-YYYY') : '—';
-        const dias = fecha ? Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24)) : 0;
-        const semaforo = dias <= 3 ? '🟢 Normal' : dias <= 7 ? '🟡 Pendiente' : '🔴 Urgente';
+        const fechaBaseIso = solicitud.fecha_programada_iso || solicitud.fecha || solicitud.created_at_iso || null;
+        const fechaBase = fechaBaseIso ? new Date(fechaBaseIso) : null;
+        const fechaFormateada = fechaBase ? formatIsoDate(fechaBaseIso, 'DD-MM-YYYY') : '—';
+        const edadDias = fechaBase ? Math.max(0, Math.floor((hoy - fechaBase) / (1000 * 60 * 60 * 24))) : 0;
+        const slaMeta = getSlaMeta(solicitud.sla_status);
+        const slaBadgeHtml = `<span class="${escapeHtml(slaMeta.badgeClass)}"><i class="mdi ${escapeHtml(slaMeta.icon)} me-1"></i>${escapeHtml(slaMeta.label)}</span>`;
+        const prioridadMeta = getPrioridadMeta(solicitud.prioridad_automatica);
+        const prioridadBadgeClass = solicitud.prioridad_origen === 'manual'
+            ? 'badge bg-primary text-white'
+            : prioridadMeta.badgeClass;
+        const prioridadBadgeHtml = `<span class="${escapeHtml(prioridadBadgeClass)}"><i class="mdi ${escapeHtml(prioridadMeta.icon)} me-1"></i>${escapeHtml(solicitud.prioridad || prioridadMeta.label)}</span>`;
+        const prioridadOrigenLabel = solicitud.prioridad_origen === 'manual' ? 'Manual' : 'Regla automática';
+        const slaDeadlineLabel = formatIsoDate(solicitud.sla_deadline);
+        const slaHoursLabel = formatHours(solicitud.sla_hours_remaining);
+        const slaSubtitleParts = [];
+        if (slaDeadlineLabel) {
+            slaSubtitleParts.push(`Vence ${slaDeadlineLabel}`);
+        }
+        if (slaHoursLabel) {
+            slaSubtitleParts.push(slaHoursLabel);
+        }
+        if (edadDias) {
+            slaSubtitleParts.push(`Edad ${edadDias} día(s)`);
+        }
+        const slaSubtitle = slaSubtitleParts.join(' · ');
 
         const kanbanPrefs = window.__crmKanbanPreferences ?? {};
         const defaultPipelineStage = Array.isArray(kanbanPrefs.pipelineStages) && kanbanPrefs.pipelineStages.length
@@ -123,6 +210,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const afiliacion = solicitud.afiliacion || 'Sin afiliación';
         const ojo = solicitud.ojo || '—';
         const observacion = solicitud.observacion || 'Sin nota';
+        const alerts = getAlertBadges(solicitud);
+        const alertsHtml = alerts.length
+            ? `<div class="kanban-alerts mt-2">${alerts.map(alert => `<span class="${escapeHtml(alert.className)}"><i class="mdi ${escapeHtml(alert.icon)} me-1"></i>${escapeHtml(alert.label)}</span>`).join(' ')}</div>`
+            : '';
 
         const badges = [
             formatBadge('Notas', totalNotas, '<i class="mdi mdi-note-text-outline"></i>'),
@@ -137,13 +228,15 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 <div class="kanban-card-body">
                     <strong>${escapeHtml(pacienteNombre)}</strong>
                     <small>🆔 ${escapeHtml(solicitud.hc_number ?? '—')}</small>
-                    <small>📅 ${escapeHtml(fechaFormateada)} <span class="badge">${escapeHtml(semaforo)}</span></small>
+                    <small>📅 ${escapeHtml(fechaFormateada)} ${slaBadgeHtml}</small>
+                    ${slaSubtitle ? `<small>⏱️ ${escapeHtml(slaSubtitle)}</small>` : ''}
+                    <small>🎯 ${prioridadBadgeHtml} <span class="text-muted">${escapeHtml(prioridadOrigenLabel)}</span></small>
                     <small>🧑‍⚕️ ${escapeHtml(doctor)}</small>
                     <small>🏥 ${escapeHtml(afiliacion)}</small>
                     <small>🔍 <span class="text-primary fw-bold">${escapeHtml(procedimiento)}</span></small>
                     <small>👁️ ${escapeHtml(ojo)}</small>
                     <small>💬 ${escapeHtml(observacion)}</small>
-                    <small>⏱️ ${escapeHtml(String(dias))} día(s) en estado actual</small>
+                    ${alertsHtml}
                 </div>
             </div>
             <div class="kanban-card-crm mt-2">
@@ -207,8 +300,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
                     showToast(`🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ''}`);
 
-                    if (Array.isArray(window.__solicitudesKanban)) {
-                        const item = window.__solicitudesKanban.find(s => String(s.id) === String(solicitud.id));
+                    const store = getDataStore();
+                    if (Array.isArray(store) && store.length) {
+                        const item = store.find(s => String(s.id) === String(solicitud.id));
                         if (item) {
                             item.turno = data?.turno ?? item.turno;
                             item.estado = data?.estado ?? item.estado;

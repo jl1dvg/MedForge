@@ -10,7 +10,7 @@ El `SolicitudController` protege la ruta, prepara la configuración de tiempo re
 
 `SolicitudModel::fetchSolicitudesConDetallesFiltrado()` une `solicitud_procedimiento`, `patient_data` y `consulta_data` para entregar cada solicitud con información de paciente, procedimiento, prioridad, lateralidad, afiliación y diagnóstico, permitiendo filtros dinámicos por afiliación, doctor, prioridad y rango de fechas. 【F:models/SolicitudModel.php†L17-L88】
 
-El front‑end (`public/js/pages/solicitudes/index.js`) registra los filtros, dispara el `fetch` a `/solicitudes/kanban-data`, llena combos únicos y actualiza el tablero cuando cambian filtros o se reciben eventos en tiempo real. También inicializa el panel de notificaciones y, si corresponde, las notificaciones de escritorio. 【F:public/js/pages/solicitudes/index.js†L7-L173】
+El front‑end (`public/js/pages/solicitudes/index.js`) registra los filtros, dispara el `fetch` a `/solicitudes/kanban-data`, llena combos únicos y actualiza el tablero cuando cambian filtros o se reciben eventos en tiempo real. También inicializa el panel de notificaciones y, si corresponde, las notificaciones de escritorio. Además, calcula indicadores SLA, alertas operativas (reprogramación, consentimiento) y métricas por responsable que se despliegan en el overview y la tabla. 【F:public/js/pages/solicitudes/index.js†L7-L395】
 
 ## 2. Panel CRM dentro de solicitudes
 
@@ -22,7 +22,7 @@ Las interacciones están centralizadas en `public/js/pages/solicitudes/kanban/cr
 
 `SolicitudCrmService` concentra la lógica de negocio: sincroniza leads con el módulo CRM (`LeadModel`), normaliza etapas y contactos, maneja transacciones para guardar detalles y campos personalizados, y expone métodos para notas, tareas y adjuntos. Cada operación relevante invoca `notifyWhatsAppEvent()` para potencialmente informar por WhatsApp. 【F:modules/solicitudes/services/SolicitudCrmService.php†L15-L303】
 
-El servicio arma un resumen rico consultando múltiples tablas (`solicitud_procedimiento`, `patient_data`, `solicitud_crm_*`, `crm_leads`, `users`) e incluye contadores de notas, adjuntos y tareas. También sincroniza automáticamente leads cuando cambia el responsable o la etapa CRM. 【F:modules/solicitudes/services/SolicitudCrmService.php†L256-L773】
+El servicio arma un resumen rico consultando múltiples tablas (`solicitud_procedimiento`, `patient_data`, `solicitud_crm_*`, `crm_leads`, `users`) e incluye contadores de notas, adjuntos y tareas. También sincroniza automáticamente leads cuando cambia el responsable o la etapa CRM. `SolicitudController::computeOperationalMetadata()` agrega prioridad automática, estado de SLA, fecha programada y alertas derivadas (reprogramación, consentimiento), mientras que `buildOperationalMetrics()` consolida esas señales por responsable. 【F:modules/solicitudes/controllers/SolicitudController.php†L17-L363】
 
 ## 3. CRM completo y configuración
 
@@ -53,5 +53,27 @@ Los toasts aparecen en la esquina superior derecha (`#toastContainer`) y el pane
 De esta manera, el mismo flujo que actualiza el CRM puede avisar a pacientes o responsables por WhatsApp cuando la integración está configurada.
 
 ---
+
+## 6. Estrategias de marketing y comunicación sobre WhatsApp
+
+El mismo andamiaje técnico permite diseñar iniciativas de marketing relacional que acompañen a cada lead y paciente desde su captura hasta el seguimiento postoperatorio.
+
+### 6.1 Journeys automatizados multietapa
+
+- **Onboarding inteligente**. Configuren reglas en `SolicitudCrmService::notifyWhatsAppEvent()` para detectar la etapa inicial del lead (`lead_stage = 'captado'`) y enviar un flujo con botones de respuesta rápida (``WhatsappInteractiveBuilder`` soporta `buttons` y `list` en el payload del Cloud API) que capture preferencia de sede, urgencia o necesidad de financiamiento. Cada respuesta se registra como nota CRM mediante `crmAgregarNota`, conservando la trazabilidad. 【F:modules/solicitudes/services/SolicitudCrmService.php†L308-L610】【F:modules/solicitudes/controllers/SolicitudController.php†L202-L276】
+- **Confirmaciones y recordatorios quirúrgicos**. Extiendan `SolicitudReminderService::dispatchUpcoming()` para incluir plantillas enriquecidas que combinen texto, botones “Confirmar asistencia” y enlaces a instrucciones preoperatorias. El botón puede abrir un `deep link` hacia el panel de consentimientos o un PDF hospedado en `public/storage`. 【F:modules/solicitudes/services/SolicitudReminderService.php†L12-L180】
+- **Seguimiento postoperatorio**. Definan un `journey` basado en la etapa CRM `postoperatorio` que envíe encuestas NPS (`interactive`-`list`) y derive automáticamente tickets al módulo CRM cuando la calificación sea ≤7; `crmGuardarTarea` ya permite crear tareas asignadas a un coordinador de experiencia. 【F:modules/solicitudes/controllers/SolicitudController.php†L278-L320】
+
+### 6.2 Segmentación operativa conectada al Kanban
+
+- **Fuentes calientes vs frías**. Aprovechen los filtros de `SolicitudController::kanbanData()` para generar vistas específicas por fuente (`Facebook`, `Referido`, `Landing`). Con esa información, creen campañas diferenciadas exportando leads con `LeadModel::getLeadsByFilter` y alimentando plantillas en WhatsApp o email transaccional según la temperatura. 【F:modules/solicitudes/controllers/SolicitudController.php†L34-L143】
+- **Asignación dinámica de responsables**. Cuando `crmGuardarDetalles` cambie el responsable, disparen una notificación WhatsApp interna al ejecutivo asignado con el resumen de la solicitud y botones para mover la etapa (`/crm/leads/{id}`), reduciendo tiempos de atención.
+- **Listas temáticas**. Usen los campos personalizados sincronizados por `SolicitudCrmService` (ej. `tipo_lente`, `diagnostico_principal`) para armar listas de difusión segmentadas (`broadcast`). La normalización existente evita duplicados y respeta las preferencias de comunicación registradas en CRM.
+
+### 6.3 Analítica de campañas y feedback loop
+
+- **Métricas de conversión**. Persistan cada entrega, clic y respuesta en una tabla `whatsapp_metrics` enlazada al `crm_lead_id`. Desde ahí, alimenten tableros en `docs/sql` (por ejemplo `sql/solicitudes_conversion_rate.sql`) para medir ratios de confirmación, asistencia y satisfacción por campaña.
+- **A/B testing de plantillas**. Versionen los mensajes dentro de `WhatsAppSettings` o un catálogo propio y almacenen el identificador de plantilla en el payload que se envía desde `Messenger::sendTemplateMessage()`. Comparen el desempeño con consultas programadas en el módulo de reportes.
+- **Retroalimentación operativa**. Cada vez que un paciente responda con palabras clave (“financiamiento”, “reprogramar”, “llámenme”), usen los webhooks del Cloud API (disponibles en `modules/WhatsApp/Controllers/WebhookController.php`) para crear automáticamente un ticket en CRM y asignarlo a la bandeja correspondiente, asegurando seguimiento inmediato.
 
 Con estos componentes, las solicitudes quirúrgicas disponen de un tablero operativo, gestión CRM integrada, notificaciones multi-canal y automatización de mensajes por WhatsApp totalmente reutilizable.

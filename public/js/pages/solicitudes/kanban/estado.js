@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { getKanbanConfig } from './config.js';
 
 export function actualizarEstadoSolicitud(id, formId, nuevoEstado, solicitudes = [], callbackRender = () => {}) {
     if (Array.isArray(solicitudes)) {
@@ -13,7 +14,9 @@ export function actualizarEstadoSolicitud(id, formId, nuevoEstado, solicitudes =
         estado: nuevoEstado,
     };
 
-    return fetch('/solicitudes/actualizar-estado', {
+    const { basePath } = getKanbanConfig();
+
+    return fetch(`${basePath}/actualizar-estado`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

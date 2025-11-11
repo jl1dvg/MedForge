@@ -1,4 +1,6 @@
-const ENDPOINT = '/solicitudes/turnero-data';
+import { getKanbanConfig } from './kanban/config.js';
+
+const ENDPOINT = `${getKanbanConfig().basePath}/turnero-data`;
 const REFRESH_INTERVAL = 30000;
 
 const elements = {

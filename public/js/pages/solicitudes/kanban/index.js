@@ -3,6 +3,7 @@ import { actualizarEstadoSolicitud } from './estado.js';
 import { inicializarModalDetalles } from './modalDetalles.js';
 import { inicializarBotonesModal } from './botonesModal.js';
 import { initCrmInteractions, getCrmKanbanPreferences } from './crmPanel.js';
+import { getDataStore } from './config.js';
 
 const NORMALIZE = {
     estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
@@ -45,7 +46,7 @@ function actualizarContadores(agrupadas) {
 
 export function initKanban(data = []) {
     renderKanban(data, (id, formId, estado) =>
-        actualizarEstadoSolicitud(id, formId, estado, window.__solicitudesKanban || [], window.aplicarFiltros)
+        actualizarEstadoSolicitud(id, formId, estado, getDataStore(), window.aplicarFiltros)
     );
 
     const agrupadas = agruparPorEstado(data);

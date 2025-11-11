@@ -3,20 +3,31 @@
 namespace Controllers;
 
 use Core\BaseController;
-use Models\ExamenesModel;
+use DateInterval;
+use DateTimeImmutable;
+use Models\SolicitudModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
-use Modules\Solicitudes\Services\ExamenesCrmService;
-use Modules\Solicitudes\Services\ExamenesReminderService;
+use Modules\Solicitudes\Services\SolicitudCrmService;
+use Modules\Solicitudes\Services\SolicitudReminderService;
 use PDO;
 use Throwable;
 
 class SolicitudController extends BaseController
 {
-    private ExamenesModel $solicitudModel;
+    private const TERMINAL_STATES = [
+        'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
+        'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
+        'pagado', 'pagada', 'no procede', 'no_procede', 'no-procede', 'cerrado sin atención',
+    ];
+
+    private const SLA_WARNING_HOURS = 72;
+    private const SLA_CRITICAL_HOURS = 24;
+
+    private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
-    private ExamenesCrmService $crmService;
+    private SolicitudCrmService $crmService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
@@ -24,9 +35,9 @@ class SolicitudController extends BaseController
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
-        $this->solicitudModel = new ExamenesModel($pdo);
+        $this->solicitudModel = new SolicitudModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
-        $this->crmService = new ExamenesCrmService($pdo);
+        $this->crmService = new SolicitudCrmService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
     }
@@ -96,6 +107,7 @@ class SolicitudController extends BaseController
             $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
+            $metrics = $this->buildOperationalMetrics($solicitudes);
 
             $responsables = $this->leadConfig->getAssignableUsers();
             $responsables = array_map([$this, 'transformResponsable'], $responsables);
@@ -124,6 +136,7 @@ class SolicitudController extends BaseController
                         'fuentes' => $fuentes,
                         'kanban' => $kanbanPreferences,
                     ],
+                    'metrics' => $metrics,
                 ],
             ]);
         } catch (Throwable $e) {
@@ -137,6 +150,12 @@ class SolicitudController extends BaseController
                         'etapas' => $pipelineStages,
                         'fuentes' => [],
                         'kanban' => $kanbanPreferences,
+                    ],
+                    'metrics' => [
+                        'sla' => [],
+                        'alerts' => [],
+                        'prioridad' => [],
+                        'teams' => [],
                     ],
                 ],
                 'error' => 'No se pudo cargar la información de solicitudes',
@@ -365,7 +384,7 @@ class SolicitudController extends BaseController
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
 
-        return $row;
+        return array_merge($row, $this->computeOperationalMetadata($row));
     }
 
     private function transformResponsable(array $usuario): array
@@ -390,6 +409,205 @@ class SolicitudController extends BaseController
         }
 
         return function_exists('asset') ? asset($path) : $path;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function computeOperationalMetadata(array $row): array
+    {
+        $now = new DateTimeImmutable('now');
+        $estado = strtolower(trim((string) ($row['estado'] ?? '')));
+        $isTerminal = $estado !== '' && in_array($estado, self::TERMINAL_STATES, true);
+
+        $fechaProgramada = $this->parseDate($row['fecha_programada'] ?? ($row['fecha'] ?? null));
+        $createdAt = $this->parseDate($row['created_at'] ?? null);
+
+        $deadline = $fechaProgramada ?? $createdAt;
+        $hoursRemaining = null;
+        $slaStatus = 'sin_fecha';
+
+        if ($deadline instanceof DateTimeImmutable) {
+            $hoursRemaining = ($deadline->getTimestamp() - $now->getTimestamp()) / 3600;
+
+            if ($isTerminal) {
+                $slaStatus = 'cerrado';
+            } elseif ($hoursRemaining < 0) {
+                $slaStatus = 'vencido';
+            } elseif ($hoursRemaining <= self::SLA_CRITICAL_HOURS) {
+                $slaStatus = 'critico';
+            } elseif ($hoursRemaining <= self::SLA_WARNING_HOURS) {
+                $slaStatus = 'advertencia';
+            } else {
+                $slaStatus = 'en_rango';
+            }
+        } elseif ($createdAt instanceof DateTimeImmutable) {
+            $elapsed = ($now->getTimestamp() - $createdAt->getTimestamp()) / 3600;
+            if ($elapsed >= self::SLA_WARNING_HOURS) {
+                $slaStatus = 'advertencia';
+            }
+        }
+
+        $autoPriority = 'normal';
+        if (in_array($slaStatus, ['vencido', 'critico'], true)) {
+            $autoPriority = 'urgente';
+        } elseif ($slaStatus === 'advertencia') {
+            $autoPriority = 'pendiente';
+        }
+
+        $autoPriorityLabel = match ($autoPriority) {
+            'urgente' => 'Urgente',
+            'pendiente' => 'Pendiente',
+            default => 'Normal',
+        };
+
+        $prioridadManual = trim((string) ($row['prioridad'] ?? ''));
+        $prioridadMostrada = $prioridadManual !== '' ? $prioridadManual : $autoPriorityLabel;
+
+        $fechaCaducidad = $this->parseDate($row['fecha_caducidad'] ?? null);
+        $alertReprogramacion = !$isTerminal
+            && $fechaProgramada instanceof DateTimeImmutable
+            && $fechaProgramada < $now->sub(new DateInterval('PT2H'));
+
+        $alertConsentimiento = !$isTerminal
+            && ($fechaCaducidad === null || $fechaCaducidad <= $now);
+
+        $alerts = [];
+        if ($alertReprogramacion) {
+            $alerts[] = 'Requiere reprogramación';
+        }
+        if ($alertConsentimiento) {
+            $alerts[] = 'Pendiente de consentimiento';
+        }
+
+        return [
+            'prioridad' => $prioridadMostrada,
+            'prioridad_origen' => $prioridadManual !== '' ? 'manual' : 'automatico',
+            'prioridad_automatica' => $autoPriority,
+            'prioridad_automatica_label' => $autoPriorityLabel,
+            'sla_status' => $slaStatus,
+            'sla_deadline' => $deadline instanceof DateTimeImmutable ? $deadline->format(DateTimeImmutable::ATOM) : null,
+            'sla_hours_remaining' => $hoursRemaining !== null ? round($hoursRemaining, 2) : null,
+            'fecha_programada_iso' => $fechaProgramada instanceof DateTimeImmutable ? $fechaProgramada->format(DateTimeImmutable::ATOM) : null,
+            'created_at_iso' => $createdAt instanceof DateTimeImmutable ? $createdAt->format(DateTimeImmutable::ATOM) : null,
+            'alert_reprogramacion' => $alertReprogramacion,
+            'alert_pendiente_consentimiento' => $alertConsentimiento,
+            'alertas_operativas' => $alerts,
+        ];
+    }
+
+    private function parseDate(mixed $value): ?DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+
+        try {
+            return new DateTimeImmutable((string) $value);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $solicitudes
+     * @return array<string, mixed>
+     */
+    private function buildOperationalMetrics(array $solicitudes): array
+    {
+        $metrics = [
+            'sla' => [
+                'en_rango' => 0,
+                'advertencia' => 0,
+                'critico' => 0,
+                'vencido' => 0,
+                'sin_fecha' => 0,
+                'cerrado' => 0,
+            ],
+            'alerts' => [
+                'requiere_reprogramacion' => 0,
+                'pendiente_consentimiento' => 0,
+            ],
+            'prioridad' => [
+                'urgente' => 0,
+                'pendiente' => 0,
+                'normal' => 0,
+            ],
+            'teams' => [],
+        ];
+
+        foreach ($solicitudes as $row) {
+            $sla = (string) ($row['sla_status'] ?? 'sin_fecha');
+            if (!array_key_exists($sla, $metrics['sla'])) {
+                $metrics['sla'][$sla] = 0;
+            }
+            $metrics['sla'][$sla] += 1;
+
+            $autoPriority = (string) ($row['prioridad_automatica'] ?? '');
+            if ($autoPriority !== '') {
+                if (!array_key_exists($autoPriority, $metrics['prioridad'])) {
+                    $metrics['prioridad'][$autoPriority] = 0;
+                }
+                $metrics['prioridad'][$autoPriority] += 1;
+            }
+
+            if (!empty($row['alert_reprogramacion'])) {
+                $metrics['alerts']['requiere_reprogramacion'] += 1;
+            }
+            if (!empty($row['alert_pendiente_consentimiento'])) {
+                $metrics['alerts']['pendiente_consentimiento'] += 1;
+            }
+
+            $teamKey = (string) ($row['crm_responsable_id'] ?? 'sin_asignar');
+            if (!isset($metrics['teams'][$teamKey])) {
+                $metrics['teams'][$teamKey] = [
+                    'responsable_id' => $row['crm_responsable_id'] ?? null,
+                    'responsable_nombre' => $row['crm_responsable_nombre'] ?? 'Sin responsable',
+                    'total' => 0,
+                    'vencido' => 0,
+                    'critico' => 0,
+                    'advertencia' => 0,
+                    'reprogramar' => 0,
+                    'sin_consentimiento' => 0,
+                ];
+            }
+
+            $metrics['teams'][$teamKey]['total'] += 1;
+
+            if ($sla === 'vencido') {
+                $metrics['teams'][$teamKey]['vencido'] += 1;
+            }
+            if ($sla === 'critico') {
+                $metrics['teams'][$teamKey]['critico'] += 1;
+            }
+            if ($sla === 'advertencia') {
+                $metrics['teams'][$teamKey]['advertencia'] += 1;
+            }
+            if (!empty($row['alert_reprogramacion'])) {
+                $metrics['teams'][$teamKey]['reprogramar'] += 1;
+            }
+            if (!empty($row['alert_pendiente_consentimiento'])) {
+                $metrics['teams'][$teamKey]['sin_consentimiento'] += 1;
+            }
+        }
+
+        uasort($metrics['teams'], static function (array $a, array $b): int {
+            $scoreA = ($a['vencido'] * 3) + ($a['critico'] * 2) + $a['advertencia'];
+            $scoreB = ($b['vencido'] * 3) + ($b['critico'] * 2) + $b['advertencia'];
+
+            if ($scoreA === $scoreB) {
+                return strcmp((string) $a['responsable_nombre'], (string) $b['responsable_nombre']);
+            }
+
+            return $scoreB <=> $scoreA;
+        });
+
+        return $metrics;
     }
 
     public function actualizarEstado(): void
@@ -445,7 +663,7 @@ class SolicitudController extends BaseController
         $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
         $horasPasadas = isset($payload['horas_pasadas']) ? (int) $payload['horas_pasadas'] : 48;
 
-        $scheduler = new ExamenesReminderService($this->pdo, $this->pusherConfig);
+        $scheduler = new SolicitudReminderService($this->pdo, $this->pusherConfig);
         $enviados = $scheduler->dispatchUpcoming($horas, $horasPasadas);
 
         $this->json([

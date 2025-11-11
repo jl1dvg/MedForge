@@ -43,7 +43,14 @@ class ExamenController extends BaseController
         $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] = 'nuevo-examen';
         $realtime['events'][PusherConfigService::EVENT_STATUS_UPDATED] = 'examen-actualizado';
         $realtime['events'][PusherConfigService::EVENT_CRM_UPDATED] = 'crm-examen-actualizado';
-        $realtime['events'][PusherConfigService::EVENT_EXAM_REMINDER] = 'recordatorio-examen';
+
+        $examReminderAlias = 'exam_reminder';
+        $examReminderKey = PusherConfigService::class . '::EVENT_EXAM_REMINDER';
+        if (defined($examReminderKey)) {
+            $examReminderAlias = constant($examReminderKey);
+        }
+
+        $realtime['events'][$examReminderAlias] = 'recordatorio-examen';
         $realtime['event'] = $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] ?? $realtime['event'];
 
         $this->render(
@@ -516,6 +523,28 @@ class ExamenController extends BaseController
     {
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+
+        // Reutilizamos los mismos nombres de campos que espera el front-end de solicitudes
+        // para que el tablero compartido muestre la información correcta de los exámenes.
+        if (empty($row['fecha'] ?? null)) {
+            $row['fecha'] = $row['consulta_fecha'] ?? $row['created_at'] ?? null;
+        }
+
+        if (empty($row['procedimiento'] ?? null)) {
+            $row['procedimiento'] = $row['examen_nombre'] ?? $row['examen_codigo'] ?? null;
+        }
+
+        if (empty($row['tipo'] ?? null)) {
+            $row['tipo'] = $row['examen_codigo'] ?? $row['examen_nombre'] ?? null;
+        }
+
+        if (empty($row['observacion'] ?? null)) {
+            $row['observacion'] = $row['observaciones'] ?? null;
+        }
+
+        if (empty($row['ojo'] ?? null)) {
+            $row['ojo'] = $row['lateralidad'] ?? null;
+        }
 
         $dias = 0;
         $fechaReferencia = $row['consulta_fecha'] ?? $row['created_at'] ?? null;

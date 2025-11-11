@@ -633,13 +633,34 @@ $realtime = array_merge(
     ?>
 
     <script>
+        window.__KANBAN_MODULE__ = {
+            key: 'examenes',
+            basePath: '/examenes',
+            storageKeyView: 'examenes:view-mode',
+            dataKey: '__examenesKanban',
+            estadosMetaKey: '__examenesEstadosMeta',
+            selectors: {
+                prefix: 'examenes',
+            },
+            strings: {
+                singular: 'examen',
+                plural: 'exámenes',
+                capitalizedPlural: 'Exámenes',
+                articleSingular: 'el',
+                articleSingularShort: 'el',
+            },
+            realtime: {
+                channel: $realtime['channel'] ?? 'examenes-kanban',
+                event: $realtime['event'] ?? 'nuevo-examen',
+            },
+        };
         window.__examenesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
             <div>
-                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la examen</h5>
+                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM del examen</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
@@ -658,7 +679,7 @@ $realtime = array_merge(
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="acc-head-resumen">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-resumen" aria-expanded="false" aria-controls="acc-resumen" data-preserve-disabled="true">
-                            <i class="mdi mdi-information-outline me-2"></i> Resumen de la examen
+                            <i class="mdi mdi-information-outline me-2"></i> Resumen del examen
                         </button>
                     </h2>
                     <div id="acc-resumen" class="accordion-collapse collapse" aria-labelledby="acc-head-resumen" data-bs-parent="#crmAccordion">
@@ -810,7 +831,7 @@ $realtime = array_merge(
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
             <div>
-                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la examen</h5>
+                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM del examen</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
@@ -1017,4 +1038,4 @@ $realtime = array_merge(
 <?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>
+<script type="module" src="<?= asset('js/pages/solicitudes/index.js') ?>"></script>

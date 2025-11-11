@@ -184,4 +184,13 @@
     && get_option('pusher_app_key') !== ''): ?>
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= asset('js/pages/examenes/turnero.js') ?>"></script>
+<script>
+    window.__KANBAN_MODULE__ = {
+        key: 'examenes',
+        basePath: '/examenes',
+        selectors: {
+            prefix: 'examenes',
+        },
+    };
+</script>
+<script type="module" src="<?= asset('js/pages/solicitudes/turnero.js') ?>"></script>

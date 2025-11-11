@@ -30,6 +30,7 @@ class SolicitudModel
                 sp.doctor,
                 sp.estado,
                 cd.fecha,
+                COALESCE(cd.fecha, sp.fecha, sp.created_at) AS fecha_programada,
                 sp.duracion,
                 sp.ojo,
                 sp.prioridad,
@@ -121,7 +122,7 @@ class SolicitudModel
             }
         }
 
-        $sql .= " ORDER BY cd.fecha DESC";
+        $sql .= " ORDER BY COALESCE(cd.fecha, sp.fecha, sp.created_at) DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);

@@ -4,8 +4,18 @@ import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 import { createNotificationPanel } from './notifications/panel.js';
 import { formatTurno } from './kanban/turnero.js';
+import {
+    getKanbanConfig,
+    getDataStore,
+    setDataStore,
+    getEstadosMeta,
+    resolveAttr,
+    resolveId,
+    getTableBodySelector,
+} from './kanban/config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+    const config = getKanbanConfig();
     const realtimeConfig = window.MEDF_PusherConfig || {};
     const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
     const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
@@ -84,17 +94,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const estadosMeta = window.__solicitudesEstadosMeta || {};
+    const estadosMeta = getEstadosMeta();
+    window.__solicitudesMetrics = window.__solicitudesMetrics || null;
     // Estados que NO deben aparecer en el overview
     const OVERVIEW_EXCLUDED_STATES = new Set(['llamado', 'en-atencion']);
-    const STORAGE_KEY_VIEW = 'solicitudes:view-mode';
-    const viewButtons = Array.from(document.querySelectorAll('[data-solicitudes-view]'));
-    const kanbanContainer = document.getElementById('solicitudesViewKanban');
-    const tableContainer = document.getElementById('solicitudesViewTable');
-    const totalCounter = document.getElementById('solicitudesTotalCount');
-    const overviewContainer = document.getElementById('solicitudesOverview');
-    const tableBody = document.querySelector('#solicitudesTable tbody');
-    const tableEmptyState = document.getElementById('solicitudesTableEmpty');
+    const STORAGE_KEY_VIEW = config.storageKeyView;
+    const viewAttr = resolveAttr('view');
+    const viewButtons = Array.from(document.querySelectorAll(`[${viewAttr}]`));
+    const kanbanContainer = document.getElementById(resolveId('ViewKanban'));
+    const tableContainer = document.getElementById(resolveId('ViewTable'));
+    const totalCounter = document.getElementById(resolveId('TotalCount'));
+    const overviewContainer = document.getElementById(resolveId('Overview'));
+    const tableBody = document.querySelector(getTableBodySelector());
+    const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
 
     const VIEW_DEFAULT = 'kanban';
@@ -153,6 +165,80 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return { label: 'Urgente', badgeClass: 'text-bg-danger' };
+    };
+
+    const SLA_META = {
+        en_rango: { label: 'En rango', badgeClass: 'text-bg-success', hint: 'Dentro de la ventana operativa' },
+        advertencia: { label: 'Seguimiento 72h', badgeClass: 'text-bg-warning text-dark', hint: 'Revisar en las próximas 72h' },
+        critico: { label: 'Crítico 24h', badgeClass: 'text-bg-danger', hint: 'Revisar en las próximas 24h' },
+        vencido: { label: 'Vencido', badgeClass: 'text-bg-dark', hint: 'SLA excedido' },
+        sin_fecha: { label: 'Sin programación', badgeClass: 'text-bg-secondary', hint: 'Sin fecha objetivo registrada' },
+        cerrado: { label: 'Cerrado', badgeClass: 'text-bg-secondary', hint: 'Solicitud cerrada' },
+    };
+
+    const PRIORIDAD_META = {
+        urgente: { label: 'Urgente', badgeClass: 'text-bg-danger' },
+        pendiente: { label: 'Pendiente', badgeClass: 'text-bg-warning text-dark' },
+        normal: { label: 'Normal', badgeClass: 'text-bg-success' },
+    };
+
+    const getSlaMeta = (status) => {
+        const normalized = (status || '').toString().trim();
+        return SLA_META[normalized] || SLA_META.sin_fecha;
+    };
+
+    const getPrioridadMeta = (prioridad) => {
+        const normalized = (prioridad || '').toString().trim().toLowerCase();
+        return PRIORIDAD_META[normalized] || PRIORIDAD_META.normal;
+    };
+
+    const formatIsoDate = (iso, { dateOnly = false } = {}) => {
+        if (!iso) {
+            return null;
+        }
+
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) {
+            return null;
+        }
+
+        return dateOnly ? date.toLocaleDateString() : date.toLocaleString();
+    };
+
+    const formatHours = (value) => {
+        if (typeof value !== 'number' || Number.isNaN(value)) {
+            return null;
+        }
+
+        const rounded = Math.round(value);
+        if (Math.abs(rounded) >= 48) {
+            const days = (rounded / 24).toFixed(1);
+            return `${days} día(s)`;
+        }
+
+        return `${rounded} h`;
+    };
+
+    const getAlertBadges = (item = {}) => {
+        const alerts = [];
+
+        if (item.alert_reprogramacion) {
+            alerts.push({
+                label: 'Reprogramar',
+                variant: 'text-bg-danger',
+                icon: 'mdi-calendar-alert',
+            });
+        }
+
+        if (item.alert_pendiente_consentimiento) {
+            alerts.push({
+                label: 'Consentimiento',
+                variant: 'text-bg-warning text-dark',
+                icon: 'mdi-shield-alert',
+            });
+        }
+
+        return alerts;
     };
 
     const getInitials = (nombre) => {
@@ -224,24 +310,29 @@ document.addEventListener('DOMContentLoaded', () => {
             totalCounter.textContent = total;
         }
 
+        const metrics = window.__solicitudesMetrics || {};
+        const slaMetrics = metrics.sla || {};
+        const alertMetrics = metrics.alerts || {};
+        const priorityMetrics = metrics.prioridad || {};
+        const teams = metrics.teams ? Object.values(metrics.teams) : [];
+
         const counts = {};
-        let urgentes = 0;
-        let pendientes = 0;
 
         (Array.isArray(data) ? data : []).forEach(item => {
             const slug = normalizeEstado(item?.estado);
             counts[slug] = (counts[slug] || 0) + 1;
-
-            const dias = calcularDias(item?.fecha);
-
-            if (dias > 7) {
-                urgentes += 1;
-            } else if (dias >= 4) {
-                pendientes += 1;
-            }
         });
 
         const cards = [];
+
+        const urgentes = priorityMetrics.urgente ?? 0;
+        const pendientes = priorityMetrics.pendiente ?? 0;
+        const vencidos = slaMetrics.vencido ?? 0;
+        const criticos = slaMetrics.critico ?? 0;
+        const advertencias = slaMetrics.advertencia ?? 0;
+        const reprogramar = alertMetrics.requiere_reprogramacion ?? 0;
+        const consentimientoPendiente = alertMetrics.pendiente_consentimiento ?? 0;
+        const topTeam = teams.length ? teams[0] : null;
 
         cards.push(createOverviewCard({
             title: 'Total de solicitudes',
@@ -252,20 +343,60 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
 
         cards.push(createOverviewCard({
-            title: 'Urgentes (>7 días)',
-            count: urgentes,
-            badge: total ? `${Math.round((urgentes / (total || 1)) * 100)}%` : null,
-            badgeClass: 'text-bg-danger',
-            subtitle: urgentes ? 'Priorizar seguimiento' : 'Sin urgencias activas',
+            title: 'SLA vencido',
+            count: vencidos,
+            badge: total ? `${Math.round((vencidos / (total || 1)) * 100)}%` : null,
+            badgeClass: vencidos ? 'text-bg-danger' : 'text-bg-success',
+            subtitle: vencidos ? 'Atender inmediatamente' : 'Sin vencimientos activos',
         }));
 
         cards.push(createOverviewCard({
-            title: 'Pendientes (4–7 días)',
-            count: pendientes,
-            badge: total ? `${Math.round((pendientes / (total || 1)) * 100)}%` : null,
-            badgeClass: 'text-bg-warning text-dark',
-            subtitle: pendientes ? 'Revisar avances y documentación' : 'Sin pendientes en este rango',
+            title: 'SLA crítico (24h)',
+            count: criticos,
+            badge: criticos ? `${criticos} caso(s)` : null,
+            badgeClass: criticos ? 'text-bg-warning text-dark' : 'text-bg-secondary',
+            subtitle: criticos ? 'Programar seguimiento hoy' : 'Sin casos críticos',
         }));
+
+        cards.push(createOverviewCard({
+            title: 'Seguimiento (72h)',
+            count: advertencias,
+            badge: advertencias ? `${advertencias} en agenda` : null,
+            badgeClass: advertencias ? 'text-bg-info text-white' : 'text-bg-secondary',
+            subtitle: advertencias ? 'Preparar documentación y confirmaciones' : 'Todo en rango extendido',
+        }));
+
+        cards.push(createOverviewCard({
+            title: 'Reprogramación',
+            count: reprogramar,
+            badge: reprogramar ? 'Alertas activas' : null,
+            badgeClass: reprogramar ? 'text-bg-danger' : 'text-bg-secondary',
+            subtitle: reprogramar ? 'Contactar y reagendar' : 'Sin cirugías vencidas',
+        }));
+
+        cards.push(createOverviewCard({
+            title: 'Consentimiento',
+            count: consentimientoPendiente,
+            badge: consentimientoPendiente ? 'Falta registro' : null,
+            badgeClass: consentimientoPendiente ? 'text-bg-warning text-dark' : 'text-bg-secondary',
+            subtitle: consentimientoPendiente ? 'Gestionar firmas pendientes' : 'Consentimientos vigentes',
+        }));
+
+        if (topTeam) {
+            const resumenEquipo = [
+                topTeam.vencido ? `${topTeam.vencido} vencido(s)` : null,
+                topTeam.critico ? `${topTeam.critico} crítico(s)` : null,
+                topTeam.advertencia ? `${topTeam.advertencia} seguimiento(s)` : null,
+            ].filter(Boolean);
+
+            cards.push(createOverviewCard({
+                title: 'Equipo con mayor carga',
+                count: topTeam.total,
+                badge: topTeam.responsable_nombre || 'Sin responsable',
+                badgeClass: 'text-bg-info text-white',
+                subtitle: resumenEquipo.length ? resumenEquipo.join(' · ') : 'Sin alertas en este equipo',
+            }));
+        }
 
         Object.entries(estadosMeta).forEach(([slug, meta]) => {
             // Omitir estados excluidos en el overview
@@ -313,14 +444,36 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.dataset.id = item?.id ?? '';
             tr.dataset.pacienteNombre = item?.full_name ?? '';
 
-            const dias = calcularDias(item?.fecha);
-            const semaforo = obtenerSemaforo(dias);
+            const dias = calcularDias(item?.fecha_programada_iso || item?.fecha || item?.created_at_iso);
             const turno = formatTurno(item?.turno) || '';
             const pipeline = item?.crm_pipeline_stage || 'Recibido';
             const fuente = item?.crm_fuente || '';
             const responsable = item?.crm_responsable_nombre || 'Sin responsable asignado';
             const avatarHtml = renderResponsableAvatar(responsable, item?.crm_responsable_avatar);
-            const prioridadLabel = item?.prioridad || semaforo.label;
+            const prioridadMeta = getPrioridadMeta(item?.prioridad_automatica);
+            const prioridadDisplay = item?.prioridad || prioridadMeta.label;
+            const prioridadBadgeClass = item?.prioridad_origen === 'manual'
+                ? 'text-bg-primary'
+                : prioridadMeta.badgeClass;
+            const prioridadOrigen = item?.prioridad_origen === 'manual' ? 'Prioridad manual' : 'Regla automática';
+            const slaMeta = getSlaMeta(item?.sla_status);
+            const slaDeadlineLabel = formatIsoDate(item?.sla_deadline);
+            const slaHoursLabel = formatHours(item?.sla_hours_remaining);
+            const slaSummaryParts = [];
+            if (slaDeadlineLabel) {
+                slaSummaryParts.push(`Vence: ${slaDeadlineLabel}`);
+            }
+            if (slaHoursLabel) {
+                slaSummaryParts.push(slaHoursLabel);
+            }
+            if (typeof dias === 'number' && !Number.isNaN(dias)) {
+                slaSummaryParts.push(`Edad: ${dias} día(s)`);
+            }
+            const slaSummary = slaSummaryParts.join(' · ');
+            const alerts = getAlertBadges(item);
+            const alertsHtml = alerts.length
+                ? `<div class="d-flex flex-wrap gap-1 mt-1">${alerts.map(alert => `<span class="badge ${escapeHtml(alert.variant)}"><i class="mdi ${escapeHtml(alert.icon)} me-1"></i>${escapeHtml(alert.label)}</span>`).join('')}</div>`
+                : '';
 
             const detalleProcedimiento = item?.procedimiento || 'Sin procedimiento';
             const detalleDoctor = item?.doctor || 'Sin doctor';
@@ -353,8 +506,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </td>
                 <td>
-                    <span class="badge ${escapeHtml(semaforo.badgeClass)}">${escapeHtml(prioridadLabel)}</span>
-                    <div class="text-muted small">${escapeHtml(String(dias))} día(s)</div>
+                    <div class="d-flex flex-column gap-1">
+                        <span class="badge ${escapeHtml(prioridadBadgeClass)}">${escapeHtml(prioridadDisplay)}</span>
+                        <div class="text-muted small">${escapeHtml(prioridadOrigen)}</div>
+                        <div>
+                            <span class="badge ${escapeHtml(slaMeta.badgeClass)}" title="${escapeHtml(slaMeta.hint)}">${escapeHtml(slaMeta.label)}</span>
+                            ${slaSummary ? `<div class="text-muted small">${escapeHtml(slaSummary)}</div>` : ''}
+                        </div>
+                        ${alertsHtml}
+                    </div>
                 </td>
                 <td>
                     ${turno ? `<span class="badge text-bg-info text-dark">#${escapeHtml(turno)}</span>` : '<span class="text-muted">—</span>'}
@@ -390,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         viewButtons.forEach(button => {
-            const buttonView = button.getAttribute('data-solicitudes-view') === 'table' ? 'table' : VIEW_DEFAULT;
+            const buttonView = button.getAttribute(viewAttr) === 'table' ? 'table' : VIEW_DEFAULT;
             button.classList.toggle('active', buttonView === normalized);
         });
 
@@ -400,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderFromCache = () => {
-        const baseData = Array.isArray(window.__solicitudesKanban) ? window.__solicitudesKanban : [];
+        const baseData = getDataStore();
         const filtradas = aplicarFiltrosLocales(baseData);
 
         updateOverview(filtradas);
@@ -412,7 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
     viewButtons.forEach(button => {
         button.addEventListener('click', event => {
             event.preventDefault();
-            const view = button.getAttribute('data-solicitudes-view');
+            const view = button.getAttribute(viewAttr);
             switchView(view);
         });
     });
@@ -442,7 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(filtros);
         console.groupEnd();
 
-        return fetch('/solicitudes/kanban-data', {
+        return fetch(`${config.basePath}/kanban-data`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),
@@ -462,18 +622,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.json();
             })
             .then(({ data = [], options = {} }) => {
-                window.__solicitudesKanban = Array.isArray(data) ? data : [];
+                const normalized = Array.isArray(data) ? data : [];
+                setDataStore(normalized);
+                window.__solicitudesMetrics = options.metrics || null;
 
                 if (options.afiliaciones) {
                     poblarAfiliacionesUnicas(options.afiliaciones);
                 } else {
-                    poblarAfiliacionesUnicas(window.__solicitudesKanban);
+                    poblarAfiliacionesUnicas(getDataStore());
                 }
 
                 if (options.doctores) {
                     poblarDoctoresUnicos(options.doctores);
                 } else {
-                    poblarDoctoresUnicos(window.__solicitudesKanban);
+                    poblarDoctoresUnicos(getDataStore());
                 }
 
                 if (options.crm) {
@@ -487,6 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(error => {
                 console.error('❌ Error cargando Kanban:', error);
                 showToast(error?.message || 'No se pudo cargar el tablero de solicitudes', false);
+                window.__solicitudesMetrics = null;
             });
     };
 

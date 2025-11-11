@@ -184,4 +184,13 @@
     && get_option('pusher_app_key') !== ''): ?>
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
+<script>
+    window.__KANBAN_MODULE__ = {
+        key: 'solicitudes',
+        basePath: '/solicitudes',
+        selectors: {
+            prefix: 'solicitudes',
+        },
+    };
+</script>
 <script type="module" src="<?= asset('js/pages/solicitudes/turnero.js') ?>"></script>

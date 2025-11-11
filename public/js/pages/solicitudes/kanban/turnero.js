@@ -1,4 +1,6 @@
-const ENDPOINT = '/solicitudes/turnero-llamar';
+import { getKanbanConfig } from './config.js';
+
+const ENDPOINT = `${getKanbanConfig().basePath}/turnero-llamar`;
 
 const parseEntero = valor => {
     const numero = Number.parseInt(valor, 10);

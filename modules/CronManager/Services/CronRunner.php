@@ -6,12 +6,14 @@ namespace Modules\CronManager\Services;
 
 use DateInterval;
 use DateTimeImmutable;
+use DatePeriod;
 use Models\BillingMainModel;
 use Modules\CronManager\Repositories\CronTaskRepository;
 use Modules\CiveExtension\Services\HealthCheckService;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
+use Modules\KPI\Services\KpiCalculationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
 use PDO;
@@ -184,6 +186,29 @@ class CronRunner
                 'interval' => 3600,
                 'callback' => function (): array {
                     return $this->runStatisticsTask();
+                },
+            ],
+            [
+                'slug' => 'kpi-refresh',
+                'name' => 'Snapshots de KPIs',
+                'description' => 'Recalcula los indicadores agregados para dashboards y reportes.',
+                'interval' => 3600,
+                'callback' => function (): array {
+                    $today = new DateTimeImmutable('today');
+                    $yesterday = $today->sub(new DateInterval('P1D'));
+
+                    $period = new DatePeriod($yesterday, new DateInterval('P1D'), $today->add(new DateInterval('P1D')));
+                    $service = new KpiCalculationService($this->pdo);
+                    $service->recalculateRange($period);
+
+                    return [
+                        'status' => 'success',
+                        'message' => 'KPIs recalculados para los últimos dos días.',
+                        'details' => [
+                            'from' => $yesterday->format('Y-m-d'),
+                            'to' => $today->format('Y-m-d'),
+                        ],
+                    ];
                 },
             ],
             [

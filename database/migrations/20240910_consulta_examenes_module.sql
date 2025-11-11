@@ -1,4 +1,20 @@
--- Normaliza examenes solicitados en consulta y crea infraestructura CRM/turnero
+
+SET @query := (
+    SELECT IF(
+        EXISTS (
+            SELECT 1
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = 'consulta_data'
+              AND index_name = 'idx_consulta_data_form_hc'
+        ),
+        'SELECT "idx_consulta_data_form_hc ya existe";',
+        'ALTER TABLE consulta_data ADD INDEX idx_consulta_data_form_hc (form_id, hc_number);'
+    )
+);
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS consulta_examenes (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -14,7 +30,7 @@ CREATE TABLE IF NOT EXISTS consulta_examenes (
     observaciones TEXT NULL,
     estado VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
     turno INT NULL,
-    crm_lead_id INT UNSIGNED NULL,
+    crm_lead_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uniq_consulta_examen (form_id, examen_codigo, examen_nombre(120)),
@@ -29,8 +45,8 @@ CREATE TABLE IF NOT EXISTS consulta_examenes (
 
 CREATE TABLE IF NOT EXISTS examen_crm_detalles (
     examen_id INT UNSIGNED NOT NULL PRIMARY KEY,
-    crm_lead_id INT UNSIGNED NULL,
-    responsable_id INT UNSIGNED NULL,
+    crm_lead_id INT NULL,
+    responsable_id INT NULL,
     pipeline_stage VARCHAR(64) NULL,
     fuente VARCHAR(120) NULL,
     contacto_email VARCHAR(190) NULL,
@@ -46,7 +62,7 @@ CREATE TABLE IF NOT EXISTS examen_crm_detalles (
 CREATE TABLE IF NOT EXISTS examen_crm_notas (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     examen_id INT UNSIGNED NOT NULL,
-    autor_id INT UNSIGNED NULL,
+    autor_id INT NULL,
     nota TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_examen_crm_notas_examen FOREIGN KEY (examen_id) REFERENCES consulta_examenes (id) ON DELETE CASCADE,
@@ -63,7 +79,7 @@ CREATE TABLE IF NOT EXISTS examen_crm_adjuntos (
     mime_type VARCHAR(120) NULL,
     tamano_bytes INT UNSIGNED NULL,
     descripcion VARCHAR(255) NULL,
-    subido_por INT UNSIGNED NULL,
+    subido_por INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_examen_crm_adjuntos_examen FOREIGN KEY (examen_id) REFERENCES consulta_examenes (id) ON DELETE CASCADE,
     CONSTRAINT fk_examen_crm_adjuntos_usuario FOREIGN KEY (subido_por) REFERENCES users (id) ON DELETE SET NULL,
@@ -77,8 +93,8 @@ CREATE TABLE IF NOT EXISTS examen_crm_tareas (
     titulo VARCHAR(180) NOT NULL,
     descripcion TEXT NULL,
     estado ENUM('pendiente', 'en_progreso', 'completada', 'cancelada') NOT NULL DEFAULT 'pendiente',
-    assigned_to INT UNSIGNED NULL,
-    created_by INT UNSIGNED NULL,
+    assigned_to INT NULL,
+    created_by INT NULL,
     due_date DATE NULL,
     remind_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
