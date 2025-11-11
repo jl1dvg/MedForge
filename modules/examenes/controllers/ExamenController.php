@@ -43,7 +43,14 @@ class ExamenController extends BaseController
         $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] = 'nuevo-examen';
         $realtime['events'][PusherConfigService::EVENT_STATUS_UPDATED] = 'examen-actualizado';
         $realtime['events'][PusherConfigService::EVENT_CRM_UPDATED] = 'crm-examen-actualizado';
-        $realtime['events'][PusherConfigService::EVENT_EXAM_REMINDER] = 'recordatorio-examen';
+
+        $examReminderAlias = 'exam_reminder';
+        $examReminderKey = PusherConfigService::class . '::EVENT_EXAM_REMINDER';
+        if (defined($examReminderKey)) {
+            $examReminderAlias = constant($examReminderKey);
+        }
+
+        $realtime['events'][$examReminderAlias] = 'recordatorio-examen';
         $realtime['event'] = $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] ?? $realtime['event'];
 
         $this->render(

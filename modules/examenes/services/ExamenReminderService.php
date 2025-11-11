@@ -73,10 +73,16 @@ class ExamenReminderService
                 'channels' => $this->pusher->getNotificationChannels(),
             ];
 
+            $eventAlias = PusherConfigService::EVENT_SURGERY_REMINDER;
+            $examReminderKey = PusherConfigService::class . '::EVENT_EXAM_REMINDER';
+            if (defined($examReminderKey)) {
+                $eventAlias = constant($examReminderKey);
+            }
+
             $ok = $this->pusher->trigger(
                 $payload,
                 null,
-                PusherConfigService::EVENT_EXAM_REMINDER
+                $eventAlias
             );
 
             if ($ok) {
