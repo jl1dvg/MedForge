@@ -13,6 +13,7 @@ use PDO;
 class PatientIdentityService
 {
     private PDO $pdo;
+    private ?bool $crmCustomerHasHcNumber = null;
 
     public function __construct(PDO $pdo)
     {
@@ -58,6 +59,10 @@ class PatientIdentityService
         $normalized = $this->normalizeHcNumber($hcNumber);
         if ($normalized === '') {
             throw new InvalidArgumentException('El número de historia clínica es obligatorio.');
+        }
+
+        if (!$this->crmCustomersHasHcNumber()) {
+            return null;
         }
 
         $stmt = $this->pdo->prepare('SELECT id FROM crm_customers WHERE hc_number = :hc LIMIT 1');
@@ -148,6 +153,21 @@ class PatientIdentityService
         $insert->execute($params);
 
         return $this->findPatient($normalized);
+    }
+
+    private function crmCustomersHasHcNumber(): bool
+    {
+        if ($this->crmCustomerHasHcNumber !== null) {
+            return $this->crmCustomerHasHcNumber;
+        }
+
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crm_customers' AND COLUMN_NAME = 'hc_number'"
+        );
+        $stmt->execute();
+        $this->crmCustomerHasHcNumber = (bool) $stmt->fetchColumn();
+
+        return $this->crmCustomerHasHcNumber;
     }
 
     /**

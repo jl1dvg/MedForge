@@ -16,6 +16,7 @@ class LeadModel
     private LeadConfigurationService $configService;
     private WhatsAppMessenger $whatsapp;
     private PatientIdentityService $identityService;
+    private ?bool $crmCustomerHasHcNumber = null;
 
     public function __construct(PDO $pdo)
     {
@@ -39,6 +40,7 @@ class LeadModel
 
     public function list(array $filters = []): array
     {
+        $customerHcSelect = $this->getCustomerHcSelect();
         $sql = "
             SELECT
                 l.id,
@@ -56,7 +58,7 @@ class LeadModel
                 l.updated_at,
                 u.nombre AS assigned_name,
                 c.name AS customer_name,
-                c.hc_number AS customer_hc_number
+                $customerHcSelect
             FROM crm_leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN crm_customers c ON l.customer_id = c.id
@@ -107,6 +109,7 @@ class LeadModel
 
     public function findById(int $id): ?array
     {
+        $customerHcSelect = $this->getCustomerHcSelect();
         $stmt = $this->pdo->prepare("
             SELECT
                 l.id,
@@ -124,7 +127,7 @@ class LeadModel
                 l.updated_at,
                 u.nombre AS assigned_name,
                 c.name AS customer_name,
-                c.hc_number AS customer_hc_number
+                $customerHcSelect
             FROM crm_leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN crm_customers c ON l.customer_id = c.id
@@ -145,6 +148,7 @@ class LeadModel
             return null;
         }
 
+        $customerHcSelect = $this->getCustomerHcSelect();
         $stmt = $this->pdo->prepare("
             SELECT
                 l.id,
@@ -162,7 +166,7 @@ class LeadModel
                 l.updated_at,
                 u.nombre AS assigned_name,
                 c.name AS customer_name,
-                c.hc_number AS customer_hc_number
+                $customerHcSelect
             FROM crm_leads l
             LEFT JOIN users u ON l.assigned_to = u.id
             LEFT JOIN crm_customers c ON l.customer_id = c.id
@@ -654,6 +658,10 @@ class LeadModel
             return null;
         }
 
+        if ($column === 'hc_number' && !$this->crmCustomersHasHcNumber()) {
+            return null;
+        }
+
         $stmt = $this->pdo->prepare("SELECT id FROM crm_customers WHERE $column = :value LIMIT 1");
         $stmt->execute([':value' => $value]);
         $id = $stmt->fetchColumn();
@@ -680,6 +688,30 @@ class LeadModel
     private function sanitizeStatus(?string $status): string
     {
         return $this->configService->normalizeStage($status);
+    }
+
+    private function getCustomerHcSelect(): string
+    {
+        if ($this->crmCustomersHasHcNumber()) {
+            return 'c.hc_number AS customer_hc_number';
+        }
+
+        return 'l.hc_number AS customer_hc_number';
+    }
+
+    private function crmCustomersHasHcNumber(): bool
+    {
+        if ($this->crmCustomerHasHcNumber !== null) {
+            return $this->crmCustomerHasHcNumber;
+        }
+
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'crm_customers' AND COLUMN_NAME = 'hc_number'"
+        );
+        $stmt->execute();
+        $this->crmCustomerHasHcNumber = (bool) $stmt->fetchColumn();
+
+        return $this->crmCustomerHasHcNumber;
     }
 
     private function nullableString($value): ?string
