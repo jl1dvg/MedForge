@@ -80,12 +80,15 @@ class DataProtectionFlow
         }
 
         $status = (string) ($record['consent_status'] ?? 'pending');
+        $stage = $this->resolveStage($record);
 
         if ($status === 'accepted') {
-            return false;
-        }
+            if ($stage === self::STAGE_COMPLETE) {
+                return false;
+            }
 
-        $stage = $this->resolveStage($record);
+            $status = 'pending';
+        }
 
         if ($status === 'declined') {
             if ($this->isAcceptance($normalizedKeyword)) {

@@ -13,6 +13,9 @@ class PusherConfigService
     public const EVENT_STATUS_UPDATED = 'status_updated';
     public const EVENT_CRM_UPDATED = 'crm_updated';
     public const EVENT_SURGERY_REMINDER = 'surgery_reminder';
+    public const EVENT_PREOP_REMINDER = 'preop_reminder';
+    public const EVENT_POSTOP_REMINDER = 'postop_reminder';
+    public const EVENT_EXAMS_EXPIRING = 'exams_expiring';
 
     private const DEFAULT_CHANNEL = 'solicitudes-kanban';
     private const DEFAULT_EVENTS = [
@@ -20,6 +23,9 @@ class PusherConfigService
         self::EVENT_STATUS_UPDATED => 'solicitud-actualizada',
         self::EVENT_CRM_UPDATED => 'crm-actualizado',
         self::EVENT_SURGERY_REMINDER => 'recordatorio-cirugia',
+        self::EVENT_PREOP_REMINDER => 'recordatorio-preoperatorio',
+        self::EVENT_POSTOP_REMINDER => 'recordatorio-postoperatorio',
+        self::EVENT_EXAMS_EXPIRING => 'alerta-examenes',
     ];
 
     private ?SettingsModel $settingsModel = null;

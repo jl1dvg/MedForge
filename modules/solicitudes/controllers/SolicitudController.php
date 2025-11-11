@@ -443,9 +443,10 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
+        $horasPasadas = isset($payload['horas_pasadas']) ? (int) $payload['horas_pasadas'] : 48;
 
         $scheduler = new SolicitudReminderService($this->pdo, $this->pusherConfig);
-        $enviados = $scheduler->dispatchUpcoming($horas);
+        $enviados = $scheduler->dispatchUpcoming($horas, $horasPasadas);
 
         $this->json([
             'success' => true,

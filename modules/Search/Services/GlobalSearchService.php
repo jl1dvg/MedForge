@@ -4,16 +4,20 @@ namespace Modules\Search\Services;
 
 use PDO;
 use Throwable;
+use Modules\Shared\Services\SchemaInspector;
 
 class GlobalSearchService
 {
     private PDO $pdo;
     private int $limit;
+    private SchemaInspector $schemaInspector;
+    private ?bool $crmCustomerHasHcNumber = null;
 
     public function __construct(PDO $pdo, int $limit = 5)
     {
         $this->pdo = $pdo;
         $this->limit = max(1, $limit);
+        $this->schemaInspector = new SchemaInspector($pdo);
     }
 
     public function search(string $term): array
@@ -65,16 +69,29 @@ class GlobalSearchService
 
     private function searchCustomers(string $term): array
     {
-        $sql = <<<SQL
-            SELECT id, name, email, phone, affiliation, document, source
-            FROM crm_customers
-            WHERE name LIKE :name
-               OR email LIKE :email
-               OR phone LIKE :phone
-               OR document LIKE :document
-            ORDER BY name ASC
-            LIMIT :limit
-        SQL;
+        $hasHcNumber = $this->crmCustomersHasHcNumber();
+
+        $columns = ['id', 'name', 'email', 'phone', 'affiliation', 'document', 'source'];
+        if ($hasHcNumber) {
+            $columns[] = 'hc_number';
+        }
+
+        $conditions = [
+            'name LIKE :name',
+            'email LIKE :email',
+            'phone LIKE :phone',
+            'document LIKE :document',
+        ];
+
+        if ($hasHcNumber) {
+            $conditions[] = 'hc_number LIKE :hc';
+        }
+
+        $sql = sprintf(
+            'SELECT %s FROM crm_customers WHERE %s ORDER BY name ASC LIMIT :limit',
+            implode(', ', $columns),
+            implode(' OR ', $conditions)
+        );
 
         $stmt = $this->pdo->prepare($sql);
         $like = $this->makeLike($term);
@@ -82,6 +99,9 @@ class GlobalSearchService
         $stmt->bindValue(':email', $like);
         $stmt->bindValue(':phone', $like);
         $stmt->bindValue(':document', $like);
+        if ($hasHcNumber) {
+            $stmt->bindValue(':hc', $like);
+        }
         $stmt->bindValue(':limit', $this->limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -103,6 +123,7 @@ class GlobalSearchService
                 'url' => '/crm?tab=customers&customer_id=' . $id,
                 'badge' => $this->string($row['affiliation'] ?? ''),
                 'meta' => $this->buildMeta([
+                    $hasHcNumber && !empty($row['hc_number']) ? 'HC: ' . $row['hc_number'] : null,
                     $row['document'] ? 'Documento: ' . $row['document'] : null,
                     $row['source'] ? 'Origen: ' . $row['source'] : null,
                 ]),
@@ -116,12 +137,14 @@ class GlobalSearchService
     private function searchLeads(string $term): array
     {
         $sql = <<<SQL
-            SELECT id, name, email, phone, status, source
+            SELECT id, hc_number, name, email, phone, status, source
             FROM crm_leads
             WHERE name LIKE :name
                OR email LIKE :email
                OR phone LIKE :phone
                OR source LIKE :source
+               OR hc_number LIKE :hc
+               OR CAST(id AS CHAR) LIKE :id_like
             ORDER BY updated_at DESC
             LIMIT :limit
         SQL;
@@ -132,6 +155,8 @@ class GlobalSearchService
         $stmt->bindValue(':email', $like);
         $stmt->bindValue(':phone', $like);
         $stmt->bindValue(':source', $like);
+        $stmt->bindValue(':hc', $like);
+        $stmt->bindValue(':id_like', $like);
         $stmt->bindValue(':limit', $this->limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -141,6 +166,7 @@ class GlobalSearchService
         foreach ($rows as $row) {
             $id = $this->id($row['id'] ?? null);
             $title = $this->string($row['name'] ?? '');
+            $leadHc = $this->string($row['hc_number'] ?? '');
 
             if ($id === null || $title === '') {
                 continue;
@@ -153,6 +179,7 @@ class GlobalSearchService
                 'url' => '/crm?tab=leads&lead_id=' . $id,
                 'badge' => $this->humanize($row['status'] ?? ''),
                 'meta' => $this->buildMeta([
+                    $leadHc !== '' ? 'HC: ' . $leadHc : null,
                     $row['source'] ? 'Origen: ' . $row['source'] : null,
                 ]),
                 'icon' => 'fa-regular fa-user',
@@ -160,6 +187,17 @@ class GlobalSearchService
         }
 
         return $items;
+    }
+
+    private function crmCustomersHasHcNumber(): bool
+    {
+        if ($this->crmCustomerHasHcNumber !== null) {
+            return $this->crmCustomerHasHcNumber;
+        }
+
+        $this->crmCustomerHasHcNumber = $this->schemaInspector->tableHasColumn('crm_customers', 'hc_number');
+
+        return $this->crmCustomerHasHcNumber;
     }
 
     private function searchProjects(string $term): array

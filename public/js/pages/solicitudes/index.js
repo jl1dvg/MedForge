@@ -538,7 +538,36 @@ document.addEventListener('DOMContentLoaded', () => {
             const newEventName = events.new_request || realtimeConfig.event || 'nueva-solicitud';
             const statusEventName = events.status_updated || null;
             const crmEventName = events.crm_updated || null;
-            const reminderEventName = events.surgery_reminder || null;
+            const reminderEvents = [
+                {
+                    key: 'surgery',
+                    eventName: events.surgery_reminder || null,
+                    defaultLabel: 'Recordatorio de cirugía',
+                    icon: 'mdi mdi-alarm-check',
+                    tone: 'primary',
+                },
+                {
+                    key: 'preop',
+                    eventName: events.preop_reminder || null,
+                    defaultLabel: 'Preparación preoperatoria',
+                    icon: 'mdi mdi-clipboard-check-outline',
+                    tone: 'info',
+                },
+                {
+                    key: 'postop',
+                    eventName: events.postop_reminder || null,
+                    defaultLabel: 'Control postoperatorio',
+                    icon: 'mdi mdi-heart-pulse',
+                    tone: 'success',
+                },
+                {
+                    key: 'exams',
+                    eventName: events.exams_expiring || null,
+                    defaultLabel: 'Exámenes por vencer',
+                    icon: 'mdi mdi-file-alert-outline',
+                    tone: 'warning',
+                },
+            ];
 
             notificationPanel.setIntegrationWarning('');
 
@@ -633,39 +662,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            if (reminderEventName) {
-                channel.bind(reminderEventName, data => {
-                    const paciente = data?.full_name || `Solicitud #${data?.id ?? ''}`;
-                    const fechaProgramada = data?.fecha_programada ? new Date(data.fecha_programada) : null;
-                    const fechaTexto = fechaProgramada && !Number.isNaN(fechaProgramada.getTime())
-                        ? fechaProgramada.toLocaleString()
+            const bindReminderEvent = config => {
+                if (!config.eventName) {
+                    return;
+                }
+
+                channel.bind(config.eventName, rawData => {
+                    const data = rawData || {};
+                    const paciente = data.full_name || `Solicitud #${(data.id ?? '')}`;
+                    const reminderLabel = data.reminder_label || config.defaultLabel;
+                    const reminderContext = data.reminder_context || '';
+
+                    const dueIso = data.due_at || data.fecha_programada || null;
+                    const dueDate = dueIso ? new Date(dueIso) : null;
+                    const dueLabel = dueDate && !Number.isNaN(dueDate.getTime())
+                        ? dueDate.toLocaleString()
                         : '';
 
+                    const fechaProgramada = data.fecha_programada ? new Date(data.fecha_programada) : null;
+                    const examExpiry = data.exam_expires_at ? new Date(data.exam_expires_at) : null;
+                    const examLabel = examExpiry && !Number.isNaN(examExpiry.getTime())
+                        ? examExpiry.toLocaleDateString()
+                        : '';
+
+                    const meta = [
+                        data.procedimiento || '',
+                        data.doctor ? `Dr(a). ${data.doctor}` : '',
+                        data.quirofano ? `Quirófano: ${data.quirofano}` : '',
+                        data.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
+                        reminderContext,
+                    ].filter(Boolean);
+
+                    if (config.key === 'exams' && examLabel) {
+                        meta.push(`Vencen: ${examLabel}`);
+                    }
+
                     notificationPanel.pushPending({
-                        dedupeKey: `recordatorio-${data?.id ?? Date.now()}-${data?.fecha_programada ?? ''}`,
+                        dedupeKey: `recordatorio-${config.key}-${data.id ?? Date.now()}-${dueIso ?? data.fecha_programada ?? ''}`,
                         title: paciente,
-                        message: 'Recordatorio de cirugía',
-                        meta: [
-                            data?.procedimiento || '',
-                            data?.doctor ? `Dr(a). ${data.doctor}` : '',
-                            data?.quirofano ? `Quirófano: ${data.quirofano}` : '',
-                            data?.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
-                        ],
+                        message: reminderLabel,
+                        meta,
                         badges: [
-                            fechaTexto ? { label: fechaTexto, variant: 'bg-primary text-white' } : null,
+                            dueLabel ? { label: dueLabel, variant: 'bg-primary text-white' } : null,
                         ].filter(Boolean),
-                        icon: 'mdi mdi-alarm-check',
-                        tone: 'primary',
+                        icon: config.icon,
+                        tone: config.tone,
                         timestamp: new Date(),
-                        dueAt: fechaProgramada,
+                        dueAt: dueDate || fechaProgramada,
                         channels: mapChannels(data?.channels),
                     });
 
-                    const mensaje = fechaTexto ? `⏰ Cirugía ${paciente} · ${fechaTexto}` : `⏰ Cirugía ${paciente}`;
+                    const toastLabel = reminderLabel || 'Recordatorio';
+                    const mensaje = dueLabel
+                        ? `${toastLabel}: ${paciente} · ${dueLabel}`
+                        : `${toastLabel}: ${paciente}`;
                     showToast(mensaje, true, toastDurationMs);
-                    maybeShowDesktopNotification('Recordatorio de cirugía', mensaje);
+                    maybeShowDesktopNotification(toastLabel, mensaje);
                 });
-            }
+            };
+
+            reminderEvents.forEach(bindReminderEvent);
         }
     }
 

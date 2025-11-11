@@ -356,6 +356,7 @@ class SolicitudModel
             'sp.afiliacion',
             'sp.turno',
             'COALESCE(cd.fecha, sp.fecha) AS fecha_programada',
+            'pd.fecha_caducidad',
         ];
 
         if ($this->consultaDataTieneColumna('quirofano')) {

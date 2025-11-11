@@ -304,7 +304,7 @@ class CronRunner
 
         $this->ensureSolicitudModuleLoaded();
         $service = new SolicitudReminderService($this->pdo, $pusher);
-        $sent = $service->dispatchUpcoming(24);
+        $sent = $service->dispatchUpcoming(72, 48);
 
         return [
             'message' => sprintf('Se procesaron %d recordatorios automáticos.', count($sent)),
