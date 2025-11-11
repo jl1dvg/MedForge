@@ -72,7 +72,7 @@ function notifySwal({icon = 'info', title = '', text = '', timer = 2000}) {
 
 // Función para extraer datos del div y enviar al servidor
 
-function extraerDatosYEnviar() {
+async function extraerDatosYEnviar() {
     const btnGuardar = document.getElementById('interconsulta-btn-guardar');
     if (btnGuardar) btnGuardar.disabled = true;
 
@@ -81,7 +81,7 @@ function extraerDatosYEnviar() {
 
     // Determinar el URL según el tipo de formato
     const isProtocoloQuirurgico = document.querySelector('#consultasubsecuente-membrete') !== null;
-    const url = isProtocoloQuirurgico ? 'https://asistentecive.consulmed.me/api/protocolos/guardar.php' : 'https://asistentecive.consulmed.me/api/consultas/guardar.php';
+    const apiPath = isProtocoloQuirurgico ? '/protocolos/guardar.php' : '/consultas/guardar.php';
 
     if (isProtocoloQuirurgico) {
         // Extraer datos para protocolo quirúrgico
@@ -404,45 +404,40 @@ function extraerDatosYEnviar() {
 
     // Enviar los datos al backend
     console.log('Datos a enviar:', data);
-    fetch(url, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data),
-    })
-        .then(async (response) => {
-            const raw = await response.text();
-            console.group('%c📤 Envío a API', 'color: green; font-weight: bold;');
-            console.log('✅ Datos enviados:', data);
-            console.log('📥 Respuesta RAW:', raw);
-            console.groupEnd();
-
-            try {
-                const json = JSON.parse(raw);
-                console.log('📥 Respuesta JSON parseada:', json);
-                return json;
-            } catch (e) {
-                console.error('❌ Error al parsear JSON:', e, raw);
-                throw e;
-            }
-        })
-        .then((result) => {
-            if (result.success) {
-                notifySwal({
-                    icon: 'success',
-                    title: 'Guardado exitoso',
-                    text: result.message || 'Datos guardados correctamente.',
-                    timer: 2000
-                });
-            } else {
-                notifySwal({
-                    icon: 'error',
-                    title: 'Error al guardar',
-                    text: result.message || 'Ha ocurrido un error inesperado.',
-                    timer: 3500
-                });
-            }
-        })
-        .catch((error) => {
-            console.error('❌ Error al enviar los datos:', error);
+    try {
+        const resultado = await window.CiveApiClient.post(apiPath, {
+            body: data,
         });
+
+        console.group('%c📤 Envío a API', 'color: green; font-weight: bold;');
+        console.log('✅ Datos enviados:', data);
+        console.log('📥 Respuesta normalizada:', resultado);
+        console.groupEnd();
+
+        if (resultado?.success) {
+            notifySwal({
+                icon: 'success',
+                title: 'Guardado exitoso',
+                text: resultado.message || 'Datos guardados correctamente.',
+                timer: 2000
+            });
+        } else {
+            notifySwal({
+                icon: 'error',
+                title: 'Error al guardar',
+                text: resultado?.message || 'Ha ocurrido un error inesperado.',
+                timer: 3500
+            });
+        }
+    } catch (error) {
+        console.error('❌ Error al enviar los datos:', error);
+        notifySwal({
+            icon: 'error',
+            title: 'Error al enviar',
+            text: error?.message || 'No se pudo comunicar con el API.',
+            timer: 3500
+        });
+    } finally {
+        if (btnGuardar) btnGuardar.disabled = false;
+    }
 }

@@ -108,8 +108,10 @@ function generarTiempoAnestesia(afiliacion, codigoCirugia, duracion = "01:00") {
 window.erroresInsumosNoIngresados = [];
 window.detectarInsumosPaciente = () => {
     // Validación de URL permitida
-    const urlPermitidas = ['http://cive.ddns.net:8085/documentacion/doc-documento', 'http://192.168.1.13:8085/documentacion/doc-documento'];
-    if (!urlPermitidas.some(url => window.location.href.startsWith(url))) {
+    const allowedHosts = new Set(['cive.ddns.net:8085', '192.168.1.13:8085']);
+    const matchesHost = allowedHosts.has(window.location.host);
+    const matchesPath = /^\/documentacion\/doc-/i.test(window.location.pathname);
+    if (!matchesHost || !matchesPath) {
         console.log("🚫 URL no permitida. Script detenido.");
         return;
     }
@@ -185,81 +187,71 @@ window.detectarInsumosPaciente = () => {
 };
 
 // Función para enviar los datos al API y mostrar alerta con los insumos
-function enviarDatosAPI(idSolicitud, hcNumber) {
+async function enviarDatosAPI(idSolicitud, hcNumber) {
     console.log("📡 Enviando datos al API...");
 
-    fetch("https://asistentecive.consulmed.me/api/insumos/obtener.php", {
-        method: "POST", headers: {
-            "Content-Type": "application/json"
-        }, body: JSON.stringify({
-            hcNumber: hcNumber, form_id: idSolicitud
-        })
-    })
-        .then(response => response.json())
-        .then(data => {
-            // Obtener y normalizar afiliación inmediatamente después de recibir la respuesta de la API
-            const afiliacion = data.afiliacion || "";
-            const afiliacionNormalizada = afiliacion.trim().toUpperCase();
-            console.log("Afiliación detectada:", afiliacionNormalizada);
+    try {
+        const data = await window.CiveApiClient.post('/insumos/obtener.php', {
+            body: {hcNumber, form_id: idSolicitud},
+        });
 
-            if (data.success) {
-                console.log("✅ Respuesta del API:", data);
-                // Guardar duración en variable global si está disponible
-                window.duracionOxigenoGlobal = data.duracion;
+        const afiliacion = data?.afiliacion || "";
+        const afiliacionNormalizada = afiliacion.trim().toUpperCase();
+        console.log("Afiliación detectada:", afiliacionNormalizada);
 
-                // --- Nueva lógica para definir tiempoAnestesia según afiliación y código usando la función utilitaria ---
-                // Asegurarse de que textoProcedimiento esté disponible en este scope:
-                // Si no está definido, intenta obtenerlo como en el listener del heartIcon
-                let textoProcedimiento = window.textoProcedimientoGlobal;
-                if (!textoProcedimiento) {
-                    // Busca la fila seleccionada del modal si es posible
-                    const filaSeleccionada = document.querySelector('tr.selected');
-                    textoProcedimiento = filaSeleccionada?.querySelector('td[data-col-seq="8"]')?.textContent?.trim()?.toUpperCase();
-                    window.textoProcedimientoGlobal = textoProcedimiento;
-                }
-                const matchCodigo = textoProcedimiento?.match(/CIRUGIAS\s*-\s*(\d+)/);
-                const codigoCirugia = matchCodigo ? matchCodigo[1] : "";
-                window.tiempoAnestesiaGlobal = generarTiempoAnestesia(afiliacion, codigoCirugia, window.duracionOxigenoGlobal || "01:00");
-                console.log("✅ Tiempo de anestesia definido:", window.tiempoAnestesiaGlobal);
+        if (data?.success) {
+            console.log("✅ Respuesta del API:", data);
+            window.duracionOxigenoGlobal = data.duracion;
 
-                // Nuevo: Verificar status distinto de 1 antes de mostrar insumos
-                if (data.status !== 1) {
-                    Swal.fire({
-                        icon: "warning",
-                        title: "Protocolo no revisado",
-                        text: "Este protocolo aún no ha sido revisado. No se puede iniciar el autollenado.",
-                        confirmButtonText: "Aceptar"
-                    });
-                    return;
-                }
+            let textoProcedimiento = window.textoProcedimientoGlobal;
+            if (!textoProcedimiento) {
+                const filaSeleccionada = document.querySelector('tr.selected');
+                textoProcedimiento = filaSeleccionada?.querySelector('td[data-col-seq="8"]')?.textContent?.trim()?.toUpperCase();
+                window.textoProcedimientoGlobal = textoProcedimiento;
+            }
+            const matchCodigo = textoProcedimiento?.match(/CIRUGIAS\s*-\s*(\d+)/);
+            const codigoCirugia = matchCodigo ? matchCodigo[1] : "";
+            window.tiempoAnestesiaGlobal = generarTiempoAnestesia(afiliacion, codigoCirugia, window.duracionOxigenoGlobal || "01:00");
+            console.log("✅ Tiempo de anestesia definido:", window.tiempoAnestesiaGlobal);
 
-                if (data.insumos && (data.insumos.equipos?.length > 0 || data.insumos.anestesia?.length > 0 || data.insumos.quirurgicos?.length > 0)) {
-                    // Si necesitas usar afiliacion o afiliacionNormalizada, hazlo dentro de este bloque
-                    mostrarAlertaInsumos(data.insumos);
-                } else {
-                    Swal.fire({
-                        icon: "info",
-                        title: "Sin insumos",
-                        text: "No se encontraron insumos disponibles para este paciente.",
-                        confirmButtonText: "Aceptar"
-                    });
-                }
-            } else {
-                console.warn("⚠️ Error en la respuesta del API:", data.message);
+            if (data.status !== 1) {
                 Swal.fire({
-                    icon: "error", title: "Error en la consulta", text: data.message, confirmButtonText: "Cerrar"
+                    icon: "warning",
+                    title: "Protocolo no revisado",
+                    text: "Este protocolo aún no ha sido revisado. No se puede iniciar el autollenado.",
+                    confirmButtonText: "Aceptar"
+                });
+                return;
+            }
+
+            if (data.insumos && (data.insumos.equipos?.length > 0 || data.insumos.anestesia?.length > 0 || data.insumos.quirurgicos?.length > 0)) {
+                mostrarAlertaInsumos(data.insumos);
+            } else {
+                Swal.fire({
+                    icon: "info",
+                    title: "Sin insumos",
+                    text: "No se encontraron insumos disponibles para este paciente.",
+                    confirmButtonText: "Aceptar"
                 });
             }
-        })
-        .catch(error => {
-            console.error("❌ Error en la solicitud:", error);
+        } else {
+            console.warn("⚠️ Error en la respuesta del API:", data?.message);
             Swal.fire({
                 icon: "error",
-                title: "Error en la conexión",
-                text: "No se pudo conectar con el servidor.",
+                title: "Error en la consulta",
+                text: data?.message || "Ocurrió un error al consultar los insumos.",
                 confirmButtonText: "Cerrar"
             });
+        }
+    } catch (error) {
+        console.error("❌ Error en la solicitud:", error);
+        Swal.fire({
+            icon: "error",
+            title: "Error en la conexión",
+            text: "No se pudo conectar con el servidor.",
+            confirmButtonText: "Cerrar"
         });
+    }
 }
 
 // 🔍 Obtener nombres de la tabla actual (columna "Nombre")

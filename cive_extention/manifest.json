@@ -5,7 +5,9 @@
   "description": "Descripción de mi extensión",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "http://asistentecive.consulmed.me/*",
@@ -105,6 +107,7 @@
       "js": [
         "js/assets/sweetalert2.all.min.js",
         "js/config.js",
+        "js/api_client.js",
         "js/ui.js",
         "js/drag.js",
         "js/eventos.js",

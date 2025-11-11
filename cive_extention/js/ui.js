@@ -1,159 +1,324 @@
-window.inicializarUI = function () {
-    // Crear botón flotante
-    const button = document.createElement("button");
-    button.id = "floatingButton";
-    button.className = "actionable-icon";
+const NAV_SECTIONS = [
+    {id: 'inicio', icon: 'fas fa-compass', label: 'Inicio'},
+    {id: 'protocolos', icon: 'fas fa-file-medical', label: 'Protocolos'},
+    {id: 'procedimientos', icon: 'fas fa-briefcase-medical', label: 'Procedimientos'},
+    {id: 'recetas', icon: 'fas fa-prescription-bottle-alt', label: 'Recetas'},
+    {id: 'consulta', icon: 'fas fa-user-md', label: 'Consulta'},
+];
 
-    // Añadir la imagen del botón
-    const img = document.createElement("img");
-    img.src = chrome.runtime.getURL("icon.png"); // Ruta correcta de la imagen
-    img.alt = "Icono Flotante";
-    button.appendChild(img);
+function createShortcutCard({id, icon, label, description}) {
+    return `
+        <button id="${id}" class="shortcut-card" type="button" role="listitem">
+            <span class="shortcut-icon" aria-hidden="true"><i class="${icon}"></i></span>
+            <span class="shortcut-content">
+                <span class="shortcut-label">${label}</span>
+                ${description ? `<span class="shortcut-description">${description}</span>` : ''}
+            </span>
+        </button>
+    `;
+}
 
-    // Crear el elemento de manejo para arrastrar
-    const dragHandle = document.createElement("div");
-    dragHandle.className = "drag-handle";
-    button.appendChild(dragHandle);
+function createNavigation() {
+    return `
+        <nav class="popup-nav" role="tablist" aria-label="Secciones del asistente">
+            ${NAV_SECTIONS.map((section, index) => `
+                <button
+                    class="nav-item ${index === 0 ? 'active' : ''}"
+                    id="tab-${section.id}"
+                    data-target="${section.id}"
+                    role="tab"
+                    aria-selected="${index === 0}"
+                    aria-controls="${section.id}"
+                    type="button"
+                >
+                    <i class="${section.icon}" aria-hidden="true"></i>
+                    <span>${section.label}</span>
+                </button>
+            `).join('')}
+        </nav>
+    `;
+}
 
-    // Agregar el botón al documento
-    document.body.appendChild(button);
-
-    const botonExamenesHTML = window.configCIVE.ES_LOCAL
-        ? `<div id="btnExamenes" class="grid-item"><i class="fas fa-notes-medical"></i> Exámenes</div>`
-        : '';
-
-    // Crear el contenedor del popup flotante
-    const popup = document.createElement("div");
-    popup.id = "floatingPopup";
-    popup.innerHTML = `
-        <div class="popup-content">
-            <div class="popup-header">
-                <span>Asistente CIVE</span>
-                <button class="popup-close-btn" id="popupCloseBtn">&times;</button>
+function createSectionShell({id, title, body, footer = '', tools = ''}) {
+    return `
+        <section id="${id}" class="section ${id === 'inicio' ? 'active' : ''}" role="tabpanel" aria-labelledby="tab-${id}" aria-hidden="${id === 'inicio' ? 'false' : 'true'}">
+            <header class="section-header">
+                <h3>${title}</h3>
+                ${tools}
+            </header>
+            <div class="section-body">
+                ${body}
+                <div id="estado-${id}" class="section-state" aria-live="polite"></div>
             </div>
-            <div id="notificaciones" class="section active">
-                <div id="contenedorNotificaciones"></div>
-            </div>
-            <div id="inicio" class="section active">
-                <div class="grid-container">
-                    ${botonExamenesHTML}
-                    <div id="btnProtocolos" class="grid-item"><i class="fas fa-file-alt"></i> Protocolos</div>
-                    <div id="btnConsulta" class="grid-item"><i class="fas fa-user-md"></i> Consulta</div>
-            <div id="btnRecetas" class="grid-item">
-                <i class="fas fa-user-md"></i>
-                Recetas
-            </div>
-            <!-- Añade más botones si es necesario -->
-        </div>
-    </div>
-                <div id="examenes" class="section">
-                    <div class="card">
-                        <div class="card-header bg-primary text-white">Exámenes</div>
-                        <div class="card-body">
-                            <div class="grid-container" id="contenedorExamenes"></div>
+            ${footer}
+        </section>
+    `;
+}
+
+function buildPopupTemplate(isLocal) {
+    const shortcutCards = [
+        {id: 'btnProtocolos', icon: 'fas fa-file-medical', label: 'Protocolos', description: 'Plantillas estandarizadas por afiliación'},
+        {id: 'btnConsulta', icon: 'fas fa-user-md', label: 'Consulta', description: 'Atajos hacia consultas previas y control POP'},
+        {id: 'btnRecetas', icon: 'fas fa-prescription-bottle-alt', label: 'Recetas', description: 'Catálogo de recetas frecuentes'},
+        ...(isLocal ? [{id: 'btnExamenes', icon: 'fas fa-notes-medical', label: 'Exámenes', description: 'Herramientas disponibles en modo local'}] : []),
+    ];
+
+    return `
+        <div class="popup-content" role="dialog" aria-modal="true" aria-labelledby="popupTitle">
+            <header class="popup-header">
+                <h2 id="popupTitle" tabindex="-1">Asistente CIVE</h2>
+                <div class="popup-header-actions">
+                    <button id="popupExpandBtn" class="icon-button" type="button" aria-label="Expandir panel">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                    <button class="icon-button" id="popupCloseBtn" type="button" aria-label="Cerrar asistente">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            </header>
+            ${createNavigation()}
+            <div class="popup-main" role="region" aria-live="polite">
+                ${createSectionShell({
+                    id: 'inicio',
+                    title: 'Accesos rápidos',
+                    body: `
+                        <div class="shortcut-grid" role="list">
+                            ${shortcutCards.map(createShortcutCard).join('')}
                         </div>
-                        <div class="card-footer bg-secondary text-white">
-                            <button id="btnBackExamenes" class="btn btn-danger">
-                                <i class="fas fa-arrow-alt-circle-left"></i> Atrás
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'protocolos',
+                    title: 'Protocolos',
+                    tools: `
+                        <label class="input-search">
+                            <span class="sr-only">Buscar protocolo</span>
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input id="searchProtocolos" type="search" placeholder="Buscar protocolo" autocomplete="off" />
+                        </label>
+                    `,
+                    body: '<div id="contenedorProtocolos" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackProtocolos" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
                             </button>
+                        </footer>
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'procedimientos',
+                    title: 'Procedimientos',
+                    tools: `
+                        <label class="input-search">
+                            <span class="sr-only">Buscar procedimiento</span>
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input id="searchProcedimientos" type="search" placeholder="Buscar procedimiento" autocomplete="off" />
+                        </label>
+                    `,
+                    body: '<div id="contenedorProcedimientos" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <div class="footer-actions">
+                                <button id="btnBackProcedimientos" class="btn-secondary" type="button">
+                                    <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                    <span>Volver</span>
+                                </button>
+                                <button id="btnGeneratePDF" class="btn-primary" type="button">
+                                    <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                                    <span>Descargar PDF</span>
+                                </button>
+                            </div>
+                        </footer>
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'recetas',
+                    title: 'Recetas',
+                    tools: `
+                        <label class="input-search">
+                            <span class="sr-only">Buscar receta</span>
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input id="searchRecetas" type="search" placeholder="Buscar receta" autocomplete="off" />
+                        </label>
+                    `,
+                    body: '<div id="contenedorRecetas" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackRecetas" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
+                            </button>
+                        </footer>
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'consulta',
+                    title: 'Consulta',
+                    body: `
+                        <div class="card-grid" role="list">
+                            ${createShortcutCard({
+                                id: 'btnConsultaAnterior',
+                                icon: 'fas fa-history',
+                                label: 'Consulta anterior',
+                                description: 'Revisa rápidamente el último registro clínico',
+                            })}
+                            ${createShortcutCard({
+                                id: 'btnPOP',
+                                icon: 'fas fa-heartbeat',
+                                label: 'Control POP',
+                                description: 'Seguimiento del postoperatorio inmediato',
+                            })}
                         </div>
-                    </div>
-                </div>
-    <div id="protocolos" class="section">
-        <div class="card">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <span>Protocolos</span>
-            </div>
-            <div class="card-body">
-                <div class="grid-container" id="contenedorProtocolos"></div>
-            </div>
-            <div class="card-footer bg-secondary text-white">
-                <button id="btnBackProtocolos" class="btn btn-danger">
-                    <i class="fas fa-arrow-alt-circle-left"></i> Atrás
-                </button>
-            </div>
-        </div>
-    </div>
-    <div id="procedimientos" class="section">
-        <div class="card">
-            <div class="card-header bg-primary text-white">Procedimientos</div>
-            <div class="card-body">
-                <div class="grid-container" id="contenedorProcedimientos"></div>
-            </div>
-            <div class="card-footer bg-secondary text-white">
-                <button id="btnBackProcedimientos" class="btn btn-danger">
-                    <i class="fas fa-arrow-alt-circle-left"></i> Atrás
-                </button>
-                <button id="btnGeneratePDF" class="btn btn-success btn-sm">
-                    <i class="fas fa-file-pdf"></i> Descargar PDF
-                </button>
-            </div>
-        </div>
-    </div>
-    <div id="recetas" class="section">
-        <div class="card">
-            <div class="card-header bg-primary text-white">Recetas</div>
-            <div class="card-body">
-                <div class="grid-container" id="contenedorRecetas"></div>
-            </div>
-            <div class="card-footer bg-secondary text-white">
-                <button id="btnBackRecetas" class="btn btn-danger">
-                    <i class="fas fa-arrow-alt-circle-left"></i> Atrás
-                </button>
-            </div>
-        </div>
-    </div>
-    <div id="consulta" class="section">
-        <div class="card">
-            <div class="card-header bg-primary text-white">Consulta</div>
-            <div class="card-body">
-                <div class="grid-container">
-                    <div id="btnConsultaAnterior" class="grid-item">
-                        <i class="fas fa-user-md"></i>
-                        Consulta Anterior
-                    </div>
-                    <div id="btnPOP" class="grid-item">
-                        <i class="fas fa-file-alt"></i>
-                        Control POP
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer bg-secondary text-white">
-                <button id="btnBackConsulta" class="btn btn-danger">
-                    <i class="fas fa-arrow-alt-circle-left"></i> Atrás
-                </button>
-            </div>
-                </div>
+                    `,
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackConsulta" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
+                            </button>
+                        </footer>
+                    `,
+                })}
+                ${isLocal ? createSectionShell({
+                    id: 'examenes',
+                    title: 'Exámenes',
+                    body: '<div id="contenedorExamenes" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackExamenes" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
+                            </button>
+                        </footer>
+                    `,
+                }) : ''}
             </div>
         </div>
     `;
+}
 
+function togglePopupState({popup, expanded}) {
+    popup.classList.toggle('full-screen', expanded);
+    const icon = popup.querySelector('#popupExpandBtn i');
+    if (icon) {
+        icon.classList.toggle('fa-expand', !expanded);
+        icon.classList.toggle('fa-compress', expanded);
+    }
+    const label = expanded ? 'Contraer panel' : 'Expandir panel';
+    popup.querySelector('#popupExpandBtn').setAttribute('aria-label', label);
+}
+
+window.inicializarUI = function () {
+    const button = document.createElement('button');
+    button.id = 'floatingButton';
+    button.className = 'actionable-icon';
+    button.type = 'button';
+    button.setAttribute('aria-label', 'Abrir asistente CIVE');
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-controls', 'floatingPopup');
+    button.setAttribute('aria-expanded', 'false');
+
+    const img = document.createElement('img');
+    img.src = chrome.runtime.getURL('icon.png');
+    img.alt = '';
+    img.setAttribute('aria-hidden', 'true');
+    button.appendChild(img);
+
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'drag-handle';
+    dragHandle.setAttribute('role', 'presentation');
+    button.appendChild(dragHandle);
+
+    document.body.appendChild(button);
+
+    const popup = document.createElement('div');
+    popup.id = 'floatingPopup';
+    popup.setAttribute('role', 'presentation');
+    popup.innerHTML = buildPopupTemplate(window.configCIVE && window.configCIVE.ES_LOCAL);
     document.body.appendChild(popup);
 
-    // Evento para abrir/cerrar el popup
-    button.addEventListener("click", function () {
-        popup.classList.toggle("active");
-        console.log("Toggle popup, estado:", popup.classList.contains("active"));
+    const closeBtn = popup.querySelector('#popupCloseBtn');
+    const expandBtn = popup.querySelector('#popupExpandBtn');
+    const titleEl = popup.querySelector('#popupTitle');
+    const navButtons = Array.from(popup.querySelectorAll('.popup-nav .nav-item'));
+
+    function closePopup({restoreFocus = true} = {}) {
+        togglePopupState({popup, expanded: false});
+        popup.classList.remove('active');
+        button.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) {
+            button.focus();
+        }
+    }
+
+    function openPopup() {
+        popup.classList.add('active');
+        button.setAttribute('aria-expanded', 'true');
+        setTimeout(() => titleEl && titleEl.focus(), 0);
+    }
+
+    button.addEventListener('click', () => {
+        if (popup.classList.contains('active')) {
+            closePopup();
+        } else {
+            openPopup();
+        }
     });
 
-    // Evento para cerrar el popup con el botón (X)
-    document.getElementById("popupCloseBtn").addEventListener("click", function () {
-        popup.classList.remove("active");
+    button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            button.click();
+        }
     });
 
-    // Cargar estilos dinámicamente
+    closeBtn.addEventListener('click', () => closePopup());
+
+    expandBtn.addEventListener('click', () => {
+        const expanded = !popup.classList.contains('full-screen');
+        togglePopupState({popup, expanded});
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && popup.classList.contains('active')) {
+            event.preventDefault();
+            closePopup();
+        }
+    });
+
+    popup.addEventListener('click', (event) => {
+        const navItem = event.target.closest && event.target.closest('.nav-item');
+        if (navItem) {
+            const target = navItem.getAttribute('data-target');
+            if (window.mostrarSeccion) {
+                window.mostrarSeccion(target);
+            }
+        }
+    });
+
+    navButtons.forEach((navButton) => {
+        navButton.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                navButton.click();
+            }
+        });
+    });
+
     const estilos = [
-        {href: "css/floating_button.css"},
-        {href: "css/floating_popup.css"},
-        {href: "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"}
+        {href: 'css/floating_button.css'},
+        {href: 'css/floating_popup.css'},
+        {href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css'}
     ];
 
     estilos.forEach((estilo) => {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = estilo.href.startsWith("http") ? estilo.href : chrome.runtime.getURL(estilo.href);
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = estilo.href.startsWith('http') ? estilo.href : chrome.runtime.getURL(estilo.href);
         document.head.appendChild(link);
     });
 
-    console.log("UI inicializada correctamente.");
+    console.log('UI inicializada con navegación accesible.');
 };

@@ -683,6 +683,123 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'cive_extension' => [
+                'title' => 'CIVE Extension',
+                'icon' => 'fa-solid fa-puzzle-piece',
+                'description' => 'Controla desde MedForge las operaciones de la extensión clínica y sus integraciones.',
+                'groups' => [
+                    [
+                        'id' => 'api_client',
+                        'title' => 'Cliente API',
+                        'description' => 'Parámetros compartidos por todos los módulos que consumen las APIs de MedForge/CIVE.',
+                        'fields' => [
+                            self::textField('cive_extension_api_base_url', 'URL base del API', true, 'Debe incluir el esquema (https://) y no terminar en slash. Ej: https://asistentecive.consulmed.me/api'),
+                            self::numberField('cive_extension_timeout_ms', 'Timeout de peticiones (ms)', 12000),
+                            self::numberField('cive_extension_max_retries', 'Reintentos ante error', 2),
+                            self::numberField('cive_extension_retry_delay_ms', 'Tiempo entre reintentos (ms)', 600),
+                            self::numberField('cive_extension_procedures_cache_ttl_ms', 'TTL caché de procedimientos (ms)', 300000),
+                            self::numberField('cive_extension_refresh_interval_ms', 'Intervalo de sincronización del service worker (ms)', 900000),
+                        ],
+                    ],
+                    [
+                        'id' => 'openai',
+                        'title' => 'OpenAI',
+                        'description' => 'Credenciales utilizadas por los asistentes clínicos dentro de la extensión.',
+                        'fields' => [
+                            self::passwordField('cive_extension_openai_api_key', 'API Key'),
+                            self::textField('cive_extension_openai_model', 'Modelo preferido', false, 'Ej: gpt-4o-mini'),
+                        ],
+                    ],
+                    [
+                        'id' => 'health_checks',
+                        'title' => 'Health checks automáticos',
+                        'description' => 'Define los endpoints críticos que serán monitorizados periódicamente.',
+                        'fields' => [
+                            self::checkboxField('cive_extension_health_enabled', 'Habilitar supervisión de endpoints'),
+                            self::textareaField('cive_extension_health_endpoints', 'Listado de endpoints', 'Un endpoint por línea con el formato: Nombre | METODO | URL. El método es opcional (GET por defecto).'),
+                            self::numberField('cive_extension_health_max_age_minutes', 'Considerar resultado como vigente (minutos)', 60),
+                        ],
+                    ],
+                ],
+            ],
+            'cive_extension' => [
+                'title' => 'CIVE Extension',
+                'icon' => 'fa-solid fa-puzzle-piece',
+                'description' => 'Controla desde MedForge las operaciones de la extensión clínica y sus integraciones.',
+                'groups' => [
+                    [
+                        'id' => 'api_client',
+                        'title' => 'Cliente API',
+                        'description' => 'Parámetros compartidos por todos los módulos que consumen las APIs de MedForge/CIVE.',
+                        'fields' => [
+                            self::textField('cive_extension_api_base_url', 'URL base del API', true, 'Debe incluir el esquema (https://) y no terminar en slash. Ej: https://asistentecive.consulmed.me/api'),
+                            self::numberField('cive_extension_timeout_ms', 'Timeout de peticiones (ms)', 12000),
+                            self::numberField('cive_extension_max_retries', 'Reintentos ante error', 2),
+                            self::numberField('cive_extension_retry_delay_ms', 'Tiempo entre reintentos (ms)', 600),
+                            self::numberField('cive_extension_procedures_cache_ttl_ms', 'TTL caché de procedimientos (ms)', 300000),
+                            self::numberField('cive_extension_refresh_interval_ms', 'Intervalo de sincronización del service worker (ms)', 900000),
+                        ],
+                    ],
+                    [
+                        'id' => 'openai',
+                        'title' => 'OpenAI',
+                        'description' => 'Credenciales utilizadas por los asistentes clínicos dentro de la extensión.',
+                        'fields' => [
+                            self::passwordField('cive_extension_openai_api_key', 'API Key'),
+                            self::textField('cive_extension_openai_model', 'Modelo preferido', false, 'Ej: gpt-4o-mini'),
+                        ],
+                    ],
+                    [
+                        'id' => 'health_checks',
+                        'title' => 'Health checks automáticos',
+                        'description' => 'Define los endpoints críticos que serán monitorizados periódicamente.',
+                        'fields' => [
+                            self::checkboxField('cive_extension_health_enabled', 'Habilitar supervisión de endpoints'),
+                            self::textareaField('cive_extension_health_endpoints', 'Listado de endpoints', 'Un endpoint por línea con el formato: Nombre | METODO | URL. El método es opcional (GET por defecto).'),
+                            self::numberField('cive_extension_health_max_age_minutes', 'Considerar resultado como vigente (minutos)', 60),
+                        ],
+                    ],
+                ],
+            ],
+            'cive_extension' => [
+                'title' => 'CIVE Extension',
+                'icon' => 'fa-solid fa-puzzle-piece',
+                'description' => 'Controla desde MedForge las operaciones de la extensión clínica y sus integraciones.',
+                'groups' => [
+                    [
+                        'id' => 'api_client',
+                        'title' => 'Cliente API',
+                        'description' => 'Parámetros compartidos por todos los módulos que consumen las APIs de MedForge/CIVE.',
+                        'fields' => [
+                            self::textField('cive_extension_api_base_url', 'URL base del API', true, 'Debe incluir el esquema (https://) y no terminar en slash. Ej: https://asistentecive.consulmed.me/api'),
+                            self::numberField('cive_extension_timeout_ms', 'Timeout de peticiones (ms)', 12000),
+                            self::numberField('cive_extension_max_retries', 'Reintentos ante error', 2),
+                            self::numberField('cive_extension_retry_delay_ms', 'Tiempo entre reintentos (ms)', 600),
+                            self::numberField('cive_extension_procedures_cache_ttl_ms', 'TTL caché de procedimientos (ms)', 300000),
+                            self::numberField('cive_extension_refresh_interval_ms', 'Intervalo de sincronización del service worker (ms)', 900000),
+                        ],
+                    ],
+                    [
+                        'id' => 'openai',
+                        'title' => 'OpenAI',
+                        'description' => 'Credenciales utilizadas por los asistentes clínicos dentro de la extensión.',
+                        'fields' => [
+                            self::passwordField('cive_extension_openai_api_key', 'API Key'),
+                            self::textField('cive_extension_openai_model', 'Modelo preferido', false, 'Ej: gpt-4o-mini'),
+                        ],
+                    ],
+                    [
+                        'id' => 'health_checks',
+                        'title' => 'Health checks automáticos',
+                        'description' => 'Define los endpoints críticos que serán monitorizados periódicamente.',
+                        'fields' => [
+                            self::checkboxField('cive_extension_health_enabled', 'Habilitar supervisión de endpoints'),
+                            self::textareaField('cive_extension_health_endpoints', 'Listado de endpoints', 'Un endpoint por línea con el formato: Nombre | METODO | URL. El método es opcional (GET por defecto).'),
+                            self::numberField('cive_extension_health_max_age_minutes', 'Considerar resultado como vigente (minutos)', 60),
+                        ],
+                    ],
+                ],
+            ],
         ];
     }
 

@@ -15,12 +15,15 @@ class ConfigService
         'api_timeout_ms' => 12000,
         'api_max_retries' => 2,
         'api_retry_delay_ms' => 600,
+        'api_credentials' => 'same-origin',
         'procedures_cache_ttl_ms' => 300000,
-        'health_enabled' => true,
+        'health_enabled' => false,
         'health_max_age_minutes' => 60,
         'refresh_interval_ms' => 900000,
         'openai_model' => 'gpt-3.5-turbo',
-        'debug_api_logging' => true,
+        'local_mode' => false,
+        'extension_id_local' => 'JORGE',
+        'extension_id_remote' => 'CIVE',
     ];
 
     public function __construct(PDO $pdo)
@@ -33,18 +36,17 @@ class ConfigService
      *     api: array{baseUrl:string, timeoutMs:int, maxRetries:int, retryDelayMs:int, cacheTtlMs:int},
      *     openAi: array{apiKey:string, model:string},
      *     health: array{enabled:bool, endpoints:array<int, array{name:string, method:string, url:string}>, maxAgeMinutes:int},
-     *     debug: array{apiLogging:bool},
      *     refreshIntervalMs:int
      * }
      */
     public function getExtensionConfig(): array
     {
         $options = $this->settings->getOptions([
-            'cive_extension_control_base_url',
             'cive_extension_api_base_url',
             'cive_extension_timeout_ms',
             'cive_extension_max_retries',
             'cive_extension_retry_delay_ms',
+            'cive_extension_api_credentials_mode',
             'cive_extension_procedures_cache_ttl_ms',
             'cive_extension_openai_api_key',
             'cive_extension_openai_model',
@@ -52,13 +54,16 @@ class ConfigService
             'cive_extension_health_endpoints',
             'cive_extension_health_max_age_minutes',
             'cive_extension_refresh_interval_ms',
-            'cive_extension_debug_api_logging',
+            'cive_extension_local_mode',
+            'cive_extension_extension_id_local',
+            'cive_extension_extension_id_remote',
         ]);
 
         $apiBaseUrl = $this->sanitizeUrl($options['cive_extension_api_base_url'] ?? self::DEFAULTS['api_base_url']);
         $timeoutMs = $this->sanitizeInt($options['cive_extension_timeout_ms'] ?? null, self::DEFAULTS['api_timeout_ms']);
         $maxRetries = $this->sanitizeInt($options['cive_extension_max_retries'] ?? null, self::DEFAULTS['api_max_retries']);
         $retryDelayMs = $this->sanitizeInt($options['cive_extension_retry_delay_ms'] ?? null, self::DEFAULTS['api_retry_delay_ms']);
+        $credentialsMode = $this->sanitizeCredentialsMode($options['cive_extension_api_credentials_mode'] ?? null);
         $cacheTtlMs = $this->sanitizeInt($options['cive_extension_procedures_cache_ttl_ms'] ?? null, self::DEFAULTS['procedures_cache_ttl_ms']);
         $refreshIntervalMs = $this->sanitizeInt($options['cive_extension_refresh_interval_ms'] ?? null, self::DEFAULTS['refresh_interval_ms']);
 
@@ -67,15 +72,15 @@ class ConfigService
         $healthEndpointsRaw = (string)($options['cive_extension_health_endpoints'] ?? '');
         $healthEndpoints = $this->parseHealthEndpoints($healthEndpointsRaw);
 
+        $localMode = (bool)($options['cive_extension_local_mode'] ?? self::DEFAULTS['local_mode']);
+        $extensionIdLocal = trim((string)($options['cive_extension_extension_id_local'] ?? self::DEFAULTS['extension_id_local']));
+        $extensionIdRemote = trim((string)($options['cive_extension_extension_id_remote'] ?? self::DEFAULTS['extension_id_remote']));
+        $extensionId = $localMode
+            ? ($extensionIdLocal !== '' ? $extensionIdLocal : self::DEFAULTS['extension_id_local'])
+            : ($extensionIdRemote !== '' ? $extensionIdRemote : self::DEFAULTS['extension_id_remote']);
+
         $openAiKey = trim((string)($options['cive_extension_openai_api_key'] ?? ''));
         $openAiModel = trim((string)($options['cive_extension_openai_model'] ?? self::DEFAULTS['openai_model']));
-
-        $controlBaseUrl = $this->determineControlBaseUrl($options, $apiBaseUrl);
-        $subscriptionEndpoint = rtrim($apiBaseUrl, '/') . '/subscription/check.php';
-
-        $debugApiLogging = isset($options['cive_extension_debug_api_logging'])
-            ? (bool)$options['cive_extension_debug_api_logging']
-            : self::DEFAULTS['debug_api_logging'];
 
         return [
             'api' => [
@@ -84,27 +89,22 @@ class ConfigService
                 'maxRetries' => $maxRetries,
                 'retryDelayMs' => $retryDelayMs,
                 'cacheTtlMs' => $cacheTtlMs,
+                'credentialsMode' => $credentialsMode,
             ],
             'openAi' => [
                 'apiKey' => $openAiKey,
                 'model' => $openAiModel !== '' ? $openAiModel : self::DEFAULTS['openai_model'],
-            ],
-            'control' => [
-                'baseUrl' => $controlBaseUrl,
-                'configEndpoint' => $this->buildControlEndpoint($controlBaseUrl, '/api/cive-extension/config'),
-                'healthEndpoint' => $this->buildControlEndpoint($controlBaseUrl, '/api/cive-extension/health-check'),
-                'healthHistoryEndpoint' => $this->buildControlEndpoint($controlBaseUrl, '/api/cive-extension/health-checks'),
-                'subscriptionEndpoint' => $subscriptionEndpoint,
             ],
             'health' => [
                 'enabled' => $healthEnabled && !empty($healthEndpoints),
                 'endpoints' => $healthEndpoints,
                 'maxAgeMinutes' => $healthMaxAge,
             ],
-            'debug' => [
-                'apiLogging' => $debugApiLogging,
-            ],
             'refreshIntervalMs' => $refreshIntervalMs,
+            'flags' => [
+                'esLocal' => $localMode,
+                'extensionId' => $extensionId,
+            ],
         ];
     }
 
@@ -114,13 +114,16 @@ class ConfigService
     public function getFrontendBootstrapConfig(): array
     {
         $config = $this->getExtensionConfig();
+        $baseUrl = rtrim((string) \BASE_URL, '/');
+        $controlEndpoint = $baseUrl . '/api/cive-extension/config';
+        $healthEndpoint = $baseUrl . '/api/cive-extension/health-check';
+        $healthHistoryEndpoint = $baseUrl . '/api/cive-extension/health-checks';
 
         return [
-            'controlBaseUrl' => $config['control']['baseUrl'],
-            'controlEndpoint' => $config['control']['configEndpoint'],
-            'healthEndpoint' => $config['control']['healthEndpoint'],
-            'healthHistoryEndpoint' => $config['control']['healthHistoryEndpoint'],
-            'subscriptionEndpoint' => $config['control']['subscriptionEndpoint'],
+            'controlEndpoint' => $controlEndpoint,
+            'healthEndpoint' => $healthEndpoint,
+            'healthHistoryEndpoint' => $healthHistoryEndpoint,
+            'subscriptionEndpoint' => rtrim($config['api']['baseUrl'], '/') . '/subscription/check.php',
             'refreshIntervalMs' => $config['refreshIntervalMs'],
             'api' => [
                 'baseUrl' => $config['api']['baseUrl'],
@@ -128,15 +131,14 @@ class ConfigService
                 'maxRetries' => $config['api']['maxRetries'],
                 'retryDelayMs' => $config['api']['retryDelayMs'],
                 'cacheTtlMs' => $config['api']['cacheTtlMs'],
+                'credentialsMode' => $config['api']['credentialsMode'],
             ],
             'health' => [
                 'enabled' => $config['health']['enabled'],
                 'endpoints' => $config['health']['endpoints'],
                 'maxAgeMinutes' => $config['health']['maxAgeMinutes'],
             ],
-            'debug' => [
-                'apiLogging' => $config['debug']['apiLogging'],
-            ],
+            'flags' => $config['flags'],
         ];
     }
 
@@ -213,62 +215,13 @@ class ConfigService
         return $endpoints;
     }
 
-    /**
-     * @param array<string, mixed> $options
-     */
-    private function determineControlBaseUrl(array $options, string $apiBaseUrl): string
+    private function sanitizeCredentialsMode(?string $value): string
     {
-        $configured = $options['cive_extension_control_base_url'] ?? '';
-        if (is_string($configured) && trim($configured) !== '') {
-            return $this->sanitizeUrl($configured);
+        $value = strtolower(trim((string)($value ?? '')));
+        if (in_array($value, ['omit', 'same-origin', 'include'], true)) {
+            return $value;
         }
 
-        if (defined('BASE_URL')) {
-            $baseUrl = trim((string) BASE_URL);
-            if ($baseUrl !== '') {
-                try {
-                    return $this->sanitizeUrl($baseUrl);
-                } catch (RuntimeException $exception) {
-                    error_log('Control base URL derivation failed using BASE_URL: ' . $exception->getMessage());
-                }
-            }
-        }
-
-        return $this->deriveControlBaseFromApi($apiBaseUrl);
-    }
-
-    private function deriveControlBaseFromApi(string $apiBaseUrl): string
-    {
-        $parsed = parse_url($apiBaseUrl);
-        if (!is_array($parsed) || empty($parsed['scheme']) || empty($parsed['host'])) {
-            return rtrim($apiBaseUrl, '/');
-        }
-
-        $base = $parsed['scheme'] . '://' . $parsed['host'];
-        if (!empty($parsed['port'])) {
-            $base .= ':' . $parsed['port'];
-        }
-
-        $path = $parsed['path'] ?? '';
-        if ($path !== '') {
-            $normalized = trim($path, '/');
-            if ($normalized !== '') {
-                $segments = explode('/', $normalized);
-                if (count($segments) > 1) {
-                    array_pop($segments);
-                    $base .= '/' . implode('/', $segments);
-                }
-            }
-        }
-
-        return rtrim($base, '/');
-    }
-
-    private function buildControlEndpoint(string $baseUrl, string $path): string
-    {
-        $normalizedBase = rtrim($baseUrl, '/');
-        $normalizedPath = '/' . ltrim($path, '/');
-
-        return $normalizedBase . $normalizedPath;
+        return self::DEFAULTS['api_credentials'];
     }
 }

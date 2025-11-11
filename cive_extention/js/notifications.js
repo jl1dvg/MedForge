@@ -35,7 +35,18 @@ function agregarNotificacion(mensaje) {
 }
 
 // Función para mostrar el popover con el número de HC
+let popoverActual = null;
+
+function limpiarPopover() {
+    if (popoverActual) {
+        popoverActual.remove();
+        popoverActual = null;
+    }
+}
+
 function mostrarPopover(hcNumber) {
+    limpiarPopover();
+
     const popover = document.createElement('div');
     popover.className = 'popover-hc';
     popover.textContent = `HC Detectada: ${hcNumber}`;
@@ -50,9 +61,12 @@ function mostrarPopover(hcNumber) {
     popover.style.boxShadow = '0px 4px 6px rgba(0,0,0,0.1)';
 
     document.body.appendChild(popover);
+    popoverActual = popover;
 
     setTimeout(() => {
-        popover.remove();
+        if (popover === popoverActual) {
+            limpiarPopover();
+        }
     }, 5000);
 }
 
@@ -62,4 +76,9 @@ const intervalID = setInterval(detectarHC, 1000);
 // Detener la búsqueda si pasan más de 15 segundos
 setTimeout(() => {
     clearInterval(intervalID);
-}, 1000);
+}, 15000);
+
+window.addEventListener('beforeunload', () => {
+    clearInterval(intervalID);
+    limpiarPopover();
+});

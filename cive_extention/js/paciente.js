@@ -8,12 +8,10 @@
                     const icono = boton.querySelector('.glyphicon');
                     if (icono && icono.classList.contains('glyphicon-thumbs-down')) {
                         console.log(`🟡 Confirmando llegada para ID: ${id}`);
-                        fetch('https://asistentecive.consulmed.me/api/proyecciones/optometria.php', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                            body: new URLSearchParams({form_id: id, estado: 'iniciar_atencion'})
+                        window.CiveApiClient.post('/proyecciones/optometria.php', {
+                            body: {form_id: id, estado: 'iniciar_atencion'},
+                            bodyType: 'auto',
                         })
-                            .then(response => response.json())
                             .then(data => {
                                 if (data.success) {
                                     console.log('✅ Confirmación de llegada enviada correctamente.');
@@ -22,7 +20,7 @@
                                 }
                             })
                             .catch(error => {
-                                console.log('❌ Error al enviar la solicitud de llegada:', error.message);
+                                console.log('❌ Error al enviar la solicitud de llegada:', error.message || error);
                             });
                     } else {
                         console.log(`🔵 Botón clickeado pero el icono no indica llegada (no es thumbs-up). ID: ${id}`);
@@ -105,16 +103,14 @@
             }
 
             // 2) Reconciliar con el backend (usa mismo endpoint con action=estado)
-            const endpointBase = paciente.procedimiento_proyectado === 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS'
-                ? 'https://asistentecive.consulmed.me/api/proyecciones/optometria.php'
-                : 'https://asistentecive.consulmed.me/api/proyecciones/consulta.php';
+            const endpointPath = paciente.procedimiento_proyectado === 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS'
+                ? '/proyecciones/optometria.php'
+                : '/proyecciones/consulta.php';
 
             try {
-                fetch(`${endpointBase}?form_id=${encodeURIComponent(paciente.form_id)}&action=estado`)
-                    .then(r => {
-                        // Algunos servidores devuelven 200 con texto; intentamos parsear JSON de todas formas
-                        return r.json().catch(() => ({}));
-                    })
+                window.CiveApiClient.get(endpointPath, {
+                    query: {form_id: paciente.form_id, action: 'estado'},
+                })
                     .then(data => {
                         if (!data || data.success === false) return;
                         const estado = data.estado;
@@ -173,12 +169,10 @@
                                 if (result.isConfirmed) {
                                     establecerBloqueoFormulario(false);
                                     console.log(`🟡 Confirmando llegada para ID: ${paciente.form_id}`);
-                                    fetch('https://asistentecive.consulmed.me/api/proyecciones/optometria.php', {
-                                        method: 'POST',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({form_id: paciente.form_id, estado: 'iniciar_atencion'})
+                                    window.CiveApiClient.post('/proyecciones/optometria.php', {
+                                        body: {form_id: paciente.form_id, estado: 'iniciar_atencion'},
+                                        bodyType: 'auto',
                                     })
-                                        .then(response => response.json())
                                         .then(data => {
                                             if (data.success) {
                                                 console.log('✅ Estado actualizado a "en proceso" correctamente.');
@@ -204,7 +198,7 @@
                 // Usar función refactorizada para el botón guardar en optometría
                 manejarFinalizacionConsulta(
                     paciente,
-                    'https://asistentecive.consulmed.me/api/proyecciones/optometria.php',
+                    '/proyecciones/optometria.php',
                     true
                 );
             } else if (!paciente.pacienteNoAdmitido && !esOptometria) {
@@ -227,12 +221,10 @@
                                 if (result.isConfirmed) {
                                     establecerBloqueoFormulario(false);
                                     console.log(`🟡 Confirmando llegada para ID: ${paciente.form_id}`);
-                                    fetch('https://asistentecive.consulmed.me/api/proyecciones/consulta.php', {
-                                        method: 'POST',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({form_id: paciente.form_id, estado: 'iniciar_atencion'})
+                                    window.CiveApiClient.post('/proyecciones/consulta.php', {
+                                        body: {form_id: paciente.form_id, estado: 'iniciar_atencion'},
+                                        bodyType: 'auto',
                                     })
-                                        .then(response => response.json())
                                         .then(data => {
                                             if (data.success) {
                                                 console.log('✅ Estado actualizado a "en proceso" correctamente.');
@@ -257,7 +249,7 @@
                 // Usar función refactorizada para el botón guardar en consulta general
                 manejarFinalizacionConsulta(
                     paciente,
-                    'https://asistentecive.consulmed.me/api/proyecciones/consulta.php',
+                    '/proyecciones/consulta.php',
                     false
                 );
             }
@@ -269,48 +261,6 @@
         TERMINADO_SIN_DILATAR: 'terminado_sin_dilatar',
         EN_PROCESO: 'iniciar_atencion'
     };
-
-    // Helper: POST robusto con timeout, reintento y fallback a x-www-form-urlencoded
-    async function postEstadoRobusto(endpoint, payload, {timeoutMs = 8000, retries = 1} = {}) {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        const doPostJson = (signal) => fetch(endpoint, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload),
-            signal
-        });
-        const doPostForm = (signal) => fetch(endpoint, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: new URLSearchParams(payload),
-            signal
-        });
-
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-                // 1) Intento JSON
-                let controller = new AbortController();
-                let timer = setTimeout(() => controller.abort(), timeoutMs);
-                let res = await doPostJson(controller.signal);
-                clearTimeout(timer);
-                if (res.ok) {
-                    return await res.json().catch(() => ({success: false, message: 'Respuesta no es JSON'}));
-                }
-                // 2) Fallback form-encoded
-                controller = new AbortController();
-                timer = setTimeout(() => controller.abort(), timeoutMs);
-                res = await doPostForm(controller.signal);
-                clearTimeout(timer);
-                if (res.ok) {
-                    return await res.json().catch(() => ({success: false, message: 'Respuesta no es JSON'}));
-                }
-                throw new Error(`HTTP ${res.status}`);
-            } catch (err) {
-                if (attempt === retries) throw err;
-                await sleep(600); // breve espera antes de reintentar
-            }
-        }
-    }
 
     // Espera a que no haya un Swal visible (útil si la página muestra su propio "Guardado con éxito")
     async function waitForSwalIdle({maxWaitMs = 15000, settleMs = 300, tickMs = 150} = {}) {
@@ -392,7 +342,7 @@
 
     // ==== FIN Cola/Lock ====
 
-    function manejarFinalizacionConsulta(paciente, endpoint, esOptometria) {
+    function manejarFinalizacionConsulta(paciente, endpointPath, esOptometria) {
         const botonGuardar = document.getElementById('botonGuardar');
         if (botonGuardar && botonGuardar.dataset.listenerInicializado === 'true') return;
         if (botonGuardar) botonGuardar.dataset.listenerInicializado = 'true';
@@ -460,10 +410,11 @@
                         civeBypass: true
                     });
 
-                    // POST robusto: NO bloquea el submit/guardado nativo de la página
-                    postEstadoRobusto(endpoint, {form_id: paciente.form_id, estado: estado}, {
+                    window.CiveApiClient.post(endpointPath, {
+                        body: {form_id: paciente.form_id, estado},
+                        bodyType: 'auto',
                         timeoutMs: 15000,
-                        retries: 1
+                        retries: 1,
                     })
                         .then((data) => {
                             if (typeof Swal !== 'undefined' && Swal.isVisible && Swal.isVisible()) {

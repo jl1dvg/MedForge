@@ -251,7 +251,7 @@ function descargarDatosComoArchivo(data, nombreArchivo = 'datos_modal.json') {
 }
 
 // Extraer y enviar datos desde el modal
-function extraerDatosYEnviarDesdeModal() {
+async function extraerDatosYEnviarDesdeModal() {
     if (isSubmitting) return; // Prevent multiple submissions
     isSubmitting = true;
 
@@ -268,32 +268,20 @@ function extraerDatosYEnviarDesdeModal() {
     console.log('Datos extraídos del modal:', modalData);
 
     // URL de la API para enviar los datos
-    const url = 'https://asistentecive.consulmed.me/api/prefactura/guardar.php';
-    // descargarDatosComoArchivo(modalData); 👈 Esto genera el archivo .json
-
-    // Enviar los datos al backend usando fetch
-    fetch(url, {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(modalData),
-    })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then((result) => {
-            if (result.success) {
-                console.log('Datos enviados correctamente desde el modal.');
-            } else {
-                console.error('Error en la API:', result.message);
-            }
-        })
-        .catch((error) => {
-            console.error('Error al enviar los datos desde el modal:', error);
-        })
-        .finally(() => {
-            isSubmitting = false; // Reset flag after operation completes
+    try {
+        const result = await window.CiveApiClient.post('/prefactura/guardar.php', {
+            body: modalData,
         });
+        if (result?.success) {
+            console.log('Datos enviados correctamente desde el modal.');
+        } else {
+            console.error('Error en la API:', result?.message || 'Respuesta no válida del API.');
+        }
+    } catch (error) {
+        console.error('Error al enviar los datos desde el modal:', error);
+    } finally {
+        isSubmitting = false; // Reset flag after operation completes
+    }
 }
 
 function inicializarFormularioAdmision() {
@@ -303,29 +291,26 @@ function inicializarFormularioAdmision() {
 
 function detectarConfirmacionAsistencia() {
     document.querySelectorAll('button[id^="button-confirmar-"]').forEach(boton => {
-        boton.addEventListener('click', (e) => {
+        boton.addEventListener('click', async (e) => {
             const idTexto = boton.id.replace('button-confirmar-', '');
             const id = parseInt(idTexto, 10);
             if (!isNaN(id)) {
                 const icono = boton.querySelector('.glyphicon');
                 if (icono && icono.classList.contains('glyphicon-thumbs-down')) {
                     console.log(`🟡 Confirmando llegada para ID: ${id}`);
-                    fetch('https://asistentecive.consulmed.me/api/proyecciones/llegada.php', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: new URLSearchParams({form_id: id})
-                    })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                console.log('✅ Confirmación de llegada enviada correctamente.');
-                            } else {
-                                console.log('❌ Error al confirmar llegada:', data.message);
-                            }
-                        })
-                        .catch(error => {
-                            console.log('❌ Error al enviar la solicitud de llegada:', error.message);
+                    try {
+                        const data = await window.CiveApiClient.post('/proyecciones/llegada.php', {
+                            body: {form_id: id},
+                            bodyType: 'form',
                         });
+                        if (data?.success) {
+                            console.log('✅ Confirmación de llegada enviada correctamente.');
+                        } else {
+                            console.log('❌ Error al confirmar llegada:', data?.message || 'Respuesta no válida del API.');
+                        }
+                    } catch (error) {
+                        console.log('❌ Error al enviar la solicitud de llegada:', error.message || error);
+                    }
                 } else {
                     console.log(`🔵 Botón clickeado pero el icono no indica llegada (no es thumbs-up). ID: ${id}`);
                 }

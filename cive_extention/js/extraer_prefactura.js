@@ -277,59 +277,49 @@ function extraerDatosInsumos() {
     return insumos;
 }
 
-function enviarProcedimientosAlAPI(payload) {
-    fetch("https://asistentecive.consulmed.me/api/procedimientos/guardar.php", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                Swal.fire({
-                    icon: "success",
-                    title: "Procedimientos guardados",
-                    text: data.message || "Se enviaron correctamente al API."
-                });
-            } else {
-                Swal.fire({
-                    icon: "error",
-                    title: "Error en el envío",
-                    text: data.message || "Ocurrió un error al enviar los datos."
-                });
-            }
-        })
-        .catch(error => {
-            console.error("❌ Error en la solicitud:", error);
+async function enviarProcedimientosAlAPI(payload) {
+    try {
+        const data = await window.CiveApiClient.post('/procedimientos/guardar.php', {
+            body: payload,
+        });
+
+        if (data?.success) {
+            Swal.fire({
+                icon: "success",
+                title: "Procedimientos guardados",
+                text: data.message || "Se enviaron correctamente al API."
+            });
+        } else {
             Swal.fire({
                 icon: "error",
-                title: "Error de red",
-                text: "No se pudo conectar al servidor."
+                title: "Error en el envío",
+                text: data?.message || "Ocurrió un error al enviar los datos."
             });
+        }
+    } catch (error) {
+        console.error("❌ Error en la solicitud:", error);
+        Swal.fire({
+            icon: "error",
+            title: "Error de red",
+            text: "No se pudo conectar al servidor."
         });
+    }
 }
 
-function enviarBillingAlAPI(payload) {
-    fetch("https://asistentecive.consulmed.me/api/billing/guardar_billing.php", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                console.log("✅ Billing guardado:", data.message || "Guardado con éxito.");
-            } else {
-                console.error("❌ Error al guardar billing:", data.message || "Error desconocido.");
-            }
-        })
-        .catch(error => {
-            console.error("❌ Error de red al enviar billing:", error);
+async function enviarBillingAlAPI(payload) {
+    try {
+        const data = await window.CiveApiClient.post('/billing/guardar_billing.php', {
+            body: payload,
         });
+
+        if (data?.success) {
+            console.log("✅ Billing guardado:", data.message || "Guardado con éxito.");
+        } else {
+            console.error("❌ Error al guardar billing:", data?.message || "Error desconocido.");
+        }
+    } catch (error) {
+        console.error("❌ Error de red al enviar billing:", error);
+    }
 }
 
 // Mock de exportación a Excel de procedimientos

@@ -47,8 +47,8 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
         return t === 'SI' ? 'SI' : 'NO';
     }
 
-    function extraerDatosSolicitudYEnviar(btnGuardar) {
-        const url = 'https://asistentecive.consulmed.me/api/solicitudes/guardar.php';
+    async function extraerDatosSolicitudYEnviar(btnGuardar) {
+        const apiPath = '/solicitudes/guardar.php';
         const data = {};
 
         const div = document.querySelector('.media-body.responsive');
@@ -140,53 +140,29 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
         // --- DEBUG/LOG: ver lo que se envía y lo que responde el API ---
         const DEBUG_SOLICITUD = true; // poner en false si no quieres logs
         const cleaned = JSON.parse(JSON.stringify(data, (k, v) => v === '' ? null : v));
-        const payload = JSON.stringify(cleaned);
         if (DEBUG_SOLICITUD) {
+            const base = window.configCIVE ? window.configCIVE.get('apiBaseUrl') : '';
             console.groupCollapsed('📤 Envío a API (Solicitud)');
-            console.log('URL:', url);
+            console.log('Endpoint:', base ? `${base}${apiPath}` : apiPath);
             console.log('Payload:', cleaned);
             console.groupEnd();
         }
 
-        fetch(url, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: payload
-        })
-            .then(async (res) => {
-                let bodyText = '';
-                try {
-                    bodyText = await res.text();
-                } catch (_) {
-                }
-                let parsed;
-                try {
-                    parsed = JSON.parse(bodyText);
-                } catch (_) {
-                    parsed = null;
-                }
-
-                if (DEBUG_SOLICITUD) {
-                    console.groupCollapsed('📥 Respuesta API (Solicitud)');
-                    console.log('Status:', res.status, res.ok ? '(OK)' : '(ERROR)');
-                    try {
-                        console.log('Headers:', Object.fromEntries(res.headers.entries()));
-                    } catch (_) {
-                    }
-                    console.log('Body:', parsed ?? bodyText);
-                    console.groupEnd();
-                }
-
-                // Opcional: feedback visual mínimo
-                if (!res.ok) throw new Error('Error HTTP ' + res.status);
-                return parsed ?? bodyText;
-            })
-            .catch((err) => {
-                if (DEBUG_SOLICITUD) console.error('❌ Error al enviar solicitud:', err);
-            })
-            .finally(() => {
-                if (btnGuardar) btnGuardar.disabled = false;
+        try {
+            const respuesta = await window.CiveApiClient.post(apiPath, {
+                body: cleaned,
             });
+
+            if (DEBUG_SOLICITUD) {
+                console.groupCollapsed('📥 Respuesta API (Solicitud)');
+                console.log('Respuesta:', respuesta);
+                console.groupEnd();
+            }
+        } catch (err) {
+            if (DEBUG_SOLICITUD) console.error('❌ Error al enviar solicitud:', err);
+        } finally {
+            if (btnGuardar) btnGuardar.disabled = false;
+        }
     }
 
     window.extraerDatosSolicitudYEnviar = extraerDatosSolicitudYEnviar;

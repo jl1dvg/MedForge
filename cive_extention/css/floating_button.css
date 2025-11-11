@@ -1,58 +1,72 @@
-/* Estilos para el botón flotante */
+/* Variables compartidas para tipografía y colores */
+:root {
+    --cive-font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --cive-color-primary-60: #0066ff;
+    --cive-color-primary-70: #0055cc;
+    --cive-color-primary-80: #0044aa;
+    --cive-color-neutral-40: rgba(255, 255, 255, 0.9);
+    --cive-elevation-1: 0 4px 12px rgba(20, 33, 61, 0.2);
+    --cive-focus-ring: 0 0 0 3px rgba(0, 102, 255, 0.35);
+}
+
+/* Estilos para el botón flotante accesible */
 #floatingButton {
-    border-radius: 24px 24px 24px 24px / 50% 50% 50% 50%; /* Bordes superiores e inferiores rectos, laterales semicirculares */
-    padding: 10px 10px; /* Ajusta el padding para un mejor aspecto */
+    border-radius: 999px;
+    padding: 14px 18px;
     position: fixed;
     bottom: 20px;
-    right: 5px;
+    right: 16px;
     z-index: 1051;
-    background: var(--magical-primary-60);
-    color: white;
+    background: var(--cive-color-primary-60);
+    color: var(--cive-color-neutral-40);
     border: none;
-    box-shadow: var(--box-shadow-elevation-1);
-    transition: background 100ms ease-out, box-shadow 100ms ease-out;
-    display: flex;
+    box-shadow: var(--cive-elevation-1);
+    transition: background 100ms ease-out, box-shadow 100ms ease-out, transform 100ms ease-out;
+    display: inline-flex;
     align-items: center;
+    gap: 12px;
     cursor: pointer;
+    font-family: var(--cive-font-family);
+    font-size: 1.05rem;
+    line-height: 1.2;
+    min-height: 52px;
 }
 
-/* Estilos para el icono de la imagen dentro del botón */
 #floatingButton img {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%; /* Hacer el ícono redondo */
-    margin-right: 8px; /* Espacio entre el icono principal y el ícono de tres puntos */
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
 }
 
-/* Estilos para el ícono de tres puntos */
 #floatingButton .drag-handle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 24px;
-    background: transparent;
+    width: 22px;
+    height: 32px;
     cursor: grab;
+    border-radius: 8px;
 }
 
 #floatingButton .drag-handle:active {
     cursor: grabbing;
 }
 
-/* Tres puntos verticales */
 .drag-handle::before {
-    content: "\2022 \2022 \2022"; /* Tres puntos verticales */
-    font-size: 16px;
-    color: white;
+    content: "\2022 \2022 \2022";
+    font-size: 20px;
+    color: var(--cive-color-neutral-40);
+    letter-spacing: 2px;
 }
 
-/* Hover y active states */
 #floatingButton:hover {
-    background: var(--magical-primary-70);
+    background: var(--cive-color-primary-70);
+    box-shadow: 0 6px 16px rgba(0, 85, 204, 0.32);
 }
 
 #floatingButton:active {
-    background: var(--magical-primary-80);
+    background: var(--cive-color-primary-80);
+    transform: scale(0.98);
 }
 
 #floatingButton:disabled {
@@ -60,11 +74,7 @@
     opacity: 0.4;
 }
 
-/* Variables CSS */
-:root {
-    --magical-primary-60: #0066FF;
-    --magical-primary-70: #0055CC;
-    --magical-primary-80: #0044AA;
-    --magical-gray-60: #999999;
-    --box-shadow-elevation-1: 0px 1px 3px rgba(0, 0, 0, 0.2);
+#floatingButton:focus-visible {
+    outline: none;
+    box-shadow: var(--cive-focus-ring);
 }

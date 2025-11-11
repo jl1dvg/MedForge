@@ -50,10 +50,18 @@ let pacientesPrioritarios = [];
         const fechaHoy = new Date().toISOString().split('T')[0];
 
         try {
-            const respuesta = await fetch(`https://asistentecive.consulmed.me/api/proyecciones/estado_optometria.php?fecha=${fechaHoy}`);
-            const pacientesEnAtencion = await respuesta.json();
+            const respuesta = await window.CiveApiClient.get('/proyecciones/estado_optometria.php', {
+                query: {fecha: fechaHoy},
+            });
+            const pacientesEnAtencion = Array.isArray(respuesta?.data)
+                ? respuesta.data
+                : Array.isArray(respuesta?.pacientes)
+                    ? respuesta.pacientes
+                    : Array.isArray(respuesta)
+                        ? respuesta
+                        : [];
             // Normalizar los IDs recibidos del API a strings limpias
-            const pacientesFormIds = pacientesEnAtencion.map(id => id.toString().trim());
+            const pacientesFormIds = pacientesEnAtencion.map((id) => id.toString().trim());
             console.log('📋 Pacientes en atención OPTOMETRIA hoy:', pacientesEnAtencion);
 
             const filas = tabla.querySelectorAll('tbody tr');
@@ -255,23 +263,20 @@ let pacientesPrioritarios = [];
         });
 
         if (pacientes.length > 0) {
-            fetch('https://asistentecive.consulmed.me/api/proyecciones/guardar.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(pacientes)
+            window.CiveApiClient.post('/proyecciones/guardar.php', {
+                body: pacientes,
             })
-                .then(res => res.json())
-                .then(data => {
+                .then((data) => {
                     console.log('✅ Sincronización exitosa:', data);
                     // Asignar pacientesOptometriaHoy y pacientesPrioritarios tras sincronización
                     if (data && Array.isArray(data.detalles)) {
-                        pacientesOptometriaHoy = data.detalles.map(p => p.id);
-                        pacientesPrioritarios = data.detalles.filter(p => p.afiliacion === 'PRIORITARIO').map(p => p.id);
+                        pacientesOptometriaHoy = data.detalles.map((p) => p.id);
+                        pacientesPrioritarios = data.detalles
+                            .filter((p) => p.afiliacion === 'PRIORITARIO')
+                            .map((p) => p.id);
                     }
                 })
-                .catch(err => {
+                .catch((err) => {
                     console.error('❌ Error en la sincronización', err);
                 });
         }

@@ -3,69 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <title>OCT de Nervio</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../../css/floating_popup.css">
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 <div class="popup-overlay">
-    <div class="container rounded p-5 my-5 border bg-light">
-        <div class="d-flex justify-content-end">
-            <button id="btnClose" class="close-btn btn btn-outline-danger">&times;</button>
-        </div>
-        <div class="form-group">
-            <label for="inputOD" class="form-label">OD:</label>
-            <input type="text" id="inputOD" class="form-control" maxlength="3">
-        </div>
-        <div class="form-group">
-            <label for="inputOI" class="form-label">OI:</label>
-            <input type="text" id="inputOI" class="form-control" maxlength="3">
-        </div>
-        <div class="row">
-            <div class="col">
-                <h3>OD</h3>
-                <div id="checkboxContainerOI" class="form-group">
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxI" class="form-check-input">
-                        <label class="form-check-label">Inf</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxS" class="form-check-input">
-                        <label class="form-check-label">Sup</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxN" class="form-check-input">
-                        <label class="form-check-label">Nas</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxT" class="form-check-input">
-                        <label class="form-check-label">Temp</label>
-                    </div>
-                </div>
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <section>
+            <label for="inputOD">OD</label>
+            <input type="text" id="inputOD" maxlength="3" autocomplete="off" />
+        </section>
+        <section>
+            <label for="inputOI">OI</label>
+            <input type="text" id="inputOI" maxlength="3" autocomplete="off" />
+        </section>
+        <section>
+            <h3>OD</h3>
+            <div id="checkboxContainerOI" class="checkbox-grid">
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxI" />
+                    <span>Inf</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxS" />
+                    <span>Sup</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxN" />
+                    <span>Nas</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxT" />
+                    <span>Temp</span>
+                </label>
             </div>
-            <div class="col">
-                <h3>OI</h3>
-                <div id="checkboxContainerOD" class="form-group">
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxI_OI" class="form-check-input">
-                        <label class="form-check-label">Inf</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxS_OI" class="form-check-input">
-                        <label class="form-check-label">Sup</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxN_OI" class="form-check-input">
-                        <label class="form-check-label">Nas</label>
-                    </div>
-                    <div class="form-check">
-                        <input type="checkbox" id="checkboxT_OI" class="form-check-input">
-                        <label class="form-check-label">Temp</label>
-                    </div>
-                </div>
+        </section>
+        <section>
+            <h3>OI</h3>
+            <div id="checkboxContainerOD" class="checkbox-grid">
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxI_OI" />
+                    <span>Inf</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxS_OI" />
+                    <span>Sup</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxN_OI" />
+                    <span>Nas</span>
+                </label>
+                <label class="form-check">
+                    <input type="checkbox" id="checkboxT_OI" />
+                    <span>Temp</span>
+                </label>
             </div>
-        </div>
-        <div class="d-flex justify-content-center">
-            <button id="btnAceptar" class="btn btn-success btn-block">Aceptar</button>
+        </section>
+        <div class="cta">
+            <button id="btnAceptar">Aceptar</button>
         </div>
     </div>
 </div>

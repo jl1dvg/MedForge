@@ -1,74 +1,280 @@
-// Clave API de OpenAI (asegúrate de almacenarla de forma segura)
-const API_KEY = 'TU_OPENAI_API_KEY';
+const STORAGE_KEYS = {
+    bootstrap: 'civeExtensionBootstrap',
+    config: 'civeExtensionConfig',
+    cachedHcNumber: 'hcNumber',
+    cachedExpiry: 'fechaCaducidad',
+};
 
-chrome.commands.onCommand.addListener((command) => {
-    if (command === "ejecutar-examen-directo") {
-        // Enviamos mensaje al popup o content script para ejecutar el examen
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (tabs.length === 0) {
-                console.error('No se encontró la pestaña activa.');
+const DEFAULT_CONTROL_ENDPOINT = 'https://cive.consulmed.me/api/cive-extension/config';
+const DEFAULT_REFRESH_INTERVAL_MS = 900000; // 15 minutos
+const SYNC_ALARM_NAME = 'civeExtension.sync';
+
+function storageGet(keys) {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(keys, (items) => {
+            if (chrome.runtime.lastError) {
+                console.error('storageGet error:', chrome.runtime.lastError.message);
+                resolve({});
                 return;
             }
+            resolve(items);
+        });
+    });
+}
 
-            chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id},
-                files: ['js/examenes.js']
-            }, () => {
-                chrome.scripting.executeScript({
-                    target: {tabId: tabs[0].id},
-                    func: (examenId) => {
-                        if (typeof ejecutarExamenes === 'function') {
-                            ejecutarExamenes(examenId);
-                        } else {
-                            console.error('ejecutarExamenes no está definida.');
-                        }
+function storageSet(values) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set(values, () => {
+            if (chrome.runtime.lastError) {
+                console.error('storageSet error:', chrome.runtime.lastError.message);
+            }
+            resolve();
+        });
+    });
+}
+
+function sanitizeInterval(ms) {
+    const parsed = Number(ms);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_REFRESH_INTERVAL_MS;
+    }
+    return Math.max(60000, parsed);
+}
+
+async function determineControlEndpoint() {
+    const { [STORAGE_KEYS.bootstrap]: bootstrap } = await storageGet([STORAGE_KEYS.bootstrap]);
+    if (bootstrap && typeof bootstrap.controlEndpoint === 'string' && bootstrap.controlEndpoint !== '') {
+        return bootstrap.controlEndpoint;
+    }
+    return DEFAULT_CONTROL_ENDPOINT;
+}
+
+async function determineRefreshInterval() {
+    const [{ [STORAGE_KEYS.config]: config }, { [STORAGE_KEYS.bootstrap]: bootstrap }] = await Promise.all([
+        storageGet([STORAGE_KEYS.config]),
+        storageGet([STORAGE_KEYS.bootstrap]),
+    ]);
+
+    const candidate = config?.refreshIntervalMs ?? bootstrap?.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS;
+    return sanitizeInterval(candidate);
+}
+
+async function scheduleConfigSync() {
+    const intervalMs = await determineRefreshInterval();
+    const intervalMinutes = Math.max(1, intervalMs / 60000);
+
+    chrome.alarms.clear(SYNC_ALARM_NAME, () => {
+        chrome.alarms.create(SYNC_ALARM_NAME, {
+            periodInMinutes: intervalMinutes,
+            delayInMinutes: Math.min(intervalMinutes, 0.5),
+        });
+    });
+}
+
+async function fetchRemoteConfig(reason = 'auto') {
+    const endpoint = await determineControlEndpoint();
+    try {
+        const response = await fetch(endpoint, {
+            method: 'GET',
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (!payload || payload.success === false || !payload.config) {
+            throw new Error(payload?.message || 'Respuesta inesperada desde MedForge.');
+        }
+
+        const config = {...payload.config, fetchedAt: Date.now(), fetchedBy: reason};
+        await storageSet({[STORAGE_KEYS.config]: config});
+        return config;
+    } catch (error) {
+        console.error('No fue posible sincronizar la configuración de CIVE Extension:', error);
+        throw error;
+    }
+}
+
+async function initializeBackground() {
+    try {
+        await fetchRemoteConfig('startup');
+    } catch (error) {
+        // La sincronización puede fallar si el usuario no está autenticado todavía.
+    }
+    await scheduleConfigSync();
+}
+
+async function handleOpenAiRequest(prompt) {
+    const { [STORAGE_KEYS.config]: config } = await storageGet([STORAGE_KEYS.config]);
+    const openAi = config?.openAi || {};
+    const apiKey = openAi.apiKey || '';
+    const model = openAi.model || 'gpt-4o-mini';
+
+    if (!apiKey) {
+        return {
+            success: false,
+            text: 'OpenAI no está configurado desde MedForge.',
+        };
+    }
+
+    try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    {
+                        role: 'user',
+                        content: String(prompt ?? ''),
                     },
-                    args: ['octm'] // Aquí puedes pasar el ID del examen o cualquier
-                });
-            });
+                ],
+                temperature: 0.2,
+                max_tokens: 512,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const text = data?.choices?.[0]?.message?.content?.trim() ?? '';
+        return {
+            success: true,
+            text,
+        };
+    } catch (error) {
+        console.error('Error en OpenAI API:', error);
+        return {
+            success: false,
+            text: 'Error al procesar la solicitud con OpenAI.',
+        };
+    }
+}
+
+async function handleSubscriptionCheck() {
+    const [{ [STORAGE_KEYS.bootstrap]: bootstrap }, { [STORAGE_KEYS.config]: config }] = await Promise.all([
+        storageGet([STORAGE_KEYS.bootstrap]),
+        storageGet([STORAGE_KEYS.config]),
+    ]);
+
+    const subscriptionEndpoint = bootstrap?.subscriptionEndpoint
+        || (config?.api?.baseUrl ? `${config.api.baseUrl.replace(/\/$/, '')}/subscription/check.php` : null);
+
+    if (!subscriptionEndpoint) {
+        return {success: false, error: 'No se encontró el endpoint de suscripción.'};
+    }
+
+    try {
+        const response = await fetch(subscriptionEndpoint, {
+            method: 'GET',
+            credentials: 'include',
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json().catch(() => ({}));
+        const isSubscribed = Boolean(data.isSubscribed ?? data.success ?? false);
+        const isApproved = Boolean(data.isApproved ?? data.authorized ?? false);
+        return {success: isSubscribed && isApproved, raw: data};
+    } catch (error) {
+        console.error('Error al verificar la suscripción:', error);
+        return {success: false, error: 'No fue posible verificar la suscripción en MedForge.'};
+    }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+    initializeBackground().catch((error) => console.warn('Inicialización diferida de CIVE Extension:', error));
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    initializeBackground().catch((error) => console.warn('Inicialización diferida de CIVE Extension:', error));
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm?.name !== SYNC_ALARM_NAME) {
+        return;
+    }
+    fetchRemoteConfig('alarm').finally(() => {
+        scheduleConfigSync().catch((error) => console.warn('No fue posible reprogramar la sincronización de CIVE Extension:', error));
+    });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') {
+        return;
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.bootstrap)) {
+        scheduleConfigSync().catch((error) => console.warn('Error al actualizar la planificación de sincronización:', error));
+        fetchRemoteConfig('bootstrap-update').catch(() => {
+            // La sincronización puede fallar si no hay sesión activa todavía.
         });
     }
 });
 
-// Listener para manejar mensajes del content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'getFechaCaducidad') {
-        const {hcNumber} = message;
-        console.log('Buscando fecha de caducidad para HC:', hcNumber);
+chrome.commands.onCommand.addListener((command) => {
+    if (command !== 'ejecutar-examen-directo') {
+        return;
+    }
 
-        // Recuperar la fecha de caducidad almacenada en chrome.storage
-        chrome.storage.local.get(['hcNumber', 'fechaCaducidad'], (result) => {
-            if (result.hcNumber === hcNumber) {
-                console.log('Fecha de caducidad encontrada:', result.fechaCaducidad);
-                sendResponse({fechaCaducidad: result.fechaCaducidad});
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || tabs.length === 0) {
+            console.error('No se encontró la pestaña activa.');
+            return;
+        }
+
+        chrome.scripting.executeScript({
+            target: {tabId: tabs[0].id},
+            files: ['js/examenes.js']
+        }, () => {
+            chrome.scripting.executeScript({
+                target: {tabId: tabs[0].id},
+                func: (examenId) => {
+                    if (typeof ejecutarExamenes === 'function') {
+                        ejecutarExamenes(examenId);
+                    } else {
+                        console.error('ejecutarExamenes no está definida.');
+                    }
+                },
+                args: ['octm']
+            });
+        });
+    });
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (!request || typeof request.action !== 'string') {
+        return false;
+    }
+
+    if (request.action === 'getFechaCaducidad') {
+        chrome.storage.local.get([STORAGE_KEYS.cachedHcNumber, STORAGE_KEYS.cachedExpiry], (result) => {
+            if (result[STORAGE_KEYS.cachedHcNumber] === request.hcNumber) {
+                sendResponse({fechaCaducidad: result[STORAGE_KEYS.cachedExpiry] ?? null});
             } else {
-                console.log('No se encontró fecha de caducidad para este HC.');
                 sendResponse({fechaCaducidad: null});
             }
         });
-
-        return true; // Esto permite que el response sea enviado de forma asíncrona
+        return true;
     }
-});
 
-
-// Manejo de mensajes en background.js
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "consultaAnterior") {
-        // Ejecutar la función consultaAnterior como ya lo tienes
+    if (request.action === 'consultaAnterior') {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (tabs.length === 0) {
+            if (!tabs || tabs.length === 0) {
                 console.error('No se encontró la pestaña activa.');
                 return;
             }
 
-            // Inyectar el script de consulta.js y luego ejecutar la función consultaAnterior
             chrome.scripting.executeScript({
                 target: {tabId: tabs[0].id}, files: ['js/consulta.js']
             }, () => {
                 chrome.scripting.executeScript({
                     target: {tabId: tabs[0].id}, function: () => {
-                        // Asegúrate de que la función consultaAnterior esté disponible
                         if (typeof consultaAnterior === 'function') {
                             consultaAnterior();
                         } else {
@@ -78,45 +284,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
             });
         });
-    } else if (request.action === "openai_request") {
-        // Llamada a OpenAI
-        fetch('https://api.openai.com/v1/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "text-davinci-003", // Modelo de OpenAI
-                prompt: request.prompt,     // Contenido para enviar
-                max_tokens: 150
-            })
-        })
-            .then(response => response.json())
-            .then(data => {
-                sendResponse({text: data.choices[0].text}); // Enviar respuesta de OpenAI al script de contenido
-            })
-            .catch(error => {
-                console.error('Error en OpenAI API:', error);
-                sendResponse({text: 'Error al procesar la solicitud.'});
-            });
+        return false;
+    }
 
-        return true; // Mantener el canal de mensajes abierto para respuestas asincrónicas
-    } else if (request.action === "ejecutarPopEnPagina") {
-        // Código para ejecutarPopEnPagina como ya lo tienes
+    if (request.action === 'openai_request') {
+        handleOpenAiRequest(request.prompt)
+            .then((result) => sendResponse({text: result.text, success: result.success}))
+            .catch(() => sendResponse({text: 'Error al procesar la solicitud con OpenAI.', success: false}));
+        return true;
+    }
+
+    if (request.action === 'ejecutarPopEnPagina') {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (tabs.length === 0) {
+            if (!tabs || tabs.length === 0) {
                 console.error('No se encontró la pestaña activa.');
                 return;
             }
 
-            // Inyectar el script de consulta.js y luego ejecutar la función ejecutarPopEnPagina
             chrome.scripting.executeScript({
                 target: {tabId: tabs[0].id}, files: ['js/consulta.js']
             }, () => {
                 chrome.scripting.executeScript({
                     target: {tabId: tabs[0].id}, function: () => {
-                        // Asegúrate de que la función ejecutarPopEnPagina esté disponible
                         if (typeof ejecutarPopEnPagina === 'function') {
                             ejecutarPopEnPagina();
                         } else {
@@ -126,133 +315,98 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
             });
         });
+        return false;
     }
-    // Otros manejos de mensajes como ejecutarReceta, ejecutarProtocolo, etc.
-});
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "ejecutarProtocolo") {
-        const item = message.item;
-
+    if (request.action === 'generatePDF') {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
-                console.error('Error al obtener la pestaña activa:', chrome.runtime.lastError || 'No se encontraron pestañas activas.');
+            if (!tabs || tabs.length === 0) {
+                sendResponse({success: false, error: 'No se encontró una pestaña activa.'});
                 return;
             }
-
-            const tabId = tabs[0].id;
-            if (!tabId) {
-                console.error('No se pudo obtener el ID de la pestaña.');
-                return;
-            }
-
-            console.log('Ejecutando script en la pestaña:', tabId);
-
-            chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id}, files: ['js/procedimientos.js'] // Inyecta el archivo procedimientos.js
-            }, () => {
-                chrome.scripting.executeScript({
-                    target: {tabId: tabId}, func: (item) => {
-                        // Definir la función dentro del contexto de ejecución
-                        console.log('Item recibido en ejecutarProtocoloEnPagina:', item);
-                        // Verificación de la estructura del item y más lógica...
-
-                        ejecutarProtocoloEnPagina(item); // Llamada a la función dentro del contexto
-                    }, args: [item],
-                }, (results) => {
-                    if (chrome.runtime.lastError) {
-                        console.error('Error al ejecutar el script en la pestaña:', chrome.runtime.lastError);
-                    } else {
-                        console.log('Script ejecutado con éxito:', results);
-                    }
-                });
-            });
-        });
-    }
-    if (message.action === "ejecutarReceta") {
-        const item = message.item;
-
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
-                console.error('Error al obtener la pestaña activa:', chrome.runtime.lastError || 'No se encontraron pestañas activas.');
-                return;
-            }
-
-            const tabId = tabs[0].id;
-            if (!tabId) {
-                console.error('No se pudo obtener el ID de la pestaña.');
-                return;
-            }
-
-            console.log('Ejecutando script en la pestaña:', tabId);
-
-            chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id}, files: ['js/recetas.js'] // Inyecta el archivo recetas.js
-            }, () => {
-                chrome.scripting.executeScript({
-                    target: {tabId: tabId}, func: (item) => {
-                        // Definir la función dentro del contexto de ejecución
-                        console.log('Item recibido en ejecutarRecetaEnPagina:', item);
-                        // Verificación de la estructura del item y más lógica...
-
-                        ejecutarRecetaEnPagina(item); // Llamada a la función dentro del contexto
-                    }, args: [item],
-                }, (results) => {
-                    if (chrome.runtime.lastError) {
-                        console.error('Error al ejecutar el script en la pestaña:', chrome.runtime.lastError);
-                    } else {
-                        console.log('Script ejecutado con éxito:', results);
-                    }
-                });
-            });
-        });
-    }
-});
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "generatePDF") {
-        // Envía el mensaje al content script para generar el PDF
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
             chrome.tabs.sendMessage(tabs[0].id, {
-                action: "generatePDF",
+                action: 'generatePDF',
                 content: request.content
             }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error('Error enviando generatePDF:', chrome.runtime.lastError);
+                    sendResponse({success: false, error: chrome.runtime.lastError.message});
+                    return;
+                }
                 sendResponse(response);
             });
         });
-
-        return true; // Indica que la respuesta será enviada de forma asíncrona
+        return true;
     }
-});
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
     if (request.action === 'checkSubscription') {
-        console.log('Received request for subscription check');
-
-        // Simula una respuesta positiva
-        const simulatedResponse = {isSubscribed: true, isApproved: true};
-
-        if (simulatedResponse.isSubscribed && simulatedResponse.isApproved) {
-            sendResponse({success: true});
-        } else {
-            sendResponse({success: false});
-        }
-
-        // O realiza el fetch real
-        // fetch('http://cive.consulmed.me/check_subscription.php', { method: 'POST', credentials: 'include' })
-        //     .then(response => response.json())
-        //     .then(data => {
-        //         console.log('Response Data:', data);
-        //         if (data.isSubscribed && data.isApproved) {
-        //             sendResponse({success: true});
-        //         } else {
-        //             sendResponse({success: false});
-        //         }
-        //     })
-        //     .catch(error => {
-        //         console.error('Error al verificar la suscripción:', error);
-        //         sendResponse({ success: false, error: 'Ocurrió un error al verificar la suscripción. Inténtelo de nuevo más tarde.' });
-        //     });
-
-        return true; // Esto indica que la respuesta será asíncrona
+        handleSubscriptionCheck().then(sendResponse);
+        return true;
     }
-});
 
+    if (request.action === 'ejecutarProtocolo') {
+        const item = request.item;
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+                console.error('Error al obtener la pestaña activa:', chrome.runtime.lastError || 'No se encontraron pestañas activas.');
+                return;
+            }
+            const tabId = tabs[0].id;
+            if (!tabId) {
+                console.error('No se pudo obtener el ID de la pestaña.');
+                return;
+            }
+
+            chrome.scripting.executeScript({
+                target: {tabId}, files: ['js/procedimientos.js']
+            }, () => {
+                chrome.scripting.executeScript({
+                    target: {tabId},
+                    func: (payload) => {
+                        if (typeof ejecutarProtocoloEnPagina === 'function') {
+                            ejecutarProtocoloEnPagina(payload);
+                        } else {
+                            console.error('ejecutarProtocoloEnPagina no está definida.');
+                        }
+                    },
+                    args: [item],
+                });
+            });
+        });
+        return false;
+    }
+
+    if (request.action === 'ejecutarReceta') {
+        const item = request.item;
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (chrome.runtime.lastError || !tabs || tabs.length === 0) {
+                console.error('Error al obtener la pestaña activa:', chrome.runtime.lastError || 'No se encontraron pestañas activas.');
+                return;
+            }
+            const tabId = tabs[0].id;
+            if (!tabId) {
+                console.error('No se pudo obtener el ID de la pestaña.');
+                return;
+            }
+
+            chrome.scripting.executeScript({
+                target: {tabId}, files: ['js/recetas.js']
+            }, () => {
+                chrome.scripting.executeScript({
+                    target: {tabId},
+                    func: (payload) => {
+                        if (typeof ejecutarRecetaEnPagina === 'function') {
+                            ejecutarRecetaEnPagina(payload);
+                        } else {
+                            console.error('ejecutarRecetaEnPagina no está definida.');
+                        }
+                    },
+                    args: [item],
+                });
+            });
+        });
+        return false;
+    }
+
+    return false;
+});

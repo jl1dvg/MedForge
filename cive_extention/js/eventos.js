@@ -78,7 +78,12 @@ window.inicializarEventos = function () {
         }
     ];
 
-    if (window.configCIVE.ES_LOCAL) {
+    const config = window.configCIVE || {};
+    const examsEnabled = typeof config.isFeatureEnabled === 'function'
+        ? config.isFeatureEnabled('examsButton', Boolean(config.ES_LOCAL))
+        : Boolean(config.ES_LOCAL);
+
+    if (examsEnabled) {
         eventos.push({
             id: "btnExamenes", evento: () => {
                 console.log("Botón Exámenes clickeado");
@@ -94,6 +99,26 @@ window.inicializarEventos = function () {
             btn.addEventListener("click", evento);
         } else {
             console.warn(`Elemento ${id} no encontrado.`);
+        }
+    });
+
+    const filtros = [
+        {id: "searchProtocolos", handler: aplicarFiltroProtocolos},
+        {id: "searchProcedimientos", handler: aplicarFiltroProcedimientos},
+        {id: "searchRecetas", handler: aplicarFiltroRecetas},
+    ];
+
+    filtros.forEach(({id, handler}) => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener("input", (event) => handler(event.target.value));
+            input.addEventListener("search", (event) => handler(event.target.value));
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    handler(event.target.value);
+                }
+            });
         }
     });
 
