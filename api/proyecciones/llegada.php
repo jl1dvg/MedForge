@@ -6,7 +6,11 @@ use Helpers\CorsHelper;
 
 header('Content-Type: application/json; charset=UTF-8');
 
-if (!CorsHelper::prepare('PROYECCIONES_ALLOWED_ORIGINS')) {
+if (!CorsHelper::prepare('PROYECCIONES_ALLOWED_ORIGINS', [
+    'https://cive.consulmed.me',
+    'https://asistentecive.consulmed.me',
+    'https://cive.consulmed.me/*',
+])) {
     http_response_code(403);
     echo json_encode([
         'success' => false,

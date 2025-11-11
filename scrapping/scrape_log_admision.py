@@ -174,7 +174,7 @@ def iniciar_sesion_y_extraer_log():
 
 
 def enviar_a_api(data):
-    url_api = "https://cive.consulmed.me/api/prefactura/guardar_codigo_derivacion.php"
+    url_api = "https://asistentecive.consulmed.me/api/prefactura/guardar_codigo_derivacion.php"
     headers = {'Content-Type': 'application/json'}
     try:
         response = requests.post(url_api, json=data, headers=headers)
