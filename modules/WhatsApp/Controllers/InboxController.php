@@ -21,7 +21,7 @@ class InboxController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.manage', 'settings.manage', 'administrativo']);
 
         $since = isset($_GET['since']) ? (int) $_GET['since'] : 0;
         $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;

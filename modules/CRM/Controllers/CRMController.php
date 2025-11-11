@@ -35,6 +35,14 @@ class CRMController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        $permissions = [
+            'manageLeads' => $this->canCrm(['crm.leads.manage']),
+            'manageProjects' => $this->canCrm(['crm.projects.manage']),
+            'manageTasks' => $this->canCrm(['crm.tasks.manage']),
+            'manageTickets' => $this->canCrm(['crm.tickets.manage']),
+        ];
 
         $this->render(
             __DIR__ . '/../views/index.php',
@@ -51,6 +59,7 @@ class CRMController extends BaseController
                 'initialProjects' => $this->projects->list(['limit' => 50]),
                 'initialTasks' => $this->tasks->list(['limit' => 50]),
                 'initialTickets' => $this->tickets->list(['limit' => 50]),
+                'permissions' => $permissions,
                 'scripts' => ['js/pages/crm.js'],
             ]
         );
@@ -59,6 +68,7 @@ class CRMController extends BaseController
     public function listLeads(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
 
         try {
             $filters = [];
@@ -88,6 +98,7 @@ class CRMController extends BaseController
     public function createLead(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
         $name = trim((string) ($payload['name'] ?? ''));
@@ -125,6 +136,7 @@ class CRMController extends BaseController
     public function updateLead(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
         $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
@@ -152,6 +164,7 @@ class CRMController extends BaseController
     public function convertLead(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
         $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
@@ -179,6 +192,7 @@ class CRMController extends BaseController
     public function listProjects(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
 
         try {
             $filters = [];
@@ -208,6 +222,7 @@ class CRMController extends BaseController
     public function createProject(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
         $title = trim((string) ($payload['title'] ?? ''));
@@ -241,6 +256,7 @@ class CRMController extends BaseController
     public function updateProjectStatus(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
         $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
@@ -267,6 +283,7 @@ class CRMController extends BaseController
     public function listTasks(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
 
         try {
             $filters = [];
@@ -293,6 +310,7 @@ class CRMController extends BaseController
     public function createTask(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.tasks.manage');
 
         $payload = $this->getBody();
         $title = trim((string) ($payload['title'] ?? ''));
@@ -332,6 +350,7 @@ class CRMController extends BaseController
     public function updateTaskStatus(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.tasks.manage');
 
         $payload = $this->getBody();
         $taskId = isset($payload['task_id']) ? (int) $payload['task_id'] : 0;
@@ -358,6 +377,7 @@ class CRMController extends BaseController
     public function listTickets(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
 
         try {
             $filters = [];
@@ -384,6 +404,7 @@ class CRMController extends BaseController
     public function createTicket(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.tickets.manage');
 
         $payload = $this->getBody();
         $subject = trim((string) ($payload['subject'] ?? ''));
@@ -418,6 +439,7 @@ class CRMController extends BaseController
     public function replyTicket(): void
     {
         $this->requireAuth();
+        $this->requireCrmPermission('crm.tickets.manage');
 
         $payload = $this->getBody();
         $ticketId = isset($payload['ticket_id']) ? (int) $payload['ticket_id'] : 0;
@@ -482,6 +504,18 @@ class CRMController extends BaseController
     private function getAssignableUsers(): array
     {
         return $this->leadConfig->getAssignableUsers();
+    }
+
+    private function requireCrmPermission(string $permission): void
+    {
+        $this->requirePermission([$permission, 'crm.manage', 'administrativo']);
+    }
+
+    private function canCrm(array $permissions): bool
+    {
+        $checks = array_merge($permissions, ['crm.manage', 'administrativo']);
+
+        return $this->hasPermission($checks);
     }
 
     private function getQuery(string $key): ?string

@@ -23,6 +23,7 @@ class AIController extends BaseController
     public function generarEnfermedad(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['ai.consultas.enfermedad', 'ai.manage', 'administrativo']);
 
         if (!$this->configService->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_ENFERMEDAD)) {
             $this->json([
@@ -54,6 +55,7 @@ class AIController extends BaseController
     public function generarPlan(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['ai.consultas.plan', 'ai.manage', 'administrativo']);
 
         if (!$this->configService->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_PLAN)) {
             $this->json([

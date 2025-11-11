@@ -10,7 +10,15 @@
 /** @var array $initialProjects */
 /** @var array $initialTasks */
 /** @var array $initialTickets */
-/** @var array $scripts */
+$scripts = array_merge($scripts ?? [], [
+    'js/pages/crm.js',
+]);
+$permissions = array_merge([
+    'manageLeads' => false,
+    'manageProjects' => false,
+    'manageTasks' => false,
+    'manageTickets' => false,
+], $permissions ?? []);
 
 $bootstrap = [
     'leadStatuses' => $leadStatuses ?? [],
@@ -24,6 +32,7 @@ $bootstrap = [
     'initialProjects' => $initialProjects ?? [],
     'initialTasks' => $initialTasks ?? [],
     'initialTickets' => $initialTickets ?? [],
+    'permissions' => $permissions,
 ];
 
 $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
@@ -99,12 +108,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     </div>
                                 </div>
                                 <div class="col-xl-5">
-                                    <div class="box mb-3">
-                                        <div class="box-header with-border">
-                                            <h5 class="box-title mb-0">Nuevo lead</h5>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="lead-form" class="space-y-2">
+                                    <?php if ($permissions['manageLeads']): ?>
+                                        <div class="box mb-3">
+                                            <div class="box-header with-border">
+                                                <h5 class="box-title mb-0">Nuevo lead</h5>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="lead-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="lead-name" class="form-label">Nombre del contacto *</label>
                                                     <input type="text" class="form-control" id="lead-name" name="name" required>
@@ -156,17 +166,17 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <textarea class="form-control" id="lead-notes" name="notes" rows="3"></textarea>
                                                 </div>
                                                 <button type="submit" class="btn btn-primary w-100">Guardar lead</button>
-                                            </form>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div class="box">
-                                        <div class="box-header with-border d-flex justify-content-between align-items-center">
-                                            <h5 class="box-title mb-0">Convertir a paciente / cliente</h5>
-                                            <span class="badge bg-light text-muted" id="convert-lead-selected">Sin selección</span>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="lead-convert-form" class="space-y-2">
+                                        <div class="box">
+                                            <div class="box-header with-border d-flex justify-content-between align-items-center">
+                                                <h5 class="box-title mb-0">Convertir a paciente / cliente</h5>
+                                                <span class="badge bg-light text-muted" id="convert-lead-selected">Sin selección</span>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="lead-convert-form" class="space-y-2">
                                                 <input type="hidden" id="convert-lead-hc" name="hc_number" value="">
                                                 <div class="alert alert-info mb-3" id="convert-helper">Selecciona un lead en la tabla para precargar los datos.</div>
                                                 <div class="mb-2">
@@ -201,10 +211,15 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <label for="convert-address" class="form-label">Dirección</label>
                                                     <input type="text" class="form-control" id="convert-address" name="customer_address">
                                                 </div>
-                                                <button type="submit" class="btn btn-success w-100" disabled>Convertir lead</button>
-                                            </form>
+                                                    <button type="submit" class="btn btn-success w-100" disabled>Convertir lead</button>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
+                                    <?php else: ?>
+                                        <div class="alert alert-info">
+                                            No tienes permisos para crear o convertir leads en el CRM.
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -230,12 +245,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     </div>
                                 </div>
                                 <div class="col-xl-5">
-                                    <div class="box">
-                                        <div class="box-header with-border">
-                                            <h5 class="box-title mb-0">Nuevo proyecto clínico</h5>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="project-form" class="space-y-2">
+                                    <?php if ($permissions['manageProjects']): ?>
+                                        <div class="box">
+                                            <div class="box-header with-border">
+                                                <h5 class="box-title mb-0">Nuevo proyecto clínico</h5>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="project-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="project-title" class="form-label">Nombre del proyecto *</label>
                                                     <input type="text" class="form-control" id="project-title" name="title" required>
@@ -285,10 +301,15 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                         <input type="date" class="form-control" id="project-due" name="due_date">
                                                     </div>
                                                 </div>
-                                                <button type="submit" class="btn btn-success w-100">Registrar proyecto</button>
-                                            </form>
+                                                    <button type="submit" class="btn btn-success w-100">Registrar proyecto</button>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
+                                    <?php else: ?>
+                                        <div class="alert alert-info">
+                                            No cuentas con permisos para crear proyectos dentro del CRM.
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -314,12 +335,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     </div>
                                 </div>
                                 <div class="col-xl-5">
-                                    <div class="box">
-                                        <div class="box-header with-border">
-                                            <h5 class="box-title mb-0">Nueva tarea</h5>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="task-form" class="space-y-2">
+                                    <?php if ($permissions['manageTasks']): ?>
+                                        <div class="box">
+                                            <div class="box-header with-border">
+                                                <h5 class="box-title mb-0">Nueva tarea</h5>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="task-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="task-project" class="form-label">Proyecto *</label>
                                                     <select class="form-select" id="task-project" name="project_id" required data-placeholder="Selecciona un proyecto">
@@ -371,9 +393,14 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     </select>
                                                 </div>
                                                 <button type="submit" class="btn btn-warning w-100 text-white">Crear tarea</button>
-                                            </form>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
+                                    <?php else: ?>
+                                        <div class="alert alert-info">
+                                            No puedes crear tareas en el CRM con el rol asignado.
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -400,12 +427,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     </div>
                                 </div>
                                 <div class="col-xl-5">
-                                    <div class="box mb-3">
-                                        <div class="box-header with-border">
-                                            <h5 class="box-title mb-0">Nuevo ticket interno</h5>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="ticket-form" class="space-y-2">
+                                    <?php if ($permissions['manageTickets']): ?>
+                                        <div class="box mb-3">
+                                            <div class="box-header with-border">
+                                                <h5 class="box-title mb-0">Nuevo ticket interno</h5>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="ticket-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="ticket-subject" class="form-label">Asunto *</label>
                                                     <input type="text" class="form-control" id="ticket-subject" name="subject" required>
@@ -456,17 +484,17 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     </div>
                                                 </div>
                                                 <button type="submit" class="btn btn-info w-100 text-white">Crear ticket</button>
-                                            </form>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <div class="box">
-                                        <div class="box-header with-border d-flex justify-content-between align-items-center">
-                                            <h5 class="box-title mb-0">Responder ticket</h5>
-                                            <span class="badge bg-light text-muted" id="ticket-reply-selected">Sin selección</span>
-                                        </div>
-                                        <div class="box-body">
-                                            <form id="ticket-reply-form" class="space-y-2">
+                                        <div class="box">
+                                            <div class="box-header with-border d-flex justify-content-between align-items-center">
+                                                <h5 class="box-title mb-0">Responder ticket</h5>
+                                                <span class="badge bg-light text-muted" id="ticket-reply-selected">Sin selección</span>
+                                            </div>
+                                            <div class="box-body">
+                                                <form id="ticket-reply-form" class="space-y-2">
                                                 <input type="hidden" id="ticket-reply-id" name="ticket_id" value="">
                                                 <div class="alert alert-info mb-3" id="ticket-reply-helper">Selecciona un ticket en la tabla para responder.</div>
                                                 <div class="mb-2">
@@ -482,9 +510,14 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     </select>
                                                 </div>
                                                 <button type="submit" class="btn btn-info w-100 text-white" disabled>Enviar respuesta</button>
-                                            </form>
+                                                </form>
+                                            </div>
                                         </div>
-                                    </div>
+                                    <?php else: ?>
+                                        <div class="alert alert-info">
+                                            Tu rol no permite crear ni responder tickets en el CRM.
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

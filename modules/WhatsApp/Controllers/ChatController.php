@@ -27,6 +27,7 @@ class ChatController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         $config = $this->settings->get();
         $isEnabled = (bool) ($config['enabled'] ?? false);
@@ -42,6 +43,7 @@ class ChatController extends BaseController
     public function listConversations(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $search = $this->getQuery('search');
@@ -57,6 +59,7 @@ class ChatController extends BaseController
     public function showConversation(int $conversationId): void
     {
         $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
@@ -72,6 +75,7 @@ class ChatController extends BaseController
     public function sendMessage(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.send', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $payload = $this->getBody();

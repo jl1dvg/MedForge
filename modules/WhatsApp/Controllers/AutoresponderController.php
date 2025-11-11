@@ -30,7 +30,7 @@ class AutoresponderController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.autoresponder.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         $config = $this->settings->get();
         $brand = (string) ($config['brand'] ?? 'MedForge');
@@ -80,7 +80,7 @@ class AutoresponderController extends BaseController
     public function update(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.autoresponder.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         $payload = $_POST['flow_payload'] ?? '';
         $decoded = is_string($payload) ? json_decode($payload, true) : null;
