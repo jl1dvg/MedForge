@@ -340,15 +340,7 @@
             return;
         }
 
-        if (lastQuery === query) {
-            const firstItem = findFirstItem(lastSections);
-            if (firstItem && firstItem.url) {
-                window.location.assign(firstItem.url);
-                return;
-            }
-        }
-
-        executeSearch(query, { openFirst: true });
+        executeSearch(query);
     });
 
     resultsPanel.addEventListener('click', (event) => {

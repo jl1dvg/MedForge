@@ -1,5 +1,5 @@
 import { renderKanban } from './renderer.js';
-import { actualizarEstadoSolicitud } from './estado.js';
+import { actualizarEstadoExamen } from './estado.js';
 import { inicializarModalDetalles } from './modalDetalles.js';
 import { inicializarBotonesModal } from './botonesModal.js';
 import { initCrmInteractions, getCrmKanbanPreferences } from './crmPanel.js';
@@ -8,10 +8,10 @@ const NORMALIZE = {
     estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
 };
 
-function agruparPorEstado(solicitudes) {
+function agruparPorEstado(examenes) {
     const agrupadas = {};
 
-    solicitudes.forEach(item => {
+    examenes.forEach(item => {
         const estado = NORMALIZE.estado(item.estado);
         if (!agrupadas[estado]) {
             agrupadas[estado] = [];
@@ -45,7 +45,7 @@ function actualizarContadores(agrupadas) {
 
 export function initKanban(data = []) {
     renderKanban(data, (id, formId, estado) =>
-        actualizarEstadoSolicitud(id, formId, estado, window.__solicitudesKanban || [], window.aplicarFiltros)
+        actualizarEstadoExamen(id, formId, estado, window.__examenesKanban || [], window.aplicarFiltros)
     );
 
     const agrupadas = agruparPorEstado(data);

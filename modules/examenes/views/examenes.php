@@ -8,8 +8,8 @@ $realtime = array_merge(
         'enabled' => false,
         'key' => '',
         'cluster' => '',
-        'channel' => 'solicitudes-kanban',
-        'event' => 'nueva-solicitud',
+        'channel' => 'examenes-kanban',
+        'event' => 'nuevo-examen',
         'desktop_notifications' => false,
         'auto_dismiss_seconds' => 0,
     ],
@@ -19,18 +19,18 @@ $realtime = array_merge(
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Solicitudes de Cirugías</h3>
+            <h3 class="page-title">Solicitudes de Exámenes</h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb mb-0">
                         <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                        <li class="breadcrumb-item active" aria-current="page">Solicitudes</li>
+                        <li class="breadcrumb-item active" aria-current="page">Exámenes</li>
                     </ol>
                 </nav>
             </div>
         </div>
         <div class="ms-auto d-flex align-items-center gap-2">
-            <a class="btn btn-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
+            <a class="btn btn-primary" href="/examenes/turnero" target="_blank" rel="noopener">
                 <i class="mdi mdi-monitor"></i> Abrir turnero
             </a>
         </div>
@@ -81,7 +81,7 @@ $realtime = array_merge(
             box-shadow: 0 3px 12px rgba(14, 165, 233, 0.35);
         }
 
-        .solicitudes-overview {
+        .examenes-overview {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
@@ -499,21 +499,21 @@ $realtime = array_merge(
     </style>
     <div class="kanban-toolbar">
         <div>
-            <h4 class="fw-bold mb-0">Solicitudes</h4>
+            <h4 class="fw-bold mb-0">Exámenes</h4>
             <div class="text-muted">
-                <span id="solicitudesTotalCount">0</span> solicitudes activas
+                <span id="examenesTotalCount">0</span> examenes activas
             </div>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="btn-group view-toggle" role="group" aria-label="Cambiar vista">
-                <button type="button" class="btn btn-outline-secondary active" data-solicitudes-view="kanban">
+                <button type="button" class="btn btn-outline-secondary active" data-examenes-view="kanban">
                     <i class="mdi mdi-view-kanban"></i> Tablero
                 </button>
-                <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="table">
+                <button type="button" class="btn btn-outline-secondary" data-examenes-view="table">
                     <i class="mdi mdi-table-large"></i> Tabla
                 </button>
             </div>
-            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#solicitudesFilters" aria-expanded="false" aria-controls="solicitudesFilters">
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#examenesFilters" aria-expanded="false" aria-controls="examenesFilters">
                 <i class="mdi mdi-filter-variant"></i> Filtros
             </button>
             <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
@@ -522,9 +522,9 @@ $realtime = array_merge(
         </div>
     </div>
 
-    <div id="solicitudesOverview" class="solicitudes-overview"></div>
+    <div id="examenesOverview" class="examenes-overview"></div>
 
-    <div class="collapse show" id="solicitudesFilters">
+    <div class="collapse show" id="examenesFilters">
         <div class="box mb-3">
             <div class="box-body">
                 <div class="row g-3 align-items-end">
@@ -583,7 +583,7 @@ $realtime = array_merge(
     ];
     ?>
 
-    <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
+    <div id="examenesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
         <?php foreach ($estados as $estadoLabel => $estadoId):
             $color = $colores[$estadoId] ?? 'secondary';
             ?>
@@ -598,9 +598,9 @@ $realtime = array_merge(
         <?php endforeach; ?>
     </div>
 
-    <div id="solicitudesViewTable" class="table-view d-none">
+    <div id="examenesViewTable" class="table-view d-none">
         <div class="table-responsive">
-            <table class="table align-middle" id="solicitudesTable">
+            <table class="table align-middle" id="examenesTable">
                 <thead>
                     <tr>
                         <th>Paciente</th>
@@ -616,8 +616,8 @@ $realtime = array_merge(
                 <tbody></tbody>
             </table>
         </div>
-        <div id="solicitudesTableEmpty" class="table-view-empty d-none">
-            No hay solicitudes para los filtros seleccionados.
+        <div id="examenesTableEmpty" class="table-view-empty d-none">
+            No hay examenes para los filtros seleccionados.
         </div>
     </div>
 
@@ -633,13 +633,13 @@ $realtime = array_merge(
     ?>
 
     <script>
-        window.__solicitudesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+        window.__examenesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
             <div>
-                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
+                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la examen</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
@@ -658,7 +658,7 @@ $realtime = array_merge(
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="acc-head-resumen">
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-resumen" aria-expanded="false" aria-controls="acc-resumen" data-preserve-disabled="true">
-                            <i class="mdi mdi-information-outline me-2"></i> Resumen de la solicitud
+                            <i class="mdi mdi-information-outline me-2"></i> Resumen de la examen
                         </button>
                     </h2>
                     <div id="acc-resumen" class="accordion-collapse collapse" aria-labelledby="acc-head-resumen" data-bs-parent="#crmAccordion">
@@ -810,7 +810,7 @@ $realtime = array_merge(
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
             <div>
-                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
+                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la examen</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
@@ -977,7 +977,7 @@ $realtime = array_merge(
                             <span class="title fw-500 fs-16 text-truncate">Exportar ZIP</span>
                             <small class="text-muted">Descarga el respaldo de documentos asociados</small>
                         </div>
-                        <a id="exportExcel" class="fs-18 text-gray hover-info" href="#" aria-label="Exportar solicitudes">
+                        <a id="exportExcel" class="fs-18 text-gray hover-info" href="#" aria-label="Exportar examenes">
                             <i class="fa fa-download"></i>
                         </a>
                     </div>
@@ -991,7 +991,7 @@ $realtime = array_merge(
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
+                <h5 class="modal-title" id="prefacturaModalLabel">Detalle del Examen</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body" id="prefacturaContent">Cargando información...</div>
@@ -1017,4 +1017,4 @@ $realtime = array_merge(
 <?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= asset('js/pages/solicitudes/index.js') ?>"></script>
+<script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>

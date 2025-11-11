@@ -1,8 +1,8 @@
 import { showToast } from './toast.js';
 
-export function actualizarEstadoSolicitud(id, formId, nuevoEstado, solicitudes = [], callbackRender = () => {}) {
-    if (Array.isArray(solicitudes)) {
-        const encontrada = solicitudes.find(s => String(s.form_id) === String(formId));
+export function actualizarEstadoExamen(id, formId, nuevoEstado, examenes = [], callbackRender = () => {}) {
+    if (Array.isArray(examenes)) {
+        const encontrada = examenes.find(s => String(s.form_id) === String(formId));
         if (encontrada) {
             encontrada.estado = nuevoEstado;
         }
@@ -13,7 +13,7 @@ export function actualizarEstadoSolicitud(id, formId, nuevoEstado, solicitudes =
         estado: nuevoEstado,
     };
 
-    return fetch('/solicitudes/actualizar-estado', {
+    return fetch('/examenes/actualizar-estado', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

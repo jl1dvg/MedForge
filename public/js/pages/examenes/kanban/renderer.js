@@ -1,5 +1,5 @@
 import { showToast } from './toast.js';
-import { llamarTurnoSolicitud, formatTurno } from './turnero.js';
+import { llamarTurnoExamen, formatTurno } from './turnero.js';
 
 const ESCAPE_MAP = {
     '&': '&amp;',
@@ -78,20 +78,23 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
     const hoy = new Date();
 
-    data.forEach(solicitud => {
+    data.forEach(examen => {
         const tarjeta = document.createElement('div');
         tarjeta.className = 'kanban-card border p-2 mb-2 rounded bg-light view-details';
         tarjeta.setAttribute('draggable', 'true');
-        tarjeta.dataset.hc = solicitud.hc_number ?? '';
-        tarjeta.dataset.form = solicitud.form_id ?? '';
-        tarjeta.dataset.secuencia = solicitud.secuencia ?? '';
-        tarjeta.dataset.estado = solicitud.estado ?? '';
-        tarjeta.dataset.id = solicitud.id ?? '';
-        tarjeta.dataset.afiliacion = solicitud.afiliacion ?? '';
-        tarjeta.dataset.aseguradora = solicitud.aseguradora ?? solicitud.aseguradoraNombre ?? '';
+        tarjeta.dataset.hc = examen.hc_number ?? '';
+        tarjeta.dataset.form = examen.form_id ?? '';
+        tarjeta.dataset.codigo = examen.examen_codigo ?? '';
+        tarjeta.dataset.estado = examen.estado ?? '';
+        tarjeta.dataset.id = examen.id ?? '';
+        tarjeta.dataset.afiliacion = examen.afiliacion ?? '';
+        tarjeta.dataset.aseguradora = examen.aseguradora ?? examen.aseguradoraNombre ?? '';
+        tarjeta.dataset.examenNombre = examenNombre;
         tarjeta.dataset.prefacturaTrigger = 'kanban';
 
-        const fecha = solicitud.fecha ? new Date(solicitud.fecha) : null;
+        const fecha = examen.consulta_fecha
+            ? new Date(examen.consulta_fecha)
+            : (examen.created_at ? new Date(examen.created_at) : null);
         const fechaFormateada = fecha ? moment(fecha).format('DD-MM-YYYY') : '—';
         const dias = fecha ? Math.floor((hoy - fecha) / (1000 * 60 * 60 * 24)) : 0;
         const semaforo = dias <= 3 ? '🟢 Normal' : dias <= 7 ? '🟡 Pendiente' : '🔴 Urgente';
@@ -100,29 +103,28 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const defaultPipelineStage = Array.isArray(kanbanPrefs.pipelineStages) && kanbanPrefs.pipelineStages.length
             ? kanbanPrefs.pipelineStages[0]
             : 'Recibido';
-        const pipelineStage = solicitud.crm_pipeline_stage || defaultPipelineStage;
-        const responsable = solicitud.crm_responsable_nombre || 'Sin responsable asignado';
-        const doctorNombre = (solicitud.doctor ?? '').trim();
+        const pipelineStage = examen.crm_pipeline_stage || defaultPipelineStage;
+        const responsable = examen.crm_responsable_nombre || 'Sin responsable asignado';
+        const doctorNombre = (examen.doctor ?? '').trim();
         const doctor = doctorNombre !== '' ? doctorNombre : 'Sin doctor';
         const avatarNombre = doctorNombre !== '' ? doctorNombre : responsable;
-        const avatarUrl = solicitud.doctor_avatar || solicitud.crm_responsable_avatar || null;
-        const contactoTelefono = solicitud.crm_contacto_telefono || solicitud.paciente_celular || 'Sin teléfono';
-        const contactoCorreo = solicitud.crm_contacto_email || 'Sin correo';
-        const fuente = solicitud.crm_fuente || '';
-        const totalNotas = Number.parseInt(solicitud.crm_total_notas ?? 0, 10);
-        const totalAdjuntos = Number.parseInt(solicitud.crm_total_adjuntos ?? 0, 10);
-        const tareasPendientes = Number.parseInt(solicitud.crm_tareas_pendientes ?? 0, 10);
-        const tareasTotal = Number.parseInt(solicitud.crm_tareas_total ?? 0, 10);
-        const proximoVencimiento = solicitud.crm_proximo_vencimiento
-            ? moment(solicitud.crm_proximo_vencimiento).format('DD-MM-YYYY')
+        const avatarUrl = examen.doctor_avatar || examen.crm_responsable_avatar || null;
+        const contactoTelefono = examen.crm_contacto_telefono || examen.paciente_celular || 'Sin teléfono';
+        const contactoCorreo = examen.crm_contacto_email || 'Sin correo';
+        const fuente = examen.crm_fuente || '';
+        const totalNotas = Number.parseInt(examen.crm_total_notas ?? 0, 10);
+        const totalAdjuntos = Number.parseInt(examen.crm_total_adjuntos ?? 0, 10);
+        const tareasPendientes = Number.parseInt(examen.crm_tareas_pendientes ?? 0, 10);
+        const tareasTotal = Number.parseInt(examen.crm_tareas_total ?? 0, 10);
+        const proximoVencimiento = examen.crm_proximo_vencimiento
+            ? moment(examen.crm_proximo_vencimiento).format('DD-MM-YYYY')
             : 'Sin vencimiento';
 
-        const pacienteNombre = solicitud.full_name ?? 'Paciente sin nombre';
-        const procedimiento = solicitud.procedimiento || 'Sin procedimiento';
-        // doctor already normalizado
-        const afiliacion = solicitud.afiliacion || 'Sin afiliación';
-        const ojo = solicitud.ojo || '—';
-        const observacion = solicitud.observacion || 'Sin nota';
+        const pacienteNombre = examen.full_name ?? 'Paciente sin nombre';
+        const examenNombre = examen.examen || examen.examen_nombre || 'Sin examen';
+        const afiliacion = examen.afiliacion || 'Sin afiliación';
+        const lateralidad = examen.lateralidad || '—';
+        const observaciones = examen.observaciones || 'Sin nota';
 
         const badges = [
             formatBadge('Notas', totalNotas, '<i class="mdi mdi-note-text-outline"></i>'),
@@ -136,13 +138,13 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 ${renderAvatar(avatarNombre, avatarUrl)}
                 <div class="kanban-card-body">
                     <strong>${escapeHtml(pacienteNombre)}</strong>
-                    <small>🆔 ${escapeHtml(solicitud.hc_number ?? '—')}</small>
+                    <small>🆔 ${escapeHtml(examen.hc_number ?? '—')}</small>
                     <small>📅 ${escapeHtml(fechaFormateada)} <span class="badge">${escapeHtml(semaforo)}</span></small>
                     <small>🧑‍⚕️ ${escapeHtml(doctor)}</small>
                     <small>🏥 ${escapeHtml(afiliacion)}</small>
-                    <small>🔍 <span class="text-primary fw-bold">${escapeHtml(procedimiento)}</span></small>
-                    <small>👁️ ${escapeHtml(ojo)}</small>
-                    <small>💬 ${escapeHtml(observacion)}</small>
+                    <small>🔍 <span class="text-primary fw-bold">${escapeHtml(examenNombre)}</span></small>
+                    <small>👁️ ${escapeHtml(lateralidad)}</small>
+                    <small>💬 ${escapeHtml(observaciones)}</small>
                     <small>⏱️ ${escapeHtml(String(dias))} día(s) en estado actual</small>
                 </div>
             </div>
@@ -158,8 +160,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
             </div>
         `;
 
-        const turnoAsignado = formatTurno(solicitud.turno);
-        const estadoActual = (solicitud.estado ?? '').toString();
+        const turnoAsignado = formatTurno(examen.turno);
+        const estadoActual = (examen.estado ?? '').toString();
 
         const acciones = document.createElement('div');
         acciones.className = 'kanban-card-actions d-flex align-items-center justify-content-between gap-2 flex-wrap mt-2';
@@ -192,10 +194,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
             const textoOriginal = botonLlamar.innerHTML;
             botonLlamar.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando';
 
-            llamarTurnoSolicitud({ id: solicitud.id })
+            llamarTurnoExamen({ id: examen.id })
                 .then(data => {
                     const turno = formatTurno(data?.turno);
-                    const nombre = data?.full_name ?? solicitud.full_name ?? 'Paciente sin nombre';
+                    const nombre = data?.full_name ?? examen.full_name ?? 'Paciente sin nombre';
 
                     if (turno) {
                         badgeTurno.textContent = `Turno #${turno}`;
@@ -207,8 +209,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
                     showToast(`🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ''}`);
 
-                    if (Array.isArray(window.__solicitudesKanban)) {
-                        const item = window.__solicitudesKanban.find(s => String(s.id) === String(solicitud.id));
+                    if (Array.isArray(window.__examenesKanban)) {
+                        const item = window.__examenesKanban.find(s => String(s.id) === String(examen.id));
                         if (item) {
                             item.turno = data?.turno ?? item.turno;
                             item.estado = data?.estado ?? item.estado;
@@ -237,11 +239,11 @@ export function renderKanban(data, callbackEstadoActualizado) {
         crmButton.type = 'button';
         crmButton.className = 'btn btn-sm btn-outline-secondary w-100 mt-2 btn-open-crm';
         crmButton.innerHTML = '<i class="mdi mdi-account-box-outline"></i> Gestionar CRM';
-        crmButton.dataset.solicitudId = solicitud.id ?? '';
-        crmButton.dataset.pacienteNombre = solicitud.full_name ?? '';
+        crmButton.dataset.examenId = examen.id ?? '';
+        crmButton.dataset.pacienteNombre = examen.full_name ?? '';
         tarjeta.appendChild(crmButton);
 
-        const estadoId = 'kanban-' + (solicitud.estado || '')
+        const estadoId = 'kanban-' + (examen.estado || '')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()

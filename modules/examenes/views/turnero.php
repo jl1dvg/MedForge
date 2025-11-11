@@ -4,12 +4,12 @@
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Turnero de Coordinación Quirúrgica</h3>
+            <h3 class="page-title">Turnero de Exámenes</h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb mb-0">
                         <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                        <li class="breadcrumb-item"><a href="/solicitudes">Solicitudes</a></li>
+                        <li class="breadcrumb-item"><a href="/examenes">Exámenes</a></li>
                         <li class="breadcrumb-item active" aria-current="page">Turnero</li>
                     </ol>
                 </nav>
@@ -172,7 +172,7 @@
         <p class="text-info mb-4" id="turneroLastUpdate" aria-live="polite"></p>
 
         <div id="turneroEmpty" class="alert" role="status">
-            No hay pacientes en cola para coordinación quirúrgica.
+            No hay pacientes en cola para coordinación de exámenes.
         </div>
 
         <div id="turneroListado" class="row gy-4" aria-live="polite"></div>
@@ -184,4 +184,4 @@
     && get_option('pusher_app_key') !== ''): ?>
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= asset('js/pages/solicitudes/turnero.js') ?>"></script>
+<script type="module" src="<?= asset('js/pages/examenes/turnero.js') ?>"></script>

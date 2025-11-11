@@ -1,4 +1,4 @@
-const ENDPOINT = '/solicitudes/turnero-data';
+const ENDPOINT = '/examenes/turnero-data';
 const REFRESH_INTERVAL = 30000;
 
 const elements = {
@@ -200,10 +200,10 @@ const init = () => {
         }
 
         const pusher = new Pusher(realtimeKey, options);
-        const channel = pusher.subscribe('solicitudes-kanban');
+        const channel = pusher.subscribe('examenes-kanban');
 
         const bindings = [
-            'kanban.nueva-solicitud',
+            'kanban.nueva-examen',
             'kanban.estado-actualizado',
             'crm.detalles-actualizados',
             'crm.nota-registrada',

@@ -16,7 +16,7 @@ if (typeof window !== 'undefined') {
     window.__crmKanbanPreferences = { ...kanbanPreferences };
 }
 
-let currentSolicitudId = null;
+let currentExamenId = null;
 let offcanvasInstance = null;
 let formsBound = false;
 let currentData = null;
@@ -42,16 +42,16 @@ export function setCrmOptions(options = {}) {
     populateStaticOptions();
 }
 
-export function refreshCrmPanelIfActive(solicitudId) {
-    if (!solicitudId || !currentSolicitudId) {
+export function refreshCrmPanelIfActive(examenId) {
+    if (!examenId || !currentExamenId) {
         return false;
     }
 
-    if (String(currentSolicitudId) !== String(solicitudId)) {
+    if (String(currentExamenId) !== String(examenId)) {
         return false;
     }
 
-    loadCrmData(currentSolicitudId);
+    loadCrmData(currentExamenId);
     return true;
 }
 
@@ -74,15 +74,15 @@ export function initCrmInteractions() {
             event.preventDefault();
             event.stopPropagation();
 
-            const solicitudId = Number.parseInt(button.dataset.solicitudId ?? button.dataset.id ?? '', 10);
-            if (!Number.isFinite(solicitudId) || solicitudId <= 0) {
-                console.error('CRM ▶ ID de solicitud inválido en el botón', button);
-                showToast('No se pudo identificar la solicitud seleccionada', false);
+            const examenId = Number.parseInt(button.dataset.examenId ?? button.dataset.id ?? '', 10);
+            if (!Number.isFinite(examenId) || examenId <= 0) {
+                console.error('CRM ▶ ID de examen inválido en el botón', button);
+                showToast('No se pudo identificar el examen seleccionada', false);
                 return;
             }
 
             const nombre = button.dataset.pacienteNombre ?? '';
-            openCrmPanel(solicitudId, nombre);
+            openCrmPanel(examenId, nombre);
         });
     });
 
@@ -187,13 +187,13 @@ function bindForms() {
     if (detalleForm) {
         detalleForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!currentSolicitudId) {
-                showToast('Selecciona una solicitud para actualizar los detalles', false);
+            if (!currentExamenId) {
+                showToast('Selecciona una examen para actualizar los detalles', false);
                 return;
             }
 
             const payload = collectDetallePayload(detalleForm);
-            await submitJson(`/solicitudes/${currentSolicitudId}/crm`, payload, 'Detalles CRM actualizados');
+            await submitJson(`/examenes/${currentExamenId}/crm`, payload, 'Detalles CRM actualizados');
         });
     }
 
@@ -203,8 +203,8 @@ function bindForms() {
     if (notaForm) {
         notaForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!currentSolicitudId) {
-                showToast('Selecciona una solicitud para agregar notas', false);
+            if (!currentExamenId) {
+                showToast('Selecciona una examen para agregar notas', false);
                 return;
             }
 
@@ -217,7 +217,7 @@ function bindForms() {
             }
 
             const payload = { nota: texto };
-            const ok = await submitJson(`/solicitudes/${currentSolicitudId}/crm/notas`, payload, 'Nota registrada');
+            const ok = await submitJson(`/examenes/${currentExamenId}/crm/notas`, payload, 'Nota registrada');
             if (ok && textarea) {
                 textarea.value = '';
             }
@@ -228,8 +228,8 @@ function bindForms() {
     if (adjuntoForm) {
         adjuntoForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!currentSolicitudId) {
-                showToast('Selecciona una solicitud para cargar adjuntos', false);
+            if (!currentExamenId) {
+                showToast('Selecciona una examen para cargar adjuntos', false);
                 return;
             }
 
@@ -246,7 +246,7 @@ function bindForms() {
                 formData.append('descripcion', descripcion);
             }
 
-            const ok = await submitFormData(`/solicitudes/${currentSolicitudId}/crm/adjuntos`, formData, 'Documento cargado');
+            const ok = await submitFormData(`/examenes/${currentExamenId}/crm/adjuntos`, formData, 'Documento cargado');
             if (ok) {
                 adjuntoForm.reset();
             }
@@ -257,8 +257,8 @@ function bindForms() {
     if (tareaForm) {
         tareaForm.addEventListener('submit', async event => {
             event.preventDefault();
-            if (!currentSolicitudId) {
-                showToast('Selecciona una solicitud para registrar tareas', false);
+            if (!currentExamenId) {
+                showToast('Selecciona una examen para registrar tareas', false);
                 return;
             }
 
@@ -268,7 +268,7 @@ function bindForms() {
                 return;
             }
 
-            const ok = await submitJson(`/solicitudes/${currentSolicitudId}/crm/tareas`, payload, 'Tarea agregada');
+            const ok = await submitJson(`/examenes/${currentExamenId}/crm/tareas`, payload, 'Tarea agregada');
             if (ok) {
                 tareaForm.reset();
             }
@@ -551,7 +551,7 @@ async function submitFormData(url, formData, successMessage) {
     }
 }
 
-function openCrmPanel(solicitudId, nombrePaciente) {
+function openCrmPanel(examenId, nombrePaciente) {
     const element = document.getElementById('crmOffcanvas');
     if (!element) {
         console.warn('CRM ▶ No se encontró el panel lateral');
@@ -562,12 +562,12 @@ function openCrmPanel(solicitudId, nombrePaciente) {
         offcanvasInstance = new bootstrap.Offcanvas(element);
     }
 
-    currentSolicitudId = solicitudId;
+    currentExamenId = examenId;
     currentData = null;
 
     const subtitle = document.getElementById('crmOffcanvasSubtitle');
     if (subtitle) {
-        const nombre = nombrePaciente && nombrePaciente.trim() !== '' ? nombrePaciente : `Solicitud #${solicitudId}`;
+        const nombre = nombrePaciente && nombrePaciente.trim() !== '' ? nombrePaciente : `Examen #${examenId}`;
         subtitle.textContent = nombre;
     }
 
@@ -580,12 +580,12 @@ function openCrmPanel(solicitudId, nombrePaciente) {
         offcanvasInstance.show();
     }
 
-    loadCrmData(solicitudId);
+    loadCrmData(examenId);
 }
 
-async function loadCrmData(solicitudId) {
+async function loadCrmData(examenId) {
     try {
-        const response = await fetch(`/solicitudes/${solicitudId}/crm`, { credentials: 'same-origin' });
+        const response = await fetch(`/examenes/${examenId}/crm`, { credentials: 'same-origin' });
 
         // Intenta parsear JSON; si falla, intenta leer texto para mostrar un error útil
         let data;
@@ -616,7 +616,7 @@ async function loadCrmData(solicitudId) {
 
 function renderCrmData(data) {
     if (!data || !data.detalle || typeof data.detalle !== 'object') {
-        toggleError('No se encontró información CRM para esta solicitud');
+        toggleError('No se encontró información CRM para esta examen');
         return;
     }
 
@@ -639,7 +639,7 @@ function renderResumen(detalle, lead) {
     }
 
     const nombre = detalle.paciente_nombre || detalle.full_name || 'Paciente sin nombre';
-    const procedimiento = detalle.procedimiento || 'Sin procedimiento especificado';
+    const examen = detalle.examen || 'Sin examen especificado';
     const estado = detalle.estado || 'Sin estado';
     const prioridad = detalle.prioridad || 'Sin prioridad';
     const hc = detalle.hc_number || '—';
@@ -672,7 +672,7 @@ function renderResumen(detalle, lead) {
             </div>
             <div>
                 <h5 class="mb-1">${escapeHtml(nombre)}</h5>
-                <p class="text-muted mb-0">${escapeHtml(procedimiento)}</p>
+                <p class="text-muted mb-0">${escapeHtml(examen)}</p>
             </div>
             <div class="row g-2 small text-muted">
                 <div class="col-6"><strong>Estado actual:</strong> ${escapeHtml(estado)}</div>
@@ -840,7 +840,7 @@ function renderTareas(tareas) {
     if (!Array.isArray(tareas) || tareas.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'crm-list-empty';
-        empty.textContent = 'No hay tareas registradas para esta solicitud';
+        empty.textContent = 'No hay tareas registradas para esta examen';
         list.appendChild(empty);
         return;
     }
@@ -910,12 +910,12 @@ function renderTareas(tareas) {
 }
 
 async function actualizarEstadoTarea(tareaId, estado) {
-    if (!currentSolicitudId) {
-        showToast('Selecciona una solicitud para actualizar la tarea', false);
+    if (!currentExamenId) {
+        showToast('Selecciona una examen para actualizar la tarea', false);
         return;
     }
 
-    await submitJson(`/solicitudes/${currentSolicitudId}/crm/tareas/estado`, {
+    await submitJson(`/examenes/${currentExamenId}/crm/tareas/estado`, {
         tarea_id: tareaId,
         estado,
     }, 'Tarea actualizada');

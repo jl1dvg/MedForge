@@ -1,62 +1,62 @@
 <?php
 
-use Controllers\ExamenesController;
+use Controllers\ExamenController;
 use Core\Router;
 
 return function (Router $router) {
-    $router->get('/solicitudes', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->index();
+    $router->get('/examenes', function (\PDO $pdo) {
+        (new ExamenController($pdo))->index();
     });
 
-    $router->get('/solicitudes/turnero', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->turnero();
+    $router->get('/examenes/turnero', function (\PDO $pdo) {
+        (new ExamenController($pdo))->turnero();
     });
 
-    $router->post('/solicitudes/kanban-data', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->kanbanData();
+    $router->get('/examenes/prefactura', function (\PDO $pdo) {
+        (new ExamenController($pdo))->prefactura();
     });
 
-    $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->actualizarEstado();
+    $router->post('/examenes/kanban-data', function (\PDO $pdo) {
+        (new ExamenController($pdo))->kanbanData();
     });
 
-    $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->enviarRecordatorios();
+    $router->post('/examenes/actualizar-estado', function (\PDO $pdo) {
+        (new ExamenController($pdo))->actualizarEstado();
     });
 
-    $router->get('/solicitudes/prefactura', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->prefactura();
+    $router->post('/examenes/notificaciones/recordatorios', function (\PDO $pdo) {
+        (new ExamenController($pdo))->enviarRecordatorios();
     });
 
-    $router->get('/solicitudes/turnero-data', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->turneroData();
+    $router->get('/examenes/turnero-data', function (\PDO $pdo) {
+        (new ExamenController($pdo))->turneroData();
     });
 
-    $router->post('/solicitudes/turnero-llamar', function (\PDO $pdo) {
-        (new ExamenesController($pdo))->turneroLlamar();
+    $router->post('/examenes/turnero-llamar', function (\PDO $pdo) {
+        (new ExamenController($pdo))->turneroLlamar();
     });
 
-    $router->get('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmResumen((int) $solicitudId);
+    $router->get('/examenes/{id}/crm', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmResumen((int) $examenId);
     });
 
-    $router->post('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmGuardarDetalles((int) $solicitudId);
+    $router->post('/examenes/{id}/crm', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmGuardarDetalles((int) $examenId);
     });
 
-    $router->post('/solicitudes/{id}/crm/notas', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmAgregarNota((int) $solicitudId);
+    $router->post('/examenes/{id}/crm/notas', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmAgregarNota((int) $examenId);
     });
 
-    $router->post('/solicitudes/{id}/crm/tareas', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmGuardarTarea((int) $solicitudId);
+    $router->post('/examenes/{id}/crm/tareas', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmGuardarTarea((int) $examenId);
     });
 
-    $router->post('/solicitudes/{id}/crm/tareas/estado', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmActualizarTarea((int) $solicitudId);
+    $router->post('/examenes/{id}/crm/tareas/estado', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmActualizarTarea((int) $examenId);
     });
 
-    $router->post('/solicitudes/{id}/crm/adjuntos', function (\PDO $pdo, $solicitudId) {
-        (new ExamenesController($pdo))->crmSubirAdjunto((int) $solicitudId);
+    $router->post('/examenes/{id}/crm/adjuntos', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmSubirAdjunto((int) $examenId);
     });
 };

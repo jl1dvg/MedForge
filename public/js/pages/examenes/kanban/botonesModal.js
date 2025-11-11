@@ -1,4 +1,4 @@
-import { actualizarEstadoSolicitud } from './estado.js';
+import { actualizarEstadoExamen } from './estado.js';
 import { showToast } from './toast.js';
 
 function obtenerTarjetaActiva() {
@@ -40,15 +40,15 @@ function abrirEnNuevaPestana(url) {
 function actualizarDesdeBoton(nuevoEstado) {
     const tarjeta = obtenerTarjetaActiva();
     if (!tarjeta) {
-        showToast('Selecciona una solicitud antes de continuar', false);
+        showToast('Selecciona un examen antes de continuar', false);
         return Promise.reject(new Error('No hay tarjeta activa'));
     }
 
-    return actualizarEstadoSolicitud(
+    return actualizarEstadoExamen(
         tarjeta.dataset.id,
         tarjeta.dataset.form,
         nuevoEstado,
-        window.__solicitudesKanban || [],
+        window.__examenesKanban || [],
         window.aplicarFiltros
     ).then(() => cerrarModal());
 }
@@ -69,7 +69,7 @@ export function inicializarBotonesModal() {
         coberturaBtn.addEventListener('click', () => {
             const tarjeta = obtenerTarjetaActiva();
             if (!tarjeta) {
-                showToast('Selecciona una solicitud antes de solicitar cobertura', false);
+                showToast('Selecciona un examen antes de solicitar cobertura', false);
                 return;
             }
 

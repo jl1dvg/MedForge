@@ -1,4 +1,4 @@
-const ENDPOINT = '/solicitudes/turnero-llamar';
+const ENDPOINT = '/examenes/turnero-llamar';
 
 const parseEntero = valor => {
     const numero = Number.parseInt(valor, 10);
@@ -14,7 +14,7 @@ export const formatTurno = valor => {
     return String(numero).padStart(2, '0');
 };
 
-export async function llamarTurnoSolicitud({ id = null, turno = null, estado = 'Llamado' } = {}) {
+export async function llamarTurnoExamen({ id = null, turno = null, estado = 'Llamado' } = {}) {
     const payload = {};
 
     const idNormalizado = parseEntero(id);
@@ -29,7 +29,7 @@ export async function llamarTurnoSolicitud({ id = null, turno = null, estado = '
     }
 
     if (!payload.id && !payload.turno) {
-        throw new Error('Debe especificar la solicitud a llamar');
+        throw new Error('Debe especificar el examen a llamar');
     }
 
     payload.estado = estado;

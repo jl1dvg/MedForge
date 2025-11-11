@@ -10,7 +10,7 @@ function cssEscape(value) {
 
 function highlightSelection({ cardId, rowId }) {
     document.querySelectorAll('.kanban-card').forEach(element => element.classList.remove('active'));
-    document.querySelectorAll('#solicitudesTable tbody tr').forEach(row => row.classList.remove('table-active'));
+    document.querySelectorAll('#examenesTable tbody tr').forEach(row => row.classList.remove('table-active'));
 
     if (cardId) {
         const card = document.querySelector(`.kanban-card[data-id="${cssEscape(cardId)}"]`);
@@ -20,7 +20,7 @@ function highlightSelection({ cardId, rowId }) {
     }
 
     if (rowId) {
-        const row = document.querySelector(`#solicitudesTable tbody tr[data-id="${cssEscape(rowId)}"]`);
+        const row = document.querySelector(`#examenesTable tbody tr[data-id="${cssEscape(rowId)}"]`);
         if (row) {
             row.classList.add('table-active');
         }
@@ -31,12 +31,12 @@ function resolverDataset(trigger) {
     const container = trigger.closest('[data-hc][data-form]') ?? trigger;
     const hc = trigger.dataset.hc || container?.dataset.hc || '';
     const formId = trigger.dataset.form || container?.dataset.form || '';
-    const solicitudId = trigger.dataset.id || container?.dataset.id || '';
+    const examenId = trigger.dataset.id || container?.dataset.id || '';
 
-    return { hc, formId, solicitudId };
+    return { hc, formId, examenId };
 }
 
-function abrirPrefactura({ hc, formId, solicitudId }) {
+function abrirPrefactura({ hc, formId, examenId }) {
     if (!hc || !formId) {
         console.warn('⚠️ No se encontró hc_number o form_id en la selección actual');
         return;
@@ -55,7 +55,7 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
 
     modal.show();
 
-    fetch(`/solicitudes/prefactura?hc_number=${encodeURIComponent(hc)}&form_id=${encodeURIComponent(formId)}`)
+    fetch(`/examenes/prefactura?hc_number=${encodeURIComponent(hc)}&form_id=${encodeURIComponent(formId)}`)
         .then(response => {
             if (!response.ok) {
                 throw new Error('No se encontró la prefactura');
@@ -67,12 +67,12 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
         })
         .catch(error => {
             console.error('❌ Error cargando prefactura:', error);
-            content.innerHTML = '<p class="text-danger mb-0">No se pudo cargar la información de la solicitud.</p>';
+            content.innerHTML = '<p class="text-danger mb-0">No se pudo cargar la información del examen.</p>';
         });
 
     modalElement.addEventListener('hidden.bs.modal', () => {
         document.querySelectorAll('.kanban-card').forEach(element => element.classList.remove('active'));
-        document.querySelectorAll('#solicitudesTable tbody tr').forEach(row => row.classList.remove('table-active'));
+        document.querySelectorAll('#examenesTable tbody tr').forEach(row => row.classList.remove('table-active'));
     }, { once: true });
 }
 
@@ -82,9 +82,9 @@ function handlePrefacturaClick(event) {
         return;
     }
 
-    const { hc, formId, solicitudId } = resolverDataset(trigger);
-    highlightSelection({ cardId: solicitudId, rowId: solicitudId });
-    abrirPrefactura({ hc, formId, solicitudId });
+    const { hc, formId, examenId } = resolverDataset(trigger);
+    highlightSelection({ cardId: examenId, rowId: examenId });
+    abrirPrefactura({ hc, formId, examenId });
 }
 
 export function inicializarModalDetalles() {

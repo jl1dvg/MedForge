@@ -84,17 +84,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const estadosMeta = window.__solicitudesEstadosMeta || {};
+    const estadosMeta = window.__examenesEstadosMeta || {};
     // Estados que NO deben aparecer en el overview
     const OVERVIEW_EXCLUDED_STATES = new Set(['llamado', 'en-atencion']);
-    const STORAGE_KEY_VIEW = 'solicitudes:view-mode';
-    const viewButtons = Array.from(document.querySelectorAll('[data-solicitudes-view]'));
-    const kanbanContainer = document.getElementById('solicitudesViewKanban');
-    const tableContainer = document.getElementById('solicitudesViewTable');
-    const totalCounter = document.getElementById('solicitudesTotalCount');
-    const overviewContainer = document.getElementById('solicitudesOverview');
-    const tableBody = document.querySelector('#solicitudesTable tbody');
-    const tableEmptyState = document.getElementById('solicitudesTableEmpty');
+    const STORAGE_KEY_VIEW = 'examenes:view-mode';
+    const viewButtons = Array.from(document.querySelectorAll('[data-examenes-view]'));
+    const kanbanContainer = document.getElementById('examenesViewKanban');
+    const tableContainer = document.getElementById('examenesViewTable');
+    const totalCounter = document.getElementById('examenesTotalCount');
+    const overviewContainer = document.getElementById('examenesOverview');
+    const tableBody = document.querySelector('#examenesTable tbody');
+    const tableEmptyState = document.getElementById('examenesTableEmpty');
     const searchInput = document.getElementById('kanbanSearchFilter');
 
     const VIEW_DEFAULT = 'kanban';
@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return Array.isArray(data) ? [...data] : [];
         }
 
-        const keys = ['full_name', 'hc_number', 'procedimiento', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
+        const keys = ['full_name', 'hc_number', 'examen', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
 
         return (Array.isArray(data) ? data : []).filter(item =>
             keys.some(key => {
@@ -244,11 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const cards = [];
 
         cards.push(createOverviewCard({
-            title: 'Total de solicitudes',
+            title: 'Total de examenes',
             count: total,
             badge: total ? `${Math.round(((urgentes || 0) / (total || 1)) * 100)}% urgentes` : null,
             badgeClass: 'text-bg-primary',
-            subtitle: total ? `${pendientes} pendientes · ${urgentes} urgentes` : 'No hay solicitudes registradas',
+            subtitle: total ? `${pendientes} pendientes · ${urgentes} urgentes` : 'No hay examenes registradas',
         }));
 
         cards.push(createOverviewCard({
@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 count,
                 badge: `${porcentaje}%`,
                 badgeClass: `text-bg-${escapeHtml(meta?.color || 'secondary')}`,
-                subtitle: count ? 'Solicitudes en esta etapa' : 'Sin tarjetas en la columna',
+                subtitle: count ? 'Exámenes en esta etapa' : 'Sin tarjetas en la columna',
             }));
         });
 
@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const avatarHtml = renderResponsableAvatar(responsable, item?.crm_responsable_avatar);
             const prioridadLabel = item?.prioridad || semaforo.label;
 
-            const detalleProcedimiento = item?.procedimiento || 'Sin procedimiento';
+            const detalleProcedimiento = item?.examen || 'Sin examen';
             const detalleDoctor = item?.doctor || 'Sin doctor';
             const detalleAfiliacion = item?.afiliacion || 'Sin afiliación';
 
@@ -364,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-prefactura-trigger="button" data-hc="${escapeHtml(item?.hc_number ?? '')}" data-form="${escapeHtml(item?.form_id ?? '')}">
                             <i class="mdi mdi-eye-outline"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary btn-open-crm" data-solicitud-id="${escapeHtml(item?.id ?? '')}" data-paciente-nombre="${escapeHtml(item?.full_name ?? '')}">
+                        <button type="button" class="btn btn-sm btn-outline-primary btn-open-crm" data-examen-id="${escapeHtml(item?.id ?? '')}" data-paciente-nombre="${escapeHtml(item?.full_name ?? '')}">
                             <i class="mdi mdi-account-box-outline"></i>
                         </button>
                     </div>
@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         viewButtons.forEach(button => {
-            const buttonView = button.getAttribute('data-solicitudes-view') === 'table' ? 'table' : VIEW_DEFAULT;
+            const buttonView = button.getAttribute('data-examenes-view') === 'table' ? 'table' : VIEW_DEFAULT;
             button.classList.toggle('active', buttonView === normalized);
         });
 
@@ -400,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderFromCache = () => {
-        const baseData = Array.isArray(window.__solicitudesKanban) ? window.__solicitudesKanban : [];
+        const baseData = Array.isArray(window.__examenesKanban) ? window.__examenesKanban : [];
         const filtradas = aplicarFiltrosLocales(baseData);
 
         updateOverview(filtradas);
@@ -412,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     viewButtons.forEach(button => {
         button.addEventListener('click', event => {
             event.preventDefault();
-            const view = button.getAttribute('data-solicitudes-view');
+            const view = button.getAttribute('data-examenes-view');
             switchView(view);
         });
     });
@@ -442,7 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(filtros);
         console.groupEnd();
 
-        return fetch('/solicitudes/kanban-data', {
+        return fetch('/examenes/kanban-data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),
@@ -462,18 +462,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.json();
             })
             .then(({ data = [], options = {} }) => {
-                window.__solicitudesKanban = Array.isArray(data) ? data : [];
+                window.__examenesKanban = Array.isArray(data) ? data : [];
 
                 if (options.afiliaciones) {
                     poblarAfiliacionesUnicas(options.afiliaciones);
                 } else {
-                    poblarAfiliacionesUnicas(window.__solicitudesKanban);
+                    poblarAfiliacionesUnicas(window.__examenesKanban);
                 }
 
                 if (options.doctores) {
                     poblarDoctoresUnicos(options.doctores);
                 } else {
-                    poblarDoctoresUnicos(window.__solicitudesKanban);
+                    poblarDoctoresUnicos(window.__examenesKanban);
                 }
 
                 if (options.crm) {
@@ -486,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(error => {
                 console.error('❌ Error cargando Kanban:', error);
-                showToast(error?.message || 'No se pudo cargar el tablero de solicitudes', false);
+                showToast(error?.message || 'No se pudo cargar el tablero de examenes', false);
             });
     };
 
@@ -533,41 +533,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const pusher = new Pusher(realtimeConfig.key, options);
-            const channelName = realtimeConfig.channel || 'solicitudes-kanban';
+            const channelName = realtimeConfig.channel || 'examenes-kanban';
             const events = realtimeConfig.events || {};
-            const newEventName = events.new_request || realtimeConfig.event || 'nueva-solicitud';
+            const newEventName = events.new_request || realtimeConfig.event || 'nueva-examen';
             const statusEventName = events.status_updated || null;
             const crmEventName = events.crm_updated || null;
-            const reminderEvents = [
-                {
-                    key: 'surgery',
-                    eventName: events.surgery_reminder || null,
-                    defaultLabel: 'Recordatorio de cirugía',
-                    icon: 'mdi mdi-alarm-check',
-                    tone: 'primary',
-                },
-                {
-                    key: 'preop',
-                    eventName: events.preop_reminder || null,
-                    defaultLabel: 'Preparación preoperatoria',
-                    icon: 'mdi mdi-clipboard-check-outline',
-                    tone: 'info',
-                },
-                {
-                    key: 'postop',
-                    eventName: events.postop_reminder || null,
-                    defaultLabel: 'Control postoperatorio',
-                    icon: 'mdi mdi-heart-pulse',
-                    tone: 'success',
-                },
-                {
-                    key: 'exams',
-                    eventName: events.exams_expiring || null,
-                    defaultLabel: 'Exámenes por vencer',
-                    icon: 'mdi mdi-file-alert-outline',
-                    tone: 'warning',
-                },
-            ];
+            const reminderEventName = events.surgery_reminder || null;
 
             notificationPanel.setIntegrationWarning('');
 
@@ -577,12 +548,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nombre = data?.full_name || data?.nombre || (data?.hc_number ? `HC ${data.hc_number}` : 'Paciente sin nombre');
                 const prioridad = String(data?.prioridad ?? '').toUpperCase();
                 const urgente = prioridad === 'SI' || prioridad === 'URGENTE' || prioridad === 'ALTA';
-                const mensaje = `🆕 Nueva solicitud: ${nombre}`;
+                const mensaje = `🆕 Nuevo examen: ${nombre}`;
 
                 notificationPanel.pushRealtime({
                     dedupeKey: `new-${data?.form_id ?? data?.secuencia ?? Date.now()}`,
                     title: nombre,
-                    message: data?.procedimiento || data?.tipo || 'Nueva solicitud registrada',
+                    message: data?.examen || data?.tipo || 'Nuevo examen registrada',
                     meta: [
                         data?.doctor ? `Dr(a). ${data.doctor}` : '',
                         data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
@@ -598,13 +569,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 showToast(mensaje, true, toastDurationMs);
-                maybeShowDesktopNotification('Nueva solicitud', mensaje);
+                maybeShowDesktopNotification('Nuevo examen', mensaje);
                 window.aplicarFiltros();
             });
 
             if (statusEventName) {
                 channel.bind(statusEventName, data => {
-                    const paciente = data?.full_name || (data?.hc_number ? `HC ${data.hc_number}` : `Solicitud #${data?.id ?? ''}`);
+                    const paciente = data?.full_name || (data?.hc_number ? `HC ${data.hc_number}` : `Examen #${data?.id ?? ''}`);
                     const nuevoEstado = data?.estado || 'Actualizada';
                     const estadoAnterior = data?.estado_anterior || 'Sin estado previo';
 
@@ -613,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title: paciente,
                         message: `Estado actualizado: ${estadoAnterior} → ${nuevoEstado}`,
                         meta: [
-                            data?.procedimiento || '',
+                            data?.examen || '',
                             data?.doctor ? `Dr(a). ${data.doctor}` : '',
                             data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
                         ],
@@ -628,23 +599,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     showToast(`📌 ${paciente}: ahora está en ${nuevoEstado}`, true, toastDurationMs);
-                    maybeShowDesktopNotification('Estado de solicitud', `${paciente} pasó a ${nuevoEstado}`);
+                    maybeShowDesktopNotification('Estado de examen', `${paciente} pasó a ${nuevoEstado}`);
                     window.aplicarFiltros();
                 });
             }
 
             if (crmEventName) {
                 channel.bind(crmEventName, data => {
-                    const paciente = data?.paciente_nombre || `Solicitud #${data?.solicitud_id ?? ''}`;
+                    const paciente = data?.paciente_nombre || `Examen #${data?.examen_id ?? ''}`;
                     const etapa = data?.pipeline_stage || 'Etapa actualizada';
                     const responsable = data?.responsable_nombre || '';
 
                     notificationPanel.pushRealtime({
-                        dedupeKey: `crm-${data?.solicitud_id ?? Date.now()}-${etapa}-${responsable}`,
+                        dedupeKey: `crm-${data?.examen_id ?? Date.now()}-${etapa}-${responsable}`,
                         title: paciente,
                         message: `CRM actualizado · ${etapa}`,
                         meta: [
-                            data?.procedimiento || '',
+                            data?.examen || '',
                             data?.doctor ? `Dr(a). ${data.doctor}` : '',
                             responsable ? `Responsable: ${responsable}` : '',
                             data?.fuente ? `Fuente: ${data.fuente}` : '',
@@ -662,66 +633,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            const bindReminderEvent = config => {
-                if (!config.eventName) {
-                    return;
-                }
-
-                channel.bind(config.eventName, rawData => {
-                    const data = rawData || {};
-                    const paciente = data.full_name || `Solicitud #${(data.id ?? '')}`;
-                    const reminderLabel = data.reminder_label || config.defaultLabel;
-                    const reminderContext = data.reminder_context || '';
-
-                    const dueIso = data.due_at || data.fecha_programada || null;
-                    const dueDate = dueIso ? new Date(dueIso) : null;
-                    const dueLabel = dueDate && !Number.isNaN(dueDate.getTime())
-                        ? dueDate.toLocaleString()
+            if (reminderEventName) {
+                channel.bind(reminderEventName, data => {
+                    const paciente = data?.full_name || `Examen #${data?.id ?? ''}`;
+                    const fechaProgramada = data?.fecha_programada ? new Date(data.fecha_programada) : null;
+                    const fechaTexto = fechaProgramada && !Number.isNaN(fechaProgramada.getTime())
+                        ? fechaProgramada.toLocaleString()
                         : '';
-
-                    const fechaProgramada = data.fecha_programada ? new Date(data.fecha_programada) : null;
-                    const examExpiry = data.exam_expires_at ? new Date(data.exam_expires_at) : null;
-                    const examLabel = examExpiry && !Number.isNaN(examExpiry.getTime())
-                        ? examExpiry.toLocaleDateString()
-                        : '';
-
-                    const meta = [
-                        data.procedimiento || '',
-                        data.doctor ? `Dr(a). ${data.doctor}` : '',
-                        data.quirofano ? `Quirófano: ${data.quirofano}` : '',
-                        data.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
-                        reminderContext,
-                    ].filter(Boolean);
-
-                    if (config.key === 'exams' && examLabel) {
-                        meta.push(`Vencen: ${examLabel}`);
-                    }
 
                     notificationPanel.pushPending({
-                        dedupeKey: `recordatorio-${config.key}-${data.id ?? Date.now()}-${dueIso ?? data.fecha_programada ?? ''}`,
+                        dedupeKey: `recordatorio-${data?.id ?? Date.now()}-${data?.fecha_programada ?? ''}`,
                         title: paciente,
-                        message: reminderLabel,
-                        meta,
+                        message: 'Recordatorio de cirugía',
+                        meta: [
+                            data?.examen || '',
+                            data?.doctor ? `Dr(a). ${data.doctor}` : '',
+                            data?.quirofano ? `Quirófano: ${data.quirofano}` : '',
+                            data?.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
+                        ],
                         badges: [
-                            dueLabel ? { label: dueLabel, variant: 'bg-primary text-white' } : null,
+                            fechaTexto ? { label: fechaTexto, variant: 'bg-primary text-white' } : null,
                         ].filter(Boolean),
-                        icon: config.icon,
-                        tone: config.tone,
+                        icon: 'mdi mdi-alarm-check',
+                        tone: 'primary',
                         timestamp: new Date(),
-                        dueAt: dueDate || fechaProgramada,
+                        dueAt: fechaProgramada,
                         channels: mapChannels(data?.channels),
                     });
 
-                    const toastLabel = reminderLabel || 'Recordatorio';
-                    const mensaje = dueLabel
-                        ? `${toastLabel}: ${paciente} · ${dueLabel}`
-                        : `${toastLabel}: ${paciente}`;
+                    const mensaje = fechaTexto ? `⏰ Cirugía ${paciente} · ${fechaTexto}` : `⏰ Cirugía ${paciente}`;
                     showToast(mensaje, true, toastDurationMs);
-                    maybeShowDesktopNotification(toastLabel, mensaje);
+                    maybeShowDesktopNotification('Recordatorio de cirugía', mensaje);
                 });
-            };
-
-            reminderEvents.forEach(bindReminderEvent);
+            }
         }
     }
 
