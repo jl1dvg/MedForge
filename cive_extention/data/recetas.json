@@ -1,0 +1,280 @@
+{
+  "receta": [
+    {
+      "id": "faco",
+      "cirugia": "Faco SNS",
+      "categoria": "Dr. Andrés Pólit Hoyos",
+      "recetaCount": 4,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "LAMOFLOX",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "8",
+          "cantidad": 7,
+          "totalFarmacia": "1",
+          "observaciones": "MOXIFLOXACINO CLOHIDRATO 1 GOTAS GOTERO CADA 8 HORAS x  7 DÍAS EN OJO OPERADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 1,
+          "nombre": "SOPHIPREN",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 7,
+          "totalFarmacia": "1",
+          "observaciones": "SOPHIPREN OFTENO 1 % SUSP. OFT. X 5 ML 1 GOTAS GOTERO CADA 6 HORAS x 7 DÍAS, LUEGO 1 GOTA CADA 8 HORAS X 7 DÍAS, LUEGO 1 GOTA CADA 12 HORAS X 15 DÍAS OPERADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 2,
+          "nombre": "OFTAFILM",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "12",
+          "cantidad": 30,
+          "totalFarmacia": "1",
+          "observaciones": "HIALURONATO DE SODIO 0.4% 1  GOTAS  GOTERO CADA 12 HORAS x  30 DÍAS EN OJO OPERADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 3,
+          "nombre": "GLAUCOMED",
+          "via": "VIA ORAL",
+          "unidad": "CAPSULAS",
+          "pauta": "12",
+          "cantidad": 1,
+          "totalFarmacia": "2",
+          "observaciones": "ACETAZOLAMIDA GLAUCOMED 250MG 1  TAB  VIA ORAL CADA 12 HORAS x  1 DÍAS"
+        },
+        {
+          "id": 4,
+          "nombre": "PARACETAMOL 1G - ANALGAN",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "8",
+          "cantidad": 3,
+          "totalFarmacia": "9",
+          "observaciones": "PARACETAMOL 1G - ANALGAN 1 TAB VIA ORAL CADA 8 HORAS X 3 DÍAS"
+        }
+      ]
+    },
+    {
+      "id": "icl",
+      "cirugia": "ICL",
+      "categoria": "Dr. Andrés Pólit Hoyos",
+      "recetaCount": 1,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "ZYPRED",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 21,
+          "totalFarmacia": "1",
+          "observaciones": "GATIFLOXACINA 0.3%, PREDNISOLONA 1% - 1 GOTA CADA 6 HORAS x 21 DÍAS EN OJO OPREADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 1,
+          "nombre": "SOPHIPREN",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 21,
+          "totalFarmacia": "1",
+          "observaciones": "DORZOLAMIDA 2% TIMOLOL 0.5% 1 GOTA CADA 12 HORAS x 21 DÍAS EN OJO OPREADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        }
+      ]
+    },
+    {
+      "id": "faco_general",
+      "cirugia": "Faco + LIO",
+      "categoria": "General",
+      "recetaCount": 2,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "OMEPRAZOL CAPSULA 20",
+          "via": "VIA ORAL",
+          "unidad": "CAPSULAS",
+          "pauta": "dia",
+          "cantidad": 5,
+          "totalFarmacia": "5",
+          "observaciones": "OMEPRAZOL 20MG 1 CAPSULAS VIA ORAL CADA DIA X 5 DÍAS EN AYUNAS"
+        },
+        {
+          "id": 1,
+          "nombre": "CEFADROXILO 500MG",
+          "via": "VIA ORAL",
+          "unidad": "CAPSULAS",
+          "pauta": "12",
+          "cantidad": 5,
+          "totalFarmacia": "10",
+          "observaciones": "CEFADROXILO 500MG 1 CAPSULAS VIA ORAL CADA 12 HORAS CON ALIMENTOS X 5 DÍAS"
+        },
+        {
+          "id": 2,
+          "nombre": "PARACETAMOL 1G - ANALGAN",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "8",
+          "cantidad": 3,
+          "totalFarmacia": "9",
+          "observaciones": "PARACETAMOL 1G - ANALGAN 1 TAB VIA ORAL CADA 8 HORAS X 3 DÍAS"
+        }
+      ]
+    },
+    {
+      "id": "faco_gaby",
+      "cirugia": "Faco + LIO",
+      "categoria": "Dra. Gabriela Heredia",
+      "recetaCount": 2,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "POENBIOTIC GOTAS",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 31,
+          "totalFarmacia": "1",
+          "observaciones": "CIPROFLOXACINA 0.3% DEXAMETASONA 0.1% - 1 GOTA CADA 6 HORAS X  30 DÍAS EN OJO OPREADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 1,
+          "nombre": "TIMOX",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "12",
+          "cantidad": 30,
+          "totalFarmacia": "1",
+          "observaciones": "TIMOLOL 0.5% 1 GOTA CADA 12 HORAS X  30 DÍAS EN OJO OPERADO"
+        },
+        {
+          "id": 2,
+          "nombre": "DOLORGESIC",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "12",
+          "cantidad": 3,
+          "totalFarmacia": "6",
+          "observaciones": "IBUPROFENO 400MG 1  TAB  VIA ORAL CADA 12 HORAS X  3 DÍAS"
+        }
+      ]
+    },
+    {
+      "id": "avastin",
+      "cirugia": "Avastin",
+      "categoria": "Inyecciones",
+      "recetaCount": 0,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "LAMOFLOX",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 5,
+          "totalFarmacia": "1",
+          "observaciones": "MOXIFLOXACINO CLOHIDRATO 1  GOTAS  GOTERO CADA 6 HORAS X  5 DÍAS EN OJO INYECTADO (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        }
+      ]
+    },
+    {
+      "id": "pterigion_pame",
+      "cirugia": "Pterigion",
+      "categoria": "Dra. Pamela Guillen",
+      "recetaCount": 2,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "TRAZIDEX OFTENO",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "4",
+          "cantidad": 30,
+          "totalFarmacia": "1",
+          "observaciones": "TRAZIDEX OFTENO OFTENO SUSP. OFT. X 5 ML - 1 GOTA CADA 6 HORAS EN OJO OPREADO HASTA NUEVO CONTROL (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 1,
+          "nombre": "HUMYLUB",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "4",
+          "cantidad": 30,
+          "totalFarmacia": "1",
+          "observaciones": "SULFATO SODICO DE CONDROITINA 0.18% HIALURONATO DE SODIO 0.1% 1 GOTA CADA 3 HORAS EN OJO OPREADO HASTA NUEVO CONTROL (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 2,
+          "nombre": "DOLORGESIC",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "12",
+          "cantidad": 3,
+          "totalFarmacia": "6",
+          "observaciones": "IBUPROFENO 400MG 1  TAB  VIA ORAL CADA 12 HORAS X  3 DÍAS Y SUSPENDER"
+        }
+      ]
+    },
+    {
+      "id": "jphgeneral",
+      "cirugia": "Faco y VPP",
+      "categoria": "Dr. Joaquín Pólit Hoyos",
+      "recetaCount": 4,
+      "recetas": [
+        {
+          "id": 0,
+          "nombre": "PARACETAMOL 1G - ANALGAN",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "8",
+          "cantidad": 2,
+          "totalFarmacia": "9",
+          "observaciones": "PARACETAMOL 1G - ANALGAN 1 TAB VIA ORAL CADA 8 HORAS X 2 DÍAS Y LUEGO SUSPENDER"
+        },
+        {
+          "id": 1,
+          "nombre": "CEFADROXILO",
+          "via": "VIA ORAL",
+          "unidad": "TAB",
+          "pauta": "12",
+          "cantidad": 7,
+          "totalFarmacia": "14",
+          "observaciones": "CEFADROXILO 500MG 1  TAB  GOTERO CADA 12 HORAS x  7 DÍAS Y LUEGP SUSPENDER"
+        },
+        {
+          "id": 2,
+          "nombre": "OMEPRAZOL CAPSULA 20",
+          "via": "VIA ORAL",
+          "unidad": "CAPSULAS",
+          "pauta": "dia",
+          "cantidad": 5,
+          "totalFarmacia": "5",
+          "observaciones": "OMEPRAZOL 20MG 1 CAPSULAS VIA ORAL CADA DIA X 5 DÍAS EN AYUNAS"
+        },
+        {
+          "id": 3,
+          "nombre": "SOPHIPREN",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "6",
+          "cantidad": 7,
+          "totalFarmacia": "1",
+          "observaciones": "SOPHIPREN OFTENO 1 % SUSP. OFT. X 5 ML 1 GOTAS CADA 3 HORAS x 5 DÍAS, LUEGO 1 GOTA CADA 4 HORAS X 5 DÍAS, LUEGO 1 GOTA CADA 8 HORAS X 10 DÍAS, LUEGO 1 GOTA CADA 12 HORAS X 10 DÍAS Y LUEGO SUSPENDER (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        },
+        {
+          "id": 4,
+          "nombre": "MOXOF",
+          "via": "GOTERO",
+          "unidad": "GOTAS",
+          "pauta": "4",
+          "cantidad": 10,
+          "totalFarmacia": "1",
+          "observaciones": "MOXIFLOXACINA 0.5% 1 GOTAS CADA 4 HORAS x  10 DÍAS (NO NECESITA LEVANTARSE EN LA MADRUGADA PARA COLOCAR GOTAS)"
+        }
+      ]
+    }
+  ]
+}

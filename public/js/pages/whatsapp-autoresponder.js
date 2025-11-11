@@ -571,12 +571,15 @@
     const defaults = JSON.parse(JSON.stringify(state));
     const simulationHistory = [];
     const replayMessages = [];
+    const journeyInvalidScenarios = new Set();
     let menuPreviewNode = null;
 
     const variablesPanel = form.querySelector('[data-variable-list]');
     const scenariosPanel = form.querySelector('[data-scenario-list]');
     const menuPanel = form.querySelector('[data-menu-editor]');
     const scenarioSummaryContainer = form.querySelector('[data-scenario-summary]');
+    const journeyMapCard = form.querySelector('[data-journey-map-card]');
+    const journeyMapContainer = form.querySelector('[data-journey-map]');
     const suggestedScenariosContainer = form.querySelector('[data-suggested-scenarios]');
     const scenarioModeToggle = form.querySelector('[data-scenario-mode-toggle]');
     const expandAllScenariosButton = form.querySelector('[data-action="expand-all-scenarios"]');
@@ -662,6 +665,37 @@
             event.preventDefault();
             collapseAllScenarios();
             renderScenarios();
+        });
+    }
+
+    if (journeyMapContainer) {
+        journeyMapContainer.addEventListener('click', (event) => {
+            const node = event.target.closest('[data-journey-node]');
+            if (!node) {
+                return;
+            }
+
+            const scenarioId = node.dataset.scenarioId;
+            if (!scenarioId) {
+                return;
+            }
+
+            setScenarioExpanded(scenarioId, true);
+            renderScenarios();
+
+            window.requestAnimationFrame(() => {
+                if (!scenariosPanel) {
+                    return;
+                }
+
+                const selector = `[data-scenario][data-scenario-id="${escapeSelector(String(scenarioId))}"]`;
+                const card = scenariosPanel.querySelector(selector);
+                if (card) {
+                    card.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    card.classList.add('scenario-card--pulse');
+                    window.setTimeout(() => card.classList.remove('scenario-card--pulse'), 1200);
+                }
+            });
         });
     }
 
@@ -975,6 +1009,7 @@
                         }
                         updateHeader();
                         renderScenarioSummary();
+                        renderJourneyMap();
                     });
                 }
 
@@ -984,6 +1019,7 @@
                         scenario.description = descriptionInput.value;
                         updateHeader();
                         renderScenarioSummary();
+                        renderJourneyMap();
                     });
                 }
 
@@ -1009,6 +1045,7 @@
                         }
                         updateHeader();
                         renderScenarioSummary();
+                        renderJourneyMap();
                     });
                 }
 
@@ -1024,6 +1061,7 @@
                         renderConditions(conditionList, scenario, () => {
                             updateHeader();
                             renderScenarioSummary();
+                            renderJourneyMap();
                         });
                         setScenarioExpanded(scenario.id, true);
                         updateHeader();
@@ -1038,6 +1076,7 @@
                         renderActions(actionList, scenario.actions, scenario, () => {
                             updateHeader();
                             renderScenarioSummary();
+                            renderJourneyMap();
                         });
                         setScenarioExpanded(scenario.id, true);
                         updateHeader();
@@ -1089,10 +1128,12 @@
                 renderConditions(conditionList, scenario, () => {
                     updateHeader();
                     renderScenarioSummary();
+                    renderJourneyMap();
                 });
                 renderActions(actionList, scenario.actions || [], scenario, () => {
                     updateHeader();
                     renderScenarioSummary();
+                    renderJourneyMap();
                 });
                 updateHeader();
 
@@ -1116,6 +1157,7 @@
 
         updateScenarioControls();
         setupScenarioSortable();
+        renderJourneyMap();
         renderScenarioSummary();
         renderSuggestedScenarios();
         refreshSimulationHints();
@@ -1231,6 +1273,8 @@
         scenariosPanel.querySelectorAll('[data-scenario]').forEach((card) => {
             card.classList.remove('is-invalid');
         });
+        journeyInvalidScenarios.clear();
+        updateJourneyMapValidation();
     }
 
     function markScenarioValidationState(errors) {
@@ -1240,6 +1284,7 @@
 
         const cards = Array.from(scenariosPanel.querySelectorAll('[data-scenario]'));
         cards.forEach((card) => card.classList.remove('is-invalid'));
+        journeyInvalidScenarios.clear();
 
         const invalidCards = [];
         errors.forEach((error) => {
@@ -1256,6 +1301,12 @@
                 card = scenariosPanel.querySelector(indexSelector);
             }
             if (!card) {
+                if (typeof error.scenarioIndex === 'number') {
+                    const scenario = state.scenarios?.[error.scenarioIndex];
+                    if (scenario?.id) {
+                        journeyInvalidScenarios.add(String(scenario.id));
+                    }
+                }
                 return;
             }
 
@@ -1276,13 +1327,191 @@
             const scenarioId = card.dataset.scenarioId || (error.scenarioId ? String(error.scenarioId) : null);
             if (scenarioId) {
                 setScenarioExpanded(scenarioId, true);
+                journeyInvalidScenarios.add(String(scenarioId));
             }
             invalidCards.push(card);
         });
 
+        updateJourneyMapValidation();
+
         if (invalidCards.length > 0) {
             invalidCards[0].scrollIntoView({behavior: 'smooth', block: 'center'});
         }
+    }
+
+    function renderJourneyMap() {
+        if (!journeyMapContainer) {
+            return;
+        }
+
+        const totalScenarios = Array.isArray(state.scenarios) ? state.scenarios.length : 0;
+        journeyMapContainer.innerHTML = '';
+        journeyMapContainer.style.setProperty('--journey-stage-count', String(SCENARIO_STAGE_OPTIONS.length));
+        journeyMapContainer.classList.toggle('journey-map--empty', totalScenarios === 0);
+        if (journeyMapCard) {
+            journeyMapCard.classList.toggle('journey-map-card--empty', totalScenarios === 0);
+        }
+
+        if (totalScenarios === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'journey-map__empty text-muted small';
+            empty.innerHTML = '<i class="mdi mdi-map-search-outline me-1"></i>Añade escenarios para visualizar el recorrido.';
+            journeyMapContainer.appendChild(empty);
+
+            return;
+        }
+
+        const scenarioOrder = new Map();
+        state.scenarios.forEach((scenario, index) => {
+            if (scenario && scenario.id) {
+                scenarioOrder.set(String(scenario.id), index + 1);
+            }
+        });
+
+        const stageGroups = new Map();
+        SCENARIO_STAGE_OPTIONS.forEach((stage) => {
+            stageGroups.set(stage.value, []);
+        });
+
+        state.scenarios.forEach((scenario) => {
+            if (!scenario) {
+                return;
+            }
+            const stage = resolveScenarioStage(scenario.stage);
+            if (!stageGroups.has(stage)) {
+                stageGroups.set(stage, []);
+            }
+            stageGroups.get(stage).push(scenario);
+        });
+
+        SCENARIO_STAGE_OPTIONS.forEach((stageOption, stageIndex) => {
+            const lane = document.createElement('div');
+            lane.className = 'journey-map__lane';
+            lane.dataset.stage = stageOption.value;
+            lane.style.setProperty('--lane-index', String(stageIndex));
+
+            const heading = document.createElement('div');
+            heading.className = 'journey-map__lane-heading';
+
+            const title = document.createElement('div');
+            title.className = 'journey-map__lane-title';
+            title.textContent = stageOption.label;
+
+            const count = document.createElement('span');
+            const stageScenarios = stageGroups.get(stageOption.value) || [];
+            count.className = 'journey-map__lane-count';
+            count.textContent = `${stageScenarios.length} ${stageScenarios.length === 1 ? 'escenario' : 'escenarios'}`;
+
+            heading.appendChild(title);
+            heading.appendChild(count);
+            lane.appendChild(heading);
+
+            const description = document.createElement('div');
+            description.className = 'journey-map__lane-description';
+            description.textContent = stageOption.description;
+            lane.appendChild(description);
+
+            const body = document.createElement('div');
+            body.className = 'journey-map__lane-body';
+
+            if (stageScenarios.length === 0) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'journey-map__placeholder';
+                placeholder.innerHTML = '<i class="mdi mdi-dots-horizontal"></i> Añade un escenario en esta etapa.';
+                body.appendChild(placeholder);
+            } else {
+                stageScenarios.forEach((scenario) => {
+                    const node = document.createElement('button');
+                    node.type = 'button';
+                    node.className = 'journey-node';
+                    node.dataset.journeyNode = 'true';
+                    if (scenario.id) {
+                        node.dataset.scenarioId = String(scenario.id);
+                    }
+                    node.dataset.stage = stageOption.value;
+
+                    const nodeInner = document.createElement('div');
+                    nodeInner.className = 'journey-node__content-wrapper';
+
+                    const indexBadge = document.createElement('span');
+                    indexBadge.className = 'journey-node__index';
+                    const order = scenario.id ? scenarioOrder.get(String(scenario.id)) || 0 : 0;
+                    indexBadge.textContent = order > 0 ? String(order) : '—';
+                    nodeInner.appendChild(indexBadge);
+
+                    const content = document.createElement('div');
+                    content.className = 'journey-node__content';
+
+                    const nodeTitle = document.createElement('div');
+                    nodeTitle.className = 'journey-node__title';
+                    nodeTitle.textContent = scenario.name || scenario.id || 'Escenario sin nombre';
+                    content.appendChild(nodeTitle);
+
+                    const badges = document.createElement('div');
+                    badges.className = 'journey-node__badges';
+
+                    if (scenario.intercept_menu) {
+                        const interceptBadge = document.createElement('span');
+                        interceptBadge.className = 'journey-node__badge journey-node__badge--intercept';
+                        interceptBadge.textContent = 'Intercepta menú';
+                        badges.appendChild(interceptBadge);
+                    }
+
+                    if (badges.children.length > 0) {
+                        content.appendChild(badges);
+                    }
+
+                    const conditionsCount = Array.isArray(scenario.conditions) ? scenario.conditions.length : 0;
+                    const actionsCount = Array.isArray(scenario.actions) ? scenario.actions.length : 0;
+                    const meta = document.createElement('div');
+                    meta.className = 'journey-node__meta';
+                    meta.textContent = `${conditionsCount} ${conditionsCount === 1 ? 'condición' : 'condiciones'} · ${actionsCount} ${actionsCount === 1 ? 'acción' : 'acciones'}`;
+                    content.appendChild(meta);
+
+                    if (scenario.description) {
+                        const descriptionText = document.createElement('div');
+                        descriptionText.className = 'journey-node__description';
+                        descriptionText.textContent = scenario.description;
+                        content.appendChild(descriptionText);
+                    }
+
+                    nodeInner.appendChild(content);
+                    node.appendChild(nodeInner);
+
+                    if (scenario.id && journeyInvalidScenarios.has(String(scenario.id))) {
+                        node.classList.add('journey-node--invalid');
+                    }
+                    if (scenario.id && isScenarioExpanded(scenario.id)) {
+                        node.classList.add('journey-node--active');
+                    }
+                    if (scenario.intercept_menu) {
+                        node.classList.add('journey-node--intercept');
+                    }
+
+                    node.title = `Editar ${scenario.name || scenario.id || 'este escenario'}`;
+
+                    body.appendChild(node);
+                });
+            }
+
+            lane.appendChild(body);
+            journeyMapContainer.appendChild(lane);
+        });
+
+        updateJourneyMapValidation();
+    }
+
+    function updateJourneyMapValidation() {
+        if (!journeyMapContainer) {
+            return;
+        }
+
+        const nodes = Array.from(journeyMapContainer.querySelectorAll('[data-journey-node][data-scenario-id]'));
+        nodes.forEach((node) => {
+            const scenarioId = String(node.dataset.scenarioId || '');
+            const invalid = scenarioId && journeyInvalidScenarios.has(scenarioId);
+            node.classList.toggle('journey-node--invalid', Boolean(invalid));
+        });
     }
 
     function renderScenarioSummary() {

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>OCT de Macular</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="octm.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content container">
+        <div class="d-flex justify-content-end">
+            <button id="btnClose" class="close-btn btn btn-danger">&times;</button>
+        </div>
+        <div class="row">
+            <div class="col">
+                <div class="mb-1 mt-1">
+                    <label for="inputOD">OD:</label>
+                    <input type="text" id="inputOD" class="form-control form-control-sm mt-1" maxlength="3">
+                </div>
+            </div>
+            <div class="col">
+                <div class="form-group">
+                    <label for="inputOI">OI:</label>
+                    <input type="text" id="inputOI" class="form-control form-control-sm mt-1" maxlength="3">
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="textOD">OD:</label>
+            <textarea id="textOD" class="form-control" rows="3"></textarea>
+        </div>
+        <div id="checkboxContainerOD" class="checkbox-group form-group form-check">
+            <!-- Aquí irán los checkboxes para OD -->
+        </div>
+        <div class="form-group">
+            <label for="textOI">OI:</label>
+            <textarea id="textOI" class="form-control" rows="3"></textarea>
+        </div>
+        <div id="checkboxContainerOI" class="checkbox-group form-group">
+            <!-- Aquí irán los checkboxes para OI -->
+        </div>
+        <div class="d-flex justify-content-center">
+            <button id="btnAceptar" class="btn btn-primary">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="octm.js"></script>
+</body>
+</html>

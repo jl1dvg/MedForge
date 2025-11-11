@@ -1,0 +1,128 @@
+{
+  "manifest_version": 3,
+  "name": "Asistente CIVE",
+  "version": "6.2.9",
+  "description": "Descripción de mi extensión",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://asistentecive.consulmed.me/*",
+    "https://asistentecive.consulmed.me/*",
+    "http://cive.consulmed.me/*",
+    "https://cive.consulmed.me/*",
+    "http://cive.ddns.net/*",
+    "https://cive.ddns.net/*",
+    "http://cive.ddns.net:8085/*",
+    "http://192.168.1.13:8085/*",
+    "http://localhost:8085/*",
+    "http://127.0.0.1:8085/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "ejecutar-examen-directo": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E"
+      },
+      "description": "Ejecutar examen con ID predefinido"
+    }
+  },
+  "action": {
+    "default_icon": "icon.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "js/assets/sweetalert2.all.min.js",
+        "js/assets/toastr.min.js",
+        "js/assets/toastr.min.css",
+        "faco.png",
+        "icon.png",
+        "css/popup.css",
+        "css/floating_popup.css",
+        "css/floating_button.css",
+        "js/popup_interaction.js",
+        "js/notifications.js",
+        "js/generate_pdf.js",
+        "js/examenes.js",
+        "js/procedimientos.js",
+        "js/consulta.js",
+        "js/ui.js",
+        "js/drag.js",
+        "js/eventos.js",
+        "js/observadores.js",
+        "js/protocolos.js",
+        "js/paciente.js",
+        "js/admision.js",
+        "js/obtener_insumos.js",
+        "js/extraer_prefactura.js",
+        "js/solicitud.js",
+        "js/popup/popup.html",
+        "js/popup/popup.css",
+        "js/cv/cv.html",
+        "js/cv/cv.css",
+        "js/eco/eco.html",
+        "js/eco/eco.css",
+        "js/retino/retino.html",
+        "js/retino/retino.css",
+        "js/angulo/angulo.html",
+        "js/angulo/angulo.css",
+        "js/octm/octm.html",
+        "js/octm/octm.css",
+        "js/auto/auto.html",
+        "js/auto/auto.css",
+        "js/angio/angio.html",
+        "js/angio/angio.css",
+        "data/examenes.json",
+        "data/procedimientos.json",
+        "data/recetas.json"
+      ],
+      "matches": [
+        "http://cive.ddns.net/*",
+        "https://cive.ddns.net/*",
+        "http://cive.ddns.net:8085/*",
+        "http://192.168.1.13:8085/*",
+        "http://localhost:8085/*",
+        "http://127.0.0.1:8085/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:5005/*",
+        "http://cive.ddns.net/*",
+        "https://cive.ddns.net/*",
+        "http://192.168.1.13:8085/*",
+        "http://localhost:8085/*",
+        "http://127.0.0.1:8085/*",
+        "http://192.168.1.13:8085/historia-automatica*",
+        "http://cive.ddns.net:8085/historia-automatica*"
+      ],
+      "js": [
+        "js/assets/sweetalert2.all.min.js",
+        "js/config.js",
+        "js/ui.js",
+        "js/drag.js",
+        "js/eventos.js",
+        "js/observadores.js",
+        "js/protocolos.js",
+        "js/paciente.js",
+        "js/admision.js",
+        "js/obtener_insumos.js",
+        "js/extraer_prefactura.js",
+        "js/popup_interaction.js",
+        "js/notifications.js",
+        "js/generate_pdf.js",
+        "js/examenes.js",
+        "js/consulta.js",
+        "js/solicitud.js",
+        "js/content_script.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

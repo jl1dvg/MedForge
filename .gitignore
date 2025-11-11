@@ -13,3 +13,4 @@
 /views/pacientes/
 /vendor/
 /venv/
+.DS_Store

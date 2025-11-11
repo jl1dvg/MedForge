@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Popup</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="cv.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="container rounded p-5 my-5 border bg-light">
+        <div class="d-flex justify-content-end">
+            <button id="btnClose" class="close-btn btn btn-outline-danger">&times;</button>
+        </div>
+
+        <div class="form-group">
+            <label for="inputOD">OD:</label>
+            <textarea id="inputOD" class="form-control" rows="3"></textarea>
+        </div>
+        <div id="checkboxContainerOD" class="checkbox-group form-group form-check">
+            <!-- Aquí irán los checkboxes para OD -->
+        </div>
+        <div class="form-group">
+            <label for="inputOI">OI:</label>
+            <textarea id="inputOI" class="form-control" rows="3"></textarea>
+        </div>
+        <div id="checkboxContainerOI" class="checkbox-group form-group">
+            <!-- Aquí irán los checkboxes para OI -->
+        </div>
+        <div class="d-flex justify-content-center">
+            <button id="btnAceptar" class="btn btn-success btn-block">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="cv.js"></script>
+</body>
+</html>

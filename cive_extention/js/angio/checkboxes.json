@@ -1,0 +1,62 @@
+[
+  {
+    "id": "dln",
+    "label": "DLN",
+    "text": "Se muestra perfusión arterial rápida y uniforme en las arteriolas retinianas, con patrón de hiperfluorescencia indicativo de llenado vascular normal. Durante la fase venosa, se observa flujo sanguíneo uniforme y relleno venoso completo, sin anomalías como extravasación de fluoresceína, obstrucción vascular o neovascularización patológica."
+  },
+  {
+    "id": "rdnp",
+    "label": "RDNP",
+    "text": "Durante la fase arterial temprana se observa perfusión arterial normal y aumento de fluorescencia en la región macular, indicando edema macular difuso y microaneurismas. En la fase arterial tardía, persiste la hiperfluorescencia y se observan áreas de hipoperfusión periférica. En la fase venosa, hay áreas de cierre capilar periférico"
+  },
+  {
+    "id": "neovascularizacion",
+    "label": "NV",
+    "text": "Áreas de hiperfluorescencia en la periferia retiniana con fuga progresiva de fluoresceína, indicando permeabilidad anormal de neovasos"
+  },
+  {
+    "id": "laser",
+    "label": "laser",
+    "text": "áreas de hipofluorescencia en la retina, correspondientes a cicatrices de fotocoagulación previa, sin fuga de fluoresceína"
+  },
+  {
+    "id": "microaneurismas",
+    "label": "MA",
+    "text": "La angiografía fluoresceínica muestra nervio óptico es normal, con un borde bien definido y la mácula sin signos de edema. Microaneurismas dispersos como pequeñas áreas de hiperfluorescencia en la retina, especialmente en la periferia, que se ven como focos de fuga de fluoresceína en las fases tardías del estudio. La trama vascular es normal, sin signos de isquemia o alteraciones significativas en los vasos retinianos. "
+  },
+  {
+    "id": "ovri",
+    "label": "OVRI",
+    "text": "El examen de angiografía fluoresceínica revela una oclusión venosa inferior con hipofluorescencia marcada, llenado tardío y deficiente de fluoresceína, congestión y dilatación venosa en la retina inferior, y manchas de hipofluorescencia periféricas indicativas de isquemia. La perfusión arterial aparente normal"
+  },
+  {
+    "id": "ovrs",
+    "label": "OVRS",
+    "text": "El examen de angiografía fluoresceínica revela una oclusión venosa superior con hipofluorescencia marcada, llenado tardío y deficiente de fluoresceína, congestión y dilatación venosa en la retina superior, y manchas de hipofluorescencia periféricas indicativas de isquemia. La perfusión arterial aparente normal."
+  },
+  {
+    "id": "mnv",
+    "label": "MNV",
+    "text": "El examen de angiografía fluoresceínica revela una membrana neovascular exudativa con hiperfluorescencia irregular en la región yuxtafoveal y un defecto en ventana bien delimitado, indicando actividad exudativa y permeabilidad vascular anormal. La membrana muestra fuga de fluoresceína en fases tardías, reflejando fluido subretinal. La trama vascular general y el nervio óptico no presentan alteraciones significativas adicionales."
+  },
+  {
+    "id": "isquemia",
+    "label": "Isquemia",
+    "text": "FALTA DE PERFUSIÓN SANGUÍNEA"
+  },
+  {
+    "id": "edema_macular",
+    "label": "EMQ",
+    "text": "ACUMULACIÓN DE LÍQUIDO EN LA MÁCULA"
+  },
+  {
+    "id": "fugas",
+    "label": "Fugas",
+    "text": "ESCAPES DE FLUORESCEÍNA DE LOS VASOS"
+  },
+  {
+    "id": "rpe",
+    "label": "EPR",
+    "text": "El examen de angiografía fluoresceínica muestra atrofia del epitelio pigmentario de la retina con defecto en ventana yuxtafoveal, manifestado como área de hiperfluorescencia bien delimitada. Retina circundante presenta perfusión normal, sin neovascularización o edema. Trama vascular es regular y el nervio óptico está normal, sin alteraciones adicionales."
+  }
+]

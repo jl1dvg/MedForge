@@ -1,0 +1,57 @@
+[
+  {
+    "id": "dln",
+    "label": "DLN",
+    "text": "globo ocular con volumen conservado, retina adherida en los cuatro cuadrantes y con grosor uniforme, sin evidencia de desprendimientos. Vítreo muestra ausencia de opacidades y tracciones anormales. Nervio óptico exhibe una cabeza bien definida, sin signos de neuropatía óptica"
+  },
+  {
+    "id": "desprendimiento_retina",
+    "label": "Desprendimiento de Retina",
+    "text": "ecogenicidad anormal en la interfaz retiniana, subjetivo de desprendimiento de retina"
+  },
+  {
+    "id": "hemorragia_vitrea",
+    "label": "Hemorragia Vítrea",
+    "text": "Presencia de hiperecogenicidad en la cavidad vítrea, sugerente de hemorragia vítrea"
+  },
+  {
+    "id": "membrana_epirretiniana",
+    "label": "Membrana Epirretiniana",
+    "text": "PRESENCIA DE MEMBRANA SOBRE LA RETINA"
+  },
+  {
+    "id": "tumor_intraocular",
+    "label": "Tumor Intraocular",
+    "text": "MASA O LESIÓN DENTRO DEL OJO"
+  },
+  {
+    "id": "cuerpo_extraño",
+    "label": "Cuerpo Extraño Intraocular",
+    "text": "OBJETO EXTRAÑO DENTRO DEL OJO"
+  },
+  {
+    "id": "edema_coroidal",
+    "label": "Edema Coroidal",
+    "text": "ACUMULACIÓN DE LÍQUIDO EN LA COROIDES"
+  },
+  {
+    "id": "coroiditis",
+    "label": "Coroiditis",
+    "text": "INFLAMACIÓN DE LA COROIDES"
+  },
+  {
+    "id": "coloboma",
+    "label": "Coloboma",
+    "text": "DEFECTO CONGÉNITO EN LA ESTRUCTURA OCULAR"
+  },
+  {
+    "id": "absceso_intraocular",
+    "label": "Absceso Intraocular",
+    "text": "ACUMULACIÓN DE PUS DENTRO DEL OJO"
+  },
+  {
+    "id": "pvd",
+    "label": "Desprendimiento Posterior del Vítreo",
+    "text": "línea ecogénica móvil dentro del vítreo subjetiva de desprendimiento del humor vítreo"
+  }
+]

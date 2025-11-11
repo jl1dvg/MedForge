@@ -1,0 +1,112 @@
+{
+  "examenes": [
+    {
+      "id": "octm",
+      "cirugia": "OCT Macular",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA G",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    },
+    {
+      "id": "angio",
+      "cirugia": "Angiografía",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA G",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    },
+    {
+      "id": "angulo",
+      "cirugia": "OCT Ángulo",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
+      "id": "auto",
+      "cirugia": "AF",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA G",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    },
+    {
+      "id": "cornea",
+      "cirugia": "OCT Córnea",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
+      "id": "cv",
+      "cirugia": "CV",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
+      "id": "octno",
+      "cirugia": "OCT Nervio",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
+      "id": "eco",
+      "cirugia": "Ecografía",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA G",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    },
+    {
+      "id": "retino",
+      "cirugia": "Retinografía",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA G",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    }
+  ]
+}

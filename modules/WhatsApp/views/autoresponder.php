@@ -854,6 +854,23 @@ switch ($statusType) {
                                                 <div class="d-flex flex-column gap-2" data-scenario-summary></div>
                                             </div>
                                         </div>
+                                        <div class="card border-0 shadow-sm" data-journey-map-card>
+                                            <div class="card-body py-3">
+                                                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                                                    <div>
+                                                        <h6 class="fw-600 mb-1">Mapa del recorrido</h6>
+                                                        <p class="text-muted small mb-0">Visualiza cómo progresa el paciente entre etapas. Haz clic en un paso para saltar a su configuración.</p>
+                                                    </div>
+                                                    <div class="journey-map__legend d-flex align-items-center gap-3 small text-muted">
+                                                        <span class="d-inline-flex align-items-center gap-1"><span class="journey-map__legend-dot journey-map__legend-dot--active"></span> Abierto</span>
+                                                        <span class="d-inline-flex align-items-center gap-1"><span class="journey-map__legend-dot journey-map__legend-dot--invalid"></span> Requiere atención</span>
+                                                    </div>
+                                                </div>
+                                                <div class="journey-map__viewport">
+                                                    <div class="journey-map" data-journey-map></div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div class="card border-0 shadow-sm" data-suggested-scenarios></div>
                                         <div data-scenario-list></div>
                                     </div>
