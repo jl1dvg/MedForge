@@ -14,6 +14,14 @@
         console.warn('No se pudo interpretar los datos iniciales del CRM', error);
     }
 
+    const permissions = (bootstrapData && typeof bootstrapData.permissions === 'object' && bootstrapData.permissions !== null)
+        ? bootstrapData.permissions
+        : {};
+    const canManageLeads = Boolean(permissions.manageLeads);
+    const canManageProjects = Boolean(permissions.manageProjects);
+    const canManageTasks = Boolean(permissions.manageTasks);
+    const canManageTickets = Boolean(permissions.manageTickets);
+
     const state = {
         leadStatuses: Array.isArray(bootstrapData.leadStatuses) ? bootstrapData.leadStatuses : [],
         projectStatuses: Array.isArray(bootstrapData.projectStatuses) ? bootstrapData.projectStatuses : [],
@@ -327,10 +335,14 @@
                 row.appendChild(contactCell);
 
                 const statusCell = document.createElement('td');
-                const statusSelect = createStatusSelect(state.leadStatuses, lead.status);
-                statusSelect.classList.add('js-lead-status');
-                statusSelect.dataset.leadHc = normalizedHc;
-                statusCell.appendChild(statusSelect);
+                if (canManageLeads) {
+                    const statusSelect = createStatusSelect(state.leadStatuses, lead.status);
+                    statusSelect.classList.add('js-lead-status');
+                    statusSelect.dataset.leadHc = normalizedHc;
+                    statusCell.appendChild(statusSelect);
+                } else {
+                    statusCell.textContent = lead.status ? titleize(lead.status) : 'Sin estado';
+                }
                 row.appendChild(statusCell);
 
                 const sourceCell = document.createElement('td');
@@ -347,12 +359,16 @@
 
                 const actionsCell = document.createElement('td');
                 actionsCell.className = 'text-end';
-                const convertButton = document.createElement('button');
-                convertButton.type = 'button';
-                convertButton.className = 'btn btn-sm btn-success js-select-lead';
-                convertButton.dataset.leadHc = normalizedHc;
-                convertButton.innerHTML = '<i class="mdi mdi-account-check-outline me-1"></i>Convertir';
-                actionsCell.appendChild(convertButton);
+                if (canManageLeads) {
+                    const convertButton = document.createElement('button');
+                    convertButton.type = 'button';
+                    convertButton.className = 'btn btn-sm btn-success js-select-lead';
+                    convertButton.dataset.leadHc = normalizedHc;
+                    convertButton.innerHTML = '<i class="mdi mdi-account-check-outline me-1"></i>Convertir';
+                    actionsCell.appendChild(convertButton);
+                } else {
+                    actionsCell.innerHTML = '<span class="text-muted">Sin acciones</span>';
+                }
                 row.appendChild(actionsCell);
 
                 elements.leadTableBody.appendChild(row);
@@ -392,10 +408,14 @@
                 row.appendChild(titleCell);
 
                 const statusCell = document.createElement('td');
-                const statusSelect = createStatusSelect(state.projectStatuses, project.status);
-                statusSelect.classList.add('js-project-status');
-                statusSelect.dataset.projectId = project.id;
-                statusCell.appendChild(statusSelect);
+                if (canManageProjects) {
+                    const statusSelect = createStatusSelect(state.projectStatuses, project.status);
+                    statusSelect.classList.add('js-project-status');
+                    statusSelect.dataset.projectId = project.id;
+                    statusCell.appendChild(statusSelect);
+                } else {
+                    statusCell.textContent = project.status ? titleize(project.status) : 'Sin estado';
+                }
                 row.appendChild(statusCell);
 
                 const leadCell = document.createElement('td');
@@ -467,10 +487,14 @@
                 row.appendChild(assignedCell);
 
                 const statusCell = document.createElement('td');
-                const statusSelect = createStatusSelect(state.taskStatuses, task.status);
-                statusSelect.classList.add('js-task-status');
-                statusSelect.dataset.taskId = task.id;
-                statusCell.appendChild(statusSelect);
+                if (canManageTasks) {
+                    const statusSelect = createStatusSelect(state.taskStatuses, task.status);
+                    statusSelect.classList.add('js-task-status');
+                    statusSelect.dataset.taskId = task.id;
+                    statusCell.appendChild(statusSelect);
+                } else {
+                    statusCell.textContent = task.status ? titleize(task.status) : 'Sin estado';
+                }
                 row.appendChild(statusCell);
 
                 const dueCell = document.createElement('td');
@@ -591,12 +615,14 @@
 
                 const actionsCell = document.createElement('td');
                 actionsCell.className = 'text-end';
-                const replyButton = document.createElement('button');
-                replyButton.type = 'button';
-                replyButton.className = 'btn btn-sm btn-outline-info js-reply-ticket';
-                replyButton.dataset.ticketId = ticket.id;
-                replyButton.innerHTML = '<i class="mdi mdi-reply"></i>';
-                actionsCell.appendChild(replyButton);
+                if (canManageTickets) {
+                    const replyButton = document.createElement('button');
+                    replyButton.type = 'button';
+                    replyButton.className = 'btn btn-sm btn-outline-info js-reply-ticket';
+                    replyButton.dataset.ticketId = ticket.id;
+                    replyButton.innerHTML = '<i class="mdi mdi-reply"></i>';
+                    actionsCell.appendChild(replyButton);
+                }
                 const messageCount = Array.isArray(ticket.messages) ? ticket.messages.length : 0;
                 if (messageCount) {
                     const badge = document.createElement('span');
@@ -809,7 +835,7 @@
         return Array.isArray(leads) ? leads.map((lead) => normalizeLead(lead)) : [];
     }
 
-    if (elements.leadForm) {
+    if (elements.leadForm && canManageLeads) {
         elements.leadForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(elements.leadForm);
@@ -862,7 +888,7 @@
         });
     }
 
-    if (elements.convertForm) {
+    if (elements.convertForm && canManageLeads) {
         elements.convertForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const hcNumber = normalizeHcNumber(elements.convertLeadHc.value);
@@ -901,7 +927,7 @@
         });
     }
 
-    if (elements.projectForm) {
+    if (elements.projectForm && canManageProjects) {
         elements.projectForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(elements.projectForm);
@@ -953,7 +979,7 @@
         });
     }
 
-    if (elements.taskForm) {
+    if (elements.taskForm && canManageTasks) {
         elements.taskForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(elements.taskForm);
@@ -1006,7 +1032,7 @@
         });
     }
 
-    if (elements.ticketForm) {
+    if (elements.ticketForm && canManageTickets) {
         elements.ticketForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(elements.ticketForm);
@@ -1051,7 +1077,7 @@
         });
     }
 
-    if (elements.ticketReplyForm) {
+    if (elements.ticketReplyForm && canManageTickets) {
         elements.ticketReplyForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const ticketId = serializeNumber(elements.ticketReplyId.value);
@@ -1079,82 +1105,90 @@
         });
     }
 
-    root.addEventListener('change', (event) => {
-        const target = event.target;
-        if (target.classList.contains('js-lead-status')) {
-            const hcNumber = normalizeHcNumber(target.dataset.leadHc);
-            const status = target.value;
-            if (!hcNumber || !status) {
-                return;
+    if (canManageLeads || canManageProjects || canManageTasks) {
+        root.addEventListener('change', (event) => {
+            const target = event.target;
+            if (canManageLeads && target.classList.contains('js-lead-status')) {
+                const hcNumber = normalizeHcNumber(target.dataset.leadHc);
+                const status = target.value;
+                if (!hcNumber || !status) {
+                    return;
+                }
+                request('/crm/leads/update', { method: 'POST', body: { hc_number: hcNumber, status } })
+                    .then(() => loadLeads())
+                    .catch((error) => {
+                        console.error('Error actualizando lead', error);
+                        showToast('error', error.message || 'No se pudo actualizar el lead');
+                        loadLeads();
+                    });
             }
-            request('/crm/leads/update', { method: 'POST', body: { hc_number: hcNumber, status } })
-                .then(() => loadLeads())
-                .catch((error) => {
-                    console.error('Error actualizando lead', error);
-                    showToast('error', error.message || 'No se pudo actualizar el lead');
-                    loadLeads();
-                });
-        }
-        if (target.classList.contains('js-project-status')) {
-            const projectId = serializeNumber(target.dataset.projectId);
-            const status = target.value;
-            if (!projectId || !status) {
-                return;
+            if (canManageProjects && target.classList.contains('js-project-status')) {
+                const projectId = serializeNumber(target.dataset.projectId);
+                const status = target.value;
+                if (!projectId || !status) {
+                    return;
+                }
+                request('/crm/projects/status', { method: 'POST', body: { project_id: projectId, status } })
+                    .then(() => loadProjects())
+                    .catch((error) => {
+                        console.error('Error actualizando proyecto', error);
+                        showToast('error', error.message || 'No se pudo actualizar el proyecto');
+                        loadProjects();
+                    });
             }
-            request('/crm/projects/status', { method: 'POST', body: { project_id: projectId, status } })
-                .then(() => loadProjects())
-                .catch((error) => {
-                    console.error('Error actualizando proyecto', error);
-                    showToast('error', error.message || 'No se pudo actualizar el proyecto');
-                    loadProjects();
-                });
-        }
-        if (target.classList.contains('js-task-status')) {
-            const taskId = serializeNumber(target.dataset.taskId);
-            const status = target.value;
-            if (!taskId || !status) {
-                return;
+            if (canManageTasks && target.classList.contains('js-task-status')) {
+                const taskId = serializeNumber(target.dataset.taskId);
+                const status = target.value;
+                if (!taskId || !status) {
+                    return;
+                }
+                request('/crm/tasks/status', { method: 'POST', body: { task_id: taskId, status } })
+                    .then(() => loadTasks())
+                    .catch((error) => {
+                        console.error('Error actualizando tarea', error);
+                        showToast('error', error.message || 'No se pudo actualizar la tarea');
+                        loadTasks();
+                    });
             }
-            request('/crm/tasks/status', { method: 'POST', body: { task_id: taskId, status } })
-                .then(() => loadTasks())
-                .catch((error) => {
-                    console.error('Error actualizando tarea', error);
-                    showToast('error', error.message || 'No se pudo actualizar la tarea');
-                    loadTasks();
-                });
-        }
-    });
+        });
+    }
 
-    root.addEventListener('click', (event) => {
-        const leadButton = event.target.closest('.js-select-lead');
-        if (leadButton) {
-            const hcNumber = normalizeHcNumber(leadButton.dataset.leadHc);
-            if (!hcNumber) {
-                return;
+    if (canManageLeads || canManageTickets) {
+        root.addEventListener('click', (event) => {
+            if (canManageLeads) {
+                const leadButton = event.target.closest('.js-select-lead');
+                if (leadButton) {
+                    const hcNumber = normalizeHcNumber(leadButton.dataset.leadHc);
+                    if (!hcNumber) {
+                        return;
+                    }
+                    const lead = findLeadByHcNumber(hcNumber);
+                    if (!lead) {
+                        showToast('error', 'No pudimos cargar el lead seleccionado');
+                        return;
+                    }
+                    fillConvertForm(lead, true);
+                    return;
+                }
             }
-            const lead = findLeadByHcNumber(hcNumber);
-            if (!lead) {
-                showToast('error', 'No pudimos cargar el lead seleccionado');
-                return;
-            }
-            fillConvertForm(lead, true);
-            return;
-        }
 
-        const ticketButton = event.target.closest('.js-reply-ticket');
-        if (ticketButton) {
-            const ticketId = serializeNumber(ticketButton.dataset.ticketId);
-            if (!ticketId) {
-                return;
+            if (canManageTickets) {
+                const ticketButton = event.target.closest('.js-reply-ticket');
+                if (ticketButton) {
+                    const ticketId = serializeNumber(ticketButton.dataset.ticketId);
+                    if (!ticketId) {
+                        return;
+                    }
+                    const ticket = findTicketById(ticketId);
+                    if (!ticket) {
+                        showToast('error', 'No encontramos el ticket seleccionado');
+                        return;
+                    }
+                    applyTicketReply(ticket, true);
+                }
             }
-            const ticket = findTicketById(ticketId);
-            if (!ticket) {
-                showToast('error', 'No encontramos el ticket seleccionado');
-                return;
-            }
-            applyTicketReply(ticket, true);
-        }
-    });
+        });
+    }
 
     disableConvertForm();
     disableTicketReplyForm();

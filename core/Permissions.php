@@ -13,6 +13,18 @@ class Permissions
         'admin.roles' => ['admin.roles.view', 'admin.roles.manage'],
         'settings.manage' => ['settings.view', 'settings.manage'],
         'codes.manage' => ['codes.view', 'codes.manage'],
+        'crm.manage' => ['crm.view', 'crm.leads.manage', 'crm.projects.manage', 'crm.tasks.manage', 'crm.tickets.manage'],
+        'crm.leads.manage' => ['crm.view'],
+        'crm.projects.manage' => ['crm.view'],
+        'crm.tasks.manage' => ['crm.view'],
+        'crm.tickets.manage' => ['crm.view'],
+        'whatsapp.manage' => ['whatsapp.chat.view', 'whatsapp.chat.send', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage'],
+        'whatsapp.chat.send' => ['whatsapp.chat.view'],
+        'whatsapp.templates.manage' => ['whatsapp.chat.view'],
+        'whatsapp.autoresponder.manage' => ['whatsapp.chat.view'],
+        'ai.manage' => ['ai.consultas.enfermedad', 'ai.consultas.plan'],
+        'protocolos.manage' => ['protocolos.templates.view', 'protocolos.templates.manage'],
+        'protocolos.templates.manage' => ['protocolos.templates.view'],
     ];
 
     /**

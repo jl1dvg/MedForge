@@ -4,6 +4,7 @@
 /** @var string|null $mensajeError */
 /** @var string $username */
 /** @var array $scripts */
+$canManage = $canManage ?? false;
 $scripts = array_merge($scripts ?? [], [
     'js/pages/list.js',
 ]);
@@ -47,16 +48,24 @@ $scripts = array_merge($scripts ?? [], [
                 <div class="box-header d-flex justify-content-between align-items-center">
                     <div>
                         <h4 class="box-title">📋 <strong>Listado de plantillas de Protocolos Quirúrgicos</strong></h4>
-                        <h6 class="subtitle">
-                            Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los
-                            botones de acciones.
-                        </h6>
+                        <?php if ($canManage): ?>
+                            <h6 class="subtitle">
+                                Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los
+                                botones de acciones.
+                            </h6>
+                        <?php else: ?>
+                            <h6 class="subtitle">
+                                Consulta las plantillas disponibles. Solicita acceso de edición a un administrador si lo necesitas.
+                            </h6>
+                        <?php endif; ?>
                     </div>
-                    <div>
-                        <a href="/protocolos/crear" class="btn btn-primary">
-                            <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo Protocolo
-                        </a>
-                    </div>
+                    <?php if ($canManage): ?>
+                        <div>
+                            <a href="/protocolos/crear" class="btn btn-primary">
+                                <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo Protocolo
+                            </a>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div class="box-body">
                     <?php if (!empty($procedimientosPorCategoria)): ?>
@@ -76,13 +85,15 @@ $scripts = array_merge($scripts ?? [], [
                                                 (<?= count($procedimientos) ?>)
                                             </button>
                                         </div>
-                                        <div class="ms-3">
-                                            <a href="/protocolos/crear?categoria=<?= urlencode($categoria) ?>"
-                                               class="btn btn-sm btn-outline-primary">
-                                                <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo protocolo en
-                                                esta categoría
-                                            </a>
-                                        </div>
+                                        <?php if ($canManage): ?>
+                                            <div class="ms-3">
+                                                <a href="/protocolos/crear?categoria=<?= urlencode($categoria) ?>"
+                                                   class="btn btn-sm btn-outline-primary">
+                                                    <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo protocolo en
+                                                    esta categoría
+                                                </a>
+                                            </div>
+                                        <?php endif; ?>
                                     </h2>
                                     <div id="collapse-<?= md5($categoria) ?>" class="accordion-collapse collapse"
                                          aria-labelledby="heading-<?= md5($categoria) ?>"
@@ -97,36 +108,45 @@ $scripts = array_merge($scripts ?? [], [
                                                              alt="<?= htmlspecialchars($procedimiento['membrete'] ?? 'Imagen protocolo', ENT_QUOTES, 'UTF-8') ?>"/>
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1 fw-500">
-                                                        <a href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>"
-                                                           class="text-dark hover-primary mb-1 fs-16"
-                                                           data-bs-toggle="tooltip"
-                                                           title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                            <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                                        </a>
+                                                        <?php if ($canManage): ?>
+                                                            <a href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>"
+                                                               class="text-dark hover-primary mb-1 fs-16"
+                                                               data-bs-toggle="tooltip"
+                                                               title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <span class="text-dark fw-600 mb-1 fs-16" data-bs-toggle="tooltip"
+                                                                  title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                            </span>
+                                                        <?php endif; ?>
                                                         <span class="text-fade" data-bs-toggle="tooltip"
                                                               title="<?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                                     <?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>
                                                 </span>
                                                     </div>
-                                                    <div class="dropdown">
-                                                        <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i
-                                                                    class="ti-more-alt"></i></a>
-                                                        <div class="dropdown-menu dropdown-menu-end">
-                                                            <a class="dropdown-item"
-                                                               href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>">Editar</a>
-                                                            <a class="dropdown-item"
-                                                               href="/protocolos/editar?duplicar=<?= urlencode($procedimiento['id']) ?>">Duplicar</a>
-                                                            <form method="POST" action="/protocolos/eliminar"
-                                                                  style="display:inline;"
-                                                                  onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
-                                                                <input type="hidden" name="id"
-                                                                       value="<?= htmlspecialchars($procedimiento['id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                                <button type="submit"
-                                                                        class="dropdown-item text-danger">Eliminar
-                                                                </button>
-                                                            </form>
+                                                    <?php if ($canManage): ?>
+                                                        <div class="dropdown">
+                                                            <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i
+                                                                        class="ti-more-alt"></i></a>
+                                                            <div class="dropdown-menu dropdown-menu-end">
+                                                                <a class="dropdown-item"
+                                                                   href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>">Editar</a>
+                                                                <a class="dropdown-item"
+                                                                   href="/protocolos/editar?duplicar=<?= urlencode($procedimiento['id']) ?>">Duplicar</a>
+                                                                <form method="POST" action="/protocolos/eliminar"
+                                                                      style="display:inline;"
+                                                                      onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
+                                                                    <input type="hidden" name="id"
+                                                                           value="<?= htmlspecialchars($procedimiento['id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                    <button type="submit"
+                                                                            class="dropdown-item text-danger">Eliminar
+                                                                    </button>
+                                                                </form>
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    <?php endif; ?>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>

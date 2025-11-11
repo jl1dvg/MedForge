@@ -25,7 +25,7 @@ class TemplateController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         $config = $this->settings->get();
         $categories = TemplateManager::availableCategories();
@@ -84,7 +84,7 @@ class TemplateController extends BaseController
     public function listTemplates(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         try {
             $filters = [
@@ -116,7 +116,7 @@ class TemplateController extends BaseController
     public function createTemplate(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         try {
             $payload = $this->getBody();
@@ -132,7 +132,7 @@ class TemplateController extends BaseController
     public function updateTemplate(string $templateId): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         try {
             $payload = $this->getBody();
@@ -148,7 +148,7 @@ class TemplateController extends BaseController
     public function deleteTemplate(string $templateId): void
     {
         $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         try {
             $this->templates->deleteTemplate($templateId);

@@ -59,10 +59,13 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
                     $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
                     $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
-                    $canAccessWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
+                    $canAccessCRM = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.manage', 'crm.view', 'crm.leads.manage', 'crm.projects.manage', 'crm.tasks.manage', 'crm.tickets.manage']);
+                    $canAccessWhatsAppChat = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'settings.manage']);
+                    $canConfigureWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']);
                     $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
                     $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
+                    $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -77,11 +80,13 @@ if (!function_exists('isTreeOpen')) {
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="<?= isActive('/crm') ?>">
-                                <a href="/crm">
-                                    <i class="mdi mdi-ticket-account"></i>CRM
-                                </a>
-                            </li>
+                            <?php if ($canAccessCRM): ?>
+                                <li class="<?= isActive('/crm') ?>">
+                                    <a href="/crm">
+                                        <i class="mdi mdi-ticket-account"></i>CRM
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
                                 <a href="/views/pacientes/flujo/flujo.php">
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
@@ -92,7 +97,7 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-bullhorn"></i>Campañas y Leads
                                 </a>
                             </li>
-                            <?php if ($canAccessWhatsApp): ?>
+                            <?php if ($canConfigureWhatsApp): ?>
                                 <li class="<?= isActive('/whatsapp/autoresponder') ?>">
                                     <a href="/whatsapp/autoresponder">
                                         <i class="mdi mdi-robot"></i>Automatizaciones de WhatsApp
@@ -138,7 +143,7 @@ if (!function_exists('isTreeOpen')) {
                                     </a>
                                 </li>
                             <?php endif; ?>
-                            <?php if ($canAccessWhatsApp): ?>
+                            <?php if ($canAccessWhatsAppChat): ?>
                                 <li class="<?= isActive('/whatsapp/chat') ?>">
                                     <a href="/whatsapp/chat">
                                         <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
@@ -171,11 +176,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
                                 </a>
                             </li>
-                            <li class="<?= isActive('/protocolos') ?>">
-                                <a href="/protocolos">
-                                    <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
-                                </a>
-                            </li>
+                            <?php if ($canAccessProtocolTemplates): ?>
+                                <li class="<?= isActive('/protocolos') ?>">
+                                    <a href="/protocolos">
+                                        <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                         </ul>
                     </li>
 

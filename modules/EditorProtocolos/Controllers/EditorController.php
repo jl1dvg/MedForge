@@ -22,6 +22,9 @@ class EditorController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['protocolos.templates.view', 'protocolos.manage', 'administrativo']);
+
+        $canManage = $this->hasPermission(['protocolos.templates.manage', 'protocolos.manage', 'administrativo']);
 
         $procedimientos = $this->service->obtenerProcedimientosAgrupados();
         $mensajeExito = null;
@@ -44,12 +47,14 @@ class EditorController extends BaseController
             'procedimientosPorCategoria' => $procedimientos,
             'mensajeExito' => $mensajeExito,
             'mensajeError' => $mensajeError,
+            'canManage' => $canManage,
         ]);
     }
 
     public function create(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['protocolos.templates.manage', 'protocolos.manage', 'administrativo']);
 
         $categoria = isset($_GET['categoria']) ? (string)$_GET['categoria'] : null;
         $protocolo = $this->service->crearProtocoloVacio($categoria);
@@ -63,6 +68,7 @@ class EditorController extends BaseController
     public function edit(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['protocolos.templates.manage', 'protocolos.manage', 'administrativo']);
 
         $duplicarId = isset($_GET['duplicar']) ? (string)$_GET['duplicar'] : null;
         $id = isset($_GET['id']) ? (string)$_GET['id'] : null;
@@ -113,6 +119,7 @@ class EditorController extends BaseController
     public function store(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['protocolos.templates.manage', 'protocolos.manage', 'administrativo']);
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             $this->json([
@@ -147,6 +154,7 @@ class EditorController extends BaseController
     public function delete(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['protocolos.templates.manage', 'protocolos.manage', 'administrativo']);
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);

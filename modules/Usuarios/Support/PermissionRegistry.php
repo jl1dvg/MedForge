@@ -30,6 +30,31 @@ class PermissionRegistry
                 'insumos.edit' => 'Insumos - Editar',
                 'insumos.delete' => 'Insumos - Eliminar',
             ],
+            'CRM' => [
+                'crm.view' => 'CRM - Acceder y consultar',
+                'crm.leads.manage' => 'CRM - Gestionar leads',
+                'crm.projects.manage' => 'CRM - Gestionar proyectos',
+                'crm.tasks.manage' => 'CRM - Gestionar tareas',
+                'crm.tickets.manage' => 'CRM - Gestionar tickets',
+                'crm.manage' => 'CRM - Acceso total (atajo)',
+            ],
+            'WhatsApp' => [
+                'whatsapp.chat.view' => 'WhatsApp - Ver conversaciones',
+                'whatsapp.chat.send' => 'WhatsApp - Enviar mensajes',
+                'whatsapp.templates.manage' => 'WhatsApp - Gestionar plantillas',
+                'whatsapp.autoresponder.manage' => 'WhatsApp - Gestionar automatizaciones',
+                'whatsapp.manage' => 'WhatsApp - Acceso total (atajo)',
+            ],
+            'Inteligencia Artificial' => [
+                'ai.consultas.enfermedad' => 'IA - Generar resumen de enfermedad',
+                'ai.consultas.plan' => 'IA - Generar plan de tratamiento',
+                'ai.manage' => 'IA - Acceso total (atajo)',
+            ],
+            'Protocolos' => [
+                'protocolos.templates.view' => 'Plantillas de protocolos - Ver',
+                'protocolos.templates.manage' => 'Plantillas de protocolos - Crear y editar',
+                'protocolos.manage' => 'Plantillas de protocolos - Acceso total (atajo)',
+            ],
             'Reportes' => [
                 'reportes.view' => 'Visualizar reportes e informes',
                 'reportes.export' => 'Exportar reportes',
