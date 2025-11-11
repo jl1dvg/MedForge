@@ -1,6 +1,6 @@
 <?php
 
-namespace Models;
+namespace Modules\Examenes\Models;
 
 use PDO;
 use DateTime;
