@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use Models\BillingMainModel;
 use Modules\CronManager\Repositories\CronTaskRepository;
+use Modules\CiveExtension\Services\HealthCheckService;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
@@ -21,6 +22,7 @@ class CronRunner
 {
     private CronTaskRepository $repository;
     private bool $solicitudesLoaded = false;
+    private ?HealthCheckService $civeHealthService = null;
 
     public function __construct(private PDO $pdo)
     {
@@ -194,6 +196,15 @@ class CronRunner
                 },
             ],
             [
+                'slug' => 'cive-extension-health',
+                'name' => 'Supervisión API CIVE Extension',
+                'description' => 'Verifica periódicamente la disponibilidad de los endpoints críticos usados por la extensión.',
+                'interval' => 900,
+                'callback' => function (): array {
+                    return $this->runCiveHealthTask();
+                },
+            ],
+            [
                 'slug' => 'identity-verification-expiration',
                 'name' => 'Caducidad de certificaciones biométricas',
                 'description' => 'Marca certificaciones vencidas según la vigencia configurada y notifica al equipo.',
@@ -203,6 +214,27 @@ class CronRunner
                 },
             ],
         ];
+    }
+
+    private function runCiveHealthTask(): array
+    {
+        $service = $this->civeHealthService();
+        $result = $service->runScheduledChecks();
+
+        return [
+            'status' => $result['status'],
+            'message' => $result['message'],
+            'details' => $result['details'],
+        ];
+    }
+
+    private function civeHealthService(): HealthCheckService
+    {
+        if (!($this->civeHealthService instanceof HealthCheckService)) {
+            $this->civeHealthService = new HealthCheckService($this->pdo);
+        }
+
+        return $this->civeHealthService;
     }
 
     /**

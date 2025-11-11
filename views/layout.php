@@ -200,6 +200,23 @@ $scriptStack = array_values(array_unique($scriptStack));
             panel.setIntegrationWarning('');
         }
     </script>
+    <?php
+    $civeBootstrap = [];
+    if ($pdoInstance instanceof \PDO) {
+        try {
+            $civeService = new \Modules\CiveExtension\Services\ConfigService($pdoInstance);
+            $civeBootstrap = $civeService->getFrontendBootstrapConfig();
+        } catch (\Throwable $exception) {
+            error_log('No fue posible cargar la configuración pública de CIVE Extension: ' . $exception->getMessage());
+        }
+    }
+    ?>
+    <?php if (!empty($civeBootstrap)): ?>
+        <script>
+            window.MEDF = window.MEDF || {};
+            window.MEDF.civeExtension = <?= json_encode($civeBootstrap, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        </script>
+    <?php endif; ?>
 <?php endif; ?>
 
 </body>

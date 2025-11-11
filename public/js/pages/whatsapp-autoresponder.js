@@ -1013,7 +1013,26 @@
 
         const fragment = document.createDocumentFragment();
 
-        SCENARIO_STAGE_OPTIONS.forEach((stageOption) => {
+        const stageOrder = SCENARIO_STAGE_OPTIONS.map((stageOption, orderIndex) => {
+            const stageItems = stageGroups.get(stageOption.value) || [];
+            const firstIndex = stageItems.length > 0
+                ? stageItems.reduce((min, entry) => Math.min(min, entry.index), Number.POSITIVE_INFINITY)
+                : Number.POSITIVE_INFINITY;
+
+            return {
+                ...stageOption,
+                firstIndex,
+                orderIndex,
+            };
+        }).sort((a, b) => {
+            if (a.firstIndex === b.firstIndex) {
+                return a.orderIndex - b.orderIndex;
+            }
+
+            return a.firstIndex - b.firstIndex;
+        });
+
+        stageOrder.forEach((stageOption) => {
             const section = document.createElement('div');
             section.className = 'scenario-stage card border-0 shadow-sm mb-3';
             section.dataset.stage = stageOption.value;

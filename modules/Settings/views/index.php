@@ -142,13 +142,15 @@ JS;
                                             ?>
                                             <div class="<?= $columnClass; ?>">
                                                 <div class="mb-3">
-                                                    <label for="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>"
-                                                           class="form-label fw-500">
-                                                        <?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8'); ?>
-                                                        <?php if ($required): ?>
-                                                            <span class="text-danger">*</span>
-                                                        <?php endif; ?>
-                                                    </label>
+                                                    <?php if ($type !== 'checkbox'): ?>
+                                                        <label for="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>"
+                                                               class="form-label fw-500">
+                                                            <?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                                            <?php if ($required): ?>
+                                                                <span class="text-danger">*</span>
+                                                            <?php endif; ?>
+                                                        </label>
+                                                    <?php endif; ?>
                                                     <?php if ($type === 'textarea'): ?>
                                                         <textarea
                                                             class="form-control"
@@ -180,6 +182,12 @@ JS;
                                                                 id="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>"
                                                                 value="1"
                                                                 <?= $isChecked ? 'checked' : ''; ?>>
+                                                            <label class="form-check-label fw-500" for="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>">
+                                                                <?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                                                <?php if ($required): ?>
+                                                                    <span class="text-danger">*</span>
+                                                                <?php endif; ?>
+                                                            </label>
                                                         </div>
                                                     <?php else: ?>
                                                         <?php

@@ -7,6 +7,7 @@ use function array_merge;
 use function array_splice;
 use function array_unique;
 use function array_values;
+use function array_unshift;
 use function is_array;
 use function is_string;
 use function in_array;
@@ -469,6 +470,7 @@ class AutoresponderFlow
         $description = self::sanitizeLine((string) ($scenario['description'] ?? ''));
 
         $conditions = self::sanitizeScenarioConditions($scenario['conditions'] ?? []);
+        $conditions = self::enforceScenarioGuards($id, $conditions);
         if (empty($conditions)) {
             $conditions = [['type' => 'always']];
         }
@@ -494,6 +496,79 @@ class AutoresponderFlow
             'stage_id' => $stage,
             'stageId' => $stage,
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $conditions
+     * @return array<int, array<string, mixed>>
+     */
+    private static function enforceScenarioGuards(string $scenarioId, array $conditions): array
+    {
+        switch ($scenarioId) {
+            case 'primer_contacto':
+                $conditions = self::ensureCondition($conditions, [
+                    'type' => 'is_first_time',
+                    'value' => true,
+                ]);
+                $conditions = self::ensureCondition($conditions, [
+                    'type' => 'has_consent',
+                    'value' => false,
+                ]);
+                break;
+            case 'captura_cedula':
+                $conditions = self::ensureCondition($conditions, [
+                    'type' => 'state_is',
+                    'value' => 'consentimiento_pendiente',
+                ]);
+                break;
+            case 'validar_cedula':
+                $conditions = self::ensureCondition($conditions, [
+                    'type' => 'state_is',
+                    'value' => 'esperando_cedula',
+                ]);
+                break;
+        }
+
+        return $conditions;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $conditions
+     * @param array<string, mixed> $required
+     * @return array<int, array<string, mixed>>
+     */
+    private static function ensureCondition(array $conditions, array $required): array
+    {
+        $type = $required['type'] ?? null;
+        if (!is_string($type) || $type === '') {
+            return $conditions;
+        }
+
+        foreach ($conditions as $condition) {
+            if (($condition['type'] ?? null) !== $type) {
+                continue;
+            }
+
+            if (array_key_exists('value', $required)) {
+                if (($condition['value'] ?? null) === $required['value']) {
+                    return $conditions;
+                }
+                continue;
+            }
+
+            if (array_key_exists('values', $required)) {
+                if (($condition['values'] ?? null) === $required['values']) {
+                    return $conditions;
+                }
+                continue;
+            }
+
+            return $conditions;
+        }
+
+        array_unshift($conditions, $required);
+
+        return $conditions;
     }
 
     private static function sanitizeScenarioStage($value, string $scenarioId): string
