@@ -103,11 +103,17 @@ class ContactConsentRepository
             'UPDATE whatsapp_contact_consent SET consent_status = :status, consent_responded_at = NOW() WHERE wa_number = :number AND cedula = :identifier'
         );
 
-        return $stmt->execute([
+        $stmt->execute([
             ':status' => $status,
             ':number' => $waNumber,
             ':identifier' => $identifier,
         ]);
+
+        if ($stmt->rowCount() > 0) {
+            return true;
+        }
+
+        return $this->insertMissingConsentRecord($waNumber, $identifier, $status);
     }
 
     public function markPendingResponse(string $waNumber, string $identifier): void
@@ -177,5 +183,24 @@ class ContactConsentRepository
         } catch (PDOException $exception) {
             error_log('No fue posible limpiar el historial de consentimiento de WhatsApp: ' . $exception->getMessage());
         }
+    }
+
+    private function insertMissingConsentRecord(string $waNumber, string $identifier, string $status): bool
+    {
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO whatsapp_contact_consent (wa_number, cedula, patient_hc_number, patient_full_name, consent_status, consent_source, consent_asked_at, consent_responded_at)
+             VALUES (:number, :identifier, NULL, NULL, :status, :source, :asked_at, :responded_at)'
+        );
+
+        return $stmt->execute([
+            ':number' => $waNumber,
+            ':identifier' => $identifier,
+            ':status' => $status,
+            ':source' => 'manual',
+            ':asked_at' => $now,
+            ':responded_at' => $now,
+        ]);
     }
 }
