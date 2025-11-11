@@ -3,6 +3,7 @@
 namespace Modules\WhatsApp\Config;
 
 use Models\SettingsModel;
+use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Support\DataProtectionCopy;
 use PDO;
 use RuntimeException;
@@ -151,11 +152,23 @@ class WhatsAppSettings
                 }
 
                 $flowOverrides = [];
-                $rawFlow = $options['whatsapp_autoresponder_flow'] ?? '';
-                if (is_string($rawFlow) && $rawFlow !== '') {
-                    $decodedFlow = json_decode($rawFlow, true);
-                    if (is_array($decodedFlow) && isset($decodedFlow['consent']) && is_array($decodedFlow['consent'])) {
-                        $flowOverrides = $decodedFlow['consent'];
+                try {
+                    $flowRepository = new AutoresponderFlowRepository($this->pdo);
+                    $activeFlow = $flowRepository->loadActive();
+                    if (!empty($activeFlow['consent']) && is_array($activeFlow['consent'])) {
+                        $flowOverrides = $activeFlow['consent'];
+                    }
+                } catch (Throwable $exception) {
+                    error_log('No fue posible cargar el flujo activo de autorespuesta: ' . $exception->getMessage());
+                }
+
+                if (empty($flowOverrides)) {
+                    $rawFlow = $options['whatsapp_autoresponder_flow'] ?? '';
+                    if (is_string($rawFlow) && $rawFlow !== '') {
+                        $decodedFlow = json_decode($rawFlow, true);
+                        if (is_array($decodedFlow) && isset($decodedFlow['consent']) && is_array($decodedFlow['consent'])) {
+                            $flowOverrides = $decodedFlow['consent'];
+                        }
                     }
                 }
 
