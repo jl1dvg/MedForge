@@ -1,4 +1,20 @@
--- Normaliza examenes solicitados en consulta y crea infraestructura CRM/turnero
+
+SET @query := (
+    SELECT IF(
+        EXISTS (
+            SELECT 1
+            FROM information_schema.statistics
+            WHERE table_schema = DATABASE()
+              AND table_name = 'consulta_data'
+              AND index_name = 'idx_consulta_data_form_hc'
+        ),
+        'SELECT "idx_consulta_data_form_hc ya existe";',
+        'ALTER TABLE consulta_data ADD INDEX idx_consulta_data_form_hc (form_id, hc_number);'
+    )
+);
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS consulta_examenes (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
