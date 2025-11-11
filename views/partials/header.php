@@ -60,16 +60,52 @@
             <ul class="nav navbar-nav">
                 <!-- User Account-->
                 <li class="dropdown user user-menu">
+                    <?php
+                    $headerUser = isset($currentUser) && is_array($currentUser) ? $currentUser : [];
+                    $headerDisplayName = $headerUser['display_name'] ?? ($username ?? 'Usuario');
+                    $headerRole = $headerUser['role_name'] ?? 'Usuario';
+                    $headerAvatarUrl = $headerUser['profile_photo_url'] ?? null;
+
+                    if (!function_exists('medf_initials')) {
+                        function medf_initials(string $name): string
+                        {
+                            $trimmed = trim($name);
+                            if ($trimmed === '') {
+                                return 'U';
+                            }
+
+                            $parts = preg_split('/\s+/u', $trimmed) ?: [];
+                            if (count($parts) === 1) {
+                                return mb_strtoupper(mb_substr($parts[0], 0, 2));
+                            }
+
+                            $first = mb_substr($parts[0], 0, 1);
+                            $last = mb_substr($parts[count($parts) - 1], 0, 1);
+
+                            return mb_strtoupper($first . $last);
+                        }
+                    }
+
+                    $headerInitials = medf_initials((string) $headerDisplayName);
+                    ?>
                     <a href="#"
                        class="waves-effect waves-light dropdown-toggle w-auto l-h-12 bg-transparent p-0 no-shadow"
                        data-bs-toggle="dropdown" title="User">
                         <div class="d-flex pt-1">
                             <div class="text-end me-10">
-                                <p class="pt-5 fs-14 mb-0 fw-700 text-primary"><?php echo htmlspecialchars($username); ?></p>
-                                <small class="fs-10 mb-0 text-uppercase text-mute">Admin</small>
+                                <p class="pt-5 fs-14 mb-0 fw-700 text-primary"><?= htmlspecialchars((string) $headerDisplayName, ENT_QUOTES, 'UTF-8'); ?></p>
+                                <small class="fs-10 mb-0 text-uppercase text-mute"><?= htmlspecialchars((string) $headerRole, ENT_QUOTES, 'UTF-8'); ?></small>
                             </div>
-                            <img src="<?php echo img('avatar/avatar-1.png'); ?>"
-                                 class="avatar rounded-10 bg-primary-light h-40 w-40" alt=""/>
+                            <?php if ($headerAvatarUrl): ?>
+                                <img src="<?= htmlspecialchars($headerAvatarUrl, ENT_QUOTES, 'UTF-8'); ?>"
+                                     class="avatar rounded-10 h-40 w-40"
+                                     style="object-fit: cover;"
+                                     alt="<?= htmlspecialchars((string) $headerDisplayName, ENT_QUOTES, 'UTF-8'); ?>"/>
+                            <?php else: ?>
+                                <span class="avatar rounded-10 bg-primary-light h-40 w-40 d-inline-flex align-items-center justify-content-center text-primary fw-bold">
+                                    <?= htmlspecialchars($headerInitials, ENT_QUOTES, 'UTF-8'); ?>
+                                </span>
+                            <?php endif; ?>
                         </div>
                     </a>
                     <ul class="dropdown-menu animated flipInX">

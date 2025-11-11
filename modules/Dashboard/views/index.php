@@ -388,13 +388,48 @@ JS,
                     <div class="inner-user-div3">
                         <?php if (!empty($doctores_top)): ?>
                             <?php foreach ($doctores_top as $row): ?>
+                                <?php
+                                $doctorNombre = $row['cirujano_1'] ?? '';
+                                $doctorAvatar = $row['avatar'] ?? null;
+
+                                if (!function_exists('medf_dashboard_initials')) {
+                                    function medf_dashboard_initials(string $name): string
+                                    {
+                                        $trimmed = trim($name);
+                                        if ($trimmed === '') {
+                                            return 'DR';
+                                        }
+
+                                        $parts = preg_split('/\s+/u', $trimmed) ?: [];
+                                        if (count($parts) === 1) {
+                                            return mb_strtoupper(mb_substr($parts[0], 0, 2));
+                                        }
+
+                                        $first = mb_substr($parts[0], 0, 1);
+                                        $last = mb_substr($parts[count($parts) - 1], 0, 1);
+
+                                        return mb_strtoupper($first . $last);
+                                    }
+                                }
+
+                                $doctorInitials = medf_dashboard_initials((string) $doctorNombre);
+                                ?>
                                 <div class="d-flex align-items-center mb-30">
                                     <div class="me-15">
-                                        <img src="/public/images/avatar/avatar-<?= rand(1, 15) ?>.png" class="avatar avatar-lg rounded10 bg-primary-light" alt="">
+                                        <?php if ($doctorAvatar): ?>
+                                            <img src="<?= htmlspecialchars($doctorAvatar, ENT_QUOTES, 'UTF-8'); ?>"
+                                                 class="avatar avatar-lg rounded10"
+                                                 style="object-fit: cover;"
+                                                 alt="<?= htmlspecialchars((string) $doctorNombre, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php else: ?>
+                                            <span class="avatar avatar-lg rounded10 bg-primary-light d-inline-flex align-items-center justify-content-center text-primary fw-bold">
+                                                <?= htmlspecialchars($doctorInitials, ENT_QUOTES, 'UTF-8'); ?>
+                                            </span>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="d-flex flex-column flex-grow-1 fw-500">
-                                        <span class="text-dark mb-1 fs-16"><?= htmlspecialchars($row['cirujano_1']); ?></span>
-                                        <span class="text-fade">Cirugías: <?= number_format($row['total']); ?></span>
+                                        <span class="text-dark mb-1 fs-16"><?= htmlspecialchars((string) $doctorNombre, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <span class="text-fade">Cirugías: <?= number_format((float) ($row['total'] ?? 0)); ?></span>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
