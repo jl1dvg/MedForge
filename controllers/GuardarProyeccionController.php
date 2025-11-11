@@ -436,7 +436,21 @@ class GuardarProyeccionController
     public function actualizarEstado($formId, $nuevoEstado): array
     {
         error_log("🟣 Intentando actualizar estado: form_id=$formId, nuevoEstado=$nuevoEstado");
-        $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado WHERE form_id = :form_id";
+        $select = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = :form_id LIMIT 1");
+        $select->execute([':form_id' => $formId]);
+        $estadoActual = $select->fetchColumn();
+
+        if ($estadoActual === false) {
+            error_log("🔴 El form_id $formId NO existe en procedimiento_proyectado");
+            return ['success' => false, 'message' => 'El form_id no existe en la tabla procedimiento_proyectado'];
+        }
+
+        if ($estadoActual === $nuevoEstado) {
+            error_log("🟠 El estado solicitado ya estaba registrado. No se realizan cambios adicionales.");
+            return ['success' => true, 'message' => 'Estado ya estaba registrado'];
+        }
+
+        $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado WHERE form_id = :form_id AND estado_agenda <> :estado";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
             ':estado' => $nuevoEstado,
@@ -444,23 +458,14 @@ class GuardarProyeccionController
         ]);
         error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
         if ($stmt->rowCount() > 0) {
-            // Registrar el cambio en el historial de estados
-            $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
-                     VALUES (?, ?, NOW())";
+            $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)"
+                     . " VALUES (?, ?, NOW())";
             $this->db->prepare($sql2)->execute([$formId, $nuevoEstado]);
-            return ['success' => true];
-        } else {
-            // Nuevo chequeo: ¿existe ese form_id?
-            error_log("🟤 Chequeando existencia de form_id: $formId");
-            $check = $this->db->prepare("SELECT COUNT(*) FROM procedimiento_proyectado WHERE form_id = ?");
-            $check->execute([$formId]);
-            if ($check->fetchColumn() == 0) {
-                error_log("🔴 El form_id $formId NO existe en procedimiento_proyectado");
-                return ['success' => false, 'message' => 'El form_id no existe en la tabla procedimiento_proyectado'];
-            }
-            error_log("🟠 El form_id $formId existe pero no se pudo actualizar el estado (posiblemente mismo valor)");
-            return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
+            return ['success' => true, 'message' => 'Estado actualizado'];
         }
+
+        error_log("🟤 No se registraron cambios de estado para form_id $formId");
+        return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
     }
 
     public function getCambiosRecientes()

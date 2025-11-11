@@ -4,6 +4,7 @@ declare(strict_types=1);
 use Modules\Pacientes\Services\PacienteService;
 
 require_once __DIR__ . '/../Services/PacienteService.php';
+require_once __DIR__ . '/../../Shared/Services/PatientIdentityService.php';
 
 $pdo = new PDO('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -46,9 +47,43 @@ $schema = [
         form_id TEXT,
         hc_number TEXT,
         fecha_creacion TEXT,
+        fecha_registro TEXT,
         procedimientos TEXT,
         cod_derivacion TEXT,
         fecha_vigencia TEXT
+    )',
+    'CREATE TABLE prefactura_detalle_procedimientos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prefactura_id INTEGER NOT NULL,
+        posicion INTEGER,
+        external_id TEXT,
+        proc_interno TEXT,
+        codigo TEXT,
+        descripcion TEXT,
+        lateralidad TEXT,
+        observaciones TEXT,
+        precio_base REAL,
+        precio_tarifado REAL
+    )',
+    'CREATE TABLE prefactura_detalle_diagnosticos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prefactura_id INTEGER NOT NULL,
+        posicion INTEGER,
+        diagnostico_codigo TEXT,
+        descripcion TEXT,
+        lateralidad TEXT,
+        evidencia TEXT,
+        observaciones TEXT
+    )',
+    'CREATE TABLE prefactura_payload_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        prefactura_id INTEGER,
+        hc_number TEXT,
+        form_id TEXT,
+        source TEXT,
+        payload_hash TEXT,
+        payload_json TEXT,
+        received_at TEXT DEFAULT CURRENT_TIMESTAMP
     )',
     'CREATE TABLE protocolo_data (
         form_id TEXT,
@@ -96,8 +131,16 @@ $procedimientosPrefactura = json_encode([
     ['procedimiento' => 'Cirugía de catarata', 'ojoId' => 'OD']
 ]);
 
-$pdo->exec("INSERT INTO prefactura_paciente (form_id, hc_number, fecha_creacion, procedimientos, cod_derivacion, fecha_vigencia) VALUES
-    ('PF001', 'HC123', '2024-03-15 09:15:00', '$procedimientosPrefactura', 'DER-001', '2099-01-01')
+$pdo->exec("INSERT INTO prefactura_paciente (id, form_id, hc_number, fecha_creacion, fecha_registro, procedimientos, cod_derivacion, fecha_vigencia) VALUES
+    (1, 'PF001', 'HC123', '2024-03-15 09:15:00', '2024-03-14 08:00:00', '$procedimientosPrefactura', 'DER-001', '2099-01-01')
+");
+
+$pdo->exec("INSERT INTO prefactura_detalle_procedimientos (prefactura_id, posicion, external_id, proc_interno, codigo, descripcion, lateralidad, observaciones, precio_base, precio_tarifado) VALUES
+    (1, 0, 'PROC-001', 'PROC-001', 'PROC-001', 'Cirugía de catarata', 'OD', 'Observación de prueba', 150.0, 200.0)
+");
+
+$pdo->exec("INSERT INTO prefactura_detalle_diagnosticos (prefactura_id, posicion, diagnostico_codigo, descripcion, lateralidad, evidencia) VALUES
+    (1, 0, 'D1', 'Diagnóstico inicial', 'OD', 'Control postoperatorio')
 ");
 
 $pdo->exec("INSERT INTO protocolo_data (form_id, hc_number, membrete, fecha_inicio, status) VALUES

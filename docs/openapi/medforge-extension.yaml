@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: MedForge Extension Ingestion API
+  description: >-
+    Contrato oficial para los endpoints que consume la extensión CIVE al
+    sincronizar prefacturas, consultas y actualizaciones de estado con la
+    plataforma MedForge. El contrato define los formatos esperados y los códigos
+    de respuesta estándar para facilitar pruebas automatizadas y evitar
+    regresiones cuando se ajusta la extensión o el backend.
+  version: 1.0.0
+servers:
+  - url: https://asistentecive.consulmed.me
+    description: Entorno productivo
+  - url: http://localhost:8080
+    description: Entorno local de pruebas
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/prefactura/guardar.php:
+    post:
+      summary: Registrar o actualizar prefactura
+      description: >-
+        Inserta o actualiza los datos de una prefactura clínica, normalizando los
+        procedimientos y diagnósticos asociados y registrando un evento de
+        auditoría del payload recibido.
+      operationId: guardarPrefactura
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrefacturaRequest'
+      responses:
+        '200':
+          description: Operación realizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrefacturaResponse'
+        '400':
+          description: Datos inválidos o JSON mal formado
+        '401':
+          description: Falta o es inválida la credencial de API
+  /api/proyecciones/llegada.php:
+    post:
+      summary: Registrar llegada del paciente
+      description: >-
+        Actualiza el estado de agenda del formulario clínico y dispara las
+        notificaciones asociadas a la llegada del paciente.
+      operationId: registrarLlegada
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoLlegadaRequest'
+      responses:
+        '200':
+          description: Estado registrado correctamente
+        '400':
+          description: Petición inválida o falta form_id
+        '401':
+          description: Falta o es inválida la credencial de API
+  /api/proyecciones/optometria.php:
+    post:
+      summary: Actualizar estado de optometría
+      description: >-
+        Marca el formulario clínico como atendido por optometría y registra un
+        nuevo hito en el historial de estados.
+      operationId: actualizarEstadoOptometria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoOptometriaRequest'
+      responses:
+        '200':
+          description: Estado actualizado
+        '400':
+          description: Petición inválida
+        '401':
+          description: Falta o es inválida la credencial de API
+  /api/consultas/guardar.php:
+    post:
+      summary: Guardar consulta clínica
+      description: >-
+        Persiste la información clínica detallada de una consulta externa,
+        incluyendo diagnósticos, examen físico y hallazgos oftalmológicos.
+      operationId: guardarConsulta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaClinicaRequest'
+      responses:
+        '200':
+          description: Consulta almacenada
+        '400':
+          description: Datos inválidos
+        '401':
+          description: Falta o es inválida la credencial de API
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  schemas:
+    PrefacturaRequest:
+      type: object
+      required:
+        - hcNumber
+      properties:
+        hcNumber:
+          type: string
+          description: Número de historia clínica del paciente
+        form_id:
+          type: string
+          description: Identificador del formulario en SigCenter
+        sede:
+          type: string
+        area:
+          type: string
+        afiliacion:
+          type: string
+        parentesco:
+          type: string
+        tipoAfiliacion:
+          type: string
+        numeroAprobacion:
+          type: string
+        tipoPlan:
+          type: string
+        fechaRegistro:
+          type: string
+          format: date-time
+        fechaVigencia:
+          type: string
+          format: date-time
+        codDerivacion:
+          type: string
+        numSecuencialDerivacion:
+          type: string
+        numHistoria:
+          type: string
+        examenFisico:
+          type: string
+        observacion:
+          type: string
+        procedimientos:
+          type: array
+          description: Lista de procedimientos proyectados o realizados
+          items:
+            $ref: '#/components/schemas/ProcedimientoItem'
+        diagnosticos:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagnosticoItem'
+        derechos:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        insumos:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        oxigeno:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        anestesiaTiempo:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        source:
+          type: string
+          description: Origen del payload (por defecto `extension_cive`)
+    ProcedimientoItem:
+      type: object
+      required:
+        - procInterno
+      properties:
+        id:
+          type: string
+        procInterno:
+          type: string
+        procCodigo:
+          type: string
+        procDetalle:
+          type: string
+        procedimiento:
+          type: string
+        ojoId:
+          type: string
+        observaciones:
+          type: string
+        precioBase:
+          type: string
+          pattern: '^\\d+(\\.\\d{1,2})?$'
+        procPrecio:
+          type: string
+          pattern: '^\\d+(\\.\\d{1,2})?$'
+    DiagnosticoItem:
+      type: object
+      properties:
+        idDiagnostico:
+          type: string
+        diagnostico:
+          type: string
+        descripcion:
+          type: string
+        ojo:
+          type: string
+        evidencia:
+          type: string
+        observaciones:
+          type: string
+    PrefacturaResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    EstadoLlegadaRequest:
+      type: object
+      required:
+        - form_id
+      properties:
+        form_id:
+          type: string
+        hcNumber:
+          type: string
+        estado_agenda:
+          type: string
+          enum: [AGENDADO, LLEGADO, ATENDIDO]
+        usuario:
+          type: string
+        observaciones:
+          type: string
+    EstadoOptometriaRequest:
+      type: object
+      required:
+        - form_id
+      properties:
+        form_id:
+          type: string
+        estado_agenda:
+          type: string
+          enum: [OPTOMETRIA, ATENDIDO, CERRADO]
+        usuario:
+          type: string
+        observaciones:
+          type: string
+    ConsultaClinicaRequest:
+      type: object
+      required:
+        - hcNumber
+        - form_id
+      properties:
+        hcNumber:
+          type: string
+        form_id:
+          type: string
+        examenFisico:
+          type: string
+        diagnosticos:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagnosticoItem'
+        planManejo:
+          type: string
+        observaciones:
+          type: string
+        usuario:
+          type: string

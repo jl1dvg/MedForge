@@ -11,6 +11,8 @@ class PacienteService
 {
     private PDO $db;
     private ?bool $prefacturaTableExists = null;
+    /** @var array<string, bool> */
+    private array $tablaDisponibleCache = [];
     private PatientIdentityService $identityService;
 
     public function __construct(PDO $pdo)
@@ -48,15 +50,50 @@ class PacienteService
 
     public function getDiagnosticosPorPaciente(string $hcNumber): array
     {
+        $uniqueDiagnoses = [];
+
+        if ($this->tablaDisponible('prefactura_detalle_diagnosticos')) {
+            $stmtPref = $this->db->prepare(
+                <<<'SQL'
+                SELECT
+                    d.diagnostico_codigo,
+                    d.descripcion,
+                    pp.fecha_creacion,
+                    pp.fecha_registro
+                FROM prefactura_detalle_diagnosticos d
+                INNER JOIN prefactura_paciente pp ON pp.id = d.prefactura_id
+                WHERE pp.hc_number = ?
+                ORDER BY pp.fecha_creacion DESC, d.posicion ASC
+                SQL
+            );
+            $stmtPref->execute([$hcNumber]);
+
+            while ($row = $stmtPref->fetch(PDO::FETCH_ASSOC)) {
+                $codigo = $row['diagnostico_codigo'] ?: ($row['descripcion'] ?? null);
+                if (!$codigo) {
+                    continue;
+                }
+
+                if (!isset($uniqueDiagnoses[$codigo])) {
+                    $fechaEvento = $row['fecha_creacion'] ?? $row['fecha_registro'] ?? null;
+                    $timestamp = $fechaEvento ? strtotime((string) $fechaEvento) : false;
+                    $uniqueDiagnoses[$codigo] = [
+                        'idDiagnostico' => $row['diagnostico_codigo'] ?: $codigo,
+                        'fecha' => $timestamp ? date('d M Y', $timestamp) : null,
+                    ];
+                }
+            }
+        }
+
         $stmt = $this->db->prepare(
             'SELECT fecha, diagnosticos FROM consulta_data WHERE hc_number = ? ORDER BY fecha DESC'
         );
         $stmt->execute([$hcNumber]);
 
-        $uniqueDiagnoses = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $diagnosticos = json_decode($row['diagnosticos'], true) ?: [];
-            $fecha = date('d M Y', strtotime($row['fecha']));
+            $timestamp = strtotime((string) $row['fecha']);
+            $fecha = $timestamp ? date('d M Y', $timestamp) : null;
 
             foreach ($diagnosticos as $diagnostico) {
                 $id = $diagnostico['idDiagnostico'] ?? null;
@@ -295,21 +332,32 @@ class PacienteService
 
         $prefacturas = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $detalles = $this->obtenerProcedimientosNormalizados((int) ($row['id'] ?? 0));
             $procedimientos = [];
-            if (!empty($row['procedimientos']) && is_string($row['procedimientos'])) {
-                $procedimientos = json_decode($row['procedimientos'], true);
+
+            if ($detalles !== null) {
+                $procedimientos = $detalles;
+                $row['procedimientos_detalle'] = $detalles;
+            } elseif (!empty($row['procedimientos']) && is_string($row['procedimientos'])) {
+                $procedimientos = json_decode($row['procedimientos'], true) ?: [];
             }
 
             $nombreProcedimientos = '';
-            if (is_array($procedimientos)) {
+            if (is_array($procedimientos) && $procedimientos !== []) {
                 foreach ($procedimientos as $index => $proc) {
                     $linea = ($index + 1) . '. ';
-                    if (!empty($proc['procedimiento'])) {
-                        $linea .= $proc['procedimiento'];
+                    $descripcion = $proc['descripcion'] ?? $proc['procedimiento'] ?? $proc['procInterno'] ?? $proc['procDetalle'] ?? $proc['codigo'] ?? 'Procedimiento';
+                    $linea .= $descripcion;
+
+                    $lateralidad = $proc['lateralidad'] ?? $proc['ojoId'] ?? null;
+                    if (!empty($lateralidad)) {
+                        $linea .= ' - Ojo: ' . $lateralidad;
                     }
-                    if (!empty($proc['ojoId'])) {
-                        $linea .= ' - Ojo: ' . $proc['ojoId'];
+
+                    if (!empty($proc['observaciones'])) {
+                        $linea .= ' (' . $proc['observaciones'] . ')';
                     }
+
                     $nombreProcedimientos .= $linea . "\n";
                 }
             } else {
@@ -653,5 +701,59 @@ class PacienteService
         }
 
         return $this->prefacturaTableExists;
+    }
+
+    private function obtenerProcedimientosNormalizados(int $prefacturaId): ?array
+    {
+        if ($prefacturaId === 0 || !$this->tablaDisponible('prefactura_detalle_procedimientos')) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare(
+            <<<'SQL'
+            SELECT
+                posicion,
+                external_id,
+                proc_interno,
+                codigo,
+                descripcion,
+                lateralidad,
+                observaciones,
+                precio_base,
+                precio_tarifado
+            FROM prefactura_detalle_procedimientos
+            WHERE prefactura_id = ?
+            ORDER BY posicion ASC
+            SQL
+        );
+        $stmt->execute([$prefacturaId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function tablaDisponible(string $table): bool
+    {
+        if (isset($this->tablaDisponibleCache[$table])) {
+            return $this->tablaDisponibleCache[$table];
+        }
+
+        try {
+            $driver = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $stmt = $this->db->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?");
+                $stmt->execute([$table]);
+                $exists = (bool) $stmt->fetchColumn();
+            } else {
+                $stmt = $this->db->prepare(
+                    'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'
+                );
+                $stmt->execute([$table]);
+                $exists = (bool) $stmt->fetchColumn();
+            }
+        } catch (PDOException) {
+            $exists = false;
+        }
+
+        return $this->tablaDisponibleCache[$table] = $exists;
     }
 }
