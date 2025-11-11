@@ -212,6 +212,9 @@
                 name: 'Consentimiento aceptado',
                 description: 'Guarda la autorización y retoma el flujo principal.',
                 intercept_menu: true,
+                stage: 'consent',
+                stage_id: 'consent',
+                stageId: 'consent',
                 conditions: [
                     {type: 'message_in', values: ['acepto', 'autorizo', 'si autorizo', 'sí autorizo']},
                 ],
@@ -232,6 +235,9 @@
                 name: 'Solicita agendamiento',
                 description: 'Envía botones para elegir acción y marca el estado del flujo.',
                 intercept_menu: true,
+                stage: 'scheduling',
+                stage_id: 'scheduling',
+                stageId: 'scheduling',
                 conditions: [
                     {type: 'message_contains', keywords: ['agendar', 'cita', 'agendamiento']},
                 ],
@@ -253,6 +259,9 @@
                 name: 'Transferir a agente',
                 description: 'Confirma la derivación y conserva el contexto.',
                 intercept_menu: true,
+                stage: 'arrival',
+                stage_id: 'arrival',
+                stageId: 'arrival',
                 conditions: [
                     {type: 'message_contains', keywords: ['asesor', 'agente', 'humano', 'persona']},
                 ],
@@ -273,6 +282,14 @@
         return STAGE_VALUE_SET.has(normalized) ? normalized : 'custom';
     }
 
+    function readScenarioStage(scenario) {
+        if (!scenario || typeof scenario !== 'object') {
+            return 'custom';
+        }
+
+        return resolveScenarioStage(scenario.stage || scenario.stage_id || scenario.stageId);
+    }
+
     function getScenarioStageOption(value) {
         const normalized = resolveScenarioStage(value);
         return SCENARIO_STAGE_OPTIONS.find((option) => option.value === normalized) || SCENARIO_STAGE_OPTIONS[SCENARIO_STAGE_OPTIONS.length - 1];
@@ -284,6 +301,22 @@
         }
 
         return value.replace(/[\W_]/g, '\\$&');
+    }
+
+    const htmlEntityDecoder = document.createElement('textarea');
+
+    function decodeHtmlEntities(value) {
+        if (typeof value !== 'string') {
+            return '';
+        }
+
+        if (value.indexOf('&') === -1) {
+            return value;
+        }
+
+        htmlEntityDecoder.innerHTML = value;
+
+        return htmlEntityDecoder.value;
     }
 
     function getLocalStorage() {
@@ -454,50 +487,140 @@
         {
             id: 'primer_contacto',
             name: 'Primer contacto',
-            description: 'Da la bienvenida y explica cómo funciona la atención automática.',
+            description: 'Da la bienvenida, solicita el consentimiento y explica los siguientes pasos.',
             stage: 'arrival',
+            stage_id: 'arrival',
+            stageId: 'arrival',
             intercept_menu: true,
             conditions: [{type: 'always'}],
             actions: [
-                {type: 'send_message', message: {type: 'text', body: '¡Hola! Soy el asistente virtual de MedForge. Te acompañaré durante todo tu proceso. ¿Listo para comenzar?'}},
-                {type: 'goto_menu'},
+                {
+                    type: 'send_message',
+                    message: {
+                        type: 'text',
+                        body: '¡Hola! Soy el asistente virtual de MedForge 👁️. Te acompañaré durante todo tu proceso.',
+                    },
+                },
+                {
+                    type: 'send_buttons',
+                    message: {
+                        type: 'buttons',
+                        body: '¿Nos autorizas a usar tus datos protegidos para brindarte atención?',
+                        buttons: [
+                            {id: 'acepto', title: 'Acepto'},
+                            {id: 'no_acepto', title: 'No acepto'},
+                        ],
+                    },
+                },
+                {type: 'set_state', state: 'consentimiento_pendiente'},
             ],
         },
         {
             id: 'captura_cedula',
-            name: 'Solicitar identificación',
-            description: 'Solicita el número de cédula o historia clínica para continuar.',
+            name: 'Captura de consentimiento',
+            description: 'Registra la autorización y solicita el identificador del paciente.',
             stage: 'validation',
+            stage_id: 'validation',
+            stageId: 'validation',
             intercept_menu: true,
-            conditions: [{type: 'message_contains', keywords: ['cedula', 'cédula', 'identificación', 'documento']}],
+            conditions: [
+                {type: 'state_is', value: 'consentimiento_pendiente'},
+                {type: 'message_in', values: ['acepto', 'si', 'sí']},
+            ],
             actions: [
-                {type: 'send_message', message: {type: 'text', body: 'Para ayudarte necesito tu número de identificación o historia clínica.'}},
+                {type: 'store_consent', value: true},
+                {
+                    type: 'send_message',
+                    message: {
+                        type: 'text',
+                        body: 'Gracias. Por favor, escribe tu número de historia clínica o cédula.',
+                    },
+                },
+                {type: 'set_state', state: 'esperando_cedula'},
+                {type: 'set_context', values: {awaiting_field: 'cedula'}},
             ],
         },
         {
             id: 'validar_cedula',
             name: 'Validar cédula',
-            description: 'Confirma si el paciente existe en la base de datos y envía un mensaje de seguimiento.',
+            description: 'Valida el identificador ingresado y redirige al menú correspondiente.',
             stage: 'validation',
+            stage_id: 'validation',
+            stageId: 'validation',
             intercept_menu: true,
-            conditions: [{type: 'message_matches', pattern: '^\\d{6,10}$'}],
+            conditions: [
+                {type: 'state_is', value: 'esperando_cedula'},
+                {type: 'message_matches', pattern: '^\\d{6,10}$'},
+            ],
             actions: [
                 {type: 'lookup_patient', field: 'cedula', source: 'message'},
-                {type: 'send_message', message: {type: 'text', body: 'Gracias, estoy verificando tus datos para continuar.'}},
+                {
+                    type: 'conditional',
+                    condition: {type: 'patient_found'},
+                    then: [
+                        {
+                            type: 'send_message',
+                            message: {
+                                type: 'text',
+                                body: 'Hola {{context.patient.full_name}} 👋. Ya podemos continuar con tu atención.',
+                            },
+                        },
+                        {type: 'set_state', state: 'menu_principal'},
+                        {type: 'goto_menu'},
+                    ],
+                    else: [
+                        {type: 'upsert_patient_from_context'},
+                        {
+                            type: 'send_message',
+                            message: {
+                                type: 'text',
+                                body: 'Registré tus datos para avanzar. ¿Deseas que te muestre las opciones disponibles?',
+                            },
+                        },
+                        {type: 'set_state', state: 'menu_principal'},
+                        {type: 'goto_menu'},
+                    ],
+                },
             ],
         },
         {
-            id: 'consentimiento',
-            name: 'Solicitar consentimiento',
-            description: 'Solicita la autorización para el tratamiento de datos sensibles.',
-            stage: 'consent',
-            intercept_menu: false,
-            conditions: [{type: 'message_contains', keywords: ['consentimiento', 'autorización', 'datos']}],
+            id: 'retorno',
+            name: 'Retorno conocido',
+            description: 'Saluda nuevamente a contactos con consentimiento registrado.',
+            stage: 'arrival',
+            stage_id: 'arrival',
+            stageId: 'arrival',
+            intercept_menu: true,
+            conditions: [
+                {type: 'is_first_time', value: false},
+                {type: 'has_consent', value: true},
+            ],
             actions: [
-                {type: 'send_buttons', message: {type: 'buttons', body: 'Antes de continuar necesitamos tu autorización para manejar tus datos médicos. ¿Aceptas?', buttons: [
-                    {id: 'acepto_datos', title: 'Acepto'},
-                    {id: 'no_autorizo', title: 'No autorizo'},
-                ]}},
+                {
+                    type: 'send_message',
+                    message: {
+                        type: 'text',
+                        body: 'Hola {{context.patient.full_name}} 👋, ¿en qué puedo ayudarte hoy?',
+                    },
+                },
+                {type: 'goto_menu'},
+            ],
+        },
+        {
+            id: 'acceso_menu_directo',
+            name: 'Acceso directo al menú',
+            description: 'Permite abrir el menú cuando ya existe consentimiento registrado.',
+            stage: 'menu',
+            stage_id: 'menu',
+            stageId: 'menu',
+            intercept_menu: true,
+            conditions: [
+                {type: 'has_consent', value: true},
+                {type: 'message_in', values: ['menu', 'inicio', 'hola', 'buen dia', 'buenos dias', 'buenas tardes', 'buenas noches', 'start']},
+            ],
+            actions: [
+                {type: 'set_state', state: 'menu_principal'},
+                {type: 'goto_menu'},
             ],
         },
         {
@@ -505,6 +628,8 @@
             name: 'Ir al menú principal',
             description: 'Permite acceder nuevamente al menú principal de opciones.',
             stage: 'menu',
+            stage_id: 'menu',
+            stageId: 'menu',
             intercept_menu: false,
             conditions: [{type: 'message_contains', keywords: ['menu', 'menú', 'opciones', 'volver']}],
             actions: [
@@ -516,6 +641,8 @@
             name: 'Interés en agendar cita',
             description: 'Guía al paciente para reservar o reagendar una cita.',
             stage: 'scheduling',
+            stage_id: 'scheduling',
+            stageId: 'scheduling',
             intercept_menu: false,
             conditions: [{type: 'message_contains', keywords: ['agendar', 'cita', 'reagendar', 'reservar']}],
             actions: [
@@ -527,6 +654,8 @@
             name: 'Consultar resultados',
             description: 'Responde cuando el paciente quiere conocer sus resultados de laboratorio.',
             stage: 'results',
+            stage_id: 'results',
+            stageId: 'results',
             intercept_menu: false,
             conditions: [{type: 'message_contains', keywords: ['resultado', 'resultados', 'examen', 'laboratorio']}],
             actions: [
@@ -538,10 +667,25 @@
             name: 'Seguimiento post consulta',
             description: 'Envía recomendaciones o recordatorios después de la atención médica.',
             stage: 'post',
+            stage_id: 'post',
+            stageId: 'post',
             intercept_menu: false,
             conditions: [{type: 'message_contains', keywords: ['gracias', 'seguimiento', 'control', 'post consulta']}],
             actions: [
                 {type: 'send_message', message: {type: 'text', body: 'Gracias por confiar en nosotros. ¿Deseas reagendar, recibir recomendaciones o calificar tu experiencia?'}},
+            ],
+        },
+        {
+            id: 'fallback',
+            name: 'Fallback',
+            description: 'Cuando ninguna regla aplica.',
+            stage: 'custom',
+            stage_id: 'custom',
+            stageId: 'custom',
+            intercept_menu: false,
+            conditions: [{type: 'always'}],
+            actions: [
+                {type: 'send_message', message: {type: 'text', body: 'No te entendí. Escribe menú para ver opciones.'}},
             ],
         },
     ];
@@ -571,15 +715,12 @@
     const defaults = JSON.parse(JSON.stringify(state));
     const simulationHistory = [];
     const replayMessages = [];
-    const journeyInvalidScenarios = new Set();
     let menuPreviewNode = null;
 
     const variablesPanel = form.querySelector('[data-variable-list]');
     const scenariosPanel = form.querySelector('[data-scenario-list]');
     const menuPanel = form.querySelector('[data-menu-editor]');
     const scenarioSummaryContainer = form.querySelector('[data-scenario-summary]');
-    const journeyMapCard = form.querySelector('[data-journey-map-card]');
-    const journeyMapContainer = form.querySelector('[data-journey-map]');
     const suggestedScenariosContainer = form.querySelector('[data-suggested-scenarios]');
     const scenarioModeToggle = form.querySelector('[data-scenario-mode-toggle]');
     const expandAllScenariosButton = form.querySelector('[data-action="expand-all-scenarios"]');
@@ -668,37 +809,6 @@
         });
     }
 
-    if (journeyMapContainer) {
-        journeyMapContainer.addEventListener('click', (event) => {
-            const node = event.target.closest('[data-journey-node]');
-            if (!node) {
-                return;
-            }
-
-            const scenarioId = node.dataset.scenarioId;
-            if (!scenarioId) {
-                return;
-            }
-
-            setScenarioExpanded(scenarioId, true);
-            renderScenarios();
-
-            window.requestAnimationFrame(() => {
-                if (!scenariosPanel) {
-                    return;
-                }
-
-                const selector = `[data-scenario][data-scenario-id="${escapeSelector(String(scenarioId))}"]`;
-                const card = scenariosPanel.querySelector(selector);
-                if (card) {
-                    card.scrollIntoView({behavior: 'smooth', block: 'center'});
-                    card.classList.add('scenario-card--pulse');
-                    window.setTimeout(() => card.classList.remove('scenario-card--pulse'), 1200);
-                }
-            });
-        });
-    }
-
     if (expandAdvancedScenariosButton) {
         expandAdvancedScenariosButton.addEventListener('click', (event) => {
             event.preventDefault();
@@ -760,7 +870,13 @@
             return {};
         }
         try {
-            return JSON.parse(flowBootstrap.textContent || '{}');
+            const raw = flowBootstrap.textContent || flowBootstrap.innerHTML || '';
+            const normalized = decodeHtmlEntities(raw).trim();
+            if (normalized === '') {
+                return {};
+            }
+
+            return JSON.parse(normalized);
         } catch (error) {
             console.warn('No fue posible interpretar la configuración del flujo', error);
 
@@ -888,7 +1004,10 @@
         });
 
         state.scenarios.forEach((scenario, index) => {
-            const stage = resolveScenarioStage(scenario.stage);
+            let stage = readScenarioStage(scenario);
+            if (!stageGroups.has(stage)) {
+                stage = 'custom';
+            }
             stageGroups.get(stage)?.push({scenario, index});
         });
 
@@ -962,7 +1081,7 @@
                 }
 
                 const updateHeader = () => {
-                    const stageOptionMeta = getScenarioStageOption(scenario.stage);
+                    const stageOptionMeta = getScenarioStageOption(readScenarioStage(scenario));
                     if (idInput) {
                         idInput.value = scenario.id || '';
                     }
@@ -1009,7 +1128,6 @@
                         }
                         updateHeader();
                         renderScenarioSummary();
-                        renderJourneyMap();
                     });
                 }
 
@@ -1019,18 +1137,20 @@
                         scenario.description = descriptionInput.value;
                         updateHeader();
                         renderScenarioSummary();
-                        renderJourneyMap();
                     });
                 }
 
                 if (stageSelect) {
                     stageSelect.innerHTML = SCENARIO_STAGE_OPTIONS.map((option) => {
-                        const selected = option.value === resolveScenarioStage(scenario.stage) ? 'selected' : '';
+                        const selected = option.value === readScenarioStage(scenario) ? 'selected' : '';
                         return `<option value="${option.value}" ${selected}>${option.label}</option>`;
                     }).join('');
-                    stageSelect.value = resolveScenarioStage(scenario.stage);
+                    stageSelect.value = readScenarioStage(scenario);
                     stageSelect.addEventListener('change', () => {
-                        scenario.stage = resolveScenarioStage(stageSelect.value);
+                        const nextStage = resolveScenarioStage(stageSelect.value);
+                        scenario.stage = nextStage;
+                        scenario.stage_id = nextStage;
+                        scenario.stageId = nextStage;
                         setScenarioExpanded(scenario.id, true);
                         renderScenarios();
                     });
@@ -1045,7 +1165,6 @@
                         }
                         updateHeader();
                         renderScenarioSummary();
-                        renderJourneyMap();
                     });
                 }
 
@@ -1061,7 +1180,6 @@
                         renderConditions(conditionList, scenario, () => {
                             updateHeader();
                             renderScenarioSummary();
-                            renderJourneyMap();
                         });
                         setScenarioExpanded(scenario.id, true);
                         updateHeader();
@@ -1076,7 +1194,6 @@
                         renderActions(actionList, scenario.actions, scenario, () => {
                             updateHeader();
                             renderScenarioSummary();
-                            renderJourneyMap();
                         });
                         setScenarioExpanded(scenario.id, true);
                         updateHeader();
@@ -1128,12 +1245,10 @@
                 renderConditions(conditionList, scenario, () => {
                     updateHeader();
                     renderScenarioSummary();
-                    renderJourneyMap();
                 });
                 renderActions(actionList, scenario.actions || [], scenario, () => {
                     updateHeader();
                     renderScenarioSummary();
-                    renderJourneyMap();
                 });
                 updateHeader();
 
@@ -1157,7 +1272,6 @@
 
         updateScenarioControls();
         setupScenarioSortable();
-        renderJourneyMap();
         renderScenarioSummary();
         renderSuggestedScenarios();
         refreshSimulationHints();
@@ -1217,6 +1331,8 @@
                 }
 
                 scenario.stage = stageValue;
+                scenario.stage_id = stageValue;
+                scenario.stageId = stageValue;
                 ordered.push(scenario);
 
                 if (!card.classList.contains('is-collapsed')) {
@@ -1226,7 +1342,8 @@
         });
 
         if (focusScenarioId && scenarioMap.has(focusScenarioId)) {
-            const focusedStage = resolveScenarioStage(fallbackStage || scenarioMap.get(focusScenarioId).stage);
+            const fallbackValue = fallbackStage || readScenarioStage(scenarioMap.get(focusScenarioId));
+            const focusedStage = resolveScenarioStage(fallbackValue);
             scenarioMap.get(focusScenarioId).stage = focusedStage;
             expandedIds.add(focusScenarioId);
         }
@@ -1273,8 +1390,6 @@
         scenariosPanel.querySelectorAll('[data-scenario]').forEach((card) => {
             card.classList.remove('is-invalid');
         });
-        journeyInvalidScenarios.clear();
-        updateJourneyMapValidation();
     }
 
     function markScenarioValidationState(errors) {
@@ -1284,7 +1399,6 @@
 
         const cards = Array.from(scenariosPanel.querySelectorAll('[data-scenario]'));
         cards.forEach((card) => card.classList.remove('is-invalid'));
-        journeyInvalidScenarios.clear();
 
         const invalidCards = [];
         errors.forEach((error) => {
@@ -1301,12 +1415,6 @@
                 card = scenariosPanel.querySelector(indexSelector);
             }
             if (!card) {
-                if (typeof error.scenarioIndex === 'number') {
-                    const scenario = state.scenarios?.[error.scenarioIndex];
-                    if (scenario?.id) {
-                        journeyInvalidScenarios.add(String(scenario.id));
-                    }
-                }
                 return;
             }
 
@@ -1327,191 +1435,13 @@
             const scenarioId = card.dataset.scenarioId || (error.scenarioId ? String(error.scenarioId) : null);
             if (scenarioId) {
                 setScenarioExpanded(scenarioId, true);
-                journeyInvalidScenarios.add(String(scenarioId));
             }
             invalidCards.push(card);
         });
 
-        updateJourneyMapValidation();
-
         if (invalidCards.length > 0) {
             invalidCards[0].scrollIntoView({behavior: 'smooth', block: 'center'});
         }
-    }
-
-    function renderJourneyMap() {
-        if (!journeyMapContainer) {
-            return;
-        }
-
-        const totalScenarios = Array.isArray(state.scenarios) ? state.scenarios.length : 0;
-        journeyMapContainer.innerHTML = '';
-        journeyMapContainer.style.setProperty('--journey-stage-count', String(SCENARIO_STAGE_OPTIONS.length));
-        journeyMapContainer.classList.toggle('journey-map--empty', totalScenarios === 0);
-        if (journeyMapCard) {
-            journeyMapCard.classList.toggle('journey-map-card--empty', totalScenarios === 0);
-        }
-
-        if (totalScenarios === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'journey-map__empty text-muted small';
-            empty.innerHTML = '<i class="mdi mdi-map-search-outline me-1"></i>Añade escenarios para visualizar el recorrido.';
-            journeyMapContainer.appendChild(empty);
-
-            return;
-        }
-
-        const scenarioOrder = new Map();
-        state.scenarios.forEach((scenario, index) => {
-            if (scenario && scenario.id) {
-                scenarioOrder.set(String(scenario.id), index + 1);
-            }
-        });
-
-        const stageGroups = new Map();
-        SCENARIO_STAGE_OPTIONS.forEach((stage) => {
-            stageGroups.set(stage.value, []);
-        });
-
-        state.scenarios.forEach((scenario) => {
-            if (!scenario) {
-                return;
-            }
-            const stage = resolveScenarioStage(scenario.stage);
-            if (!stageGroups.has(stage)) {
-                stageGroups.set(stage, []);
-            }
-            stageGroups.get(stage).push(scenario);
-        });
-
-        SCENARIO_STAGE_OPTIONS.forEach((stageOption, stageIndex) => {
-            const lane = document.createElement('div');
-            lane.className = 'journey-map__lane';
-            lane.dataset.stage = stageOption.value;
-            lane.style.setProperty('--lane-index', String(stageIndex));
-
-            const heading = document.createElement('div');
-            heading.className = 'journey-map__lane-heading';
-
-            const title = document.createElement('div');
-            title.className = 'journey-map__lane-title';
-            title.textContent = stageOption.label;
-
-            const count = document.createElement('span');
-            const stageScenarios = stageGroups.get(stageOption.value) || [];
-            count.className = 'journey-map__lane-count';
-            count.textContent = `${stageScenarios.length} ${stageScenarios.length === 1 ? 'escenario' : 'escenarios'}`;
-
-            heading.appendChild(title);
-            heading.appendChild(count);
-            lane.appendChild(heading);
-
-            const description = document.createElement('div');
-            description.className = 'journey-map__lane-description';
-            description.textContent = stageOption.description;
-            lane.appendChild(description);
-
-            const body = document.createElement('div');
-            body.className = 'journey-map__lane-body';
-
-            if (stageScenarios.length === 0) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'journey-map__placeholder';
-                placeholder.innerHTML = '<i class="mdi mdi-dots-horizontal"></i> Añade un escenario en esta etapa.';
-                body.appendChild(placeholder);
-            } else {
-                stageScenarios.forEach((scenario) => {
-                    const node = document.createElement('button');
-                    node.type = 'button';
-                    node.className = 'journey-node';
-                    node.dataset.journeyNode = 'true';
-                    if (scenario.id) {
-                        node.dataset.scenarioId = String(scenario.id);
-                    }
-                    node.dataset.stage = stageOption.value;
-
-                    const nodeInner = document.createElement('div');
-                    nodeInner.className = 'journey-node__content-wrapper';
-
-                    const indexBadge = document.createElement('span');
-                    indexBadge.className = 'journey-node__index';
-                    const order = scenario.id ? scenarioOrder.get(String(scenario.id)) || 0 : 0;
-                    indexBadge.textContent = order > 0 ? String(order) : '—';
-                    nodeInner.appendChild(indexBadge);
-
-                    const content = document.createElement('div');
-                    content.className = 'journey-node__content';
-
-                    const nodeTitle = document.createElement('div');
-                    nodeTitle.className = 'journey-node__title';
-                    nodeTitle.textContent = scenario.name || scenario.id || 'Escenario sin nombre';
-                    content.appendChild(nodeTitle);
-
-                    const badges = document.createElement('div');
-                    badges.className = 'journey-node__badges';
-
-                    if (scenario.intercept_menu) {
-                        const interceptBadge = document.createElement('span');
-                        interceptBadge.className = 'journey-node__badge journey-node__badge--intercept';
-                        interceptBadge.textContent = 'Intercepta menú';
-                        badges.appendChild(interceptBadge);
-                    }
-
-                    if (badges.children.length > 0) {
-                        content.appendChild(badges);
-                    }
-
-                    const conditionsCount = Array.isArray(scenario.conditions) ? scenario.conditions.length : 0;
-                    const actionsCount = Array.isArray(scenario.actions) ? scenario.actions.length : 0;
-                    const meta = document.createElement('div');
-                    meta.className = 'journey-node__meta';
-                    meta.textContent = `${conditionsCount} ${conditionsCount === 1 ? 'condición' : 'condiciones'} · ${actionsCount} ${actionsCount === 1 ? 'acción' : 'acciones'}`;
-                    content.appendChild(meta);
-
-                    if (scenario.description) {
-                        const descriptionText = document.createElement('div');
-                        descriptionText.className = 'journey-node__description';
-                        descriptionText.textContent = scenario.description;
-                        content.appendChild(descriptionText);
-                    }
-
-                    nodeInner.appendChild(content);
-                    node.appendChild(nodeInner);
-
-                    if (scenario.id && journeyInvalidScenarios.has(String(scenario.id))) {
-                        node.classList.add('journey-node--invalid');
-                    }
-                    if (scenario.id && isScenarioExpanded(scenario.id)) {
-                        node.classList.add('journey-node--active');
-                    }
-                    if (scenario.intercept_menu) {
-                        node.classList.add('journey-node--intercept');
-                    }
-
-                    node.title = `Editar ${scenario.name || scenario.id || 'este escenario'}`;
-
-                    body.appendChild(node);
-                });
-            }
-
-            lane.appendChild(body);
-            journeyMapContainer.appendChild(lane);
-        });
-
-        updateJourneyMapValidation();
-    }
-
-    function updateJourneyMapValidation() {
-        if (!journeyMapContainer) {
-            return;
-        }
-
-        const nodes = Array.from(journeyMapContainer.querySelectorAll('[data-journey-node][data-scenario-id]'));
-        nodes.forEach((node) => {
-            const scenarioId = String(node.dataset.scenarioId || '');
-            const invalid = scenarioId && journeyInvalidScenarios.has(scenarioId);
-            node.classList.toggle('journey-node--invalid', Boolean(invalid));
-        });
     }
 
     function renderScenarioSummary() {
@@ -1520,13 +1450,38 @@
         }
         scenarioSummaryContainer.innerHTML = '';
 
-        if (!Array.isArray(state.scenarios) || state.scenarios.length === 0) {
+        const hasScenarios = Array.isArray(state.scenarios) && state.scenarios.length > 0;
+        const coverage = analyzeFlowCoverage(state.scenarios);
+
+        if (!hasScenarios) {
             const empty = document.createElement('p');
             empty.className = 'text-muted small mb-0';
             empty.textContent = 'Añade tu primer escenario para visualizar el orden de evaluación.';
             scenarioSummaryContainer.appendChild(empty);
 
             return;
+        }
+
+        if (coverage.missingConsent) {
+            const warning = document.createElement('div');
+            warning.className = 'alert alert-warning d-flex flex-wrap align-items-center gap-2 small mb-2';
+
+            const text = document.createElement('div');
+            text.innerHTML = '<strong>Falta consentimiento.</strong> Ningún escenario guarda la autorización del paciente.';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-xs btn-outline-primary';
+            button.innerHTML = '<i class="mdi mdi-shield-check-outline me-1"></i> Agregar escenario de consentimiento';
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                addSuggestedScenarioById('consent_confirmation');
+            });
+
+            warning.appendChild(text);
+            warning.appendChild(button);
+
+            scenarioSummaryContainer.appendChild(warning);
         }
 
         state.scenarios.forEach((scenario, index) => {
@@ -1547,7 +1502,7 @@
             meta.className = 'text-muted small';
             const conditionsCount = Array.isArray(scenario.conditions) ? scenario.conditions.length : 0;
             const actionsCount = Array.isArray(scenario.actions) ? scenario.actions.length : 0;
-            const stageMeta = getScenarioStageOption(scenario.stage);
+            const stageMeta = getScenarioStageOption(readScenarioStage(scenario));
             meta.textContent = `${stageMeta.label} · ${conditionsCount} ${conditionsCount === 1 ? 'condición' : 'condiciones'} · ${actionsCount} ${actionsCount === 1 ? 'acción' : 'acciones'}`;
 
             wrapper.appendChild(title);
@@ -1569,10 +1524,13 @@
             return;
         }
 
-        suggestedScenariosContainer.innerHTML = '';
-        suggestedScenariosContainer.classList.toggle('d-none', SUGGESTED_SCENARIOS.length === 0);
+        const coverage = analyzeFlowCoverage(state.scenarios);
+        const availableSuggestions = SUGGESTED_SCENARIOS.filter((entry) => shouldDisplaySuggestion(entry, coverage));
 
-        if (SUGGESTED_SCENARIOS.length === 0) {
+        suggestedScenariosContainer.innerHTML = '';
+        suggestedScenariosContainer.classList.toggle('d-none', availableSuggestions.length === 0);
+
+        if (availableSuggestions.length === 0) {
             return;
         }
 
@@ -1590,7 +1548,8 @@
         resetButton.className = 'btn btn-xs btn-outline-secondary';
         resetButton.textContent = 'Quitar sugeridos';
         resetButton.addEventListener('click', () => {
-            state.scenarios = state.scenarios.filter((scenario) => !SUGGESTED_SCENARIOS.some((preset) => preset.scenario.id === scenario.id));
+            const removableIds = new Set(availableSuggestions.map((preset) => preset.scenario.id));
+            state.scenarios = state.scenarios.filter((scenario) => !removableIds.has(scenario.id));
             if (state.scenarios.length === 0) {
                 const fallbackScenario = createDefaultScenario();
                 state.scenarios.push(fallbackScenario);
@@ -1599,7 +1558,8 @@
             renderScenarios();
         });
 
-        const hasPresetApplied = state.scenarios.some((scenario) => SUGGESTED_SCENARIOS.some((preset) => preset.scenario.id === scenario.id));
+        const appliedIds = new Set(availableSuggestions.map((preset) => preset.scenario.id));
+        const hasPresetApplied = state.scenarios.some((scenario) => appliedIds.has(scenario.id));
         resetButton.disabled = !hasPresetApplied;
         resetButton.classList.toggle('d-none', !hasPresetApplied);
 
@@ -1610,7 +1570,7 @@
         const list = document.createElement('div');
         list.className = 'd-flex flex-column gap-2';
 
-        SUGGESTED_SCENARIOS.forEach((entry) => {
+        availableSuggestions.forEach((entry) => {
             const card = document.createElement('div');
             card.className = 'border rounded-3 p-3';
 
@@ -1636,10 +1596,7 @@
             }
 
             button.addEventListener('click', () => {
-                const created = cloneScenario(entry.scenario);
-                state.scenarios.push(created);
-                setScenarioExpanded(created.id, true);
-                renderScenarios();
+                addSuggestedScenario(entry);
             });
 
             card.appendChild(title);
@@ -1650,6 +1607,71 @@
 
         body.appendChild(list);
         suggestedScenariosContainer.appendChild(body);
+    }
+
+    function shouldDisplaySuggestion(entry, coverage) {
+        if (!entry) {
+            return false;
+        }
+
+        if (!coverage) {
+            return true;
+        }
+
+        if (entry.id === 'consent_confirmation') {
+            return coverage.missingConsent;
+        }
+
+        return true;
+    }
+
+    function addSuggestedScenarioById(id) {
+        const suggestion = SUGGESTED_SCENARIOS.find((entry) => entry.id === id);
+        if (!suggestion) {
+            return null;
+        }
+
+        return addSuggestedScenario(suggestion);
+    }
+
+    function addSuggestedScenario(suggestion) {
+        if (!suggestion || !suggestion.scenario) {
+            return null;
+        }
+
+        const scenarioId = suggestion.scenario.id;
+        const existingIndex = state.scenarios.findIndex((scenario) => scenario.id === scenarioId);
+        if (existingIndex !== -1) {
+            setScenarioExpanded(state.scenarios[existingIndex].id, true);
+            renderScenarios();
+
+            return state.scenarios[existingIndex];
+        }
+
+        const created = cloneScenario(suggestion.scenario);
+        state.scenarios.push(created);
+        setScenarioExpanded(created.id, true);
+        renderScenarios();
+
+        return created;
+    }
+
+    function analyzeFlowCoverage(scenarios) {
+        const summary = {
+            hasConsent: false,
+            missingConsent: true,
+        };
+
+        const list = Array.isArray(scenarios) ? scenarios : [];
+        list.forEach((scenario) => {
+            if (!summary.hasConsent && Array.isArray(scenario?.actions)) {
+                summary.hasConsent = scenario.actions.some((action) => (action?.type || '') === 'store_consent');
+            }
+        });
+
+        summary.missingConsent = !summary.hasConsent;
+
+        return summary;
     }
 
     function refreshSimulationHints() {
@@ -3990,31 +4012,70 @@
                 scenarioIndex: typeof scenarioIndex === 'number' ? scenarioIndex : undefined,
             });
         };
+        const keywordOwnership = new Map();
+        const scenarioKeywordTracker = new Set();
+        const registerScenarioKeyword = (type, keywordValue, scenario, scenarioIndex, scenarioLabel) => {
+            const normalized = typeof keywordValue === 'string' ? keywordValue.trim().toLowerCase() : '';
+            if (!normalized) {
+                return;
+            }
+
+            const registryKey = `${type}:${normalized}`;
+            const scenarioKey = `${scenario && typeof scenario.id === 'string' ? scenario.id : `@${scenarioIndex}`}:${registryKey}`;
+            if (scenarioKeywordTracker.has(scenarioKey)) {
+                return;
+            }
+
+            scenarioKeywordTracker.add(scenarioKey);
+
+            const entry = keywordOwnership.get(registryKey) || [];
+            entry.push({
+                scenario,
+                index: scenarioIndex,
+                label: scenarioLabel,
+                keyword: typeof keywordValue === 'string' ? keywordValue.trim() : normalized,
+            });
+            keywordOwnership.set(registryKey, entry);
+        };
         if (!Array.isArray(payload.scenarios) || payload.scenarios.length === 0) {
             errors.push('Debes definir al menos un escenario.');
         }
 
         payload.scenarios.forEach((scenario, index) => {
+            const scenarioLabel = scenario.name || scenario.id || `Escenario ${index + 1}`;
             if (!Array.isArray(scenario.actions) || scenario.actions.length === 0) {
-                pushScenarioError(scenario, `El escenario "${scenario.name || 'Escenario ' + (index + 1)}" no tiene acciones.`, index);
+                pushScenarioError(scenario, `El escenario "${scenarioLabel}" no tiene acciones.`, index);
             }
 
             const conditions = Array.isArray(scenario.conditions) ? scenario.conditions : [];
             conditions.forEach((condition) => {
                 const type = condition.type || 'always';
                 if (type === 'message_in' && (!Array.isArray(condition.values) || condition.values.length === 0)) {
-                    pushScenarioError(scenario, `El escenario "${scenario.name || 'Escenario ' + (index + 1)}" requiere al menos una palabra en "Mensaje coincide con lista".`, index);
+                    pushScenarioError(scenario, `El escenario "${scenarioLabel}" requiere al menos una palabra en "Mensaje coincide con lista".`, index);
                 }
                 if (type === 'message_contains' && (!Array.isArray(condition.keywords) || condition.keywords.length === 0)) {
-                    pushScenarioError(scenario, `Añade palabras clave a la condición "Mensaje contiene" en el escenario "${scenario.name || 'Escenario ' + (index + 1)}".`, index);
+                    pushScenarioError(scenario, `Añade palabras clave a la condición "Mensaje contiene" en el escenario "${scenarioLabel}".`, index);
                 }
                 if (type === 'message_matches' && !condition.pattern) {
-                    pushScenarioError(scenario, `Define una expresión regular para "Mensaje coincide con regex" en el escenario "${scenario.name || 'Escenario ' + (index + 1)}".`, index);
+                    pushScenarioError(scenario, `Define una expresión regular para "Mensaje coincide con regex" en el escenario "${scenarioLabel}".`, index);
+                }
+
+                if (type === 'message_in') {
+                    const values = Array.isArray(condition.values) ? condition.values : [];
+                    values.forEach((value) => {
+                        registerScenarioKeyword(type, value, scenario, index, scenarioLabel);
+                    });
+                }
+
+                if (type === 'message_contains') {
+                    const keywords = Array.isArray(condition.keywords) ? condition.keywords : [];
+                    keywords.forEach((keyword) => {
+                        registerScenarioKeyword(type, keyword, scenario, index, scenarioLabel);
+                    });
                 }
             });
 
             const actionsList = Array.isArray(scenario.actions) ? scenario.actions : [];
-            const scenarioLabel = scenario.name || scenario.id || `Escenario ${index + 1}`;
             actionsList.forEach((action, actionIndex) => {
                 const actionLabel = `${scenarioLabel} → acción ${actionIndex + 1}`;
                 const type = action?.type || 'send_message';
@@ -4044,6 +4105,25 @@
                         pushScenarioError(scenario, `${actionLabel}: selecciona una plantilla aprobada antes de guardar.`, index);
                     }
                 }
+            });
+        });
+
+        keywordOwnership.forEach((entries) => {
+            if (!Array.isArray(entries) || entries.length < 2) {
+                return;
+            }
+
+            entries.forEach((entry, entryIndex) => {
+                const others = entries
+                    .filter((_, index) => index !== entryIndex)
+                    .map((item) => `"${item.label}"`);
+                if (others.length === 0) {
+                    return;
+                }
+
+                const prefix = others.length === 1 ? 'el escenario' : 'los escenarios';
+                const message = `El escenario "${entry.label}" comparte la palabra clave "${entry.keyword}" con ${prefix} ${others.join(', ')}. Ajusta las condiciones para evitar respuestas ambiguas.`;
+                pushScenarioError(entry.scenario, message, entry.index);
             });
         });
 
@@ -4081,6 +4161,7 @@
             errors.push('Configura al menos una opción en el menú para vincular acciones.');
         }
 
+        const menuKeywordMap = new Map();
         menuOptions.forEach((option) => {
             if (!Array.isArray(option.keywords) || option.keywords.length === 0) {
                 errors.push(`La opción "${option.title || option.id || 'sin título'}" necesita palabras clave para detectar el mensaje del paciente.`);
@@ -4088,6 +4169,29 @@
             if (!Array.isArray(option.actions) || option.actions.length === 0) {
                 errors.push(`La opción "${option.title || option.id || 'sin título'}" debe tener al menos una acción configurada.`);
             }
+
+            const optionLabel = option.title || option.id || 'sin título';
+            const seen = new Set();
+            (Array.isArray(option.keywords) ? option.keywords : []).forEach((keyword) => {
+                const normalized = typeof keyword === 'string' ? keyword.trim().toLowerCase() : '';
+                if (!normalized || seen.has(normalized)) {
+                    return;
+                }
+                seen.add(normalized);
+                const list = menuKeywordMap.get(normalized) || [];
+                list.push({label: optionLabel, display: typeof keyword === 'string' ? keyword.trim() : normalized});
+                menuKeywordMap.set(normalized, list);
+            });
+        });
+
+        menuKeywordMap.forEach((entries, keyword) => {
+            if (!Array.isArray(entries) || entries.length < 2) {
+                return;
+            }
+
+            const labels = entries.map((entry) => `"${entry.label}"`);
+            const displayKeyword = entries[0]?.display || keyword;
+            errors.push(`Las opciones de menú ${labels.join(', ')} usan la misma palabra clave "${displayKeyword}". Ajusta las palabras clave para evitar respuestas ambiguas.`);
         });
 
         return errors;
@@ -4121,7 +4225,10 @@
                 ? scenario.conditions
                 : [{type: 'always'}];
             scenario.intercept_menu = Boolean(scenario.intercept_menu);
-            scenario.stage = resolveScenarioStage(scenario.stage);
+            const normalizedStage = resolveScenarioStage(scenario.stage || scenario.stage_id || scenario.stageId);
+            scenario.stage = normalizedStage;
+            scenario.stage_id = normalizedStage;
+            scenario.stageId = normalizedStage;
         });
     }
 
@@ -4245,6 +4352,9 @@
             scenario.intercept_menu = Boolean(scenario.intercept_menu);
         }
 
+        scenario.stage_id = scenario.stage;
+        scenario.stageId = scenario.stage;
+
         bumpScenarioSeedFromId(scenario.id);
 
         return scenario;
@@ -4253,13 +4363,16 @@
     function prepareScenarioPayload(scenario) {
         const copy = JSON.parse(JSON.stringify(scenario || {}));
         copy.intercept_menu = Boolean(scenario && scenario.intercept_menu);
-        copy.stage = resolveScenarioStage(copy.stage);
+        const normalizedStage = resolveScenarioStage(copy.stage || copy.stage_id || copy.stageId);
+        copy.stage = normalizedStage;
+        copy.stage_id = normalizedStage;
+        copy.stageId = normalizedStage;
 
         return copy;
     }
 
     function createDefaultScenario() {
-        return {
+        const scenario = {
             id: generateScenarioId(),
             name: 'Nuevo escenario',
             description: '',
@@ -4268,6 +4381,11 @@
             intercept_menu: false,
             stage: 'custom',
         };
+
+        scenario.stage_id = scenario.stage;
+        scenario.stageId = scenario.stage;
+
+        return scenario;
     }
 
     function createDefaultMenu() {

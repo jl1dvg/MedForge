@@ -33,7 +33,7 @@ class AutoresponderFlow
     ];
     private const SCENARIO_STAGE_DEFAULTS = [
         'primer_contacto' => 'arrival',
-        'captura_cedula' => 'consent',
+        'captura_cedula' => 'validation',
         'validar_cedula' => 'validation',
         'retorno' => 'arrival',
         'acceso_menu_directo' => 'menu',
@@ -151,13 +151,22 @@ class AutoresponderFlow
     {
         $brand = trim($brand) !== '' ? $brand : 'MedForge';
 
+        $primerContactoStage = self::defaultScenarioStage('primer_contacto');
+        $capturaCedulaStage = self::defaultScenarioStage('captura_cedula');
+        $validarCedulaStage = self::defaultScenarioStage('validar_cedula');
+        $retornoStage = self::defaultScenarioStage('retorno');
+        $accesoMenuStage = self::defaultScenarioStage('acceso_menu_directo');
+        $fallbackStage = self::defaultScenarioStage('fallback');
+
         return [
             [
                 'id' => 'primer_contacto',
                 'name' => 'Primer contacto (sin consentimiento)',
                 'description' => 'Saludo inicial y solicitud de autorización de datos.',
                 'intercept_menu' => true,
-                'stage' => self::defaultScenarioStage('primer_contacto'),
+                'stage' => $primerContactoStage,
+                'stage_id' => $primerContactoStage,
+                'stageId' => $primerContactoStage,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => true],
                     ['type' => 'has_consent', 'value' => false],
@@ -189,7 +198,9 @@ class AutoresponderFlow
                 'name' => 'Captura de cédula',
                 'description' => 'Gestiona la aceptación del consentimiento y solicita el identificador.',
                 'intercept_menu' => true,
-                'stage' => self::defaultScenarioStage('captura_cedula'),
+                'stage' => $capturaCedulaStage,
+                'stage_id' => $capturaCedulaStage,
+                'stageId' => $capturaCedulaStage,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'consentimiento_pendiente'],
                     ['type' => 'message_in', 'values' => ['acepto', 'si', 'sí']],
@@ -212,7 +223,9 @@ class AutoresponderFlow
                 'name' => 'Validar cédula',
                 'description' => 'Valida el formato y existencia del paciente.',
                 'intercept_menu' => true,
-                'stage' => self::defaultScenarioStage('validar_cedula'),
+                'stage' => $validarCedulaStage,
+                'stage_id' => $validarCedulaStage,
+                'stageId' => $validarCedulaStage,
                 'conditions' => [
                     ['type' => 'state_is', 'value' => 'esperando_cedula'],
                     ['type' => 'message_matches', 'pattern' => '^\\d{6,10}$'],
@@ -253,7 +266,9 @@ class AutoresponderFlow
                 'name' => 'Retorno (ya conocido)',
                 'description' => 'Contactos conocidos con consentimiento.',
                 'intercept_menu' => true,
-                'stage' => self::defaultScenarioStage('retorno'),
+                'stage' => $retornoStage,
+                'stage_id' => $retornoStage,
+                'stageId' => $retornoStage,
                 'conditions' => [
                     ['type' => 'is_first_time', 'value' => false],
                     ['type' => 'has_consent', 'value' => true],
@@ -274,7 +289,9 @@ class AutoresponderFlow
                 'name' => 'Acceso directo al menú',
                 'description' => 'Permite abrir el menú cuando el contacto escribe un atajo como "menu" u "hola".',
                 'intercept_menu' => true,
-                'stage' => self::defaultScenarioStage('acceso_menu_directo'),
+                'stage' => $accesoMenuStage,
+                'stage_id' => $accesoMenuStage,
+                'stageId' => $accesoMenuStage,
                 'conditions' => [
                     ['type' => 'has_consent', 'value' => true],
                     ['type' => 'message_in', 'values' => self::menuKeywords()],
@@ -288,7 +305,9 @@ class AutoresponderFlow
                 'id' => 'fallback',
                 'name' => 'Fallback',
                 'description' => 'Cuando ninguna regla aplica.',
-                'stage' => self::defaultScenarioStage('fallback'),
+                'stage' => $fallbackStage,
+                'stage_id' => $fallbackStage,
+                'stageId' => $fallbackStage,
                 'conditions' => [
                     ['type' => 'always'],
                 ],
@@ -461,6 +480,9 @@ class AutoresponderFlow
             $interceptMenu = self::shouldInterceptMenuByDefault($id);
         }
 
+        $stageValue = $scenario['stage'] ?? $scenario['stage_id'] ?? $scenario['stageId'] ?? null;
+        $stage = self::sanitizeScenarioStage($stageValue, $id);
+
         return [
             'id' => $id,
             'name' => $name,
@@ -468,12 +490,17 @@ class AutoresponderFlow
             'conditions' => $conditions,
             'actions' => $actions,
             'intercept_menu' => (bool) $interceptMenu,
-            'stage' => self::sanitizeScenarioStage($scenario['stage'] ?? null, $id),
+            'stage' => $stage,
+            'stage_id' => $stage,
+            'stageId' => $stage,
         ];
     }
 
     private static function sanitizeScenarioStage($value, string $scenarioId): string
     {
+        if ($value === null) {
+            $value = null;
+        }
         if (is_string($value)) {
             $normalized = mb_strtolower(trim($value));
             if (in_array($normalized, self::SCENARIO_STAGE_VALUES, true)) {
