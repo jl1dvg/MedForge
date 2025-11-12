@@ -178,9 +178,21 @@ array_push(
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        .kanban-avatar__placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-weight: 600;
             font-size: 1.1rem;
             text-transform: uppercase;
+            width: 100%;
+            height: 100%;
+        }
+
+        .kanban-avatar--placeholder .kanban-avatar__placeholder {
+            color: inherit;
         }
 
         .kanban-card-body {
