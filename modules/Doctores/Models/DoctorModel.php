@@ -37,7 +37,7 @@ class DoctorModel
             FROM users u
             LEFT JOIN roles r ON r.id = u.role_id
             WHERE
-                (u.especialidad IS NOT NULL AND u.especialidad = 'Cirujano Oftalmólogo')
+                (u.especialidad IS NOT NULL AND u.especialidad <> '')
                 OR (r.name IS NOT NULL AND r.name <> '')
             ORDER BY COALESCE(NULLIF(u.nombre, ''), NULLIF(u.username, ''), u.email) ASC
         SQL;
