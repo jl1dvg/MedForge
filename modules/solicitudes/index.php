@@ -65,6 +65,19 @@ if (
     class_alias($resolvedClass, 'ExamenesModel');
 }
 
+// Asegurarnos de que el controlador y servicios compartidos de Exámenes estén cargados.
+$sharedDependencies = [
+    dirname(__DIR__) . '/examenes/controllers/ExamenesController.php',
+    dirname(__DIR__) . '/examenes/services/ExamenesCrmService.php',
+    dirname(__DIR__) . '/examenes/services/ExamenesReminderService.php',
+];
+
+foreach ($sharedDependencies as $dependencyPath) {
+    if (is_file($dependencyPath)) {
+        require_once $dependencyPath;
+    }
+}
+
 require_once SOLICITUDES_CONTROLLERS . '/SolicitudController.php';
 require_once SOLICITUDES_HELPERS . '/SolicitudHelper.php';
 

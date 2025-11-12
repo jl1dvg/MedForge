@@ -47,6 +47,8 @@ $noQuirurgicos = $noQuirurgicos ?? [];
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
 
+        const baseUrl = <?= json_encode(rtrim(BASE_URL, '/')); ?> || '';
+
         if (previewModal) {
             previewModal.addEventListener("show.bs.modal", async (event) => {
                 const button = event.relatedTarget;
@@ -63,7 +65,8 @@ $noQuirurgicos = $noQuirurgicos ?? [];
                 previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
 
                 try {
-                    const res = await fetch(`/api/billing/billing_preview.php?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`);
+                    const previewUrl = `${baseUrl}/api/billing/billing_preview.php?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
+                    const res = await fetch(previewUrl);
                     if (!res.ok) {
                         throw new Error(`Respuesta inesperada ${res.status}`);
                     }

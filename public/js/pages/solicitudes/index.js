@@ -609,12 +609,17 @@ document.addEventListener('DOMContentLoaded', () => {
         })
             .then(async (response) => {
                 if (!response.ok) {
+                    const errorProbe = response.clone();
                     let serverMsg = '';
                     try {
-                        const data = await response.json();
+                        const data = await errorProbe.json();
                         serverMsg = data?.error || JSON.stringify(data);
                     } catch (_) {
-                        serverMsg = await response.text();
+                        try {
+                            serverMsg = await errorProbe.text();
+                        } catch (__) {
+                            serverMsg = '';
+                        }
                     }
                     const msg = serverMsg ? `No se pudo cargar el tablero. Servidor: ${serverMsg}` : 'No se pudo cargar el tablero';
                     throw new Error(msg);
