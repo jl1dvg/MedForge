@@ -51,29 +51,76 @@ $canEditUsers = $canCreateUsers;
                     <?php elseif ($error === 'cannot_delete_self'): ?>
                         <div class="alert alert-danger">No puedes eliminar tu propio usuario.</div>
                     <?php endif; ?>
+                    <style>
+                        .usuarios-avatar {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 50%;
+                            object-fit: cover;
+                            background-color: #f1f1f1;
+                        }
+
+                        .usuarios-table thead th[data-sort]
+                        {
+                            cursor: pointer;
+                            user-select: none;
+                        }
+
+                        .usuarios-table thead th[data-sort] .sort-indicator {
+                            margin-left: 0.35rem;
+                            font-size: 0.75em;
+                            opacity: 0.6;
+                        }
+                    </style>
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover align-middle">
+                        <table class="table table-striped table-hover align-middle usuarios-table">
                             <thead class="bg-primary">
                                 <tr>
-                                    <th>Usuario</th>
-                                    <th>Nombre</th>
-                                    <th>Correo</th>
-                                    <th>Rol</th>
-                                    <th>Permisos</th>
-                                    <th>Estado</th>
-                                    <th class="text-end">Acciones</th>
+                                    <th scope="col">Foto</th>
+                                    <th scope="col" data-sort="username" aria-sort="none">Usuario <span class="sort-indicator">⇅</span></th>
+                                    <th scope="col" data-sort="nombre" aria-sort="none">Nombre <span class="sort-indicator">⇅</span></th>
+                                    <th scope="col">Correo</th>
+                                    <th scope="col">Rol</th>
+                                    <th scope="col">Permisos</th>
+                                    <th scope="col">Estado</th>
+                                    <th scope="col" class="text-end">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($usuarios)): ?>
                                     <tr>
-                                        <td colspan="7" class="text-center">No hay usuarios registrados.</td>
+                                        <td colspan="8" class="text-center">No hay usuarios registrados.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($usuarios as $usuario): ?>
+                                        <?php
+                                        $username = (string) ($usuario['username'] ?? '');
+                                        $nombre = (string) ($usuario['nombre'] ?? '');
+                                        $profilePhotoUrl = format_profile_photo_url($usuario['profile_photo'] ?? null);
+                                        $displayName = $nombre !== '' ? $nombre : $username;
+                                        $initial = $displayName !== '' ? $displayName : 'Usuario';
+                                        $initial = mb_strtoupper(mb_substr($initial, 0, 1, 'UTF-8'), 'UTF-8');
+                                        $usernameSortValue = mb_strtolower($username, 'UTF-8');
+                                        $nombreSortValue = mb_strtolower($nombre, 'UTF-8');
+                                        ?>
                                         <tr>
-                                            <td><?= htmlspecialchars($usuario['username'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                            <td><?= htmlspecialchars($usuario['nombre'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+                                            <td class="text-center">
+                                                <?php if ($profilePhotoUrl): ?>
+                                                    <img src="<?= htmlspecialchars($profilePhotoUrl, ENT_QUOTES, 'UTF-8'); ?>"
+                                                         alt="Foto de <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8'); ?>"
+                                                         class="usuarios-avatar">
+                                                <?php else: ?>
+                                                    <span class="avatar avatar-sm rounded-circle d-inline-flex align-items-center justify-content-center bg-secondary text-white fw-semibold usuarios-avatar">
+                                                        <?= htmlspecialchars($initial, ENT_QUOTES, 'UTF-8'); ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td data-sort-value="<?= htmlspecialchars($usernameSortValue, ENT_QUOTES, 'UTF-8'); ?>">
+                                                <?= htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>
+                                            </td>
+                                            <td data-sort-value="<?= htmlspecialchars($nombreSortValue, ENT_QUOTES, 'UTF-8'); ?>">
+                                                <?= htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8'); ?>
+                                            </td>
                                             <td><?= htmlspecialchars($usuario['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
                                             <td><?= htmlspecialchars($roleMap[$usuario['role_id']] ?? 'Sin asignar', ENT_QUOTES, 'UTF-8'); ?></td>
                                             <td>
@@ -122,3 +169,56 @@ $canEditUsers = $canCreateUsers;
         </div>
     </div>
 </section>
+
+<?php
+$inlineScripts[] = <<<'JS'
+document.addEventListener('DOMContentLoaded', function () {
+    const table = document.querySelector('.usuarios-table');
+    if (!table) {
+        return;
+    }
+
+    const headers = table.querySelectorAll('thead th[data-sort]');
+    if (!headers.length) {
+        return;
+    }
+
+    const collator = new Intl.Collator('es', { sensitivity: 'base', numeric: false });
+
+    headers.forEach((header) => {
+        header.addEventListener('click', () => {
+            const tbody = table.querySelector('tbody');
+            if (!tbody) {
+                return;
+            }
+
+            const currentSort = header.getAttribute('aria-sort');
+            const newDirection = currentSort === 'ascending' ? 'descending' : 'ascending';
+
+            headers.forEach((otherHeader) => {
+                otherHeader.setAttribute('aria-sort', 'none');
+            });
+            header.setAttribute('aria-sort', newDirection);
+
+            const columnIndex = Array.prototype.indexOf.call(header.parentElement.children, header);
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            rows.sort((rowA, rowB) => {
+                const cellA = rowA.children[columnIndex];
+                const cellB = rowB.children[columnIndex];
+
+                const valueA = cellA ? (cellA.dataset.sortValue || cellA.textContent || '') : '';
+                const valueB = cellB ? (cellB.dataset.sortValue || cellB.textContent || '') : '';
+
+                const comparison = collator.compare(valueA.trim(), valueB.trim());
+                return newDirection === 'ascending' ? comparison : -comparison;
+            });
+
+            rows.forEach((row) => {
+                tbody.appendChild(row);
+            });
+        });
+    });
+});
+JS;
+?>

@@ -121,7 +121,7 @@ if (!function_exists('isTreeOpen')) {
                     </li>
 
                     <?php if ($canAccessDoctors): ?>
-                        <li class="<?= isActive('/doctores') ?>">
+                        <li class="<?= isActivePrefix('/doctores') ?>">
                             <a href="/doctores">
                                 <i class="mdi mdi-stethoscope"></i>
                                 <span>Doctores</span>
