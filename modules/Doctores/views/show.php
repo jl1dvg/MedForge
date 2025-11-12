@@ -36,6 +36,14 @@ $printValue = static function (?string $value): string {
         ? htmlspecialchars($value, ENT_QUOTES, 'UTF-8')
         : '<span class="text-fade">No registrado</span>';
 };
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'assets/vendor_components/OwlCarousel2/dist/owl.carousel.js',
+    'assets/vendor_components/date-paginator/moment.min.js',
+    'assets/vendor_components/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js',
+    'assets/vendor_components/date-paginator/bootstrap-datepaginator.min.js',
+    'js/pages/doctor-details.js',
+]);
 ?>
 
 <div class="container-full">
@@ -115,25 +123,77 @@ $printValue = static function (?string $value): string {
 
                 <div class="box">
                     <div class="box-header">
-                        <h4 class="box-title">Estado de la cuenta</h4>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="mb-0">Your Patients today</h4>
+                            <a href="#" class="">All patients <i class="ms-10 fa fa-angle-right"></i></a>
+                        </div>
                     </div>
-                    <div class="box-body">
-                        <div class="d-flex flex-wrap gap-10">
-                            <span class="badge badge-<?= $doctor['is_approved'] ? 'success' : 'warning' ?> px-15 py-5">
-                                <?= $doctor['is_approved'] ? 'Aprobado' : 'Pendiente de aprobación' ?>
-                            </span>
-                            <span class="badge badge-<?= $doctor['is_subscribed'] ? 'info' : 'secondary' ?> px-15 py-5">
-                                <?= $doctor['is_subscribed'] ? 'Suscripción activa' : 'Sin suscripción activa' ?>
-                            </span>
-                            <?php if ($statusLabel): ?>
-                                <span class="badge badge-<?= htmlspecialchars($statusBadgeClass, ENT_QUOTES, 'UTF-8') ?> px-15 py-5">
-                                    <?= htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') ?>
-                                </span>
-                            <?php endif; ?>
+                    <div class="box-body p-15">
+                        <div class="mb-10 d-flex justify-content-between align-items-center">
+                            <div class="fw-600 min-w-120">
+                                10:30am
+                            </div>
+                            <div class="w-p100 p-10 rounded10 justify-content-between align-items-center d-flex bg-lightest">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <img src="../images/avatar/1.jpg" class="me-10 avatar rounded-circle" alt="">
+                                    <div>
+                                        <h6 class="mb-0">Sarah Hostemn</h6>
+                                        <p class="mb-0 fs-12 text-mute">Diagnosis: Bronchitis</p>
+                                    </div>
+                                </div>
+                                <div class="dropdown">
+                                    <a data-bs-toggle="dropdown" href="#"><i class="ti-more-alt rotate-90"></i></a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#"><i class="ti-import"></i> Details</a>
+                                        <a class="dropdown-item" href="#"><i class="ti-export"></i> Lab Reports</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-10 d-flex justify-content-between align-items-center">
+                            <div class="fw-600 min-w-120">
+                                11:00am
+                            </div>
+                            <div class="w-p100 p-10 rounded10 justify-content-between align-items-center d-flex bg-lightest">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <img src="../images/avatar/2.jpg" class="me-10 avatar rounded-circle" alt="">
+                                    <div>
+                                        <h6 class="mb-0">Dakota Smith</h6>
+                                        <p class="mb-0 fs-12 text-mute">Diagnosis: Stroke</p>
+                                    </div>
+                                </div>
+                                <div class="dropdown">
+                                    <a data-bs-toggle="dropdown" href="#"><i class="ti-more-alt rotate-90"></i></a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#"><i class="ti-import"></i> Details</a>
+                                        <a class="dropdown-item" href="#"><i class="ti-export"></i> Lab Reports</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="fw-600 min-w-120">
+                                11:30am
+                            </div>
+                            <div class="w-p100 p-10 rounded10 justify-content-between align-items-center d-flex bg-lightest">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <img src="../images/avatar/3.jpg" class="me-10 avatar rounded-circle" alt="">
+                                    <div>
+                                        <h6 class="mb-0">John Lane</h6>
+                                        <p class="mb-0 fs-12 text-mute">Diagnosis: Liver cimhosis</p>
+                                    </div>
+                                </div>
+                                <div class="dropdown">
+                                    <a data-bs-toggle="dropdown" href="#"><i class="ti-more-alt rotate-90"></i></a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#"><i class="ti-import"></i> Details</a>
+                                        <a class="dropdown-item" href="#"><i class="ti-export"></i> Lab Reports</a>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-
                 <?php if ($firmaUrl): ?>
                     <div class="box">
                         <div class="box-header">
@@ -220,3 +280,12 @@ $printValue = static function (?string $value): string {
         </div>
     </section>
 </div>
+<script src="../assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+	<script src="../assets/vendor_components/OwlCarousel2/dist/owl.carousel.js"></script>
+	<script src="../assets/vendor_components/date-paginator/moment.min.js"></script>
+	<script src="../assets/vendor_components/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js"></script>
+	<script src="../assets/vendor_components/date-paginator/bootstrap-datepaginator.min.js"></script>	
+	
+	<!-- Doclinic App -->
+	<script src="js/template.js"></script>
+	<script src="js/pages/doctor-details.js"></script>
