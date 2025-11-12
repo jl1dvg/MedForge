@@ -92,7 +92,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
 <ul class="list-group mb-4 bg-light-subtle">
     <li class="list-group-item fw-bold text-center bg-light-subtle">
         <?php if ($fechaSolicitud): ?>
-            🕒 Fecha de Creación: <?= htmlspecialchars($fechaSolicitud->format('d-m-Y'), ENT_QUOTES, 'UTF-8') ?><br>
+            🕒 Fecha de Solicitud: <?= htmlspecialchars($fechaSolicitud->format('d-m-Y'), ENT_QUOTES, 'UTF-8') ?><br>
             <small class="text-muted">(hace <?= (int) $diasTranscurridos ?> días)</small><br>
         <?php else: ?>
             <span class="text-muted">Fecha no disponible</span><br>
