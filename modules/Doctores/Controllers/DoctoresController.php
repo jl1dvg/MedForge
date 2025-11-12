@@ -3,6 +3,8 @@
 namespace Modules\Doctores\Controllers;
 
 use Core\BaseController;
+use DateTimeImmutable;
+use DateTimeInterface;
 use Modules\Doctores\Models\DoctorModel;
 use PDO;
 use PDOException;
@@ -40,7 +42,12 @@ class DoctoresController extends BaseController
             exit;
         }
 
-        $insights = $this->buildDoctorInsights($doctor);
+        $selectedDate = isset($_GET['fecha']) ? trim((string) $_GET['fecha']) : null;
+        if ($selectedDate !== null) {
+            $selectedDate = $this->sanitizeDateInput($selectedDate);
+        }
+
+        $insights = $this->buildDoctorInsights($doctor, $selectedDate);
 
         $this->render(
             BASE_PATH . '/modules/Doctores/views/show.php',
@@ -58,9 +65,11 @@ class DoctoresController extends BaseController
      * @param array<string, mixed> $doctor
      * @return array<string, mixed>
      */
-    private function buildDoctorInsights(array $doctor): array
+    private function buildDoctorInsights(array $doctor, ?string $selectedDate): array
     {
         $baseSeed = (string)($doctor['id'] ?? $doctor['name'] ?? '0');
+
+        $appointmentsSchedule = $this->buildAppointmentsSchedule($doctor, $baseSeed, $selectedDate);
 
         return [
             'todayPatients' => $this->buildTodayPatients($doctor, $baseSeed),
@@ -72,6 +81,10 @@ class DoctoresController extends BaseController
             'focusAreas' => $this->buildFocusAreas($doctor),
             'supportChannels' => $this->buildSupportChannels($doctor, $baseSeed),
             'researchHighlights' => $this->buildResearchHighlights($doctor, $baseSeed),
+            'appointmentsDays' => $appointmentsSchedule['days'],
+            'appointments' => $appointmentsSchedule['appointments'],
+            'appointmentsSelectedDate' => $appointmentsSchedule['selectedDate'],
+            'appointmentsSelectedLabel' => $appointmentsSchedule['selectedLabel'],
         ];
     }
 
@@ -107,6 +120,88 @@ class DoctoresController extends BaseController
             $ordered,
             array_keys($ordered)
         );
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array{days: array<int, array<string, mixed>>, appointments: array<int, array<string, mixed>>, selectedDate: ?string, selectedLabel: ?string}
+     */
+    private function buildAppointmentsSchedule(array $doctor, string $seed, ?string $requestedDate): array
+    {
+        $appointments = $this->loadAppointmentsFromDatabase($doctor);
+
+        if (empty($appointments)) {
+            $appointments = $this->buildFallbackAppointments($seed);
+        }
+
+        if (empty($appointments)) {
+            return [
+                'days' => [],
+                'appointments' => [],
+                'selectedDate' => $requestedDate,
+                'selectedLabel' => null,
+            ];
+        }
+
+        $grouped = [];
+        foreach ($appointments as $appointment) {
+            $dateKey = $appointment['date'] ?? null;
+            if ($dateKey === null) {
+                continue;
+            }
+
+            if (!isset($grouped[$dateKey])) {
+                $grouped[$dateKey] = [];
+            }
+
+            $grouped[$dateKey][] = $appointment;
+        }
+
+        if (empty($grouped)) {
+            return [
+                'days' => [],
+                'appointments' => [],
+                'selectedDate' => $requestedDate,
+                'selectedLabel' => null,
+            ];
+        }
+
+        $dates = array_keys($grouped);
+        sort($dates);
+
+        if ($requestedDate === null || !isset($grouped[$requestedDate])) {
+            $requestedDate = $dates[0];
+        }
+
+        $selectedAppointments = $grouped[$requestedDate] ?? [];
+        $selectedLabel = $requestedDate !== null ? $this->formatSelectedDateLabel($requestedDate) : null;
+
+        $days = [];
+        foreach ($dates as $date) {
+            $dateObj = DateTimeImmutable::createFromFormat('Y-m-d', $date);
+            if ($dateObj === false) {
+                try {
+                    $dateObj = new DateTimeImmutable($date);
+                } catch (\Exception) {
+                    $dateObj = new DateTimeImmutable('today');
+                }
+            }
+
+            $days[] = [
+                'date' => $date,
+                'label' => $this->formatPaginatorLabel($dateObj),
+                'title' => $this->formatSelectedDateLabel($date),
+                'is_today' => $date === date('Y-m-d'),
+                'is_selected' => $date === $requestedDate,
+            ];
+        }
+
+        return [
+            'days' => $days,
+            'appointments' => $selectedAppointments,
+            'selectedDate' => $requestedDate,
+            'selectedLabel' => $selectedLabel,
+        ];
     }
 
     /**
@@ -238,6 +333,368 @@ class DoctoresController extends BaseController
         }
 
         return $patients;
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array<int, array<string, mixed>>
+     */
+    private function loadAppointmentsFromDatabase(array $doctor): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if (empty($lookupValues)) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildDoctorClause($lookupValues, false),
+            $this->buildDoctorClause($lookupValues, true),
+        ];
+
+        $dateClauses = [
+            'DATE(pp.fecha) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)',
+            'DATE(pp.fecha) BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 21 DAY)',
+            'DATE(pp.fecha) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)',
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            foreach ($dateClauses as $dateClause) {
+                $appointments = $this->runAppointmentsQuery($clause, $params, $dateClause);
+                if (!empty($appointments)) {
+                    return $appointments;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array<string, mixed>>
+     */
+    private function runAppointmentsQuery(string $doctorClause, array $params, string $dateClause): array
+    {
+        $sql = <<<SQL
+            SELECT
+                DATE(pp.fecha) AS appointment_date,
+                pp.hora,
+                pp.hc_number,
+                pp.procedimiento_proyectado,
+                pp.estado_agenda,
+                pp.afiliacion,
+                TRIM(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(p.fname, ''),
+                        NULLIF(p.mname, ''),
+                        NULLIF(p.lname, ''),
+                        NULLIF(p.lname2, '')
+                    )
+                ) AS patient_name,
+                p.celular
+            FROM procedimiento_proyectado pp
+            LEFT JOIN patient_data p ON p.hc_number = pp.hc_number
+            WHERE $doctorClause
+              AND $dateClause
+              AND pp.fecha IS NOT NULL
+              AND pp.hora IS NOT NULL
+              AND pp.hora <> ''
+              AND (
+                    pp.estado_agenda IS NULL
+                    OR UPPER(pp.estado_agenda) NOT IN (
+                        'ANULADO', 'ANULADA', 'CANCELADO', 'CANCELADA',
+                        'NO ASISTE', 'NO ASISTIO', 'NO SE PRESENTO', 'NO SE PRESENTÓ', 'NO-SE-PRESENTO'
+                    )
+                )
+            ORDER BY appointment_date ASC, pp.hora ASC
+            LIMIT 60
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $appointments = [];
+        foreach ($rows as $index => $row) {
+            $dateKey = $this->normalizeDateKey($row['appointment_date'] ?? null);
+            if ($dateKey === null) {
+                continue;
+            }
+
+            $callHref = $this->formatCallHref($row['celular'] ?? null);
+
+            $appointments[] = [
+                'date' => $dateKey,
+                'time' => $this->formatHourLabel($row['hora'] ?? null),
+                'patient' => $this->formatPatientName($row['patient_name'] ?? null, $row['hc_number'] ?? null),
+                'procedure' => $this->formatDiagnosis($row['procedimiento_proyectado'] ?? null),
+                'status_label' => $this->formatStatusLabel($row['estado_agenda'] ?? null),
+                'status_variant' => $this->resolveStatusVariant($row['estado_agenda'] ?? null),
+                'afiliacion_label' => $this->formatAfiliacionLabel($row['afiliacion'] ?? null),
+                'hc_label' => $this->formatHcLabel($row['hc_number'] ?? null),
+                'call_href' => $callHref ?? 'javascript:void(0);',
+                'call_disabled' => $callHref === null,
+                'avatar' => $this->resolvePatientAvatar($row['hc_number'] ?? null, $index),
+            ];
+        }
+
+        return $appointments;
+    }
+
+    private function normalizeDateKey($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+            $timestamp = strtotime($value);
+            return $timestamp === false ? null : date('Y-m-d', $timestamp);
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return null;
+        }
+
+        return date('Y-m-d', $timestamp);
+    }
+
+    private function formatStatusLabel(?string $status): ?string
+    {
+        if ($status === null) {
+            return null;
+        }
+
+        $status = trim($status);
+        if ($status === '') {
+            return null;
+        }
+
+        if (function_exists('mb_convert_case')) {
+            return mb_convert_case($status, MB_CASE_TITLE, 'UTF-8');
+        }
+
+        return ucwords(strtolower($status));
+    }
+
+    private function resolveStatusVariant(?string $status): string
+    {
+        if ($status === null) {
+            return 'secondary';
+        }
+
+        $normalized = strtoupper(trim($status));
+
+        if ($normalized === '') {
+            return 'secondary';
+        }
+
+        $successStatuses = ['CONFIRMADO', 'CONFIRMADA', 'LLEGADO', 'LLEGADA', 'ATENDIDO', 'ATENDIDA', 'FACTURADO', 'FACTURADA', 'EN CONSULTA'];
+        $warningStatuses = ['REPROGRAMADO', 'REPROGRAMADA', 'REAGENDADO', 'REAGENDADA', 'EN ESPERA'];
+        $primaryStatuses = ['AGENDADO', 'AGENDADA', 'PENDIENTE', 'REGISTRADO', 'REGISTRADA', 'ASIGNADO', 'ASIGNADA'];
+        $dangerStatuses = ['ANULADO', 'ANULADA', 'CANCELADO', 'CANCELADA', 'NO ASISTE', 'NO ASISTIO', 'NO SE PRESENTO', 'NO SE PRESENTÓ', 'NO-SE-PRESENTO'];
+
+        if (in_array($normalized, $successStatuses, true)) {
+            return 'success';
+        }
+
+        if (in_array($normalized, $warningStatuses, true)) {
+            return 'warning';
+        }
+
+        if (in_array($normalized, $dangerStatuses, true)) {
+            return 'danger';
+        }
+
+        if (in_array($normalized, $primaryStatuses, true)) {
+            return 'primary';
+        }
+
+        return 'secondary';
+    }
+
+    private function formatAfiliacionLabel(?string $afiliacion): string
+    {
+        $value = $afiliacion !== null ? trim($afiliacion) : '';
+        if ($value === '') {
+            $value = 'Particular';
+        }
+
+        if (function_exists('mb_convert_case')) {
+            $value = mb_convert_case($value, MB_CASE_TITLE, 'UTF-8');
+        } else {
+            $value = ucwords(strtolower($value));
+        }
+
+        return 'Afiliación: ' . $value;
+    }
+
+    private function formatHcLabel(?string $hcNumber): ?string
+    {
+        if ($hcNumber === null) {
+            return null;
+        }
+
+        $hcNumber = trim($hcNumber);
+        if ($hcNumber === '') {
+            return null;
+        }
+
+        return 'HC ' . $hcNumber;
+    }
+
+    private function formatCallHref(?string $phone): ?string
+    {
+        if ($phone === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $phone);
+        if ($digits === null || $digits === '' || strlen($digits) < 7) {
+            return null;
+        }
+
+        return 'tel:' . $digits;
+    }
+
+    private function formatSelectedDateLabel(string $date): string
+    {
+        $dateObj = DateTimeImmutable::createFromFormat('Y-m-d', $date);
+        if ($dateObj === false) {
+            $timestamp = strtotime($date);
+            if ($timestamp === false) {
+                return $date;
+            }
+
+            $dateObj = (new DateTimeImmutable('@' . $timestamp))->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+        }
+
+        $dayNames = [
+            1 => 'Lunes',
+            2 => 'Martes',
+            3 => 'Miércoles',
+            4 => 'Jueves',
+            5 => 'Viernes',
+            6 => 'Sábado',
+            7 => 'Domingo',
+        ];
+        $monthNames = [
+            1 => 'enero',
+            2 => 'febrero',
+            3 => 'marzo',
+            4 => 'abril',
+            5 => 'mayo',
+            6 => 'junio',
+            7 => 'julio',
+            8 => 'agosto',
+            9 => 'septiembre',
+            10 => 'octubre',
+            11 => 'noviembre',
+            12 => 'diciembre',
+        ];
+
+        $dayName = $dayNames[(int) $dateObj->format('N')] ?? $dateObj->format('l');
+        $monthName = $monthNames[(int) $dateObj->format('n')] ?? strtolower($dateObj->format('F'));
+
+        $formattedMonth = function_exists('mb_convert_case')
+            ? mb_convert_case($monthName, MB_CASE_TITLE, 'UTF-8')
+            : ucfirst($monthName);
+
+        return sprintf('%s, %d de %s de %s', $dayName, (int) $dateObj->format('j'), $formattedMonth, $dateObj->format('Y'));
+    }
+
+    private function formatPaginatorLabel(DateTimeInterface $date): string
+    {
+        $dayNames = [
+            1 => 'Lun',
+            2 => 'Mar',
+            3 => 'Mié',
+            4 => 'Jue',
+            5 => 'Vie',
+            6 => 'Sáb',
+            7 => 'Dom',
+        ];
+
+        $day = $dayNames[(int) $date->format('N')] ?? $date->format('D');
+        $dayNumber = (int) $date->format('j');
+
+        return sprintf('%s<br>%dº', $day, $dayNumber);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildFallbackAppointments(string $seed): array
+    {
+        $names = ['Juan Andrade', 'María Zambrano', 'Pedro Alcívar', 'Ana Dávila', 'Rosa Medina', 'Daniela Chicaiza', 'Luis Ortiz', 'Patricia Reyes'];
+        $procedures = [
+            'Consulta de seguimiento',
+            'Control de laboratorio',
+            'Evaluación preoperatoria',
+            'Terapia de rehabilitación',
+            'Ajuste de tratamiento',
+            'Teleconsulta de resultados',
+        ];
+        $statuses = ['Agendado', 'Confirmado', 'Llegado', 'Reprogramado'];
+        $afiliaciones = ['Particular', 'Seguro Privado', 'IESS', 'Convenio Empresarial'];
+        $times = ['08:15', '09:40', '10:20', '11:30', '14:00', '15:15', '16:45'];
+
+        $appointments = [];
+        $perDay = 3;
+        $days = 5;
+        $today = new DateTimeImmutable('today');
+
+        for ($i = 0; $i < $perDay * $days; $i++) {
+            $dayOffset = intdiv($i, $perDay);
+            $date = $today->modify('+' . $dayOffset . ' day')->format('Y-m-d');
+
+            $name = $names[$this->seededRange($seed . '|appt|name|' . $i, 0, count($names) - 1)];
+            $procedure = $procedures[$this->seededRange($seed . '|appt|procedure|' . $i, 0, count($procedures) - 1)];
+            $statusRaw = $statuses[$this->seededRange($seed . '|appt|status|' . $i, 0, count($statuses) - 1)];
+            $afiliacion = $afiliaciones[$this->seededRange($seed . '|appt|afiliacion|' . $i, 0, count($afiliaciones) - 1)];
+            $hcNumber = (string) (20000 + $this->seededRange($seed . '|appt|hc|' . $i, 0, 7999));
+            $time = $times[$i % count($times)];
+
+            $appointments[] = [
+                'date' => $date,
+                'time' => $this->formatHourLabel($time),
+                'patient' => $name,
+                'procedure' => $procedure,
+                'status_label' => $this->formatStatusLabel($statusRaw) ?? 'Agendado',
+                'status_variant' => $this->resolveStatusVariant($statusRaw),
+                'afiliacion_label' => $this->formatAfiliacionLabel($afiliacion),
+                'hc_label' => $this->formatHcLabel($hcNumber),
+                'call_href' => 'javascript:void(0);',
+                'call_disabled' => true,
+                'avatar' => $this->resolvePatientAvatar($hcNumber, $i),
+            ];
+        }
+
+        return $appointments;
+    }
+
+    private function sanitizeDateInput(string $value): ?string
+    {
+        return $this->normalizeDateKey($value);
     }
 
     /**
