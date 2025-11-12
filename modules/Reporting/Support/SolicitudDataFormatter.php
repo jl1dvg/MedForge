@@ -44,8 +44,9 @@ class SolicitudDataFormatter
         $normalized['solicitud'] = $solicitud;
         $normalized['diagnostico'] = $diagnostico;
         $normalized['consulta'] = $consulta;
-        $normalized['consultaTexto'] = self::resolveConsultaTexto($consulta);
-        $normalized['consultaExamenFisico'] = $consulta['examen_fisico'] ?? null;
+        $resolvedExamenFisico = self::resolveExamenFisico($consulta);
+        $normalized['consultaTexto'] = $resolvedExamenFisico ?? self::buildConsultaTexto($consulta);
+        $normalized['consultaExamenFisico'] = $resolvedExamenFisico;
         $normalized['derivacion'] = $derivacion;
 
         $normalized['form_id'] = $formId;
@@ -138,6 +139,7 @@ class SolicitudDataFormatter
             'motivo',
             'enfermedad_actual',
             'examen_fisico',
+            'examen_fisico_normalizado',
             'plan',
             'diagnostico_plan',
             'estado_enfermedad',
@@ -149,6 +151,17 @@ class SolicitudDataFormatter
 
         foreach ($scalarFields as $field) {
             self::normalizeScalarField($consulta, $field);
+        }
+
+        $examenFisico = self::resolveExamenFisico($consulta);
+        if ($examenFisico !== null) {
+            $consulta['examen_fisico'] = $examenFisico;
+        } else {
+            unset($consulta['examen_fisico']);
+        }
+
+        if (($consulta['examen_fisico_normalizado'] ?? null) === null) {
+            unset($consulta['examen_fisico_normalizado']);
         }
 
         if (array_key_exists('examenes', $consulta)) {
@@ -187,12 +200,29 @@ class SolicitudDataFormatter
 
     private static function resolveConsultaTexto(array $consulta): ?string
     {
-        $examenFisico = self::stringifyValue($consulta['examen_fisico'] ?? null);
+        $examenFisico = self::resolveExamenFisico($consulta);
         if ($examenFisico !== null) {
             return $examenFisico;
         }
 
         return self::buildConsultaTexto($consulta);
+    }
+
+    private static function resolveExamenFisico(array $consulta): ?string
+    {
+        $candidates = [
+            $consulta['examen_fisico_normalizado'] ?? null,
+            $consulta['examen_fisico'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $valor = self::stringifyValue($candidate);
+            if ($valor !== null) {
+                return $valor;
+            }
+        }
+
+        return null;
     }
 
     private static function buildConsultaTexto(array $consulta): ?string
