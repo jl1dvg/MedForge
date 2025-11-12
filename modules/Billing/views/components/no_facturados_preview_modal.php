@@ -17,7 +17,7 @@
                 </div>
                 <div>
                     <form id="facturarForm" method="POST"
-                          action="/views/billing/components/crear_desde_no_facturado.php"
+                          action="/billing/no-facturados/crear"
                           class="mb-0">
                         <input type="hidden" name="form_id" id="facturarFormId">
                         <input type="hidden" name="hc_number" id="facturarHcNumber">
