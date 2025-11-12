@@ -738,7 +738,7 @@ class DashboardController
             [
                 'title' => 'Solicitudes registradas',
                 'value' => $registradas,
-                'description' => 'Ingresadas en el periodo seleccionado',
+                'description' => 'En este periodo',
                 'icon' => 'svg-icon/color-svg/custom-20.svg',
                 'tag' => $conversion > 0 ? $conversion . '% agendadas' : 'Sin agenda registrada',
             ],
@@ -752,7 +752,7 @@ class DashboardController
             [
                 'title' => 'Urgentes sin turno',
                 'value' => $urgentesSinTurno,
-                'description' => 'Prioridad urgente pendientes de agenda',
+                'description' => 'Urgentes pendientes de agenda',
                 'icon' => 'svg-icon/color-svg/custom-18.svg',
                 'tag' => $urgentesSinTurno > 0 ? 'Revisar backlog' : 'Todo al día',
             ],

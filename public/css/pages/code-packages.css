@@ -1,0 +1,36 @@
+.code-package-card {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.code-package-card.active {
+    border-color: #1f91f3;
+    box-shadow: 0 0 0 0.1rem rgba(31, 145, 243, 0.15);
+}
+
+.code-package-card h6 {
+    font-size: 0.95rem;
+    margin-bottom: 0.2rem;
+}
+
+.code-package-card small {
+    color: #6c757d;
+}
+
+#package-items-table tbody tr {
+    cursor: grab;
+}
+
+#package-items-table tbody tr.dragging {
+    opacity: 0.65;
+    cursor: grabbing;
+}
+
+#code-search-modal .table td,
+#code-search-modal .table th {
+    vertical-align: middle;
+}

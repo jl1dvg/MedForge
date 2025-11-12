@@ -59,4 +59,16 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
     $router->post('/crm/tickets/reply', static function (\PDO $pdo): void {
         (new CRMController($pdo))->replyTicket();
     });
+
+    $router->get('/crm/proposals', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->listProposals();
+    });
+
+    $router->post('/crm/proposals', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->createProposal();
+    });
+
+    $router->post('/crm/proposals/status', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->updateProposalStatus();
+    });
 };

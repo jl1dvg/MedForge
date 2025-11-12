@@ -270,7 +270,7 @@ if (!function_exists('isTreeOpen')) {
                     $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessCronManager;
                     ?>
                     <?php if ($showAdmin): ?>
-                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/views/codes']) ?>">
+                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/codes', '/codes/packages']) ?>">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
                                             class="path3"></span></i>
@@ -307,9 +307,14 @@ if (!function_exists('isTreeOpen')) {
                                     </li>
                                 <?php endif; ?>
                                 <?php if ($canAccessCodes): ?>
-                                    <li class="<?= isActive('/views/codes/index.php') ?>">
-                                        <a href="/views/codes/index.php">
-                                            <i class="mdi mdi-tag-text-outline"></i>Codificación
+                                    <li class="<?= isActive('/codes') ?>">
+                                        <a href="/codes">
+                                            <i class="mdi mdi-tag-text-outline"></i>Catálogo de códigos
+                                        </a>
+                                    </li>
+                                    <li class="<?= isActive('/codes/packages') ?>">
+                                        <a href="/codes/packages">
+                                            <i class="mdi mdi-package-variant-closed"></i>Constructor de paquetes
                                         </a>
                                     </li>
                                 <?php endif; ?>

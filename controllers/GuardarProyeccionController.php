@@ -18,6 +18,79 @@ class GuardarProyeccionController
         return ($ts && $ts > strtotime('2000-01-01'));
     }
 
+    private function minutosEntreFechas(?string $inicio, ?string $fin): ?float
+    {
+        if (!$inicio || !$fin) {
+            return null;
+        }
+
+        $inicioTs = strtotime($inicio);
+        $finTs = strtotime($fin);
+
+        if (!$inicioTs || !$finTs || $finTs < $inicioTs) {
+            return null;
+        }
+
+        return round(($finTs - $inicioTs) / 60, 2);
+    }
+
+    private function construirLineaTiempo(array $historial, ?string $citaProgramada, ?string $horaLlegada): array
+    {
+        $lineaTiempo = [];
+        $primerasMarcas = [];
+        $referenciaAnterior = $horaLlegada ?? $citaProgramada;
+
+        foreach ($historial as $evento) {
+            $marca = $evento['fecha_hora_cambio'] ?? null;
+            if (!$marca) {
+                continue;
+            }
+
+            $lineaTiempo[] = [
+                'estado' => $evento['estado'],
+                'fecha_hora_cambio' => $marca,
+                'minutos_desde_cita' => $this->minutosEntreFechas($citaProgramada, $marca),
+                'minutos_desde_llegada' => $this->minutosEntreFechas($horaLlegada, $marca),
+                'minutos_desde_anterior' => $this->minutosEntreFechas($referenciaAnterior, $marca),
+            ];
+
+            if (!isset($primerasMarcas[$evento['estado']])) {
+                $primerasMarcas[$evento['estado']] = $marca;
+            }
+
+            $referenciaAnterior = $marca;
+        }
+
+        $metricas = [
+            'espera_desde_cita' => $this->minutosEntreFechas(
+                $citaProgramada,
+                $primerasMarcas['LLEGADO'] ?? $primerasMarcas['OPTOMETRIA'] ?? null
+            ),
+            'espera_hasta_optometria' => $this->minutosEntreFechas(
+                $horaLlegada ?? $primerasMarcas['LLEGADO'] ?? null,
+                $primerasMarcas['OPTOMETRIA'] ?? null
+            ),
+            'duracion_optometria' => $this->minutosEntreFechas(
+                $primerasMarcas['OPTOMETRIA'] ?? null,
+                $primerasMarcas['OPTOMETRIA_TERMINADO'] ?? $primerasMarcas['DILATAR'] ?? null
+            ),
+            'tiempo_total' => $this->minutosEntreFechas(
+                $horaLlegada ?? $primerasMarcas['LLEGADO'] ?? null,
+                $primerasMarcas['OPTOMETRIA_TERMINADO'] ?? $primerasMarcas['DILATAR'] ?? null
+            ),
+            'duracion_dilatacion' => $this->minutosEntreFechas(
+                $primerasMarcas['DILATAR'] ?? null,
+                $primerasMarcas['OPTOMETRIA_TERMINADO'] ?? null
+            ),
+        ];
+
+        return [
+            'linea_tiempo' => $lineaTiempo,
+            'metricas' => array_filter($metricas, static fn($valor) => $valor !== null),
+            'primeras_marcas' => $primerasMarcas,
+        ];
+    }
+
     private $db;
 
     public function __construct(PDO $pdo)
@@ -405,15 +478,32 @@ class GuardarProyeccionController
 
         // 5. Inserta los trayectos en cada visita
         foreach ($visitas as &$v) {
-            $v['trayectos'] = $trayectosPorVisita[$v['visita_id']] ?? [];
+            $trayectosVisita = $trayectosPorVisita[$v['visita_id']] ?? [];
+            $horaLlegada = $v['hora_llegada'] ?? null;
+
+            foreach ($trayectosVisita as &$trayecto) {
+                $historialTrayecto = $trayecto['historial_estados'] ?? [];
+                $citaProgramada = (!empty($trayecto['fecha_cambio']) && !empty($trayecto['hora']))
+                    ? $trayecto['fecha_cambio'] . ' ' . $trayecto['hora']
+                    : null;
+
+                $detalle = $this->construirLineaTiempo($historialTrayecto, $citaProgramada, $horaLlegada);
+                $trayecto['linea_tiempo'] = $detalle['linea_tiempo'];
+                $trayecto['metricas'] = $detalle['metricas'];
+                $trayecto['primeras_marcas'] = $detalle['primeras_marcas'];
+            }
+            unset($trayecto);
+
+            $v['trayectos'] = $trayectosVisita;
         }
+        unset($v);
 
         return $visitas;
     }
 
     public function obtenerFlujoPacientes($fecha = null): array
     {
-        $sql = "SELECT 
+        $sql = "SELECT
                 pp.id,
                 pp.form_id,
                 pp.hc_number,
@@ -469,9 +559,85 @@ class GuardarProyeccionController
 
         // Asocia el historial a cada solicitud
         foreach ($solicitudes as &$sol) {
-            $sol['historial_estados'] = $historiales[$sol['form_id']] ?? [];
+            $historial = $historiales[$sol['form_id']] ?? [];
+            $sol['historial_estados'] = $historial;
+
+            $citaProgramada = (!empty($sol['fecha_cambio']) && !empty($sol['hora']))
+                ? $sol['fecha_cambio'] . ' ' . $sol['hora']
+                : null;
+            $detalle = $this->construirLineaTiempo($historial, $citaProgramada, $sol['hora_llegada'] ?? null);
+
+            $sol['linea_tiempo'] = $detalle['linea_tiempo'];
+            $sol['metricas'] = $detalle['metricas'];
+            $sol['primeras_marcas'] = $detalle['primeras_marcas'];
         }
+        unset($sol);
+
         return $solicitudes;
+    }
+
+    public function obtenerLineaTiempoAtencion($formId): array
+    {
+        if (!$formId) {
+            return [];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT form_id, hc_number, procedimiento_proyectado, doctor, fecha, hora, estado_agenda, afiliacion, visita_id
+             FROM procedimiento_proyectado
+             WHERE form_id = :form_id
+             LIMIT 1"
+        );
+        $stmt->execute([':form_id' => $formId]);
+        $info = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$info) {
+            return [];
+        }
+
+        $visita = null;
+        if (!empty($info['visita_id'])) {
+            $stmtVisita = $this->db->prepare(
+                "SELECT fecha_visita, hora_llegada
+                 FROM visitas
+                 WHERE id = :visita_id
+                 LIMIT 1"
+            );
+            $stmtVisita->execute([':visita_id' => $info['visita_id']]);
+            $visita = $stmtVisita->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        $histStmt = $this->db->prepare(
+            "SELECT estado, fecha_hora_cambio
+             FROM procedimiento_proyectado_estado
+             WHERE form_id = :form_id
+             ORDER BY fecha_hora_cambio ASC"
+        );
+        $histStmt->execute([':form_id' => $formId]);
+        $historial = $histStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $citaProgramada = (!empty($info['fecha']) && !empty($info['hora']))
+            ? $info['fecha'] . ' ' . $info['hora']
+            : null;
+        $horaLlegada = $visita['hora_llegada'] ?? null;
+
+        $detalle = $this->construirLineaTiempo($historial, $citaProgramada, $horaLlegada);
+
+        return [
+            'form_id' => (int) $info['form_id'],
+            'visita_id' => $info['visita_id'] ? (int) $info['visita_id'] : null,
+            'hc_number' => $info['hc_number'],
+            'afiliacion' => $info['afiliacion'] ?? null,
+            'procedimiento' => $info['procedimiento_proyectado'],
+            'doctor' => $info['doctor'],
+            'cita_programada' => $citaProgramada,
+            'hora_llegada' => $horaLlegada,
+            'estado_actual' => $this->obtenerEstado($formId) ?? $info['estado_agenda'],
+            'linea_tiempo' => $detalle['linea_tiempo'],
+            'metricas' => $detalle['metricas'],
+            'primeras_marcas' => $detalle['primeras_marcas'],
+            'historial' => $historial,
+        ];
     }
 
     public function actualizarEstado($formId, $nuevoEstado): array

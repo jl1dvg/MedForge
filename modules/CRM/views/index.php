@@ -32,6 +32,8 @@ $bootstrap = [
     'initialProjects' => $initialProjects ?? [],
     'initialTasks' => $initialTasks ?? [],
     'initialTickets' => $initialTickets ?? [],
+    'initialProposals' => $initialProposals ?? [],
+    'proposalStatuses' => $proposalStatuses ?? [],
     'permissions' => $permissions,
 ];
 
@@ -83,6 +85,9 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                         </li>
                         <li class="nav-item" role="presentation">
                             <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-tickets" role="tab">Tickets</a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-proposals" role="tab">Propuestas</a>
                         </li>
                     </ul>
 
@@ -527,3 +532,186 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
         </div>
     </div>
 </section>
+                        <div class="tab-pane fade" id="crm-tab-proposals" role="tabpanel">
+                            <div class="row g-3">
+                                <div class="col-xl-6">
+                                    <div class="card h-100">
+                                        <div class="card-header d-flex align-items-center justify-content-between">
+                                            <div>
+                                                <h5 class="mb-0">Propuestas recientes</h5>
+                                                <small class="text-muted">Seguimiento rápido de cotizaciones</small>
+                                            </div>
+                                            <div class="d-flex gap-2">
+                                                <select class="form-select form-select-sm" id="proposal-status-filter">
+                                                    <option value="">Todas</option>
+                                                    <?php foreach (($proposalStatuses ?? []) as $statusOption): ?>
+                                                        <option value="<?= htmlspecialchars($statusOption, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(ucfirst($statusOption), ENT_QUOTES, 'UTF-8') ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button class="btn btn-outline-secondary btn-sm" id="proposal-refresh-btn">
+                                                    <i class="mdi mdi-refresh"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="table-responsive rounded card-table shadow-sm">
+                                                <table class="table table-sm align-middle" id="crm-proposals-table">
+                                                    <thead class="bg-info text-white">
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>Lead</th>
+                                                            <th>Estado</th>
+                                                            <th class="text-end">Total</th>
+                                                            <th>Vence</th>
+                                                            <th></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-xl-6">
+                                    <div class="card mb-3">
+                                        <div class="card-header">
+                                            <h5 class="mb-0">Nueva propuesta rápida</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <form id="proposal-form" class="row g-3">
+                                                <div class="col-12">
+                                                    <label class="form-label">Lead</label>
+                                                    <select class="form-select form-select-sm" id="proposal-lead"></select>
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label">Título</label>
+                                                    <input type="text" class="form-control form-control-sm" id="proposal-title" placeholder="Ej: Procedimiento ambulatorio">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Válida hasta</label>
+                                                    <input type="date" class="form-control form-control-sm" id="proposal-valid-until">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Impuesto (%)</label>
+                                                    <input type="number" class="form-control form-control-sm" step="0.01" id="proposal-tax-rate" value="0">
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label">Notas internas</label>
+                                                    <textarea class="form-control form-control-sm" rows="2" id="proposal-notes"></textarea>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <div class="card mb-3">
+                                        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                                            <strong>Detalle económico</strong>
+                                            <div class="ms-auto d-flex gap-2">
+                                                <button class="btn btn-outline-primary btn-sm" id="proposal-add-package-btn">
+                                                    <i class="mdi mdi-package-variant-closed"></i> Agregar paquete
+                                                </button>
+                                                <button class="btn btn-outline-primary btn-sm" id="proposal-add-code-btn">
+                                                    <i class="mdi mdi-magnify"></i> Buscar código
+                                                </button>
+                                                <button class="btn btn-outline-primary btn-sm" id="proposal-add-custom-btn">
+                                                    <i class="mdi mdi-plus"></i> Línea manual
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm align-middle" id="proposal-items-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Concepto</th>
+                                                            <th class="text-center" style="width: 75px;">Cant.</th>
+                                                            <th class="text-center" style="width: 100px;">Precio</th>
+                                                            <th class="text-center" style="width: 80px;">Desc %</th>
+                                                            <th class="text-end" style="width: 110px;">Total</th>
+                                                            <th style="width: 40px;"></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="proposal-items-body">
+                                                        <tr class="text-center text-muted" data-empty-row>
+                                                            <td colspan="6">Agrega un paquete o código para iniciar</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer d-flex justify-content-between flex-wrap gap-2">
+                                            <div class="totals">
+                                                <div>Subtotal: <strong id="proposal-subtotal">$0.00</strong></div>
+                                                <div>Impuesto: <strong id="proposal-tax">$0.00</strong></div>
+                                                <div>Total: <strong id="proposal-total">$0.00</strong></div>
+                                            </div>
+                                            <button class="btn btn-success" id="proposal-save-btn">
+                                                <i class="mdi mdi-send"></i> Crear propuesta
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal fade" id="proposal-package-modal" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Seleccionar paquete</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="input-group input-group-sm mb-3">
+                                                <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
+                                                <input type="search" class="form-control" id="proposal-package-search" placeholder="Buscar paquete">
+                                            </div>
+                                            <div id="proposal-package-list" class="row g-2"></div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal fade" id="proposal-code-modal" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Buscar código</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="input-group input-group-sm mb-3">
+                                                <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
+                                                <input type="search" class="form-control" id="proposal-code-search-input" placeholder="Código o descripción">
+                                                <button class="btn btn-primary" id="proposal-code-search-btn">Buscar</button>
+                                            </div>
+                                            <div class="table-responsive" style="max-height: 400px;">
+                                                <table class="table table-sm align-middle">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Código</th>
+                                                            <th>Descripción</th>
+                                                            <th class="text-end">Referencia</th>
+                                                            <th></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="proposal-code-results">
+                                                        <tr class="text-center text-muted" data-empty-row>
+                                                            <td colspan="4">Inicia una búsqueda</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>

@@ -6,6 +6,7 @@ use Core\BaseController;
 use InvalidArgumentException;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Models\ProjectModel;
+use Modules\CRM\Models\ProposalModel;
 use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
 use Modules\CRM\Services\LeadConfigurationService;
@@ -19,6 +20,7 @@ class CRMController extends BaseController
     private ProjectModel $projects;
     private TaskModel $tasks;
     private TicketModel $tickets;
+    private ProposalModel $proposals;
     private LeadConfigurationService $leadConfig;
     private ?array $bodyCache = null;
 
@@ -29,6 +31,7 @@ class CRMController extends BaseController
         $this->projects = new ProjectModel($pdo);
         $this->tasks = new TaskModel($pdo);
         $this->tickets = new TicketModel($pdo);
+        $this->proposals = new ProposalModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
     }
 
@@ -59,6 +62,8 @@ class CRMController extends BaseController
                 'initialProjects' => $this->projects->list(['limit' => 50]),
                 'initialTasks' => $this->tasks->list(['limit' => 50]),
                 'initialTickets' => $this->tickets->list(['limit' => 50]),
+                'initialProposals' => $this->proposals->list(['limit' => 25]),
+                'proposalStatuses' => $this->proposals->getStatuses(),
                 'permissions' => $permissions,
                 'scripts' => ['js/pages/crm.js'],
             ]
@@ -467,6 +472,79 @@ class CRMController extends BaseController
             $this->json(['ok' => true, 'data' => $updated]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo registrar la respuesta'], 500);
+        }
+    }
+
+    public function listProposals(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $filters = [];
+            if (($status = $this->getQuery('status')) !== null) {
+                $filters['status'] = $status;
+            }
+            if (($leadId = $this->getQueryInt('lead_id')) !== null) {
+                $filters['lead_id'] = $leadId;
+            }
+            if (($search = $this->getQuery('q')) !== null) {
+                $filters['search'] = $search;
+            }
+            if (($limit = $this->getQueryInt('limit')) !== null) {
+                $filters['limit'] = $limit;
+            }
+
+            $proposals = $this->proposals->list($filters);
+            $this->json(['ok' => true, 'data' => $proposals]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudieron cargar las propuestas'], 500);
+        }
+    }
+
+    public function createProposal(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
+
+        $payload = $this->getBody();
+
+        try {
+            $proposal = $this->proposals->create($payload, $this->getCurrentUserId());
+            $this->json(['ok' => true, 'data' => $proposal], 201);
+        } catch (RuntimeException $exception) {
+            $this->json(['ok' => false, 'error' => $exception->getMessage()], 422);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo crear la propuesta'], 500);
+        }
+    }
+
+    public function updateProposalStatus(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
+
+        $payload = $this->getBody();
+        $proposalId = isset($payload['proposal_id']) ? (int) $payload['proposal_id'] : 0;
+        $status = (string) ($payload['status'] ?? '');
+
+        if ($proposalId <= 0 || $status === '') {
+            $this->json(['ok' => false, 'error' => 'Datos incompletos'], 422);
+            return;
+        }
+
+        try {
+            $proposal = $this->proposals->updateStatus($proposalId, $status, $this->getCurrentUserId());
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (RuntimeException $exception) {
+            $this->json(['ok' => false, 'error' => $exception->getMessage()], 422);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
     }
 

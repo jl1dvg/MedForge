@@ -10,7 +10,6 @@ require_once __DIR__ . '/../bootstrap.php';
 use Core\ModuleLoader;
 use Core\Router;
 use Controllers\BillingController;
-use Controllers\CodesController;
 use Controllers\EstadisticaFlujoController;
 
 $pdo = $GLOBALS['pdo'] ?? null;
@@ -99,69 +98,9 @@ try {
             exit;
         }
 
-        if ($path === '/codes/datatable' && $method === 'GET') {
-            $controller = new CodesController($pdo);
-            $controller->datatable($_GET);
-            exit;
-        }
-
         if ($path === '/reportes/estadistica_flujo' && $method === 'GET') {
             $controller = new EstadisticaFlujoController($pdo);
             $controller->index();
-            exit;
-        }
-
-        if ($path === '/codes' && $method === 'GET') {
-            $controller = new CodesController($pdo);
-            $controller->index();
-            exit;
-        }
-
-        if ($path === '/codes/create' && $method === 'GET') {
-            $controller = new CodesController($pdo);
-            $controller->create();
-            exit;
-        }
-
-        if ($path === '/codes' && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->store($_POST);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)/edit$#', $path, $m) && $method === 'GET') {
-            $controller = new CodesController($pdo);
-            $controller->edit((int) $m[1]);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)$#', $path, $m) && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->update((int) $m[1], $_POST);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)/delete$#', $path, $m) && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->destroy((int) $m[1]);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)/toggle$#', $path, $m) && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->toggleActive((int) $m[1]);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)/relate$#', $path, $m) && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->addRelation((int) $m[1], $_POST);
-            exit;
-        }
-
-        if (preg_match('#^/codes/(\d+)/relate/del$#', $path, $m) && $method === 'POST') {
-            $controller = new CodesController($pdo);
-            $controller->removeRelation((int) $m[1], $_POST);
             exit;
         }
 

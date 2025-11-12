@@ -18,39 +18,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// ✅ 2) GET: consultar estado actual
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'estado') {
+// ✅ 2) GET: consultar información de trazabilidad
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
+    $accion = $_GET['action'];
     $formId = $_GET['form_id'] ?? null;
-    if (!$formId) {
-        echo json_encode(["success" => false, "message" => "form_id requerido"]);
+
+    if ($accion === 'estado') {
+        if (!$formId) {
+            echo json_encode(["success" => false, "message" => "form_id requerido"]);
+            exit;
+        }
+
+        if (method_exists($controller, 'obtenerEstado')) {
+            try {
+                $estadoBD = $controller->obtenerEstado($formId);
+                $map = [
+                    'OPTOMETRIA'           => 'en_proceso',
+                    'OPTOMETRIA_TERMINADO' => 'terminado_sin_dilatar',
+                    'DILATAR'              => 'terminado_dilatar',
+                ];
+                $estadoFront = $map[$estadoBD] ?? 'pendiente';
+
+                echo json_encode(["success" => true, "estado" => $estadoFront, "estado_bd" => $estadoBD]);
+                exit;
+            } catch (Throwable $e) {
+                echo json_encode([
+                    "success" => false,
+                    "message" => "No se pudo consultar estado",
+                    "error" => $e->getMessage(),
+                ]);
+                exit;
+            }
+        }
+
+        echo json_encode(["success" => true, "estado" => "pendiente"]);
         exit;
     }
 
-    // Si tu controller tiene un método obtenerEstado($formId), úsalo. Si no, devuelve pendiente.
-    if (method_exists($controller, 'obtenerEstado')) {
-        try {
-            // Posibles valores en BD: OPTOMETRIA, OPTOMETRIA_TERMINADO, DILATAR, etc.
-            $estadoBD = $controller->obtenerEstado($formId);
-
-            // Mapeo a lo que consume el frontend
-            $map = [
-                'OPTOMETRIA'           => 'en_proceso',
-                'OPTOMETRIA_TERMINADO' => 'terminado_sin_dilatar',
-                'DILATAR'              => 'terminado_dilatar',
-            ];
-            $estadoFront = $map[$estadoBD] ?? 'pendiente';
-
-            echo json_encode(["success" => true, "estado" => $estadoFront, "estado_bd" => $estadoBD]);
-            exit;
-        } catch (Throwable $e) {
-            echo json_encode(["success" => false, "message" => "No se pudo consultar estado", "error" => $e->getMessage()]);
+    if ($accion === 'historial') {
+        if (!$formId) {
+            echo json_encode(["success" => false, "message" => "form_id requerido"]);
             exit;
         }
+
+        $detalle = method_exists($controller, 'obtenerLineaTiempoAtencion')
+            ? $controller->obtenerLineaTiempoAtencion($formId)
+            : [];
+
+        if (!$detalle) {
+            echo json_encode(["success" => false, "message" => "No hay información de trazabilidad para el form_id solicitado"]);
+            exit;
+        }
+
+        echo json_encode(["success" => true, "detalle" => $detalle]);
+        exit;
     }
 
-    // Fallback: si no existe el método en el controller, responder pendiente para no romper el frontend
-    echo json_encode(["success" => true, "estado" => "pendiente"]);
-    exit;
+    if ($accion === 'flujo') {
+        $fecha = $_GET['fecha'] ?? null;
+        $visitas = method_exists($controller, 'obtenerFlujoPacientesPorVisita')
+            ? $controller->obtenerFlujoPacientesPorVisita($fecha)
+            : [];
+
+        echo json_encode([
+            "success" => true,
+            "fecha" => $fecha ?? date('Y-m-d'),
+            "visitas" => $visitas,
+        ]);
+        exit;
+    }
 }
 
 // ✅ 3) POST: aceptar JSON y form-encoded

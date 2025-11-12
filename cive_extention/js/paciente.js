@@ -43,6 +43,35 @@
         detectarConfirmacionAsistencia();
     }
 
+    window.detectarConfirmacionAsistencia = detectarConfirmacionAsistencia;
+
+    function iniciarDeteccionLlegadas() {
+        detectarConfirmacionAsistencia();
+
+        if (!document.body || window.__civeLlegadaObserver) {
+            return;
+        }
+
+        let escaneoPendiente = false;
+        const observer = new MutationObserver(() => {
+            if (escaneoPendiente) return;
+            escaneoPendiente = true;
+            setTimeout(() => {
+                escaneoPendiente = false;
+                detectarConfirmacionAsistencia();
+            }, 150);
+        });
+
+        observer.observe(document.body, {childList: true, subtree: true});
+        window.__civeLlegadaObserver = observer;
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', iniciarDeteccionLlegadas);
+    } else {
+        iniciarDeteccionLlegadas();
+    }
+
     /**
      * Bloquea o desbloquea los campos del formulario, excepto los botones.
      * Solo los elementos input, textarea y select serán afectados.
@@ -146,6 +175,27 @@
 
             // Definir constante para saber si es optometría
             const esOptometria = paciente.procedimiento_proyectado === 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS';
+
+            if (esOptometria) {
+                window.CiveApiClient.get('/proyecciones/optometria.php', {
+                    query: {form_id: paciente.form_id, action: 'historial'},
+                })
+                    .then((detalle) => {
+                        if (detalle && detalle.success !== false) {
+                            try {
+                                sessionStorage.setItem(`trazabilidad_${paciente.form_id}`, JSON.stringify(detalle));
+                            } catch (err) {
+                                console.warn('⚠️ No fue posible persistir la trazabilidad en sessionStorage:', err);
+                            }
+                            console.log('📊 Línea de tiempo de optometría cargada:', detalle);
+                        } else {
+                            console.warn('⚠️ No se encontró trazabilidad para el paciente:', detalle?.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Error al consultar trazabilidad de optometría:', error);
+                    });
+            }
 
             if (paciente.pacienteNoAdmitido) {
                 establecerBloqueoFormulario(true); // 🔒 Bloquea campos

@@ -39,7 +39,8 @@ El navbar se reorganizó siguiendo el enfoque por roles internos del Modelo B. C
    - Roles (`/roles`).
    - Ajustes (`/settings`).
    - Cron Manager (`/cron-manager`).
-   - Codificación (`/views/codes/index.php`).
+   - Codificación (`/codes`).
+   - Constructor de paquetes (`/codes/packages`).
 
 ## Ventajas operativas
 
