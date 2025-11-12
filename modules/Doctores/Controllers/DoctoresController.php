@@ -5,6 +5,7 @@ namespace Modules\Doctores\Controllers;
 use Core\BaseController;
 use Modules\Doctores\Models\DoctorModel;
 use PDO;
+use PDOException;
 
 class DoctoresController extends BaseController
 {
@@ -80,6 +81,11 @@ class DoctoresController extends BaseController
      */
     private function buildTodayPatients(array $doctor, string $seed): array
     {
+        $realPatients = $this->loadTodayPatientsFromDatabase($doctor);
+        if (!empty($realPatients)) {
+            return $realPatients;
+        }
+
         $patients = [
             ['time' => '08:30', 'name' => 'Lucía Paredes', 'diagnosis' => 'Control de seguimiento', 'avatar' => 'images/avatar/1.jpg'],
             ['time' => '09:15', 'name' => 'Andrés Villamar', 'diagnosis' => 'Evaluación de laboratorio', 'avatar' => 'images/avatar/2.jpg'],
@@ -101,6 +107,299 @@ class DoctoresController extends BaseController
             $ordered,
             array_keys($ordered)
         );
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array<int, array<string, string>>
+     */
+    private function loadTodayPatientsFromDatabase(array $doctor): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if (empty($lookupValues)) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildDoctorClause($lookupValues, false),
+            $this->buildDoctorClause($lookupValues, true),
+        ];
+
+        $dateClauses = [
+            'DATE(pp.fecha) = CURDATE()',
+            'DATE(pp.fecha) >= CURDATE()',
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if (!$clause) {
+                continue;
+            }
+
+            foreach ($dateClauses as $dateClause) {
+                $patients = $this->runTodayPatientsQuery($clause, $params, $dateClause);
+                if (!empty($patients)) {
+                    return $patients;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<int, string> $lookupValues
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function buildDoctorClause(array $lookupValues, bool $useLike): array
+    {
+        $conditions = [];
+        $params = [];
+
+        foreach (array_values($lookupValues) as $index => $value) {
+            $param = sprintf(':%sdoctor_%d', $useLike ? 'like_' : '', $index);
+            $conditions[] = $useLike
+                ? "LOWER(pp.doctor) LIKE $param"
+                : "LOWER(pp.doctor) = $param";
+
+            $normalized = $this->normalizeLower($value);
+            $params[$param] = $useLike ? '%' . $normalized . '%' : $normalized;
+        }
+
+        return [
+            $conditions ? '(' . implode(' OR ', $conditions) . ')' : '',
+            $params,
+        ];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array<string, string>>
+     */
+    private function runTodayPatientsQuery(string $doctorClause, array $params, string $dateClause): array
+    {
+        if ($doctorClause === '') {
+            return [];
+        }
+
+        $sql = <<<SQL
+            SELECT
+                pp.fecha,
+                pp.hora,
+                pp.hc_number,
+                pp.procedimiento_proyectado,
+                pp.estado_agenda,
+                TRIM(
+                    CONCAT_WS(
+                        ' ',
+                        NULLIF(p.fname, ''),
+                        NULLIF(p.mname, ''),
+                        NULLIF(p.lname, ''),
+                        NULLIF(p.lname2, '')
+                    )
+                ) AS patient_name
+            FROM procedimiento_proyectado pp
+            LEFT JOIN patient_data p ON p.hc_number = pp.hc_number
+            WHERE $doctorClause
+              AND $dateClause
+              AND pp.fecha IS NOT NULL
+              AND pp.hora IS NOT NULL
+              AND pp.hora <> ''
+              AND (
+                  pp.estado_agenda IS NULL
+                  OR UPPER(pp.estado_agenda) NOT IN (
+                      'ANULADO', 'CANCELADO', 'NO ASISTE', 'NO ASISTIO',
+                      'NO SE PRESENTO', 'NO SE PRESENTÓ', 'NO-SE-PRESENTO'
+                  )
+              )
+            ORDER BY pp.fecha ASC, pp.hora ASC
+            LIMIT 3
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException) {
+            return [];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $patients = [];
+        foreach ($rows as $index => $row) {
+            $patients[] = [
+                'time' => $this->formatHourLabel($row['hora'] ?? null),
+                'name' => $this->formatPatientName($row['patient_name'] ?? null, $row['hc_number'] ?? null),
+                'diagnosis' => $this->formatDiagnosis($row['procedimiento_proyectado'] ?? null),
+                'avatar' => $this->resolvePatientAvatar($row['hc_number'] ?? null, $index),
+            ];
+        }
+
+        return $patients;
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array<int, string>
+     */
+    private function resolveDoctorLookupValues(array $doctor): array
+    {
+        $candidates = [];
+        foreach (['name', 'display_name', 'username'] as $key) {
+            if (!empty($doctor[$key]) && is_string($doctor[$key])) {
+                $candidates[] = $doctor[$key];
+            }
+        }
+
+        if (!empty($doctor['email']) && is_string($doctor['email'])) {
+            $candidates[] = $doctor['email'];
+        }
+
+        $variants = [];
+        foreach ($candidates as $candidate) {
+            $trimmed = trim((string) $candidate);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $variants[] = $trimmed;
+
+            $withoutTitle = preg_replace('/^(dr\.?|dra\.?)\s*/i', '', $trimmed) ?? $trimmed;
+            if ($withoutTitle !== '') {
+                $variants[] = trim($withoutTitle);
+            }
+
+            if (!preg_match('/^(dr\.?|dra\.?)/i', $trimmed)) {
+                $variants[] = 'Dr. ' . $trimmed;
+                $variants[] = 'Dra. ' . $trimmed;
+            }
+
+            foreach (preg_split('/\s+-\s+/u', $trimmed) ?: [] as $part) {
+                $part = trim($part);
+                if ($part !== '' && $part !== $trimmed) {
+                    $variants[] = $part;
+                }
+            }
+
+            foreach (preg_split('/\s*[\/|]\s+/u', $trimmed) ?: [] as $part) {
+                $part = trim($part);
+                if ($part !== '' && $part !== $trimmed) {
+                    $variants[] = $part;
+                }
+            }
+        }
+
+        $unique = [];
+        $result = [];
+        foreach ($variants as $variant) {
+            $normalized = $this->normalizeLower($variant);
+            if ($variant === '' || isset($unique[$normalized])) {
+                continue;
+            }
+
+            $unique[$normalized] = true;
+            $result[] = $variant;
+        }
+
+        return $result;
+    }
+
+    private function normalizeLower(string $value): string
+    {
+        return function_exists('mb_strtolower')
+            ? mb_strtolower($value, 'UTF-8')
+            : strtolower($value);
+    }
+
+    private function formatHourLabel(?string $time): string
+    {
+        if ($time === null) {
+            return '--:--';
+        }
+
+        $normalized = trim((string) $time);
+        if ($normalized === '') {
+            return '--:--';
+        }
+
+        $normalized = str_ireplace(['a.m.', 'p.m.'], ['am', 'pm'], $normalized);
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+        $timestamp = strtotime($normalized);
+
+        if ($timestamp !== false) {
+            return strtolower(date('g:ia', $timestamp));
+        }
+
+        $formats = ['H:i:s', 'H:i'];
+        foreach ($formats as $format) {
+            $dt = \DateTime::createFromFormat($format, $normalized);
+            if ($dt !== false) {
+                return strtolower($dt->format('g:ia'));
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function formatPatientName(?string $name, ?string $hcNumber): string
+    {
+        $trimmed = trim((string) $name);
+        if ($trimmed !== '') {
+            return $trimmed;
+        }
+
+        $hcNumber = $hcNumber !== null ? trim((string) $hcNumber) : '';
+        if ($hcNumber !== '') {
+            return 'HC ' . $hcNumber;
+        }
+
+        return 'Paciente sin nombre';
+    }
+
+    private function formatDiagnosis(?string $diagnosis): string
+    {
+        $diagnosis = $diagnosis ?? '';
+        $diagnosis = trim($diagnosis);
+        if ($diagnosis === '') {
+            return 'Consulta programada';
+        }
+
+        $diagnosis = preg_replace('/\s+/', ' ', $diagnosis) ?? $diagnosis;
+        return $this->truncateText($diagnosis, 80);
+    }
+
+    private function resolvePatientAvatar(?string $hcNumber, int $position): string
+    {
+        $seed = $hcNumber !== null && $hcNumber !== ''
+            ? abs((int) crc32($hcNumber))
+            : $position;
+
+        $index = ($seed % 8) + 1;
+
+        return sprintf('images/avatar/%d.jpg', $index);
+    }
+
+    private function truncateText(string $text, int $limit): string
+    {
+        if ($limit <= 1) {
+            return $text;
+        }
+
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            if (mb_strlen($text, 'UTF-8') > $limit) {
+                return rtrim(mb_substr($text, 0, $limit - 1, 'UTF-8')) . '…';
+            }
+
+            return $text;
+        }
+
+        if (strlen($text) > $limit) {
+            return rtrim(substr($text, 0, $limit - 1)) . '…';
+        }
+
+        return $text;
     }
 
     /**
