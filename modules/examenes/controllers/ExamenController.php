@@ -97,7 +97,7 @@ class ExamenController extends BaseController
             'fechaTexto' => trim((string) ($payload['fechaTexto'] ?? '')),
         ];
 
-        $kanbanPreferences = $this->leadConfig->getKanbanPreferences();
+        $kanbanPreferences = $this->leadConfig->getKanbanPreferences(LeadConfigurationService::CONTEXT_EXAMENES);
         $pipelineStages = $this->leadConfig->getPipelineStages();
 
         try {

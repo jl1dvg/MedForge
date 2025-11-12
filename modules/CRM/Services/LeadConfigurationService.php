@@ -9,6 +9,9 @@ use RuntimeException;
 
 class LeadConfigurationService
 {
+    public const CONTEXT_CRM = 'crm';
+    public const CONTEXT_EXAMENES = 'examenes';
+
     private const DEFAULT_PIPELINE = [
         'Recibido',
         'Contacto inicial',
@@ -20,12 +23,29 @@ class LeadConfigurationService
         'Perdido',
     ];
 
-    private const DEFAULT_SORT = 'fecha_desc';
+    private const DEFAULT_SORTS = [
+        self::CONTEXT_CRM => 'fecha_desc',
+        self::CONTEXT_EXAMENES => 'creado_desc',
+    ];
+
+    private const KANBAN_OPTION_KEYS = [
+        self::CONTEXT_CRM => [
+            'sort' => 'crm_kanban_sort',
+            'column_limit' => 'crm_kanban_column_limit',
+        ],
+        self::CONTEXT_EXAMENES => [
+            'sort' => 'examenes_kanban_sort',
+            'column_limit' => 'examenes_kanban_column_limit',
+        ],
+    ];
 
     private PDO $pdo;
     private ?SettingsModel $settingsModel = null;
     private ?array $cachedPipeline = null;
-    private ?array $cachedKanbanPreferences = null;
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private array $cachedKanbanPreferences = [];
 
     public function __construct(PDO $pdo)
     {
@@ -126,40 +146,45 @@ class LeadConfigurationService
     /**
      * @return array<string, mixed>
      */
-    public function getKanbanPreferences(): array
+    public function getKanbanPreferences(string $context = self::CONTEXT_CRM): array
     {
-        if ($this->cachedKanbanPreferences !== null) {
-            return $this->cachedKanbanPreferences;
+        $context = $this->normalizeContext($context);
+
+        if (isset($this->cachedKanbanPreferences[$context])) {
+            return $this->cachedKanbanPreferences[$context];
         }
 
-        $sort = self::DEFAULT_SORT;
+        $defaults = self::DEFAULT_SORTS[$context] ?? self::DEFAULT_SORTS[self::CONTEXT_CRM];
+
+        $sort = $defaults;
         $columnLimit = 0;
 
         if ($this->settingsModel instanceof SettingsModel) {
             try {
-                $options = $this->settingsModel->getOptions([
-                    'crm_kanban_sort',
-                    'crm_kanban_column_limit',
-                ]);
+                $keys = self::KANBAN_OPTION_KEYS[$context] ?? self::KANBAN_OPTION_KEYS[self::CONTEXT_CRM];
+                $options = $this->settingsModel->getOptions(array_values($keys));
 
-                if (!empty($options['crm_kanban_sort'])) {
-                    $sort = $this->sanitizeSort($options['crm_kanban_sort']);
+                $sortKey = $keys['sort'];
+                $columnKey = $keys['column_limit'];
+
+                if (!empty($options[$sortKey])) {
+                    $sort = $this->sanitizeSort($options[$sortKey], $context);
                 }
 
-                if (isset($options['crm_kanban_column_limit'])) {
-                    $columnLimit = max(0, (int) $options['crm_kanban_column_limit']);
+                if (isset($options[$columnKey])) {
+                    $columnLimit = max(0, (int) $options[$columnKey]);
                 }
             } catch (PDOException $exception) {
                 // Ignorar y usar valores por defecto
             }
         }
 
-        $this->cachedKanbanPreferences = [
+        $this->cachedKanbanPreferences[$context] = [
             'sort' => $sort,
             'column_limit' => $columnLimit,
         ];
 
-        return $this->cachedKanbanPreferences;
+        return $this->cachedKanbanPreferences[$context];
     }
 
     /**
@@ -260,16 +285,32 @@ class LeadConfigurationService
         return $stages;
     }
 
-    private function sanitizeSort(string $sort): string
+    private function sanitizeSort(string $sort, string $context): string
     {
         $sort = strtolower(trim($sort));
         $allowed = ['fecha_desc', 'fecha_asc', 'creado_desc', 'creado_asc'];
 
         if (!in_array($sort, $allowed, true)) {
-            return self::DEFAULT_SORT;
+            return $this->getDefaultSortFor($context);
         }
 
         return $sort;
+    }
+
+    private function getDefaultSortFor(string $context): string
+    {
+        return self::DEFAULT_SORTS[$context] ?? self::DEFAULT_SORTS[self::CONTEXT_CRM];
+    }
+
+    private function normalizeContext(string $context): string
+    {
+        $context = strtolower(trim($context));
+
+        if (isset(self::KANBAN_OPTION_KEYS[$context])) {
+            return $context;
+        }
+
+        return self::CONTEXT_CRM;
     }
 
     private function normalizeText(string $value): string

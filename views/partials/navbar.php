@@ -166,6 +166,11 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>
                             </li>
+                            <li class="<?= isActive('/examenes') ?>">
+                                <a href="/examenes">
+                                    <i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)
+                                </a>
+                            </li>
                             <li class="<?= isActive('/cirugias') ?>">
                                 <a href="/cirugias">
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados

@@ -145,6 +145,37 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'examenes' => [
+                'title' => 'Exámenes',
+                'icon' => 'fa-solid fa-eye-dropper',
+                'description' => 'Ajusta el comportamiento del tablero de exámenes y su distribución por columnas.',
+                'groups' => [
+                    [
+                        'id' => 'kanban',
+                        'title' => 'Tablero de exámenes',
+                        'description' => 'Controla el orden inicial y los límites de tarjetas visibles por estado.',
+                        'fields' => [
+                            self::selectField(
+                                'examenes_kanban_sort',
+                                'Orden predeterminado del Kanban de Exámenes',
+                                [
+                                    'creado_desc' => 'Fecha de creación (más recientes primero)',
+                                    'creado_asc' => 'Fecha de creación (más antiguos primero)',
+                                    'fecha_desc' => 'Fecha de consulta (más recientes primero)',
+                                    'fecha_asc' => 'Fecha de consulta (más antiguos primero)',
+                                ],
+                                'creado_desc'
+                            ),
+                            self::numberField(
+                                'examenes_kanban_column_limit',
+                                'Límite de tarjetas por columna',
+                                0,
+                                '0 desactiva el límite por columna.'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'notifications' => [
                 'title' => 'Notificaciones',
                 'icon' => 'fa-solid fa-bell',
