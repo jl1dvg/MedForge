@@ -280,11 +280,52 @@ class GuardarProyeccionController
         }
 
         // Nueva lógica de éxito/error según existencia y filas afectadas
+        $estadoActual = $this->obtenerEstado($form_id);
+
         if (!$exists && $ejecutado === 0) {
-            return ["success" => false, "message" => "No se insertó ningún nuevo registro en procedimiento_proyectado."];
-        } else {
-            return ["success" => true, "message" => $exists ? "Registro actualizado o ya existente sin cambios" : "Nuevo registro insertado"];
+            return [
+                "success" => false,
+                "message" => "No se insertó ningún nuevo registro en procedimiento_proyectado.",
+                "id" => $form_id,
+                "form_id" => $form_id,
+                "afiliacion" => $data['afiliacion'] ?? null,
+                "estado" => $estadoActual,
+                "hc_number" => $hcNumber,
+                "visita_id" => $visita_id,
+            ];
         }
+
+        return [
+            "success" => true,
+            "message" => $exists ? "Registro actualizado o ya existente sin cambios" : "Nuevo registro insertado",
+            "id" => $form_id,
+            "form_id" => $form_id,
+            "afiliacion" => $data['afiliacion'] ?? null,
+            "estado" => $estadoActual,
+            "hc_number" => $hcNumber,
+            "visita_id" => $visita_id,
+        ];
+    }
+
+    public function obtenerEstado($formId): ?string
+    {
+        if (!$formId) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = :form_id LIMIT 1");
+        $stmt->execute([':form_id' => $formId]);
+        $estadoActual = $stmt->fetchColumn();
+
+        if ($estadoActual !== false && $estadoActual !== null && trim($estadoActual) !== '') {
+            return $estadoActual;
+        }
+
+        $historialStmt = $this->db->prepare("SELECT estado FROM procedimiento_proyectado_estado WHERE form_id = :form_id ORDER BY fecha_hora_cambio DESC LIMIT 1");
+        $historialStmt->execute([':form_id' => $formId]);
+        $estadoHistorial = $historialStmt->fetchColumn();
+
+        return $estadoHistorial !== false ? $estadoHistorial : null;
     }
 
     public function obtenerFlujoPacientesPorVisita($fecha = null): array
