@@ -55,9 +55,37 @@ $focusAreas = $focusAreas ?? [];
 $supportChannels = $supportChannels ?? [];
 /** @var array<int, array<string, string>> $researchHighlights */
 $researchHighlights = $researchHighlights ?? [];
+/** @var array<int, array<string, mixed>> $appointmentsDays */
+$appointmentsDays = $appointmentsDays ?? [];
+/** @var array<int, array<string, mixed>> $appointments */
+$appointments = $appointments ?? [];
+$appointmentsSelectedDate = $appointmentsSelectedDate ?? null;
+$appointmentsSelectedLabel = $appointmentsSelectedLabel ?? null;
 
 $primarySupportLabel = $supportChannels[0]['label'] ?? null;
 $primarySupportValue = $supportChannels[0]['value'] ?? null;
+
+$doctorId = isset($doctor['id']) ? (int) $doctor['id'] : null;
+$doctorDetailUrl = $doctorId !== null ? '/doctores/' . $doctorId : null;
+
+$selectedDayIndex = null;
+foreach ($appointmentsDays as $idx => $day) {
+    if (!empty($day['is_selected'])) {
+        $selectedDayIndex = $idx;
+        break;
+    }
+}
+
+$prevDay = $selectedDayIndex !== null && $selectedDayIndex > 0 ? $appointmentsDays[$selectedDayIndex - 1] : null;
+$nextDay = $selectedDayIndex !== null && $selectedDayIndex < count($appointmentsDays) - 1 ? $appointmentsDays[$selectedDayIndex + 1] : null;
+
+$buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
+    if ($doctorDetailUrl === null || $day === null || empty($day['date'])) {
+        return 'javascript:void(0);';
+    }
+
+    return $doctorDetailUrl . '?fecha=' . urlencode((string) $day['date']);
+};
 ?>
 
 <div class="container-full">
@@ -323,6 +351,151 @@ $primarySupportValue = $supportChannels[0]['value'] ?? null;
                         <?php else: ?>
                             <div class="text-center py-30 text-fade">No hay pacientes agendados para hoy.</div>
                         <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="box">
+                    <div class="box-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4 class="box-title mb-0">Appointments</h4>
+                            <?php if ($appointmentsSelectedLabel): ?>
+                                <span class="text-fade fs-12"><?= htmlspecialchars($appointmentsSelectedLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="box-body">
+                        <?php if (!empty($appointmentsDays)): ?>
+                            <div id="paginator1" class="datepaginator">
+                                <ul class="pagination">
+                                    <li>
+                                        <?php if ($prevDay): ?>
+                                            <a href="<?= htmlspecialchars($buildDayUrl($prevDay), ENT_QUOTES, 'UTF-8') ?>"
+                                               class="dp-nav dp-nav-left"
+                                               title="<?= htmlspecialchars($prevDay['title'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                               style="width: 24px;">
+                                                <i class="glyphicon glyphicon-chevron-left dp-nav-left"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="dp-nav dp-nav-left disabled" style="width: 24px;">
+                                                <i class="glyphicon glyphicon-chevron-left dp-nav-left"></i>
+                                            </span>
+                                        <?php endif; ?>
+                                    </li>
+                                    <?php foreach ($appointmentsDays as $day): ?>
+                                        <?php
+                                        $dayClasses = ['dp-item'];
+                                        if (!empty($day['is_selected'])) {
+                                            $dayClasses[] = 'dp-selected';
+                                        }
+                                        if (!empty($day['is_today'])) {
+                                            $dayClasses[] = 'dp-today';
+                                        }
+                                        if (empty($day['is_selected']) && empty($day['is_today'])) {
+                                            $dayClasses[] = 'dp-off';
+                                        }
+                                        $width = !empty($day['is_selected']) ? 144 : 48;
+                                        ?>
+                                        <li>
+                                            <a href="<?= htmlspecialchars($buildDayUrl($day), ENT_QUOTES, 'UTF-8') ?>"
+                                               class="<?= htmlspecialchars(implode(' ', $dayClasses), ENT_QUOTES, 'UTF-8') ?>"
+                                               data-moment="<?= htmlspecialchars((string)($day['date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                               title="<?= htmlspecialchars($day['title'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                               style="width: <?= $width ?>px;">
+                                                <?= $day['label'] ?? '' ?>
+                                            </a>
+                                        </li>
+                                    <?php endforeach; ?>
+                                    <li>
+                                        <?php if ($nextDay): ?>
+                                            <a href="<?= htmlspecialchars($buildDayUrl($nextDay), ENT_QUOTES, 'UTF-8') ?>"
+                                               class="dp-nav dp-nav-right"
+                                               title="<?= htmlspecialchars($nextDay['title'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                               style="width: 24px;">
+                                                <i class="glyphicon glyphicon-chevron-right dp-nav-right"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="dp-nav dp-nav-right disabled" style="width: 24px;">
+                                                <i class="glyphicon glyphicon-chevron-right dp-nav-right"></i>
+                                            </span>
+                                        <?php endif; ?>
+                                    </li>
+                                </ul>
+                            </div>
+                        <?php else: ?>
+                            <div class="text-center text-fade py-20">No hay fechas disponibles en la agenda.</div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="box-body">
+                        <div class="inner-user-div4">
+                            <?php if (!empty($appointments)): ?>
+                                <?php $appointmentsCount = count($appointments); ?>
+                                <?php foreach ($appointments as $index => $appointment): ?>
+                                    <?php
+                                    $hasDivider = $index < $appointmentsCount - 1;
+                                    $footerClasses = 'd-flex justify-content-between align-items-end py-10';
+                                    if ($hasDivider) {
+                                        $footerClasses .= ' mb-15 bb-dashed border-bottom';
+                                    }
+                                    $callClasses = 'waves-effect waves-circle btn btn-circle btn-primary-light btn-sm';
+                                    if (!empty($appointment['call_disabled'])) {
+                                        $callClasses .= ' disabled opacity-50';
+                                    }
+                                    $statusVariant = !empty($appointment['status_variant']) ? (string) $appointment['status_variant'] : 'secondary';
+                                    ?>
+                                    <div class="<?= $hasDivider ? 'mb-15' : '' ?>">
+                                        <div class="d-flex align-items-center mb-10">
+                                            <div class="me-15">
+                                                <img src="<?= htmlspecialchars(asset($appointment['avatar'] ?? 'images/avatar/1.jpg'), ENT_QUOTES, 'UTF-8') ?>"
+                                                     class="avatar avatar-lg rounded10 bg-primary-light" alt=""/>
+                                            </div>
+                                            <div class="d-flex flex-column flex-grow-1 fw-500">
+                                                <p class="hover-primary text-fade mb-1 fs-14"><?= htmlspecialchars($appointment['patient'] ?? 'Paciente', ENT_QUOTES, 'UTF-8') ?></p>
+                                                <span class="text-dark fs-16"><?= htmlspecialchars($appointment['procedure'] ?? 'Consulta', ENT_QUOTES, 'UTF-8') ?></span>
+                                                <?php if (!empty($appointment['afiliacion_label'])): ?>
+                                                    <span class="text-fade fs-12"><?= htmlspecialchars($appointment['afiliacion_label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="text-end">
+                                                <?php if (!empty($appointment['status_label'])): ?>
+                                                    <span class="badge badge-<?= htmlspecialchars($statusVariant, ENT_QUOTES, 'UTF-8') ?> mb-10">
+                                                        <?= htmlspecialchars($appointment['status_label'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                                <a href="<?= htmlspecialchars($appointment['call_href'] ?? 'javascript:void(0);', ENT_QUOTES, 'UTF-8') ?>"
+                                                   class="<?= htmlspecialchars($callClasses, ENT_QUOTES, 'UTF-8') ?>"
+                                                   <?php if (!empty($appointment['call_disabled'])): ?>aria-disabled="true"<?php endif; ?>>
+                                                    <i class="fa fa-phone"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="<?= htmlspecialchars($footerClasses, ENT_QUOTES, 'UTF-8') ?>">
+                                            <div>
+                                                <p class="mb-0 text-muted">
+                                                    <i class="fa fa-clock-o me-5"></i> <?= htmlspecialchars($appointment['time'] ?? '--:--', ENT_QUOTES, 'UTF-8') ?>
+                                                    <?php if (!empty($appointment['hc_label'])): ?>
+                                                        <span class="mx-20"><?= htmlspecialchars($appointment['hc_label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <?php endif; ?>
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <div class="dropdown">
+                                                    <a data-bs-toggle="dropdown" href="#" class="base-font mx-10"><i class="ti-more-alt text-muted"></i></a>
+                                                    <div class="dropdown-menu dropdown-menu-end">
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-import"></i> Detalles</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-export"></i> Reportes</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-printer"></i> Imprimir</a>
+                                                        <div class="dropdown-divider"></div>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-settings"></i> Gestionar</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="text-center py-30 text-fade">No hay citas registradas para la fecha seleccionada.</div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
 
