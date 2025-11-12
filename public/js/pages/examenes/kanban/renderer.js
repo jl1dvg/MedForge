@@ -43,20 +43,59 @@ function getInitials(nombre) {
 function renderAvatar(nombreResponsable, avatarUrl) {
     const nombre = nombreResponsable || '';
     const alt = nombre !== '' ? nombre : 'Responsable sin asignar';
+    const initials = escapeHtml(getInitials(nombre || ''));
 
     if (avatarUrl) {
         return `
-            <div class="kanban-avatar">
-                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(alt)}">
+            <div class="kanban-avatar" data-avatar-root>
+                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(alt)}" loading="lazy" data-avatar-img>
+                <div class="kanban-avatar__placeholder d-none" data-avatar-placeholder>
+                    <span>${initials}</span>
+                </div>
             </div>
         `;
     }
 
     return `
-        <div class="kanban-avatar kanban-avatar--placeholder">
-            <span>${escapeHtml(getInitials(nombre || ''))}</span>
+        <div class="kanban-avatar kanban-avatar--placeholder" data-avatar-root>
+            <div class="kanban-avatar__placeholder" data-avatar-placeholder>
+                <span>${initials}</span>
+            </div>
         </div>
     `;
+}
+
+function hydrateAvatar(container) {
+    container
+        .querySelectorAll('.kanban-avatar[data-avatar-root]')
+        .forEach((avatar) => {
+            const img = avatar.querySelector('[data-avatar-img]');
+            const placeholder = avatar.querySelector('[data-avatar-placeholder]');
+
+            if (!placeholder) {
+                return;
+            }
+
+            if (!img) {
+                placeholder.classList.remove('d-none');
+                avatar.classList.add('kanban-avatar--placeholder');
+                return;
+            }
+
+            const showPlaceholder = () => {
+                placeholder.classList.remove('d-none');
+                avatar.classList.add('kanban-avatar--placeholder');
+                if (img.parentElement === avatar) {
+                    img.remove();
+                }
+            };
+
+            img.addEventListener('error', showPlaceholder, { once: true });
+
+            if (img.complete && img.naturalWidth === 0) {
+                showPlaceholder();
+            }
+        });
 }
 
 function formatBadge(label, value, icon) {
@@ -159,6 +198,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 <div class="crm-badges">${badges}</div>
             </div>
         `;
+
+        hydrateAvatar(tarjeta);
 
         const turnoAsignado = formatTurno(examen.turno);
         const estadoActual = (examen.estado ?? '').toString();
