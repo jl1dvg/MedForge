@@ -3,7 +3,7 @@
 namespace Controllers;
 
 use Core\BaseController;
-use Models\ExamenesModel;
+use Modules\Examenes\Models\ExamenesModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;

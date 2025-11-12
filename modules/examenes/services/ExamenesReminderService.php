@@ -5,7 +5,7 @@ namespace Modules\Solicitudes\Services;
 use DateInterval;
 use DateTimeImmutable;
 use Modules\Notifications\Services\PusherConfigService;
-use Models\ExamenesModel;
+use Modules\Examenes\Models\ExamenesModel;
 use PDO;
 
 class ExamenesReminderService

@@ -2,7 +2,7 @@
 
 namespace Controllers;
 
-use Models\ExamenesModel;
+use Modules\Examenes\Models\ExamenesModel;
 use Modules\Pacientes\Services\PacienteService;
 
 class SolicitudController

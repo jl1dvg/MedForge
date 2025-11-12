@@ -21,6 +21,7 @@ $examenesModelCandidates = [
 
 $examenesClassCandidates = [
     'ExamenesModel',
+    'Modules\\Examenes\\Models\\ExamenesModel',
     'Models\\ExamenesModel',
 ];
 
@@ -57,7 +58,10 @@ if (!$resolvedClass) {
     throw new RuntimeException("No se pudo cargar ExamenesModel. Rutas probadas: {$pathsList}");
 }
 
-if ($resolvedClass === 'Models\\ExamenesModel' && !class_exists('ExamenesModel', false)) {
+if (
+    in_array($resolvedClass, ['Models\\ExamenesModel', 'Modules\\Examenes\\Models\\ExamenesModel'], true)
+    && !class_exists('ExamenesModel', false)
+) {
     class_alias($resolvedClass, 'ExamenesModel');
 }
 
