@@ -68,8 +68,8 @@ if (
 // Asegurarnos de que el controlador y servicios compartidos de Exámenes estén cargados.
 $sharedDependencies = [
     dirname(__DIR__) . '/examenes/controllers/ExamenesController.php',
-    dirname(__DIR__) . '/examenes/services/ExamenesCrmService.php',
-    dirname(__DIR__) . '/examenes/services/ExamenesReminderService.php',
+    __DIR__ . '/services/ExamenesCrmService.php',
+    __DIR__ . '/services/ExamenesReminderService.php',
 ];
 
 foreach ($sharedDependencies as $dependencyPath) {

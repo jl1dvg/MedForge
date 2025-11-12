@@ -739,21 +739,21 @@ class DashboardController
                 'title' => 'Solicitudes registradas',
                 'value' => $registradas,
                 'description' => 'En este periodo',
-                'icon' => 'svg-icon/color-svg/custom-20.svg',
+                'icon' => 'svg-icon/color-svg/1.svg',
                 'tag' => $conversion > 0 ? $conversion . '% agendadas' : 'Sin agenda registrada',
             ],
             [
                 'title' => 'Agenda confirmada',
                 'value' => $agendadas,
                 'description' => 'Solicitudes con turno asignado',
-                'icon' => 'svg-icon/color-svg/custom-19.svg',
+                'icon' => 'svg-icon/color-svg/2.svg',
                 'tag' => $conCirugia > 0 ? $conCirugia . ' con cirugía' : 'Sin cirugías vinculadas',
             ],
             [
                 'title' => 'Urgentes sin turno',
                 'value' => $urgentesSinTurno,
                 'description' => 'Urgentes pendientes de agenda',
-                'icon' => 'svg-icon/color-svg/custom-18.svg',
+                'icon' => 'svg-icon/color-svg/3.svg',
                 'tag' => $urgentesSinTurno > 0 ? 'Revisar backlog' : 'Todo al día',
             ],
         ];
@@ -762,7 +762,7 @@ class DashboardController
             'title' => 'Tareas CRM vencidas',
             'value' => $crmVencidas,
             'description' => 'Pendientes de seguimiento',
-            'icon' => 'svg-icon/color-svg/custom-21.svg',
+            'icon' => 'svg-icon/color-svg/4.svg',
             'tag' => $crmAvance . '% completadas',
         ];
 
@@ -770,7 +770,7 @@ class DashboardController
             'title' => 'Protocolos sin revisar',
             'value' => $protocolosNoRevisados,
             'description' => 'Listos para auditoría final',
-            'icon' => 'svg-icon/color-svg/custom-22.svg',
+            'icon' => 'svg-icon/color-svg/5.svg',
             'tag' => $protocolosIncompletos . ' incompletos',
         ];
 
@@ -778,7 +778,7 @@ class DashboardController
             'title' => 'Asistente IA',
             'value' => $aiSummary['provider_configured'] ? 'Activo' : 'Inactivo',
             'description' => $aiSummary['provider_configured'] ? strtoupper($aiSummary['provider']) : 'Configurar proveedor',
-            'icon' => 'svg-icon/color-svg/custom-23.svg',
+            'icon' => 'svg-icon/color-svg/6.svg',
             'tag' => $aiSummary['features']['consultas_enfermedad'] && $aiSummary['features']['consultas_plan']
                 ? 'Consultas y planes habilitados'
                 : 'Funciones limitadas',
