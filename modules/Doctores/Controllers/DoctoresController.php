@@ -49,6 +49,18 @@ class DoctoresController extends BaseController
 
         $insights = $this->buildDoctorInsights($doctor, $selectedDate);
 
+        // JSON mode for AJAX requests on appointments (no full page render)
+        if (isset($_GET['json']) && $_GET['json'] === '1') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'selectedDate' => $insights['appointmentsSelectedDate'],
+                'selectedLabel' => $insights['appointmentsSelectedLabel'],
+                'appointments' => $insights['appointments'],
+                'days' => $insights['appointmentsDays'],
+            ]);
+            return;
+        }
+
         $this->render(
             BASE_PATH . '/modules/Doctores/views/show.php',
             array_merge(
@@ -128,7 +140,7 @@ class DoctoresController extends BaseController
      */
     private function buildAppointmentsSchedule(array $doctor, string $seed, ?string $requestedDate): array
     {
-        $appointments = $this->loadAppointmentsFromDatabase($doctor);
+        $appointments = $this->loadAppointmentsFromDatabase($doctor, $requestedDate);
 
         if (empty($appointments)) {
             $appointments = $this->buildFallbackAppointments($seed);
@@ -339,7 +351,7 @@ class DoctoresController extends BaseController
      * @param array<string, mixed> $doctor
      * @return array<int, array<string, mixed>>
      */
-    private function loadAppointmentsFromDatabase(array $doctor): array
+    private function loadAppointmentsFromDatabase(array $doctor, ?string $requestedDate): array
     {
         $lookupValues = $this->resolveDoctorLookupValues($doctor);
         if (empty($lookupValues)) {
@@ -351,10 +363,18 @@ class DoctoresController extends BaseController
             $this->buildDoctorClause($lookupValues, true),
         ];
 
+        // Build date window around the requested date (fallback to today)
+        $center = $this->normalizeDateKey($requestedDate) ?? date('Y-m-d');
+        $centerDt = \DateTimeImmutable::createFromFormat('Y-m-d', $center) ?: new \DateTimeImmutable('today');
+        $start1 = $centerDt->modify('-0 day')->format('Y-m-d');
+        $end1   = $centerDt->modify('+7 day')->format('Y-m-d');
+        $start2 = $centerDt->modify('-1 day')->format('Y-m-d');
+        $end2   = $centerDt->modify('+21 day')->format('Y-m-d');
+        $start3 = $centerDt->modify('-30 day')->format('Y-m-d');
         $dateClauses = [
-            'DATE(pp.fecha) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)',
-            'DATE(pp.fecha) BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 21 DAY)',
-            'DATE(pp.fecha) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)',
+            "DATE(pp.fecha) BETWEEN '{$start1}' AND '{$end1}'",
+            "DATE(pp.fecha) BETWEEN '{$start2}' AND '{$end2}'",
+            "DATE(pp.fecha) >= '{$start3}'",
         ];
 
         foreach ($attempts as [$clause, $params]) {

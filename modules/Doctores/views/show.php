@@ -194,47 +194,6 @@ $scripts = array_merge($scripts ?? [], [
                 <div class="box">
                     <div class="box-header">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="mb-0">Your Patients today</h4>
-                            <a href="#" class="">All patients <i class="ms-10 fa fa-angle-right"></i></a>
-                        </div>
-                    </div>
-                    <div class="box-body p-15">
-                        <?php if (!empty($todayPatients)): ?>
-                            <?php foreach ($todayPatients as $index => $patient): ?>
-                                <div class="<?= $index < count($todayPatients) - 1 ? 'mb-10' : '' ?> d-flex justify-content-between align-items-center">
-                                    <div class="fw-600 min-w-120">
-                                        <?= htmlspecialchars($patient['time'], ENT_QUOTES, 'UTF-8') ?>
-                                    </div>
-                                    <div class="w-p100 p-10 rounded10 justify-content-between align-items-center d-flex bg-lightest">
-                                        <div class="d-flex justify-content-between align-items-center">
-                                            <img src="<?= htmlspecialchars(asset($patient['avatar']), ENT_QUOTES, 'UTF-8') ?>"
-                                                 class="me-10 avatar rounded-circle" alt="">
-                                            <div>
-                                                <h6 class="mb-0"><?= htmlspecialchars($patient['name'], ENT_QUOTES, 'UTF-8') ?></h6>
-                                                <p class="mb-0 fs-12 text-mute">
-                                                    Diagnóstico: <?= htmlspecialchars($patient['diagnosis'], ENT_QUOTES, 'UTF-8') ?></p>
-                                            </div>
-                                        </div>
-                                        <div class="dropdown">
-                                            <a data-bs-toggle="dropdown" href="#"><i class="ti-more-alt rotate-90"></i></a>
-                                            <div class="dropdown-menu dropdown-menu-end">
-                                                <a class="dropdown-item" href="javascript:void(0);"><i
-                                                            class="ti-import"></i> Detalles</a>
-                                                <a class="dropdown-item" href="javascript:void(0);"><i
-                                                            class="ti-export"></i> Reportes</a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <div class="text-center py-30 text-fade">No hay pacientes agendados para hoy.</div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <div class="box">
-                    <div class="box-header">
-                        <div class="d-flex justify-content-between align-items-center">
                             <h4 class="box-title mb-0">Appointments</h4>
                             <?php if ($appointmentsSelectedLabel): ?>
                                 <span class="text-fade fs-12"><?= htmlspecialchars($appointmentsSelectedLabel, ENT_QUOTES, 'UTF-8') ?></span>
@@ -328,7 +287,12 @@ $scripts = array_merge($scripts ?? [], [
                                             </div>
                                             <div class="d-flex flex-column flex-grow-1 fw-500">
                                                 <p class="hover-primary text-fade mb-1 fs-14"><?= htmlspecialchars($appointment['patient'] ?? 'Paciente', ENT_QUOTES, 'UTF-8') ?></p>
-                                                <span class="text-dark fs-16"><?= htmlspecialchars($appointment['procedure'] ?? 'Consulta', ENT_QUOTES, 'UTF-8') ?></span>
+                                                <?php
+                                                    $procRaw = $appointment['procedure'] ?? 'Consulta';
+                                                    $procParts = array_map('trim', explode(' - ', (string)$procRaw));
+                                                    $procedureDisplay = $procParts ? end($procParts) : $procRaw;
+                                                ?>
+                                                <span class="text-dark fs-16"><?= htmlspecialchars($procedureDisplay, ENT_QUOTES, 'UTF-8') ?></span>
                                                 <?php if (!empty($appointment['afiliacion_label'])): ?>
                                                     <span class="text-fade fs-12"><?= htmlspecialchars($appointment['afiliacion_label'], ENT_QUOTES, 'UTF-8') ?></span>
                                                 <?php endif; ?>
