@@ -228,14 +228,18 @@ class ConversationRepository
      */
     public function fetchMessages(int $conversationId, int $limit = 100): array
     {
-        $stmt = $this->pdo->prepare('SELECT id, wa_message_id, direction, message_type, body, status, message_timestamp, sent_at, delivered_at, read_at, created_at, updated_at FROM whatsapp_messages WHERE conversation_id = :id ORDER BY COALESCE(message_timestamp, created_at) ASC, id ASC LIMIT :limit');
+        $stmt = $this->pdo->prepare('SELECT id, wa_message_id, direction, message_type, body, status, message_timestamp, sent_at, delivered_at, read_at, created_at, updated_at FROM whatsapp_messages WHERE conversation_id = :id ORDER BY COALESCE(message_timestamp, created_at) DESC, id DESC LIMIT :limit');
         $stmt->bindValue(':id', $conversationId, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        return is_array($rows) ? $rows : [];
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        return array_reverse($rows);
     }
 
     public function findConversationIdByNumber(string $waNumber): ?int

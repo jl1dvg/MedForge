@@ -65,7 +65,7 @@ $appointmentsSelectedLabel = $appointmentsSelectedLabel ?? null;
 $primarySupportLabel = $supportChannels[0]['label'] ?? null;
 $primarySupportValue = $supportChannels[0]['value'] ?? null;
 
-$doctorId = isset($doctor['id']) ? (int) $doctor['id'] : null;
+$doctorId = isset($doctor['id']) ? (int)$doctor['id'] : null;
 $doctorDetailUrl = $doctorId !== null ? '/doctores/' . $doctorId : null;
 
 $selectedDayIndex = null;
@@ -84,8 +84,16 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
         return 'javascript:void(0);';
     }
 
-    return $doctorDetailUrl . '?fecha=' . urlencode((string) $day['date']);
+    return $doctorDetailUrl . '?fecha=' . urlencode((string)$day['date']);
 };
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'assets/vendor_components/OwlCarousel2/dist/owl.carousel.js',
+    'assets/vendor_components/date-paginator/moment.min.js',
+    'assets/vendor_components/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js',
+    'assets/vendor_components/date-paginator/bootstrap-datepaginator.min.js',
+    'js/pages/doctor-details.js',
+]);
 ?>
 
 <div class="container-full">
@@ -183,139 +191,6 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                         </div>
                     </div>
                 </div>
-
-                <?php if (!empty($focusAreas)): ?>
-                    <div class="box">
-                        <div class="box-header">
-                            <h4 class="box-title">Áreas de enfoque</h4>
-                        </div>
-                        <div class="box-body">
-                            <div class="d-flex flex-wrap gap-10">
-                                <?php foreach ($focusAreas as $area): ?>
-                                    <span class="badge badge-primary-light px-10 py-5">
-                                        <i class="fa fa-check-circle me-5 text-primary"></i>
-                                        <?= htmlspecialchars($area, ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (!empty($supportChannels)): ?>
-                    <div class="box">
-                        <div class="box-header">
-                            <h4 class="box-title">Canales de coordinación</h4>
-                        </div>
-                        <div class="box-body">
-                            <ul class="list-unstyled mb-0">
-                                <?php foreach ($supportChannels as $channel): ?>
-                                    <li class="mb-10 d-flex align-items-start">
-                                        <i class="fa fa-headset text-primary me-10 mt-1"></i>
-                                        <div>
-                                            <span class="d-block fw-600"><?= htmlspecialchars($channel['label'], ENT_QUOTES, 'UTF-8') ?></span>
-                                            <span class="text-fade"><?= htmlspecialchars($channel['value'], ENT_QUOTES, 'UTF-8') ?></span>
-                                        </div>
-                                    </li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-                <?php if ($firmaUrl): ?>
-                    <div class="box">
-                        <div class="box-header">
-                            <h4 class="box-title">Firma digital</h4>
-                        </div>
-                        <div class="box-body text-center">
-                            <img src="<?= htmlspecialchars($firmaUrl, ENT_QUOTES, 'UTF-8') ?>"
-                                 alt="Firma del doctor"
-                                 class="img-fluid">
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <div class="col-xl-8 col-12">
-                <div class="box">
-                    <div class="box-header">
-                        <h4 class="box-title">Información general</h4>
-                    </div>
-                    <div class="box-body">
-                        <dl class="row mb-0">
-                            <dt class="col-sm-4 text-fade">Nombre completo</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['name'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Usuario</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['username'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Correo electrónico</dt>
-                            <dd class="col-sm-8">
-                                <?php if (!empty($doctor['email'])): ?>
-                                    <a href="mailto:<?= htmlspecialchars($doctor['email'], ENT_QUOTES, 'UTF-8') ?>">
-                                        <?= htmlspecialchars($doctor['email'], ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
-                                <?php else: ?>
-                                    <span class="text-fade">No registrado</span>
-                                <?php endif; ?>
-                            </dd>
-
-                            <dt class="col-sm-4 text-fade">Rol asignado</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['role_name'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Especialidad</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['especialidad'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Subespecialidad</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['subespecialidad'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Sede</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['sede'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Cédula</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['cedula'] ?? null) ?></dd>
-
-                            <dt class="col-sm-4 text-fade">Registro profesional</dt>
-                            <dd class="col-sm-8"><?= $printValue($doctor['registro'] ?? null) ?></dd>
-                        </dl>
-
-                        <?php if (!empty($availabilitySummary)): ?>
-                            <div class="row g-3 mt-20 pt-15 border-top">
-                                <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Jornada presencial</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['working_hours_label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></h5>
-                                </div>
-                                <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Consultas presenciales</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['in_person_slots'], ENT_QUOTES, 'UTF-8') ?> turnos</h5>
-                                </div>
-                                <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Telemedicina</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['virtual_slots'], ENT_QUOTES, 'UTF-8') ?> cupos</h5>
-                                </div>
-                                <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Tiempo de respuesta</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['response_time_hours'], ENT_QUOTES, 'UTF-8') ?> h</h5>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <?php if (!empty($biographyParagraphs)): ?>
-                    <div class="box">
-                        <div class="box-header">
-                            <h4 class="box-title">Biografía</h4>
-                        </div>
-                        <div class="box-body">
-                            <?php foreach ($biographyParagraphs as $paragraph): ?>
-                                <p><?= htmlspecialchars($paragraph, ENT_QUOTES, 'UTF-8') ?></p>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
                 <div class="box">
                     <div class="box-header">
                         <div class="d-flex justify-content-between align-items-center">
@@ -332,17 +207,21 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                     </div>
                                     <div class="w-p100 p-10 rounded10 justify-content-between align-items-center d-flex bg-lightest">
                                         <div class="d-flex justify-content-between align-items-center">
-                                            <img src="<?= htmlspecialchars(asset($patient['avatar']), ENT_QUOTES, 'UTF-8') ?>" class="me-10 avatar rounded-circle" alt="">
+                                            <img src="<?= htmlspecialchars(asset($patient['avatar']), ENT_QUOTES, 'UTF-8') ?>"
+                                                 class="me-10 avatar rounded-circle" alt="">
                                             <div>
                                                 <h6 class="mb-0"><?= htmlspecialchars($patient['name'], ENT_QUOTES, 'UTF-8') ?></h6>
-                                                <p class="mb-0 fs-12 text-mute">Diagnóstico: <?= htmlspecialchars($patient['diagnosis'], ENT_QUOTES, 'UTF-8') ?></p>
+                                                <p class="mb-0 fs-12 text-mute">
+                                                    Diagnóstico: <?= htmlspecialchars($patient['diagnosis'], ENT_QUOTES, 'UTF-8') ?></p>
                                             </div>
                                         </div>
                                         <div class="dropdown">
                                             <a data-bs-toggle="dropdown" href="#"><i class="ti-more-alt rotate-90"></i></a>
                                             <div class="dropdown-menu dropdown-menu-end">
-                                                <a class="dropdown-item" href="javascript:void(0);"><i class="ti-import"></i> Detalles</a>
-                                                <a class="dropdown-item" href="javascript:void(0);"><i class="ti-export"></i> Reportes</a>
+                                                <a class="dropdown-item" href="javascript:void(0);"><i
+                                                            class="ti-import"></i> Detalles</a>
+                                                <a class="dropdown-item" href="javascript:void(0);"><i
+                                                            class="ti-export"></i> Reportes</a>
                                             </div>
                                         </div>
                                     </div>
@@ -353,7 +232,6 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                         <?php endif; ?>
                     </div>
                 </div>
-
                 <div class="box">
                     <div class="box-header">
                         <div class="d-flex justify-content-between align-items-center">
@@ -440,7 +318,7 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                     if (!empty($appointment['call_disabled'])) {
                                         $callClasses .= ' disabled opacity-50';
                                     }
-                                    $statusVariant = !empty($appointment['status_variant']) ? (string) $appointment['status_variant'] : 'secondary';
+                                    $statusVariant = !empty($appointment['status_variant']) ? (string)$appointment['status_variant'] : 'secondary';
                                     ?>
                                     <div class="<?= $hasDivider ? 'mb-15' : '' ?>">
                                         <div class="d-flex align-items-center mb-10">
@@ -479,13 +357,18 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                             </div>
                                             <div>
                                                 <div class="dropdown">
-                                                    <a data-bs-toggle="dropdown" href="#" class="base-font mx-10"><i class="ti-more-alt text-muted"></i></a>
+                                                    <a data-bs-toggle="dropdown" href="#" class="base-font mx-10"><i
+                                                                class="ti-more-alt text-muted"></i></a>
                                                     <div class="dropdown-menu dropdown-menu-end">
-                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-import"></i> Detalles</a>
-                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-export"></i> Reportes</a>
-                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-printer"></i> Imprimir</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i
+                                                                    class="ti-import"></i> Detalles</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i
+                                                                    class="ti-export"></i> Reportes</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i
+                                                                    class="ti-printer"></i> Imprimir</a>
                                                         <div class="dropdown-divider"></div>
-                                                        <a class="dropdown-item" href="javascript:void(0);"><i class="ti-settings"></i> Gestionar</a>
+                                                        <a class="dropdown-item" href="javascript:void(0);"><i
+                                                                    class="ti-settings"></i> Gestionar</a>
                                                     </div>
                                                 </div>
                                             </div>
@@ -493,11 +376,135 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                     </div>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <div class="text-center py-30 text-fade">No hay citas registradas para la fecha seleccionada.</div>
+                                <div class="text-center py-30 text-fade">No hay citas registradas para la fecha
+                                    seleccionada.
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>
                 </div>
+
+                <?php if (!empty($focusAreas)): ?>
+                    <div class="box">
+                        <div class="box-header">
+                            <h4 class="box-title">Áreas de enfoque</h4>
+                        </div>
+                        <div class="box-body">
+                            <div class="d-flex flex-wrap gap-10">
+                                <?php foreach ($focusAreas as $area): ?>
+                                    <span class="badge badge-primary-light px-10 py-5">
+                                        <i class="fa fa-check-circle me-5 text-primary"></i>
+                                        <?= htmlspecialchars($area, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($supportChannels)): ?>
+                    <div class="box">
+                        <div class="box-header">
+                            <h4 class="box-title">Canales de coordinación</h4>
+                        </div>
+                        <div class="box-body">
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($supportChannels as $channel): ?>
+                                    <li class="mb-10 d-flex align-items-start">
+                                        <i class="fa fa-headset text-primary me-10 mt-1"></i>
+                                        <div>
+                                            <span class="d-block fw-600"><?= htmlspecialchars($channel['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                            <span class="text-fade"><?= htmlspecialchars($channel['value'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="col-xl-8 col-12">
+                <div class="box">
+                    <div class="box-header">
+                        <h4 class="box-title">Información general</h4>
+                    </div>
+                    <div class="box-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4 text-fade">Nombre completo</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['name'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Usuario</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['username'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Correo electrónico</dt>
+                            <dd class="col-sm-8">
+                                <?php if (!empty($doctor['email'])): ?>
+                                    <a href="mailto:<?= htmlspecialchars($doctor['email'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars($doctor['email'], ENT_QUOTES, 'UTF-8') ?>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="text-fade">No registrado</span>
+                                <?php endif; ?>
+                            </dd>
+
+                            <dt class="col-sm-4 text-fade">Rol asignado</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['role_name'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Especialidad</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['especialidad'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Subespecialidad</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['subespecialidad'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Sede</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['sede'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Cédula</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['cedula'] ?? null) ?></dd>
+
+                            <dt class="col-sm-4 text-fade">Registro profesional</dt>
+                            <dd class="col-sm-8"><?= $printValue($doctor['registro'] ?? null) ?></dd>
+                        </dl>
+
+                        <?php if (!empty($availabilitySummary)): ?>
+                            <div class="row g-3 mt-20 pt-15 border-top">
+                                <div class="col-sm-6 col-lg-3">
+                                    <p class="text-fade mb-0">Jornada presencial</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['working_hours_label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></h5>
+                                </div>
+                                <div class="col-sm-6 col-lg-3">
+                                    <p class="text-fade mb-0">Consultas presenciales</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['in_person_slots'], ENT_QUOTES, 'UTF-8') ?>
+                                        turnos</h5>
+                                </div>
+                                <div class="col-sm-6 col-lg-3">
+                                    <p class="text-fade mb-0">Telemedicina</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['virtual_slots'], ENT_QUOTES, 'UTF-8') ?>
+                                        cupos</h5>
+                                </div>
+                                <div class="col-sm-6 col-lg-3">
+                                    <p class="text-fade mb-0">Tiempo de respuesta</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['response_time_hours'], ENT_QUOTES, 'UTF-8') ?>
+                                        h</h5>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if (!empty($biographyParagraphs)): ?>
+                    <div class="box">
+                        <div class="box-header">
+                            <h4 class="box-title">Biografía</h4>
+                        </div>
+                        <div class="box-body">
+                            <?php foreach ($biographyParagraphs as $paragraph): ?>
+                                <p><?= htmlspecialchars($paragraph, ENT_QUOTES, 'UTF-8') ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (!empty($careProgress)): ?>
                     <div class="box">
@@ -508,11 +515,16 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                             <?php foreach ($careProgress as $metric): ?>
                                 <div class="mb-20">
                                     <div class="d-flex align-items-center justify-content-between mb-5">
-                                        <h5 class="mb-0"><?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?> %</h5>
+                                        <h5 class="mb-0"><?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?>
+                                            %</h5>
                                         <h5 class="mb-0 text-fade"><?= htmlspecialchars($metric['label'], ENT_QUOTES, 'UTF-8') ?></h5>
                                     </div>
                                     <div class="progress progress-xs">
-                                        <div class="progress-bar progress-bar-<?= htmlspecialchars($metric['variant'], ENT_QUOTES, 'UTF-8') ?>" role="progressbar" aria-valuenow="<?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?>" aria-valuemin="0" aria-valuemax="100" style="width: <?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?>%">
+                                        <div class="progress-bar progress-bar-<?= htmlspecialchars($metric['variant'], ENT_QUOTES, 'UTF-8') ?>"
+                                             role="progressbar"
+                                             aria-valuenow="<?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?>"
+                                             aria-valuemin="0" aria-valuemax="100"
+                                             style="width: <?= htmlspecialchars((string)$metric['value'], ENT_QUOTES, 'UTF-8') ?>%">
                                         </div>
                                     </div>
                                 </div>
@@ -552,13 +564,16 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                            <p class="text-fade mt-15 mb-0">Los indicadores combinan la actividad registrada en agenda, reportes clínicos y sesiones de telemedicina coordinadas por el equipo de soporte.</p>
+                            <p class="text-fade mt-15 mb-0">Los indicadores combinan la actividad registrada en agenda,
+                                reportes clínicos y sesiones de telemedicina coordinadas por el equipo de soporte.</p>
                         <?php else: ?>
                             <div class="alert alert-info mb-0 d-flex align-items-start">
                                 <i class="fa fa-info-circle me-10 mt-1"></i>
                                 <div>
                                     <strong>Sin estadísticas registradas.</strong>
-                                    <p class="mb-0">Conecta este módulo con la agenda y los reportes de procedimientos para visualizar citas, pacientes y otros indicadores relacionados con este doctor.</p>
+                                    <p class="mb-0">Conecta este módulo con la agenda y los reportes de procedimientos
+                                        para visualizar citas, pacientes y otros indicadores relacionados con este
+                                        doctor.</p>
                                 </div>
                             </div>
                         <?php endif; ?>
@@ -583,7 +598,8 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                                 </div>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <p class="text-fade mb-0">Registra hitos importantes de la trayectoria del profesional para compartirlos con el equipo médico.</p>
+                            <p class="text-fade mb-0">Registra hitos importantes de la trayectoria del profesional para
+                                compartirlos con el equipo médico.</p>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -597,7 +613,8 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                             <?php foreach ($researchHighlights as $highlight): ?>
                                 <div class="mb-15">
                                     <h5 class="mb-5">
-                                        <?= htmlspecialchars($highlight['year'], ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars($highlight['title'], ENT_QUOTES, 'UTF-8') ?>
+                                        <?= htmlspecialchars($highlight['year'], ENT_QUOTES, 'UTF-8') ?>
+                                        · <?= htmlspecialchars($highlight['title'], ENT_QUOTES, 'UTF-8') ?>
                                     </h5>
                                     <p class="text-fade mb-0"><?= htmlspecialchars($highlight['description'], ENT_QUOTES, 'UTF-8') ?></p>
                                 </div>
@@ -612,14 +629,29 @@ $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
                     </div>
                     <div class="box-body">
                         <ul class="list-unstyled mb-0">
-                            <li class="mb-10"><i class="fa fa-calendar-check text-primary me-10"></i> Confirmar disponibilidad de <?= htmlspecialchars((string)($availabilitySummary['virtual_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?> teleconsultas y <?= htmlspecialchars((string)($availabilitySummary['in_person_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?> turnos presenciales antes de las 12h00.</li>
+                            <li class="mb-10"><i class="fa fa-calendar-check text-primary me-10"></i> Confirmar
+                                disponibilidad
+                                de <?= htmlspecialchars((string)($availabilitySummary['virtual_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>
+                                teleconsultas
+                                y <?= htmlspecialchars((string)($availabilitySummary['in_person_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>
+                                turnos presenciales antes de las 12h00.
+                            </li>
                             <?php if ($primarySupportLabel && $primarySupportValue): ?>
-                                <li class="mb-10"><i class="fa fa-users text-success me-10"></i> Coordinar interconsultas con <?= htmlspecialchars($primarySupportLabel, ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($primarySupportValue, ENT_QUOTES, 'UTF-8') ?>) para pacientes complejos.</li>
+                                <li class="mb-10"><i class="fa fa-users text-success me-10"></i> Coordinar
+                                    interconsultas
+                                    con <?= htmlspecialchars($primarySupportLabel, ENT_QUOTES, 'UTF-8') ?>
+                                    (<?= htmlspecialchars($primarySupportValue, ENT_QUOTES, 'UTF-8') ?>) para pacientes
+                                    complejos.
+                                </li>
                             <?php endif; ?>
                             <?php if (!empty($activityStats)): ?>
                                 <?php $satisfactionStat = end($activityStats); ?>
                                 <?php if ($satisfactionStat && isset($satisfactionStat['value'])): ?>
-                                    <li class="mb-0"><i class="fa fa-line-chart text-warning me-10"></i> Actualizar tablero de satisfacción cuando cierre la jornada (meta <?= htmlspecialchars((string)$satisfactionStat['value'], ENT_QUOTES, 'UTF-8') ?><?= !empty($satisfactionStat['suffix']) ? htmlspecialchars($satisfactionStat['suffix'], ENT_QUOTES, 'UTF-8') : '' ?>).</li>
+                                    <li class="mb-0"><i class="fa fa-line-chart text-warning me-10"></i> Actualizar
+                                        tablero de satisfacción cuando cierre la jornada
+                                        (meta <?= htmlspecialchars((string)$satisfactionStat['value'], ENT_QUOTES, 'UTF-8') ?><?= !empty($satisfactionStat['suffix']) ? htmlspecialchars($satisfactionStat['suffix'], ENT_QUOTES, 'UTF-8') : '' ?>
+                                        ).
+                                    </li>
                                 <?php endif; ?>
                             <?php endif; ?>
                         </ul>
