@@ -63,6 +63,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessWhatsAppChat = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'settings.manage']);
                     $canConfigureWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']);
                     $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
+                    $canAccessDoctors = Permissions::containsAny($normalizedPermissions, ['administrativo', 'doctores.manage', 'doctores.view']);
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
                     $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
                     $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
@@ -118,6 +119,15 @@ if (!function_exists('isTreeOpen')) {
                             <span>Agenda</span>
                         </a>
                     </li>
+
+                    <?php if ($canAccessDoctors): ?>
+                        <li class="<?= isActive('/doctores') ?>">
+                            <a href="/doctores">
+                                <i class="mdi mdi-stethoscope"></i>
+                                <span>Doctores</span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
 
                     <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones', '/turnoAgenda']) ?>">
                         <a href="#">
