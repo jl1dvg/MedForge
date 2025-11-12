@@ -44,9 +44,9 @@ class SolicitudDataFormatter
         $normalized['solicitud'] = $solicitud;
         $normalized['diagnostico'] = $diagnostico;
         $normalized['consulta'] = $consulta;
-        $resolvedExamenFisico = self::resolveExamenFisico($consulta);
-        $normalized['consultaTexto'] = $resolvedExamenFisico ?? self::buildConsultaTexto($consulta);
-        $normalized['consultaExamenFisico'] = $resolvedExamenFisico;
+        $consultaExamenFisico = self::resolveExamenFisico($consulta);
+        $normalized['consultaTexto'] = self::resolveConsultaTexto($consulta);
+        $normalized['consultaExamenFisico'] = $consultaExamenFisico;
         $normalized['derivacion'] = $derivacion;
 
         $normalized['form_id'] = $formId;
@@ -134,12 +134,21 @@ class SolicitudDataFormatter
             return [];
         }
 
+        $formattedExamenFisicoNormalizado = self::formatExamenFisicoNormalizado(
+            $consulta['examen_fisico_normalizado'] ?? null
+        );
+
+        if ($formattedExamenFisicoNormalizado !== null) {
+            $consulta['examen_fisico_normalizado'] = $formattedExamenFisicoNormalizado;
+        } else {
+            unset($consulta['examen_fisico_normalizado']);
+        }
+
         $scalarFields = [
             'motivo_consulta',
             'motivo',
             'enfermedad_actual',
             'examen_fisico',
-            'examen_fisico_normalizado',
             'plan',
             'diagnostico_plan',
             'estado_enfermedad',
@@ -158,6 +167,10 @@ class SolicitudDataFormatter
             $consulta['examen_fisico'] = $examenFisico;
         } else {
             unset($consulta['examen_fisico']);
+        }
+
+        if (array_key_exists('examen_fisico_normalizado', $consulta)) {
+            self::normalizeScalarField($consulta, 'examen_fisico_normalizado');
         }
 
         if (($consulta['examen_fisico_normalizado'] ?? null) === null) {
@@ -208,21 +221,119 @@ class SolicitudDataFormatter
         return self::buildConsultaTexto($consulta);
     }
 
+    private static function formatExamenFisicoNormalizado(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return null;
+            }
+
+            $decoded = json_decode($trimmed, true);
+            if (is_array($decoded)) {
+                return self::formatExamenFisicoNormalizado($decoded);
+            }
+
+            return $trimmed;
+        }
+
+        if (is_object($value)) {
+            return self::formatExamenFisicoNormalizado((array) $value);
+        }
+
+        if (is_array($value)) {
+            $sections = [];
+            if (self::isList($value)) {
+                foreach ($value as $item) {
+                    if (is_array($item)) {
+                        $label = self::stringifyValue($item['label'] ?? $item['titulo'] ?? $item['name'] ?? null);
+                        $content = self::stringifyValue(
+                            $item['value']
+                                ?? $item['contenido']
+                                ?? $item['texto']
+                                ?? $item['descripcion']
+                                ?? null
+                        );
+
+                        if ($content === null) {
+                            continue;
+                        }
+
+                        $sections[] = self::formatExamenFisicoSection($label, $content);
+                        continue;
+                    }
+
+                    $content = self::stringifyValue($item);
+                    if ($content !== null) {
+                        $sections[] = $content;
+                    }
+                }
+            } else {
+                foreach ($value as $label => $contentValue) {
+                    $content = self::stringifyValue($contentValue);
+                    if ($content === null) {
+                        continue;
+                    }
+
+                    $labelString = is_string($label) ? trim($label) : null;
+                    $sections[] = self::formatExamenFisicoSection(
+                        $labelString !== '' ? $labelString : null,
+                        $content
+                    );
+                }
+            }
+
+            $sections = array_values(array_filter($sections, static fn($item) => $item !== ''));
+
+            if ($sections === []) {
+                return null;
+            }
+
+            return implode(PHP_EOL . PHP_EOL, $sections);
+        }
+
+        return self::stringifyValue($value);
+    }
+
+    private static function formatExamenFisicoSection(?string $label, string $content): string
+    {
+        if ($label === null) {
+            return $content;
+        }
+
+        $label = rtrim($label, ':');
+
+        return sprintf('%s:%s%s', $label, PHP_EOL, $content);
+    }
+
+    private static function isList(array $value): bool
+    {
+        $expectedKey = 0;
+        foreach (array_keys($value) as $key) {
+            if ($key !== $expectedKey) {
+                return false;
+            }
+
+            ++$expectedKey;
+        }
+
+        return true;
+    }
+
     private static function resolveExamenFisico(array $consulta): ?string
     {
-        $candidates = [
-            $consulta['examen_fisico_normalizado'] ?? null,
-            $consulta['examen_fisico'] ?? null,
-        ];
-
-        foreach ($candidates as $candidate) {
-            $valor = self::stringifyValue($candidate);
-            if ($valor !== null) {
-                return $valor;
+        if (array_key_exists('examen_fisico_normalizado', $consulta)) {
+            $formatted = self::formatExamenFisicoNormalizado($consulta['examen_fisico_normalizado']);
+            if ($formatted !== null) {
+                return $formatted;
             }
         }
 
-        return null;
+        return self::stringifyValue($consulta['examen_fisico'] ?? null);
     }
 
     private static function buildConsultaTexto(array $consulta): ?string

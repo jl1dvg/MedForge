@@ -3,6 +3,7 @@
 namespace Modules\Reporting\Services;
 
 use Controllers\ExamenesController;
+use Controllers\SolicitudController;
 use Helpers\ProtocoloHelper;
 use Models\ProtocoloModel;
 use Modules\Reporting\Controllers\ReportController;
@@ -27,7 +28,7 @@ class ProtocolReportService
 
     private PDO $db;
     private ProtocoloModel $protocoloModel;
-    private ExamenesController $solicitudController;
+    private ExamenesController|SolicitudController $solicitudController;
     private ReportController $reportController;
     private SolicitudTemplateRegistry $solicitudTemplateRegistry;
 
@@ -35,7 +36,7 @@ class ProtocolReportService
         PDO                        $db,
         ReportController           $reportController,
         ?ProtocoloModel            $protocoloModel = null,
-        ?ExamenesController        $solicitudController = null,
+        ExamenesController|SolicitudController|null $solicitudController = null,
         ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null
     )
     {
