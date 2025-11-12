@@ -17,9 +17,17 @@ return function (Router $router) {
         (new BillingController($pdo))->noFacturados();
     });
 
+    $router->post('/billing/no-facturados/crear', function (\PDO $pdo) {
+        (new BillingController($pdo))->crearDesdeNoFacturado();
+    });
+
     $router->get('/views/billing/no_facturados.php', function () {
         header('Location: /billing/no-facturados', true, 302);
         exit;
+    });
+
+    $router->post('/views/billing/components/crear_desde_no_facturado.php', function (\PDO $pdo) {
+        (new BillingController($pdo))->crearDesdeNoFacturado();
     });
 
     $router->match(['GET', 'POST'], '/informes/iess', function (\PDO $pdo) {

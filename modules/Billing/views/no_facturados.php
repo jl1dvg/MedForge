@@ -23,12 +23,12 @@ $noQuirurgicos = $noQuirurgicos ?? [];
 <section class="content">
     <div class="row">
         <div class="col-lg-12 col-12">
-            <?php include BASE_PATH . '/views/billing/components/table_no_facturados.php'; ?>
+            <?php include __DIR__ . '/components/no_facturados_table.php'; ?>
         </div>
     </div>
 </section>
 
-<?php include BASE_PATH . '/views/billing/components/preview_modal.php'; ?>
+<?php include __DIR__ . '/components/no_facturados_preview_modal.php'; ?>
 
 <script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
 <script src="/public/js/pages/chat-popup.js"></script>
@@ -47,24 +47,59 @@ $noQuirurgicos = $noQuirurgicos ?? [];
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
 
-        const rawBaseUrl = <?= json_encode(BASE_URL); ?>;
+        const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
-        const resolveBaseUrl = (raw) => {
-            if (typeof raw === 'string' && raw.trim() !== '') {
-                const trimmed = raw.trim();
+        const buildPreviewCandidates = (baseHref, formId, hcNumber) => {
+            const candidateHrefs = new Set();
+            const result = [];
 
-                if (/^https?:\/\//i.test(trimmed)) {
-                    return trimmed;
+            const registerCandidate = (url) => {
+                url.searchParams.set('form_id', formId);
+                url.searchParams.set('hc_number', hcNumber);
+                const href = url.toString();
+                if (!candidateHrefs.has(href)) {
+                    candidateHrefs.add(href);
+                    result.push(url);
                 }
+            };
 
-                const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-                return `${window.location.origin}${normalizedPath}`;
+            const baseUrl = new URL(baseHref, window.location.origin);
+            const normalizedPath = baseUrl.pathname.replace(/\/+$/, '') || '/';
+
+            registerCandidate(new URL(baseUrl.toString()));
+
+            if (!normalizedPath.startsWith('/public/')) {
+                const withPublic = new URL(baseUrl.toString());
+                const suffix = normalizedPath.startsWith('/') ? normalizedPath.replace(/^\/+/, '') : normalizedPath;
+                withPublic.pathname = `/public/${suffix}`.replace('/public//', '/public/');
+                registerCandidate(withPublic);
+            } else {
+                const withoutPublic = new URL(baseUrl.toString());
+                const trimmed = normalizedPath.replace(/^\/public/, '') || '/';
+                withoutPublic.pathname = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+                registerCandidate(withoutPublic);
             }
 
-            return window.location.origin;
+            return result;
         };
 
-        const baseUrl = resolveBaseUrl(rawBaseUrl).replace(/\/+$/, '/');
+        const fetchPreview = async (candidates) => {
+            let lastError = null;
+            for (const candidate of candidates) {
+                try {
+                    const response = await fetch(candidate.toString());
+                    if (response.ok) {
+                        return response;
+                    }
+
+                    lastError = new Error(`Respuesta inesperada ${response.status}`);
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+
+            throw lastError ?? new Error('No fue posible contactar el servicio de preview.');
+        };
 
         if (previewModal) {
             previewModal.addEventListener("show.bs.modal", async (event) => {
@@ -82,14 +117,8 @@ $noQuirurgicos = $noQuirurgicos ?? [];
                 previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
 
                 try {
-                    const previewUrl = new URL('api/billing/billing_preview.php', baseUrl);
-                    previewUrl.searchParams.set('form_id', formId);
-                    previewUrl.searchParams.set('hc_number', hcNumber);
-
-                    const res = await fetch(previewUrl.toString());
-                    if (!res.ok) {
-                        throw new Error(`Respuesta inesperada ${res.status}`);
-                    }
+                    const candidateUrls = buildPreviewCandidates(previewEndpoint, formId, hcNumber);
+                    const res = await fetchPreview(candidateUrls);
 
                     const data = await res.json();
                     if (!data.success) {
