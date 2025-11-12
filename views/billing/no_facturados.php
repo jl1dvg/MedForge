@@ -72,6 +72,29 @@ $noQuirurgicos = $clasificados['no_quirurgicos'];
             const facturarFormId = document.getElementById("facturarFormId");
             const facturarHcNumber = document.getElementById("facturarHcNumber");
 
+            const rawBaseUrl = <?= json_encode(BASE_URL); ?>;
+
+            const resolveBaseUrl = (raw) => {
+                if (typeof raw === 'string' && raw.trim() !== '') {
+                    const trimmed = raw.trim();
+
+                    if (/^https?:\/\//i.test(trimmed)) {
+                        return trimmed;
+                    }
+
+                    const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+                    return `${window.location.origin}${normalizedPath}`;
+                }
+
+                return window.location.origin;
+            };
+
+            const baseUrl = resolveBaseUrl(rawBaseUrl).replace(/\/+$/, '/');
+
+            if (!previewModal) {
+                return;
+            }
+
             previewModal.addEventListener("show.bs.modal", async (event) => {
                 const button = event.relatedTarget;
                 const formId = button.getAttribute("data-form-id");
@@ -82,7 +105,11 @@ $noQuirurgicos = $clasificados['no_quirurgicos'];
                 previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
 
                 try {
-                    const res = await fetch(`/api/billing/billing_preview.php?form_id=${formId}&hc_number=${hcNumber}`);
+                    const previewUrl = new URL('api/billing/billing_preview.php', baseUrl);
+                    previewUrl.searchParams.set('form_id', formId);
+                    previewUrl.searchParams.set('hc_number', hcNumber);
+
+                    const res = await fetch(previewUrl.toString());
                     const data = await res.json();
 
                     // 🔍 Debug 1: API completo

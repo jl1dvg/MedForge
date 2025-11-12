@@ -33,6 +33,22 @@ function computeConfig() {
     const selectors = raw.selectors || {};
     const ids = computeIds(key, selectors);
 
+    const globalRealtime = (() => {
+        if (typeof window === 'undefined') {
+            return {};
+        }
+
+        const candidate = window.MEDF_PusherConfig;
+        if (!candidate || typeof candidate !== 'object') {
+            return {};
+        }
+
+        const { kanban, ...rest } = candidate;
+        const kanbanOverrides = kanban && typeof kanban === 'object' ? kanban : {};
+
+        return { ...rest, ...kanbanOverrides };
+    })();
+
     return {
         key,
         basePath: raw.basePath || '/solicitudes',
@@ -51,7 +67,7 @@ function computeConfig() {
             ...(raw.strings || {}),
         },
         realtime: {
-            ...((window.MEDF_PusherConfig || {}).kanban || {}),
+            ...globalRealtime,
             ...(raw.realtime || {}),
         },
     };

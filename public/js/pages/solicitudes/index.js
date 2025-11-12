@@ -12,11 +12,12 @@ import {
     resolveAttr,
     resolveId,
     getTableBodySelector,
+    getRealtimeConfig,
 } from './kanban/config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     const config = getKanbanConfig();
-    const realtimeConfig = window.MEDF_PusherConfig || {};
+    const realtimeConfig = getRealtimeConfig();
     const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
     const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
     const toastDurationMs = autoDismissSeconds === null

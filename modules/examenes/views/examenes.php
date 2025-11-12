@@ -15,6 +15,24 @@ $realtime = array_merge(
     ],
     $realtime ?? []
 );
+
+if (!isset($styles) || !is_array($styles)) {
+    $styles = [];
+}
+
+$styles[] = 'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css';
+
+if (!isset($scripts) || !is_array($scripts)) {
+    $scripts = [];
+}
+
+array_push(
+    $scripts,
+    'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
+    'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
+);
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -649,10 +667,17 @@ $realtime = array_merge(
                 articleSingular: 'el',
                 articleSingularShort: 'el',
             },
-            realtime: {
-                channel: $realtime['channel'] ?? 'examenes-kanban',
-                event: $realtime['event'] ?? 'nuevo-examen',
-            },
+            realtime: <?= json_encode([
+                'enabled' => (bool)($realtime['enabled'] ?? false),
+                'key' => (string)($realtime['key'] ?? ''),
+                'cluster' => (string)($realtime['cluster'] ?? ''),
+                'channel' => (string)($realtime['channel'] ?? 'examenes-kanban'),
+                'event' => (string)($realtime['event'] ?? 'nuevo-examen'),
+                'events' => $realtime['events'] ?? [],
+                'channels' => $realtime['channels'] ?? [],
+                'desktop_notifications' => (bool)($realtime['desktop_notifications'] ?? false),
+                'auto_dismiss_seconds' => $realtime['auto_dismiss_seconds'] ?? 0,
+            ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
         };
         window.__examenesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
@@ -1027,11 +1052,6 @@ $realtime = array_merge(
 
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
-<script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
 <script>
     window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
 </script>

@@ -47,7 +47,24 @@ $noQuirurgicos = $noQuirurgicos ?? [];
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
 
-        const baseUrl = <?= json_encode(rtrim(BASE_URL, '/')); ?> || '';
+        const rawBaseUrl = <?= json_encode(BASE_URL); ?>;
+
+        const resolveBaseUrl = (raw) => {
+            if (typeof raw === 'string' && raw.trim() !== '') {
+                const trimmed = raw.trim();
+
+                if (/^https?:\/\//i.test(trimmed)) {
+                    return trimmed;
+                }
+
+                const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+                return `${window.location.origin}${normalizedPath}`;
+            }
+
+            return window.location.origin;
+        };
+
+        const baseUrl = resolveBaseUrl(rawBaseUrl).replace(/\/+$/, '/');
 
         if (previewModal) {
             previewModal.addEventListener("show.bs.modal", async (event) => {
@@ -65,8 +82,11 @@ $noQuirurgicos = $noQuirurgicos ?? [];
                 previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
 
                 try {
-                    const previewUrl = `${baseUrl}/api/billing/billing_preview.php?form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
-                    const res = await fetch(previewUrl);
+                    const previewUrl = new URL('api/billing/billing_preview.php', baseUrl);
+                    previewUrl.searchParams.set('form_id', formId);
+                    previewUrl.searchParams.set('hc_number', hcNumber);
+
+                    const res = await fetch(previewUrl.toString());
                     if (!res.ok) {
                         throw new Error(`Respuesta inesperada ${res.status}`);
                     }
