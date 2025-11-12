@@ -236,7 +236,7 @@ let pacientesPrioritarios = [];
                 lname: partesNombre[0] || '',
                 lname2: partesNombre[1] || '',
                 fname: partesNombre[2] || '',
-                mname2: partesNombre.slice(3).join(' ') || ''
+                mname: partesNombre.slice(3).join(' ') || ''
             };
 
             pacientes.push({

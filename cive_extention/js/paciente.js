@@ -1,6 +1,11 @@
 (function () {
     function detectarConfirmacionAsistencia() {
         document.querySelectorAll('button[id^="button-confirmar-"], .swal2-container button[id^="button-confirmar-"]').forEach(boton => {
+            if (boton.dataset.civeLlegadaListener === 'true') {
+                return;
+            }
+            boton.dataset.civeLlegadaListener = 'true';
+
             boton.addEventListener('click', (e) => {
                 const idTexto = boton.id.replace('button-confirmar-', '');
                 const id = parseInt(idTexto, 10);
@@ -28,6 +33,14 @@
                 }
             });
         });
+    }
+
+    window.detectarConfirmacionAsistencia = detectarConfirmacionAsistencia;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', detectarConfirmacionAsistencia);
+    } else {
+        detectarConfirmacionAsistencia();
     }
 
     /**

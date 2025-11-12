@@ -15,7 +15,6 @@ class EstadisticaFlujoModel
 
     public function obtenerEstadisticas($filtros)
     {
-        var_dump($filtros);
         $pacientes = $this->obtenerFormIdsFiltrados($filtros);
         $resultados = [];
 
@@ -137,11 +136,6 @@ class EstadisticaFlujoModel
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // 🟨 Agrega esto para depurar
-        var_dump($sql);
-        var_dump($params);
-        var_dump($result);
 
         return $result;
     }

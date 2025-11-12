@@ -85,7 +85,13 @@ try {
         $respuestas[] = [
             'index' => $index,
             'success' => $respuesta['success'],
-            'message' => $respuesta['message']
+            'message' => $respuesta['message'],
+            'id' => $respuesta['id'] ?? $item['form_id'],
+            'form_id' => $respuesta['form_id'] ?? $item['form_id'],
+            'afiliacion' => $respuesta['afiliacion'] ?? ($item['afiliacion'] ?? null),
+            'estado' => $respuesta['estado'] ?? null,
+            'hc_number' => $respuesta['hc_number'] ?? ($item['hcNumber'] ?? null),
+            'visita_id' => $respuesta['visita_id'] ?? null,
         ];
     }
 
