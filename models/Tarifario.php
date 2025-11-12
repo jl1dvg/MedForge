@@ -173,13 +173,14 @@ class Tarifario
                        valor_facturar_nivel1, valor_facturar_nivel2, valor_facturar_nivel3,
                        code_type, superbill
                 FROM {$this->table}
-                WHERE codigo LIKE :pattern OR descripcion LIKE :pattern
+                WHERE codigo LIKE :codigo_pattern OR descripcion LIKE :descripcion_pattern
                 ORDER BY codigo ASC
                 LIMIT :limit";
 
         $pattern = '%' . $query . '%';
         $st = $this->db->prepare($sql);
-        $st->bindValue(':pattern', $pattern, PDO::PARAM_STR);
+        $st->bindValue(':codigo_pattern', $pattern, PDO::PARAM_STR);
+        $st->bindValue(':descripcion_pattern', $pattern, PDO::PARAM_STR);
         $st->bindValue(':limit', $limit, PDO::PARAM_INT);
         $st->execute();
 

@@ -127,15 +127,27 @@ class PackageController extends BaseController
         $this->requireAuth();
         $this->requirePermission(['codes.view', 'codes.manage', 'administrativo', 'crm.view', 'crm.manage']);
 
-        $query = trim((string) ($_GET['q'] ?? ''));
-        if ($query === '') {
-            $this->json(['ok' => true, 'data' => []]);
-            return;
-        }
+        try {
+            $query = trim((string) ($_GET['q'] ?? ''));
+            if ($query === '') {
+                $this->json(['ok' => true, 'data' => []]);
+                return;
+            }
 
-        $limit = isset($_GET['limit']) ? max(1, min(50, (int) $_GET['limit'])) : 15;
-        $results = $this->tarifario->quickSearch($query, $limit);
-        $this->json(['ok' => true, 'data' => $results]);
+            $limit = isset($_GET['limit']) ? max(1, min(50, (int) $_GET['limit'])) : 15;
+            $results = $this->tarifario->quickSearch($query, $limit);
+            $this->json(['ok' => true, 'data' => $results]);
+        } catch (Throwable $exception) {
+            error_log(sprintf('[codes] searchCodes failed: %s', $exception->getMessage()));
+            $this->json(
+                [
+                    'ok' => false,
+                    'error' => 'No se pudieron buscar los códigos solicitados',
+                    'details' => $exception->getMessage(),
+                ],
+                500
+            );
+        }
     }
 
     private function getBody(): array
