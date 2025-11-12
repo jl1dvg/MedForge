@@ -2,8 +2,13 @@
     const CACHE = new Map();
     const inFlight = new Map();
 
+    const DEFAULT_API_BASE_URL = 'https://asistentecive.consulmed.me/api';
+    const API_HOST_FIXES = {
+        'asitentecive.consulmed.me': 'asistentecive.consulmed.me',
+    };
+
     const DEFAULTS = {
-        apiBaseUrl: 'https://asistentecive.consulmed.me/api',
+        apiBaseUrl: DEFAULT_API_BASE_URL,
         timeoutMs: 12000,
         maxRetries: 2,
         retryDelayMs: 600,
@@ -40,13 +45,40 @@
         return JSON.stringify(keyParts);
     }
 
+    function normalizeApiBaseUrl(value) {
+        if (typeof value !== 'string' || value.trim() === '') {
+            return DEFAULT_API_BASE_URL;
+        }
+
+        let normalized = value.trim();
+        let parsed;
+
+        try {
+            parsed = new URL(normalized);
+        } catch (error) {
+            try {
+                parsed = new URL(`https://${normalized.replace(/^\/+/, '')}`);
+            } catch (innerError) {
+                return DEFAULT_API_BASE_URL;
+            }
+        }
+
+        const fix = API_HOST_FIXES[parsed.hostname.toLowerCase()];
+        if (fix) {
+            parsed.hostname = fix;
+        }
+
+        normalized = parsed.toString();
+        return normalized.replace(/\/+$/, '');
+    }
+
     function readConfig() {
         if (!window.configCIVE || typeof window.configCIVE.get !== 'function') {
             return {...DEFAULTS};
         }
         const state = window.configCIVE.get();
         return {
-            apiBaseUrl: state.apiBaseUrl || DEFAULTS.apiBaseUrl,
+            apiBaseUrl: normalizeApiBaseUrl(state.apiBaseUrl || DEFAULTS.apiBaseUrl),
             timeoutMs: state.apiTimeoutMs || DEFAULTS.timeoutMs,
             maxRetries: typeof state.apiMaxRetries === 'number' ? state.apiMaxRetries : DEFAULTS.maxRetries,
             retryDelayMs: typeof state.apiRetryDelayMs === 'number' ? state.apiRetryDelayMs : DEFAULTS.retryDelayMs,

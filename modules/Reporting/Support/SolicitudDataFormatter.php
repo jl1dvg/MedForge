@@ -21,7 +21,7 @@ class SolicitudDataFormatter
         $paciente = self::ensureArray($data['paciente'] ?? []);
         $solicitud = self::ensureArray($data['solicitud'] ?? []);
         $diagnostico = self::ensureList($data['diagnostico'] ?? []);
-        $consulta = self::ensureArray($data['consulta'] ?? []);
+        $consulta = self::normalizeConsulta(self::ensureArray($data['consulta'] ?? []));
         $derivacion = self::ensureArray($data['derivacion'] ?? []);
 
         self::normalizeScalarField($paciente, 'afiliacion');
@@ -44,6 +44,8 @@ class SolicitudDataFormatter
         $normalized['solicitud'] = $solicitud;
         $normalized['diagnostico'] = $diagnostico;
         $normalized['consulta'] = $consulta;
+        $normalized['consultaTexto'] = self::resolveConsultaTexto($consulta);
+        $normalized['consultaExamenFisico'] = $consulta['examen_fisico'] ?? null;
         $normalized['derivacion'] = $derivacion;
 
         $normalized['form_id'] = $formId;
@@ -119,6 +121,125 @@ class SolicitudDataFormatter
         $normalized['timestamp_generado'] = (new DateTimeImmutable())->format(DATE_ATOM);
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $consulta
+     * @return array<string, mixed>
+     */
+    private static function normalizeConsulta(array $consulta): array
+    {
+        if ($consulta === []) {
+            return [];
+        }
+
+        $scalarFields = [
+            'motivo_consulta',
+            'motivo',
+            'enfermedad_actual',
+            'examen_fisico',
+            'plan',
+            'diagnostico_plan',
+            'estado_enfermedad',
+            'signos_alarma',
+            'recomen_no_farmaco',
+            'antecedente_alergico',
+            'vigencia_receta',
+        ];
+
+        foreach ($scalarFields as $field) {
+            self::normalizeScalarField($consulta, $field);
+        }
+
+        if (array_key_exists('examenes', $consulta)) {
+            $consulta['examenes_list'] = self::normalizeList($consulta['examenes']);
+        }
+
+        if (array_key_exists('diagnosticos', $consulta)) {
+            $decoded = $consulta['diagnosticos'];
+            if (is_string($decoded)) {
+                $decoded = json_decode($decoded, true);
+            }
+
+            if (is_array($decoded)) {
+                $consulta['diagnosticos_list'] = array_values(array_filter(
+                    array_map(static function ($item) {
+                        if (!is_array($item)) {
+                            return null;
+                        }
+
+                        $codigo = self::stringifyValue($item['dx_code'] ?? $item['idDiagnostico'] ?? null);
+                        $descripcion = self::stringifyValue($item['descripcion'] ?? null);
+
+                        if ($codigo !== null && $descripcion !== null) {
+                            return sprintf('%s - %s', $codigo, $descripcion);
+                        }
+
+                        return $descripcion ?? $codigo;
+                    },
+                    $decoded
+                ), static fn($value) => $value !== null));
+            }
+        }
+
+        return $consulta;
+    }
+
+    private static function resolveConsultaTexto(array $consulta): ?string
+    {
+        $examenFisico = self::stringifyValue($consulta['examen_fisico'] ?? null);
+        if ($examenFisico !== null) {
+            return $examenFisico;
+        }
+
+        return self::buildConsultaTexto($consulta);
+    }
+
+    private static function buildConsultaTexto(array $consulta): ?string
+    {
+        if ($consulta === []) {
+            return null;
+        }
+
+        $secciones = [
+            'Motivo de consulta' => ['motivo_consulta', 'motivo'],
+            'Enfermedad actual' => ['enfermedad_actual'],
+            'Examen físico' => ['examen_fisico'],
+            'Plan' => ['plan'],
+            'Estado de la enfermedad' => ['estado_enfermedad'],
+            'Signos de alarma' => ['signos_alarma'],
+            'Recomendaciones' => ['recomen_no_farmaco'],
+            'Antecedentes / alergias' => ['antecedente_alergico'],
+            'Vigencia receta' => ['vigencia_receta'],
+        ];
+
+        $lineas = [];
+
+        foreach ($secciones as $label => $keys) {
+            foreach ($keys as $key) {
+                if (!array_key_exists($key, $consulta)) {
+                    continue;
+                }
+
+                $valor = self::stringifyValue($consulta[$key]);
+                if ($valor === null) {
+                    continue;
+                }
+
+                if ($key === 'vigencia_receta') {
+                    $valor = self::formatDate($valor) ?? $valor;
+                }
+
+                $lineas[] = sprintf('%s: %s', $label, $valor);
+                break;
+            }
+        }
+
+        if ($lineas === []) {
+            return null;
+        }
+
+        return implode(PHP_EOL, $lineas);
     }
 
     public static function slugify(?string $value): ?string
@@ -428,4 +549,3 @@ class SolicitudDataFormatter
         return null;
     }
 }
-

@@ -149,12 +149,31 @@ class ConfigService
             return self::DEFAULTS['api_base_url'];
         }
 
+        $value = $this->fixCommonApiHostTypos($value);
+
         $parsed = parse_url($value);
         if (!is_array($parsed) || empty($parsed['scheme']) || empty($parsed['host'])) {
             throw new RuntimeException('La URL base del API de CIVE Extension no es válida.');
         }
 
         return rtrim($value, '/');
+    }
+
+    private function fixCommonApiHostTypos(string $value): string
+    {
+        $replacements = [
+            'asitentecive.consulmed.me' => 'asistentecive.consulmed.me',
+        ];
+
+        foreach ($replacements as $wrong => $correct) {
+            $pattern = '~^(https?://)' . preg_quote($wrong, '~') . '~i';
+            $updated = preg_replace($pattern, '$1' . $correct, $value, 1, $count);
+            if ($updated !== null && $count > 0) {
+                return $updated;
+            }
+        }
+
+        return $value;
     }
 
     private function sanitizeInt(?string $value, int $default): int

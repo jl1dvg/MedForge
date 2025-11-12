@@ -108,21 +108,37 @@ function determineBaseUrl(): string
         return rtrim($envBaseUrl, '/') . '/';
     }
 
-    if (!empty($_SERVER['HTTP_HOST'])) {
+    if (!empty($_SERVER['HTTP_HOST']) || !empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
         $scheme = 'http';
+        $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? $_SERVER['HTTP_X_FORWARDED_SCHEME'] ?? null;
 
-        if (
+        if (!empty($forwardedProto)) {
+            $scheme = str_contains($forwardedProto, 'https') ? 'https' : 'http';
+        } elseif (
             (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (isset($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] === 'https')
         ) {
             $scheme = 'https';
         }
 
-        $host = $_SERVER['HTTP_HOST'];
+        $hostHeader = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
+        $hostParts = array_map('trim', explode(',', $hostHeader));
+        $host = $hostParts[0] ?? '';
+
+        $port = $_SERVER['HTTP_X_FORWARDED_PORT'] ?? $_SERVER['SERVER_PORT'] ?? null;
+        $portSegment = '';
+        if ($port && is_numeric($port)) {
+            $port = (int) $port;
+            $isStandardPort = ($scheme === 'https' && $port === 443) || ($scheme === 'http' && $port === 80);
+            if (!$isStandardPort) {
+                $portSegment = ':' . $port;
+            }
+        }
+
         $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
         $directory = rtrim(str_replace('\\', '/', dirname($scriptName)), '/');
 
-        $baseUrl = $scheme . '://' . $host;
+        $baseUrl = $scheme . '://' . $host . $portSegment;
 
         if (!empty($directory) && $directory !== '.') {
             $baseUrl .= $directory[0] === '/' ? $directory : '/' . $directory;

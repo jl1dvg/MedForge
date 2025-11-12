@@ -6,6 +6,7 @@ use InvalidArgumentException;
 use Modules\Reporting\Services\Definitions\PdfTemplateDefinitionInterface;
 use Modules\Reporting\Support\PdfDestinationNormalizer;
 use setasign\Fpdi\Tcpdf\Fpdi;
+use Stringable;
 
 class PdfTemplateRenderer
 {
@@ -72,15 +73,8 @@ class PdfTemplateRenderer
                 continue;
             }
 
-            if (is_scalar($value)) {
-                $text = (string) $value;
-            } elseif (is_array($value)) {
-                $text = implode(PHP_EOL, array_map('strval', $value));
-            } else {
-                continue;
-            }
-
-            if ($text === '') {
+            $text = $this->stringifyFieldValue($value);
+            if ($text === null) {
                 continue;
             }
 
@@ -145,6 +139,55 @@ class PdfTemplateRenderer
         $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'S');
 
         return $pdf->Output($filename, $destination);
+    }
+
+    private function stringifyFieldValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+
+            return $trimmed === '' ? null : $trimmed;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return trim((string) $value);
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_array($value)) {
+            $parts = [];
+
+            foreach ($value as $item) {
+                $string = $this->stringifyFieldValue($item);
+
+                if ($string === null) {
+                    continue;
+                }
+
+                $parts[] = $string;
+            }
+
+            if ($parts === []) {
+                return null;
+            }
+
+            return implode(PHP_EOL, $parts);
+        }
+
+        if ($value instanceof Stringable) {
+            $string = trim((string) $value);
+
+            return $string === '' ? null : $string;
+        }
+
+        return null;
     }
 
     /**

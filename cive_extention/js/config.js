@@ -1,4 +1,8 @@
 (function () {
+    const DEFAULT_API_BASE_URL = 'https://asistentecive.consulmed.me/api';
+    const API_HOST_FIXES = {
+        'asitentecive.consulmed.me': 'asistentecive.consulmed.me',
+    };
     const VALID_CREDENTIALS = ['omit', 'same-origin', 'include'];
     const LEGACY_KEY_MAP = {
         ES_LOCAL: 'esLocal',
@@ -42,6 +46,26 @@
         return fallback;
     }
 
+    function normalizeApiBaseUrl(value, fallback = DEFAULT_API_BASE_URL) {
+        if (typeof value !== 'string' || value.trim() === '') {
+            return fallback;
+        }
+
+        let normalized = value.trim();
+        try {
+            const parsed = new URL(normalized);
+            const hostFix = API_HOST_FIXES[parsed.hostname.toLowerCase()];
+            if (hostFix) {
+                parsed.hostname = hostFix;
+            }
+            normalized = parsed.toString();
+        } catch (error) {
+            return fallback;
+        }
+
+        return normalized.replace(/\/+$/, '');
+    }
+
     const defaultLocal = detectLocalEnvironment();
 
     const DEFAULT_STATE = {
@@ -50,7 +74,7 @@
         healthHistoryEndpoint: 'https://cive.consulmed.me/api/cive-extension/health-checks',
         subscriptionEndpoint: 'https://cive.consulmed.me/api/subscription/check.php',
         refreshIntervalMs: 900000,
-        apiBaseUrl: 'https://asistentecive.consulmed.me/api',
+        apiBaseUrl: DEFAULT_API_BASE_URL,
         apiTimeoutMs: 12000,
         apiMaxRetries: 2,
         apiRetryDelayMs: 600,
@@ -104,6 +128,8 @@
                 next.esLocal = Boolean(value);
             } else if (key === 'extensionId') {
                 next.extensionId = typeof value === 'string' ? value : next.extensionId;
+            } else if (key === 'apiBaseUrl') {
+                next.apiBaseUrl = normalizeApiBaseUrl(value, next.apiBaseUrl || DEFAULT_API_BASE_URL);
             } else if (key === 'apiCredentialsMode') {
                 next.apiCredentialsMode = normalizeCredentialsMode(
                     value,
@@ -139,7 +165,10 @@
             healthHistoryEndpoint: bootstrap.healthHistoryEndpoint || DEFAULT_STATE.healthHistoryEndpoint,
             subscriptionEndpoint: bootstrap.subscriptionEndpoint || DEFAULT_STATE.subscriptionEndpoint,
             refreshIntervalMs: typeof bootstrap.refreshIntervalMs === 'number' ? bootstrap.refreshIntervalMs : DEFAULT_STATE.refreshIntervalMs,
-            apiBaseUrl: bootstrap.api?.baseUrl || bootstrap.apiBaseUrl || DEFAULT_STATE.apiBaseUrl,
+            apiBaseUrl: normalizeApiBaseUrl(
+                bootstrap.api?.baseUrl || bootstrap.apiBaseUrl || current.apiBaseUrl || DEFAULT_API_BASE_URL,
+                current.apiBaseUrl || DEFAULT_API_BASE_URL
+            ),
             apiTimeoutMs: typeof (bootstrap.api?.timeoutMs ?? bootstrap.apiTimeoutMs) === 'number' ? (bootstrap.api?.timeoutMs ?? bootstrap.apiTimeoutMs) : DEFAULT_STATE.apiTimeoutMs,
             apiMaxRetries: typeof (bootstrap.api?.maxRetries ?? bootstrap.apiMaxRetries) === 'number' ? (bootstrap.api?.maxRetries ?? bootstrap.apiMaxRetries) : DEFAULT_STATE.apiMaxRetries,
             apiRetryDelayMs: typeof (bootstrap.api?.retryDelayMs ?? bootstrap.apiRetryDelayMs) === 'number' ? (bootstrap.api?.retryDelayMs ?? bootstrap.apiRetryDelayMs) : DEFAULT_STATE.apiRetryDelayMs,
@@ -164,7 +193,7 @@
             ?? flags.apiCredentialsMode;
 
         return {
-            apiBaseUrl: config.api?.baseUrl || current.apiBaseUrl,
+            apiBaseUrl: normalizeApiBaseUrl(config.api?.baseUrl || current.apiBaseUrl, current.apiBaseUrl || DEFAULT_API_BASE_URL),
             apiTimeoutMs: typeof config.api?.timeoutMs === 'number' ? config.api.timeoutMs : current.apiTimeoutMs,
             apiMaxRetries: typeof config.api?.maxRetries === 'number' ? config.api.maxRetries : current.apiMaxRetries,
             apiRetryDelayMs: typeof config.api?.retryDelayMs === 'number' ? config.api.retryDelayMs : current.apiRetryDelayMs,
