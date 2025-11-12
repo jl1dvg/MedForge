@@ -201,6 +201,124 @@ array_push(
             border-radius: 10px;
         }
 
+        .prefactura-state-container {
+            transition: opacity 0.2s ease;
+        }
+
+        .prefactura-state-card {
+            border: 1px solid rgba(15, 118, 110, 0.15);
+            border-radius: 12px;
+            background: linear-gradient(135deg, #f8fbff, #ffffff);
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            padding: 1rem;
+        }
+
+        .prefactura-state-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .prefactura-state-grid {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .prefactura-state-grid-item {
+            padding: 0.75rem;
+            border-radius: 10px;
+            background: rgba(148, 163, 184, 0.12);
+        }
+
+        .prefactura-state-grid-item small {
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.06em;
+            color: #475569;
+        }
+
+        .prefactura-state-grid-item strong {
+            display: block;
+            font-size: 0.95rem;
+            margin-top: 0.2rem;
+        }
+
+        .prefactura-state-stats {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+
+        .prefactura-state-stat {
+            flex: 1;
+            min-width: 140px;
+            padding: 0.6rem 0.8rem;
+            border-radius: 8px;
+            background: #0ea5e90f;
+            border: 1px solid rgba(14, 165, 233, 0.2);
+        }
+
+        .prefactura-state-alerts {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .prefactura-state-alerts .badge {
+            font-size: 0.8rem;
+        }
+
+        .prefactura-modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .prefactura-quick-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .prefactura-content-wrapper {
+            min-height: 200px;
+        }
+
+        .prefactura-patient-card .alert {
+            margin-bottom: 0;
+            border-radius: 14px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+            border: 0;
+        }
+
+        .prefactura-patient-alert {
+            background: linear-gradient(135deg, #2563eb, #0ea5e9);
+            color: #fff;
+        }
+
+        .prefactura-patient-alert small {
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        @media (min-width: 992px) {
+            .prefactura-modal-body {
+                display: grid;
+                grid-template-columns: minmax(260px, 360px) 1fr;
+                align-items: flex-start;
+            }
+
+            .prefactura-content-wrapper {
+                max-height: calc(80vh - 140px);
+                overflow-y: auto;
+                padding-right: 0.25rem;
+            }
+        }
+
         .kanban-column {
             flex: 1 1 0;
             min-width: 220px;
@@ -1043,7 +1161,15 @@ array_push(
                 <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
-            <div class="modal-body" id="prefacturaContent">Cargando información...</div>
+            <div class="modal-body prefactura-modal-body">
+                <div id="prefacturaQuickColumn" class="prefactura-quick-column d-none">
+                    <div id="prefacturaPatientSummary" class="prefactura-patient-card d-none"></div>
+                    <div id="prefacturaState" class="prefactura-state-container d-none"></div>
+                </div>
+                <div class="prefactura-content-wrapper">
+                    <div id="prefacturaContent">Cargando información...</div>
+                </div>
+            </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                 <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
