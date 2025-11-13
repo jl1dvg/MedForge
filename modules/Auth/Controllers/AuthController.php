@@ -16,12 +16,49 @@ class AuthController extends BaseController
         return BASE_PATH . '/modules/Auth/views/login.php';
     }
 
+    private function loginViewData(array $overrides = []): array
+    {
+        $defaults = [
+            'title' => 'Iniciar sesión',
+            'bodyClass' => 'hold-transition auth-body',
+            'styles' => ['css/auth.css'],
+        ];
+
+        $status = null;
+        if (isset($_GET['expired'])) {
+            $status = [
+                'type' => 'warning',
+                'message' => 'Tu sesión expiró. Inicia sesión nuevamente para continuar.',
+            ];
+        } elseif (isset($_GET['logged_out'])) {
+            $status = [
+                'type' => 'success',
+                'message' => 'Has cerrado sesión correctamente.',
+            ];
+        } elseif (isset($_GET['auth_required'])) {
+            $status = [
+                'type' => 'info',
+                'message' => 'Necesitas iniciar sesión para acceder a esa sección.',
+            ];
+        }
+
+        if ($status) {
+            $defaults['status'] = $status;
+        }
+
+        if (isset($overrides['styles'])) {
+            $overrides['styles'] = array_merge($defaults['styles'], (array) $overrides['styles']);
+        }
+
+        $merged = array_merge($defaults, $overrides);
+        $merged['styles'] = array_values(array_unique($merged['styles'] ?? $defaults['styles']));
+
+        return $merged;
+    }
+
     public function loginForm()
     {
-        $this->render($this->loginViewPath(), [
-            'title' => 'Iniciar sesión',
-            'bodyClass' => 'hold-transition theme-primary bg-img',
-        ]);
+        $this->render($this->loginViewPath(), $this->loginViewData());
     }
 
     public function login()
@@ -50,25 +87,25 @@ class AuthController extends BaseController
                 header('Location: /dashboard');
                 exit;
             } else {
-                $this->render($this->loginViewPath(), [
-                    'title' => 'Iniciar sesión',
-                    'error' => 'Credenciales incorrectas',
-                    'bodyClass' => 'hold-transition theme-primary bg-img',
-                ]);
+                $this->render($this->loginViewPath(), $this->loginViewData([
+                    'error' => 'Credenciales incorrectas. Verifica tu usuario o contraseña.',
+                    'formData' => [
+                        'username' => $username,
+                    ],
+                ]));
             }
         } catch (PDOException $e) {
-            $this->render($this->loginViewPath(), [
+            $this->render($this->loginViewPath(), $this->loginViewData([
                 'title' => 'Error de conexión',
-                'error' => 'Error: ' . $e->getMessage(),
-                'bodyClass' => 'hold-transition theme-primary bg-img',
-            ]);
+                'error' => 'No pudimos conectarnos con la base de datos. Intenta más tarde.',
+            ]));
         }
     }
 
     public function logout()
     {
         Auth::logout();
-        header('Location: /auth/login');
+        header('Location: /auth/login?logged_out=1');
         exit;
     }
 }

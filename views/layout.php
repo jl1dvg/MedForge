@@ -78,6 +78,14 @@ if (!function_exists('format_profile_photo_url')) {
     <?php
     // Detectar si estamos en el login o cualquier página pública
     $isAuthView = isset($viewPath) && stripos($viewPath, '/modules/auth/views/login.php') !== false;
+
+    if (!isset($scripts) || !is_array($scripts)) {
+        $scripts = [];
+    }
+
+    if (!isset($inlineScripts) || !is_array($inlineScripts)) {
+        $inlineScripts = [];
+    }
     ?>
 
     <?php if (!$isAuthView): ?>
@@ -136,15 +144,6 @@ if (!function_exists('format_profile_photo_url')) {
 
         <!-- Sidebar -->
         <?php include __DIR__ . '/partials/navbar.php'; ?>
-
-        <?php
-        if (!isset($scripts) || !is_array($scripts)) {
-            $scripts = [];
-        }
-        if (!isset($inlineScripts) || !is_array($inlineScripts)) {
-            $inlineScripts = [];
-        }
-        ?>
 
         <!-- Contenido dinámico -->
         <div class="content-wrapper">

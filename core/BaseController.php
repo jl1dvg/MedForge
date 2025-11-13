@@ -24,6 +24,10 @@ class BaseController
             return;
         }
 
+        if (strpos($redirect, 'auth_required=1') === false) {
+            $redirect .= (strpos($redirect, '?') !== false ? '&' : '?') . 'auth_required=1';
+        }
+
         header('Location: ' . $redirect);
         exit;
     }

@@ -15,7 +15,7 @@ class DashboardController
     public function getAuthenticatedUser()
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /views/login.php');
+            header('Location: /auth/login');
             exit();
         }
 

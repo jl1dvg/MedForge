@@ -1,7 +1,9 @@
 <?php
-session_start();
-session_unset();  // Limpia todas las variables de sesión
-session_destroy();  // Destruye la sesión actual
+require_once __DIR__ . '/../bootstrap.php';
 
-header("Location: login.php");  // Redirige al login
+use Core\Auth;
+
+Auth::logout();
+
+header('Location: /auth/login?logged_out=1');
 exit();

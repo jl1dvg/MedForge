@@ -71,6 +71,16 @@ try {
             }
         }
 
+        if ($path === '/views/login.php') {
+            header('Location: /auth/login');
+            exit;
+        }
+
+        if ($path === '/views/logout.php') {
+            header('Location: /auth/logout');
+            exit;
+        }
+
         // === Rutas legacy ===
         if ($path === '/billing/excel' && $method === 'GET') {
             $formId = $_GET['form_id'] ?? null;

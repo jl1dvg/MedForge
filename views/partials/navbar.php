@@ -67,6 +67,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
                     $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
                     $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
+                    $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -157,6 +158,13 @@ if (!function_exists('isTreeOpen')) {
                                 <li class="<?= isActive('/whatsapp/chat') ?>">
                                     <a href="/whatsapp/chat">
                                         <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                            <?php if ($canAccessMailbox): ?>
+                                <li class="<?= isActive('/mailbox') ?: isActive('/mail') ?>">
+                                    <a href="/mailbox">
+                                        <i class="mdi mdi-email-open-outline"></i>Mailbox
                                     </a>
                                 </li>
                             <?php endif; ?>

@@ -210,7 +210,7 @@ function img($path)
 if (isset($_SESSION['last_activity_time']) && (time() - $_SESSION['last_activity_time']) > 3600) {
     session_unset();
     session_destroy();
-    header("Location: /views/login.php?expired=1");
+    header("Location: /auth/login?expired=1");
     exit();
 } else {
     $_SESSION['last_activity_time'] = time();
