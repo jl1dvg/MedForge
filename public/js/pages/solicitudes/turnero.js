@@ -54,7 +54,7 @@ const elements = {
     refresh: document.getElementById('turneroRefresh'),
     clock: document.getElementById('turneroClock'),
 };
-const defaultEmptyMessage = elements.empty ? elements.empty.textContent : '';
+const defaultEmptyMessage = elements.empty ? elements.empty.textContent.trim() : '';
 
 const padTurn = turno => String(turno).padStart(2, '0');
 const formatTurno = turno => {
@@ -65,20 +65,164 @@ const formatTurno = turno => {
     return padTurn(numero);
 };
 
+const normalizeText = value => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[_-]+/g, ' ')
+        .toLowerCase()
+        .trim();
+};
+
 const estadoClases = new Map([
     ['recibido', 'recibido'],
     ['llamado', 'llamado'],
     ['en atencion', 'en-atencion'],
-    ['en atención', 'en-atencion'],
     ['atendido', 'atendido'],
 ]);
 
+const estadoPrioridad = new Map([
+    ['llamado', 0],
+    ['en atencion', 1],
+    ['recibido', 2],
+    ['en espera', 3],
+    ['atendido', 4],
+]);
+
 const getEstadoClass = estado => {
-    if (!estado) {
+    const key = normalizeText(estado);
+    return estadoClases.get(key) ?? '';
+};
+
+const getEstadoPriority = estado => {
+    const key = normalizeText(estado);
+    return estadoPrioridad.get(key) ?? 99;
+};
+
+const parseTurnoNumero = turno => {
+    const numero = Number.parseInt(turno, 10);
+    return Number.isNaN(numero) ? Number.POSITIVE_INFINITY : numero;
+};
+
+const getPrioridadScore = prioridad => {
+    const normalized = normalizeText(prioridad);
+    if (normalized === 'si' || normalized === 'sí' || normalized === 'alta') {
+        return 0;
+    }
+    if (normalized === 'no' || normalized === '') {
+        return 1;
+    }
+    return 2;
+};
+
+const buildDetalle = ({ fecha, hora }) => {
+    const partes = [];
+    if (fecha) {
+        partes.push(`Registrado el ${fecha}`);
+    }
+    if (hora) {
+        partes.push(hora);
+    }
+    if (partes.length === 0) {
         return '';
     }
-    const key = String(estado).toLowerCase().trim();
-    return estadoClases.get(key) ?? '';
+    if (partes.length === 1) {
+        return partes[0];
+    }
+    return `${partes[0]} • ${partes[1]}`;
+};
+
+const createTurnoCard = item => {
+    const card = document.createElement('article');
+    card.className = 'turno-card';
+    card.setAttribute('role', 'listitem');
+
+    const numero = document.createElement('div');
+    numero.className = 'turno-numero';
+    numero.textContent = `#${formatTurno(item.turno)}`;
+    card.appendChild(numero);
+
+    const detalles = document.createElement('div');
+    detalles.className = 'turno-detalles';
+    card.appendChild(detalles);
+
+    const nombre = document.createElement('div');
+    nombre.className = 'turno-nombre';
+    nombre.textContent = item?.full_name ? String(item.full_name) : 'Paciente sin nombre';
+    detalles.appendChild(nombre);
+
+    const meta = document.createElement('div');
+    meta.className = 'turno-meta mt-2';
+    detalles.appendChild(meta);
+
+    const prioridad = item?.prioridad ? String(item.prioridad).toUpperCase() : '';
+    if (prioridad) {
+        const badge = document.createElement('span');
+        badge.className = 'turno-badge';
+        badge.title = 'Prioridad';
+        badge.textContent = prioridad;
+        meta.appendChild(badge);
+    }
+
+    const estado = item?.estado ? String(item.estado) : '';
+    const estadoClass = getEstadoClass(estado);
+    const estadoNormalized = normalizeText(estado);
+    if (estado) {
+        const estadoEl = document.createElement('span');
+        estadoEl.className = `turno-estado${estadoClass ? ` ${estadoClass}` : ''}`;
+        estadoEl.textContent = estado;
+        meta.appendChild(estadoEl);
+    }
+
+    const detalle = buildDetalle(item);
+    if (detalle) {
+        const detalleEl = document.createElement('span');
+        detalleEl.className = 'turno-detalle';
+        detalleEl.textContent = detalle;
+        meta.appendChild(detalleEl);
+    }
+
+    if (estadoNormalized) {
+        card.dataset.estado = estadoNormalized;
+    }
+
+    if (estadoNormalized === 'llamado') {
+        card.classList.add('is-llamado');
+        card.setAttribute('aria-live', 'assertive');
+    }
+
+    if (prioridad) {
+        card.dataset.prioridad = normalizeText(prioridad);
+    }
+
+    return card;
+};
+
+const clearListado = () => {
+    if (!elements.listado) {
+        return;
+    }
+
+    if (typeof elements.listado.replaceChildren === 'function') {
+        elements.listado.replaceChildren();
+    } else {
+        elements.listado.innerHTML = '';
+    }
+
+    elements.listado.setAttribute('data-turnos', '0');
+};
+
+const setEmptyVisibility = (visible, message = defaultEmptyMessage) => {
+    if (!elements.empty) {
+        return;
+    }
+
+    elements.empty.textContent = message;
+    elements.empty.setAttribute('aria-hidden', visible ? 'false' : 'true');
 };
 
 const renderClock = () => {
@@ -99,47 +243,48 @@ const renderTurnos = turnos => {
         return;
     }
 
-    elements.listado.innerHTML = '';
-
     if (!Array.isArray(turnos) || turnos.length === 0) {
-        elements.empty.style.display = '';
-        elements.empty.textContent = defaultEmptyMessage;
+        clearListado();
+        setEmptyVisibility(true, defaultEmptyMessage);
         return;
     }
 
-    elements.empty.style.display = 'none';
-    elements.empty.textContent = defaultEmptyMessage;
+    setEmptyVisibility(false, defaultEmptyMessage);
 
-    const fragment = document.createDocumentFragment();
+    const ordenados = [...turnos].sort((a, b) => {
+        const estadoDiff = getEstadoPriority(a?.estado) - getEstadoPriority(b?.estado);
+        if (estadoDiff !== 0) {
+            return estadoDiff;
+        }
 
-    turnos.forEach(item => {
-        const col = document.createElement('div');
-        col.className = 'col-12 col-lg-6 col-xxl-4';
+        const prioridadDiff = getPrioridadScore(a?.prioridad) - getPrioridadScore(b?.prioridad);
+        if (prioridadDiff !== 0) {
+            return prioridadDiff;
+        }
 
-        const prioridad = item.prioridad ? String(item.prioridad).toUpperCase() : '';
-        const estado = item.estado ? String(item.estado) : '';
-        const estadoClass = getEstadoClass(estado);
-        const fecha = item.fecha ? `Registrado el ${item.fecha}` : '';
-        const hora = item.hora ? `• ${item.hora}` : '';
+        const turnoDiff = parseTurnoNumero(a?.turno) - parseTurnoNumero(b?.turno);
+        if (turnoDiff !== 0) {
+            return turnoDiff;
+        }
 
-        col.innerHTML = `
-            <div class="turno-card">
-                <div class="turno-numero">#${formatTurno(item.turno)}</div>
-                <div class="flex-grow-1">
-                    <div class="turno-nombre">${item.full_name ?? 'Paciente sin nombre'}</div>
-                    <div class="turno-meta mt-2">
-                        ${prioridad ? `<span class="turno-badge" title="Prioridad">${prioridad}</span>` : ''}
-                        ${estado ? `<span class="turno-estado ${estadoClass}">${estado}</span>` : ''}
-                        ${(fecha || hora) ? `<span class="turno-detalle">${fecha} ${hora}</span>` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        fragment.appendChild(col);
+        const nombreA = a?.full_name ? String(a.full_name) : '';
+        const nombreB = b?.full_name ? String(b.full_name) : '';
+        return nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
     });
 
-    elements.listado.appendChild(fragment);
+    const fragment = document.createDocumentFragment();
+    ordenados.forEach(item => {
+        fragment.appendChild(createTurnoCard(item));
+    });
+
+    if (typeof elements.listado.replaceChildren === 'function') {
+        elements.listado.replaceChildren(fragment);
+    } else {
+        elements.listado.innerHTML = '';
+        elements.listado.appendChild(fragment);
+    }
+
+    elements.listado.setAttribute('data-turnos', String(ordenados.length));
 };
 
 const updateLastUpdate = () => {
@@ -185,10 +330,8 @@ const fetchTurnero = () => {
             if (elements.lastUpdate) {
                 elements.lastUpdate.textContent = error.message;
             }
-            if (elements.empty) {
-                elements.empty.style.display = '';
-                elements.empty.textContent = error.message;
-            }
+            clearListado();
+            setEmptyVisibility(true, error.message || 'No se pudo cargar el turnero');
         });
 };
 

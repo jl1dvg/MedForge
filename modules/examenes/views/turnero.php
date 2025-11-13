@@ -1,101 +1,188 @@
 <?php
-/** @var string $pageTitle */
-?>
-<div class="content-header">
-    <div class="d-flex align-items-center">
-        <div class="me-auto">
-            <h3 class="page-title">Turnero de Exámenes</h3>
-            <div class="d-inline-block align-items-center">
-                <nav>
-                    <ol class="breadcrumb mb-0">
-                        <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                        <li class="breadcrumb-item"><a href="/examenes">Exámenes</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">Turnero</li>
-                    </ol>
-                </nav>
-            </div>
-        </div>
-    </div>
-</div>
+/** @var string|null $turneroContext */
+/** @var string|null $turneroEmptyMessage */
 
+$contextLabel = $turneroContext ?: 'Coordinación de Exámenes';
+$emptyMessage = $turneroEmptyMessage ?: 'No hay pacientes en cola para coordinación de exámenes.';
+$contextId = 'turneroContextLabel';
+$contextFor = 'turneroTitle';
+?>
 <section class="content">
     <style>
-        .turnero-wrapper {
-            background: linear-gradient(145deg, #0f172a, #1e293b);
-            border-radius: 24px;
-            padding: 2.5rem;
+        body.turnero-body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top left, #1e293b 0%, #0f172a 45%, #0b1120 100%);
             color: #e2e8f0;
-            min-height: 60vh;
+            font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .turnero-main {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: clamp(1.5rem, 4vw, 4rem);
+        }
+
+        .turnero-wrapper {
+            width: min(1200px, 100%);
+            background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
+            border-radius: 28px;
+            padding: clamp(1.5rem, 4vw, 3rem);
+            box-shadow: 0 25px 55px rgba(10, 12, 24, 0.45);
+            border: 1px solid rgba(148, 163, 184, 0.25);
         }
 
         .turnero-header {
             display: flex;
             flex-wrap: wrap;
-            gap: 1rem;
-            justify-content: space-between;
+            gap: 1rem clamp(1rem, 5vw, 2.5rem);
             align-items: center;
+            justify-content: space-between;
+            margin-bottom: clamp(1.5rem, 4vw, 2.5rem);
+        }
+
+        .turnero-heading {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .turnero-context {
+            font-size: 0.95rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
         }
 
         .turnero-title {
-            font-size: 2rem;
+            font-size: clamp(2rem, 4vw, 2.75rem);
             font-weight: 700;
             margin: 0;
             color: #f8fafc;
         }
 
         .turnero-clock {
-            font-size: 1.5rem;
+            font-size: clamp(1.35rem, 3vw, 1.75rem);
             font-weight: 600;
             color: #bae6fd;
         }
 
-        .turno-card {
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            border-radius: 20px;
-            padding: 1.5rem;
+        .turnero-actions {
             display: flex;
+            gap: 0.75rem;
             align-items: center;
-            gap: 1.5rem;
-            min-height: 150px;
-            box-shadow: 0 18px 30px rgba(15, 23, 42, 0.35);
         }
 
-        .turno-numero {
-            font-size: 4rem;
-            font-weight: 800;
-            color: #38bdf8;
-            line-height: 1;
-            min-width: 110px;
-            text-align: center;
-        }
-
-        .turno-nombre {
-            font-size: 2rem;
+        .turnero-actions .btn {
+            border-radius: 999px;
+            padding: 0.6rem 1.5rem;
             font-weight: 600;
-            color: #f8fafc;
+            font-size: 1rem;
+            border-width: 2px;
         }
 
-        .turno-detalle {
-            font-size: 1.1rem;
-            color: #94a3b8;
+        .turnero-last-update {
+            color: #7dd3fc;
+            font-size: 1rem;
+            margin-bottom: clamp(1.25rem, 3vw, 2rem);
         }
 
-        #turneroEmpty {
+        .turnero-empty {
+            display: none;
             background: rgba(59, 130, 246, 0.15);
             border: 1px dashed rgba(148, 163, 184, 0.4);
             color: #cbd5f5;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            text-align: center;
+        }
+
+        .turnero-empty[aria-hidden="false"] {
+            display: block;
+        }
+
+        .turnero-list {
+            display: flex;
+            flex-direction: column;
+            gap: clamp(1rem, 2.5vw, 1.75rem);
+        }
+
+        .turno-card {
+            position: relative;
+            display: flex;
+            gap: clamp(1rem, 2.5vw, 1.75rem);
+            align-items: center;
+            padding: clamp(1.25rem, 3vw, 1.75rem);
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 22px;
+            min-height: 150px;
+            box-shadow: 0 18px 30px rgba(15, 23, 42, 0.35);
+            transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+        }
+
+        .turno-card.is-llamado {
+            border-color: rgba(250, 204, 21, 0.75);
+            box-shadow: 0 22px 36px rgba(250, 204, 21, 0.25);
+            animation: turneroBlink 1.4s ease-in-out infinite;
+        }
+
+        @keyframes turneroBlink {
+            0%, 100% {
+                box-shadow: 0 22px 36px rgba(250, 204, 21, 0.15);
+                transform: translateY(0);
+            }
+            50% {
+                box-shadow: 0 32px 48px rgba(250, 204, 21, 0.35);
+                transform: translateY(-4px);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .turno-card.is-llamado {
+                animation-duration: 3s;
+            }
+        }
+
+        .turno-numero {
+            font-size: clamp(3rem, 6vw, 4.5rem);
+            font-weight: 800;
+            color: #38bdf8;
+            line-height: 1;
+            min-width: clamp(110px, 12vw, 140px);
+            text-align: center;
+        }
+
+        .turno-detalles {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .turno-nombre {
+            font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+            font-weight: 600;
+            color: #f8fafc;
+            margin-bottom: 0.5rem;
+        }
+
+        .turno-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            align-items: center;
         }
 
         .turno-badge {
-            background: rgba(56, 189, 248, 0.25);
+            background: rgba(56, 189, 248, 0.2);
             color: #38bdf8;
             border-radius: 999px;
             padding: 0.35rem 0.9rem;
             font-weight: 600;
             letter-spacing: 0.04em;
             text-transform: uppercase;
+            font-size: 0.85rem;
         }
 
         .turno-estado {
@@ -106,6 +193,7 @@
             text-transform: uppercase;
             background: rgba(148, 163, 184, 0.25);
             color: #e2e8f0;
+            font-size: 0.85rem;
         }
 
         .turno-estado.recibido {
@@ -128,16 +216,14 @@
             color: #cbd5f5;
         }
 
-        .turno-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            align-items: center;
+        .turno-detalle {
+            font-size: 1rem;
+            color: #94a3b8;
         }
 
         @media (max-width: 992px) {
             .turnero-wrapper {
-                padding: 1.5rem;
+                padding: clamp(1.25rem, 4vw, 1.75rem);
             }
 
             .turno-card {
@@ -147,35 +233,51 @@
             }
 
             .turno-numero {
-                font-size: 3.5rem;
-                min-width: 100%;
+                min-width: 0;
                 text-align: left;
             }
+        }
 
-            .turno-nombre {
-                font-size: 1.75rem;
+        @media (max-width: 576px) {
+            .turnero-actions {
+                width: 100%;
+                justify-content: space-between;
             }
         }
     </style>
 
-    <div class="turnero-wrapper">
-        <div class="turnero-header mb-4">
-            <h2 class="turnero-title mb-0">Pacientes en cola</h2>
-            <div class="d-flex gap-2 align-items-center">
-                <span id="turneroClock" class="turnero-clock" aria-live="polite"></span>
-                <button id="turneroRefresh" class="btn btn-outline-info btn-lg">
-                    <i class="mdi mdi-refresh"></i> Actualizar
+    <div
+        class="turnero-wrapper"
+        data-turnero-context="<?= htmlspecialchars($contextLabel, ENT_QUOTES, 'UTF-8') ?>"
+        role="region"
+        aria-labelledby="<?= $contextFor ?>"
+    >
+        <div class="turnero-header">
+            <div class="turnero-heading">
+                <span id="<?= $contextId ?>" class="turnero-context">Turnero · <?= htmlspecialchars($contextLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                <h1 id="<?= $contextFor ?>" class="turnero-title">Pacientes en cola</h1>
+            </div>
+            <div class="turnero-actions">
+                <span id="turneroClock" class="turnero-clock" aria-live="polite">--:--:--</span>
+                <button id="turneroRefresh" class="btn btn-outline-info btn-lg" type="button">
+                    <i class="mdi mdi-refresh"></i>
+                    <span class="ms-1">Actualizar</span>
                 </button>
             </div>
         </div>
 
-        <p class="text-info mb-4" id="turneroLastUpdate" aria-live="polite"></p>
+        <p class="turnero-last-update" id="turneroLastUpdate" aria-live="polite">Última actualización: --</p>
 
-        <div id="turneroEmpty" class="alert" role="status">
-            No hay pacientes en cola para coordinación de exámenes.
+        <div
+            id="turneroEmpty"
+            class="turnero-empty"
+            role="status"
+            aria-hidden="false"
+        >
+            <?= htmlspecialchars($emptyMessage, ENT_QUOTES, 'UTF-8') ?>
         </div>
 
-        <div id="turneroListado" class="row gy-4" aria-live="polite"></div>
+        <div id="turneroListado" class="turnero-list" aria-live="polite" role="list"></div>
     </div>
 </section>
 
@@ -193,4 +295,4 @@
         },
     };
 </script>
-<script type="module" src="<?= asset('js/pages/solicitudes/turnero.js') ?>"></script>
+<script type="module" src="<?= asset('js/pages/examenes/turnero.js') ?>"></script>

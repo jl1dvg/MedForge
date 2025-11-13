@@ -71,7 +71,11 @@ class ExamenController extends BaseController
             __DIR__ . '/../views/turnero.php',
             [
                 'pageTitle' => 'Turnero de Exámenes',
-            ]
+                'turneroContext' => 'Coordinación de Exámenes',
+                'turneroEmptyMessage' => 'No hay pacientes en cola para coordinación de exámenes.',
+                'bodyClass' => 'turnero-body',
+            ],
+            'layout-turnero.php'
         );
     }
 

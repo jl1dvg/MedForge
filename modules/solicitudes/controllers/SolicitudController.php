@@ -64,7 +64,11 @@ class SolicitudController extends BaseController
             __DIR__ . '/../views/turnero.php',
             [
                 'pageTitle' => 'Turnero Coordinación Quirúrgica',
-            ]
+                'turneroContext' => 'Coordinación Quirúrgica',
+                'turneroEmptyMessage' => 'No hay pacientes en cola para coordinación quirúrgica.',
+                'bodyClass' => 'turnero-body',
+            ],
+            'layout-turnero.php'
         );
     }
 
