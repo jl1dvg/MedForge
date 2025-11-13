@@ -186,13 +186,58 @@ function buildAssetUrl(string $path, string $prefix = ''): string
         $normalizedPath = rtrim($prefix, '/') . '/' . $normalizedPath;
     }
 
-    $baseUrl = rtrim(BASE_URL, '/');
-
-    if ($baseUrl === '' || $baseUrl === '/') {
-        return '/' . ltrim($normalizedPath, '/');
+    $existingQuery = '';
+    $queryPosition = strpos($normalizedPath, '?');
+    if ($queryPosition !== false) {
+        $existingQuery = substr($normalizedPath, $queryPosition + 1);
+        $normalizedPath = substr($normalizedPath, 0, $queryPosition);
     }
 
-    return $baseUrl . '/' . ltrim($normalizedPath, '/');
+    $baseUrl = rtrim(BASE_URL, '/');
+    $relativeUrl = '/' . ltrim($normalizedPath, '/');
+
+    if ($baseUrl !== '' && $baseUrl !== '/') {
+        $relativeUrl = $baseUrl . $relativeUrl;
+    }
+
+    $queryString = '';
+    if ($existingQuery !== '') {
+        $queryString = '?' . $existingQuery;
+    }
+
+    $assetVersion = getAssetVersionKey($normalizedPath);
+    if ($assetVersion !== null && $assetVersion !== '') {
+        $queryString .= ($queryString === '' ? '?' : '&') . 'v=' . rawurlencode($assetVersion);
+    }
+
+    return $relativeUrl . $queryString;
+}
+
+function getAssetVersionKey(string $relativePath): ?string
+{
+    static $versionCache = [];
+
+    if ($relativePath === '') {
+        return null;
+    }
+
+    if (array_key_exists($relativePath, $versionCache)) {
+        return $versionCache[$relativePath];
+    }
+
+    $globalVersion = $_ENV['ASSET_VERSION'] ?? getenv('ASSET_VERSION') ?? null;
+    $absolutePath = PUBLIC_PATH . '/' . ltrim($relativePath, '/');
+
+    if (is_file($absolutePath)) {
+        $mtime = (string) filemtime($absolutePath);
+        return $versionCache[$relativePath] = $globalVersion ? $globalVersion . '-' . $mtime : $mtime;
+    }
+
+    if ($globalVersion !== null && $globalVersion !== '') {
+        return $versionCache[$relativePath] = (string) $globalVersion;
+    }
+
+    return $versionCache[$relativePath] = null;
 }
 
 // Helper para generar URLs públicas

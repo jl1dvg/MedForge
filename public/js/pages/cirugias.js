@@ -55,7 +55,7 @@ $(function () {
         },
       },
       {
-        targets: [6, 8], // columnas de botones EDITAR e IMPRIMIR
+        targets: [6, 7], // columnas de botones EDITAR e IMPRIMIR
         orderable: false,
         searchable: false,
       },
