@@ -3,13 +3,15 @@
 namespace Modules\Billing\Services;
 
 use Controllers\BillingController as LegacyBillingController;
+use Models\BillingSriDocumentModel;
 use Modules\Pacientes\Services\PacienteService;
 
 class BillingViewService
 {
     public function __construct(
         private readonly LegacyBillingController $billingController,
-        private readonly PacienteService $pacienteService
+        private readonly PacienteService $pacienteService,
+        private readonly BillingSriDocumentModel $sriDocumentModel
     ) {
     }
 
@@ -20,8 +22,11 @@ class BillingViewService
         $enriquecidas = array_map(function (array $factura): array {
             $paciente = $this->pacienteService->getPatientDetails($factura['hc_number']);
             $nombre = $this->formatearNombrePaciente($paciente);
+            $billingId = isset($factura['id']) ? (int)$factura['id'] : null;
+            $sri = $billingId ? $this->mapSriDocument($this->sriDocumentModel->findLatestByBillingId($billingId)) : null;
 
             return [
+                'billing_id' => $billingId,
                 'form_id' => $factura['form_id'],
                 'hc_number' => $factura['hc_number'],
                 'fecha' => $factura['fecha_ordenada'] ?? null,
@@ -30,6 +35,7 @@ class BillingViewService
                     'afiliacion' => $paciente['afiliacion'] ?? null,
                     'ci' => $paciente['ci'] ?? null,
                 ],
+                'sri' => $sri,
             ];
         }, $facturas);
 
@@ -117,6 +123,8 @@ class BillingViewService
         $totalConIva = $totalSinIva + $iva;
 
         $paciente = $datos['paciente'] ?? [];
+        $billingId = (int)($datos['billing']['id'] ?? 0);
+        $sri = $billingId > 0 ? $this->mapSriDocument($this->sriDocumentModel->findLatestByBillingId($billingId)) : null;
 
         return [
             'billing' => $datos['billing'] ?? [],
@@ -134,6 +142,7 @@ class BillingViewService
                 'fecha_vigencia' => $derivacion['fecha_vigencia'] ?? null,
                 'diagnostico' => $derivacion['diagnostico'] ?? null,
             ],
+            'sri' => $sri,
         ];
     }
 
@@ -146,6 +155,39 @@ class BillingViewService
             'quirurgicosNoRevisados' => $clasificados['quirurgicos_no_revisados'] ?? [],
             'noQuirurgicos' => $clasificados['no_quirurgicos'] ?? [],
         ];
+    }
+
+    private function mapSriDocument(?array $documento): ?array
+    {
+        if (!$documento) {
+            return null;
+        }
+
+        $estado = strtoupper((string) ($documento['estado'] ?? 'pendiente'));
+
+        return [
+            'estado' => $estado,
+            'claveAcceso' => $documento['clave_acceso'] ?? null,
+            'numeroAutorizacion' => $documento['numero_autorizacion'] ?? null,
+            'ultimoEnvio' => $documento['last_sent_at'] ?? null,
+            'intentos' => (int) ($documento['intentos'] ?? 0),
+            'errores' => $this->normalizarCampoTexto($documento['errores'] ?? null),
+            'respuesta' => $this->normalizarCampoTexto($documento['respuesta'] ?? null),
+        ];
+    }
+
+    private function normalizarCampoTexto(?string $valor): ?string
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        $decoded = json_decode($valor, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
+
+        return $valor;
     }
 
     private function formatearNombrePaciente(array $paciente): string

@@ -4,7 +4,9 @@ namespace Modules\Billing\Controllers;
 
 use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
+use Models\BillingSriDocumentModel;
 use Modules\Billing\Services\BillingViewService;
+use Modules\Billing\Services\SriService;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
 
@@ -12,6 +14,7 @@ class BillingController extends BaseController
 {
     private BillingViewService $service;
     private LegacyBillingController $legacyController;
+    private SriService $sriService;
 
     public function __construct(PDO $pdo)
     {
@@ -19,7 +22,9 @@ class BillingController extends BaseController
 
         $this->legacyController = new LegacyBillingController($pdo);
         $pacienteService = new PacienteService($pdo);
-        $this->service = new BillingViewService($this->legacyController, $pacienteService);
+        $sriDocumentModel = new BillingSriDocumentModel($pdo);
+        $this->service = new BillingViewService($this->legacyController, $pacienteService, $sriDocumentModel);
+        $this->sriService = new SriService($pdo);
     }
 
     public function index(): void
@@ -177,6 +182,14 @@ class BillingController extends BaseController
                     'valor2' => $anestesia['valor2'] ?? 0,
                     'precio' => $anestesia['precio'] ?? 0,
                 ]);
+            }
+
+            $detalleFactura = $this->legacyController->obtenerDatos($formId);
+            if ($detalleFactura) {
+                $resultadoSri = $this->sriService->registrarFactura($billingId, $formId, $hcNumber, $detalleFactura);
+                if (!$resultadoSri['success'] && isset($resultadoSri['error'])) {
+                    error_log('SRI no disponible para la factura ' . $formId . ': ' . $resultadoSri['error']);
+                }
             }
         } catch (\Throwable $exception) {
             if (!headers_sent()) {

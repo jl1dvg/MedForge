@@ -58,6 +58,7 @@
                                 <th>Paciente</th>
                                 <th>Afiliación</th>
                                 <th>Fecha</th>
+                                <th>Estado SRI</th>
                                 <th class="text-end">Acciones</th>
                             </tr>
                             </thead>
@@ -74,6 +75,28 @@
                                         <td><?= htmlspecialchars($factura['paciente']['nombre'] ?? '—') ?></td>
                                         <td><?= htmlspecialchars(strtoupper($factura['paciente']['afiliacion'] ?? '—')) ?></td>
                                         <td><?= $factura['fecha'] ? date('d/m/Y', strtotime($factura['fecha'])) : '—' ?></td>
+                                        <td>
+                                            <?php
+                                            $sri = $factura['sri'] ?? null;
+                                            $estadoSri = strtoupper($sri['estado'] ?? 'PENDIENTE');
+                                            $badgeClass = match ($estadoSri) {
+                                                'AUTORIZADO' => 'bg-success',
+                                                'SIMULADO', 'ENVIADO' => 'bg-info',
+                                                'ERROR' => 'bg-danger',
+                                                'PENDIENTE' => 'bg-secondary',
+                                                default => 'bg-warning text-dark',
+                                            };
+                                            $claveAcceso = $sri['claveAcceso'] ?? null;
+                                            $ultimaParteClave = $claveAcceso ? substr($claveAcceso, -8) : null;
+                                            ?>
+                                            <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($estadoSri) ?></span>
+                                            <?php if ($ultimaParteClave): ?>
+                                                <div class="text-muted small">Clave …<?= htmlspecialchars($ultimaParteClave) ?></div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($sri['ultimoEnvio'])): ?>
+                                                <div class="text-muted small">Env. <?= date('d/m/Y H:i', strtotime($sri['ultimoEnvio'])) ?></div>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="text-end">
                                             <div class="btn-group">
                                                 <a class="btn btn-sm btn-outline-primary"
@@ -90,7 +113,7 @@
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="text-center py-4 text-muted">
+                                    <td colspan="7" class="text-center py-4 text-muted">
                                         No se encontraron facturas para los filtros seleccionados.
                                     </td>
                                 </tr>
