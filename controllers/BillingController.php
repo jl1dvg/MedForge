@@ -10,11 +10,20 @@ use Services\ExportService;
 
 class BillingController
 {
+    /** @var PDO */
     private $db;
-    private ProtocoloModel $protocoloModel;
-    private BillingService $billingService;
-    private PreviewService $previewService;
-    private ExportService $exportService;
+
+    /** @var ProtocoloModel */
+    private $protocoloModel;
+
+    /** @var BillingService */
+    private $billingService;
+
+    /** @var PreviewService */
+    private $previewService;
+
+    /** @var ExportService */
+    private $exportService;
 
     public function __construct(PDO $pdo)
     {
