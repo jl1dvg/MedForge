@@ -50,7 +50,7 @@ class SriService
      *
      * @return array{success:bool, estado:string, documento:array|null, error?:string}
      */
-    public function registrarFactura(int $billingId, string $formId, string $hcNumber, array $detalle): array
+    public function registrarFactura($billingId, $formId, $hcNumber, $detalle)
     {
         try {
             $existing = $this->documentModel->findLatestByBillingId($billingId);
@@ -115,7 +115,7 @@ class SriService
      * @param array $detalle
      * @return array{success:bool, message?:string, estado?:string}
      */
-    private function procesarEnvio(int $documentId, string $xml, string $claveAcceso, array $detalle): array
+    private function procesarEnvio($documentId, $xml, $claveAcceso, $detalle)
     {
         $this->documentModel->incrementarIntentos($documentId);
         $now = (new DateTime())->format('Y-m-d H:i:s');
@@ -175,9 +175,11 @@ class SriService
     }
 
     /**
+     * @param string $xml
+     * @param string $claveAcceso
      * @return array{success:bool, data?:array|string, message?:string}
      */
-    private function enviarComprobante(string $xml, string $claveAcceso): array
+    private function enviarComprobante($xml, $claveAcceso)
     {
         if (!function_exists('curl_init')) {
             return [
@@ -236,7 +238,7 @@ class SriService
     /**
      * @return string[]
      */
-    private function obtenerHeaders(): array
+    private function obtenerHeaders()
     {
         $headers = ['Content-Type: application/json'];
         $token = getenv('SRI_API_TOKEN');
@@ -247,7 +249,12 @@ class SriService
         return $headers;
     }
 
-    private function generarClaveAcceso(array $billing, string $formId): string
+    /**
+     * @param array $billing
+     * @param string $formId
+     * @return string
+     */
+    private function generarClaveAcceso(array $billing, $formId)
     {
         $fecha = isset($billing['created_at']) ? (new DateTime($billing['created_at']))->format('dmY') : date('dmY');
         $tipoComprobante = '01';
@@ -265,7 +272,11 @@ class SriService
         return $claveBase . $digitoVerificador;
     }
 
-    private function calcularDigitoVerificador(string $clave): string
+    /**
+     * @param string $clave
+     * @return string
+     */
+    private function calcularDigitoVerificador($clave)
     {
         $total = 0;
         $factor = 2;
@@ -287,7 +298,14 @@ class SriService
         return (string) $modulo;
     }
 
-    private function generarXmlFactura(string $formId, string $hcNumber, array $detalle, string $claveAcceso): string
+    /**
+     * @param string $formId
+     * @param string $hcNumber
+     * @param array $detalle
+     * @param string $claveAcceso
+     * @return string
+     */
+    private function generarXmlFactura($formId, $hcNumber, $detalle, $claveAcceso)
     {
         $paciente = $detalle['paciente'] ?? $this->pacienteService->getPatientDetails($hcNumber);
         $fechaEmision = $detalle['billing']['created_at'] ?? date('Y-m-d');
@@ -316,7 +334,7 @@ class SriService
      * @param array<int, array<string, mixed>> $items
      * @return array{baseImponible:float, baseExenta:float, iva:float, total:float}
      */
-    private function calcularTotales(array &$items): array
+    private function calcularTotales(array &$items)
     {
         $baseImponible = 0.0;
         $baseExenta = 0.0;
@@ -352,7 +370,7 @@ class SriService
      * @param array<string, mixed> $detalle
      * @return array<int, array<string, mixed>>
      */
-    private function extraerItems(array $detalle): array
+    private function extraerItems($detalle)
     {
         $items = [];
 
@@ -424,7 +442,7 @@ class SriService
      * @param array{codigo:string, descripcion:string, cantidad:mixed, precio:mixed, iva:bool} $valores
      * @return array<string, mixed>
      */
-    private function mapItem(array $item, array $valores): array
+    private function mapItem($item, $valores)
     {
         return [
             'codigo' => (string) $valores['codigo'],
@@ -436,7 +454,13 @@ class SriService
         ];
     }
 
-    private function crearInfoTributaria(DOMDocument $doc, string $claveAcceso, string $secuencial): \DOMElement
+    /**
+     * @param DOMDocument $doc
+     * @param string $claveAcceso
+     * @param string $secuencial
+     * @return \DOMElement
+     */
+    private function crearInfoTributaria(DOMDocument $doc, $claveAcceso, $secuencial)
     {
         $info = $doc->createElement('infoTributaria');
         $info->appendChild($doc->createElement('razonSocial', $this->config['company_name']));
@@ -456,10 +480,13 @@ class SriService
     }
 
     /**
+     * @param DOMDocument $doc
+     * @param string $fechaEmision
      * @param array<string, mixed> $paciente
      * @param array{baseImponible:float, baseExenta:float, iva:float, total:float} $totales
+     * @return \DOMElement
      */
-    private function crearInfoFactura(DOMDocument $doc, string $fechaEmision, array $paciente, array $totales): \DOMElement
+    private function crearInfoFactura(DOMDocument $doc, $fechaEmision, array $paciente, array $totales)
     {
         $infoFactura = $doc->createElement('infoFactura');
         $infoFactura->appendChild($doc->createElement('fechaEmision', date('d/m/Y', strtotime($fechaEmision))));
@@ -511,9 +538,11 @@ class SriService
     }
 
     /**
+     * @param DOMDocument $doc
      * @param array<int, array<string, mixed>> $items
+     * @return \DOMElement
      */
-    private function crearDetalles(DOMDocument $doc, array $items): \DOMElement
+    private function crearDetalles(DOMDocument $doc, array $items)
     {
         $detalles = $doc->createElement('detalles');
 
@@ -542,7 +571,14 @@ class SriService
         return $detalles;
     }
 
-    private function crearInfoAdicional(DOMDocument $doc, array $paciente, string $formId, array $totales): \DOMElement
+    /**
+     * @param DOMDocument $doc
+     * @param array $paciente
+     * @param string $formId
+     * @param array $totales
+     * @return \DOMElement
+     */
+    private function crearInfoAdicional(DOMDocument $doc, array $paciente, $formId, array $totales)
     {
         $infoAdicional = $doc->createElement('infoAdicional');
 
@@ -562,7 +598,13 @@ class SriService
         return $infoAdicional;
     }
 
-    private function crearCampoAdicional(DOMDocument $doc, string $nombre, string $valor): \DOMElement
+    /**
+     * @param DOMDocument $doc
+     * @param string $nombre
+     * @param string $valor
+     * @return \DOMElement
+     */
+    private function crearCampoAdicional(DOMDocument $doc, $nombre, $valor)
     {
         $campo = $doc->createElement('campoAdicional');
         $campo->setAttribute('nombre', $nombre);
@@ -571,7 +613,11 @@ class SriService
         return $campo;
     }
 
-    private function obtenerTipoIdentificacion(array $paciente): string
+    /**
+     * @param array $paciente
+     * @return string
+     */
+    private function obtenerTipoIdentificacion(array $paciente)
     {
         $ci = $paciente['ci'] ?? $paciente['documento'] ?? null;
         if ($ci && strlen(preg_replace('/\D/', '', (string) $ci)) === 13) {
@@ -584,7 +630,11 @@ class SriService
         return '07'; // Consumidor final
     }
 
-    private function obtenerNombrePaciente(array $paciente): string
+    /**
+     * @param array $paciente
+     * @return string
+     */
+    private function obtenerNombrePaciente(array $paciente)
     {
         $partes = array_filter([
             $paciente['lname'] ?? null,
@@ -596,7 +646,11 @@ class SriService
         return $partes ? implode(' ', $partes) : ($paciente['razon_social'] ?? 'Consumidor final');
     }
 
-    private function obtenerIdentificacionPaciente(array $paciente): string
+    /**
+     * @param array $paciente
+     * @return string
+     */
+    private function obtenerIdentificacionPaciente(array $paciente)
     {
         $ci = $paciente['ci'] ?? $paciente['documento'] ?? null;
         if ($ci) {
@@ -606,7 +660,11 @@ class SriService
         return '9999999999';
     }
 
-    private function formatearDecimal(float $valor): string
+    /**
+     * @param float $valor
+     * @return string
+     */
+    private function formatearDecimal($valor)
     {
         return number_format($valor, 2, '.', '');
     }

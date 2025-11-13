@@ -35,22 +35,38 @@ class BillingController
     }
 
     // 👉 Delegación limpia
-    public function guardar(array $data): array
+    /**
+     * @param array $data
+     * @return array
+     */
+    public function guardar(array $data)
     {
         return $this->billingService->guardar($data);
     }
 
-    public function obtenerDatos(string $formId): ?array
+    /**
+     * @param string $formId
+     * @return array|null
+     */
+    public function obtenerDatos($formId)
     {
         return $this->billingService->obtenerDatos($formId);
     }
 
-    public function obtenerResumenConsolidado(?string $mes = null): array
+    /**
+     * @param string|null $mes
+     * @return array
+     */
+    public function obtenerResumenConsolidado($mes = null)
     {
         return $this->billingService->obtenerResumenConsolidado($mes);
     }
 
-    public function obtenerValorAnestesia(string $codigo): ?float
+    /**
+     * @param string $codigo
+     * @return float|null
+     */
+    public function obtenerValorAnestesia($codigo)
     {
         $stmt = $this->db->prepare("SELECT anestesia_nivel3 FROM tarifario_2014 WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1");
         $stmt->execute([
@@ -66,7 +82,13 @@ class BillingController
      * Resuelve la ruta del archivo de plantilla para generar Excel según el grupo de afiliación.
      * Intenta varias convenciones de nombre para tolerar diferencias.
      */
-    public function generarExcel(string $formIdParam, string $grupoAfiliacion, string $modo = 'individual'): void
+    /**
+     * @param string $formIdParam
+     * @param string $grupoAfiliacion
+     * @param string $modo
+     * @return void
+     */
+    public function generarExcel($formIdParam, $grupoAfiliacion, $modo = 'individual')
     {
         $formIds = array_map('trim', explode(',', $formIdParam));
 
@@ -96,18 +118,39 @@ class BillingController
         }
     }
 
-    public function generarExcelAArchivo(string $formId, string $destino, string $grupoAfiliacion): bool
+    /**
+     * @param string $formId
+     * @param string $destino
+     * @param string $grupoAfiliacion
+     * @return bool
+     */
+    public function generarExcelAArchivo($formId, $destino, $grupoAfiliacion)
     {
         $datos = $this->obtenerDatos($formId);
         return $this->exportService->generarExcelAArchivo($datos, $formId, $destino, $grupoAfiliacion);
     }
 
-    public function exportarPlanillasPorMes(string $mes, string $grupoAfiliacion): void
+    /**
+     * @param string $mes
+     * @param string $grupoAfiliacion
+     * @return void
+     */
+    public function exportarPlanillasPorMes($mes, $grupoAfiliacion)
     {
-        $this->exportService->exportarPlanillasPorMes($mes, $grupoAfiliacion, fn($formId) => $this->obtenerDatos($formId));
+        $this->exportService->exportarPlanillasPorMes(
+            $mes,
+            $grupoAfiliacion,
+            function ($formId) {
+                return $this->obtenerDatos($formId);
+            }
+        );
     }
 
-    public function obtenerFacturasDisponibles(?string $mes = null): array
+    /**
+     * @param string|null $mes
+     * @return array
+     */
+    public function obtenerFacturasDisponibles($mes = null)
     {
         $query = "
             SELECT 
@@ -163,12 +206,19 @@ class BillingController
         return $mapa[$normalizado] ?? strtoupper($afiliacion);
     }
 
-    public function obtenerFormIdsFacturados(): array
+    /**
+     * @return array
+     */
+    public function obtenerFormIdsFacturados()
     {
         $stmt = $this->db->query("SELECT form_id FROM billing_main");
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 
+    /**
+     * @param string $formId
+     * @return mixed
+     */
     public function obtenerBillingIdPorFormId($formId)
     {
         $stmt = $this->db->prepare("SELECT id FROM billing_main WHERE form_id = ?");
@@ -176,14 +226,22 @@ class BillingController
         return $stmt->fetchColumn();
     }
 
-    public function esCirugiaPorFormId($formId): bool
+    /**
+     * @param string $formId
+     * @return bool
+     */
+    public function esCirugiaPorFormId($formId)
     {
         $stmt = $this->db->prepare("SELECT 1 FROM protocolo_data WHERE form_id = ? LIMIT 1");
         $stmt->execute([$formId]);
         return $stmt->fetchColumn() !== false;
     }
 
-    public function obtenerFechasIngresoYEgreso(array $formIds): array
+    /**
+     * @param array $formIds
+     * @return array
+     */
+    public function obtenerFechasIngresoYEgreso(array $formIds)
     {
         $fechas = [];
 
@@ -212,7 +270,9 @@ class BillingController
             return ['ingreso' => null, 'egreso' => null];
         }
 
-        usort($fechas, fn($a, $b) => strtotime($a) <=> strtotime($b));
+        usort($fechas, function ($a, $b) {
+            return strtotime($a) <=> strtotime($b);
+        });
 
         return [
             'ingreso' => $fechas[0],
@@ -228,7 +288,9 @@ class BillingController
             'seguro campesino jubilado', 'seguro general', 'seguro general jubilado',
             'seguro general por montepio', 'seguro general tiempo parcial', 'iess', 'hijos dependientes'
         ];
-        $afiliacionesList = implode(', ', array_map(fn($a) => $this->db->quote($a), $afiliaciones));
+        $afiliacionesList = implode(', ', array_map(function ($a) {
+            return $this->db->quote($a);
+        }, $afiliaciones));
 
         // 1. Procedimientos quirúrgicos (con protocolo_data)
         $queryQuirurgicos = "
@@ -301,7 +363,12 @@ class BillingController
             }
         }
         // Ordenar por fecha descendente
-        $sortByFecha = fn($a, $b) => strtotime($b['fecha'] ?? '1970-01-01') <=> strtotime($a['fecha'] ?? '1970-01-01');
+        $sortByFecha = function ($a, $b) {
+            $fechaA = isset($a['fecha']) ? $a['fecha'] : '1970-01-01';
+            $fechaB = isset($b['fecha']) ? $b['fecha'] : '1970-01-01';
+
+            return strtotime($fechaB) <=> strtotime($fechaA);
+        };
 
         usort($quirurgicosRevisados, $sortByFecha);
         usort($quirurgicosNoRevisados, $sortByFecha);
@@ -314,7 +381,12 @@ class BillingController
         ];
     }
 
-    public function prepararPreviewFacturacion(string $formId, string $hcNumber): array
+    /**
+     * @param string $formId
+     * @param string $hcNumber
+     * @return array
+     */
+    public function prepararPreviewFacturacion($formId, $hcNumber)
     {
         return $this->previewService->prepararPreviewFacturacion($formId, $hcNumber);
     }

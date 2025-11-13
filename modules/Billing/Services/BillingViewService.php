@@ -27,11 +27,15 @@ class BillingViewService
         $this->sriDocumentModel = $sriDocumentModel;
     }
 
-    public function obtenerListadoFacturas(?string $mes = null): array
+    /**
+     * @param string|null $mes
+     * @return array
+     */
+    public function obtenerListadoFacturas($mes = null)
     {
         $facturas = $this->billingController->obtenerFacturasDisponibles($mes);
 
-        $enriquecidas = array_map(function (array $factura): array {
+        $enriquecidas = array_map(function ($factura) {
             $paciente = $this->pacienteService->getPatientDetails($factura['hc_number']);
             $nombre = $this->formatearNombrePaciente($paciente);
             $billingId = isset($factura['id']) ? (int)$factura['id'] : null;
@@ -57,7 +61,11 @@ class BillingViewService
         ];
     }
 
-    public function obtenerDetalleFactura(string $formId): ?array
+    /**
+     * @param string $formId
+     * @return array|null
+     */
+    public function obtenerDetalleFactura($formId)
     {
         $datos = $this->billingController->obtenerDatos($formId);
         if (!$datos) {
@@ -158,7 +166,10 @@ class BillingViewService
         ];
     }
 
-    public function obtenerProcedimientosNoFacturados(): array
+    /**
+     * @return array
+     */
+    public function obtenerProcedimientosNoFacturados()
     {
         $clasificados = $this->billingController->procedimientosNoFacturadosClasificados();
 
@@ -169,7 +180,11 @@ class BillingViewService
         ];
     }
 
-    private function mapSriDocument(?array $documento): ?array
+    /**
+     * @param array|null $documento
+     * @return array|null
+     */
+    private function mapSriDocument($documento)
     {
         if (!$documento) {
             return null;
@@ -188,7 +203,11 @@ class BillingViewService
         ];
     }
 
-    private function normalizarCampoTexto(?string $valor): ?string
+    /**
+     * @param string|null $valor
+     * @return string|null
+     */
+    private function normalizarCampoTexto($valor)
     {
         if ($valor === null || $valor === '') {
             return null;
@@ -202,7 +221,11 @@ class BillingViewService
         return $valor;
     }
 
-    private function formatearNombrePaciente(array $paciente): string
+    /**
+     * @param array $paciente
+     * @return string
+     */
+    private function formatearNombrePaciente(array $paciente)
     {
         $partes = array_filter([
             $paciente['lname'] ?? null,

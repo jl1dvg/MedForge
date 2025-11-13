@@ -62,7 +62,11 @@ class BillingService
      * @param array $data Datos del formulario (procedimientos, insumos, etc.)
      * @return array Resultado con éxito o error
      */
-    public function guardar(array $data): array
+    /**
+     * @param array $data
+     * @return array
+     */
+    public function guardar(array $data)
     {
         try {
             $this->db->beginTransaction();
@@ -118,7 +122,11 @@ class BillingService
     /**
      * Borra detalles de un billing antes de volver a insertarlos.
      */
-    private function borrarDetalles(int $billingId): void
+    /**
+     * @param int $billingId
+     * @return void
+     */
+    private function borrarDetalles($billingId)
     {
         $tablas = [
             'billing_procedimientos',
@@ -137,7 +145,11 @@ class BillingService
     /**
      * Obtiene todos los datos de facturación asociados a un form_id
      */
-    public function obtenerDatos(string $formId): ?array
+    /**
+     * @param string $formId
+     * @return array|null
+     */
+    public function obtenerDatos($formId)
     {
         $stmt = $this->db->prepare("SELECT * FROM billing_main WHERE form_id = ?");
         $stmt->execute([$formId]);
@@ -159,11 +171,17 @@ class BillingService
         $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
         $derechos = $this->billingDerechosModel->obtenerPorBillingId($billingId);
         $insumos = $this->billingInsumosModel->obtenerPorBillingId($billingId);
-        $insumosConIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 0);
-        $medicamentosSinIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 1);
+        $insumosConIVA = array_filter($insumos, function ($i) {
+            return isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 0;
+        });
+        $medicamentosSinIVA = array_filter($insumos, function ($i) {
+            return isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 1;
+        });
 
         if (!empty($medicamentosSinIVA)) {
-            $codigos = array_unique(array_filter(array_map(fn($m) => $m['codigo'], $medicamentosSinIVA)));
+            $codigos = array_unique(array_filter(array_map(function ($m) {
+                return $m['codigo'];
+            }, $medicamentosSinIVA)));
             if (!empty($codigos)) {
                 $placeholders = implode(',', array_fill(0, count($codigos), '?'));
                 $stmt = $this->db->prepare("SELECT codigo_isspol, codigo_issfa, codigo_msp, codigo_iess, nombre 
@@ -199,7 +217,11 @@ class BillingService
         ];
     }
 
-    public function obtenerResumenConsolidado(?string $mes = null): array
+    /**
+     * @param string|null $mes
+     * @return array
+     */
+    public function obtenerResumenConsolidado($mes = null)
     {
         $query = "
         SELECT 
@@ -243,7 +265,13 @@ class BillingService
     /**
      * Ajusta código/nombre de medicamentos según afiliación
      */
-    private function ajustarCodigoPorAfiliacion(array $medicamento, string $afiliacion, array $referenciaMap): array
+    /**
+     * @param array $medicamento
+     * @param string $afiliacion
+     * @param array $referenciaMap
+     * @return array
+     */
+    private function ajustarCodigoPorAfiliacion(array $medicamento, $afiliacion, array $referenciaMap)
     {
         $codigoClave = $medicamento['codigo'] ?? '';
         $referencia = $referenciaMap[$codigoClave] ?? null;
