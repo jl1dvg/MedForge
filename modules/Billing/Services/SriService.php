@@ -85,12 +85,17 @@ class SriService
             $resultado = $this->procesarEnvio($documentId, $xml, $claveAcceso, $detalle);
             $documentoActualizado = $this->documentModel->findById($documentId);
 
-            return [
+            $respuesta = [
                 'success' => $resultado['success'],
                 'estado' => strtoupper((string) ($documentoActualizado['estado'] ?? ($resultado['success'] ? 'SIMULADO' : 'ERROR'))),
                 'documento' => $documentoActualizado ?: null,
-                ...($resultado['success'] ? [] : ['error' => $resultado['message'] ?? 'Error desconocido']),
             ];
+
+            if (!$resultado['success']) {
+                $respuesta['error'] = $resultado['message'] ?? 'Error desconocido';
+            }
+
+            return $respuesta;
         } catch (\Throwable $exception) {
             error_log('Error al registrar factura en SRI: ' . $exception->getMessage());
 

@@ -12,9 +12,14 @@ use PDO;
 
 class BillingController extends BaseController
 {
-    private BillingViewService $service;
-    private LegacyBillingController $legacyController;
-    private SriService $sriService;
+    /** @var BillingViewService */
+    private $service;
+
+    /** @var LegacyBillingController */
+    private $legacyController;
+
+    /** @var SriService */
+    private $sriService;
 
     public function __construct(PDO $pdo)
     {
@@ -27,7 +32,7 @@ class BillingController extends BaseController
         $this->sriService = new SriService($pdo);
     }
 
-    public function index(): void
+    public function index()
     {
         $this->requireAuth();
 
@@ -41,7 +46,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function detalle(): void
+    public function detalle()
     {
         $this->requireAuth();
 
@@ -70,7 +75,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function noFacturados(): void
+    public function noFacturados()
     {
         $this->requireAuth();
 
@@ -84,7 +89,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function crearDesdeNoFacturado(): void
+    public function crearDesdeNoFacturado()
     {
         $this->requireAuth();
 
@@ -203,7 +208,7 @@ class BillingController extends BaseController
         $this->redirectToDetalle($formId);
     }
 
-    private function redirectToDetalle(string $formId): void
+    private function redirectToDetalle(string $formId)
     {
         $target = '/billing/detalle?form_id=' . urlencode($formId);
         header('Location: ' . $target);

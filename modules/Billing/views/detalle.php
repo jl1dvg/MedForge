@@ -13,19 +13,36 @@ $totalConIVA = $detalle['totalConIVA'] ?? 0;
 $grupoClases = $detalle['grupoClases'] ?? [];
 $sri = $detalle['sri'] ?? null;
 $estadoSri = strtoupper($sri['estado'] ?? 'PENDIENTE');
-$badgeSri = match ($estadoSri) {
-    'AUTORIZADO' => 'bg-success',
-    'SIMULADO', 'ENVIADO' => 'bg-info',
-    'ERROR' => 'bg-danger',
-    'PENDIENTE' => 'bg-secondary',
-    default => 'bg-warning text-dark',
-};
-$alertSri = match ($estadoSri) {
-    'AUTORIZADO' => 'alert-success',
-    'SIMULADO', 'ENVIADO' => 'alert-info',
-    'ERROR' => 'alert-danger',
-    default => 'alert-secondary',
-};
+$badgeSri = 'bg-warning text-dark';
+switch ($estadoSri) {
+    case 'AUTORIZADO':
+        $badgeSri = 'bg-success';
+        break;
+    case 'SIMULADO':
+    case 'ENVIADO':
+        $badgeSri = 'bg-info';
+        break;
+    case 'ERROR':
+        $badgeSri = 'bg-danger';
+        break;
+    case 'PENDIENTE':
+        $badgeSri = 'bg-secondary';
+        break;
+}
+
+$alertSri = 'alert-secondary';
+switch ($estadoSri) {
+    case 'AUTORIZADO':
+        $alertSri = 'alert-success';
+        break;
+    case 'SIMULADO':
+    case 'ENVIADO':
+        $alertSri = 'alert-info';
+        break;
+    case 'ERROR':
+        $alertSri = 'alert-danger';
+        break;
+}
 ?>
 
 <section class="content-header">

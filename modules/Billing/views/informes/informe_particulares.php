@@ -227,14 +227,24 @@ $username = $dashboardController->getAuthenticatedUser();
                                                 <td>
                                                     <?php
                                                     $afiliacion = strtoupper($r['afiliacion'] ?? '—');
-                                                    $colorAfiliacion = match ($afiliacion) {
-                                                        'PARTICULAR' => 'bg-primary',
-                                                        'HUMANA - COPAGO' => 'bg-info',
-                                                        'BEST DOCTOR 100' => 'bg-success',
-                                                        'SALUD (REEMBOLSO) NIVEL 5' => 'bg-warning',
-                                                        'FUNDACIONES' => 'bg-danger',
-                                                        default => 'bg-secondary'
-                                                    };
+                                                    $colorAfiliacion = 'bg-secondary';
+                                                    switch ($afiliacion) {
+                                                        case 'PARTICULAR':
+                                                            $colorAfiliacion = 'bg-primary';
+                                                            break;
+                                                        case 'HUMANA - COPAGO':
+                                                            $colorAfiliacion = 'bg-info';
+                                                            break;
+                                                        case 'BEST DOCTOR 100':
+                                                            $colorAfiliacion = 'bg-success';
+                                                            break;
+                                                        case 'SALUD (REEMBOLSO) NIVEL 5':
+                                                            $colorAfiliacion = 'bg-warning';
+                                                            break;
+                                                        case 'FUNDACIONES':
+                                                            $colorAfiliacion = 'bg-danger';
+                                                            break;
+                                                    }
                                                     ?>
                                                     <span class="badge <?= $colorAfiliacion ?>"><?= $afiliacion ?></span>
                                                 </td>

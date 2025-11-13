@@ -79,13 +79,22 @@
                                             <?php
                                             $sri = $factura['sri'] ?? null;
                                             $estadoSri = strtoupper($sri['estado'] ?? 'PENDIENTE');
-                                            $badgeClass = match ($estadoSri) {
-                                                'AUTORIZADO' => 'bg-success',
-                                                'SIMULADO', 'ENVIADO' => 'bg-info',
-                                                'ERROR' => 'bg-danger',
-                                                'PENDIENTE' => 'bg-secondary',
-                                                default => 'bg-warning text-dark',
-                                            };
+                                            $badgeClass = 'bg-warning text-dark';
+                                            switch ($estadoSri) {
+                                                case 'AUTORIZADO':
+                                                    $badgeClass = 'bg-success';
+                                                    break;
+                                                case 'SIMULADO':
+                                                case 'ENVIADO':
+                                                    $badgeClass = 'bg-info';
+                                                    break;
+                                                case 'ERROR':
+                                                    $badgeClass = 'bg-danger';
+                                                    break;
+                                                case 'PENDIENTE':
+                                                    $badgeClass = 'bg-secondary';
+                                                    break;
+                                            }
                                             $claveAcceso = $sri['claveAcceso'] ?? null;
                                             $ultimaParteClave = $claveAcceso ? substr($claveAcceso, -8) : null;
                                             ?>
