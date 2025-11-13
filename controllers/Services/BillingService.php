@@ -16,15 +16,32 @@ use Modules\Pacientes\Services\PacienteService;
 
 class BillingService
 {
-    private PDO $db;
-    private BillingMainModel $billingMainModel;
-    private BillingProcedimientosModel $billingProcedimientosModel;
-    private BillingDerechosModel $billingDerechosModel;
-    private BillingInsumosModel $billingInsumosModel;
-    private BillingOxigenoModel $billingOxigenoModel;
-    private BillingAnestesiaModel $billingAnestesiaModel;
-    private ProtocoloModel $protocoloModel;
-    private PacienteService $pacienteService;
+    /** @var PDO */
+    private $db;
+
+    /** @var BillingMainModel */
+    private $billingMainModel;
+
+    /** @var BillingProcedimientosModel */
+    private $billingProcedimientosModel;
+
+    /** @var BillingDerechosModel */
+    private $billingDerechosModel;
+
+    /** @var BillingInsumosModel */
+    private $billingInsumosModel;
+
+    /** @var BillingOxigenoModel */
+    private $billingOxigenoModel;
+
+    /** @var BillingAnestesiaModel */
+    private $billingAnestesiaModel;
+
+    /** @var ProtocoloModel */
+    private $protocoloModel;
+
+    /** @var PacienteService */
+    private $pacienteService;
 
     public function __construct(PDO $pdo)
     {

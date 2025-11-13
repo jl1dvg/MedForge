@@ -9,8 +9,11 @@ use PDO;
 
 class InformesController extends BaseController
 {
-    private LegacyBillingController $billingController;
-    private PacienteService $pacienteService;
+    /** @var LegacyBillingController */
+    private $billingController;
+
+    /** @var PacienteService */
+    private $pacienteService;
 
     public function __construct(PDO $pdo)
     {
@@ -19,7 +22,7 @@ class InformesController extends BaseController
         $this->pacienteService = new PacienteService($pdo);
     }
 
-    public function informeIess(): void
+    public function informeIess()
     {
         $this->requireAuth();
 
@@ -136,73 +139,73 @@ class InformesController extends BaseController
         ]);
     }
 
-    public function informeIsspol(): void
+    public function informeIsspol()
     {
         $this->requireAuth();
         $this->includeLegacyView('informe_isspol.php');
     }
 
-    public function informeIssfa(): void
+    public function informeIssfa()
     {
         $this->requireAuth();
         $this->includeLegacyView('informe_issfa.php');
     }
 
-    public function informeParticulares(): void
+    public function informeParticulares()
     {
         $this->requireAuth();
         $this->includeLegacyView('informe_particulares.php');
     }
 
-    public function informeIessPrueba(): void
+    public function informeIessPrueba()
     {
         $this->requireAuth();
         $this->includeLegacyView('informe_iess_prueba.php');
     }
 
-    public function generarConsolidadoIess(): void
+    public function generarConsolidadoIess()
     {
         $this->requireAuth();
         $this->includeLegacyView('generar_consolidado_iess.php');
     }
 
-    public function generarConsolidadoIsspol(): void
+    public function generarConsolidadoIsspol()
     {
         $this->requireAuth();
         $this->includeLegacyView('generar_consolidado_isspol.php');
     }
 
-    public function generarConsolidadoIssfa(): void
+    public function generarConsolidadoIssfa()
     {
         $this->requireAuth();
         $this->includeLegacyView('generar_consolidado_issfa.php');
     }
 
-    public function generarExcelIessLote(): void
+    public function generarExcelIessLote()
     {
         $this->requireAuth();
         $this->includeLegacyView('generar_excel_iess_lote.php');
     }
 
-    public function ajaxDetalleFactura(): void
+    public function ajaxDetalleFactura()
     {
         $this->requireAuth();
         $this->includeLegacyView('ajax/ajax_detalle_factura.php');
     }
 
-    public function ajaxEliminarFactura(): void
+    public function ajaxEliminarFactura()
     {
         $this->requireAuth();
         $this->includeLegacyView('components/eliminar_factura.php');
     }
 
-    public function ajaxScrapearCodigoDerivacion(): void
+    public function ajaxScrapearCodigoDerivacion()
     {
         $this->requireAuth();
         $this->includeLegacyView('ajax/scrapear_codigo_derivacion.php');
     }
 
-    private function includeLegacyView(string $relativePath): void
+    private function includeLegacyView(string $relativePath)
     {
         $pdo = $this->pdo;
         $username = $_SESSION['username'] ?? 'Invitado';

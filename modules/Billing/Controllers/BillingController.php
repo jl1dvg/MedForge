@@ -4,14 +4,22 @@ namespace Modules\Billing\Controllers;
 
 use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
+use Models\BillingSriDocumentModel;
 use Modules\Billing\Services\BillingViewService;
+use Modules\Billing\Services\SriService;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
 
 class BillingController extends BaseController
 {
-    private BillingViewService $service;
-    private LegacyBillingController $legacyController;
+    /** @var BillingViewService */
+    private $service;
+
+    /** @var LegacyBillingController */
+    private $legacyController;
+
+    /** @var SriService */
+    private $sriService;
 
     public function __construct(PDO $pdo)
     {
@@ -19,10 +27,12 @@ class BillingController extends BaseController
 
         $this->legacyController = new LegacyBillingController($pdo);
         $pacienteService = new PacienteService($pdo);
-        $this->service = new BillingViewService($this->legacyController, $pacienteService);
+        $sriDocumentModel = new BillingSriDocumentModel($pdo);
+        $this->service = new BillingViewService($this->legacyController, $pacienteService, $sriDocumentModel);
+        $this->sriService = new SriService($pdo);
     }
 
-    public function index(): void
+    public function index()
     {
         $this->requireAuth();
 
@@ -36,7 +46,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function detalle(): void
+    public function detalle()
     {
         $this->requireAuth();
 
@@ -65,7 +75,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function noFacturados(): void
+    public function noFacturados()
     {
         $this->requireAuth();
 
@@ -79,7 +89,7 @@ class BillingController extends BaseController
         ]);
     }
 
-    public function crearDesdeNoFacturado(): void
+    public function crearDesdeNoFacturado()
     {
         $this->requireAuth();
 
@@ -178,6 +188,14 @@ class BillingController extends BaseController
                     'precio' => $anestesia['precio'] ?? 0,
                 ]);
             }
+
+            $detalleFactura = $this->legacyController->obtenerDatos($formId);
+            if ($detalleFactura) {
+                $resultadoSri = $this->sriService->registrarFactura($billingId, $formId, $hcNumber, $detalleFactura);
+                if (!$resultadoSri['success'] && isset($resultadoSri['error'])) {
+                    error_log('SRI no disponible para la factura ' . $formId . ': ' . $resultadoSri['error']);
+                }
+            }
         } catch (\Throwable $exception) {
             if (!headers_sent()) {
                 http_response_code(500);
@@ -190,7 +208,7 @@ class BillingController extends BaseController
         $this->redirectToDetalle($formId);
     }
 
-    private function redirectToDetalle(string $formId): void
+    private function redirectToDetalle(string $formId)
     {
         $target = '/billing/detalle?form_id=' . urlencode($formId);
         header('Location: ' . $target);
