@@ -15,6 +15,8 @@ class MailboxController extends BaseController
     private MailboxService $mailbox;
     private SolicitudCrmService $solicitudCrm;
     private ExamenCrmService $examenCrm;
+    /** @var array<string, mixed> */
+    private array $mailboxConfig = [];
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -23,14 +25,16 @@ class MailboxController extends BaseController
         $this->mailbox = new MailboxService($pdo);
         $this->solicitudCrm = new SolicitudCrmService($pdo);
         $this->examenCrm = new ExamenCrmService($pdo);
+        $this->mailboxConfig = $this->mailbox->getConfig();
     }
 
     public function index(): void
     {
         $this->requireAuth();
 
+        $defaultLimit = (int) ($this->mailboxConfig['limit'] ?? 50);
         $filters = [
-            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : 50,
+            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : $defaultLimit,
             'query' => isset($_GET['q']) ? trim((string) $_GET['q']) : null,
             'sources' => $_GET['source'] ?? null,
         ];
@@ -45,6 +49,7 @@ class MailboxController extends BaseController
                 'stats' => $this->mailbox->getStats($feed),
                 'contexts' => $this->mailbox->buildContextOptions($feed),
                 'filters' => $filters,
+                'config' => $this->mailboxConfig,
             ],
             'scripts' => ['js/pages/mailbox.js'],
         ];
@@ -64,8 +69,14 @@ class MailboxController extends BaseController
             return;
         }
 
+        if (!($this->mailboxConfig['enabled'] ?? true)) {
+            $this->json(['success' => false, 'error' => 'Mailbox desactivado en Configuración.'], 403);
+            return;
+        }
+
+        $defaultLimit = (int) ($this->mailboxConfig['limit'] ?? 50);
         $filters = [
-            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : 50,
+            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : $defaultLimit,
             'query' => isset($_GET['q']) ? trim((string) $_GET['q']) : null,
             'sources' => $_GET['source'] ?? null,
             'contact' => isset($_GET['contact']) ? trim((string) $_GET['contact']) : null,
@@ -80,6 +91,7 @@ class MailboxController extends BaseController
                 'contacts' => $this->mailbox->getContacts($feed),
                 'stats' => $this->mailbox->getStats($feed),
                 'contexts' => $this->mailbox->buildContextOptions($feed),
+                'config' => $this->mailboxConfig,
             ],
         ]);
     }
@@ -88,6 +100,16 @@ class MailboxController extends BaseController
     {
         if (!$this->isAuthenticated()) {
             $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        if (!($this->mailboxConfig['enabled'] ?? true)) {
+            $this->respondComposeError('El Mailbox está desactivado desde Configuración.', 403);
+            return;
+        }
+
+        if (!($this->mailboxConfig['compose_enabled'] ?? true)) {
+            $this->respondComposeError('El formulario de notas se encuentra deshabilitado.', 403);
             return;
         }
 

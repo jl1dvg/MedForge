@@ -9,7 +9,7 @@ info:
     regresiones cuando se ajusta la extensión o el backend.
   version: 1.0.0
 servers:
-  - url: https://asistentecive.consulmed.me
+  - url: https://cive.consulmed.me
     description: Entorno productivo
   - url: http://localhost:8080
     description: Entorno local de pruebas

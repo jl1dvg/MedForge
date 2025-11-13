@@ -1,4 +1,18 @@
 (function () {
+    const DEFAULT_ORIGIN = (() => {
+        try {
+            if (window.location && window.location.origin) {
+                const origin = window.location.origin.replace(/\/$/, '');
+                if (origin) {
+                    return origin;
+                }
+            }
+        } catch (error) {
+            // ignore
+        }
+        return 'https://cive.consulmed.me';
+    })();
+
     const DEFAULT_API_BASE_URL = 'https://asistentecive.consulmed.me/api';
     const API_HOST_FIXES = {
         'asitentecive.consulmed.me': 'asistentecive.consulmed.me',
@@ -69,10 +83,10 @@
     const defaultLocal = detectLocalEnvironment();
 
     const DEFAULT_STATE = {
-        controlEndpoint: 'https://cive.consulmed.me/api/cive-extension/config',
-        healthEndpoint: 'https://cive.consulmed.me/api/cive-extension/health-check',
-        healthHistoryEndpoint: 'https://cive.consulmed.me/api/cive-extension/health-checks',
-        subscriptionEndpoint: 'https://cive.consulmed.me/api/subscription/check.php',
+        controlEndpoint: `${DEFAULT_ORIGIN}/api/cive-extension/config`,
+        healthEndpoint: `${DEFAULT_ORIGIN}/api/cive-extension/health-check`,
+        healthHistoryEndpoint: `${DEFAULT_ORIGIN}/api/cive-extension/health-checks`,
+        subscriptionEndpoint: `${DEFAULT_API_BASE_URL}/subscription/check.php`,
         refreshIntervalMs: 900000,
         apiBaseUrl: DEFAULT_API_BASE_URL,
         apiTimeoutMs: 12000,

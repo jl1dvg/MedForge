@@ -226,5 +226,16 @@
         invalidate(cacheKey) {
             CACHE.delete(cacheKey);
         },
+        baseUrl() {
+            const config = readConfig();
+            return config.apiBaseUrl;
+        },
+        apiOrigin() {
+            try {
+                return new URL(this.baseUrl()).origin;
+            } catch (error) {
+                return this.baseUrl();
+            }
+        },
     };
 })();

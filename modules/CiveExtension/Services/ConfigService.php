@@ -9,6 +9,8 @@ use RuntimeException;
 class ConfigService
 {
     private SettingsModel $settings;
+    private string $defaultApiBaseUrl;
+    private string $defaultControlBaseUrl;
 
     private const DEFAULTS = [
         'api_base_url' => 'https://asistentecive.consulmed.me/api',
@@ -29,6 +31,8 @@ class ConfigService
     public function __construct(PDO $pdo)
     {
         $this->settings = new SettingsModel($pdo);
+        $this->defaultControlBaseUrl = $this->resolveDefaultControlBaseUrl();
+        $this->defaultApiBaseUrl = $this->resolveDefaultApiBaseUrl($this->defaultControlBaseUrl);
     }
 
     /**
@@ -42,6 +46,7 @@ class ConfigService
     public function getExtensionConfig(): array
     {
         $options = $this->settings->getOptions([
+            'cive_extension_control_base_url',
             'cive_extension_api_base_url',
             'cive_extension_timeout_ms',
             'cive_extension_max_retries',
@@ -59,7 +64,8 @@ class ConfigService
             'cive_extension_extension_id_remote',
         ]);
 
-        $apiBaseUrl = $this->sanitizeUrl($options['cive_extension_api_base_url'] ?? self::DEFAULTS['api_base_url']);
+        $controlBaseUrl = $this->sanitizeControlBaseUrl($options['cive_extension_control_base_url'] ?? null);
+        $apiBaseUrl = $this->sanitizeUrl($options['cive_extension_api_base_url'] ?? null, $this->defaultApiBaseUrl);
         $timeoutMs = $this->sanitizeInt($options['cive_extension_timeout_ms'] ?? null, self::DEFAULTS['api_timeout_ms']);
         $maxRetries = $this->sanitizeInt($options['cive_extension_max_retries'] ?? null, self::DEFAULTS['api_max_retries']);
         $retryDelayMs = $this->sanitizeInt($options['cive_extension_retry_delay_ms'] ?? null, self::DEFAULTS['api_retry_delay_ms']);
@@ -105,6 +111,7 @@ class ConfigService
                 'esLocal' => $localMode,
                 'extensionId' => $extensionId,
             ],
+            'controlBaseUrl' => $controlBaseUrl,
         ];
     }
 
@@ -114,10 +121,14 @@ class ConfigService
     public function getFrontendBootstrapConfig(): array
     {
         $config = $this->getExtensionConfig();
-        $baseUrl = rtrim((string) \BASE_URL, '/');
-        $controlEndpoint = $baseUrl . '/api/cive-extension/config';
-        $healthEndpoint = $baseUrl . '/api/cive-extension/health-check';
-        $healthHistoryEndpoint = $baseUrl . '/api/cive-extension/health-checks';
+        $controlBaseUrl = rtrim($config['controlBaseUrl'] ?? '', '/');
+        if ($controlBaseUrl === '') {
+            $controlBaseUrl = $this->defaultControlBaseUrl;
+        }
+
+        $controlEndpoint = $controlBaseUrl . '/api/cive-extension/config';
+        $healthEndpoint = $controlBaseUrl . '/api/cive-extension/health-check';
+        $healthHistoryEndpoint = $controlBaseUrl . '/api/cive-extension/health-checks';
 
         return [
             'controlEndpoint' => $controlEndpoint,
@@ -142,11 +153,11 @@ class ConfigService
         ];
     }
 
-    private function sanitizeUrl(string $value): string
+    private function sanitizeUrl(?string $value, ?string $fallback = null): string
     {
-        $value = trim($value);
+        $value = trim((string) $value);
         if ($value === '') {
-            return self::DEFAULTS['api_base_url'];
+            return $fallback ?? self::DEFAULTS['api_base_url'];
         }
 
         $value = $this->fixCommonApiHostTypos($value);
@@ -157,6 +168,26 @@ class ConfigService
         }
 
         return rtrim($value, '/');
+    }
+
+    private function sanitizeControlBaseUrl(?string $value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return $this->defaultControlBaseUrl;
+        }
+
+        $parsed = parse_url($value);
+        if (!is_array($parsed) || empty($parsed['scheme']) || empty($parsed['host'])) {
+            return $this->defaultControlBaseUrl;
+        }
+
+        $normalized = rtrim($value, '/');
+        if (substr($normalized, -7) === '/public') {
+            $normalized = substr($normalized, 0, -7);
+        }
+
+        return $normalized;
     }
 
     private function fixCommonApiHostTypos(string $value): string
@@ -242,5 +273,24 @@ class ConfigService
         }
 
         return self::DEFAULTS['api_credentials'];
+    }
+
+    private function resolveDefaultControlBaseUrl(): string
+    {
+        $base = rtrim((string) \BASE_URL, '/');
+        if ($base === '' || $base === '/') {
+            return 'https://cive.consulmed.me';
+        }
+
+        if (substr($base, -7) === '/public') {
+            $base = substr($base, 0, -7);
+        }
+
+        return $base !== '' ? $base : 'https://cive.consulmed.me';
+    }
+
+    private function resolveDefaultApiBaseUrl(string $controlBaseUrl): string
+    {
+        return self::DEFAULTS['api_base_url'];
     }
 }

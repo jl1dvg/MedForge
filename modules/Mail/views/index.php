@@ -15,6 +15,7 @@ $feed = $mailbox['feed'] ?? [];
 $contacts = $mailbox['contacts'] ?? [];
 $stats = $mailbox['stats'] ?? ['folders' => []];
 $contexts = $mailbox['contexts'] ?? [];
+$config = $mailbox['config'] ?? [];
 $selectedMessage = $feed[0] ?? null;
 
 $escape = static fn($value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -38,10 +39,20 @@ $encodeEntry = static fn(array $value): string => htmlspecialchars(
     ENT_QUOTES,
     'UTF-8'
 );
+$mailboxEnabled = (bool) ($config['enabled'] ?? true);
+$composeEnabled = (bool) ($config['compose_enabled'] ?? true);
 
 ?>
 <section class="content">
     <div class="row">
+        <?php if (!$mailboxEnabled): ?>
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    El Mailbox está desactivado desde Configuración → Mailbox. Puedes volver a activarlo en cualquier momento.
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php if (!empty($flashMessage)): ?>
             <div class="col-12">
                 <div class="alert alert-info alert-dismissible">
@@ -52,10 +63,17 @@ $encodeEntry = static fn(array $value): string => htmlspecialchars(
         <?php endif; ?>
 
         <div class="col-xl-2 col-lg-4 col-12">
-            <button class="btn btn-danger w-p100 mb-30" type="button" data-bs-toggle="modal"
-                    data-bs-target="#mailboxComposeModal">
-                <i class="mdi mdi-email-plus-outline"></i> Compose
-            </button>
+            <?php if ($composeEnabled): ?>
+                <button class="btn btn-danger w-p100 mb-30" type="button" data-bs-toggle="modal"
+                        data-bs-target="#mailboxComposeModal">
+                    <i class="mdi mdi-email-plus-outline"></i> Compose
+                </button>
+            <?php else: ?>
+                <button class="btn btn-danger w-p100 mb-10" type="button" disabled>
+                    <i class="mdi mdi-email-off-outline"></i> Compose deshabilitado
+                </button>
+                <p class="text-muted small">Habilítalo en Configuración → Mailbox.</p>
+            <?php endif; ?>
 
             <div class="box">
                 <div class="box-body no-padding mailbox-nav">

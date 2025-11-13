@@ -71,7 +71,10 @@ window.inicializarEventos = function () {
                     if (response.success) {
                         generatePDF();
                     } else {
-                        window.open("https://asistentecive.consulmed.me", "_blank");
+                        const medforgeOrigin = (window.CiveApiClient && typeof window.CiveApiClient.apiOrigin === 'function')
+                            ? window.CiveApiClient.apiOrigin()
+                            : (window.location && window.location.origin ? window.location.origin.replace(/\/$/, '') : 'https://cive.consulmed.me');
+                        window.open(medforgeOrigin, "_blank");
                     }
                 });
             }

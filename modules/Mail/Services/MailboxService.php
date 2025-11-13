@@ -3,6 +3,7 @@
 namespace Modules\Mail\Services;
 
 use DateTimeImmutable;
+use Models\SettingsModel;
 use PDO;
 use Throwable;
 
@@ -12,12 +13,21 @@ class MailboxService
     private const PHONE_REPLACEMENTS = ['+', '-', ' ', '(', ')', '.', '_'];
 
     private PDO $pdo;
+    private ?SettingsModel $settingsModel = null;
+    /** @var array<string, mixed> */
+    private array $config = [];
     /** @var array<string, array{name: string, hc_number?: string}|false> */
     private array $phoneCache = [];
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
+        try {
+            $this->settingsModel = new SettingsModel($pdo);
+        } catch (Throwable $exception) {
+            $this->settingsModel = null;
+        }
+        $this->config = $this->buildConfig();
     }
 
     /**
@@ -31,8 +41,21 @@ class MailboxService
      */
     public function getFeed(array $filters = []): array
     {
-        $limit = $this->sanitizeLimit($filters['limit'] ?? 50);
-        $sources = $this->normalizeSources($filters['sources'] ?? null);
+        if (!$this->config['enabled']) {
+            return [];
+        }
+
+        $limitValue = $filters['limit'] ?? $this->config['limit'];
+        $limit = $this->sanitizeLimit($limitValue);
+        $allowedSources = $this->getEnabledSources();
+        if ($allowedSources === []) {
+            return [];
+        }
+
+        $sources = $this->normalizeSources($filters['sources'] ?? null, $allowedSources);
+        if ($sources === []) {
+            return [];
+        }
         $query = isset($filters['query']) ? $this->sanitizeString($filters['query']) : null;
         $contact = isset($filters['contact']) ? $this->sanitizeString($filters['contact']) : null;
 
@@ -54,9 +77,14 @@ class MailboxService
             $entries = array_merge($entries, $this->fetchWhatsappMessages($limit));
         }
 
+        $sortMode = $this->config['sort'];
         usort(
             $entries,
-            static fn(array $a, array $b): int => ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0)
+            static function (array $a, array $b) use ($sortMode): int {
+                $comparison = ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0);
+
+                return $sortMode === 'oldest' ? -$comparison : $comparison;
+            }
         );
 
         if ($query) {
@@ -238,6 +266,11 @@ class MailboxService
         }
 
         return $contexts;
+    }
+
+    public function getConfig(): array
+    {
+        return $this->config;
     }
 
     /**
@@ -639,37 +672,40 @@ SQL;
 
     private function sanitizeLimit(mixed $value): int
     {
+        $default = (int) ($this->config['limit'] ?? 50);
         $int = (int) $value;
         if ($int <= 0) {
-            $int = 50;
+            $int = $default;
         }
 
-        return min($int, 100);
+        $int = max(10, $int);
+
+        return min($int, 200);
     }
 
     /**
      * @param mixed $sources
      * @return array<int, string>
      */
-    private function normalizeSources(mixed $sources): array
+    private function normalizeSources(mixed $sources, array $allowed): array
     {
         if (is_string($sources) && $sources !== '') {
             $sources = array_map('trim', explode(',', $sources));
         }
 
         if (!is_array($sources) || $sources === []) {
-            return self::DEFAULT_SOURCES;
+            return $allowed ?: [];
         }
 
         $normalized = [];
         foreach ($sources as $source) {
             $value = $this->mbLower((string) $source);
-            if ($value !== '' && in_array($value, self::DEFAULT_SOURCES, true)) {
+            if ($value !== '' && in_array($value, $allowed, true)) {
                 $normalized[] = $value;
             }
         }
 
-        return $normalized !== [] ? array_values(array_unique($normalized)) : self::DEFAULT_SOURCES;
+        return $normalized !== [] ? array_values(array_unique($normalized)) : ($allowed ?: []);
     }
 
     private function sanitizeString(mixed $value): string
@@ -865,5 +901,100 @@ SQL;
         $digits = preg_replace('/\D+/', '', $stripped);
 
         return $digits ?? '';
+    }
+
+    private function buildConfig(): array
+    {
+        $config = [
+            'enabled' => true,
+            'compose_enabled' => true,
+            'limit' => 50,
+            'sort' => 'recent',
+            'sources' => [
+                'solicitudes' => true,
+                'examenes' => true,
+                'tickets' => true,
+                'whatsapp' => true,
+            ],
+        ];
+
+        if (!$this->settingsModel instanceof SettingsModel) {
+            return $config;
+        }
+
+        try {
+            $options = $this->settingsModel->getOptions([
+                'mailbox_enabled',
+                'mailbox_compose_enabled',
+                'mailbox_source_solicitudes',
+                'mailbox_source_examenes',
+                'mailbox_source_tickets',
+                'mailbox_source_whatsapp',
+                'mailbox_limit',
+                'mailbox_sort',
+            ]);
+        } catch (Throwable $exception) {
+            return $config;
+        }
+
+        $config['enabled'] = $this->optionAsBool($options['mailbox_enabled'] ?? null, true);
+        $config['compose_enabled'] = $this->optionAsBool($options['mailbox_compose_enabled'] ?? null, true);
+
+        $config['sources'] = [
+            'solicitudes' => $this->optionAsBool($options['mailbox_source_solicitudes'] ?? null, true),
+            'examenes' => $this->optionAsBool($options['mailbox_source_examenes'] ?? null, true),
+            'tickets' => $this->optionAsBool($options['mailbox_source_tickets'] ?? null, true),
+            'whatsapp' => $this->optionAsBool($options['mailbox_source_whatsapp'] ?? null, true),
+        ];
+
+        if (array_sum(array_map(static fn($value) => $value ? 1 : 0, $config['sources'])) === 0) {
+            $config['sources'] = [
+                'solicitudes' => true,
+                'examenes' => true,
+                'tickets' => true,
+                'whatsapp' => true,
+            ];
+        }
+
+        $limit = (int) ($options['mailbox_limit'] ?? $config['limit']);
+        if ($limit <= 0) {
+            $limit = $config['limit'];
+        }
+        $config['limit'] = min(200, max(10, $limit));
+
+        $sort = $options['mailbox_sort'] ?? $config['sort'];
+        $config['sort'] = in_array($sort, ['recent', 'oldest'], true) ? $sort : $config['sort'];
+
+        return $config;
+    }
+
+    private function optionAsBool($value, bool $default): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        $normalized = is_bool($value)
+            ? $value
+            : in_array((string) $value, ['1', 'true', 'on'], true);
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function getEnabledSources(): array
+    {
+        $sources = array_filter(
+            $this->config['sources'] ?? [],
+            static fn($enabled) => $enabled === true
+        );
+
+        if ($sources === []) {
+            return [];
+        }
+
+        return array_keys($sources);
     }
 }

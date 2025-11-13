@@ -82,7 +82,10 @@ function extraerDatosProcedimientos() {
             cancelButtonText: 'Cancelar'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.open(`https://asistentecive.consulmed.me/views/billing/descargar_excel.php?form_id=${formId}`, '_blank');
+                const apiOrigin = (window.CiveApiClient && typeof window.CiveApiClient.apiOrigin === 'function')
+                    ? window.CiveApiClient.apiOrigin()
+                    : (window.location && window.location.origin ? window.location.origin.replace(/\/$/, '') : 'https://cive.consulmed.me');
+                window.open(`${apiOrigin}/views/billing/descargar_excel.php?form_id=${formId}`, '_blank');
             } else {
                 console.log("❌ Descarga cancelada.");
             }
