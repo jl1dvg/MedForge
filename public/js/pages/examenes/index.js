@@ -535,10 +535,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const pusher = new Pusher(realtimeConfig.key, options);
             const channelName = realtimeConfig.channel || 'examenes-kanban';
             const events = realtimeConfig.events || {};
-            const newEventName = events.new_request || realtimeConfig.event || 'nueva-examen';
-            const statusEventName = events.status_updated || null;
-            const crmEventName = events.crm_updated || null;
-            const reminderEventName = events.exam_reminder || events.surgery_reminder || null;
+            const newEventName = events.new_request || realtimeConfig.event || 'kanban.nueva-examen';
+            const statusEventName = events.status_updated || 'kanban.estado-actualizado';
+            const crmEventName = events.crm_updated || 'crm.detalles-actualizados';
+            const reminderEventName = events.exam_reminder
+                || events.surgery_reminder
+                || 'recordatorio-examen';
 
             notificationPanel.setIntegrationWarning('');
 

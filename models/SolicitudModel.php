@@ -87,6 +87,58 @@ class SolicitudModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function fetchTurneroSolicitudes(array $estados = []): array
+    {
+        $normalizar = static function ($estado): string {
+            $estado = is_string($estado) ? trim($estado) : '';
+
+            if ($estado === '') {
+                return '';
+            }
+
+            return function_exists('mb_strtolower')
+                ? mb_strtolower($estado, 'UTF-8')
+                : strtolower($estado);
+        };
+
+        $estadosNormalizados = array_values(array_filter(array_map($normalizar, $estados)));
+
+        if (empty($estadosNormalizados)) {
+            $estadosNormalizados = array_map($normalizar, ['Recibido', 'Llamado', 'En atención', 'En atencion']);
+        }
+
+        $estadosNormalizados = array_values(array_unique(array_filter($estadosNormalizados)));
+
+        if (empty($estadosNormalizados)) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($estadosNormalizados), '?'));
+
+        $sql = "SELECT
+                sp.id,
+                sp.hc_number,
+                sp.form_id,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                sp.estado,
+                sp.prioridad,
+                sp.created_at,
+                sp.turno
+            FROM solicitud_procedimiento sp
+            INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+            WHERE LOWER(sp.estado) IN ($placeholders)
+              AND sp.turno IS NOT NULL
+            ORDER BY CASE WHEN sp.turno IS NULL THEN 1 ELSE 0 END,
+                     sp.turno ASC,
+                     sp.created_at ASC,
+                     sp.id ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($estadosNormalizados);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function obtenerDerivacionPorFormId($form_id)
     {
         $sql = "SELECT * FROM derivaciones_form_id WHERE form_id = ? ";
@@ -152,5 +204,117 @@ class SolicitudModel
         if (!$stmt->execute()) {
             throw new \Exception("No se pudo actualizar el estado");
         }
+    }
+
+    public function llamarTurno(?int $id, ?int $turno, string $nuevoEstado = 'Llamado'): ?array
+    {
+        $this->db->beginTransaction();
+
+        try {
+            if ($turno !== null && $turno > 0) {
+                $sql = "SELECT sp.id, sp.turno, sp.estado FROM solicitud_procedimiento sp WHERE sp.turno = :turno FOR UPDATE";
+                $stmt = $this->db->prepare($sql);
+                $stmt->bindParam(':turno', $turno, \PDO::PARAM_INT);
+            } else {
+                $sql = "SELECT sp.id, sp.turno, sp.estado FROM solicitud_procedimiento sp WHERE sp.id = :id FOR UPDATE";
+                $stmt = $this->db->prepare($sql);
+                $stmt->bindParam(':id', $id, \PDO::PARAM_INT);
+            }
+
+            $stmt->execute();
+            $registro = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$registro) {
+                $this->db->rollBack();
+                return null;
+            }
+
+            $estadoActualNormalizado = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? ''));
+
+            if ($estadoActualNormalizado === null) {
+                $this->db->rollBack();
+                return null;
+            }
+
+            if (empty($registro['turno'])) {
+                $registro['turno'] = $this->asignarTurnoSiNecesario((int) $registro['id']);
+            }
+
+            $update = $this->db->prepare('UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id');
+            $update->bindParam(':estado', $nuevoEstado, \PDO::PARAM_STR);
+            $update->bindParam(':id', $registro['id'], \PDO::PARAM_INT);
+            $update->execute();
+
+            $detallesStmt = $this->db->prepare("SELECT
+                    sp.id,
+                    sp.turno,
+                    sp.estado,
+                    sp.hc_number,
+                    sp.form_id,
+                    sp.prioridad,
+                    sp.created_at,
+                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                FROM solicitud_procedimiento sp
+                INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+                WHERE sp.id = :id");
+
+            $detallesStmt->bindParam(':id', $registro['id'], \PDO::PARAM_INT);
+            $detallesStmt->execute();
+            $detalles = $detallesStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $this->db->commit();
+
+            return $detalles;
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    private function normalizarEstadoTurnero(string $estado): ?string
+    {
+        $mapa = [
+            'recibido' => 'Recibido',
+            'llamado' => 'Llamado',
+            'en atencion' => 'En atención',
+            'en atención' => 'En atención',
+            'atendido' => 'Atendido',
+        ];
+
+        $estadoLimpio = trim($estado);
+        $clave = function_exists('mb_strtolower')
+            ? mb_strtolower($estadoLimpio, 'UTF-8')
+            : strtolower($estadoLimpio);
+
+        return $mapa[$clave] ?? null;
+    }
+
+    private function asignarTurnoSiNecesario(int $id): ?int
+    {
+        $consulta = $this->db->prepare('SELECT turno FROM solicitud_procedimiento WHERE id = :id FOR UPDATE');
+        $consulta->bindParam(':id', $id, \PDO::PARAM_INT);
+        $consulta->execute();
+        $actual = $consulta->fetchColumn();
+
+        if ($actual !== false && $actual !== null) {
+            return (int) $actual;
+        }
+
+        $maxStmt = $this->db->query('SELECT turno FROM solicitud_procedimiento WHERE turno IS NOT NULL ORDER BY turno DESC LIMIT 1 FOR UPDATE');
+        $maxTurno = $maxStmt ? (int) $maxStmt->fetchColumn() : 0;
+        $siguiente = $maxTurno + 1;
+
+        $update = $this->db->prepare('UPDATE solicitud_procedimiento SET turno = :turno WHERE id = :id AND turno IS NULL');
+        $update->bindParam(':turno', $siguiente, \PDO::PARAM_INT);
+        $update->bindParam(':id', $id, \PDO::PARAM_INT);
+        $update->execute();
+
+        if ($update->rowCount() === 0) {
+            $consulta->execute();
+            $actual = $consulta->fetchColumn();
+            return $actual !== false ? (int) $actual : null;
+        }
+
+        return $siguiente;
     }
 }

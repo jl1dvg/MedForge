@@ -704,34 +704,34 @@ document.addEventListener('DOMContentLoaded', () => {
             const pusher = new Pusher(realtimeConfig.key, options);
             const channelName = realtimeConfig.channel || 'solicitudes-kanban';
             const events = realtimeConfig.events || {};
-            const newEventName = events.new_request || realtimeConfig.event || 'nueva-solicitud';
-            const statusEventName = events.status_updated || null;
-            const crmEventName = events.crm_updated || null;
+            const newEventName = events.new_request || realtimeConfig.event || 'kanban.nueva-solicitud';
+            const statusEventName = events.status_updated || 'kanban.estado-actualizado';
+            const crmEventName = events.crm_updated || 'crm.detalles-actualizados';
             const reminderEvents = [
                 {
                     key: 'surgery',
-                    eventName: events.surgery_reminder || null,
+                    eventName: events.surgery_reminder || 'recordatorio-cirugia',
                     defaultLabel: 'Recordatorio de cirugía',
                     icon: 'mdi mdi-alarm-check',
                     tone: 'primary',
                 },
                 {
                     key: 'preop',
-                    eventName: events.preop_reminder || null,
+                    eventName: events.preop_reminder || 'recordatorio-preop',
                     defaultLabel: 'Preparación preoperatoria',
                     icon: 'mdi mdi-clipboard-check-outline',
                     tone: 'info',
                 },
                 {
                     key: 'postop',
-                    eventName: events.postop_reminder || null,
+                    eventName: events.postop_reminder || 'recordatorio-postop',
                     defaultLabel: 'Control postoperatorio',
                     icon: 'mdi mdi-heart-pulse',
                     tone: 'success',
                 },
                 {
                     key: 'exams',
-                    eventName: events.exams_expiring || null,
+                    eventName: events.exams_expiring || 'alerta-examenes-por-vencer',
                     defaultLabel: 'Exámenes por vencer',
                     icon: 'mdi mdi-file-alert-outline',
                     tone: 'warning',

@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Core\BaseController;
+use Helpers\JsonLogger;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
@@ -40,9 +41,9 @@ class ExamenController extends BaseController
 
         $realtime = $this->pusherConfig->getPublicConfig();
         $realtime['channel'] = self::PUSHER_CHANNEL;
-        $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] = 'nuevo-examen';
-        $realtime['events'][PusherConfigService::EVENT_STATUS_UPDATED] = 'examen-actualizado';
-        $realtime['events'][PusherConfigService::EVENT_CRM_UPDATED] = 'crm-examen-actualizado';
+        $realtime['events'][PusherConfigService::EVENT_NEW_REQUEST] = 'kanban.nueva-examen';
+        $realtime['events'][PusherConfigService::EVENT_STATUS_UPDATED] = 'kanban.estado-actualizado';
+        $realtime['events'][PusherConfigService::EVENT_CRM_UPDATED] = 'crm.detalles-actualizados';
 
         $examReminderAlias = 'exam_reminder';
         $examReminderKey = PusherConfigService::class . '::EVENT_EXAM_REMINDER';
@@ -434,6 +435,12 @@ class ExamenController extends BaseController
 
             $this->json(['data' => $examenes]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_examenes',
+                'Error cargando turnero de exámenes',
+                $e,
+                ['estados' => $estados]
+            );
             $this->json(['data' => [], 'error' => 'No se pudo cargar el turnero'], 500);
         }
     }
@@ -473,11 +480,53 @@ class ExamenController extends BaseController
             $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
             $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
 
+            try {
+                $this->pusherConfig->trigger(
+                    [
+                        'id' => (int) ($registro['id'] ?? $id ?? 0),
+                        'turno' => $registro['turno'] ?? $turno,
+                        'estado' => $registro['estado'] ?? $estadoNormalizado,
+                        'hc_number' => $registro['hc_number'] ?? null,
+                        'full_name' => $registro['full_name'] ?? null,
+                        'kanban_estado' => $registro['kanban_estado'] ?? ($registro['estado'] ?? null),
+                        'triggered_by' => $this->getCurrentUserId(),
+                    ],
+                    self::PUSHER_CHANNEL,
+                    PusherConfigService::EVENT_TURNERO_UPDATED
+                );
+            } catch (Throwable $notificationError) {
+                JsonLogger::log(
+                    'turnero_examenes',
+                    'No se pudo notificar la actualización del turnero de exámenes',
+                    $notificationError,
+                    [
+                        'registro' => [
+                            'id' => (int) ($registro['id'] ?? $id ?? 0),
+                            'turno' => $registro['turno'] ?? $turno,
+                            'estado' => $registro['estado'] ?? $estadoNormalizado,
+                        ],
+                    ]
+                );
+            }
+
             $this->json([
                 'success' => true,
                 'data' => $registro,
             ]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_examenes',
+                'Error al llamar turno del turnero de exámenes',
+                $e,
+                [
+                    'payload' => [
+                        'id' => $id,
+                        'turno' => $turno,
+                        'estado' => $estadoNormalizado,
+                    ],
+                    'usuario' => $this->getCurrentUserId(),
+                ]
+            );
             $this->json(['success' => false, 'error' => 'No se pudo llamar el turno solicitado'], 500);
         }
     }

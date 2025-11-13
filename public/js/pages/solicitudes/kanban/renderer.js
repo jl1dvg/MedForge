@@ -112,6 +112,31 @@ function formatBadge(label, value, icon) {
   }${safeValue}</span>`;
 }
 
+const TURNO_BUTTON_LABELS = {
+  recall: '<i class="mdi mdi-phone-incoming"></i> Volver a llamar',
+  generate: '<i class="mdi mdi-bell-ring-outline"></i> Generar turno',
+};
+
+function normalizarEstado(value) {
+  return (value ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function applyTurnoButtonState(button, shouldRecall) {
+  if (!button) {
+    return;
+  }
+
+  button.innerHTML = shouldRecall
+    ? TURNO_BUTTON_LABELS.recall
+    : TURNO_BUTTON_LABELS.generate;
+  button.dataset.hasTurno = shouldRecall ? "1" : "0";
+}
+
 const SLA_META = {
   en_rango: {
     label: "En rango",
@@ -425,6 +450,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
     const turnoAsignado = formatTurno(solicitud.turno);
     const estadoActual = (solicitud.estado ?? "").toString();
+    const estadoNormalizado = normalizarEstado(estadoActual);
 
     const acciones = document.createElement("div");
     acciones.className =
@@ -446,9 +472,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
     const botonLlamar = document.createElement("button");
     botonLlamar.type = "button";
     botonLlamar.className = "btn btn-sm btn-outline-primary llamar-turno-btn";
-    botonLlamar.innerHTML = turnoAsignado
-      ? '<i class="mdi mdi-phone-incoming"></i> Volver a llamar'
-      : '<i class="mdi mdi-bell-ring-outline"></i> Generar turno';
+    applyTurnoButtonState(
+      botonLlamar,
+      Boolean(turnoAsignado) || estadoNormalizado === "llamado"
+    );
 
     botonLlamar.addEventListener("click", (event) => {
       event.preventDefault();
@@ -458,11 +485,13 @@ export function renderKanban(data, callbackEstadoActualizado) {
         return;
       }
 
+      const teniaTurnoAntes = botonLlamar.dataset.hasTurno === "1";
       botonLlamar.disabled = true;
       botonLlamar.setAttribute("aria-busy", "true");
-      const textoOriginal = botonLlamar.innerHTML;
       botonLlamar.innerHTML =
         '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando';
+
+      let exito = false;
 
       llamarTurnoSolicitud({ id: solicitud.id })
         .then((data) => {
@@ -472,11 +501,20 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
           if (turno) {
             badgeTurno.textContent = `Turno #${turno}`;
+          } else {
+            badgeTurno.textContent = "Sin turno asignado";
           }
 
-          if (data?.estado) {
-            resumenEstado.textContent = data.estado;
-          }
+          const estadoActualizado = (data?.estado ?? "").toString();
+          tarjeta.dataset.estado = estadoActualizado;
+          resumenEstado.textContent =
+            estadoActualizado !== "" ? estadoActualizado : "Sin estado";
+
+          applyTurnoButtonState(
+            botonLlamar,
+            Boolean(turno) || normalizarEstado(estadoActualizado) === "llamado"
+          );
+          exito = true;
 
           showToast(
             `🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ""}`
@@ -504,7 +542,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
         .finally(() => {
           botonLlamar.disabled = false;
           botonLlamar.removeAttribute("aria-busy");
-          botonLlamar.innerHTML = textoOriginal;
+          if (!exito) {
+            applyTurnoButtonState(botonLlamar, teniaTurnoAntes);
+          }
         });
     });
 
@@ -541,23 +581,107 @@ export function renderKanban(data, callbackEstadoActualizado) {
       animation: 150,
       onEnd: (evt) => {
         const item = evt.item;
+        const columnaAnterior = evt.from;
+        const posicionAnterior = evt.oldIndex;
+        const estadoAnterior = (item.dataset.estado ?? "").toString();
+        const badgeEstado = item.querySelector(
+          ".badge.badge-estado, .badge-estado"
+        );
+        const badgeTurno = item.querySelector(".badge-turno");
+        const botonTurno = item.querySelector(".llamar-turno-btn");
+        const turnoTextoAnterior = badgeTurno
+          ? badgeTurno.textContent
+          : "Sin turno asignado";
+        const botonTeniaTurnoAntes = botonTurno
+          ? botonTurno.dataset.hasTurno === "1"
+          : false;
+
         const nuevoEstado = evt.to.id
           .replace("kanban-", "")
           .replace(/-/g, " ")
           .replace(/\b\w/g, (c) => c.toUpperCase());
 
-        item.dataset.estado = nuevoEstado;
+        const aplicarEstadoEnUI = (valor) => {
+          const etiqueta = (valor ?? "").toString();
+          item.dataset.estado = etiqueta;
+          if (badgeEstado) {
+            badgeEstado.textContent =
+              etiqueta !== "" ? etiqueta : "Sin estado";
+          }
+        };
 
-        const resultado = callbackEstadoActualizado(
-          item.dataset.id,
-          item.dataset.form,
-          nuevoEstado
-        );
+        const revertirMovimiento = () => {
+          aplicarEstadoEnUI(estadoAnterior);
+          if (badgeTurno) {
+            badgeTurno.textContent = turnoTextoAnterior;
+          }
+          if (botonTurno) {
+            applyTurnoButtonState(botonTurno, botonTeniaTurnoAntes);
+          }
+          if (columnaAnterior) {
+            const referencia =
+              columnaAnterior.children[posicionAnterior] || null;
+            columnaAnterior.insertBefore(item, referencia);
+          }
+        };
 
-        if (resultado && typeof resultado.catch === "function") {
-          resultado.catch(() => {
-            showToast("No se pudo actualizar el estado", false);
-          });
+        aplicarEstadoEnUI(nuevoEstado);
+
+        if (botonTurno) {
+          const debeRecordar =
+            botonTeniaTurnoAntes || normalizarEstado(nuevoEstado) === "llamado";
+          applyTurnoButtonState(botonTurno, debeRecordar);
+        }
+
+        let resultado;
+        try {
+          resultado = callbackEstadoActualizado(
+            item.dataset.id,
+            item.dataset.form,
+            nuevoEstado
+          );
+        } catch (error) {
+          revertirMovimiento();
+
+          if (!error || !error.__estadoNotificado) {
+            const mensaje =
+              (error && error.message) || "No se pudo actualizar el estado";
+            showToast(mensaje, false);
+          }
+          return;
+        }
+
+        if (resultado && typeof resultado.then === "function") {
+          resultado
+            .then((response) => {
+              const estadoServidor = (response?.estado ?? nuevoEstado).toString();
+              aplicarEstadoEnUI(estadoServidor);
+
+              if (badgeTurno) {
+                const turnoActual = formatTurno(response?.turno);
+                badgeTurno.textContent = turnoActual
+                  ? `Turno #${turnoActual}`
+                  : "Sin turno asignado";
+              }
+
+              if (botonTurno) {
+                const turnoActual = formatTurno(response?.turno);
+                const debeRecordar =
+                  Boolean(turnoActual) ||
+                  normalizarEstado(estadoServidor) === "llamado";
+                applyTurnoButtonState(botonTurno, debeRecordar);
+              }
+            })
+            .catch((error) => {
+              revertirMovimiento();
+
+              if (!error || !error.__estadoNotificado) {
+                const mensaje =
+                  (error && error.message) ||
+                  "No se pudo actualizar el estado";
+                showToast(mensaje, false);
+              }
+            });
         }
       },
     });

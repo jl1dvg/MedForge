@@ -13,15 +13,23 @@ class PusherConfigService
     public const EVENT_STATUS_UPDATED = 'status_updated';
     public const EVENT_CRM_UPDATED = 'crm_updated';
     public const EVENT_SURGERY_REMINDER = 'surgery_reminder';
+    public const EVENT_PREOP_REMINDER = 'preop_reminder';
+    public const EVENT_POSTOP_REMINDER = 'postop_reminder';
+    public const EVENT_EXAMS_EXPIRING = 'exams_expiring';
     public const EVENT_EXAM_REMINDER = 'exam_reminder';
+    public const EVENT_TURNERO_UPDATED = 'turnero_updated';
 
     private const DEFAULT_CHANNEL = 'solicitudes-kanban';
     private const DEFAULT_EVENTS = [
-        self::EVENT_NEW_REQUEST => 'nueva-solicitud',
-        self::EVENT_STATUS_UPDATED => 'solicitud-actualizada',
-        self::EVENT_CRM_UPDATED => 'crm-actualizado',
+        self::EVENT_NEW_REQUEST => 'kanban.nueva-solicitud',
+        self::EVENT_STATUS_UPDATED => 'kanban.estado-actualizado',
+        self::EVENT_CRM_UPDATED => 'crm.detalles-actualizados',
         self::EVENT_SURGERY_REMINDER => 'recordatorio-cirugia',
+        self::EVENT_PREOP_REMINDER => 'recordatorio-preop',
+        self::EVENT_POSTOP_REMINDER => 'recordatorio-postop',
+        self::EVENT_EXAMS_EXPIRING => 'alerta-examenes-por-vencer',
         self::EVENT_EXAM_REMINDER => 'recordatorio-examen',
+        self::EVENT_TURNERO_UPDATED => 'turnero.turno-actualizado',
     ];
 
     private ?SettingsModel $settingsModel = null;
@@ -33,6 +41,9 @@ class PusherConfigService
             $this->settingsModel = new SettingsModel($pdo);
         } catch (RuntimeException $exception) {
             $this->settingsModel = null;
+        } catch (Throwable $exception) {
+            $this->settingsModel = null;
+            error_log('No fue posible inicializar SettingsModel para Pusher: ' . $exception->getMessage());
         }
     }
 

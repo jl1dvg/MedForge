@@ -1,7 +1,51 @@
-import { getKanbanConfig } from './kanban/config.js';
+import { getKanbanConfig, getRealtimeConfig } from './kanban/config.js';
 
 const ENDPOINT = `${getKanbanConfig().basePath}/turnero-data`;
 const REFRESH_INTERVAL = 30000;
+
+const DEFAULT_CHANNELS = {
+    solicitudes: 'solicitudes-kanban',
+    examenes: 'examenes-kanban',
+};
+
+const BASE_EVENT_FALLBACKS = {
+    new_request: 'kanban.nueva-solicitud',
+    status_updated: 'kanban.estado-actualizado',
+    crm_updated: 'crm.detalles-actualizados',
+    turnero_updated: 'turnero.turno-actualizado',
+    surgery_reminder: 'recordatorio-cirugia',
+    preop_reminder: 'recordatorio-preop',
+    postop_reminder: 'recordatorio-postop',
+    exams_expiring: 'alerta-examenes-por-vencer',
+    exam_reminder: 'recordatorio-examen',
+};
+
+const MODULE_EVENT_OVERRIDES = {
+    examenes: {
+        new_request: 'kanban.nueva-examen',
+    },
+};
+
+const CRM_EXTRA_EVENTS = [
+    'crm.detalles-actualizados',
+    'crm.nota-registrada',
+    'crm.tarea-creada',
+    'crm.tarea-actualizada',
+    'crm.adjunto-subido',
+];
+
+const LEGACY_EVENT_NAMES = {
+    solicitudes: [
+        'nueva-solicitud',
+        'estado-actualizado',
+        'crm-actualizado',
+    ],
+    examenes: [
+        'nuevo-examen',
+        'examen-actualizado',
+        'crm-examen-actualizado',
+    ],
+};
 
 const elements = {
     listado: document.getElementById('turneroListado'),
@@ -169,16 +213,59 @@ const init = () => {
         return Number.isNaN(num) ? null : num;
     };
 
+    const kanbanConfig = getKanbanConfig();
+    const realtimeConfig = getRealtimeConfig();
+    const moduleKey = (kanbanConfig.key || 'solicitudes').toString();
+    const appOptions = window?.app?.options || {};
+
+    const realtimeKey = (realtimeConfig.key || appOptions.pusher_app_key || '').toString().trim();
+    const realtimeCluster = (realtimeConfig.cluster || appOptions.pusher_cluster || '').toString().trim();
+
+    const enabledByApp = typeof appOptions.pusher_realtime_notifications !== 'undefined'
+        && String(appOptions.pusher_realtime_notifications).trim() === '1';
+    const realtimeEnabled = (Boolean(realtimeConfig.enabled) || enabledByApp) && realtimeKey !== '';
+
+    const fallbackEvents = {
+        ...BASE_EVENT_FALLBACKS,
+        ...(MODULE_EVENT_OVERRIDES[moduleKey] || {}),
+    };
+
+    const configuredEvents = (realtimeConfig.events && typeof realtimeConfig.events === 'object')
+        ? realtimeConfig.events
+        : {};
+
+    const resolvedEvents = { ...fallbackEvents, ...configuredEvents };
+    if (typeof realtimeConfig.event === 'string' && realtimeConfig.event.trim() !== '') {
+        const defaultEvent = realtimeConfig.event.trim();
+        if (!resolvedEvents.new_request) {
+            resolvedEvents.new_request = defaultEvent;
+        }
+    }
+
+    const eventNames = new Set();
+    Object.values(resolvedEvents)
+        .concat(Object.values(configuredEvents))
+        .concat(typeof realtimeConfig.event === 'string' ? [realtimeConfig.event] : [])
+        .forEach(name => {
+            if (typeof name === 'string' && name.trim() !== '') {
+                eventNames.add(name.trim());
+            }
+        });
+
+    CRM_EXTRA_EVENTS.forEach(name => eventNames.add(name));
+    (LEGACY_EVENT_NAMES[moduleKey] || []).forEach(name => eventNames.add(name));
+
+    const channelName = (() => {
+        const configuredChannel = typeof realtimeConfig.channel === 'string'
+            ? realtimeConfig.channel.trim()
+            : '';
+        if (configuredChannel !== '') {
+            return configuredChannel;
+        }
+        return DEFAULT_CHANNELS[moduleKey] || DEFAULT_CHANNELS.solicitudes;
+    })();
+
     const currentUserId = parseUserId(window?.app?.user_id);
-    const realtimeKey = typeof window?.app?.options?.pusher_app_key === 'string'
-        ? window.app.options.pusher_app_key.trim()
-        : '';
-    const realtimeCluster = typeof window?.app?.options?.pusher_cluster === 'string'
-        ? window.app.options.pusher_cluster.trim()
-        : '';
-    const realtimeEnabled = typeof window?.app?.options?.pusher_realtime_notifications !== 'undefined'
-        && String(window.app.options.pusher_realtime_notifications).trim() === '1'
-        && realtimeKey !== '';
 
     const shouldIgnoreEvent = payload => {
         const triggered = parseUserId(payload?.triggered_by ?? payload?.user_id ?? payload?.staff_id);
@@ -202,20 +289,9 @@ const init = () => {
         }
 
         const pusher = new Pusher(realtimeKey, options);
-        const channel = pusher.subscribe('solicitudes-kanban');
+        const channel = pusher.subscribe(channelName);
 
-        const bindings = [
-            'kanban.nueva-solicitud',
-            'kanban.estado-actualizado',
-            'crm.detalles-actualizados',
-            'crm.nota-registrada',
-            'crm.tarea-creada',
-            'crm.tarea-actualizada',
-            'crm.adjunto-subido',
-            'turnero.turno-actualizado',
-        ];
-
-        bindings.forEach(eventName => {
+        eventNames.forEach(eventName => {
             channel.bind(eventName, data => {
                 if (shouldIgnoreEvent(data)) {
                     return;

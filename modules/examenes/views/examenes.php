@@ -1070,4 +1070,4 @@ array_push(
 <?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= asset('js/pages/solicitudes/index.js') ?>"></script>
+<script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>

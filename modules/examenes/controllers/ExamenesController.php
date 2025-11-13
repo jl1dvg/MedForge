@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Core\BaseController;
+use Helpers\JsonLogger;
 use Modules\Examenes\Models\ExamenesModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Notifications\Services\PusherConfigService;
@@ -492,6 +493,12 @@ class ExamenesController extends BaseController
 
             $this->json(['data' => $solicitudes]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_examenes_panel',
+                'Error cargando turnero de exámenes (panel múltiples)',
+                $e,
+                ['estados' => $estados]
+            );
             $this->json(['data' => [], 'error' => 'No se pudo cargar el turnero'], 500);
         }
     }
@@ -540,6 +547,19 @@ class ExamenesController extends BaseController
                 'data' => $registro,
             ]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_examenes_panel',
+                'Error al llamar turno del turnero de exámenes (panel múltiples)',
+                $e,
+                [
+                    'payload' => [
+                        'id' => $id,
+                        'turno' => $turno,
+                        'estado' => $estadoNormalizado,
+                    ],
+                    'usuario' => $this->getCurrentUserId(),
+                ]
+            );
             $this->json(['success' => false, 'error' => 'No se pudo llamar el turno solicitado'], 500);
         }
     }

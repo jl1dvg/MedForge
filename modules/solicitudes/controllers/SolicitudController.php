@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Core\BaseController;
+use Helpers\JsonLogger;
 use DateInterval;
 use DateTimeImmutable;
 use Models\SolicitudModel;
@@ -710,6 +711,12 @@ class SolicitudController extends BaseController
 
             $this->json(['data' => $solicitudes]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_solicitudes',
+                'Error cargando turnero de solicitudes',
+                $e,
+                ['estados' => $estados]
+            );
             $this->json(['data' => [], 'error' => 'No se pudo cargar el turnero'], 500);
         }
     }
@@ -753,11 +760,53 @@ class SolicitudController extends BaseController
             $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
             $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
 
+            try {
+                $this->pusherConfig->trigger(
+                    [
+                        'id' => (int) ($registro['id'] ?? $id ?? 0),
+                        'turno' => $registro['turno'] ?? $turno,
+                        'estado' => $registro['estado'] ?? $estadoNormalizado,
+                        'hc_number' => $registro['hc_number'] ?? null,
+                        'full_name' => $registro['full_name'] ?? null,
+                        'kanban_estado' => $registro['kanban_estado'] ?? ($registro['estado'] ?? null),
+                        'triggered_by' => $this->getCurrentUserId(),
+                    ],
+                    null,
+                    PusherConfigService::EVENT_TURNERO_UPDATED
+                );
+            } catch (Throwable $notificationError) {
+                JsonLogger::log(
+                    'turnero_solicitudes',
+                    'No se pudo notificar la actualización del turnero de solicitudes',
+                    $notificationError,
+                    [
+                        'registro' => [
+                            'id' => (int) ($registro['id'] ?? $id ?? 0),
+                            'turno' => $registro['turno'] ?? $turno,
+                            'estado' => $registro['estado'] ?? $estadoNormalizado,
+                        ],
+                    ]
+                );
+            }
+
             $this->json([
                 'success' => true,
                 'data' => $registro,
             ]);
         } catch (Throwable $e) {
+            JsonLogger::log(
+                'turnero_solicitudes',
+                'Error al llamar turno del turnero de solicitudes',
+                $e,
+                [
+                    'payload' => [
+                        'id' => $id,
+                        'turno' => $turno,
+                        'estado' => $estadoNormalizado,
+                    ],
+                    'usuario' => $this->getCurrentUserId(),
+                ]
+            );
             $this->json(['success' => false, 'error' => 'No se pudo llamar el turno solicitado'], 500);
         }
     }
