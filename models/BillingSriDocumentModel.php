@@ -6,8 +6,12 @@ use PDO;
 
 class BillingSriDocumentModel
 {
-    public function __construct(private readonly PDO $db)
+    /** @var PDO */
+    private $db;
+
+    public function __construct(PDO $db)
     {
+        $this->db = $db;
     }
 
     public function create(int $billingId, array $data): int

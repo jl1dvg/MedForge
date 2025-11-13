@@ -10,13 +10,21 @@ use PDO;
 
 class SriService
 {
-    private BillingSriDocumentModel $documentModel;
-    private PacienteService $pacienteService;
-    /** @var array<string, mixed> */
-    private array $config;
+    /** @var BillingSriDocumentModel */
+    private $documentModel;
 
-    public function __construct(private readonly PDO $pdo)
+    /** @var PacienteService */
+    private $pacienteService;
+
+    /** @var array<string, mixed> */
+    private $config;
+
+    /** @var PDO */
+    private $pdo;
+
+    public function __construct(PDO $pdo)
     {
+        $this->pdo = $pdo;
         $this->documentModel = new BillingSriDocumentModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->config = [

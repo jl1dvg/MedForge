@@ -8,11 +8,23 @@ use Modules\Pacientes\Services\PacienteService;
 
 class BillingViewService
 {
+    /** @var LegacyBillingController */
+    private $billingController;
+
+    /** @var PacienteService */
+    private $pacienteService;
+
+    /** @var BillingSriDocumentModel */
+    private $sriDocumentModel;
+
     public function __construct(
-        private readonly LegacyBillingController $billingController,
-        private readonly PacienteService $pacienteService,
-        private readonly BillingSriDocumentModel $sriDocumentModel
+        LegacyBillingController $billingController,
+        PacienteService $pacienteService,
+        BillingSriDocumentModel $sriDocumentModel
     ) {
+        $this->billingController = $billingController;
+        $this->pacienteService = $pacienteService;
+        $this->sriDocumentModel = $sriDocumentModel;
     }
 
     public function obtenerListadoFacturas(?string $mes = null): array
