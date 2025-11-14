@@ -9,20 +9,189 @@ use PDO;
 
 class InformesController extends BaseController
 {
-    private LegacyBillingController $billingController;
-    private PacienteService $pacienteService;
+    /** @var LegacyBillingController */
+    private $billingController;
+
+    /** @var PacienteService */
+    private $pacienteService;
+
+    /** @var array<string, array> */
+    private $grupoConfigs = [];
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->billingController = new LegacyBillingController($pdo);
         $this->pacienteService = new PacienteService($pdo);
+        $this->grupoConfigs = [
+            'iess' => [
+                'slug' => 'iess',
+                'titulo' => 'Informe IESS',
+                'basePath' => '/informes/iess',
+                'afiliaciones' => [
+                    'contribuyente voluntario',
+                    'conyuge',
+                    'conyuge pensionista',
+                    'seguro campesino',
+                    'seguro campesino jubilado',
+                    'seguro general',
+                    'seguro general jubilado',
+                    'seguro general por montepio',
+                    'seguro general tiempo parcial',
+                    'hijos dependientes',
+                ],
+                'excelButtons' => [
+                    [
+                        'grupo' => 'IESS',
+                        'label' => 'Descargar Excel',
+                        'class' => 'btn btn-success btn-lg me-2',
+                        'icon' => 'fa fa-file-excel-o',
+                    ],
+                    [
+                        'grupo' => 'IESS_SOAM',
+                        'label' => 'Descargar SOAM',
+                        'class' => 'btn btn-outline-success btn-lg me-2',
+                        'icon' => 'fa fa-file-excel-o',
+                    ],
+                ],
+                'scrapeButtonLabel' => '📋 Ver todas las atenciones por cobrar',
+                'consolidadoTitulo' => 'Consolidado mensual de pacientes IESS',
+            ],
+            'isspol' => [
+                'slug' => 'isspol',
+                'titulo' => 'Informe ISSPOL',
+                'basePath' => '/informes/isspol',
+                'afiliaciones' => ['isspol'],
+                'excelButtons' => [
+                    [
+                        'grupo' => 'ISSPOL',
+                        'label' => 'Descargar Excel',
+                        'class' => 'btn btn-success btn-lg me-2',
+                        'icon' => 'fa fa-file-excel-o',
+                    ],
+                ],
+                'scrapeButtonLabel' => '📋 Obtener código de derivación',
+                'consolidadoTitulo' => 'Consolidado mensual de pacientes ISSPOL',
+                'enableApellidoFilter' => true,
+            ],
+            'issfa' => [
+                'slug' => 'issfa',
+                'titulo' => 'Informe ISSFA',
+                'basePath' => '/informes/issfa',
+                'afiliaciones' => ['issfa'],
+                'excelButtons' => [
+                    [
+                        'grupo' => 'ISSFA',
+                        'label' => 'Descargar Excel',
+                        'class' => 'btn btn-success btn-lg me-2',
+                        'icon' => 'fa fa-file-excel-o',
+                    ],
+                ],
+                'scrapeButtonLabel' => '📋 Obtener código de derivación',
+                'consolidadoTitulo' => 'Consolidado mensual de pacientes ISSFA',
+                'enableApellidoFilter' => true,
+            ],
+        ];
     }
 
     public function informeIess(): void
     {
+        $this->renderInformeGrupo('iess');
+    }
+
+    public function informeIsspol(): void
+    {
+        $this->renderInformeGrupo('isspol');
+    }
+
+    public function informeIssfa(): void
+    {
+        $this->renderInformeGrupo('issfa');
+    }
+
+    public function informeParticulares(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_particulares.php');
+    }
+
+    public function informeIessPrueba(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('informe_iess_prueba.php');
+    }
+
+    public function generarConsolidadoIess(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_iess.php');
+    }
+
+    public function generarConsolidadoIsspol(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_isspol.php');
+    }
+
+    public function generarConsolidadoIssfa(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_consolidado_issfa.php');
+    }
+
+    public function generarExcelIessLote(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('generar_excel_iess_lote.php');
+    }
+
+    public function ajaxDetalleFactura(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('ajax/ajax_detalle_factura.php');
+    }
+
+    public function ajaxEliminarFactura(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('components/eliminar_factura.php');
+    }
+
+    public function ajaxScrapearCodigoDerivacion(): void
+    {
+        $this->requireAuth();
+        $this->includeLegacyView('ajax/scrapear_codigo_derivacion.php');
+    }
+
+    private function includeLegacyView(string $relativePath): void
+    {
+        $pdo = $this->pdo;
+        $username = $_SESSION['username'] ?? 'Invitado';
+        $path = BASE_PATH . '/modules/Billing/views/informes/' . ltrim($relativePath, '/');
+
+        if (!is_file($path)) {
+            http_response_code(404);
+            echo 'Vista legacy no encontrada';
+            return;
+        }
+
+        include $path;
+    }
+
+    /**
+     * Genera y renderiza un informe consolidado/detallado para el grupo solicitado.
+     */
+    private function renderInformeGrupo(string $grupo): void
+    {
+        if (!isset($this->grupoConfigs[$grupo])) {
+            http_response_code(404);
+            echo 'Informe no disponible';
+            return;
+        }
+
         $this->requireAuth();
 
+        $config = $this->grupoConfigs[$grupo];
         $formIdScrape = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
         $hcNumberScrape = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
         $scrapingOutput = null;
@@ -42,6 +211,7 @@ class InformesController extends BaseController
             'modo' => 'consolidado',
             'billing_id' => $_GET['billing_id'] ?? null,
             'mes' => $_GET['mes'] ?? '',
+            'apellido' => $_GET['apellido'] ?? '',
         ];
 
         $mesSeleccionado = $filtros['mes'];
@@ -118,7 +288,7 @@ class InformesController extends BaseController
         }
 
         $this->render('modules/Billing/views/informe_iess.php', [
-            'pageTitle' => 'Informe IESS',
+            'pageTitle' => $config['titulo'],
             'scrapingOutput' => $scrapingOutput,
             'filtros' => $filtros,
             'mesSeleccionado' => $mesSeleccionado,
@@ -133,87 +303,8 @@ class InformesController extends BaseController
             'billingController' => $this->billingController,
             'pacientesCache' => $pacientesCache,
             'datosCache' => $datosCache,
+            'grupoConfig' => $config,
+            'requestQuery' => $_GET,
         ]);
-    }
-
-    public function informeIsspol(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('informe_isspol.php');
-    }
-
-    public function informeIssfa(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('informe_issfa.php');
-    }
-
-    public function informeParticulares(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('informe_particulares.php');
-    }
-
-    public function informeIessPrueba(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('informe_iess_prueba.php');
-    }
-
-    public function generarConsolidadoIess(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('generar_consolidado_iess.php');
-    }
-
-    public function generarConsolidadoIsspol(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('generar_consolidado_isspol.php');
-    }
-
-    public function generarConsolidadoIssfa(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('generar_consolidado_issfa.php');
-    }
-
-    public function generarExcelIessLote(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('generar_excel_iess_lote.php');
-    }
-
-    public function ajaxDetalleFactura(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('ajax/ajax_detalle_factura.php');
-    }
-
-    public function ajaxEliminarFactura(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('components/eliminar_factura.php');
-    }
-
-    public function ajaxScrapearCodigoDerivacion(): void
-    {
-        $this->requireAuth();
-        $this->includeLegacyView('ajax/scrapear_codigo_derivacion.php');
-    }
-
-    private function includeLegacyView(string $relativePath): void
-    {
-        $pdo = $this->pdo;
-        $username = $_SESSION['username'] ?? 'Invitado';
-        $path = BASE_PATH . '/modules/Billing/views/informes/' . ltrim($relativePath, '/');
-
-        if (!is_file($path)) {
-            http_response_code(404);
-            echo 'Vista legacy no encontrada';
-            return;
-        }
-
-        include $path;
     }
 }
