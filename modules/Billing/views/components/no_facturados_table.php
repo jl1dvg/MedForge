@@ -31,22 +31,22 @@
 </div>
 
 <div class="card mb-3">
-    <div class="card-header bg-primary text-white">Filtros</div>
+    <div class="card-header bg-primary text-white">Filtros rápidos</div>
     <div class="card-body">
-        <form id="filtrosNoFacturados" class="row g-3">
-            <div class="col-md-3">
+        <form id="filtrosNoFacturados" class="row g-3 align-items-end">
+            <div class="col-md-2">
                 <label for="fFechaDesde" class="form-label">Fecha desde</label>
                 <input type="date" id="fFechaDesde" name="fecha_desde" class="form-control form-control-sm">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="fFechaHasta" class="form-label">Fecha hasta</label>
                 <input type="date" id="fFechaHasta" name="fecha_hasta" class="form-control form-control-sm">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="fAfiliacion" class="form-label">Afiliación</label>
                 <input type="text" id="fAfiliacion" name="afiliacion" class="form-control form-control-sm" placeholder="Ej: IESS">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="fEstadoRevision" class="form-label">Estado revisión</label>
                 <select id="fEstadoRevision" name="estado_revision" class="form-select form-select-sm">
                     <option value="">Todos</option>
@@ -54,7 +54,7 @@
                     <option value="0">Pendiente</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="fTipo" class="form-label">Tipo</label>
                 <select id="fTipo" name="tipo" class="form-select form-select-sm">
                     <option value="">Todos</option>
@@ -62,7 +62,7 @@
                     <option value="no_quirurgico">No quirúrgico</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="fBusqueda" class="form-label">Paciente / HC</label>
                 <input type="text" id="fBusqueda" name="busqueda" class="form-control form-control-sm" placeholder="Nombre o HC">
             </div>
@@ -79,7 +79,7 @@
                     <input type="number" step="0.01" id="fValorMax" name="valor_max" class="form-control" placeholder="Máx">
                 </div>
             </div>
-            <div class="col-12 text-end">
+            <div class="col-md-4 ms-auto text-end">
                 <button type="submit" class="btn btn-sm btn-primary me-2"><i class="mdi mdi-magnify"></i> Aplicar</button>
                 <button type="reset" class="btn btn-sm btn-outline-secondary" id="btnLimpiarFiltros">Limpiar</button>
             </div>
@@ -88,26 +88,102 @@
 </div>
 
 <div class="card">
-    <div class="card-header bg-secondary text-white">Procedimientos no facturados</div>
+    <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <ul class="nav nav-tabs card-header-tabs" id="noFacturadosTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tabRevisados" data-bs-toggle="tab" data-bs-target="#paneRevisados" type="button" role="tab" aria-controls="paneRevisados" aria-selected="true">Revisados</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabPendientes" data-bs-toggle="tab" data-bs-target="#panePendientes" type="button" role="tab" aria-controls="panePendientes" aria-selected="false">No revisados</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabNoQuirurgicos" data-bs-toggle="tab" data-bs-target="#paneNoQuirurgicos" type="button" role="tab" aria-controls="paneNoQuirurgicos" aria-selected="false">No quirúrgicos</button>
+            </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-muted small" id="seleccionadosInfo">0 seleccionados</span>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btnMarcarRevisado" disabled>
+                <i class="mdi mdi-check-circle-outline"></i> Marcar revisado
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" id="btnFacturarLote" disabled>
+                <i class="mdi mdi-cash-multiple"></i> Facturar en lote
+            </button>
+        </div>
+    </div>
     <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover table-sm mb-0" id="noFacturadosTable" style="width:100%">
-                <thead class="table-light">
-                    <tr>
-                        <th>Form ID</th>
-                        <th>HC</th>
-                        <th>Paciente</th>
-                        <th>Afiliación</th>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Estado revisión</th>
-                        <th>Procedimiento</th>
-                        <th>Valor</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="paneRevisados" role="tabpanel" aria-labelledby="tabRevisados">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover table-sm mb-0 w-100" id="tablaRevisados">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="selectAllRevisados" aria-label="Seleccionar todos los revisados">
+                                </th>
+                                <th>Form ID</th>
+                                <th>HC</th>
+                                <th>Paciente</th>
+                                <th>Afiliación</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Estado revisión</th>
+                                <th>Procedimiento</th>
+                                <th>Valor</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="panePendientes" role="tabpanel" aria-labelledby="tabPendientes">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover table-sm mb-0 w-100" id="tablaPendientes">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="selectAllPendientes" aria-label="Seleccionar todos los no revisados">
+                                </th>
+                                <th>Form ID</th>
+                                <th>HC</th>
+                                <th>Paciente</th>
+                                <th>Afiliación</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Estado revisión</th>
+                                <th>Procedimiento</th>
+                                <th>Valor</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="paneNoQuirurgicos" role="tabpanel" aria-labelledby="tabNoQuirurgicos">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover table-sm mb-0 w-100" id="tablaNoQuirurgicos">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="selectAllNoQuirurgicos" aria-label="Seleccionar todos los no quirúrgicos">
+                                </th>
+                                <th>Form ID</th>
+                                <th>HC</th>
+                                <th>Paciente</th>
+                                <th>Afiliación</th>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Estado revisión</th>
+                                <th>Procedimiento</th>
+                                <th>Valor</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
