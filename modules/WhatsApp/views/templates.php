@@ -31,8 +31,8 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
             <div class="fw-600">
                 <?= htmlspecialchars($config['brand'] ?? 'Sin marca', ENT_QUOTES, 'UTF-8'); ?>
             </div>
-            <a href="/whatsapp/autoresponder" class="btn btn-sm btn-outline-primary mt-2">
-                <i class="mdi mdi-flowchart me-1"></i>Ver flujo de autorespuesta
+            <a href="/whatsapp/flowmaker" class="btn btn-sm btn-outline-primary mt-2">
+                <i class="mdi mdi-flowchart me-1"></i>Editar en Flowmaker
             </a>
         </div>
     </div>

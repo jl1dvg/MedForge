@@ -471,7 +471,10 @@ switch ($statusType) {
         <div class="text-end">
             <div class="fw-600 text-muted small">Canal activo</div>
             <div class="fw-600"><?= $escape($brand); ?></div>
-            <div class="mt-2 d-flex gap-2 justify-content-end">
+            <div class="mt-2 d-flex gap-2 justify-content-end flex-wrap">
+                <a href="/whatsapp/flowmaker" class="btn btn-sm btn-outline-secondary">
+                    <i class="mdi mdi-flowchart me-1"></i>Flowmaker
+                </a>
                 <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary">
                     <i class="mdi mdi-whatsapp me-1"></i>Plantillas
                 </a>

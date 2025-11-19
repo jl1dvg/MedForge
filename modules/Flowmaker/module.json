@@ -1,0 +1,26 @@
+{
+    "alias": "flowmaker",
+    "version": "1.2",
+    "description": "",
+    "keywords": [],
+    "active": 1,
+    "order": 0,
+    "providers": [
+        "Modules\\Flowmaker\\Providers\\Main",
+        "Modules\\Flowmaker\\Providers\\Event"
+    ],
+    "aliases": {},
+    "files": [],
+    "requires": [],
+    "ownermenus":[
+        {
+            "name":"Flows",
+            "icon":"ni ni-controller text-blue",
+            "route":"flows.index",
+            "color":"#2dce89",
+            "priority":10
+        }
+    ],
+    "vendor_fields":[
+        ]
+}
