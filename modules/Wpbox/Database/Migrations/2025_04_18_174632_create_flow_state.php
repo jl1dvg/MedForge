@@ -30,6 +30,6 @@ class CreateFlowState extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('');
+        Schema::dropIfExists('contact_state');
     }
 }

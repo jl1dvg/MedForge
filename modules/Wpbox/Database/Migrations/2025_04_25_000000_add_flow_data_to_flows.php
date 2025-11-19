@@ -12,6 +12,10 @@ class AddFlowDataToFlows extends Migration
      */
     public function up(): void
     {
+        if (!$this->flowsTableExists()) {
+            return;
+        }
+
         if (!Schema::hasColumn('flows', 'flow_data')) {
             $hasConnectionsColumn = Schema::hasColumn('flows', 'connections');
 
@@ -48,6 +52,10 @@ class AddFlowDataToFlows extends Migration
      */
     public function down(): void
     {
+        if (!$this->flowsTableExists()) {
+            return;
+        }
+
         if (!Schema::hasColumn('flows', 'nodes')) {
             Schema::table('flows', function (Blueprint $table) {
                 $table->text('nodes')->nullable()->after('company_id');
@@ -101,6 +109,10 @@ class AddFlowDataToFlows extends Migration
      */
     protected function migrateLegacyData(): void
     {
+        if (!$this->flowsTableExists()) {
+            return;
+        }
+
         $normalize = function ($value) {
             if ($value === null) {
                 return null;
@@ -140,5 +152,17 @@ class AddFlowDataToFlows extends Migration
                     ]);
                 }
             });
+    }
+
+    /**
+     * Determine whether the flows table exists before touching it.
+     */
+    protected function flowsTableExists(): bool
+    {
+        try {
+            return Schema::hasTable('flows');
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }
