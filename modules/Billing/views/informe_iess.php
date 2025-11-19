@@ -15,8 +15,16 @@ $billingController = $billingController ?? null;
 $pacientesCache = $pacientesCache ?? [];
 $datosCache = $datosCache ?? [];
 $scrapingOutput = $scrapingOutput ?? null;
-
-$afiliacionesIESS = [
+$grupoConfig = $grupoConfig ?? [];
+$basePath = rtrim($grupoConfig['basePath'] ?? '/informes/iess', '/');
+$pageTitle = $grupoConfig['titulo'] ?? 'Informe IESS';
+$excelButtons = $grupoConfig['excelButtons'] ?? [];
+$scrapeButtonLabel = $grupoConfig['scrapeButtonLabel'] ?? '📋 Ver todas las atenciones por cobrar';
+$consolidadoTitulo = $grupoConfig['consolidadoTitulo'] ?? 'Consolidado mensual de pacientes';
+$enableApellidoFilter = !empty($grupoConfig['enableApellidoFilter']);
+$afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
+if (empty($afiliacionesPermitidas)) {
+    $afiliacionesPermitidas = [
         'contribuyente voluntario',
         'conyuge',
         'conyuge pensionista',
@@ -27,13 +35,19 @@ $afiliacionesIESS = [
         'seguro general por montepio',
         'seguro general tiempo parcial',
         'hijos dependientes',
-];
+    ];
+}
+$afiliacionesPermitidas = array_map(
+    fn($afiliacion) => InformesHelper::normalizarAfiliacion($afiliacion),
+    $afiliacionesPermitidas
+);
+
 ?>
 
 <section class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Informe IESS</h3>
+            <h3 class="page-title"><?= htmlspecialchars($pageTitle) ?></h3>
             <div class="d-inline-block align-items-center">
                 <nav>
                     <ol class="breadcrumb">
@@ -64,7 +78,7 @@ $afiliacionesIESS = [
             <div class="box">
                 <div class="card shadow-sm mb-4">
                     <div class="card-body">
-                        <form method="GET" class="row g-3 align-items-end">
+                        <form method="GET" action="<?= htmlspecialchars($basePath) ?>" class="row g-3 align-items-end">
                             <input type="hidden" name="modo" value="consolidado">
 
                             <div class="col-md-4">
@@ -84,8 +98,8 @@ $afiliacionesIESS = [
                                         if (!isset($cachePorMes[$mes]['pacientes'][$hc]) && $pacienteService) {
                                             $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
                                         }
-                                        $afiliacion = strtolower(trim($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? ''));
-                                        if (in_array($afiliacion, $afiliacionesIESS, true)) {
+                                        $afiliacion = InformesHelper::normalizarAfiliacion($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? '');
+                                        if (in_array($afiliacion, $afiliacionesPermitidas, true)) {
                                             $mesesValidos[$mes] = true;
                                         }
                                     }
@@ -100,11 +114,27 @@ $afiliacionesIESS = [
                                 </select>
                             </div>
 
+                            <?php if ($enableApellidoFilter): ?>
+                                <div class="col-md-4">
+                                    <label for="apellido" class="form-label fw-bold">
+                                        <i class="mdi mdi-account-search"></i> Filtrar por apellido:
+                                    </label>
+                                    <input
+                                            type="text"
+                                            id="apellido"
+                                            name="apellido"
+                                            class="form-control"
+                                            value="<?= htmlspecialchars($filtros['apellido'] ?? '') ?>"
+                                            placeholder="Ej: Pérez"
+                                    >
+                                </div>
+                            <?php endif; ?>
+
                             <div class="col-md-4 d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="mdi mdi-magnify"></i> Buscar
                                 </button>
-                                <a href="/informes/iess" class="btn btn-outline-secondary">
+                                <a href="<?= htmlspecialchars($basePath) ?>" class="btn btn-outline-secondary">
                                     <i class="mdi mdi-filter-remove"></i> Limpiar
                                 </a>
                             </div>
@@ -135,13 +165,18 @@ $afiliacionesIESS = [
                         <?php include __DIR__ . '/components/header_factura.php'; ?>
                     </div>
 
-                    <?php if (!empty($hcNumber)): ?>
+                    <?php if (!empty($hcNumber)):
+                        $scrapeActionUrl = $basePath;
+                        if (!empty($filtros['billing_id'])) {
+                            $scrapeActionUrl .= '?billing_id=' . urlencode((string)$filtros['billing_id']);
+                        }
+                        ?>
                         <div class="mb-4 text-end">
-                            <form method="post" action="/informes/iess?billing_id=<?= htmlspecialchars($filtros['billing_id']) ?>">
+                            <form method="post" action="<?= htmlspecialchars($scrapeActionUrl) ?>">
                                 <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($primerDato['billing']['form_id'] ?? '') ?>">
                                 <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($hcNumber) ?>">
                                 <button type="submit" name="scrape_derivacion" class="btn btn-warning">
-                                    📋 Ver todas las atenciones por cobrar
+                                    <?= htmlspecialchars($scrapeButtonLabel) ?>
                                 </button>
                             </form>
                         </div>
@@ -157,19 +192,29 @@ $afiliacionesIESS = [
                     <div class="row mt-4">
                         <div class="col-12 text-end">
                             <?php $formIdsParam = implode(',', $formIds); ?>
-                            <a href="/public/index.php/billing/excel?form_id=<?= urlencode($formIdsParam) ?>&grupo=IESS" class="btn btn-success btn-lg me-2">
-                                <i class="fa fa-file-excel-o"></i> Descargar Excel
+                            <?php foreach ($excelButtons as $button):
+                                $grupoExcel = $button['grupo'] ?? '';
+                                if (!$grupoExcel) {
+                                    continue;
+                                }
+                                $labelExcel = $button['label'] ?? 'Descargar Excel';
+                                $classExcel = $button['class'] ?? 'btn btn-success btn-lg me-2';
+                                $iconExcel = $button['icon'] ?? 'fa fa-file-excel-o';
+                                $excelUrl = '/public/index.php/billing/excel?form_id=' . urlencode($formIdsParam) . '&grupo=' . urlencode($grupoExcel);
+                                ?>
+                                <a href="<?= htmlspecialchars($excelUrl) ?>" class="<?= htmlspecialchars($classExcel) ?>">
+                                    <?php if (!empty($iconExcel)): ?><i class="<?= htmlspecialchars($iconExcel) ?>"></i> <?php endif; ?>
+                                    <?= htmlspecialchars($labelExcel) ?>
                                 </a>
-                            <a href="/public/index.php/billing/excel?form_id=<?= urlencode($formIdsParam) ?>&grupo=IESS_SOAM" class="btn btn-outline-success btn-lg me-2">
-                                <i class="fa fa-file-excel-o"></i> Descargar SOAM
-                            </a>
+                            <?php endforeach; ?>
                             <?php
                             $filtrosParaRegresar = $_GET;
                             unset($filtrosParaRegresar['billing_id']);
                             $filtrosParaRegresar['modo'] = 'consolidado';
                             $queryString = http_build_query($filtrosParaRegresar);
+                            $regresarUrl = $basePath . ($queryString ? '?' . $queryString : '');
                             ?>
-                            <a href="/informes/iess?<?= htmlspecialchars($queryString) ?>" class="btn btn-outline-secondary btn-lg">
+                            <a href="<?= htmlspecialchars($regresarUrl) ?>" class="btn btn-outline-secondary btn-lg">
                                 <i class="fa fa-arrow-left"></i> Regresar al consolidado
                             </a>
                         </div>
@@ -179,14 +224,14 @@ $afiliacionesIESS = [
                     <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
                 <?php else: ?>
                     <?php if (!empty($mesSeleccionado) && $pacienteService && $billingController): ?>
-                        <h4>Consolidado mensual de pacientes IESS</h4>
+                        <h4><?= htmlspecialchars($consolidadoTitulo) ?></h4>
                         <?php
                         $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
                             $facturas,
                             $filtros,
                             $billingController,
                             $pacienteService,
-                            $afiliacionesIESS
+                            $afiliacionesPermitidas
                         );
 
                         $consolidadoAgrupado = [];
@@ -240,7 +285,7 @@ $afiliacionesIESS = [
 
                                 if (!isset($pacientesCache[$hc])) {
                                     $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
-                            }
+                                }
                                 $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
                         }
                         }
@@ -317,16 +362,17 @@ $afiliacionesIESS = [
                                                 }
                                             }
                                             $billingParam = implode(',', $billingIdsDetalle);
-                                            $urlDetalle = '/informes/iess?billing_id=' . urlencode($billingParam);
+                                            $urlDetalle = $basePath . '?billing_id=' . urlencode($billingParam);
                                             ?>
-                                            <td><a href="<?= $urlDetalle ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
+                                            <td><a href="<?= htmlspecialchars($urlDetalle) ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
                                     </tr>
                                         <?php $n++; endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
                         <?php endforeach; ?>
-                        <a href="/informes/iess/consolidado<?= $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>" class="btn btn-primary mt-3">
+                        <?php $consolidadoUrl = $basePath . '/consolidado' . ($mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : ''); ?>
+                        <a href="<?= htmlspecialchars($consolidadoUrl) ?>" class="btn btn-primary mt-3">
                             Descargar Consolidado
                         </a>
                     <?php else: ?>
