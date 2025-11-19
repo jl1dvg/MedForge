@@ -21,6 +21,10 @@ return function (Router $router) {
         (new BillingController($pdo))->crearDesdeNoFacturado();
     });
 
+    $router->get('/api/billing/no-facturados', function (\PDO $pdo) {
+        (new BillingController($pdo))->apiNoFacturados();
+    });
+
     $router->get('/views/billing/no_facturados.php', function () {
         header('Location: /billing/no-facturados', true, 302);
         exit;
