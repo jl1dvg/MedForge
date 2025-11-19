@@ -128,13 +128,14 @@ class NoFacturadosService
         $stmtSummary->execute();
         $summaryRows = $stmtSummary->fetchAll(PDO::FETCH_ASSOC);
 
-        $dataSql = $baseSql . $where . ' ORDER BY base.fecha DESC, base.form_id DESC LIMIT :start, :length';
+        $limitStart = max(0, (int) $start);
+        $limitLength = max(1, (int) $length);
+
+        $dataSql = $baseSql . $where . ' ORDER BY base.fecha DESC, base.form_id DESC LIMIT ' . $limitStart . ', ' . $limitLength;
         $stmt = $this->db->prepare($dataSql);
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
-        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
-        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
         $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
