@@ -220,7 +220,7 @@ class PreviewService
             error_log("❌ Error en obtenerDerechoPorDuracion: " . $e->getMessage());
         }
 
-        // Determinar código de anestesia y agregar entradas según edad y afiliación
+        // Determinar código de anestesia y agregar entradas según afiliación
         $codigoAnestesiaBase = '999999';
 
         if ($afiliacion === "ISSFA" && $codigoCirugia === "66984") {
@@ -231,16 +231,6 @@ class PreviewService
                 'valor2' => 13.34,
                 'precio' => round($cuartos * 13.34, 2)
             ];
-
-            if ($edad !== null && $edad >= 70) {
-                $preview['anestesia'][] = [
-                    'codigo' => '99100',
-                    'nombre' => 'ANESTESIA POR EDAD EXTREMA',
-                    'tiempo' => 1,
-                    'valor2' => 13.34,
-                    'precio' => round(1 * 13.34, 2)
-                ];
-            }
         } elseif ($afiliacion === "ISSFA") {
             $cantidad99149 = ($cuartos >= 2) ? 1 : $cuartos;
             $cantidad99150 = ($cuartos > 2) ? $cuartos - 2 : 0;
@@ -261,24 +251,6 @@ class PreviewService
                     'tiempo' => $cantidad99150,
                     'valor2' => 13.34,
                     'precio' => round($cantidad99150 * 13.34, 2)
-                ];
-            }
-
-            $preview['anestesia'][] = [
-                'codigo' => $codigoAnestesiaBase,
-                'nombre' => 'MODIFICADOR POR TIEMPO DE ANESTESIA',
-                'tiempo' => $cuartos,
-                'valor2' => 13.34,
-                'precio' => round($cuartos * 13.34, 2)
-            ];
-
-            if ($edad !== null && $edad >= 70) {
-                $preview['anestesia'][] = [
-                    'codigo' => '99100',
-                    'nombre' => 'ANESTESIA POR EDAD EXTREMA',
-                    'tiempo' => 1,
-                    'valor2' => 13.34,
-                    'precio' => round(1 * 13.34, 2)
                 ];
             }
         } else {

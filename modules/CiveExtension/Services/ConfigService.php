@@ -17,7 +17,7 @@ class ConfigService
         'api_timeout_ms' => 12000,
         'api_max_retries' => 2,
         'api_retry_delay_ms' => 600,
-        'api_credentials' => 'same-origin',
+        'api_credentials' => 'include',
         'procedures_cache_ttl_ms' => 300000,
         'health_enabled' => false,
         'health_max_age_minutes' => 60,
