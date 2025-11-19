@@ -12,6 +12,7 @@ use PDO;
 class BillingController extends BaseController
 {
     private BillingViewService $service;
+    private \Modules\Billing\Services\NoFacturadosService $noFacturadosService;
     private LegacyBillingController $legacyController;
 
     public function __construct(PDO $pdo)
@@ -26,6 +27,7 @@ class BillingController extends BaseController
             $pacienteService,
             $sriDocumentModel
         );
+        $this->noFacturadosService = new \Modules\Billing\Services\NoFacturadosService($pdo);
     }
 
     public function index(): void
@@ -194,6 +196,38 @@ class BillingController extends BaseController
         }
 
         $this->redirectToDetalle($formId);
+    }
+
+    public function apiNoFacturados(): void
+    {
+        $this->requireAuth();
+
+        $draw = (int)($_GET['draw'] ?? 0);
+        $start = (int)($_GET['start'] ?? 0);
+        $length = (int)($_GET['length'] ?? 25);
+
+        $filters = [
+            'fecha_desde' => $_GET['fecha_desde'] ?? null,
+            'fecha_hasta' => $_GET['fecha_hasta'] ?? null,
+            'afiliacion' => $_GET['afiliacion'] ?? null,
+            'estado_revision' => $_GET['estado_revision'] ?? null,
+            'tipo' => $_GET['tipo'] ?? null,
+            'busqueda' => $_GET['busqueda'] ?? null,
+            'procedimiento' => $_GET['procedimiento'] ?? null,
+            'valor_min' => $_GET['valor_min'] ?? null,
+            'valor_max' => $_GET['valor_max'] ?? null,
+        ];
+
+        $resultado = $this->noFacturadosService->listar($filters, $start, $length);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'draw' => $draw,
+            'recordsTotal' => $resultado['recordsTotal'],
+            'recordsFiltered' => $resultado['recordsFiltered'],
+            'data' => $resultado['data'],
+            'summary' => $resultado['summary'],
+        ]);
     }
 
     private function redirectToDetalle(string $formId): void

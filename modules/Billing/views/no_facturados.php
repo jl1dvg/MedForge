@@ -1,12 +1,7 @@
 <?php
-$quirurgicos = $quirurgicosRevisados ?? [];
-$quirurgicosNoRevisados = $quirurgicosNoRevisados ?? [];
-$noQuirurgicos = $noQuirurgicos ?? [];
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/datatable/datatables.min.js',
     'assets/vendor_components/jquery.peity/jquery.peity.js',
-    'js/pages/data-table.js',
-    'js/pages/data-ticket.js',
 ]);
 ?>
 
@@ -27,11 +22,7 @@ $scripts = array_merge($scripts ?? [], [
 </section>
 
 <section class="content">
-    <div class="row">
-        <div class="col-lg-12 col-12">
-            <?php include __DIR__ . '/components/no_facturados_table.php'; ?>
-        </div>
-    </div>
+    <?php include __DIR__ . '/components/no_facturados_table.php'; ?>
 </section>
 
 <?php include __DIR__ . '/components/no_facturados_preview_modal.php'; ?>
@@ -41,6 +32,7 @@ $scripts = array_merge($scripts ?? [], [
         const previewContent = document.getElementById("previewContent");
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
+        const resumenContainer = document.getElementById('resumenTotales');
 
         const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
@@ -238,22 +230,144 @@ $scripts = array_merge($scripts ?? [], [
                         }
                     );
 
-                    if (html === "") {
-                        html = "<p class='text-muted'>No hay información para mostrar.</p>";
-                    } else {
+                    if (data.derechos?.length) {
                         html += `
-                            <div class="d-flex justify-content-end align-items-center mt-3">
-                                <span class="fw-bold me-2">Total estimado: </span>
-                                <span class="badge bg-primary fs-5">$${total.toFixed(2)}</span>
+                            <div class="card mb-3">
+                                <div class="card-header bg-secondary text-white py-2 px-3">Derechos</div>
+                                <ul class="list-group list-group-flush">
+                        `;
+
+                        data.derechos.forEach((d) => {
+                            const precioUnitario = Number(d.precioAfiliacion) || 0;
+                            const cantidad = Number(d.cantidad) || 0;
+                            const subtotal = precioUnitario * cantidad;
+                            total += subtotal;
+
+                            html += `
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="fw-bold">${d.codigo}</span> - ${d.detalle}
+                                        <br><small class="text-muted">x${cantidad} @ $${precioUnitario.toFixed(2)}</small>
+                                    </div>
+                                    <span class="badge bg-primary rounded-pill">$${subtotal.toFixed(2)}</span>
+                                </li>
+                            `;
+                        });
+
+                        html += `
+                                </ul>
                             </div>
                         `;
                     }
 
-                    previewContent.innerHTML = html;
-                } catch (e) {
-                    previewContent.innerHTML = "<p class='text-danger'>❌ Error al cargar preview</p>";
-                    console.error(e);
+                    previewContent.innerHTML = `
+                        <div class="alert alert-secondary">Valor estimado: <strong>$${total.toFixed(2)}</strong></div>
+                        ${html}
+                    `;
+                } catch (error) {
+                    previewContent.innerHTML = `<p class='text-danger'>❌ ${error?.message || error || 'No fue posible cargar el preview.'}</p>`;
                 }
+            });
+        }
+
+        const dt = $("#noFacturadosTable").DataTable({
+            serverSide: true,
+            processing: true,
+            searching: false,
+            ajax: {
+                url: '/api/billing/no-facturados',
+                data: function (d) {
+                    const form = document.getElementById('filtrosNoFacturados');
+                    const formData = new FormData(form);
+                    const filters = {};
+                    formData.forEach((value, key) => {
+                        filters[key] = value;
+                    });
+                    return { ...d, ...filters };
+                },
+            },
+            order: [[4, 'desc']],
+            columns: [
+                { data: 'form_id' },
+                { data: 'hc_number' },
+                { data: 'paciente', defaultContent: '' },
+                { data: 'afiliacion', defaultContent: '' },
+                {
+                    data: 'fecha',
+                    render: function (data) {
+                        if (!data) return '';
+                        const date = new Date(data);
+                        if (Number.isNaN(date.getTime())) return data;
+                        return date.toLocaleDateString('es-EC');
+                    }
+                },
+                {
+                    data: 'tipo',
+                    render: function (data) {
+                        return data === 'quirurgico'
+                            ? '<span class="badge bg-success">Quirúrgico</span>'
+                            : '<span class="badge bg-primary">No quirúrgico</span>';
+                    }
+                },
+                {
+                    data: 'estado_revision',
+                    render: function (data, type, row) {
+                        if (row.tipo !== 'quirurgico') {
+                            return '<span class="badge bg-secondary">N/A</span>';
+                        }
+                        const estado = Number(data) === 1;
+                        return estado
+                            ? '<span class="badge bg-success">Revisado</span>'
+                            : '<span class="badge bg-warning text-dark">Pendiente</span>';
+                    }
+                },
+                { data: 'procedimiento', defaultContent: '' },
+                {
+                    data: 'valor_estimado',
+                    className: 'text-end',
+                    render: function (data) {
+                        const valor = Number(data) || 0;
+                        return `$${valor.toFixed(2)}`;
+                    }
+                },
+                {
+                    data: null,
+                    orderable: false,
+                    searchable: false,
+                    render: function (data, type, row) {
+                        const formId = row.form_id ? String(row.form_id) : '';
+                        const hcNumber = row.hc_number ? String(row.hc_number) : '';
+                        const previewBtn = `<button class="btn btn-sm btn-info me-1" data-form-id="${formId}" data-hc-number="${hcNumber}" data-bs-toggle="modal" data-bs-target="#previewModal"><i class="mdi mdi-eye"></i> Preview</button>`;
+                        const facturarBtn = `<a class="btn btn-sm btn-secondary" href="/billing/facturar.php?form_id=${encodeURIComponent(formId)}">Facturar</a>`;
+                        return previewBtn + facturarBtn;
+                    }
+                }
+            ]
+        });
+
+        const filtrosForm = document.getElementById('filtrosNoFacturados');
+        filtrosForm?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            dt.ajax.reload();
+        });
+
+        document.getElementById('btnLimpiarFiltros')?.addEventListener('click', () => {
+            filtrosForm.reset();
+            dt.ajax.reload();
+        });
+
+        if (resumenContainer) {
+            dt.on('xhr', function () {
+                const json = dt.ajax.json();
+                const summary = json?.summary || {};
+                const formatMonto = (valor) => `$${Number(valor || 0).toFixed(2)}`;
+
+                resumenContainer.querySelector('[data-resumen="total-cantidad"]').textContent = summary.total ?? 0;
+                resumenContainer.querySelector('[data-resumen="total-monto"]').textContent = formatMonto(summary.monto);
+                resumenContainer.querySelector('[data-resumen="quirurgicos-cantidad"]').textContent = summary.quirurgicos?.cantidad ?? 0;
+                resumenContainer.querySelector('[data-resumen="quirurgicos-monto"]').textContent = formatMonto(summary.quirurgicos?.monto);
+                resumenContainer.querySelector('[data-resumen="no-quirurgicos-cantidad"]').textContent = summary.no_quirurgicos?.cantidad ?? 0;
+                resumenContainer.querySelector('[data-resumen="no-quirurgicos-monto"]').textContent = formatMonto(summary.no_quirurgicos?.monto);
             });
         }
     });
