@@ -747,10 +747,10 @@ class SettingsHelper
                             self::textField('cive_extension_control_base_url', 'URL base pública', false, 'Se usa para emitir el bootstrap de la extensión. Si se omite se deriva desde BASE_URL.'),
                             self::textField('cive_extension_api_base_url', 'URL base del API', true, 'Ej: https://asistentecive.consulmed.me/api. Puedes sobreescribirlo si tu API está detrás de otro host.'),
                             self::selectField('cive_extension_api_credentials_mode', 'Modo credentials de fetch', [
-                                'same-origin' => 'same-origin (recomendado)',
-                                'include' => 'include',
+                                'include' => 'include (enviar cookies a dominios autorizados)',
+                                'same-origin' => 'same-origin',
                                 'omit' => 'omit',
-                            ], 'same-origin'),
+                            ], 'include'),
                             self::numberField('cive_extension_timeout_ms', 'Timeout de peticiones (ms)', 12000),
                             self::numberField('cive_extension_max_retries', 'Reintentos ante error', 2),
                             self::numberField('cive_extension_retry_delay_ms', 'Tiempo entre reintentos (ms)', 600),

@@ -6,6 +6,7 @@ use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
 use Modules\Billing\Services\BillingViewService;
 use Modules\Pacientes\Services\PacienteService;
+use Models\BillingSriDocumentModel;
 use PDO;
 
 class BillingController extends BaseController
@@ -19,7 +20,12 @@ class BillingController extends BaseController
 
         $this->legacyController = new LegacyBillingController($pdo);
         $pacienteService = new PacienteService($pdo);
-        $this->service = new BillingViewService($this->legacyController, $pacienteService);
+        $sriDocumentModel = new BillingSriDocumentModel($pdo);
+        $this->service = new BillingViewService(
+            $this->legacyController,
+            $pacienteService,
+            $sriDocumentModel
+        );
     }
 
     public function index(): void

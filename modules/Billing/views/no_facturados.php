@@ -2,6 +2,12 @@
 $quirurgicos = $quirurgicosRevisados ?? [];
 $quirurgicosNoRevisados = $quirurgicosNoRevisados ?? [];
 $noQuirurgicos = $noQuirurgicos ?? [];
+$scripts = array_merge($scripts ?? [], [
+    'assets/vendor_components/datatable/datatables.min.js',
+    'assets/vendor_components/jquery.peity/jquery.peity.js',
+    'js/pages/data-table.js',
+    'js/pages/data-ticket.js',
+]);
 ?>
 
 <section class="content-header">
@@ -29,17 +35,6 @@ $noQuirurgicos = $noQuirurgicos ?? [];
 </section>
 
 <?php include __DIR__ . '/components/no_facturados_preview_modal.php'; ?>
-
-<script src="/public/js/vendors.min.js"></script> <!-- contiene jQuery -->
-<script src="/public/js/pages/chat-popup.js"></script>
-<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-<script src="/public/assets/vendor_components/jquery.peity/jquery.peity.js"></script>
-<script src="/public/js/jquery.smartmenus.js"></script>
-<script src="/public/js/menus.js"></script>
-<script src="/public/js/template.js"></script>
-<script src="/public/js/pages/data-table.js"></script>
-<script src="/public/js/pages/app-ticket.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", () => {
         const previewModal = document.getElementById("previewModal");

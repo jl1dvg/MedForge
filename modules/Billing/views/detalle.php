@@ -11,6 +11,21 @@ $totalSinIVA = $detalle['totalSinIVA'] ?? 0;
 $iva = $detalle['iva'] ?? 0;
 $totalConIVA = $detalle['totalConIVA'] ?? 0;
 $grupoClases = $detalle['grupoClases'] ?? [];
+$sri = $detalle['sri'] ?? null;
+$estadoSri = strtoupper($sri['estado'] ?? 'PENDIENTE');
+$badgeSri = match ($estadoSri) {
+    'AUTORIZADO' => 'bg-success',
+    'SIMULADO', 'ENVIADO' => 'bg-info',
+    'ERROR' => 'bg-danger',
+    'PENDIENTE' => 'bg-secondary',
+    default => 'bg-warning text-dark',
+};
+$alertSri = match ($estadoSri) {
+    'AUTORIZADO' => 'alert-success',
+    'SIMULADO', 'ENVIADO' => 'alert-info',
+    'ERROR' => 'alert-danger',
+    default => 'alert-secondary',
+};
 ?>
 
 <section class="content-header">
@@ -72,6 +87,43 @@ $grupoClases = $detalle['grupoClases'] ?? [];
                             </div>
                         </div>
                     </div>
+
+                    <?php if ($sri): ?>
+                        <div class="alert <?= $alertSri ?> d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                            <div>
+                                <span class="badge <?= $badgeSri ?> me-2"><?= htmlspecialchars($estadoSri) ?></span>
+                                <strong>Integración SRI</strong>
+                                <?php if (!empty($sri['numeroAutorizacion'])): ?>
+                                    <span class="d-block small text-muted">Autorización: <?= htmlspecialchars($sri['numeroAutorizacion']) ?></span>
+                                <?php endif; ?>
+                                <?php if (!empty($sri['claveAcceso'])): ?>
+                                    <span class="d-block small text-muted">Clave de acceso: <?= htmlspecialchars($sri['claveAcceso']) ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="text-md-end">
+                                <?php if (!empty($sri['ultimoEnvio'])): ?>
+                                    <div class="small text-muted">Último envío: <?= date('d/m/Y H:i', strtotime($sri['ultimoEnvio'])) ?></div>
+                                <?php endif; ?>
+                                <div class="small text-muted">Intentos: <?= (int)($sri['intentos'] ?? 0) ?></div>
+                            </div>
+                        </div>
+                        <?php if (!empty($sri['errores'])): ?>
+                            <details class="mb-3">
+                                <summary class="fw-bold text-danger">Ver errores reportados</summary>
+                                <pre class="bg-dark text-white p-3 rounded mt-2" style="white-space: pre-wrap;"><?= htmlspecialchars($sri['errores']) ?></pre>
+                            </details>
+                        <?php endif; ?>
+                        <?php if (!empty($sri['respuesta'])): ?>
+                            <details class="mb-3">
+                                <summary class="fw-bold text-primary">Ver respuesta del SRI</summary>
+                                <pre class="bg-light border p-3 rounded mt-2" style="white-space: pre-wrap;"><?= htmlspecialchars($sri['respuesta']) ?></pre>
+                            </details>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div class="alert alert-warning">
+                            <strong>Integración pendiente.</strong> Esta factura aún no ha sido enviada al SRI con las credenciales configuradas.
+                        </div>
+                    <?php endif; ?>
 
                     <?php foreach ($procedimientosPorGrupo as $grupo => $items): ?>
                         <?php if (empty($items)) continue; ?>

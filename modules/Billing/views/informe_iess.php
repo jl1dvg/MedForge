@@ -17,16 +17,16 @@ $datosCache = $datosCache ?? [];
 $scrapingOutput = $scrapingOutput ?? null;
 
 $afiliacionesIESS = [
-    'contribuyente voluntario',
-    'conyuge',
-    'conyuge pensionista',
-    'seguro campesino',
-    'seguro campesino jubilado',
-    'seguro general',
-    'seguro general jubilado',
-    'seguro general por montepio',
-    'seguro general tiempo parcial',
-    'hijos dependientes',
+        'contribuyente voluntario',
+        'conyuge',
+        'conyuge pensionista',
+        'seguro campesino',
+        'seguro campesino jubilado',
+        'seguro general',
+        'seguro general jubilado',
+        'seguro general por montepio',
+        'seguro general tiempo parcial',
+        'hijos dependientes',
 ];
 ?>
 
@@ -159,7 +159,7 @@ $afiliacionesIESS = [
                             <?php $formIdsParam = implode(',', $formIds); ?>
                             <a href="/public/index.php/billing/excel?form_id=<?= urlencode($formIdsParam) ?>&grupo=IESS" class="btn btn-success btn-lg me-2">
                                 <i class="fa fa-file-excel-o"></i> Descargar Excel
-                            </a>
+                                </a>
                             <a href="/public/index.php/billing/excel?form_id=<?= urlencode($formIdsParam) ?>&grupo=IESS_SOAM" class="btn btn-outline-success btn-lg me-2">
                                 <i class="fa fa-file-excel-o"></i> Descargar SOAM
                             </a>
@@ -240,16 +240,16 @@ $afiliacionesIESS = [
 
                                 if (!isset($pacientesCache[$hc])) {
                                     $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
-                                }
-                                $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
                             }
+                                $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
+                        }
                         }
                         $n = 1;
                         foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
                             $listaPacientes = array_values($pacientesAgrupados);
                             $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
                             $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                            ?>
+                        ?>
                             <div class="d-flex justify-content-between align-items-center mt-4">
                                 <h5>Mes: <?= $mesFormateado ?></h5>
                                 <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
@@ -258,8 +258,8 @@ $afiliacionesIESS = [
                             <div class="table-responsive" style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
                                 <table class="table table-striped table-hover table-sm invoice-archive sticky-header">
                                     <thead class="bg-success-light">
-                                    <tr>
-                                        <th>#</th>
+                                <tr>
+                                    <th>#</th>
                                         <th>🏛️</th>
                                         <th>🪪 Cédula</th>
                                         <th>👤 Nombres</th>
@@ -271,9 +271,9 @@ $afiliacionesIESS = [
                                         <th>⚧️</th>
                                         <th>💲 Total</th>
                                         <th>🧾Fact.</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
+                                </tr>
+                                </thead>
+                                <tbody>
                                     <?php foreach ($pacientesAgrupados as $hc => $info):
                                         $pacienteInfo = $pacienteService->getPatientDetails($hc);
                                         $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
@@ -282,31 +282,32 @@ $afiliacionesIESS = [
                                         $cie10 = InformesHelper::extraerCie10($cie10);
                                         $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
                                         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
-                                        $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
-                                        $formIdsPaciente = implode(', ', $info['form_ids']);
-                                        ?>
+                                    $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
+                                    $formIdsPaciente = implode(', ', $info['form_ids']);
+                                    ?>
                                         <tr style='font-size: 12.5px;'>
-                                            <td class="text-center"><?= $n ?></td>
+                                        <td class="text-center"><?= $n ?></td>
                                             <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
-                                            <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
+                                        <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
                                             <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
-                                            <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
-                                            <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
+                                        <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
+                                        <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
                                             <td><?= htmlspecialchars($cie10) ?></td>
-                                            <td><?= htmlspecialchars($formIdsPaciente) ?></td>
+                                        <td><?= htmlspecialchars($formIdsPaciente) ?></td>
                                             <td class="text-center"><?= $edad ?></td>
-                                            <td class="text-center">
-                                                <?php if (!empty($codigoDerivacion)): ?>
-                                                    <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
-                                                <?php else: ?>
+                                        <td class="text-center">
+                                            <?php if (!empty($codigoDerivacion)): ?>
+                                                <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
+                                            <?php else: ?>
                                                     <form method="post" style="display:inline;">
-                                                        <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($formIdsPaciente) ?>">
-                                                        <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
-                                                        <button type="submit" name="scrape_derivacion" class="btn btn-sm btn-warning">📌 Obtener Código Derivación</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td class="text-end">$<?= number_format($info['total'], 2) ?></td>
+                                                    <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($formIdsPaciente) ?>">
+                                                    <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
+                                                    <button type="submit" name="scrape_derivacion" class="btn btn-sm btn-warning">📌 Obtener Código Derivación</button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-end">$
+                                            <?= number_format($info['total'], 2) ?></td>
                                             <?php
                                             $billingIdsDetalle = [];
                                             foreach ($info['form_ids'] as $formIdLoop) {
@@ -319,11 +320,11 @@ $afiliacionesIESS = [
                                             $urlDetalle = '/informes/iess?billing_id=' . urlencode($billingParam);
                                             ?>
                                             <td><a href="<?= $urlDetalle ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
-                                        </tr>
+                                    </tr>
                                         <?php $n++; endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
+                                </tbody>
+                            </table>
+                        </div>
                         <?php endforeach; ?>
                         <a href="/informes/iess/consolidado<?= $mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : '' ?>" class="btn btn-primary mt-3">
                             Descargar Consolidado

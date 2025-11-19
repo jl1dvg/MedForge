@@ -6474,7 +6474,7 @@ ob_start();
             <td class="morado_tr" colspan="68">P. OBSERVACIONES</td>
         </tr>
         <tr style="height: 15px">
-            <td class="blanco_tr" colspan="68"><br></td>
+            <td class="blanco_tr" colspan="68">Pasa a sala de recuperación</td>
         </tr>
         <tr style="height: 15px">
             <td class="blanco_tr" colspan="68"><br></td>
