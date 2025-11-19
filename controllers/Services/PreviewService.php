@@ -78,8 +78,6 @@ class PreviewService
         }
 
         // 2. Insumos y derechos (desde API)
-        $apiBaseUrl = rtrim($this->resolveApiBaseUrl(), '/');
-
         $opts = [
             "http" => [
                 "method" => "POST",
@@ -91,7 +89,7 @@ class PreviewService
 
         $responseData = [];
         try {
-            $result = @file_get_contents($apiBaseUrl . '/insumos/obtener.php', false, $context);
+            $result = @file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
             if ($result === false) {
                 throw new \RuntimeException('No se pudo contactar con el servicio de insumos.');
             }
@@ -129,22 +127,8 @@ class PreviewService
                                 'precio' => $precio,
                                 'iva' => $i['iva'] ?? 1
                             ];
-}
-
-    private function resolveApiBaseUrl(): string
-    {
-        $base = rtrim((string) \BASE_URL, '/');
-        if ($base === '' || $base === '/') {
-            return 'https://cive.consulmed.me/api';
-        }
-
-        if (substr($base, -7) === '/public') {
-            $base = substr($base, 0, -7);
-        }
-
-        return $base . '/api';
-    }
-}
+                        }
+                    }
                 }
             }
 

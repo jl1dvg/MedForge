@@ -142,8 +142,27 @@ class BillingService
         $procedimientos = $this->billingProcedimientosModel->obtenerPorBillingId($billingId);
         $derechos = $this->billingDerechosModel->obtenerPorBillingId($billingId);
         $insumos = $this->billingInsumosModel->obtenerPorBillingId($billingId);
-        $insumosConIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 0);
-        $medicamentosSinIVA = array_filter($insumos, fn($i) => isset($i['es_medicamento']) && (int)$i['es_medicamento'] === 1);
+        $insumosConIVA = [];
+        $medicamentosSinIVA = [];
+
+        foreach ($insumos as $insumo) {
+            $esMedicamento = $insumo['es_medicamento'] ?? null;
+
+            if ($esMedicamento === null) {
+                // Algunos registros de billing_insumos (en especial de ISSPOL/ISSFA)
+                // no tienen relación en la tabla de catálogo y llegan sin bandera.
+                // Usamos el IVA como pista: en farmacia suele ser 0 y en insumos 1.
+                $esMedicamento = isset($insumo['iva']) && (int)$insumo['iva'] === 0 ? 1 : 0;
+            } else {
+                $esMedicamento = (int)$esMedicamento;
+            }
+
+            if ($esMedicamento === 1) {
+                $medicamentosSinIVA[] = $insumo;
+            } else {
+                $insumosConIVA[] = $insumo;
+            }
+        }
 
         if (!empty($medicamentosSinIVA)) {
             $codigos = array_unique(array_filter(array_map(fn($m) => $m['codigo'], $medicamentosSinIVA)));
