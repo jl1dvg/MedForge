@@ -28,6 +28,10 @@ function detectarHC() {
 // Función para agregar la notificación en el popup flotante
 function agregarNotificacion(mensaje) {
     const contenedorNotificaciones = document.getElementById('contenedorNotificaciones');
+    if (!contenedorNotificaciones) {
+        console.info('CIVE Extension: contenedor de notificaciones no disponible. Mensaje omitido:', mensaje);
+        return;
+    }
     const notificacion = document.createElement('div');
     notificacion.className = 'notificacion';
     notificacion.textContent = mensaje;

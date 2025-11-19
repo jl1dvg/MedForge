@@ -1,4 +1,23 @@
+window.__civeEventosRetryCount = window.__civeEventosRetryCount || 0;
+window.__civeEventosListos = window.__civeEventosListos || false;
+
 window.inicializarEventos = function () {
+    if (window.__civeEventosListos) {
+        return;
+    }
+
+    const popupRoot = document.getElementById('floatingPopup');
+    if (!popupRoot) {
+        if (window.__civeEventosRetryCount < 5) {
+            window.__civeEventosRetryCount += 1;
+            setTimeout(window.inicializarEventos, 400);
+        } else {
+            console.info('CIVE Extension: UI no encontrada, se omite el enlace de eventos en esta vista.');
+        }
+        return;
+    }
+
+    window.__civeEventosListos = true;
     console.log("Inicializando eventos de los botones...");
 
     const eventos = [
@@ -100,8 +119,6 @@ window.inicializarEventos = function () {
         const btn = document.getElementById(id);
         if (btn) {
             btn.addEventListener("click", evento);
-        } else {
-            console.warn(`Elemento ${id} no encontrado.`);
         }
     });
 

@@ -92,7 +92,7 @@
         apiTimeoutMs: 12000,
         apiMaxRetries: 2,
         apiRetryDelayMs: 600,
-        apiCredentialsMode: 'same-origin',
+        apiCredentialsMode: 'include',
         proceduresCacheTtlMs: 300000,
         healthEnabled: false,
         healthEndpoints: [],

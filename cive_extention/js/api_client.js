@@ -12,7 +12,7 @@
         timeoutMs: 12000,
         maxRetries: 2,
         retryDelayMs: 600,
-        credentialsMode: 'same-origin',
+        credentialsMode: 'include',
         proceduresCacheTtlMs: 300000,
     };
 
@@ -43,6 +43,18 @@
 
     function createCacheKey(keyParts) {
         return JSON.stringify(keyParts);
+    }
+
+    function isSameOrigin(url) {
+        try {
+            const requestOrigin = new URL(url).origin;
+            if (typeof window !== 'undefined' && window.location && window.location.origin) {
+                return window.location.origin === requestOrigin;
+            }
+        } catch (error) {
+            // ignore parse errors; assume same origin to avoid unnecessary downgrades
+        }
+        return true;
     }
 
     function normalizeApiBaseUrl(value) {
@@ -127,12 +139,12 @@
             bodyStrategies.push(bodyType);
         }
 
-        const attemptFetch = async (encoding) => {
+        const attemptFetch = async (encoding, credentialMode) => {
             const controller = typeof AbortController === 'function' ? new AbortController() : null;
             const fetchOptions = {
                 method,
                 headers: {...headers},
-                credentials,
+                credentials: credentialMode,
             };
             if (controller) {
                 fetchOptions.signal = controller.signal;
@@ -176,24 +188,33 @@
             return inFlight.get(inflightKey);
         }
 
+        const credentialModes = (() => {
+            if (credentials === 'include' && !isSameOrigin(url)) {
+                return ['include', 'omit'];
+            }
+            return [credentials];
+        })();
+
         const runner = (async () => {
             let lastError;
             for (let attempt = 0; attempt <= retries; attempt++) {
-                for (const encoding of bodyStrategies) {
-                    try {
-                        const result = await attemptFetch(encoding);
-                        if (finalCacheKey && cacheTtlMs) {
-                            CACHE.set(finalCacheKey, {
-                                data: result,
-                                expiresAt: now() + cacheTtlMs,
-                            });
+                for (const credentialMode of credentialModes) {
+                    for (const encoding of bodyStrategies) {
+                        try {
+                            const result = await attemptFetch(encoding, credentialMode);
+                            if (finalCacheKey && cacheTtlMs) {
+                                CACHE.set(finalCacheKey, {
+                                    data: result,
+                                    expiresAt: now() + cacheTtlMs,
+                                });
+                            }
+                            return result;
+                        } catch (error) {
+                            lastError = error;
                         }
-                        return result;
-                    } catch (error) {
-                        lastError = error;
-                        if (encoding === bodyStrategies[bodyStrategies.length - 1]) {
-                            break;
-                        }
+                    }
+                    if (credentialMode !== credentials) {
+                        console.info(`[CIVE] Reintentando ${method} ${url} sin credenciales por política CORS.`);
                     }
                 }
 
