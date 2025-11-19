@@ -4,8 +4,11 @@ namespace Modules\Billing\Controllers;
 
 use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
+use Models\SettingsModel;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
+use RuntimeException;
+use Throwable;
 
 class InformesController extends BaseController
 {
@@ -17,6 +20,8 @@ class InformesController extends BaseController
 
     /** @var array<string, array> */
     private $grupoConfigs = [];
+
+    private ?SettingsModel $settingsModel = null;
 
     public function __construct(PDO $pdo)
     {
@@ -92,6 +97,8 @@ class InformesController extends BaseController
                 'enableApellidoFilter' => true,
             ],
         ];
+
+        $this->hydrateConfigsFromSettings();
     }
 
     public function informeIess(): void
@@ -306,5 +313,174 @@ class InformesController extends BaseController
             'grupoConfig' => $config,
             'requestQuery' => $_GET,
         ]);
+    }
+
+    private function hydrateConfigsFromSettings(): void
+    {
+        $settings = $this->resolveSettingsModel();
+        if (!($settings instanceof SettingsModel)) {
+            return;
+        }
+
+        $keys = ['billing_informes_custom_groups'];
+        foreach (array_keys($this->grupoConfigs) as $slug) {
+            $keys = array_merge($keys, $this->buildOptionKeysForSlug($slug));
+        }
+
+        try {
+            $options = $settings->getOptions($keys);
+        } catch (Throwable $exception) {
+            error_log('No fue posible cargar los ajustes de informes: ' . $exception->getMessage());
+            return;
+        }
+
+        foreach ($this->grupoConfigs as $slug => &$config) {
+            $this->applyOverridesToConfig($config, $options, $slug);
+        }
+        unset($config);
+
+        $customGroups = $options['billing_informes_custom_groups'] ?? '';
+        if (empty($customGroups)) {
+            return;
+        }
+
+        $decoded = json_decode($customGroups, true);
+        if (!is_array($decoded)) {
+            return;
+        }
+
+        foreach ($decoded as $customConfig) {
+            if (!is_array($customConfig)) {
+                continue;
+            }
+            $slug = $customConfig['slug'] ?? null;
+            if (!$slug) {
+                continue;
+            }
+            $slug = $this->sanitizeSlug($slug);
+            if ($slug === '') {
+                continue;
+            }
+            $this->grupoConfigs[$slug] = array_merge(
+                [
+                    'slug' => $slug,
+                    'titulo' => 'Informe ' . strtoupper($slug),
+                    'basePath' => '/informes/' . $slug,
+                    'afiliaciones' => [],
+                    'excelButtons' => [],
+                    'scrapeButtonLabel' => '📋 Ver atenciones pendientes',
+                    'consolidadoTitulo' => 'Consolidado mensual de pacientes',
+                ],
+                $customConfig
+            );
+        }
+    }
+
+    private function buildOptionKeysForSlug(string $slug): array
+    {
+        $prefix = 'billing_informes_' . $slug . '_';
+
+        return [
+            $prefix . 'title',
+            $prefix . 'base_path',
+            $prefix . 'scrape_label',
+            $prefix . 'consolidado_title',
+            $prefix . 'apellido_filter',
+            $prefix . 'afiliaciones',
+            $prefix . 'excel_buttons',
+        ];
+    }
+
+    private function applyOverridesToConfig(array &$config, array $options, string $slug): void
+    {
+        $prefix = 'billing_informes_' . $slug . '_';
+
+        if (!empty($options[$prefix . 'title'])) {
+            $config['titulo'] = $options[$prefix . 'title'];
+        }
+        if (!empty($options[$prefix . 'base_path'])) {
+            $config['basePath'] = '/' . ltrim($options[$prefix . 'base_path'], '/');
+        }
+        if (!empty($options[$prefix . 'scrape_label'])) {
+            $config['scrapeButtonLabel'] = $options[$prefix . 'scrape_label'];
+        }
+        if (!empty($options[$prefix . 'consolidado_title'])) {
+            $config['consolidadoTitulo'] = $options[$prefix . 'consolidado_title'];
+        }
+        if (isset($options[$prefix . 'apellido_filter'])) {
+            $config['enableApellidoFilter'] = $this->castBooleanOption($options[$prefix . 'apellido_filter']);
+        }
+        if (!empty($options[$prefix . 'afiliaciones'])) {
+            $config['afiliaciones'] = $this->parseLineSeparatedList($options[$prefix . 'afiliaciones']);
+        }
+        if (!empty($options[$prefix . 'excel_buttons'])) {
+            $config['excelButtons'] = $this->parseExcelButtons($options[$prefix . 'excel_buttons'], $config['excelButtons']);
+        }
+    }
+
+    private function castBooleanOption($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $truthy = ['1', 1, 'true', 'on', 'yes'];
+
+        return in_array($value, $truthy, true);
+    }
+
+    private function parseLineSeparatedList(string $value): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $value) ?: [];
+        $lines = array_map('trim', $lines);
+
+        return array_values(array_filter($lines, static fn($line) => $line !== ''));
+    }
+
+    private function parseExcelButtons(string $rawValue, array $fallback): array
+    {
+        $lines = $this->parseLineSeparatedList($rawValue);
+        $buttons = [];
+
+        foreach ($lines as $line) {
+            $parts = array_map('trim', explode('|', $line));
+            $parts = array_pad($parts, 4, '');
+            [$grupo, $label, $class, $icon] = $parts;
+            if ($grupo === '') {
+                continue;
+            }
+            $buttons[] = [
+                'grupo' => $grupo,
+                'label' => $label !== '' ? $label : 'Descargar Excel',
+                'class' => $class !== '' ? $class : 'btn btn-success btn-lg me-2',
+                'icon' => $icon,
+            ];
+        }
+
+        return $buttons ?: $fallback;
+    }
+
+    private function sanitizeSlug(string $slug): string
+    {
+        $slug = strtolower($slug);
+        $slug = preg_replace('/[^a-z0-9_-]/', '-', $slug ?? '') ?? '';
+
+        return trim($slug, '-');
+    }
+
+    private function resolveSettingsModel(): ?SettingsModel
+    {
+        if ($this->settingsModel instanceof SettingsModel) {
+            return $this->settingsModel;
+        }
+
+        try {
+            $this->settingsModel = new SettingsModel($this->pdo);
+        } catch (RuntimeException $exception) {
+            error_log('No se pudo inicializar SettingsModel: ' . $exception->getMessage());
+            return null;
+        }
+
+        return $this->settingsModel;
     }
 }

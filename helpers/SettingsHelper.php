@@ -280,6 +280,87 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'billing_informes' => [
+                'title' => 'Informes de facturación',
+                'icon' => 'fa-solid fa-file-invoice-dollar',
+                'description' => 'Personaliza títulos, rutas, afiliaciones y botones de exportación para cada aseguradora.',
+                'groups' => [
+                    [
+                        'id' => 'iess',
+                        'title' => 'IESS',
+                        'description' => 'Ajustes mostrados cuando navegas a /informes/iess.',
+                        'fields' => [
+                            array_merge(self::textField('billing_informes_iess_title', 'Título del informe'), ['default' => 'Informe IESS']),
+                            array_merge(self::textField('billing_informes_iess_base_path', 'Ruta base'), ['default' => '/informes/iess']),
+                            array_merge(self::textareaField('billing_informes_iess_afiliaciones', 'Afiliaciones permitidas', 'Introduce una afiliación por línea.'), [
+                                'default' => "contribuyente voluntario\nconyuge\nconyuge pensionista\nseguro campesino\nseguro campesino jubilado\nseguro general\nseguro general jubilado\nseguro general por montepio\nseguro general tiempo parcial\nhijos dependientes",
+                            ]),
+                            array_merge(self::textareaField(
+                                'billing_informes_iess_excel_buttons',
+                                'Botones de descarga',
+                                'Una línea por botón usando el formato GRUPO|Etiqueta|Clase CSS|Icono opcional.'
+                            ), [
+                                'default' => "IESS|Descargar Excel|btn btn-success btn-lg me-2|fa fa-file-excel-o\nIESS_SOAM|Descargar SOAM|btn btn-outline-success btn-lg me-2|fa fa-file-excel-o",
+                            ]),
+                            array_merge(self::textField('billing_informes_iess_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Ver todas las atenciones por cobrar']),
+                            array_merge(self::textField('billing_informes_iess_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes IESS']),
+                            self::checkboxField('billing_informes_iess_apellido_filter', 'Habilitar filtro por apellido'),
+                        ],
+                    ],
+                    [
+                        'id' => 'isspol',
+                        'title' => 'ISSPOL',
+                        'description' => 'Configura la vista de /informes/isspol.',
+                        'fields' => [
+                            array_merge(self::textField('billing_informes_isspol_title', 'Título del informe'), ['default' => 'Informe ISSPOL']),
+                            array_merge(self::textField('billing_informes_isspol_base_path', 'Ruta base'), ['default' => '/informes/isspol']),
+                            array_merge(self::textareaField('billing_informes_isspol_afiliaciones', 'Afiliaciones permitidas', 'Una afiliación por línea.'), ['default' => 'isspol']),
+                            array_merge(self::textareaField(
+                                'billing_informes_isspol_excel_buttons',
+                                'Botones de descarga',
+                                'Una línea por botón usando el formato GRUPO|Etiqueta|Clase CSS|Icono opcional.'
+                            ), [
+                                'default' => 'ISSPOL|Descargar Excel|btn btn-success btn-lg me-2|fa fa-file-excel-o',
+                            ]),
+                            array_merge(self::textField('billing_informes_isspol_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Obtener código de derivación']),
+                            array_merge(self::textField('billing_informes_isspol_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes ISSPOL']),
+                            self::checkboxField('billing_informes_isspol_apellido_filter', 'Habilitar filtro por apellido', true),
+                        ],
+                    ],
+                    [
+                        'id' => 'issfa',
+                        'title' => 'ISSFA',
+                        'description' => 'Configura la vista de /informes/issfa.',
+                        'fields' => [
+                            array_merge(self::textField('billing_informes_issfa_title', 'Título del informe'), ['default' => 'Informe ISSFA']),
+                            array_merge(self::textField('billing_informes_issfa_base_path', 'Ruta base'), ['default' => '/informes/issfa']),
+                            array_merge(self::textareaField('billing_informes_issfa_afiliaciones', 'Afiliaciones permitidas', 'Una afiliación por línea.'), ['default' => 'issfa']),
+                            array_merge(self::textareaField(
+                                'billing_informes_issfa_excel_buttons',
+                                'Botones de descarga',
+                                'Una línea por botón usando el formato GRUPO|Etiqueta|Clase CSS|Icono opcional.'
+                            ), [
+                                'default' => 'ISSFA|Descargar Excel|btn btn-success btn-lg me-2|fa fa-file-excel-o',
+                            ]),
+                            array_merge(self::textField('billing_informes_issfa_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Obtener código de derivación']),
+                            array_merge(self::textField('billing_informes_issfa_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes ISSFA']),
+                            self::checkboxField('billing_informes_issfa_apellido_filter', 'Habilitar filtro por apellido', true),
+                        ],
+                    ],
+                    [
+                        'id' => 'custom',
+                        'title' => 'Grupos adicionales',
+                        'description' => 'Define reglas extra en formato JSON compatibles con el arreglo $grupoConfigs.',
+                        'fields' => [
+                            self::textareaField(
+                                'billing_informes_custom_groups',
+                                'Configuración avanzada (JSON)',
+                                'Ejemplo: [{"slug":"seguroxyz","titulo":"Informe Seguro XYZ","basePath":"/informes/seguroxyz","afiliaciones":["seguro xyz"],"excelButtons":[{"grupo":"XYZ","label":"Excel"}]}]'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'whatsapp' => [
                 'title' => 'WhatsApp',
                 'icon' => 'fa-brands fa-whatsapp',
