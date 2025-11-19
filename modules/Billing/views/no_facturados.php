@@ -33,6 +33,10 @@ $scripts = array_merge($scripts ?? [], [
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
         const resumenContainer = document.getElementById('resumenTotales');
+        const filtrosForm = document.getElementById('filtrosNoFacturados');
+        const seleccionadosInfo = document.getElementById('seleccionadosInfo');
+        const btnFacturarLote = document.getElementById('btnFacturarLote');
+        const btnMarcarRevisado = document.getElementById('btnMarcarRevisado');
 
         const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
@@ -270,95 +274,160 @@ $scripts = array_merge($scripts ?? [], [
             });
         }
 
-        const dt = $("#noFacturadosTable").DataTable({
-            serverSide: true,
-            processing: true,
-            searching: false,
-            ajax: {
-                url: '/api/billing/no-facturados',
-                data: function (d) {
-                    const form = document.getElementById('filtrosNoFacturados');
-                    const formData = new FormData(form);
-                    const filters = {};
-                    formData.forEach((value, key) => {
-                        filters[key] = value;
-                    });
-                    return { ...d, ...filters };
-                },
+        const selectionState = {
+            revisados: new Set(),
+            pendientes: new Set(),
+            noQuirurgicos: new Set(),
+        };
+
+        const tableConfigs = {
+            revisados: {
+                tableId: 'tablaRevisados',
+                selectAllId: 'selectAllRevisados',
+                baseFilters: { estado_revision: 1, tipo: 'quirurgico' },
             },
-            order: [[4, 'desc']],
-            columns: [
-                { data: 'form_id' },
-                { data: 'hc_number' },
-                { data: 'paciente', defaultContent: '' },
-                { data: 'afiliacion', defaultContent: '' },
-                {
-                    data: 'fecha',
-                    render: function (data) {
-                        if (!data) return '';
-                        const date = new Date(data);
-                        if (Number.isNaN(date.getTime())) return data;
-                        return date.toLocaleDateString('es-EC');
+            pendientes: {
+                tableId: 'tablaPendientes',
+                selectAllId: 'selectAllPendientes',
+                baseFilters: { estado_revision: 0, tipo: 'quirurgico' },
+            },
+            noQuirurgicos: {
+                tableId: 'tablaNoQuirurgicos',
+                selectAllId: 'selectAllNoQuirurgicos',
+                baseFilters: { tipo: 'no_quirurgico' },
+            },
+        };
+
+        const formatFecha = (data) => {
+            if (!data) return '';
+            const date = new Date(data);
+            if (Number.isNaN(date.getTime())) return data;
+            return date.toLocaleDateString('es-EC');
+        };
+
+        const renderBadge = (label, type = 'secondary') => `<span class="badge bg-${type}">${label}</span>`;
+
+        const getActiveTableKey = () => document.querySelector('#noFacturadosTabs .nav-link.active')?.id?.replace('tab', '')?.replace(/^./, (c) => c.toLowerCase()) || 'revisados';
+
+        const updateSelectionInfo = () => {
+            const key = getActiveTableKey();
+            const total = selectionState[key]?.size ?? 0;
+            if (seleccionadosInfo) {
+                seleccionadosInfo.textContent = `${total} seleccionados`;
+            }
+            btnFacturarLote.disabled = total === 0;
+            btnMarcarRevisado.disabled = total === 0;
+        };
+
+        const renderCheckbox = (row, tableKey) => {
+            const formId = row.form_id ? String(row.form_id) : '';
+            const checked = selectionState[tableKey].has(formId) ? 'checked' : '';
+            return `<input type="checkbox" class="form-check-input row-select" data-table-key="${tableKey}" value="${formId}" aria-label="Seleccionar fila" ${checked}>`;
+        };
+
+        const renderPaciente = (row) => {
+            const nombre = row.paciente || '';
+            const hc = row.hc_number || '';
+            return `<div class="fw-semibold">${nombre}</div><div class="text-muted small">HC ${hc}</div>`;
+        };
+
+        const buildColumns = (tableKey) => ([
+            {
+                data: null,
+                orderable: false,
+                searchable: false,
+                className: 'text-center',
+                render: (_, __, row) => renderCheckbox(row, tableKey),
+            },
+            { data: 'form_id' },
+            { data: 'hc_number' },
+            {
+                data: null,
+                defaultContent: '',
+                render: (_, __, row) => renderPaciente(row),
+            },
+            {
+                data: 'afiliacion',
+                defaultContent: '',
+                render: (data) => data ? `<span class="badge bg-info text-dark">${data}</span>` : '<span class="text-muted">Sin afiliación</span>',
+            },
+            {
+                data: 'fecha',
+                render: (data) => formatFecha(data),
+            },
+            {
+                data: 'tipo',
+                render: (data) => data === 'quirurgico'
+                    ? renderBadge('Quirúrgico', 'success')
+                    : renderBadge('No quirúrgico', 'primary'),
+            },
+            {
+                data: 'estado_revision',
+                render: (data, type, row) => {
+                    if (row.tipo !== 'quirurgico') {
+                        return renderBadge('N/A', 'secondary');
                     }
-                },
-                {
-                    data: 'tipo',
-                    render: function (data) {
-                        return data === 'quirurgico'
-                            ? '<span class="badge bg-success">Quirúrgico</span>'
-                            : '<span class="badge bg-primary">No quirúrgico</span>';
-                    }
-                },
-                {
-                    data: 'estado_revision',
-                    render: function (data, type, row) {
-                        if (row.tipo !== 'quirurgico') {
-                            return '<span class="badge bg-secondary">N/A</span>';
-                        }
-                        const estado = Number(data) === 1;
-                        return estado
-                            ? '<span class="badge bg-success">Revisado</span>'
-                            : '<span class="badge bg-warning text-dark">Pendiente</span>';
-                    }
-                },
-                { data: 'procedimiento', defaultContent: '' },
-                {
-                    data: 'valor_estimado',
-                    className: 'text-end',
-                    render: function (data) {
-                        const valor = Number(data) || 0;
-                        return `$${valor.toFixed(2)}`;
-                    }
-                },
-                {
-                    data: null,
-                    orderable: false,
-                    searchable: false,
-                    render: function (data, type, row) {
-                        const formId = row.form_id ? String(row.form_id) : '';
-                        const hcNumber = row.hc_number ? String(row.hc_number) : '';
-                        const previewBtn = `<button class="btn btn-sm btn-info me-1" data-form-id="${formId}" data-hc-number="${hcNumber}" data-bs-toggle="modal" data-bs-target="#previewModal"><i class="mdi mdi-eye"></i> Preview</button>`;
-                        const facturarBtn = `<a class="btn btn-sm btn-secondary" href="/billing/facturar.php?form_id=${encodeURIComponent(formId)}">Facturar</a>`;
-                        return previewBtn + facturarBtn;
-                    }
+                    const estado = Number(data) === 1;
+                    return estado
+                        ? renderBadge('Revisado', 'success')
+                        : renderBadge('Pendiente', 'warning text-dark');
                 }
-            ]
-        });
+            },
+            { data: 'procedimiento', defaultContent: '' },
+            {
+                data: 'valor_estimado',
+                className: 'text-end',
+                render: (data) => `$${Number(data || 0).toFixed(2)}`,
+            },
+            {
+                data: null,
+                orderable: false,
+                searchable: false,
+                render: function (data, type, row) {
+                    const formId = row.form_id ? String(row.form_id) : '';
+                    const hcNumber = row.hc_number ? String(row.hc_number) : '';
+                    const previewBtn = `<button class="btn btn-sm btn-info me-1" data-form-id="${formId}" data-hc-number="${hcNumber}" data-bs-toggle="modal" data-bs-target="#previewModal"><i class="mdi mdi-eye"></i> Preview</button>`;
+                    const facturarBtn = `<a class="btn btn-sm btn-secondary" href="/billing/facturar.php?form_id=${encodeURIComponent(formId)}">Facturar</a>`;
+                    return previewBtn + facturarBtn;
+                }
+            }
+        ]);
 
-        const filtrosForm = document.getElementById('filtrosNoFacturados');
-        filtrosForm?.addEventListener('submit', (event) => {
-            event.preventDefault();
-            dt.ajax.reload();
-        });
+        const createTable = (tableKey) => {
+            const config = tableConfigs[tableKey];
+            const table = $(`#${config.tableId}`).DataTable({
+                serverSide: true,
+                processing: true,
+                searching: false,
+                ajax: {
+                    url: '/api/billing/no-facturados',
+                    data: (d) => {
+                        const formData = new FormData(filtrosForm);
+                        const filters = {};
+                        formData.forEach((value, key) => {
+                            filters[key] = value;
+                        });
+                        return { ...d, ...filters, ...config.baseFilters };
+                    },
+                },
+                order: [[5, 'desc']],
+                columns: buildColumns(tableKey),
+            });
 
-        document.getElementById('btnLimpiarFiltros')?.addEventListener('click', () => {
-            filtrosForm.reset();
-            dt.ajax.reload();
-        });
+            table.on('draw', () => {
+                updateSelectionInfo();
+                const selectAll = document.getElementById(config.selectAllId);
+                if (selectAll) {
+                    const allSelected = table.rows().data().toArray().every((row) => selectionState[tableKey].has(String(row.form_id)));
+                    const anySelected = table.rows().data().toArray().some((row) => selectionState[tableKey].has(String(row.form_id)));
+                    selectAll.checked = allSelected && table.rows().count() > 0;
+                    selectAll.indeterminate = !selectAll.checked && anySelected;
+                }
+            });
 
-        if (resumenContainer) {
-            dt.on('xhr', function () {
-                const json = dt.ajax.json();
+            table.on('xhr', function () {
+                if (!resumenContainer || getActiveTableKey() !== tableKey) return;
+                const json = table.ajax.json();
                 const summary = json?.summary || {};
                 const formatMonto = (valor) => `$${Number(valor || 0).toFixed(2)}`;
 
@@ -369,6 +438,85 @@ $scripts = array_merge($scripts ?? [], [
                 resumenContainer.querySelector('[data-resumen="no-quirurgicos-cantidad"]').textContent = summary.no_quirurgicos?.cantidad ?? 0;
                 resumenContainer.querySelector('[data-resumen="no-quirurgicos-monto"]').textContent = formatMonto(summary.no_quirurgicos?.monto);
             });
-        }
+
+            $(`#${config.tableId} tbody`).on('change', '.row-select', function () {
+                const formId = this.value;
+                if (this.checked) {
+                    selectionState[tableKey].add(formId);
+                } else {
+                    selectionState[tableKey].delete(formId);
+                }
+                updateSelectionInfo();
+                const selectAll = document.getElementById(config.selectAllId);
+                if (selectAll) {
+                    const totalRows = table.rows().data().toArray().length;
+                    const checkedRows = table.rows().data().toArray().filter((row) => selectionState[tableKey].has(String(row.form_id))).length;
+                    selectAll.indeterminate = checkedRows > 0 && checkedRows < totalRows;
+                    selectAll.checked = checkedRows > 0 && checkedRows === totalRows;
+                }
+            });
+
+            document.getElementById(config.selectAllId)?.addEventListener('change', (event) => {
+                const checked = event.target.checked;
+                table.rows().every(function () {
+                    const data = this.data();
+                    const formId = data.form_id ? String(data.form_id) : '';
+                    if (checked) {
+                        selectionState[tableKey].add(formId);
+                    } else {
+                        selectionState[tableKey].delete(formId);
+                    }
+                });
+                table.rows().nodes().to$().find('.row-select').prop('checked', checked);
+                updateSelectionInfo();
+            });
+
+            return table;
+        };
+
+        const tablas = {
+            revisados: createTable('revisados'),
+            pendientes: createTable('pendientes'),
+            noQuirurgicos: createTable('noQuirurgicos'),
+        };
+
+        filtrosForm?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+        });
+
+        document.getElementById('btnLimpiarFiltros')?.addEventListener('click', () => {
+            filtrosForm.reset();
+            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+        });
+
+        document.querySelectorAll('#noFacturadosTabs .nav-link').forEach((tab) => {
+            tab.addEventListener('shown.bs.tab', () => updateSelectionInfo());
+        });
+
+        const getSelectedRows = (tableKey) => {
+            const table = tablas[tableKey];
+            const selectedIds = selectionState[tableKey];
+            const rows = table.rows().data().toArray().filter((row) => selectedIds.has(String(row.form_id)));
+            return { ids: Array.from(selectedIds), rows };
+        };
+
+        const handleBulkAction = (action) => {
+            const key = getActiveTableKey();
+            const { ids } = getSelectedRows(key);
+            if (!ids.length) {
+                alert('Selecciona al menos un registro para continuar.');
+                return;
+            }
+            const mensaje = action === 'facturar'
+                ? 'Facturar en lote'
+                : 'Marcar como revisado';
+            alert(`${mensaje}: ${ids.join(', ')}`);
+        };
+
+        btnFacturarLote?.addEventListener('click', () => handleBulkAction('facturar'));
+        btnMarcarRevisado?.addEventListener('click', () => handleBulkAction('revisar'));
+
+        updateSelectionInfo();
     });
 </script>
