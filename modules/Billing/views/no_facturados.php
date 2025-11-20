@@ -40,6 +40,32 @@ $scripts = array_merge($scripts ?? [], [
 
         const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
+        const PREVIEW_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
+        const previewCache = new Map();
+
+        const getCacheKey = (formId) => `preview-${formId}`;
+
+        const cachePreview = (formId, payload) => {
+            previewCache.set(getCacheKey(formId), {
+                payload,
+                expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS,
+            });
+        };
+
+        const getCachedPreview = (formId) => {
+            const entry = previewCache.get(getCacheKey(formId));
+            if (!entry) return null;
+            if (Date.now() > entry.expiresAt) {
+                previewCache.delete(getCacheKey(formId));
+                return null;
+            }
+            return entry.payload;
+        };
+
+        const invalidatePreview = (formId) => {
+            previewCache.delete(getCacheKey(formId));
+        };
+
         const buildPreviewCandidates = (baseHref, formId, hcNumber) => {
             const candidateHrefs = new Set();
             const result = [];
@@ -72,6 +98,257 @@ $scripts = array_merge($scripts ?? [], [
             }
 
             return result;
+        };
+
+        const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
+
+        const calculateTotals = (data) => {
+            const suma = (arr, mapper) => (arr || []).reduce((acc, item) => acc + mapper(item), 0);
+
+            const totals = {
+                procedimientos: suma(data.procedimientos, (p) => Number(p.procPrecio) || 0),
+                insumos: suma(data.insumos, (i) => (Number(i.precio) || 0) * (Number(i.cantidad) || 0)),
+                oxigeno: suma(data.oxigeno, (o) => Number(o.precio) || 0),
+                anestesia: suma(data.anestesia, (a) => Number(a.precio) || 0),
+                derechos: suma(data.derechos, (d) => (Number(d.precioAfiliacion) || 0) * (Number(d.cantidad) || 0)),
+            };
+
+            return {
+                ...totals,
+                global:
+                    totals.procedimientos +
+                    totals.insumos +
+                    totals.oxigeno +
+                    totals.anestesia +
+                    totals.derechos,
+            };
+        };
+
+        const renderRules = (reglas = []) => {
+            if (!reglas.length) {
+                return "";
+            }
+
+            const items = reglas
+                .map(
+                    (regla) => `
+                <li class="list-group-item d-flex align-items-start gap-3">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="mdi mdi-scale-balance"></i>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">${regla.titulo || "Regla aplicada"}</div>
+                        ${regla.detalle ? `<small>${regla.detalle}</small>` : ""}
+                    </div>
+                </li>
+            `
+                )
+                .join("");
+
+            return `
+                <div class="card mb-3 preview-rules">
+                    <div class="card-header bg-light fw-semibold">Reglas y tarifas aplicadas</div>
+                    <ul class="list-group list-group-flush mb-0">${items}</ul>
+                </div>
+            `;
+        };
+
+        const renderTableSection = (rows, columns, buildRow, emptyMessage) => {
+            if (!rows || !rows.length) {
+                return `<p class="text-muted mb-0">${emptyMessage}</p>`;
+            }
+
+            const header = columns.map((c) => `<th>${c}</th>`).join("");
+            const body = rows.map(buildRow).join("");
+
+            return `
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>${header}</tr>
+                        </thead>
+                        <tbody>${body}</tbody>
+                    </table>
+                </div>
+            `;
+        };
+
+        const renderAccordionItem = (id, title, content, open = false) => `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading-${id}">
+                    <button class="accordion-button ${open ? "" : "collapsed"}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${id}" aria-expanded="${open}" aria-controls="collapse-${id}">
+                        ${title}
+                    </button>
+                </h2>
+                <div id="collapse-${id}" class="accordion-collapse collapse ${open ? "show" : ""}" aria-labelledby="heading-${id}" data-bs-parent="#previewAccordion">
+                    <div class="accordion-body">${content}</div>
+                </div>
+            </div>
+        `;
+
+        const renderPreview = (data) => {
+            const totals = calculateTotals(data);
+
+            const procedimientosSection = renderAccordionItem(
+                "procedimientos",
+                "Procedimientos",
+                renderTableSection(
+                    data.procedimientos,
+                    ["Código", "Detalle", "Precio"],
+                    (p) => `
+                        <tr>
+                            <td>${p.procCodigo}</td>
+                            <td>${p.procDetalle}</td>
+                            <td class="text-end">${formatCurrency(p.procPrecio)}</td>
+                        </tr>
+                    `,
+                    "Sin procedimientos registrados"
+                ),
+                true
+            );
+
+            const insumosContent = [
+                renderTableSection(
+                    data.insumos,
+                    ["Código", "Detalle", "Cantidad", "Precio", "Subtotal"],
+                    (i) => {
+                        const unit = Number(i.precio) || 0;
+                        const qty = Number(i.cantidad) || 0;
+                        return `
+                            <tr>
+                                <td>${i.codigo}</td>
+                                <td>${i.nombre}</td>
+                                <td class="text-center">${qty}</td>
+                                <td class="text-end">${formatCurrency(unit)}</td>
+                                <td class="text-end">${formatCurrency(unit * qty)}</td>
+                            </tr>
+                        `;
+                    },
+                    "Sin insumos registrados"
+                ),
+            ];
+
+            if (data.derechos?.length) {
+                insumosContent.push(
+                    `<div class="mt-3">
+                        <h6 class="mb-2">Derechos</h6>
+                        ${renderTableSection(
+                            data.derechos,
+                            ["Código", "Detalle", "Cantidad", "Precio", "Subtotal"],
+                            (d) => {
+                                const unit = Number(d.precioAfiliacion) || 0;
+                                const qty = Number(d.cantidad) || 0;
+                                return `
+                                    <tr>
+                                        <td>${d.codigo}</td>
+                                        <td>${d.detalle}</td>
+                                        <td class="text-center">${qty}</td>
+                                        <td class="text-end">${formatCurrency(unit)}</td>
+                                        <td class="text-end">${formatCurrency(unit * qty)}</td>
+                                    </tr>
+                                `;
+                            },
+                            "Sin derechos registrados"
+                        )}
+                    </div>`
+                );
+            }
+
+            const insumosSection = renderAccordionItem(
+                "insumos",
+                "Insumos",
+                insumosContent.join(""),
+                false
+            );
+
+            const oxigenoSection = renderAccordionItem(
+                "oxigeno",
+                "Oxígeno",
+                data.oxigeno?.length
+                    ? data.oxigeno
+                          .map(
+                              (o) => `
+                            <div class="alert alert-warning d-flex align-items-center mb-2" role="alert">
+                                <div>
+                                    <div class="fw-semibold">${o.codigo} - ${o.nombre}</div>
+                                    <div class="small text-muted">Tiempo: ${o.tiempo} h · Litros: ${o.litros} L/min</div>
+                                </div>
+                                <span class="ms-auto badge bg-primary">${formatCurrency(o.precio)}</span>
+                            </div>`
+                          )
+                          .join("")
+                    : '<p class="text-muted mb-0">Sin consumos de oxígeno</p>',
+                false
+            );
+
+            const anestesiaSection = renderAccordionItem(
+                "anestesia",
+                "Anestesia",
+                renderTableSection(
+                    data.anestesia,
+                    ["Código", "Detalle", "Tiempo", "Precio"],
+                    (a) => `
+                        <tr>
+                            <td>${a.codigo}</td>
+                            <td>${a.nombre}</td>
+                            <td class="text-center">${a.tiempo}</td>
+                            <td class="text-end">${formatCurrency(a.precio)}</td>
+                        </tr>
+                    `,
+                    "Sin registros de anestesia"
+                ),
+                false
+            );
+
+            const accordion = `
+                <div class="accordion preview-accordion" id="previewAccordion">
+                    ${procedimientosSection}
+                    ${insumosSection}
+                    ${oxigenoSection}
+                    ${anestesiaSection}
+                </div>
+            `;
+
+            const totalsBar = `
+                <div class="preview-totals-bar card shadow-sm p-3 mt-4">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div>
+                            <div class="text-muted small">Valor estimado</div>
+                            <div class="h5 mb-0">${formatCurrency(totals.global)}</div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge rounded-pill bg-primary-subtle text-primary">Procedimientos: ${formatCurrency(totals.procedimientos)}</span>
+                            <span class="badge rounded-pill bg-info-subtle text-info">Insumos: ${formatCurrency(totals.insumos)}</span>
+                            <span class="badge rounded-pill bg-warning-subtle text-dark">Oxígeno: ${formatCurrency(totals.oxigeno)}</span>
+                            <span class="badge rounded-pill bg-success-subtle text-success">Anestesia: ${formatCurrency(totals.anestesia)}</span>
+                            <span class="badge rounded-pill bg-secondary-subtle text-secondary">Derechos: ${formatCurrency(totals.derechos)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            previewContent.innerHTML = `
+                <div class="preview-tabs">
+                    <ul class="nav nav-pills mb-3" id="previewTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-resumen" data-bs-toggle="tab" data-bs-target="#panel-resumen" type="button" role="tab" aria-controls="panel-resumen" aria-selected="true">Resumen</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-detalle" data-bs-toggle="tab" data-bs-target="#panel-detalle" type="button" role="tab" aria-controls="panel-detalle" aria-selected="false">Detalle</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="panel-resumen" role="tabpanel" aria-labelledby="tab-resumen">
+                            ${renderRules(data.reglas)}
+                            ${totalsBar}
+                        </div>
+                        <div class="tab-pane fade" id="panel-detalle" role="tabpanel" aria-labelledby="tab-detalle">
+                            ${accordion}
+                            ${totalsBar}
+                        </div>
+                    </div>
+                </div>
+            `;
         };
 
         const fetchPreview = async (candidates) => {
@@ -108,6 +385,12 @@ $scripts = array_merge($scripts ?? [], [
                 previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
 
                 try {
+                    const cached = getCachedPreview(formId);
+                    if (cached) {
+                        renderPreview(cached);
+                        return;
+                    }
+
                     const candidateUrls = buildPreviewCandidates(previewEndpoint, formId, hcNumber);
                     const res = await fetchPreview(candidateUrls);
 
@@ -117,162 +400,21 @@ $scripts = array_merge($scripts ?? [], [
                         previewContent.innerHTML = `<p class='text-danger'>❌ ${message}</p>`;
                         return;
                     }
-                    let total = 0;
-                    let html = "";
 
-                    const renderTable = (title, rows, columns, computeRow) => {
-                        if (!rows || !rows.length) {
-                            return;
-                        }
-
-                        html += `
-                            <div class="mb-3">
-                                <h6>${title}</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-bordered table-sm align-middle">
-                                        <thead class="table-light">
-                                            <tr>
-                                                ${columns.map(c => `<th>${c}</th>`).join('')}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                        `;
-
-                        rows.forEach((row) => {
-                            const { markup, subtotal } = computeRow(row);
-                            total += subtotal;
-                            html += markup;
-                        });
-
-                        html += `
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        `;
-                    };
-
-                    renderTable(
-                        'Procedimientos',
-                        data.procedimientos,
-                        ['Código', 'Detalle', 'Precio'],
-                        (p) => {
-                            const subtotal = Number(p.procPrecio) || 0;
-                            const markup = `
-                                <tr>
-                                    <td>${p.procCodigo}</td>
-                                    <td>${p.procDetalle}</td>
-                                    <td class="text-end">$${subtotal.toFixed(2)}</td>
-                                </tr>
-                            `;
-                            return { markup, subtotal };
-                        }
-                    );
-
-                    if (data.insumos?.length) {
-                        html += `
-                            <div class="card mb-3">
-                                <div class="card-header bg-info text-white py-2 px-3">Insumos</div>
-                                <ul class="list-group list-group-flush">
-                        `;
-
-                        data.insumos.forEach((i) => {
-                            const precioUnitario = Number(i.precio) || 0;
-                            const cantidad = Number(i.cantidad) || 0;
-                            const subtotal = precioUnitario * cantidad;
-                            total += subtotal;
-
-                            html += `
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <span class="fw-bold">${i.codigo}</span> - ${i.nombre}
-                                        <br><small class="text-muted">x${cantidad} @ $${precioUnitario.toFixed(2)}</small>
-                                    </div>
-                                    <span class="badge bg-success rounded-pill">$${subtotal.toFixed(2)}</span>
-                                </li>
-                            `;
-                        });
-
-                        html += `
-                                </ul>
-                            </div>
-                        `;
-                    }
-
-                    if (data.oxigeno?.length) {
-                        data.oxigeno.forEach((o) => {
-                            const subtotal = Number(o.precio) || 0;
-                            total += subtotal;
-                            html += `
-                                <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
-                                    <div>
-                                        <strong>Oxígeno:</strong> ${o.codigo} - ${o.nombre}<br>
-                                        <span class="me-3">Tiempo: <span class="badge bg-info">${o.tiempo} h</span></span>
-                                        <span class="me-3">Litros: <span class="badge bg-info">${o.litros} L/min</span></span>
-                                        <span class="me-3">Precio: <span class="badge bg-primary">$${subtotal.toFixed(2)}</span></span>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                    }
-
-                    renderTable(
-                        'Anestesia',
-                        data.anestesia,
-                        ['Código', 'Nombre', 'Tiempo', 'Precio'],
-                        (a) => {
-                            const subtotal = Number(a.precio) || 0;
-                            const markup = `
-                                <tr>
-                                    <td>${a.codigo}</td>
-                                    <td>${a.nombre}</td>
-                                    <td>${a.tiempo}</td>
-                                    <td class="text-end">$${subtotal.toFixed(2)}</td>
-                                </tr>
-                            `;
-                            return { markup, subtotal };
-                        }
-                    );
-
-                    if (data.derechos?.length) {
-                        html += `
-                            <div class="card mb-3">
-                                <div class="card-header bg-secondary text-white py-2 px-3">Derechos</div>
-                                <ul class="list-group list-group-flush">
-                        `;
-
-                        data.derechos.forEach((d) => {
-                            const precioUnitario = Number(d.precioAfiliacion) || 0;
-                            const cantidad = Number(d.cantidad) || 0;
-                            const subtotal = precioUnitario * cantidad;
-                            total += subtotal;
-
-                            html += `
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <span class="fw-bold">${d.codigo}</span> - ${d.detalle}
-                                        <br><small class="text-muted">x${cantidad} @ $${precioUnitario.toFixed(2)}</small>
-                                    </div>
-                                    <span class="badge bg-primary rounded-pill">$${subtotal.toFixed(2)}</span>
-                                </li>
-                            `;
-                        });
-
-                        html += `
-                                </ul>
-                            </div>
-                        `;
-                    }
-
-                    previewContent.innerHTML = `
-                        <div class="alert alert-secondary">Valor estimado: <strong>$${total.toFixed(2)}</strong></div>
-                        ${html}
-                    `;
+                    cachePreview(formId, data);
+                    renderPreview(data);
                 } catch (error) {
                     previewContent.innerHTML = `<p class='text-danger'>❌ ${error?.message || error || 'No fue posible cargar el preview.'}</p>`;
                 }
             });
         }
+
+        document.getElementById('facturarForm')?.addEventListener('submit', () => {
+            const formId = facturarFormId.value;
+            if (formId) {
+                invalidatePreview(formId);
+            }
+        });
 
         const selectionState = {
             revisados: new Set(),
@@ -508,6 +650,7 @@ $scripts = array_merge($scripts ?? [], [
                 alert('Selecciona al menos un registro para continuar.');
                 return;
             }
+            ids.forEach(invalidatePreview);
             const mensaje = action === 'facturar'
                 ? 'Facturar en lote'
                 : 'Marcar como revisado';

@@ -6,7 +6,7 @@
                 <h5 class="modal-title" id="previewModalLabel">Confirmar Facturación</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body preview-modal-body">
                 <div id="previewContent">
                     <p class="text-muted">Cargando datos...</p>
                 </div>
@@ -28,3 +28,32 @@
         </div>
     </div>
 </div>
+
+<style>
+    .preview-modal-body {
+        max-height: 70vh;
+        overflow-y: auto;
+        position: relative;
+        padding-bottom: 96px;
+    }
+
+    .preview-totals-bar {
+        position: sticky;
+        bottom: -1rem;
+        background: #fff;
+        z-index: 2;
+    }
+
+    .preview-rules small {
+        color: #6c757d;
+    }
+
+    .preview-tabs .nav-link {
+        border-radius: 999px;
+    }
+
+    .preview-accordion .accordion-button:not(.collapsed) {
+        background: #eef2ff;
+        color: #1f2a44;
+    }
+</style>

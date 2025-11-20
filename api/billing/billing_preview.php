@@ -27,7 +27,8 @@ try {
         "insumos" => $preview['insumos'],
         "derechos" => $preview['derechos'],
         "oxigeno" => $preview['oxigeno'],
-        "anestesia" => $preview['anestesia']
+        "anestesia" => $preview['anestesia'],
+        "reglas" => $preview['reglas']
     ]);
 } catch (Exception $e) {
     echo json_encode([

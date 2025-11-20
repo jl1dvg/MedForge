@@ -24,8 +24,11 @@ class PreviewService
             'insumos' => [],
             'derechos' => [],
             'oxigeno' => [],
-            'anestesia' => []
+            'anestesia' => [],
+            'reglas' => [],
         ];
+
+        $appliedRules = [];
 
         // 1. Procedimientos
         $stmt = $this->db->prepare("SELECT procedimientos, fecha_inicio FROM protocolo_data WHERE form_id = ?");
@@ -66,6 +69,11 @@ class PreviewService
                         ]);
                         $row = $tarifarioStmt->fetch(PDO::FETCH_ASSOC);
                         $precio = $row ? (float)$row['valor_facturar_nivel3'] : 0;
+
+                        $appliedRules[] = [
+                            'titulo' => 'Tarifario 2014',
+                            'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $codigo, $detalle, $precio),
+                        ];
 
                         $preview['procedimientos'][] = [
                             'procCodigo' => $codigo,
@@ -108,6 +116,12 @@ class PreviewService
         if (!empty($responseData['insumos'])) {
             $insumosDecodificados = $responseData['insumos'];
             $afiliacion = strtoupper(trim($responseData['afiliacion'] ?? ''));
+            if ($afiliacion !== '') {
+                $appliedRules[] = [
+                    'titulo' => 'Tarifa por afiliación',
+                    'detalle' => "Valores calculados usando afiliación {$afiliacion} para insumos y derechos",
+                ];
+            }
 
             foreach (['quirurgicos', 'anestesia'] as $categoria) {
                 if (!empty($insumosDecodificados[$categoria])) {
@@ -126,6 +140,11 @@ class PreviewService
                                 'cantidad' => $i['cantidad'],
                                 'precio' => $precio,
                                 'iva' => $i['iva'] ?? 1
+                            ];
+
+                            $appliedRules[] = [
+                                'titulo' => 'Precio de insumo',
+                                'detalle' => sprintf('Código %s (%s) con tarifa $%0.2f', $i['codigo'], $i['nombre'], $precio),
                             ];
                         }
                     }
@@ -148,6 +167,11 @@ class PreviewService
                             'cantidad' => (int)$equipo['cantidad'],
                             'iva' => 0,
                             'precioAfiliacion' => $precio
+                        ];
+
+                        $appliedRules[] = [
+                            'titulo' => 'Derechos de sala',
+                            'detalle' => sprintf('Equipo %s → %s x%d = $%0.2f', $equipo['codigo'], $equipo['nombre'], (int)($equipo['cantidad'] ?? 1), $precio),
                         ];
                     }
                 }
@@ -191,6 +215,11 @@ class PreviewService
                 'valor2' => 0.01,
                 'precio' => round($tiempo * 3 * 60.00 * 0.01, 2)
             ];
+
+            $appliedRules[] = [
+                'titulo' => 'Oxígeno',
+                'detalle' => sprintf('Duración %s horas con flujo estándar 3 L/min', number_format($tiempo, 2)),
+            ];
         }
 
         // 4. Anestesia
@@ -214,6 +243,11 @@ class PreviewService
                         'iva' => 0,
                         'precioAfiliacion' => $d['precioAfiliacion']
                     ];
+
+                    $appliedRules[] = [
+                        'titulo' => 'Derechos por duración',
+                        'detalle' => sprintf('Duración %d minutos → código %s', $duracionMin, $d['codigo']),
+                    ];
                 }
             }
         } catch (\Throwable $e) {
@@ -233,6 +267,11 @@ class PreviewService
                 'precio' => round($cuartos * 13.34, 2)
             ];
 
+            $appliedRules[] = [
+                'titulo' => 'Regla ISSFA 66984',
+                'detalle' => sprintf('Solo modificador 999999 por %d cuartos de hora', $cuartos),
+            ];
+
             // Regla adicional: si edad ≥ 70, agregar también 99100
             if ($edad !== null && $edad >= 70) {
                 $preview['anestesia'][] = [
@@ -241,6 +280,11 @@ class PreviewService
                     'tiempo' => 1,
                     'valor2' => 13.34,
                     'precio' => round(1 * 13.34, 2)
+                ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Anestesia por edad',
+                    'detalle' => 'Paciente ≥ 70 años aplica código 99100',
                 ];
             }
         } elseif ($afiliacion === "ISSFA") {
@@ -255,6 +299,11 @@ class PreviewService
                     'valor2' => 13.34,
                     'precio' => round($cantidad99149 * 13.34, 2)
                 ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Sedación inicial',
+                    'detalle' => sprintf('99149 por %d bloque(s) inicial(es)', $cantidad99149),
+                ];
             }
             if ($cantidad99150 > 0) {
                 $preview['anestesia'][] = [
@@ -263,6 +312,11 @@ class PreviewService
                     'tiempo' => $cantidad99150,
                     'valor2' => 13.34,
                     'precio' => round($cantidad99150 * 13.34, 2)
+                ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Sedación adicional',
+                    'detalle' => sprintf('99150 por %d bloque(s) adicionales', $cantidad99150),
                 ];
             }
 
@@ -274,6 +328,11 @@ class PreviewService
                 'precio' => round($cuartos * 13.34, 2)
             ];
 
+            $appliedRules[] = [
+                'titulo' => 'Modificador de anestesia',
+                'detalle' => sprintf('999999 por %d cuartos de hora', $cuartos),
+            ];
+
             if ($edad !== null && $edad >= 70) {
                 $preview['anestesia'][] = [
                     'codigo' => '99100',
@@ -281,6 +340,11 @@ class PreviewService
                     'tiempo' => 1,
                     'valor2' => 13.34,
                     'precio' => round(1 * 13.34, 2)
+                ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Anestesia por edad',
+                    'detalle' => 'Paciente ≥ 70 años aplica código 99100',
                 ];
             }
         } else {
@@ -292,6 +356,11 @@ class PreviewService
                 'precio' => round($cuartos * 13.34, 2)
             ];
 
+            $appliedRules[] = [
+                'titulo' => 'Modificador de anestesia',
+                'detalle' => sprintf('999999 por %d cuartos de hora', $cuartos),
+            ];
+
             if ($edad !== null && $edad >= 70) {
                 $preview['anestesia'][] = [
                     'codigo' => '99100',
@@ -300,8 +369,15 @@ class PreviewService
                     'valor2' => 13.34,
                     'precio' => round(1 * 13.34, 2)
                 ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Anestesia por edad',
+                    'detalle' => 'Paciente ≥ 70 años aplica código 99100',
+                ];
             }
         }
+
+        $preview['reglas'] = $appliedRules;
 
         return $preview;
     }
