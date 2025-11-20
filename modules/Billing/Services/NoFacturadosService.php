@@ -109,7 +109,7 @@ class NoFacturadosService
 
         $where = $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';
 
-        $countSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS conteo' . $where;
+        $countSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS base' . $where;
         $stmtCount = $this->db->prepare($countSql);
         foreach ($params as $key => $value) {
             $stmtCount->bindValue($key, $value);
@@ -120,7 +120,7 @@ class NoFacturadosService
         $totalSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS total_base';
         $totalCount = (int) $this->db->query($totalSql)->fetchColumn();
 
-        $summarySql = 'SELECT tipo, COUNT(*) AS cantidad, SUM(valor_estimado) AS total_valor FROM (' . $baseSql . ') AS resumen' . $where . ' GROUP BY tipo';
+        $summarySql = 'SELECT base.tipo, COUNT(*) AS cantidad, SUM(base.valor_estimado) AS total_valor FROM (' . $baseSql . ') AS base' . $where . ' GROUP BY base.tipo';
         $stmtSummary = $this->db->prepare($summarySql);
         foreach ($params as $key => $value) {
             $stmtSummary->bindValue($key, $value);
