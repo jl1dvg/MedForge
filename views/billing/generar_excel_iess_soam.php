@@ -34,8 +34,14 @@ if (empty($datosFacturacionLote)) {
     die("No se encontró ninguna prefactura válida.");
 }
 
-// Crear Excel
-$spreadsheet = new Spreadsheet();
+// Crear o reutilizar Excel
+/** @var Spreadsheet|null $spreadsheet */
+$spreadsheet = $GLOBALS['spreadsheet'] ?? null;
+if (!($spreadsheet instanceof Spreadsheet)) {
+    $spreadsheet = new Spreadsheet();
+    $GLOBALS['spreadsheet'] = $spreadsheet;
+}
+
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('IESS');
 

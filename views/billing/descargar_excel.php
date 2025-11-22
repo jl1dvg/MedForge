@@ -58,8 +58,14 @@ $formDetails['diagnostico2'] = $formDetails['diagnosticos'][1]['idDiagnostico'] 
 $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
 $diagnosticoSecundario = $formDetails['diagnostico2'] ?? '';
 
-// Crear Excel
-$spreadsheet = new Spreadsheet();
+// Crear o reutilizar Excel
+/** @var Spreadsheet|null $spreadsheet */
+$spreadsheet = $GLOBALS['spreadsheet'] ?? null;
+if (!($spreadsheet instanceof Spreadsheet)) {
+    $spreadsheet = new Spreadsheet();
+    $GLOBALS['spreadsheet'] = $spreadsheet;
+}
+
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('Prefactura');
 $sheet->getColumnDimension('A')->setWidth(3.6);
