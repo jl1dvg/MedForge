@@ -128,8 +128,14 @@ $accionesReglas = $reglaController->evaluar($contexto);
 
 $diagnosticoPrincipal = $formDetails['diagnostico1'] ?? '';
 $diagnosticoSecundario = $formDetails['diagnostico2'] ?? '';
-// Crear Excel
-$spreadsheet = new Spreadsheet();
+// Crear o reutilizar Excel
+/** @var Spreadsheet|null $spreadsheet */
+$spreadsheet = $GLOBALS['spreadsheet'] ?? null;
+if (!($spreadsheet instanceof Spreadsheet)) {
+    $spreadsheet = new Spreadsheet();
+    $GLOBALS['spreadsheet'] = $spreadsheet;
+}
+
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('ISSPOL');
 
