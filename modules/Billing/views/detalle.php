@@ -10,6 +10,7 @@ $subtotales = $detalle['subtotales'] ?? [];
 $totalSinIVA = $detalle['totalSinIVA'] ?? 0;
 $iva = $detalle['iva'] ?? 0;
 $totalConIVA = $detalle['totalConIVA'] ?? 0;
+$reglasAplicadas = $detalle['reglasAplicadas'] ?? [];
 $grupoClases = $detalle['grupoClases'] ?? [];
 $sri = $detalle['sri'] ?? null;
 $estadoSri = strtoupper($sri['estado'] ?? 'PENDIENTE');
@@ -166,6 +167,42 @@ $alertSri = match ($estadoSri) {
                             </table>
                         </div>
                     <?php endforeach; ?>
+
+                    <?php if (!empty($reglasAplicadas)): ?>
+                        <div class="box mb-4">
+                            <div class="box-header with-border">
+                                <h4 class="box-title mb-0">Trazabilidad de reglas aplicadas</h4>
+                            </div>
+                            <div class="box-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-striped mb-0">
+                                        <thead>
+                                        <tr>
+                                            <th>Colección</th>
+                                            <th>Código</th>
+                                            <th>Acción</th>
+                                            <th>Valor original</th>
+                                            <th>Valor final</th>
+                                            <th>Notas</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <?php foreach ($reglasAplicadas as $registro): ?>
+                                            <tr>
+                                                <td><?= htmlspecialchars(strtoupper($registro['coleccion'] ?? '--')) ?></td>
+                                                <td><?= htmlspecialchars($registro['codigo'] ?? '--') ?></td>
+                                                <td><?= htmlspecialchars(ucfirst($registro['accion'] ?? '--')) ?></td>
+                                                <td>$<?= number_format((float)($registro['valor_original'] ?? 0), 2) ?></td>
+                                                <td>$<?= number_format((float)($registro['valor_final'] ?? 0), 2) ?></td>
+                                                <td class="text-muted small"><?= htmlspecialchars($registro['regla']['notes'] ?? '') ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="row">
                         <div class="col-md-6 offset-md-6">

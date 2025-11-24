@@ -7,6 +7,8 @@ use Core\BaseController;
 use Modules\Billing\Services\BillingViewService;
 use Modules\Pacientes\Services\PacienteService;
 use Models\BillingSriDocumentModel;
+use Models\SettingsModel;
+use Modules\Billing\Services\BillingRuleService;
 use PDO;
 
 class BillingController extends BaseController
@@ -22,10 +24,13 @@ class BillingController extends BaseController
         $this->legacyController = new LegacyBillingController($pdo);
         $pacienteService = new PacienteService($pdo);
         $sriDocumentModel = new BillingSriDocumentModel($pdo);
+        $settingsModel = new SettingsModel($pdo);
+        $billingRuleService = new BillingRuleService($settingsModel);
         $this->service = new BillingViewService(
             $this->legacyController,
             $pacienteService,
-            $sriDocumentModel
+            $sriDocumentModel,
+            $billingRuleService
         );
         $this->noFacturadosService = new \Modules\Billing\Services\NoFacturadosService($pdo);
     }
@@ -206,10 +211,13 @@ class BillingController extends BaseController
         $start = (int)($_GET['start'] ?? 0);
         $length = (int)($_GET['length'] ?? 25);
 
+        $afiliacion = $_GET['afiliacion'] ?? [];
+        $afiliaciones = is_array($afiliacion) ? $afiliacion : [$afiliacion];
+
         $filters = [
             'fecha_desde' => $_GET['fecha_desde'] ?? null,
             'fecha_hasta' => $_GET['fecha_hasta'] ?? null,
-            'afiliacion' => $_GET['afiliacion'] ?? null,
+            'afiliacion' => $afiliaciones,
             'estado_revision' => $_GET['estado_revision'] ?? null,
             'tipo' => $_GET['tipo'] ?? null,
             'busqueda' => $_GET['busqueda'] ?? null,
@@ -227,6 +235,18 @@ class BillingController extends BaseController
             'recordsFiltered' => $resultado['recordsFiltered'],
             'data' => $resultado['data'],
             'summary' => $resultado['summary'],
+        ]);
+    }
+
+    public function apiAfiliaciones(): void
+    {
+        $this->requireAuth();
+
+        $afiliaciones = $this->noFacturadosService->listarAfiliaciones();
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'data' => $afiliaciones,
         ]);
     }
 

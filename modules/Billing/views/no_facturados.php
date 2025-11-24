@@ -2,8 +2,18 @@
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/datatable/datatables.min.js',
     'assets/vendor_components/jquery.peity/jquery.peity.js',
+    'https://cdn.jsdelivr.net/npm/sweetalert2@11',
 ]);
 ?>
+<style>
+    /* Rehabilita checkboxes nativos dentro de las tablas (el theme global los oculta esperando un label) */
+    .row-select.form-check-input {
+        position: static !important;
+        left: auto !important;
+        opacity: 1 !important;
+        margin: 0;
+    }
+</style>
 
 <section class="content-header">
     <div class="d-flex align-items-center">
@@ -32,16 +42,25 @@ $scripts = array_merge($scripts ?? [], [
         const previewContent = document.getElementById("previewContent");
         const facturarFormId = document.getElementById("facturarFormId");
         const facturarHcNumber = document.getElementById("facturarHcNumber");
+        const previewMeta = document.getElementById('previewMeta');
+        const previewPaciente = document.getElementById('previewPaciente');
+        const previewHc = document.getElementById('previewHc');
+        const previewProcedimiento = document.getElementById('previewProcedimiento');
         const resumenContainer = document.getElementById('resumenTotales');
         const filtrosForm = document.getElementById('filtrosNoFacturados');
         const seleccionadosInfo = document.getElementById('seleccionadosInfo');
         const btnFacturarLote = document.getElementById('btnFacturarLote');
         const btnMarcarRevisado = document.getElementById('btnMarcarRevisado');
+        const vistasSelect = document.getElementById('vistaGuardada');
+        const btnGuardarVista = document.getElementById('btnGuardarVista');
+        const btnBorrarVista = document.getElementById('btnBorrarVista');
+        const afiliacionSelect = document.getElementById('fAfiliacion');
 
         const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
         const PREVIEW_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
         const previewCache = new Map();
+        const STORAGE_VISTAS_KEY = 'billing.no-facturados.vistas';
 
         const getCacheKey = (formId) => `preview-${formId}`;
 
@@ -64,6 +83,24 @@ $scripts = array_merge($scripts ?? [], [
 
         const invalidatePreview = (formId) => {
             previewCache.delete(getCacheKey(formId));
+        };
+
+        const renderPreviewPlaceholder = (message = 'Cargando datos...') => {
+            previewContent.innerHTML = `
+                <div class="d-flex flex-column align-items-center text-muted py-4">
+                    <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+                    <div>${message}</div>
+                </div>
+            `;
+        };
+
+        const renderPreviewError = (message) => {
+            previewContent.innerHTML = `
+                <div class="alert alert-danger d-flex align-items-center gap-2 mb-0" role="alert">
+                    <i class="mdi mdi-alert-outline fs-4 mb-0"></i>
+                    <div>${message}</div>
+                </div>
+            `;
         };
 
         const buildPreviewCandidates = (baseHref, formId, hcNumber) => {
@@ -98,6 +135,136 @@ $scripts = array_merge($scripts ?? [], [
             }
 
             return result;
+        };
+
+        const loadVistasGuardadas = () => {
+            try {
+                const raw = localStorage.getItem(STORAGE_VISTAS_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                console.warn('No se pudo leer las vistas guardadas', error);
+                return [];
+            }
+        };
+
+        const persistirVistas = (vistas) => {
+            localStorage.setItem(STORAGE_VISTAS_KEY, JSON.stringify(vistas));
+        };
+
+        const getFiltersFromForm = () => {
+            if (!filtrosForm) return {};
+            const filters = {};
+            const formData = new FormData(filtrosForm);
+            for (const [key, value] of formData.entries()) {
+                if (filters[key] !== undefined) {
+                    filters[key] = Array.isArray(filters[key]) ? [...filters[key], value] : [filters[key], value];
+                } else {
+                    filters[key] = value;
+                }
+            }
+            return filters;
+        };
+
+        const normalizeFilters = (filters = {}) => {
+            const normalized = {};
+            Object.entries(filters).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    const items = value.filter((item) => item !== '' && item !== null && item !== undefined);
+                    if (items.length) {
+                        normalized[key] = items;
+                    }
+                    return;
+                }
+
+                if (value !== '' && value !== null && value !== undefined) {
+                    normalized[key] = value;
+                }
+            });
+            return normalized;
+        };
+
+        const applyFiltersToForm = (filters = {}) => {
+            if (!filtrosForm) return;
+            const entries = {...filters};
+            Array.from(filtrosForm.elements).forEach((element) => {
+                if (!element.name) return;
+                const value = entries[element.name];
+
+                if (element.tagName === 'SELECT' && element.multiple) {
+                    const selectedValues = Array.isArray(value)
+                        ? value.map(String)
+                        : (value !== undefined ? [String(value)] : []);
+                    Array.from(element.options).forEach((option) => {
+                        option.selected = selectedValues.includes(option.value);
+                    });
+                } else {
+                    element.value = value ?? '';
+                }
+            });
+        };
+
+        const cargarAfiliaciones = async () => {
+            if (!afiliacionSelect) return;
+            afiliacionSelect.innerHTML = '<option value="" disabled>Cargando afiliaciones...</option>';
+            try {
+                const response = await fetch('/api/billing/afiliaciones');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const json = await response.json();
+                const afiliaciones = Array.isArray(json?.data) ? json.data : [];
+                afiliacionSelect.innerHTML = '';
+                afiliaciones.forEach((item) => {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    option.textContent = item;
+                    afiliacionSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('No se pudieron cargar las afiliaciones', error);
+                afiliacionSelect.innerHTML = '<option value="" disabled>No se pudieron cargar afiliaciones</option>';
+            }
+        };
+
+        const renderVistasGuardadas = (selected = '') => {
+            if (!vistasSelect) return;
+            const vistas = loadVistasGuardadas();
+            vistasSelect.innerHTML = '<option value="">Vistas guardadas</option>';
+            vistas.forEach((vista) => {
+                const option = document.createElement('option');
+                option.value = vista.nombre;
+                option.textContent = vista.nombre;
+                vistasSelect.appendChild(option);
+            });
+            vistasSelect.value = selected;
+            if (btnBorrarVista) {
+                btnBorrarVista.disabled = !vistas.length || !selected;
+            }
+        };
+
+        const guardarVistaActual = () => {
+            if (!filtrosForm) return;
+            const nombre = prompt('¿Cómo quieres llamar a esta vista?');
+            const vistaNombre = (nombre || '').trim();
+            if (!vistaNombre) return;
+
+            const vistas = loadVistasGuardadas();
+            const filtros = normalizeFilters(getFiltersFromForm());
+            const existingIndex = vistas.findIndex((vista) => vista.nombre === vistaNombre);
+            if (existingIndex >= 0) {
+                vistas[existingIndex] = {nombre: vistaNombre, filtros};
+            } else {
+                vistas.push({nombre: vistaNombre, filtros});
+            }
+            persistirVistas(vistas);
+            renderVistasGuardadas(vistaNombre);
+        };
+
+        const eliminarVistaSeleccionada = () => {
+            const selected = vistasSelect?.value || '';
+            if (!selected) return;
+            const vistas = loadVistasGuardadas().filter((vista) => vista.nombre !== selected);
+            persistirVistas(vistas);
+            renderVistasGuardadas('');
         };
 
         const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
@@ -163,7 +330,7 @@ $scripts = array_merge($scripts ?? [], [
 
             return `
                 <div class="table-responsive">
-                    <table class="table table-bordered table-sm align-middle mb-0">
+                    <table class="table table-lg invoice-archive">
                         <thead class="table-light">
                             <tr>${header}</tr>
                         </thead>
@@ -207,7 +374,9 @@ $scripts = array_merge($scripts ?? [], [
                 true
             );
 
-            const insumosContent = [
+            const insumosSection = renderAccordionItem(
+                "insumos",
+                "Insumos",
                 renderTableSection(
                     data.insumos,
                     ["Código", "Detalle", "Cantidad", "Precio", "Subtotal"],
@@ -226,38 +395,30 @@ $scripts = array_merge($scripts ?? [], [
                     },
                     "Sin insumos registrados"
                 ),
-            ];
+                false
+            );
 
-            if (data.derechos?.length) {
-                insumosContent.push(
-                    `<div class="mt-3">
-                        <h6 class="mb-2">Derechos</h6>
-                        ${renderTableSection(
-                            data.derechos,
-                            ["Código", "Detalle", "Cantidad", "Precio", "Subtotal"],
-                            (d) => {
-                                const unit = Number(d.precioAfiliacion) || 0;
-                                const qty = Number(d.cantidad) || 0;
-                                return `
-                                    <tr>
-                                        <td>${d.codigo}</td>
-                                        <td>${d.detalle}</td>
-                                        <td class="text-center">${qty}</td>
-                                        <td class="text-end">${formatCurrency(unit)}</td>
-                                        <td class="text-end">${formatCurrency(unit * qty)}</td>
-                                    </tr>
-                                `;
-                            },
-                            "Sin derechos registrados"
-                        )}
-                    </div>`
-                );
-            }
-
-            const insumosSection = renderAccordionItem(
-                "insumos",
-                "Insumos",
-                insumosContent.join(""),
+            const derechosSection = renderAccordionItem(
+                "derechos",
+                "Derechos",
+                renderTableSection(
+                    data.derechos,
+                    ["Código", "Detalle", "Cantidad", "Precio", "Subtotal"],
+                    (d) => {
+                        const unit = Number(d.precioAfiliacion) || 0;
+                        const qty = Number(d.cantidad) || 0;
+                        return `
+                            <tr>
+                                <td>${d.codigo}</td>
+                                <td>${d.detalle}</td>
+                                <td class="text-center">${qty}</td>
+                                <td class="text-end">${formatCurrency(unit)}</td>
+                                <td class="text-end">${formatCurrency(unit * qty)}</td>
+                            </tr>
+                        `;
+                    },
+                    "Sin derechos registrados"
+                ),
                 false
             );
 
@@ -266,8 +427,8 @@ $scripts = array_merge($scripts ?? [], [
                 "Oxígeno",
                 data.oxigeno?.length
                     ? data.oxigeno
-                          .map(
-                              (o) => `
+                        .map(
+                            (o) => `
                             <div class="alert alert-warning d-flex align-items-center mb-2" role="alert">
                                 <div>
                                     <div class="fw-semibold">${o.codigo} - ${o.nombre}</div>
@@ -275,8 +436,8 @@ $scripts = array_merge($scripts ?? [], [
                                 </div>
                                 <span class="ms-auto badge bg-primary">${formatCurrency(o.precio)}</span>
                             </div>`
-                          )
-                          .join("")
+                        )
+                        .join("")
                     : '<p class="text-muted mb-0">Sin consumos de oxígeno</p>',
                 false
             );
@@ -304,6 +465,7 @@ $scripts = array_merge($scripts ?? [], [
                 <div class="accordion preview-accordion" id="previewAccordion">
                     ${procedimientosSection}
                     ${insumosSection}
+                    ${derechosSection}
                     ${oxigenoSection}
                     ${anestesiaSection}
                 </div>
@@ -374,15 +536,18 @@ $scripts = array_merge($scripts ?? [], [
                 const button = event.relatedTarget;
                 const formId = button?.getAttribute("data-form-id");
                 const hcNumber = button?.getAttribute("data-hc-number");
+                const paciente = button?.getAttribute("data-paciente") || '';
+                const procedimiento = button?.getAttribute("data-procedimiento") || '';
 
                 if (!formId || !hcNumber) {
-                    previewContent.innerHTML = "<p class='text-danger'>❌ Datos incompletos para generar el preview.</p>";
+                    renderPreviewError('Datos incompletos para generar el preview.');
                     return;
                 }
 
+                setPreviewMeta({paciente, hcNumber, procedimiento});
                 facturarFormId.value = formId;
                 facturarHcNumber.value = hcNumber;
-                previewContent.innerHTML = "<p class='text-muted'>🔄 Cargando datos...</p>";
+                renderPreviewPlaceholder('Cargando datos de facturación...');
 
                 try {
                     const cached = getCachedPreview(formId);
@@ -397,22 +562,84 @@ $scripts = array_merge($scripts ?? [], [
                     const data = await res.json();
                     if (!data.success) {
                         const message = data.message ? String(data.message) : 'No fue posible generar el preview.';
-                        previewContent.innerHTML = `<p class='text-danger'>❌ ${message}</p>`;
+                        renderPreviewError(message);
                         return;
                     }
 
                     cachePreview(formId, data);
                     renderPreview(data);
                 } catch (error) {
-                    previewContent.innerHTML = `<p class='text-danger'>❌ ${error?.message || error || 'No fue posible cargar el preview.'}</p>`;
+                    renderPreviewError(error?.message || error || 'No fue posible cargar el preview.');
                 }
             });
         }
 
-        document.getElementById('facturarForm')?.addEventListener('submit', () => {
+        const facturarForm = document.getElementById('facturarForm');
+        facturarForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
             const formId = facturarFormId.value;
             if (formId) {
                 invalidatePreview(formId);
+            }
+
+            const formData = new FormData(facturarForm);
+            const action = facturarForm.getAttribute('action') || facturarForm.action || window.location.href;
+            const method = (facturarForm.getAttribute('method') || facturarForm.method || 'POST').toUpperCase();
+
+            try {
+                if (window.Swal) {
+                    Swal.fire({
+                        title: 'Procesando facturación…',
+                        text: 'Por favor espera un momento',
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading(),
+                    });
+                }
+
+                const response = await fetch(action, {
+                    method,
+                    body: formData,
+                });
+
+                let data = null;
+                const contentType = response.headers.get('Content-Type') || '';
+                if (contentType.includes('application/json')) {
+                    data = await response.json();
+                }
+
+                const success = data ? !!data.success : response.ok;
+                const message = data?.message || (success
+                    ? 'La facturación se completó correctamente.'
+                    : 'Ocurrió un problema al facturar.');
+
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: success ? 'success' : 'error',
+                        title: success ? 'Facturación completada' : 'Error en la facturación',
+                        text: message,
+                    });
+                } else {
+                    alert(message);
+                }
+
+                if (success) {
+                    if (previewModal) {
+                        const modalInstance = bootstrap.Modal.getInstance(previewModal) || new bootstrap.Modal(previewModal);
+                        modalInstance.hide();
+                    }
+                    recargarTablas();
+                }
+            } catch (error) {
+                console.error(error);
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error en la facturación',
+                        text: error?.message || 'No fue posible completar la facturación.',
+                    });
+                } else {
+                    alert('No fue posible completar la facturación.');
+                }
             }
         });
 
@@ -426,17 +653,17 @@ $scripts = array_merge($scripts ?? [], [
             revisados: {
                 tableId: 'tablaRevisados',
                 selectAllId: 'selectAllRevisados',
-                baseFilters: { estado_revision: 1, tipo: 'quirurgico' },
+                baseFilters: {estado_revision: 1, tipo: 'quirurgico'},
             },
             pendientes: {
                 tableId: 'tablaPendientes',
                 selectAllId: 'selectAllPendientes',
-                baseFilters: { estado_revision: 0, tipo: 'quirurgico' },
+                baseFilters: {estado_revision: 0, tipo: 'quirurgico'},
             },
             noQuirurgicos: {
                 tableId: 'tablaNoQuirurgicos',
                 selectAllId: 'selectAllNoQuirurgicos',
-                baseFilters: { tipo: 'no_quirurgico' },
+                baseFilters: {tipo: 'no_quirurgico'},
             },
         };
 
@@ -447,7 +674,37 @@ $scripts = array_merge($scripts ?? [], [
             return date.toLocaleDateString('es-EC');
         };
 
-        const renderBadge = (label, type = 'secondary') => `<span class="badge bg-${type}">${label}</span>`;
+        const showTableError = (tableId, message) => {
+            const errorBox = document.querySelector(`[data-table-error="${tableId}"]`);
+            if (!errorBox) return;
+            const messageBox = errorBox.querySelector('[data-error-message]');
+            if (messageBox) {
+                messageBox.textContent = message || 'No fue posible cargar la tabla.';
+            }
+            errorBox.classList.remove('d-none');
+        };
+
+        const hideTableError = (tableId) => {
+            const errorBox = document.querySelector(`[data-table-error="${tableId}"]`);
+            if (errorBox) {
+                errorBox.classList.add('d-none');
+            }
+        };
+
+        let tablas = {};
+
+        const recargarTablas = () => {
+            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+        };
+
+        const recalcularAnchoTablas = (delayMs = 0) => {
+            if (!Object.keys(tablas).length) return;
+            window.setTimeout(() => {
+                Object.values(tablas).forEach((tabla) => tabla?.columns?.adjust?.());
+            }, delayMs);
+        };
+
+        const renderBadge = (label, type = 'secondary') => `<span class="badge badge-pill badge-${type}">${label}</span>`;
 
         const getActiveTableKey = () => document.querySelector('#noFacturadosTabs .nav-link.active')?.id?.replace('tab', '')?.replace(/^./, (c) => c.toLowerCase()) || 'revisados';
 
@@ -473,6 +730,23 @@ $scripts = array_merge($scripts ?? [], [
             return `<div class="fw-semibold">${nombre}</div><div class="text-muted small">HC ${hc}</div>`;
         };
 
+        const escapeAttr = (value) => String(value ?? '').replace(/"/g, '&quot;');
+
+        const formatProcedimiento = (value) => {
+            if (!value) return '';
+            const text = String(value).toLowerCase();
+            return text.charAt(0).toUpperCase() + text.slice(1);
+        };
+
+        const setPreviewMeta = ({paciente = '', hcNumber = '', procedimiento = ''} = {}) => {
+            if (!previewMeta) return;
+            const hasData = paciente || hcNumber || procedimiento;
+            previewMeta.classList.toggle('d-none', !hasData);
+            if (previewPaciente) previewPaciente.textContent = paciente || 'Paciente no disponible';
+            if (previewHc) previewHc.textContent = hcNumber || 'N/D';
+            if (previewProcedimiento) previewProcedimiento.textContent = formatProcedimiento(procedimiento || '') || '—';
+        };
+
         const buildColumns = (tableKey) => ([
             {
                 data: null,
@@ -481,8 +755,8 @@ $scripts = array_merge($scripts ?? [], [
                 className: 'text-center',
                 render: (_, __, row) => renderCheckbox(row, tableKey),
             },
-            { data: 'form_id' },
-            { data: 'hc_number' },
+            {data: 'form_id'},
+            //{ data: 'hc_number' },
             {
                 data: null,
                 defaultContent: '',
@@ -491,7 +765,7 @@ $scripts = array_merge($scripts ?? [], [
             {
                 data: 'afiliacion',
                 defaultContent: '',
-                render: (data) => data ? `<span class="badge bg-info text-dark">${data}</span>` : '<span class="text-muted">Sin afiliación</span>',
+                render: (data) => data ? `<span class="badge badge-pill badge-secondary">${data}</span>` : '<span class="text-muted">Sin afiliación</span>',
             },
             {
                 data: 'fecha',
@@ -500,8 +774,8 @@ $scripts = array_merge($scripts ?? [], [
             {
                 data: 'tipo',
                 render: (data) => data === 'quirurgico'
-                    ? renderBadge('Quirúrgico', 'success')
-                    : renderBadge('No quirúrgico', 'primary'),
+                    ? renderBadge('Quirúrgico', 'primary')
+                    : renderBadge('No quirúrgico', 'info'),
             },
             {
                 data: 'estado_revision',
@@ -512,10 +786,14 @@ $scripts = array_merge($scripts ?? [], [
                     const estado = Number(data) === 1;
                     return estado
                         ? renderBadge('Revisado', 'success')
-                        : renderBadge('Pendiente', 'warning text-dark');
+                        : renderBadge('Pendiente', 'warning');
                 }
             },
-            { data: 'procedimiento', defaultContent: '' },
+            {
+                data: 'procedimiento',
+                defaultContent: '',
+                render: (data) => formatProcedimiento(data),
+            },
             {
                 data: 'valor_estimado',
                 className: 'text-end',
@@ -528,12 +806,48 @@ $scripts = array_merge($scripts ?? [], [
                 render: function (data, type, row) {
                     const formId = row.form_id ? String(row.form_id) : '';
                     const hcNumber = row.hc_number ? String(row.hc_number) : '';
-                    const previewBtn = `<button class="btn btn-sm btn-info me-1" data-form-id="${formId}" data-hc-number="${hcNumber}" data-bs-toggle="modal" data-bs-target="#previewModal"><i class="mdi mdi-eye"></i> Preview</button>`;
-                    const facturarBtn = `<a class="btn btn-sm btn-secondary" href="/billing/facturar.php?form_id=${encodeURIComponent(formId)}">Facturar</a>`;
-                    return previewBtn + facturarBtn;
+                    const paciente = row.paciente ? escapeAttr(row.paciente) : '';
+                    const procedimiento = row.procedimiento ? escapeAttr(row.procedimiento) : '';
+
+                    const previewLink = `
+                        <a href="#"
+                           class="list-icons-item me-10"
+                           data-form-id="${formId}"
+                           data-hc-number="${hcNumber}"
+                           data-paciente="${paciente}"
+                           data-procedimiento="${procedimiento}"
+                           data-bs-toggle="modal"
+               data-bs-target="#previewModal">
+                <i class="fa fa-eye"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="Preview"></i>
+                        </a>
+                    `;
+
+                    const facturarLink = `
+                        <a href="/billing/facturar.php?form_id=${encodeURIComponent(formId)}"
+               class="list-icons-item">
+                <i class="fa fa-file-text"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="Facturar"></i>
+                        </a>
+                    `;
+
+                    return `
+                        <div class="text-center">
+                            <div class="list-icons d-inline-flex">
+                                ${previewLink}
+                                ${facturarLink}
+                            </div>
+                        </div>
+                    `;
                 }
             }
         ]);
+
+        $.fn.dataTable.ext.errMode = 'none';
 
         const createTable = (tableKey) => {
             const config = tableConfigs[tableKey];
@@ -541,19 +855,27 @@ $scripts = array_merge($scripts ?? [], [
                 serverSide: true,
                 processing: true,
                 searching: false,
+                autoWidth: false,
+                responsive: true,
                 ajax: {
                     url: '/api/billing/no-facturados',
                     data: (d) => {
-                        const formData = new FormData(filtrosForm);
-                        const filters = {};
-                        formData.forEach((value, key) => {
-                            filters[key] = value;
-                        });
-                        return { ...d, ...filters, ...config.baseFilters };
+                        const filters = getFiltersFromForm();
+                        return {...d, ...filters, ...config.baseFilters};
+                    },
+                    error: (xhr) => {
+                        const responseMessage = xhr?.responseJSON?.message || xhr?.statusText || 'No fue posible cargar los datos.';
+                        showTableError(config.tableId, responseMessage);
                     },
                 },
                 order: [[5, 'desc']],
                 columns: buildColumns(tableKey),
+                language: {
+                    emptyTable: 'No hay registros para mostrar.',
+                    zeroRecords: 'No se encontraron resultados con los filtros aplicados.',
+                    loadingRecords: 'Cargando registros...',
+                    processing: '<div class="d-flex align-items-center gap-2 text-muted"><div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div><span>Preparando tabla...</span></div>',
+                },
             });
 
             table.on('draw', () => {
@@ -568,6 +890,7 @@ $scripts = array_merge($scripts ?? [], [
             });
 
             table.on('xhr', function () {
+                hideTableError(config.tableId);
                 if (!resumenContainer || getActiveTableKey() !== tableKey) return;
                 const json = table.ajax.json();
                 const summary = json?.summary || {};
@@ -613,10 +936,16 @@ $scripts = array_merge($scripts ?? [], [
                 updateSelectionInfo();
             });
 
+            table.on('error.dt', (_, __, ___, message) => {
+                showTableError(config.tableId, message);
+            });
+
             return table;
         };
 
-        const tablas = {
+        cargarAfiliaciones();
+
+        tablas = {
             revisados: createTable('revisados'),
             pendientes: createTable('pendientes'),
             noQuirurgicos: createTable('noQuirurgicos'),
@@ -624,28 +953,54 @@ $scripts = array_merge($scripts ?? [], [
 
         filtrosForm?.addEventListener('submit', (event) => {
             event.preventDefault();
-            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+            recargarTablas();
         });
 
         document.getElementById('btnLimpiarFiltros')?.addEventListener('click', () => {
             filtrosForm.reset();
-            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+            recargarTablas();
         });
 
         document.querySelectorAll('#noFacturadosTabs .nav-link').forEach((tab) => {
-            tab.addEventListener('shown.bs.tab', () => updateSelectionInfo());
+            tab.addEventListener('shown.bs.tab', () => {
+                updateSelectionInfo();
+                recalcularAnchoTablas(50);
+            });
         });
+
+        window.addEventListener('resize', () => recalcularAnchoTablas(100));
+        $(document).on('expanded.pushMenu collapsed.pushMenu', () => recalcularAnchoTablas(250));
+
+        const aplicarVista = (nombreVista) => {
+            if (!nombreVista) return;
+            const vista = loadVistasGuardadas().find((item) => item.nombre === nombreVista);
+            if (!vista) return;
+            applyFiltersToForm(vista.filtros);
+            recargarTablas();
+        };
+
+        vistasSelect?.addEventListener('change', (event) => {
+            const value = event.target.value;
+            if (btnBorrarVista) {
+                btnBorrarVista.disabled = !value;
+            }
+            aplicarVista(value);
+        });
+
+        btnGuardarVista?.addEventListener('click', () => guardarVistaActual());
+        btnBorrarVista?.addEventListener('click', () => eliminarVistaSeleccionada());
+        renderVistasGuardadas('');
 
         const getSelectedRows = (tableKey) => {
             const table = tablas[tableKey];
             const selectedIds = selectionState[tableKey];
             const rows = table.rows().data().toArray().filter((row) => selectedIds.has(String(row.form_id)));
-            return { ids: Array.from(selectedIds), rows };
+            return {ids: Array.from(selectedIds), rows};
         };
 
         const handleBulkAction = (action) => {
             const key = getActiveTableKey();
-            const { ids } = getSelectedRows(key);
+            const {ids} = getSelectedRows(key);
             if (!ids.length) {
                 alert('Selecciona al menos un registro para continuar.');
                 return;
@@ -654,7 +1009,16 @@ $scripts = array_merge($scripts ?? [], [
             const mensaje = action === 'facturar'
                 ? 'Facturar en lote'
                 : 'Marcar como revisado';
-            alert(`${mensaje}: ${ids.join(', ')}`);
+
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'info',
+                    title: mensaje,
+                    text: ids.join(', '),
+                });
+            } else {
+                alert(`${mensaje}: ${ids.join(', ')}`);
+            }
         };
 
         btnFacturarLote?.addEventListener('click', () => handleBulkAction('facturar'));

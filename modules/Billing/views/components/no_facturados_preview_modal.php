@@ -1,5 +1,6 @@
 <!-- Modal global para preview -->
-<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+<div class="modal fade bs-example-modal-lg" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel"
+     aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
@@ -7,6 +8,17 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body preview-modal-body">
+                <div class="box box-inverse box-secondary"
+                     id="previewMeta">
+                    <div class="box-header with-border">
+                        <h4 class="box-title">
+                            <strong id="previewPaciente">-</strong>
+                            <small class="sidetitle" id="previewHc">—</small>
+                        </h4>
+                    </div>
+                    <div class="box-body" id="previewProcedimiento">
+                    </div>
+                </div>
                 <div id="previewContent">
                     <p class="text-muted">Cargando datos...</p>
                 </div>
@@ -39,8 +51,8 @@
 
     .preview-totals-bar {
         position: sticky;
-        bottom: -1rem;
-        background: #fff;
+        bottom: -7rem;
+        background: #fff4c5;
         z-index: 2;
     }
 

@@ -5,13 +5,15 @@ namespace Modules\Billing\Services;
 use Controllers\BillingController as LegacyBillingController;
 use Models\BillingSriDocumentModel;
 use Modules\Pacientes\Services\PacienteService;
+use Modules\Billing\Services\BillingRuleService;
 
 class BillingViewService
 {
     public function __construct(
         private readonly LegacyBillingController $billingController,
         private readonly PacienteService $pacienteService,
-        private readonly BillingSriDocumentModel $sriDocumentModel
+        private readonly BillingSriDocumentModel $sriDocumentModel,
+        private readonly BillingRuleService $billingRuleService
     ) {
     }
 
@@ -126,6 +128,11 @@ class BillingViewService
         $billingId = (int)($datos['billing']['id'] ?? 0);
         $sri = $billingId > 0 ? $this->mapSriDocument($this->sriDocumentModel->findLatestByBillingId($billingId)) : null;
 
+        $reglasAplicadas = $this->billingRuleService->traceFromDetalle($detallePorGrupo, [
+            'afiliacion' => $paciente['afiliacion'] ?? null,
+            'edad' => $this->calcularEdad($paciente['fecha_nacimiento'] ?? null, $datos['billing']['fecha_creacion'] ?? ($datos['billing']['created_at'] ?? ($metadata['fecha_registro'] ?? null))),
+        ]);
+
         return [
             'billing' => $datos['billing'] ?? [],
             'paciente' => $paciente,
@@ -143,6 +150,7 @@ class BillingViewService
                 'diagnostico' => $derivacion['diagnostico'] ?? null,
             ],
             'sri' => $sri,
+            'reglasAplicadas' => $reglasAplicadas,
         ];
     }
 
@@ -200,5 +208,20 @@ class BillingViewService
         ]);
 
         return trim(implode(' ', $partes)) ?: 'Desconocido';
+    }
+
+    private function calcularEdad(?string $fechaNacimiento, ?string $fechaReferencia = null): ?int
+    {
+        if (!$fechaNacimiento) {
+            return null;
+        }
+
+        try {
+            $nac = new \DateTime($fechaNacimiento);
+            $ref = $fechaReferencia ? new \DateTime($fechaReferencia) : new \DateTime();
+            return $ref->diff($nac)->y;
+        } catch (\Exception $exception) {
+            return null;
+        }
     }
 }

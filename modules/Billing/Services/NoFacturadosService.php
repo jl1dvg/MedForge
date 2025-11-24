@@ -10,9 +10,9 @@ class NoFacturadosService
     {
     }
 
-    public function listar(array $filters, int $start, int $length): array
+    private function getBaseSql(): string
     {
-        $baseSql = <<<'SQL'
+        return <<<'SQL'
             SELECT
                 base.form_id,
                 base.hc_number,
@@ -58,9 +58,15 @@ class NoFacturadosService
                 WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
             ) AS base
         SQL;
+    }
+
+    public function listar(array $filters, int $start, int $length): array
+    {
+        $baseSql = $this->getBaseSql();
 
         $conditions = [];
         $params = [];
+        $afiliaciones = array_values(array_filter(array_map('trim', (array)($filters['afiliacion'] ?? [])), static fn($value) => $value !== ''));
 
         if (!empty($filters['fecha_desde'])) {
             $conditions[] = 'base.fecha >= :fecha_desde';
@@ -72,9 +78,14 @@ class NoFacturadosService
             $params[':fecha_hasta'] = $filters['fecha_hasta'];
         }
 
-        if (!empty($filters['afiliacion'])) {
-            $conditions[] = 'base.afiliacion = :afiliacion';
-            $params[':afiliacion'] = $filters['afiliacion'];
+        if (!empty($afiliaciones)) {
+            $placeholders = [];
+            foreach ($afiliaciones as $index => $afiliacion) {
+                $placeholder = ':afiliacion_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $afiliacion;
+            }
+            $conditions[] = 'base.afiliacion IN (' . implode(', ', $placeholders) . ')';
         }
 
         if ($filters['estado_revision'] !== '' && $filters['estado_revision'] !== null) {
@@ -170,5 +181,13 @@ class NoFacturadosService
             'data' => $data,
             'summary' => $resumen,
         ];
+    }
+
+    public function listarAfiliaciones(): array
+    {
+        $baseSql = $this->getBaseSql();
+        $sql = 'SELECT DISTINCT TRIM(base.afiliacion) AS afiliacion FROM (' . $baseSql . ') AS base WHERE base.afiliacion IS NOT NULL AND TRIM(base.afiliacion) <> \'\' ORDER BY afiliacion';
+        $stmt = $this->db->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 }

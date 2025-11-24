@@ -219,6 +219,52 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'billing' => [
+                'title' => 'Facturación',
+                'icon' => 'fa-solid fa-file-invoice-dollar',
+                'description' => 'Centraliza reglas de precios y exclusiones aplicadas durante el flujo de facturación.',
+                'groups' => [
+                    [
+                        'id' => 'rules_by_code',
+                        'title' => 'Reglas por código',
+                        'description' => 'Ajustes específicos para códigos de procedimiento o insumo.',
+                        'fields' => [
+                            self::billingRulesField(
+                                'billing_rules_code',
+                                'Listado de reglas por código',
+                                'Prioridad más alta. Se aplica a procedimientos, insumos, derechos y anestesia con el mismo código.',
+                                'code'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'rules_by_affiliation',
+                        'title' => 'Reglas por afiliación',
+                        'description' => 'Condiciones cuando el paciente pertenece a una afiliación específica.',
+                        'fields' => [
+                            self::billingRulesField(
+                                'billing_rules_affiliation',
+                                'Listado de reglas por afiliación',
+                                'Se evalúan si no existe coincidencia exacta por código.',
+                                'affiliation'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'rules_by_age',
+                        'title' => 'Reglas por edad o rango etario',
+                        'description' => 'Define tarifas, descuentos o exclusiones según la edad del paciente.',
+                        'fields' => [
+                            self::billingRulesField(
+                                'billing_rules_age',
+                                'Listado de reglas por edad',
+                                'Se aplican cuando no hay regla por código ni por afiliación.',
+                                'age'
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'mailbox' => [
                 'title' => 'Mailbox',
                 'icon' => 'fa-solid fa-inbox',
@@ -1034,6 +1080,17 @@ class SettingsHelper
             'label' => $label,
             'default' => $default ? '1' : '0',
             'help' => $help,
+        ];
+    }
+
+    private static function billingRulesField(string $key, string $label, string $description, string $ruleType): array
+    {
+        return [
+            'type' => 'billing_rules',
+            'key' => $key,
+            'label' => $label,
+            'description' => $description,
+            'rule_type' => $ruleType,
         ];
     }
 

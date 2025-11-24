@@ -25,6 +25,10 @@ return function (Router $router) {
         (new BillingController($pdo))->apiNoFacturados();
     });
 
+    $router->get('/api/billing/afiliaciones', function (\PDO $pdo) {
+        (new BillingController($pdo))->apiAfiliaciones();
+    });
+
     $router->get('/views/billing/no_facturados.php', function () {
         header('Location: /billing/no-facturados', true, 302);
         exit;
