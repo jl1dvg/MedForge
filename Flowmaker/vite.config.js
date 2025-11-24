@@ -1,24 +1,15 @@
-import { defineConfig } from 'vite';
-import laravel  from 'laravel-vite-plugin';
-import tailwindcss from 'tailwindcss';
-import react from '@vitejs/plugin-react'
-import path from "path";
+// vite.config.js
+import { defineConfig } from 'vite'
 
 export default defineConfig({
-    plugins: [
-        react(),
-        tailwindcss({
-            config: './tailwind.config.js',
-        }),
-        laravel({
+    plugins: [],
+    build: {
+        outDir: 'public/build',
+        rollupOptions: {
             input: [
-                'Resources/assets/js/index.tsx',
-            ]
-        }),
-    ],
-    resolve: {
-        alias: {
-          "@": path.resolve(__dirname, "./Resources/assets/js"),
+                'Resources/assets/js/app.js',
+            ],
         },
-      },
-});
+    },
+    base: './',
+})
