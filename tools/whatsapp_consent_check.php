@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 use Modules\WhatsApp\Config\WhatsAppSettings;
-use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
+use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 

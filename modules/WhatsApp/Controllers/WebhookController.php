@@ -4,15 +4,15 @@ namespace Modules\WhatsApp\Controllers;
 
 use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
-use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\ConversationService;
-use Modules\WhatsApp\Services\ScenarioEngine;
 use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Support\DataProtectionFlow;
-use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
+use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
+use Modules\Autoresponder\Repositories\AutoresponderSessionRepository;
+use Modules\Autoresponder\Services\ScenarioEngine;
 use PDO;
 use function file_get_contents;
 use function hash_equals;

@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\WhatsApp\Controllers;
+namespace Modules\Autoresponder\Controllers;
 
 use Core\BaseController;
 use Modules\WhatsApp\Config\WhatsAppSettings;
-use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
+use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use PDO;
 use function file_get_contents;
@@ -50,7 +50,7 @@ class FlowmakerController extends BaseController
             unset($_SESSION['whatsapp_flowmaker_status']);
         }
 
-        $this->render(BASE_PATH . '/modules/WhatsApp/views/flowmaker.php', [
+        $this->render(BASE_PATH . '/modules/Autoresponder/views/flowmaker.php', [
             'pageTitle' => 'Flowmaker de WhatsApp',
             'config' => $config,
             'brand' => $brand,

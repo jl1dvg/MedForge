@@ -1,8 +1,11 @@
 <?php
 
-namespace Modules\WhatsApp\Services;
+namespace Modules\Autoresponder\Services;
 
-use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
+use Modules\WhatsApp\Services\ConversationService;
+use Modules\WhatsApp\Services\Messenger;
+use Modules\WhatsApp\Services\PatientLookupService;
+use Modules\Autoresponder\Repositories\AutoresponderSessionRepository;
 use function in_array;
 use function is_array;
 use function is_scalar;

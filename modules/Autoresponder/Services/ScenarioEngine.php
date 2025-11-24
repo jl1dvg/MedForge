@@ -1,10 +1,13 @@
 <?php
 
-namespace Modules\WhatsApp\Services;
+namespace Modules\Autoresponder\Services;
 
 use DateTimeImmutable;
-use Modules\WhatsApp\Repositories\AutoresponderSessionRepository;
+use Modules\Autoresponder\Repositories\AutoresponderSessionRepository;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
+use Modules\WhatsApp\Services\ConversationService;
+use Modules\WhatsApp\Services\Messenger;
+use Modules\WhatsApp\Services\PatientLookupService;
 
 use function array_map;
 use function array_unique;

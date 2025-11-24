@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\WhatsApp\Repositories;
+namespace Modules\Autoresponder\Repositories;
 
 use PDO;
 

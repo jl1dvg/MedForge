@@ -3,7 +3,7 @@
 namespace Modules\WhatsApp\Config;
 
 use Models\SettingsModel;
-use Modules\WhatsApp\Repositories\AutoresponderFlowRepository;
+use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Support\DataProtectionCopy;
 use PDO;
 use RuntimeException;
