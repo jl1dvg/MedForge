@@ -93,7 +93,7 @@ let pacientesPrioritarios = [];
                 }
             });
         } catch (error) {
-            console.error('Error al actualizar el estado de atención en optometría:', error);
+            //console.error('Error al actualizar el estado de atención en optometría:', error);
         }
     }
 
@@ -101,7 +101,7 @@ let pacientesPrioritarios = [];
         // Define la variable lista con el valor correcto para evitar ReferenceError
         const lista = pacientesPrioritarios;
         if (!Array.isArray(listaPacientes) || !Array.isArray(pacientesOptometriaHoy)) {
-            console.warn('⚠️ Lista de pacientes prioritarios no válida:', listaPacientes);
+            ///console.warn('⚠️ Lista de pacientes prioritarios no válida:', listaPacientes);
             return;
         }
 
@@ -181,7 +181,7 @@ let pacientesPrioritarios = [];
         setTimeout(() => {
             window.__mapeoYaEjecutado = false;
         }, 10000); // Espera 10s antes de permitir otro mapeo
-        console.log("🔍 Mapeo de columnas detectado:", map);
+        //console.log("🔍 Mapeo de columnas detectado:", map);
         return map;
     }
 
@@ -200,7 +200,7 @@ let pacientesPrioritarios = [];
             const inputFecha = document.querySelector('#docsolicitudprocedimientosdoctorsearch-fechabusqueda');
             if (inputFecha && inputFecha.value) {
                 fechaBusqueda = inputFecha.value.trim();
-                console.log('🗓️ Fecha extraída del input:', fechaBusqueda);
+                //console.log('🗓️ Fecha extraída del input:', fechaBusqueda);
             }
         }
 
@@ -224,10 +224,8 @@ let pacientesPrioritarios = [];
                 fechaCaducidad: celdas[columnMap["fecha caducidad"]]?.textContent.trim() || ''
             };
 
-            console.log("🧪 Datos extraídos:", paciente);
-
             if (!paciente.id || !paciente.identificacion || !paciente.procedimiento) {
-                console.warn("⛔ Faltan datos clave, omitiendo fila:", paciente);
+                //console.warn("⛔ Faltan datos clave, omitiendo fila:", paciente);
                 return;
             }
 
@@ -238,6 +236,8 @@ let pacientesPrioritarios = [];
                 fname: partesNombre[2] || '',
                 mname: partesNombre.slice(3).join(' ') || ''
             };
+
+            //console.log("🧪 Datos extraídos:", paciente);
 
             pacientes.push({
                 hcNumber: paciente.identificacion,
@@ -263,6 +263,7 @@ let pacientesPrioritarios = [];
         });
 
         if (pacientes.length > 0) {
+            console.log("📦 Enviando al API /proyecciones/guardar.php:", JSON.parse(JSON.stringify(pacientes)));
             window.CiveApiClient.post('/proyecciones/guardar.php', {
                 body: pacientes,
             })

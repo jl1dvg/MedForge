@@ -1,81 +1,82 @@
 [
   {
     "id": "dln",
-    "label": "DLN",
-    "text": "disco óptico muestra una relación copa/disco 0.3 sin cambios patológicos en el margen. Vasos sanguíneos retinianos con arborización vascular regular, sin estrechamientos significativos, cruces arteriovenosos patológicos ni hemorragias. Mácula íntegra, sin evidencia de edema ni exudados, y periferia retiniana exhibe pigmentación y vascularización normales, sin desgarros ni degeneraciones."
-  },{
+    "label": "Disco normal",
+    "text": "El nervio óptico presenta bordes definidos, coloración normal y una excavación dentro de parámetros fisiológicos. Los vasos retinianos muestran calibre y trayecto regulares sin signos de estrechamientos ni cruces patológicos. La mácula mantiene su brillo foveal habitual sin edema ni exudados. La periferia retiniana se observa íntegra, sin lesiones, desgarros ni alteraciones pigmentarias."
+  },
+  {
     "id": "no",
-    "label": "NO",
-    "text": "NERVIO ÓPTICO REDONDO DE BORDES DEFINIDOS CON EMERGENCIA NASAL DE LOS VASOS, EXCAVACIÓN FISIOLÓGICA 0.7, ADELGAZAMIENTO DEL ANILLO NEURAL CUADRANTE TEMPORAL, CON VISUALIZACIÓN DE LÁMINA CRIBOSA Y ATROFIA PERIPAPILAR TEMPORAL"
+    "label": "Excavación ↑",
+    "text": "El nervio óptico presenta aumento de la excavación, aproximándose a una relación copa/disco de 0.7, con adelgazamiento del anillo neural en el cuadrante temporal. Los bordes se encuentran definidos y no hay edema papilar. Los vasos emergen de forma nasal, sin alteraciones mayores. La mácula mantiene anatomía conservada y no se observan lesiones periféricas."
   },
   {
     "id": "microaneurismas",
     "label": "Microaneurismas",
-    "text": "PEQUEÑAS ÁREAS DE DILATACIÓN CAPILAR"
+    "text": "El nervio óptico presenta bordes definidos y coloración normal. Los vasos retinianos mantienen calibre y trayecto regulares. En la retina posterior se identifican pequeñas dilataciones capilares puntiformes compatibles con microaneurismas, sin hemorragias asociadas. La mácula no muestra edema evidente y la periferia retiniana se encuentra sin lesiones."
   },
   {
     "id": "ovcr",
-    "label": "OVCR",
-    "text": "Se observa dilatación y tortuosidad de los vasos venosos retinianos, especialmente en la región central y periférica. Se encuentran hemorragias en forma de “flame-shaped” en la capa superficial, principalmente en los cuadrantes superior e inferior. También se aprecian exudados duros en la región macular, sugiriendo edema macular. No se observan signos de neovascularización ni daño severo adicional. La papila óptica está normal, sin edema ni alteraciones."
+    "label": "Oclusión venosa",
+    "text": "La papila óptica conserva bordes definidos, sin edema. Los vasos venosos retinianos muestran dilatación y tortuosidad marcada. Se observan hemorragias en llama en varios cuadrantes y exudados duros en la región macular, sugiriendo edema asociado. No se evidencian signos de neovascularización. La periferia retiniana se encuentra adherida sin desgarros."
   },
   {
     "id": "exudados_duros",
-    "label": "Exudados Duros",
-    "text": "DEPÓSITOS LIPÍDICOS AMARILLOS EN LA RETINA"
+    "label": "Exudados",
+    "text": "El nervio óptico presenta bordes definidos y excavación fisiológica. Los vasos retinianos mantienen calibre regular. En la mácula y algunos cuadrantes periféricos se observan depósitos lipídicos amarillentos bien delimitados compatibles con exudados duros. No se identifican hemorragias extensas ni neovascularización. La periferia retiniana se mantiene íntegra."
   },
   {
     "id": "toxo",
-    "label": "Toxo",
-    "text": "Se observa una cicatriz coriorretiniana en la región posterior de la retina, con hipopigmentación y pérdida de la arquitectura del epitelio pigmentario de la retina (EPR). Los márgenes son bien definidos, con leve engrosamiento en el EPR circundante. No hay hemorragias ni exudados en la zona afectada, y la retina circundante está intacta, sin signos de edema o neovascularización. La papila óptica y los vasos retinianos están normales."
+    "label": "Cicatriz toxo",
+    "text": "El nervio óptico y vasos retinianos mantienen características normales. En la retina posterior se observa una cicatriz coriorretiniana bien definida, con zonas de hipopigmentación y pérdida de arquitectura del epitelio pigmentario. No hay edema ni hemorragias asociadas, y la retina circundante permanece íntegra."
   },
   {
     "id": "neovascularizacion",
-    "label": "Neovascularización",
-    "text": "CRECIMIENTO ANORMAL DE NUEVOS VASOS SANGUÍNEOS"
+    "label": "Neovasos",
+    "text": "La papila óptica conserva bordes definidos y coloración habitual. En la retina posterior se observa proliferación de vasos finos irregulares, compatibles con neovascularización. Los vasos principales mantienen calibre regular. No se evidencian hemorragias vítreas, pero existe riesgo elevado. La periferia no muestra desprendimientos."
   },
   {
     "id": "edema_macular",
-    "label": "Edema Macular",
-    "text": "ACUMULACIÓN DE LÍQUIDO EN LA MÁCULA"
+    "label": "Edema macular",
+    "text": "El nervio óptico se observa dentro de límites normales. En la región macular se aprecia engrosamiento retiniano difuso con pérdida del brillo foveal, indicando edema macular. No se observan desgarros ni neovascularización. La periferia retiniana muestra aspecto conservado."
   },
   {
     "id": "drusen",
-    "label": "Drusen",
-    "text": "Se observan múltiples drusas en la región macular y periférica, como depósitos amarillentos subretinianos bien definidos, sin signos de exudación o hemorragias. Las drusas son de tamaño variable, algunas con ligera elevación, sin alterar las capas retinianas subyacentes. No se aprecian signos de neovascularización ni daño a la retina circundante. La papila óptica y los vasos retinianos están normales."
+    "label": "Drusas",
+    "text": "La papila óptica conserva sus características normales. En la región macular y en zonas periféricas se observan múltiples drusas amarillentas bien delimitadas. No se identifican hemorragias ni exudados, y no hay evidencia de neovascularización coroidea. La periferia se encuentra adherida sin lesiones predisponentes."
   },
   {
     "id": "atrofia_geografica",
-    "label": "DMAE seca",
-    "text": "nervio óptico con bordes definidos y coloración normal, presencia de drusas y adelgazamiento del epitelio pigmentario en la mácula, disrupción de la arquitectura retiniana sin neovascularización y vasos retinianos de calibre y trayecto normales."
+    "label": "Atrofia macular",
+    "text": "El nervio óptico mantiene bordes definidos y coloración normal. La mácula presenta áreas extensas de atrofia del epitelio pigmentario con pérdida de la arquitectura retiniana. Se observan drusas asociadas, sin signos de neovascularización. Los vasos retinianos mantienen calibre y trayecto normales y la periferia no muestra alteraciones significativas."
   },
   {
     "id": "retinopatia_diabetica",
-    "label": "Retinopatía Diabética",
-    "text": "DAÑO A LOS VASOS SANGUÍNEOS DE LA RETINA DEBIDO A LA DIABETES"
+    "label": "RD diabética",
+    "text": "La papila óptica conserva bordes definidos. En la retina posterior se identifican microaneurismas, hemorragias puntiformes y algunos exudados compatibles con retinopatía diabética. No se observa neovascularización activa. La mácula presenta cambios mínimos sin edema evidente. La periferia retiniana se mantiene adherida sin desgarros."
   },
   {
     "id": "miopes",
-    "label": "Miopes",
-    "text": "Papila óptica con inclinación nasal. Vasos retinianos de calibre reducido y trayecto tortuoso. Ausencia de signos de neovascularización coroidea y hemorragias retinianas. Presencia de áreas de atrofia coriorretiniana, manifestadas como zonas de hipopigmentación y adelgazamiento de las capas retinianas y coroideas."
+    "label": "Retina miópica",
+    "text": "El nervio óptico muestra inclinación nasal y el anillo escleral se encuentra más expuesto. Los vasos retinianos presentan calibre ligeramente reducido y trayecto tortuoso. En la retina periférica se observan áreas de atrofia coriorretiniana propias de la miopía. No se identifican hemorragias ni neovascularización. La mácula conserva buena anatomía."
   },
   {
     "id": "desprendimiento_retina",
-    "label": "Desprendimiento de Retina",
-    "text": "El nervio óptico presenta una forma redonda con bordes bien definidos, con una relación copa/disco de 0.3, sin alteraciones notables. Se observan pliegues en la retina tanto en la región central como periférica, lo que sugiere un desprendimiento de retina en los cuatro cuadrantes. Además, se observa un desplazamiento de la retina central (macula off), indicando compromiso macular debido al desprendimiento."
+    "label": "Desprendimiento",
+    "text": "El nervio óptico presenta bordes bien definidos y excavación fisiológica. Se observan pliegues elevados en la retina central y periférica, compatibles con desprendimiento de retina de extensión amplia. La mácula se encuentra desprendida (macula off), indicando compromiso visual significativo. La periferia no muestra desgarros visibles en esta imagen, pero requiere correlación clínica."
   },
   {
     "id": "edema_papila",
-    "label": "Papiledema",
-    "text": "La evaluación de la papila óptica revela elevación y bordes difusos con hiperemia, pequeñas hemorragias peripapilares, vasos retinianos tortuosos y dilatados, exudados algodonosos, y moteado retiniano debido a la acumulación de fluido."
+    "label": "Edema papila",
+    "text": "La papila óptica se observa elevada, con bordes poco definidos e hiperemia generalizada. Se identifican pequeñas hemorragias peripapilares y tortuosidad vascular. La mácula mantiene su arquitectura sin edema evidente. La periferia retiniana no muestra lesiones adicionales."
   },
   {
     "id": "cambios_pigmentarios",
-    "label": "Cambios Pigmentarios",
-    "text": "ALTERACIONES EN LA PIGMENTACIÓN DE LA RETINA"
+    "label": "Pigmentario",
+    "text": "El nervio óptico y vasos retinianos se observan normales. En la retina posterior se identifican áreas focales de hiper e hipopigmentación compatibles con cambios pigmentarios del epitelio pigmentario. No se observan hemorragias ni exudados. La mácula y periferia permanecen estructuralmente conservadas."
   },
   {
     "id": "traccion_vitreorretiniana",
-    "label": "Tracción Vitreorretiniana",
-    "text": "TENSIÓN ANORMAL ENTRE EL VÍTREO Y LA RETINA"
+    "label": "Tracción VR",
+    "text": "La papila óptica presenta características normales. En la región macular se observa deformación del contorno foveal con elevación focal de las capas internas, compatible con tracción vitreorretiniana. No se identifican hemorragias ni signos de neovascularización. La periferia retiniana se mantiene adherida."
   }
 ]
