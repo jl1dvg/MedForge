@@ -146,6 +146,33 @@ class AutoresponderFlow
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public static function contract(string $brand): array
+    {
+        return [
+            'schema' => self::defaultConfig($brand),
+            'constraints' => [
+                'buttonLimit' => self::buttonLimit(),
+                'stageValues' => self::scenarioStageValues(),
+            ],
+        ];
+    }
+
+    public static function buttonLimit(): int
+    {
+        return self::BUTTON_LIMIT;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function scenarioStageValues(): array
+    {
+        return self::SCENARIO_STAGE_VALUES;
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private static function defaultScenarios(string $brand): array

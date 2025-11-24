@@ -38,6 +38,7 @@ class FlowmakerController extends BaseController
 
         $storedFlow = $this->flowRepository->load();
         $resolvedFlow = AutoresponderFlow::resolve($brand, $storedFlow);
+        $contract = AutoresponderFlow::contract($brand);
 
         $flowmakerUrl = $this->resolveEmbedUrl($config);
         $flowmakerOrigin = $this->resolveEmbedOrigin($flowmakerUrl);
@@ -54,10 +55,14 @@ class FlowmakerController extends BaseController
             'config' => $config,
             'brand' => $brand,
             'flow' => $resolvedFlow,
+            'contract' => $contract,
             'flowmakerUrl' => $flowmakerUrl,
             'flowmakerOrigin' => $flowmakerOrigin,
             'status' => $status,
-            'scripts' => ['js/pages/whatsapp-flowmaker.js'],
+            'scripts' => [
+                'js/pages/whatsapp-flowmaker.js',
+                'js/pages/whatsapp-flowmaker-builder.js',
+            ],
             'styles' => ['css/pages/whatsapp-flowmaker.css'],
         ]);
     }
@@ -119,6 +124,21 @@ class FlowmakerController extends BaseController
             'flow' => $result['flow'],
             'resolved' => $result['resolved'] ?? $flowPayload,
         ]);
+    }
+
+    public function contract(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.autoresponder.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+
+        $config = $this->settings->get();
+        $brand = (string) ($config['brand'] ?? 'MedForge');
+
+        $this->respondJsonHeader();
+        $contract = AutoresponderFlow::contract($brand);
+        $contract['flow'] = AutoresponderFlow::resolve($brand, $this->flowRepository->load());
+
+        $this->respondJson(200, $contract);
     }
 
     /**
