@@ -402,15 +402,15 @@ async function obtenerEstadoCirugias(hc) {
     // Preferir fetch desde el service worker para evitar CORS desde el content script
     if (isExtensionContextActive()) {
         try {
-            const resp = await safeSendMessage({action: 'cirugiasEstado', hcNumber: hc});
+            const resp = await safeSendMessage({action: 'solicitudesEstado', hcNumber: hc});
             if (resp && resp.success !== false) {
                 return resp.data ?? resp;
             }
         } catch (err) {
-            console.warn('Fallo fetch de cirugias via background, reintentando via CiveApiClient:', err);
+            console.warn('Fallo fetch de solicitudes via background, reintentando via CiveApiClient:', err);
         }
     }
-    return window.CiveApiClient.get('/cirugias/estado.php', {
+    return window.CiveApiClient.get('/solicitudes/estado.php', {
         query: {hcNumber: hc},
         credentials: 'omit',
     });

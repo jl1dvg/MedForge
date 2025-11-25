@@ -134,6 +134,19 @@
             const paciente = JSON.parse(datos);
             console.log("🧾 Datos del paciente cargados en la vista destino:", paciente);
 
+            const sendBg = (action, payload) => new Promise((resolve, reject) => {
+                if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    reject(new Error('Contexto de extensión no disponible'));
+                    return;
+                }
+                chrome.runtime.sendMessage({action, ...payload}, (resp) => {
+                    const err = chrome.runtime.lastError;
+                    if (err) return reject(new Error(err.message || 'Error de runtime'));
+                    if (resp && resp.success === false) return reject(new Error(resp.error || 'Fallo en background'));
+                    resolve(resp && resp.data !== undefined ? resp.data : resp);
+                });
+            });
+
             // ✅ Claves de control: prompt por pestaña (session) y estado persistente (local)
             const KEY_PROMPT = `prompt_iniciar_${paciente.form_id}`;         // sessionStorage (anti-duplicado modal)
             const KEY_ESTADO = `estado_atencion_${paciente.form_id}`;        // localStorage (persistente entre cierres)
@@ -149,36 +162,28 @@
                 ? '/proyecciones/optometria.php'
                 : '/proyecciones/consulta.php';
 
-            try {
-                window.CiveApiClient.get(endpointPath, {
-                    query: {form_id: paciente.form_id, action: 'estado'},
+            sendBg('proyeccionesGet', {path: endpointPath, query: {form_id: paciente.form_id, action: 'estado'}})
+                .then(data => {
+                    if (!data || data.success === false) return;
+                    const estado = data.estado;
+                    if (estado === 'en_proceso') {
+                        establecerBloqueoFormulario(false);
+                        localStorage.setItem(KEY_ESTADO, 'en_proceso');
+                    } else if (estado === 'terminado_dilatar' || estado === 'terminado_sin_dilatar') {
+                        localStorage.setItem(KEY_ESTADO, estado);
+                    } else if (estado === 'pendiente' || !estado) {
+                        localStorage.setItem(KEY_ESTADO, 'pendiente');
+                    }
                 })
-                    .then(data => {
-                        if (!data || data.success === false) return;
-                        const estado = data.estado;
-                        if (estado === 'en_proceso') {
-                            establecerBloqueoFormulario(false);
-                            localStorage.setItem(KEY_ESTADO, 'en_proceso');
-                        } else if (estado === 'terminado_dilatar' || estado === 'terminado_sin_dilatar') {
-                            // No bloquear campos en estados terminados según nueva regla.
-                            localStorage.setItem(KEY_ESTADO, estado);
-                        } else if (estado === 'pendiente' || !estado) {
-                            // pendiente / desconocido → mantener bloqueo inicial
-                            localStorage.setItem(KEY_ESTADO, 'pendiente');
-                        }
-                    })
-                    .catch(() => {/* silencioso: no bloqueamos la UI si falla */
-                    });
-            } catch (e) {
-                // No interrumpir flujo si el fetch falla
-            }
+                .catch(() => {/* silencioso */});
 
             // Definir constante para saber si es optometría
             const esOptometria = paciente.procedimiento_proyectado === 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS';
 
             if (esOptometria) {
-                window.CiveApiClient.get('/proyecciones/optometria.php', {
-                    query: {form_id: paciente.form_id, action: 'historial'},
+                sendBg('proyeccionesGet', {
+                    path: '/proyecciones/optometria.php',
+                    query: {form_id: paciente.form_id, action: 'historial'}
                 })
                     .then((detalle) => {
                         if (detalle && detalle.success !== false) {

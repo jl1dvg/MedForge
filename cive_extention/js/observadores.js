@@ -50,8 +50,21 @@ let pacientesPrioritarios = [];
         const fechaHoy = new Date().toISOString().split('T')[0];
 
         try {
-            const respuesta = await window.CiveApiClient.get('/proyecciones/estado_optometria.php', {
-                query: {fecha: fechaHoy},
+            const respuesta = await new Promise((resolve, reject) => {
+                if (!chrome?.runtime?.sendMessage) {
+                    reject(new Error('runtime no disponible'));
+                    return;
+                }
+                chrome.runtime.sendMessage({
+                    action: 'proyeccionesGet',
+                    path: '/proyecciones/estado_optometria.php',
+                    query: {fecha: fechaHoy},
+                }, (resp) => {
+                    const err = chrome.runtime.lastError;
+                    if (err) return reject(err);
+                    if (resp && resp.success === false) return reject(new Error(resp.error || 'Error proyeccionesGet'));
+                    resolve(resp && resp.data !== undefined ? resp.data : resp);
+                });
             });
             const pacientesEnAtencion = Array.isArray(respuesta?.data)
                 ? respuesta.data

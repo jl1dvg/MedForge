@@ -408,13 +408,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return false;
     }
 
-    if (request.action === 'cirugiasEstado') {
+    if (request.action === 'solicitudesEstado') {
         const hcNumber = (request.hcNumber || '').toString().trim();
         if (!hcNumber) {
             sendResponse({success: false, error: 'Falta hcNumber'});
             return false;
         }
-        const url = new URL('https://asistentecive.consulmed.me/api/cirugias/estado.php');
+        const base = 'https://asistentecive.consulmed.me/api/solicitudes/estado.php';
+        const url = new URL(base);
         url.searchParams.set('hcNumber', hcNumber);
         fetch(url.toString(), {
             method: 'GET',
@@ -426,8 +427,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             })
             .then((data) => sendResponse({success: true, data}))
             .catch((error) => {
-                console.error('Error en cirugiasEstado:', error);
-                sendResponse({success: false, error: error.message || 'Error al consultar cirugías'});
+                console.error('Error en solicitudesEstado:', error);
+                sendResponse({success: false, error: error.message || 'Error al consultar solicitudes'});
+            });
+        return true;
+    }
+
+    if (request.action === 'proyeccionesGet') {
+        const path = (request.path || '').toString();
+        const query = request.query || {};
+        if (!path.startsWith('/')) {
+            sendResponse({success: false, error: 'Path inválido'});
+            return false;
+        }
+        const url = new URL(`https://asistentecive.consulmed.me${path}`);
+        Object.entries(query).forEach(([k, v]) => {
+            if (v !== undefined && v !== null) url.searchParams.set(k, v);
+        });
+        fetch(url.toString(), {method: 'GET', credentials: 'include'})
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => sendResponse({success: true, data}))
+            .catch((error) => {
+                console.error('Error en proyeccionesGet:', error);
+                sendResponse({success: false, error: error.message || 'Error al consultar proyecciones'});
             });
         return true;
     }
