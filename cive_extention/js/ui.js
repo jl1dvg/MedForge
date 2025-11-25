@@ -211,6 +211,13 @@ function togglePopupState({popup, expanded}) {
 }
 
 window.inicializarUI = function () {
+    // Evitar renderizar el asistente en el dominio principal; solo correr lógica de fondo
+    const host = (window.location && window.location.hostname || '').toLowerCase();
+    if (host.includes('cive.consulmed.me')) {
+        console.info('CIVE Extension: UI deshabilitada en este dominio.');
+        return;
+    }
+
     const button = document.createElement('button');
     button.id = 'floatingButton';
     button.className = 'actionable-icon';
