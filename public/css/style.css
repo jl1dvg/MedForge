@@ -32195,6 +32195,30 @@ img.away, img.busy, img.offline, img.online {
   visibility: visible;
 }
 
+[data-notification-panel-toggle] {
+  position: relative;
+}
+
+.notification-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 1.2s ease;
+}
+
+.notification-dot.is-visible {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+}
+
 .notification-panel__header {
   display: flex;
   align-items: center;

@@ -49,6 +49,7 @@ class AutoresponderController extends BaseController
         $editorSource = is_array($draft) ? $draft : $storedFlow;
         $resolvedFlow = AutoresponderFlow::resolve($brand, $editorSource);
         $flow = AutoresponderFlow::overview($brand, $editorSource);
+        $contract = AutoresponderFlow::contract($brand);
 
         $templates = [];
         $templatesError = null;
@@ -66,8 +67,10 @@ class AutoresponderController extends BaseController
         $this->render(BASE_PATH . '/modules/Autoresponder/views/autoresponder.php', [
             'pageTitle' => 'Flujo de autorespuesta de WhatsApp',
             'config' => $config,
+            'brand' => $brand,
             'flow' => $flow,
             'editorFlow' => $resolvedFlow,
+            'contract' => $contract,
             'status' => $status,
             'templates' => $templates,
             'templatesError' => $templatesError,

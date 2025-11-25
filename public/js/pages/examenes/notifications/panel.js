@@ -207,6 +207,44 @@ export function createNotificationPanel(options = {}) {
         pending: [],
     };
 
+    const ensureIndicator = (button) => {
+        if (!button) {
+            return null;
+        }
+
+        const existing = button.querySelector('[data-notification-dot]');
+        if (existing) {
+            return existing;
+        }
+
+        const dot = document.createElement('span');
+        dot.className = 'notification-dot';
+        dot.setAttribute('data-notification-dot', '');
+        dot.setAttribute('aria-hidden', 'true');
+        button.appendChild(dot);
+        return dot;
+    };
+
+    const highlightToggleButtons = () => {
+        toggleButtons.forEach(button => {
+            button.classList.add('has-notifications');
+            const dot = ensureIndicator(button);
+            if (dot) {
+                dot.classList.add('is-visible');
+            }
+        });
+    };
+
+    const resetToggleHighlight = () => {
+        toggleButtons.forEach(button => {
+            button.classList.remove('has-notifications');
+            const dot = button.querySelector('[data-notification-dot]');
+            if (dot) {
+                dot.classList.remove('is-visible');
+            }
+        });
+    };
+
     const open = () => {
         panel.classList.add('is-open');
         panel.classList.add('control-sidebar-open');
@@ -216,6 +254,7 @@ export function createNotificationPanel(options = {}) {
         if (backdrop) {
             backdrop.classList.add('is-visible');
         }
+        resetToggleHighlight();
         panel.setAttribute('aria-hidden', 'false');
     };
 
@@ -313,6 +352,7 @@ export function createNotificationPanel(options = {}) {
         }
 
         renderRealtime();
+        highlightToggleButtons();
     };
 
     const pushPending = entry => {
@@ -334,6 +374,7 @@ export function createNotificationPanel(options = {}) {
         }
 
         renderPending();
+        highlightToggleButtons();
     };
 
     const setChannelPreferences = prefs => {

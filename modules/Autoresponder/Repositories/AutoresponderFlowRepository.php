@@ -15,6 +15,7 @@ class AutoresponderFlowRepository
     private PDO $pdo;
     private ?SettingsModel $settings = null;
     private string $fallbackPath;
+    private bool $tableStorageEnabled;
     private bool $hasFlowTables;
     private bool $hasStructureTables;
 
@@ -22,7 +23,8 @@ class AutoresponderFlowRepository
     {
         $this->pdo = $pdo;
         $this->fallbackPath = BASE_PATH . '/storage/whatsapp_autoresponder_flow.json';
-        $this->hasFlowTables = $this->detectFlowTables();
+        $this->tableStorageEnabled = !$this->envFlag('WHATSAPP_AUTORESPONDER_DISABLE_TABLES');
+        $this->hasFlowTables = $this->tableStorageEnabled && $this->detectFlowTables();
         $this->hasStructureTables = $this->hasFlowTables && $this->detectStructureTables();
 
         try {
@@ -46,12 +48,16 @@ class AutoresponderFlowRepository
         }
 
         if ($this->settings instanceof SettingsModel) {
-            $raw = $this->settings->getOption(self::OPTION_KEY);
-            if ($raw !== null && $raw !== '') {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded)) {
-                    return $decoded;
+            try {
+                $raw = $this->settings->getOption(self::OPTION_KEY);
+                if ($raw !== null && $raw !== '') {
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded)) {
+                        return $decoded;
+                    }
                 }
+            } catch (Throwable $exception) {
+                error_log('No fue posible leer el flujo de autorespuesta desde settings: ' . $exception->getMessage());
             }
         }
 
@@ -122,6 +128,11 @@ class AutoresponderFlowRepository
         return is_array($decoded) ? $decoded : [];
     }
 
+    public function getStoragePath(): string
+    {
+        return $this->fallbackPath;
+    }
+
     private function saveToFallback(string $encoded): bool
     {
         $directory = dirname($this->fallbackPath);
@@ -130,6 +141,8 @@ class AutoresponderFlowRepository
 
             return false;
         }
+
+        $this->createFallbackBackup();
 
         $bytes = @file_put_contents($this->fallbackPath, $encoded);
         if ($bytes === false) {
@@ -141,8 +154,26 @@ class AutoresponderFlowRepository
         return true;
     }
 
+    private function createFallbackBackup(): void
+    {
+        if (!is_file($this->fallbackPath)) {
+            return;
+        }
+
+        $timestamp = gmdate('Ymd_His');
+        $backupPath = dirname($this->fallbackPath) . '/whatsapp_autoresponder_flow_' . $timestamp . '.json';
+
+        if (!@copy($this->fallbackPath, $backupPath)) {
+            error_log('No fue posible generar el respaldo previo del flujo en ' . $backupPath);
+        }
+    }
+
     private function detectFlowTables(): bool
     {
+        if (!$this->tableStorageEnabled) {
+            return false;
+        }
+
         return $this->tableExists('whatsapp_autoresponder_flows')
             && $this->tableExists('whatsapp_autoresponder_flow_versions');
     }
@@ -168,12 +199,18 @@ class AutoresponderFlowRepository
 
     private function tableExists(string $table): bool
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
-        );
-        $stmt->execute([$table]);
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+            );
+            $stmt->execute([$table]);
 
-        return (bool) $stmt->fetchColumn();
+            return (bool) $stmt->fetchColumn();
+        } catch (Throwable $exception) {
+            error_log('No fue posible validar la existencia de la tabla ' . $table . ': ' . $exception->getMessage());
+
+            return false;
+        }
     }
 
     /**
@@ -181,7 +218,12 @@ class AutoresponderFlowRepository
      */
     private function loadFromFlowTables(): ?array
     {
-        $sql = <<<'SQL'
+        if (!$this->hasFlowTables) {
+            return null;
+        }
+
+        try {
+            $sql = <<<'SQL'
 SELECT fv.entry_settings
 FROM whatsapp_autoresponder_flow_versions fv
 JOIN whatsapp_autoresponder_flows f ON f.id = fv.flow_id
@@ -192,43 +234,52 @@ ORDER BY (f.active_version_id = fv.id) DESC, fv.version DESC
 LIMIT 1
 SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':flow_key' => self::DEFAULT_FLOW_KEY]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row === false) {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':flow_key' => self::DEFAULT_FLOW_KEY]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return null;
+            }
+
+            $entrySettings = $row['entry_settings'] ?? null;
+            if (!is_string($entrySettings) || $entrySettings === '') {
+                return null;
+            }
+
+            $decoded = json_decode($entrySettings, true);
+            if (!is_array($decoded)) {
+                return null;
+            }
+
+            if (isset($decoded['flow']) && is_array($decoded['flow'])) {
+                return $decoded['flow'];
+            }
+
+            if (isset($decoded['config']) && is_array($decoded['config'])) {
+                return $decoded['config'];
+            }
+
+            if (isset($decoded['scenarios']) && is_array($decoded['scenarios'])) {
+                return $decoded;
+            }
+
+            return null;
+        } catch (Throwable $exception) {
+            error_log('No fue posible leer el flujo desde las tablas dedicadas: ' . $exception->getMessage());
+
             return null;
         }
-
-        $entrySettings = $row['entry_settings'] ?? null;
-        if (!is_string($entrySettings) || $entrySettings === '') {
-            return null;
-        }
-
-        $decoded = json_decode($entrySettings, true);
-        if (!is_array($decoded)) {
-            return null;
-        }
-
-        if (isset($decoded['flow']) && is_array($decoded['flow'])) {
-            return $decoded['flow'];
-        }
-
-        if (isset($decoded['config']) && is_array($decoded['config'])) {
-            return $decoded['config'];
-        }
-
-        if (isset($decoded['scenarios']) && is_array($decoded['scenarios'])) {
-            return $decoded;
-        }
-
-        return null;
     }
 
     private function saveToFlowTables(array $flow): bool
     {
-        $this->pdo->beginTransaction();
+        if (!$this->hasFlowTables) {
+            return false;
+        }
 
         try {
+            $this->pdo->beginTransaction();
+
             $flowRow = $this->resolveFlowRow();
             $flowId = (int) $flowRow['id'];
 
@@ -279,7 +330,9 @@ SQL;
 
             return true;
         } catch (Throwable $exception) {
-            $this->pdo->rollBack();
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             error_log('No fue posible guardar la versión del flujo de autorespuesta: ' . $exception->getMessage());
 
             return false;
@@ -628,6 +681,18 @@ SQL;
             'delay_seconds' => $delay,
             'metadata' => $encodedMetadata,
         ];
+    }
+
+    private function envFlag(string $key): bool
+    {
+        $value = $_ENV[$key] ?? getenv($key);
+        if ($value === false || $value === null) {
+            return false;
+        }
+
+        $normalized = strtolower((string) $value);
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
     }
 
     /**

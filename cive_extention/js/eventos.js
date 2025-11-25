@@ -1,5 +1,19 @@
 window.__civeEventosRetryCount = window.__civeEventosRetryCount || 0;
 window.__civeEventosListos = window.__civeEventosListos || false;
+const TELEMETRIA_STORAGE_KEY = 'civeExtensionTelemetry';
+
+function registrarAccion(nombre) {
+    try {
+        const payload = JSON.parse(localStorage.getItem(TELEMETRIA_STORAGE_KEY) || '{"acciones":[]}');
+        const acciones = Array.isArray(payload.acciones) ? payload.acciones : [];
+        acciones.push({nombre, ts: Date.now()});
+        // Conserva solo las últimas 50 acciones para no crecer indefinidamente
+        payload.acciones = acciones.slice(-50);
+        localStorage.setItem(TELEMETRIA_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+        console.warn('No se pudo registrar telemetría:', e);
+    }
+}
 
 window.inicializarEventos = function () {
     if (window.__civeEventosListos) {
@@ -24,6 +38,7 @@ window.inicializarEventos = function () {
         {
             id: "btnProtocolos", evento: () => {
                 console.log("Botón Protocolos clickeado");
+                registrarAccion('protocolos');
                 mostrarSeccion("protocolos");
                 cargarProtocolos();
             }
@@ -31,6 +46,7 @@ window.inicializarEventos = function () {
         {
             id: "btnRecetas", evento: () => {
                 console.log("Botón Recetas clickeado");
+                registrarAccion('recetas');
                 mostrarSeccion("recetas");
                 cargarRecetas();
             }
@@ -38,18 +54,21 @@ window.inicializarEventos = function () {
         {
             id: "btnConsulta", evento: () => {
                 console.log("Botón Consulta clickeado");
+                registrarAccion('consulta');
                 mostrarSeccion("consulta");
             }
         },
         {
             id: "btnConsultaAnterior", evento: () => {
                 console.log("Botón Consulta Anterior clickeado");
+                registrarAccion('consulta_anterior');
                 chrome.runtime.sendMessage({action: "consultaAnterior"});
             }
         },
         {
             id: "btnPOP", evento: () => {
                 console.log("Botón POP clickeado");
+                registrarAccion('control_pop');
                 chrome.runtime.sendMessage({action: "ejecutarPopEnPagina"});
             }
         },
@@ -74,18 +93,21 @@ window.inicializarEventos = function () {
         {
             id: "btnBackProcedimientos", evento: () => {
                 console.log("Botón Back Procedimientos clickeado");
+                registrarAccion('back_procedimientos');
                 mostrarSeccion("protocolos");
             }
         },
         {
             id: "btnBackConsulta", evento: () => {
                 console.log("Botón Back Consulta clickeado");
+                registrarAccion('back_consulta');
                 mostrarSeccion("inicio");
             }
         },
         {
             id: "btnGeneratePDF", evento: () => {
                 console.log("Botón Generar PDF clickeado");
+                registrarAccion('generar_pdf');
                 chrome.runtime.sendMessage({action: "checkSubscription"}, (response) => {
                     if (response.success) {
                         generatePDF();
@@ -109,6 +131,7 @@ window.inicializarEventos = function () {
         eventos.push({
             id: "btnExamenes", evento: () => {
                 console.log("Botón Exámenes clickeado");
+                registrarAccion('examenes');
                 mostrarSeccion("examenes");
                 cargarExamenes();
             }

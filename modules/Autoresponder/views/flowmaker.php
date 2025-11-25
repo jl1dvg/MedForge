@@ -31,6 +31,9 @@ $bootstrap = [
         'url' => $flowmakerUrl,
         'origin' => $flowmakerOrigin,
     ],
+    'storage' => [
+        'path' => $storagePath,
+    ],
 ];
 $bootstrapJson = json_encode(
     $bootstrap,
@@ -90,6 +93,7 @@ $bootstrapJson = json_encode(
                         <div>
                             <div class="fw-600">Contrato basado en el autorespondedor oficial.</div>
                             <div>El esquema usa <code>AutoresponderFlow::defaultConfig</code> para mantener la compatibilidad con el runtime.</div>
+                            <div class="small mt-1">El flujo se guarda también en <code><?= $escape($storagePath); ?></code> para entornos sin base de datos.</div>
                         </div>
                     </div>
 

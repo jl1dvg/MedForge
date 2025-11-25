@@ -97,16 +97,15 @@ let pacientesPrioritarios = [];
         }
     }
 
-    function mostrarNotificacionPrioridadOptometria(listaPacientes, pacientesOptometriaHoy) {
-        // Define la variable lista con el valor correcto para evitar ReferenceError
-        const lista = pacientesPrioritarios;
-        if (!Array.isArray(listaPacientes) || !Array.isArray(pacientesOptometriaHoy)) {
-            ///console.warn('⚠️ Lista de pacientes prioritarios no válida:', listaPacientes);
+    function mostrarNotificacionPrioridadOptometria(listaPacientes = []) {
+        if (!Array.isArray(listaPacientes) || listaPacientes.length === 0) {
+            ///console.warn('⚠️ Lista de pacientes prioritarios no válida o vacía:', listaPacientes);
             return;
         }
 
-        lista.forEach((p) => {
-            if (!p || !p.nombre) return; // Asegura que el paciente tenga datos válidos
+        listaPacientes.forEach((p) => {
+            const nombre = p?.nombre || p?.nombre_completo || p?.paciente || p?.form_id || p?.id;
+            if (!nombre) return; // Asegura que el paciente tenga datos válidos
 
             const alerta = document.createElement("div");
             alerta.className =
@@ -121,7 +120,7 @@ let pacientesPrioritarios = [];
       <img src="https://cdn-icons-png.flaticon.com/512/2920/2920050.png" class="img" alt="img" style="width:40px; height:40px;">
       <a href="#" class="closed" onclick="this.parentElement.remove()">×</a>
       <h4>Paciente en atención OPTOMETRÍA</h4>
-      <b>${p.nombre}</b> está siendo atendido.
+      <b>${nombre}</b> está siendo atendido.
     `;
 
             document.body.appendChild(alerta);
@@ -133,6 +132,7 @@ let pacientesPrioritarios = [];
 
     // Variable global para controlar el bloqueo de notificación
     let _bloqueoNotificacion = false;
+    let columnMapCache = null;
 
     function observarCambiosEnTablaYPaginacion() {
         const contenedorTabla = document.querySelector('.kv-grid-container');
@@ -143,7 +143,7 @@ let pacientesPrioritarios = [];
 
             setTimeout(() => {
                 actualizarColorFilasPorTiempoYAfiliacion();
-                mostrarNotificacionPrioridadOptometria(pacientesPrioritarios, pacientesOptometriaHoy);
+                mostrarNotificacionPrioridadOptometria(pacientesPrioritarios);
                 _bloqueoNotificacion = false;
             }, 500);
         });
@@ -158,13 +158,17 @@ let pacientesPrioritarios = [];
                 clearInterval(intervalo);
                 observarCambiosEnTablaYPaginacion();
                 actualizarColorFilasPorTiempoYAfiliacion();
-                mostrarNotificacionPrioridadOptometria(pacientesPrioritarios, pacientesOptometriaHoy);
+                mostrarNotificacionPrioridadOptometria(pacientesPrioritarios);
                 actualizarEstadoAtencionOptometria();
             }
         }, 250);
     }
 
     function obtenerColumnMap() {
+        if (window.__mapeoYaEjecutado && columnMapCache) {
+            return columnMapCache;
+        }
+
         const map = {};
         const ths = document.querySelectorAll('#crud-datatable-por-atender thead tr th');
 
@@ -175,14 +179,18 @@ let pacientesPrioritarios = [];
             }
         });
 
-        // Prevenir ejecución repetida
-        if (window.__mapeoYaEjecutado) return;
+        const tieneColumnas = Object.keys(map).length > 0;
+        if (tieneColumnas) {
+            columnMapCache = map;
+        }
+
+        // Prevenir ejecución repetida, pero devolviendo el último mapeo conocido
         window.__mapeoYaEjecutado = true;
         setTimeout(() => {
             window.__mapeoYaEjecutado = false;
         }, 10000); // Espera 10s antes de permitir otro mapeo
-        //console.log("🔍 Mapeo de columnas detectado:", map);
-        return map;
+        //console.log("🔍 Mapeo de columnas detectado:", columnMapCache);
+        return columnMapCache;
     }
 
     function observarPacientesPorAtender() {
@@ -191,6 +199,10 @@ let pacientesPrioritarios = [];
         if (!tabla) return;
 
         const columnMap = obtenerColumnMap();
+        if (!columnMap) {
+            //console.warn("No se pudo construir el mapa de columnas.");
+            return;
+        }
 
         const filas = tabla.querySelectorAll('tbody tr[data-key]');
         const pacientes = [];
@@ -258,7 +270,7 @@ let pacientesPrioritarios = [];
         });
 
         pacientes.forEach(p => {
-            if (!p || !p.id) return;
+            if (!p || !p.form_id) return;
             // continuar lógica...
         });
 
@@ -274,7 +286,12 @@ let pacientesPrioritarios = [];
                         pacientesOptometriaHoy = data.detalles.map((p) => p.id);
                         pacientesPrioritarios = data.detalles
                             .filter((p) => p.afiliacion === 'PRIORITARIO')
-                            .map((p) => p.id);
+                            .map((p) => ({
+                                id: p.id,
+                                form_id: p.form_id,
+                                nombre: p.nombre || p.nombre_completo || p.paciente || '',
+                                afiliacion: p.afiliacion,
+                            }));
                     }
                 })
                 .catch((err) => {

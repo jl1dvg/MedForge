@@ -18,6 +18,7 @@
     function initializeAutoresponder(form) {
     const flowField = document.getElementById('flow_payload');
     const validationAlert = form.querySelector('[data-validation-errors]');
+    const submitFeedback = form.querySelector('[data-submit-feedback]');
     const flowBootstrap = form.querySelector('[data-flow-bootstrap]');
     const templateCatalogInput = form.querySelector('[data-template-catalog]');
 
@@ -33,7 +34,7 @@
         menuListRow: document.getElementById('menu-list-row-template'),
     };
 
-    const MENU_BUTTON_LIMIT = 3;
+    let MENU_BUTTON_LIMIT = 3;
     const MENU_LIST_SECTION_LIMIT = 10;
     const MENU_LIST_ROW_LIMIT = 10;
 
@@ -63,7 +64,7 @@
     const ACTION_OPTIONS = [
         {value: 'send_message', label: 'Enviar mensaje o multimedia', help: 'Entrega un mensaje simple, imagen, documento o ubicación.'},
         {value: 'send_sequence', label: 'Enviar secuencia de mensajes', help: 'Combina varios mensajes consecutivos en una sola acción.'},
-        {value: 'send_buttons', label: 'Enviar botones', help: 'Presenta hasta tres botones interactivos para guiar la respuesta.'},
+        {value: 'send_buttons', label: 'Enviar botones', help: 'Presenta botones interactivos para guiar la respuesta.'},
         {value: 'send_list', label: 'Enviar lista interactiva', help: 'Muestra un menú desplegable con secciones y múltiples opciones.'},
         {value: 'send_template', label: 'Enviar plantilla aprobada', help: 'Usa una plantilla autorizada por Meta con variables predefinidas.'},
         {value: 'set_state', label: 'Actualizar estado', help: 'Actualiza el estado del flujo para controlar próximos pasos.'},
@@ -75,7 +76,7 @@
         {value: 'upsert_patient_from_context', label: 'Guardar paciente con datos actuales', help: 'Crea o actualiza el paciente con los datos capturados en contexto.'},
     ];
 
-    const SCENARIO_STAGE_OPTIONS = [
+    const BASE_SCENARIO_STAGE_OPTIONS = [
         {value: 'arrival', label: 'Llegada y saludo', description: 'Primer contacto automático con el paciente.'},
         {value: 'validation', label: 'Validación de identidad', description: 'Captura y verificación de datos de identificación.'},
         {value: 'consent', label: 'Consentimiento', description: 'Solicita y registra la autorización de tratamiento de datos.'},
@@ -86,11 +87,13 @@
         {value: 'custom', label: 'Personalizado', description: 'Escenarios especiales o adicionales.'},
     ];
 
+    let SCENARIO_STAGE_OPTIONS = BASE_SCENARIO_STAGE_OPTIONS.slice();
+
     const SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu']);
     const ADVANCED_ACTION_TYPES = new Set(['send_sequence', 'send_list', 'send_template', 'set_context', 'conditional', 'upsert_patient_from_context']);
     const BASIC_CONDITION_TYPES = new Set(['always', 'message_in', 'message_contains']);
 
-    const STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
+    let STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
 
     const STORAGE_KEYS = {
         simpleMode: 'waAutoresponder.simpleMode',
@@ -711,7 +714,12 @@
     }
 
     const bootstrapPayload = parseBootstrap();
-    const state = initializeState(bootstrapPayload);
+    const bootstrapContract = bootstrapPayload && bootstrapPayload.contract ? bootstrapPayload.contract : null;
+    applyContractConstraints(bootstrapContract);
+    const publishEndpoint = bootstrapPayload && bootstrapPayload.api && bootstrapPayload.api.publish
+        ? bootstrapPayload.api.publish
+        : '/whatsapp/api/flowmaker/publish';
+    const state = initializeState(bootstrapPayload && bootstrapPayload.flow ? bootstrapPayload.flow : bootstrapPayload);
     const defaults = JSON.parse(JSON.stringify(state));
     const simulationHistory = [];
     const replayMessages = [];
@@ -842,15 +850,16 @@
         });
     }
 
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
         resetValidation();
+        resetSubmitFeedback();
         normalizeScenarios();
 
         const payload = buildPayload();
         const errors = validatePayload(payload);
 
         if (errors.length > 0) {
-            event.preventDefault();
             presentErrors(errors);
 
             return;
@@ -859,6 +868,8 @@
         if (flowField) {
             flowField.value = JSON.stringify(payload);
         }
+
+        await publishFlow(payload);
     });
 
     renderVariables();
@@ -883,6 +894,26 @@
             console.warn('No fue posible interpretar la configuración del flujo', error);
 
             return {};
+        }
+    }
+
+    function applyContractConstraints(contract) {
+        const constraints = contract?.constraints || {};
+        const buttonLimit = Number(constraints.buttonLimit);
+        if (!Number.isNaN(buttonLimit) && buttonLimit > 0) {
+            MENU_BUTTON_LIMIT = buttonLimit;
+        }
+
+        const allowedStages = Array.isArray(constraints.stageValues)
+            ? constraints.stageValues
+                .map((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''))
+                .filter((value) => value !== '')
+            : [];
+
+        if (allowedStages.length > 0) {
+            const filteredOptions = BASE_SCENARIO_STAGE_OPTIONS.filter((option) => allowedStages.includes(option.value));
+            SCENARIO_STAGE_OPTIONS = filteredOptions.length > 0 ? filteredOptions : BASE_SCENARIO_STAGE_OPTIONS.slice();
+            STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
         }
     }
 
@@ -1062,17 +1093,20 @@
                 }
                 return;
             }
-            if (type === 'send_buttons') {
-                const message = action.message || {};
-                const body = typeof message.body === 'string' ? message.body.trim() : '';
-                const buttons = Array.isArray(message.buttons)
-                    ? message.buttons.filter((button) => button && (button.title || button.id))
-                    : [];
-                if (body === '' || buttons.length === 0) {
-                    pushIssue('Configura el mensaje y los botones.');
+                if (type === 'send_buttons') {
+                    const message = action.message || {};
+                    const body = typeof message.body === 'string' ? message.body.trim() : '';
+                    const buttons = Array.isArray(message.buttons)
+                        ? message.buttons.filter((button) => button && (button.title || button.id))
+                        : [];
+                    if (body === '' || buttons.length === 0) {
+                        pushIssue('Configura el mensaje y los botones.');
+                    }
+                    if (buttons.length > MENU_BUTTON_LIMIT) {
+                        pushIssue(`Usa máximo ${MENU_BUTTON_LIMIT} botones en esta acción.`);
+                    }
+                    return;
                 }
-                return;
-            }
             if (type === 'send_list') {
                 const message = action.message || {};
                 const body = typeof message.body === 'string' ? message.body.trim() : '';
@@ -2336,19 +2370,29 @@
             buttonsHeader.className = 'd-flex justify-content-between align-items-center mb-2';
             buttonsHeader.innerHTML = '<span class="small fw-600">Botones</span>';
 
+            const refreshActionButtonsLimit = () => {
+                const count = Array.isArray(action.message.buttons) ? action.message.buttons.length : 0;
+                addButton.disabled = count >= MENU_BUTTON_LIMIT;
+            };
+
             const addButton = document.createElement('button');
             addButton.type = 'button';
             addButton.className = 'btn btn-xs btn-outline-primary';
             addButton.innerHTML = '<i class="mdi mdi-plus"></i> Añadir botón';
             addButton.addEventListener('click', () => {
                 action.message.buttons = action.message.buttons || [];
+                if (action.message.buttons.length >= MENU_BUTTON_LIMIT) {
+                    refreshActionButtonsLimit();
+                    return;
+                }
                 action.message.buttons.push({id: '', title: ''});
-                renderButtonsList(buttonsContainer, action);
+                renderButtonsList(buttonsContainer, action, refreshActionButtonsLimit);
             });
             buttonsHeader.appendChild(addButton);
 
             const buttonsContainer = document.createElement('div');
-            renderButtonsList(buttonsContainer, action);
+            renderButtonsList(buttonsContainer, action, refreshActionButtonsLimit);
+            refreshActionButtonsLimit();
 
             container.appendChild(bodyLabel);
             container.appendChild(bodyInput);
@@ -2786,7 +2830,7 @@
         }
     }
 
-    function renderButtonsList(container, action) {
+    function renderButtonsList(container, action, onChange) {
         if (!container || !templates.buttonRow) {
             return;
         }
@@ -2833,7 +2877,7 @@
                 removeButton.addEventListener('click', (event) => {
                     event.preventDefault();
                     action.message.buttons.splice(index, 1);
-                    renderButtonsList(container, action);
+                    renderButtonsList(container, action, onChange);
                     if (action.message === state.menu.message) {
                         renderMenuPreview();
                     }
@@ -2842,6 +2886,10 @@
 
             container.appendChild(row);
         });
+
+        if (typeof onChange === 'function') {
+            onChange();
+        }
     }
 
     function buildMessageComposer(container, message) {
@@ -4475,6 +4523,9 @@
             if (!Array.isArray(menuMessage.buttons) || menuMessage.buttons.length === 0) {
                 errors.push('Agrega al menos un botón al menú interactivo.');
             }
+            if (Array.isArray(menuMessage.buttons) && menuMessage.buttons.length > MENU_BUTTON_LIMIT) {
+                errors.push(`El menú admite un máximo de ${MENU_BUTTON_LIMIT} botones.`);
+            }
         }
 
         if (menuType === 'list') {
@@ -4534,6 +4585,41 @@
         return errors;
     }
 
+    async function publishFlow(payload) {
+        if (!publishEndpoint) {
+            form.submit();
+            return;
+        }
+
+        try {
+            const response = await fetch(publishEndpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({flow: payload}),
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            const body = contentType.includes('application/json') ? await response.json() : {};
+            const responseMessage = body && body.message
+                ? body.message
+                : 'No fue posible guardar los cambios del flujo.';
+
+            if (!response.ok || (body && body.status !== 'ok')) {
+                showSubmitFeedback('error', responseMessage);
+                if (body && Array.isArray(body.errors) && body.errors.length > 0) {
+                    presentErrors(body.errors);
+                }
+
+                return;
+            }
+
+            showSubmitFeedback('success', responseMessage || 'Flujo actualizado correctamente.');
+        } catch (error) {
+            console.error('Error al publicar el flujo', error);
+            showSubmitFeedback('error', 'Ocurrió un error al publicar el flujo. Intenta nuevamente.');
+        }
+    }
+
     function presentErrors(errors) {
         if (!validationAlert) {
             return;
@@ -4551,6 +4637,28 @@
             validationAlert.innerHTML = '';
         }
         clearScenarioValidationState();
+    }
+
+    function showSubmitFeedback(type, message) {
+        if (!submitFeedback) {
+            return;
+        }
+
+        submitFeedback.textContent = message || '';
+        submitFeedback.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning');
+        const isSuccess = type === 'success';
+        submitFeedback.classList.add(isSuccess ? 'alert-success' : 'alert-danger');
+        submitFeedback.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+
+    function resetSubmitFeedback() {
+        if (!submitFeedback) {
+            return;
+        }
+
+        submitFeedback.classList.add('d-none');
+        submitFeedback.classList.remove('alert-success', 'alert-danger', 'alert-warning');
+        submitFeedback.textContent = '';
     }
 
     function normalizeScenarios() {
@@ -4705,7 +4813,23 @@
         copy.stage_id = normalizedStage;
         copy.stageId = normalizedStage;
 
+        if (Array.isArray(copy.actions)) {
+            copy.actions = copy.actions.map((action) => normalizeActionForConstraints(action));
+        }
+
         return copy;
+    }
+
+    function normalizeActionForConstraints(action) {
+        const normalized = JSON.parse(JSON.stringify(action || {}));
+        if (normalized.type === 'send_buttons') {
+            normalized.message = normalized.message || {type: 'buttons', body: '', buttons: []};
+            normalized.message.buttons = Array.isArray(normalized.message.buttons)
+                ? normalized.message.buttons.filter((button) => button && (button.title || button.id)).slice(0, MENU_BUTTON_LIMIT)
+                : [];
+        }
+
+        return normalized;
     }
 
     function createDefaultScenario() {

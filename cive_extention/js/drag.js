@@ -6,28 +6,48 @@ window.habilitarArrastre = function () {
     }
 
     let isDragging = false;
-    let initialY, currentY = button.getBoundingClientRect().top, offsetY = 0;
+    let startX = 0, startY = 0;
+    let currentX = button.getBoundingClientRect().left;
+    let currentY = button.getBoundingClientRect().top;
+    let offsetX = 0, offsetY = 0;
 
     button.addEventListener("mousedown", function (e) {
         isDragging = true;
-        initialY = e.clientY;
+        startX = e.clientX;
+        startY = e.clientY;
         button.style.transition = "none";
     });
 
     document.addEventListener("mousemove", function (e) {
         if (!isDragging) return;
-        offsetY = e.clientY - initialY;
-        let newTranslateY = currentY + offsetY;
-        newTranslateY = Math.max(0, Math.min(window.innerHeight - button.offsetHeight, newTranslateY));
-        button.style.transform = `translateY(${newTranslateY - currentY}px)`;
+        offsetX = e.clientX - startX;
+        offsetY = e.clientY - startY;
+        let newX = currentX + offsetX;
+        let newY = currentY + offsetY;
+
+        // Limitar dentro del viewport
+        newX = Math.max(8, Math.min(window.innerWidth - button.offsetWidth - 8, newX));
+        newY = Math.max(8, Math.min(window.innerHeight - button.offsetHeight - 8, newY));
+
+        button.style.left = `${newX}px`;
+        button.style.top = `${newY}px`;
+        button.style.right = 'auto';
+        button.style.bottom = 'auto';
     });
 
     document.addEventListener("mouseup", function () {
         if (isDragging) {
             isDragging = false;
-            currentY += offsetY;
+            currentX = parseFloat(button.style.left) || currentX;
+            currentY = parseFloat(button.style.top) || currentY;
+            offsetX = 0;
             offsetY = 0;
-            button.style.transition = "background 100ms ease-out";
+            button.style.transition = "background 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out";
+            try {
+                localStorage.setItem('civeFloatingPos', JSON.stringify({x: currentX, y: currentY}));
+            } catch (e) {
+                console.warn('No se pudo guardar la posición del botón:', e);
+            }
         }
     });
 

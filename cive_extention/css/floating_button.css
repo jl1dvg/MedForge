@@ -4,6 +4,9 @@
     --cive-color-primary-60: #0066ff;
     --cive-color-primary-70: #0055cc;
     --cive-color-primary-80: #0044aa;
+    --cive-color-success: #17c964;
+    --cive-color-warning: #ffb020;
+    --cive-color-neutral-10: rgba(255, 255, 255, 0.4);
     --cive-color-neutral-40: rgba(255, 255, 255, 0.9);
     --cive-elevation-1: 0 4px 12px rgba(20, 33, 61, 0.2);
     --cive-focus-ring: 0 0 0 3px rgba(0, 102, 255, 0.35);
@@ -12,7 +15,7 @@
 /* Estilos para el botón flotante accesible */
 #floatingButton {
     border-radius: 999px;
-    padding: 14px 18px;
+    padding: 12px 16px;
     position: fixed;
     bottom: 20px;
     right: 16px;
@@ -21,28 +24,59 @@
     color: var(--cive-color-neutral-40);
     border: none;
     box-shadow: var(--cive-elevation-1);
-    transition: background 100ms ease-out, box-shadow 100ms ease-out, transform 100ms ease-out;
+    transition: background 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out, filter 120ms ease-out;
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     font-family: var(--cive-font-family);
-    font-size: 1.05rem;
+    font-size: 1rem;
     line-height: 1.2;
-    min-height: 52px;
+    min-height: 48px;
+    min-width: 56px;
 }
 
 #floatingButton img {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
+}
+
+#floatingButton .label {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+#floatingButton .label strong {
+    font-size: 1rem;
+}
+
+#floatingButton .label span {
+    font-size: 0.85rem;
+    color: var(--cive-color-neutral-10);
+}
+
+#floatingButton .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--cive-color-success);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+
+#floatingButton.offline .status-badge {
+    background: var(--cive-color-warning);
 }
 
 #floatingButton .drag-handle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
+    width: 20px;
     height: 32px;
     cursor: grab;
     border-radius: 8px;
@@ -62,6 +96,7 @@
 #floatingButton:hover {
     background: var(--cive-color-primary-70);
     box-shadow: 0 6px 16px rgba(0, 85, 204, 0.32);
+    transform: translateY(-1px);
 }
 
 #floatingButton:active {
@@ -77,4 +112,19 @@
 #floatingButton:focus-visible {
     outline: none;
     box-shadow: var(--cive-focus-ring);
+}
+
+#floatingButton .spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }

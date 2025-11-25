@@ -6,6 +6,8 @@
 /** @var array $templates */
 /** @var string|null $templatesError */
 /** @var array $inboxMessages */
+/** @var array $contract */
+/** @var string $brand */
 
 $escape = static fn(?string $value): string => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 $renderLines = static fn(string $value): string => nl2br($escape($value), false);
@@ -121,7 +123,21 @@ $editorState = [
     'scenarios' => $editorFlow['scenarios'] ?? [],
     'menu' => $editorFlow['menu'] ?? [],
 ];
-$flowEditorJson = htmlspecialchars(json_encode($editorState, JSON_UNESCAPED_UNICODE) ?: '{}', ENT_QUOTES, 'UTF-8');
+
+$autoresponderBootstrap = [
+    'brand' => $brand,
+    'flow' => $editorState,
+    'contract' => $contract,
+    'api' => [
+        'publish' => '/whatsapp/api/flowmaker/publish',
+    ],
+];
+
+$flowEditorJson = htmlspecialchars(
+    json_encode($autoresponderBootstrap, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '{}',
+    ENT_QUOTES,
+    'UTF-8'
+);
 
 $getConsentValue = static function (array $consent, string $key): string {
     $value = $consent[$key] ?? '';
@@ -782,6 +798,7 @@ switch ($statusType) {
                         <script type="application/json" data-flow-bootstrap><?= $flowEditorJson; ?></script>
 
                         <div class="alert alert-danger d-none" data-validation-errors role="alert"></div>
+                        <div class="alert alert-success d-none" data-submit-feedback role="alert"></div>
 
                         <div class="box mb-4" data-variables-panel>
                             <div class="box-header with-border d-flex justify-content-between align-items-center flex-wrap gap-2">

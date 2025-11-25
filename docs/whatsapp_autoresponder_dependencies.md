@@ -12,3 +12,9 @@ Para deployments coordinados:
 3. Mantener sincronizados los archivos JS/CSS públicos (`public/js/pages/whatsapp-*`, `public/css/pages/whatsapp-*`) porque ambos módulos los utilizan para renderizar y publicar flujos.
 
 Esto evita discrepancias entre la interfaz de Flowmaker y la ejecución en el webhook de WhatsApp.
+
+## Persistencia del flujo sin base de datos
+
+- El flujo publicado se guarda siempre como respaldo en `storage/whatsapp_autoresponder_flow.json`. El repositorio de flujo se encarga de leer y escribir ahí cuando no hay base de datos disponible o falta alguna de las tablas requeridas.
+- Antes de sobrescribir el archivo principal se genera un backup incremental con la forma `storage/whatsapp_autoresponder_flow_<timestamp>.json`.
+- Para deshabilitar explícitamente el uso de tablas (por ejemplo en entornos de solo lectura), define la variable de entorno `WHATSAPP_AUTORESPONDER_DISABLE_TABLES=1`.

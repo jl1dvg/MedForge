@@ -39,6 +39,7 @@ class FlowmakerController extends BaseController
         $storedFlow = $this->flowRepository->load();
         $resolvedFlow = AutoresponderFlow::resolve($brand, $storedFlow);
         $contract = AutoresponderFlow::contract($brand);
+        $storagePath = $this->flowRepository->getStoragePath();
 
         $flowmakerUrl = $this->resolveEmbedUrl($config);
         $flowmakerOrigin = $this->resolveEmbedOrigin($flowmakerUrl);
@@ -58,6 +59,7 @@ class FlowmakerController extends BaseController
             'contract' => $contract,
             'flowmakerUrl' => $flowmakerUrl,
             'flowmakerOrigin' => $flowmakerOrigin,
+            'storagePath' => $storagePath,
             'status' => $status,
             'scripts' => [
                 'js/pages/whatsapp-flowmaker.js',
@@ -137,6 +139,9 @@ class FlowmakerController extends BaseController
         $this->respondJsonHeader();
         $contract = AutoresponderFlow::contract($brand);
         $contract['flow'] = AutoresponderFlow::resolve($brand, $this->flowRepository->load());
+        $contract['storage'] = [
+            'path' => $this->flowRepository->getStoragePath(),
+        ];
 
         $this->respondJson(200, $contract);
     }

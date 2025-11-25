@@ -215,7 +215,7 @@ window.inicializarUI = function () {
     button.id = 'floatingButton';
     button.className = 'actionable-icon';
     button.type = 'button';
-    button.setAttribute('aria-label', 'Abrir asistente CIVE');
+    button.setAttribute('aria-label', 'Abrir asistente CIVE. Atajo Alt+Shift+A');
     button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-controls', 'floatingPopup');
     button.setAttribute('aria-expanded', 'false');
@@ -225,6 +225,16 @@ window.inicializarUI = function () {
     img.alt = '';
     img.setAttribute('aria-hidden', 'true');
     button.appendChild(img);
+
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.innerHTML = `<strong>Asistente</strong><span>Alt+Shift+A</span>`;
+    button.appendChild(label);
+
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'status-badge';
+    statusBadge.title = 'Estado de conexión';
+    button.appendChild(statusBadge);
 
     const dragHandle = document.createElement('div');
     dragHandle.className = 'drag-handle';
@@ -259,13 +269,15 @@ window.inicializarUI = function () {
         setTimeout(() => titleEl && titleEl.focus(), 0);
     }
 
-    button.addEventListener('click', () => {
+    function togglePopup() {
         if (popup.classList.contains('active')) {
             closePopup();
         } else {
             openPopup();
         }
-    });
+    }
+
+    button.addEventListener('click', togglePopup);
 
     button.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -285,6 +297,11 @@ window.inicializarUI = function () {
         if (event.key === 'Escape' && popup.classList.contains('active')) {
             event.preventDefault();
             closePopup();
+            return;
+        }
+        if (event.altKey && event.shiftKey && (event.key === 'A' || event.key === 'a')) {
+            event.preventDefault();
+            togglePopup();
         }
     });
 
@@ -306,6 +323,46 @@ window.inicializarUI = function () {
             }
         });
     });
+
+    // Focus trap sencillo dentro del popup
+    popup.addEventListener('keydown', (event) => {
+        if (!popup.classList.contains('active') || event.key !== 'Tab') return;
+        const focusables = popup.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        const visible = Array.from(focusables).filter((el) => !el.disabled && el.offsetParent !== null);
+        if (!visible.length) return;
+        const first = visible[0];
+        const last = visible[visible.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+
+    // Estado online/offline para el badge
+    function actualizarEstadoConexion() {
+        const online = navigator.onLine;
+        button.classList.toggle('offline', !online);
+        statusBadge.title = online ? 'Conectado' : 'Sin conexión';
+    }
+    window.addEventListener('online', actualizarEstadoConexion);
+    window.addEventListener('offline', actualizarEstadoConexion);
+    actualizarEstadoConexion();
+
+    // Restaurar última posición guardada
+    try {
+        const pos = JSON.parse(localStorage.getItem('civeFloatingPos') || 'null');
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+            button.style.left = `${pos.x}px`;
+            button.style.top = `${pos.y}px`;
+            button.style.right = 'auto';
+            button.style.bottom = 'auto';
+        }
+    } catch (e) {
+        console.warn('No se pudo restaurar posición del botón:', e);
+    }
 
     const estilos = [
         {href: 'css/floating_button.css'},
