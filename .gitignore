@@ -18,3 +18,7 @@ Thumbs.db
 .idea/
 .DS_Store
 .vscode/sftp.json
+node_modules/
+Flowmaker/node_modules/
+Flowmaker/.yarn/
+Flowmaker/.vite/
