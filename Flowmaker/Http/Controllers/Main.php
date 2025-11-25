@@ -59,8 +59,8 @@ class Main extends Controller
 
     public function script()
     {
-        // Find the first .js file in the public/build/assets directory
-        $files = glob(__DIR__.'/../../public/build/assets/*.js');
+        // Find the first .js file in the public/dist/assets directory
+        $files = glob(__DIR__ . '/../../public/dist/assets/*.js');
         
         if (empty($files)) {
             abort(404, 'JavaScript file not found');
@@ -77,7 +77,7 @@ class Main extends Controller
     //CSS
     public function css()
     {
-        $files = glob(__DIR__.'/../../public/build/assets/*.css');
+        $files = glob(__DIR__ . '/../../public/dist/assets/*.css');
         
         if (empty($files)) {
             abort(404, 'CSS file not found');
