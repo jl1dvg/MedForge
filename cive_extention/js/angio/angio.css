@@ -1,92 +1,165 @@
-/* popup.css */
+:root {
+  --cive-bg: #0f172a;
+  --cive-bg-strong: #0b1224;
+  --cive-fg: #e2e8f0;
+  --cive-muted: #cbd5e1;
+  --cive-primary: #0ea5e9;
+  --cive-primary-2: #6366f1;
+  --cive-border: rgba(148, 163, 184, 0.3);
+  --cive-border-strong: rgba(148, 163, 184, 0.5);
+  --cive-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  --cive-radius: 14px;
+  --cive-font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
 body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    width: 100vw;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 10px; /* Bordes redondeados para el body */
+  margin: 0;
+  min-height: 100vh;
+  background: var(--cive-bg-strong);
+  color: var(--cive-fg);
+  font-family: var(--cive-font);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .popup-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999; /* Asegura que esté encima de otros elementos */
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 18, 38, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 9999;
 }
 
-.popup-content {
-    background: white;
-    padding: 10px;
-    border-radius: 10px;
-    text-align: center;
-    max-width: 600px;
-    width: 100%;
-    max-height: 600px; /* Limitar la altura máxima */
-    height: 100%;
-    overflow-y: auto; /* Habilitar desplazamiento vertical */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+.popup-content,
+.container,
+.exam-card {
+  background: var(--cive-bg);
+  color: var(--cive-fg);
+  border-radius: var(--cive-radius);
+  box-shadow: var(--cive-shadow);
+  border: 1px solid var(--cive-border);
+  padding: 20px 22px;
+  width: min(720px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  position: relative;
+}
+
+h1, h2, h3 {
+  margin: 0 0 12px;
+  color: #f8fafc;
 }
 
 label {
-    display: block;
-    margin-bottom: 5px;
-    font-size: 10px; /* Ajusta el tamaño de la letra */
-    text-align: left;
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 13px;
+  color: var(--cive-muted);
 }
 
-input, textarea {
-    width: 100%;
-    padding: 4px;
-    font-size: 4px; /* Ajustar el tamaño de la fuente */
+input,
+textarea,
+select {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--cive-border);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--cive-fg);
+  padding: 10px 12px;
+  font-size: 14px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+  background: rgba(15, 23, 42, 0.8);
 }
 
 textarea {
-    height: 80px; /* Ajustar la altura de los textarea */
+  min-height: 120px;
+  resize: vertical;
 }
 
-button {
-    padding: 5px 10px;
-    margin-top: 10px;
-    font-size: 10px; /* Ajustar el tamaño de la fuente */
+button,
+.btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 100ms ease, box-shadow 120ms ease, background 120ms ease, color 120ms ease;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--cive-fg);
+}
+
+button:hover,
+.btn:hover {
+  transform: translateY(-1px);
+  background: rgba(148, 163, 184, 0.25);
+}
+
+button:focus-visible,
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+}
+
+.btn-primary,
+.btn-success,
+#btnAceptar {
+  background: linear-gradient(120deg, var(--cive-primary), var(--cive-primary-2));
+  color: #f8fafc;
+  box-shadow: 0 10px 30px rgba(14, 165, 233, 0.25);
+  border: none;
 }
 
 .close-btn {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 24px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 22px;
+  border: none;
+  background: transparent;
+  color: var(--cive-fg);
+  cursor: pointer;
+  transition: transform 120ms ease, color 120ms ease;
+}
+
+.close-btn:hover {
+  color: #38bdf8;
+  transform: scale(1.05);
 }
 
 .checkbox-group {
-    display: flex;
-    flex-wrap: wrap;
-    margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .checkbox-group > div {
-    display: flex;
-    align-items: center;
-    width: 16%; /* Esto asegurará que 5 elementos ocupen una fila completa */
-    box-sizing: border-box; /* Para asegurar que el padding y el border se incluyan en el ancho */
-    padding: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cive-muted);
+  font-size: 13px;
 }
 
-.checkbox-group label {
-    margin-left: 5px;
-    font-size: 10px; /* Ajusta el tamaño de la letra */
+.checkbox-group input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
+
+.text-center { text-align: center; }

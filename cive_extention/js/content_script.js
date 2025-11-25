@@ -17,6 +17,7 @@ window.addEventListener("load", () => {
     if (window.inicializarUI) window.inicializarUI();
     if (window.habilitarArrastre) window.habilitarArrastre();
     if (window.inicializarEventos) window.inicializarEventos();
+    if (window.verificarCirugiasPreviasAuto) window.verificarCirugiasPreviasAuto();
 
     if (window.inicializarTablaPacientes) window.inicializarTablaPacientes();
     if (window.iniciarObservadores) window.iniciarObservadores();

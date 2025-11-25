@@ -18,36 +18,186 @@ function safeGetURL(path) {
     return null; // En este archivo preferimos no usar remoto para no romper postMessage
 }
 
+const MODAL_STYLE_ID = 'cive-exam-modal-style';
+
+function ensureModalStyles() {
+    if (document.getElementById(MODAL_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = MODAL_STYLE_ID;
+    style.innerHTML = `
+    .cive-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(12, 18, 38, 0.55);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 16px;
+    }
+    .cive-modal-window {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 14px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+        min-width: 340px;
+        max-width: 90vw;
+        width: 600px;
+        max-height: 92vh;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    .cive-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 20px 12px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .cive-modal-header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #f8fafc;
+    }
+    .cive-modal-kicker {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+        color: #94a3b8;
+    }
+    .cive-modal-close {
+        background: none;
+        border: none;
+        color: #e2e8f0;
+        font-size: 24px;
+        cursor: pointer;
+        line-height: 1;
+        transition: transform 120ms ease, color 120ms ease;
+    }
+    .cive-modal-close:hover {
+        color: #38bdf8;
+        transform: scale(1.05);
+    }
+    .cive-modal-body {
+        padding: 14px 20px 6px;
+        overflow-y: auto;
+        max-height: 65vh;
+    }
+    .cive-form-group {
+        margin-bottom: 12px;
+    }
+    .cive-form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #cbd5e1;
+    }
+    .cive-input {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.6);
+        color: #e2e8f0;
+        padding: 10px 12px;
+        font-size: 14px;
+        transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+    .cive-input:focus {
+        outline: none;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+        background: rgba(15, 23, 42, 0.8);
+    }
+    .cive-modal-footer {
+        padding: 12px 20px 18px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        border-top: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .cive-btn {
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 100ms ease, box-shadow 120ms ease, background 120ms ease, color 120ms ease;
+    }
+    .cive-btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+    }
+    .cive-btn-primary {
+        background: linear-gradient(120deg, #0ea5e9, #6366f1);
+        color: #f8fafc;
+        box-shadow: 0 10px 30px rgba(14, 165, 233, 0.25);
+    }
+    .cive-btn-primary:hover {
+        transform: translateY(-1px);
+    }
+    .cive-btn-ghost {
+        background: rgba(148, 163, 184, 0.15);
+        color: #e2e8f0;
+        border-color: rgba(148, 163, 184, 0.3);
+    }
+    .cive-btn-ghost:hover {
+        background: rgba(148, 163, 184, 0.25);
+    }
+    .cive-iframe-shell {
+        position: relative;
+        padding: 10px 10px 16px;
+    }
+    .cive-iframe-shell iframe {
+        width: 100%;
+        height: 600px;
+        border: none;
+        border-radius: 12px;
+        overflow: auto;
+        background: #0b1120;
+    }
+    @media (max-width: 640px) {
+        .cive-modal-window { width: 100%; }
+        .cive-iframe-shell iframe { height: 70vh; }
+    }
+    `;
+    document.head.appendChild(style);
+}
+
 function crearPopupFallbackOD_OI() {
     return new Promise((resolve) => {
+        ensureModalStyles();
         const overlay = document.createElement('div');
-        overlay.style.position = 'fixed';
-        overlay.style.inset = '0';
-        overlay.style.background = 'rgba(0,0,0,0.5)';
-        overlay.style.zIndex = '9999';
-        overlay.style.display = 'flex';
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
+        overlay.className = 'cive-modal-backdrop';
 
         const box = document.createElement('div');
-        box.style.background = '#fff';
-        box.style.borderRadius = '10px';
-        box.style.padding = '20px';
-        box.style.minWidth = '340px';
-        box.style.maxWidth = '90vw';
-        box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
+        box.className = 'cive-modal-window';
         box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <h3 style="margin:0;font:600 16px/1.2 system-ui">Ingresar recomendaciones</h3>
-        <button id="xClose" aria-label="Cerrar" style="font-size:22px;border:none;background:transparent;cursor:pointer">&times;</button>
+      <div class="cive-modal-header">
+        <div>
+          <p class="cive-modal-kicker">Exámenes</p>
+          <h3>Ingresar recomendaciones</h3>
+        </div>
+        <button id="xClose" class="cive-modal-close" aria-label="Cerrar">&times;</button>
       </div>
-      <label style="display:block;margin:8px 0 4px">OD</label>
-      <textarea id="odTxt" rows="3" style="width:100%;"></textarea>
-      <label style="display:block;margin:8px 0 4px">OI</label>
-      <textarea id="oiTxt" rows="3" style="width:100%;"></textarea>
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
-        <button id="cancelBtn" style="padding:6px 12px">Cancelar</button>
-        <button id="okBtn" style="padding:6px 12px">Aceptar</button>
+      <div class="cive-modal-body">
+        <div class="cive-form-group">
+          <label for="odTxt">OD</label>
+          <textarea id="odTxt" rows="3" class="cive-input"></textarea>
+        </div>
+        <div class="cive-form-group">
+          <label for="oiTxt">OI</label>
+          <textarea id="oiTxt" rows="3" class="cive-input"></textarea>
+        </div>
+      </div>
+      <div class="cive-modal-footer">
+        <button id="cancelBtn" class="cive-btn cive-btn-ghost" type="button">Cancelar</button>
+        <button id="okBtn" class="cive-btn cive-btn-primary" type="button">Aceptar</button>
       </div>
     `;
         overlay.appendChild(box);
@@ -80,17 +230,10 @@ function ejecutarEnPagina(item) {
                 return crearPopupFallbackOD_OI().then(resolve);
             }
 
+            ensureModalStyles();
+
             const popup = document.createElement('div');
-            popup.style.position = 'fixed';
-            popup.style.top = '0';
-            popup.style.left = '0';
-            popup.style.width = '100%';
-            popup.style.height = '100%';
-            popup.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-            popup.style.display = 'flex';
-            popup.style.justifyContent = 'center';
-            popup.style.alignItems = 'center';
-            popup.style.zIndex = '9999';
+            popup.className = 'cive-modal-backdrop';
 
             const popupURL = safeGetURL(url);
             if (!popupURL) {
@@ -99,9 +242,17 @@ function ejecutarEnPagina(item) {
             }
 
             popup.innerHTML = `
-        <div style="position: relative;">
-          <button id="btnClose" style="position: absolute; top: 10px; right: 10px; font-size: 24px; border: none; background: transparent; cursor: pointer;">&times;</button>
-          <iframe class="content-panel-frame placeholder-frame" id="placeholder-dialog" src="${popupURL}" style="height: 600px; width: 600px; border: none; border-radius: 10px; overflow: auto;"></iframe>
+        <div class="cive-modal-window">
+          <div class="cive-modal-header">
+            <div>
+              <p class="cive-modal-kicker">Exámenes</p>
+              <h3>Completar información</h3>
+            </div>
+            <button id="btnClose" class="cive-modal-close" aria-label="Cerrar">&times;</button>
+          </div>
+          <div class="cive-iframe-shell">
+            <iframe class="content-panel-frame placeholder-frame" id="placeholder-dialog" src="${popupURL}"></iframe>
+          </div>
         </div>
       `;
             document.body.appendChild(popup);

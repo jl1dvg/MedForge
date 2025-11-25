@@ -408,5 +408,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return false;
     }
 
+    if (request.action === 'cirugiasEstado') {
+        const hcNumber = (request.hcNumber || '').toString().trim();
+        if (!hcNumber) {
+            sendResponse({success: false, error: 'Falta hcNumber'});
+            return false;
+        }
+        const url = new URL('https://asistentecive.consulmed.me/api/cirugias/estado.php');
+        url.searchParams.set('hcNumber', hcNumber);
+        fetch(url.toString(), {
+            method: 'GET',
+            credentials: 'include',
+        })
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => sendResponse({success: true, data}))
+            .catch((error) => {
+                console.error('Error en cirugiasEstado:', error);
+                sendResponse({success: false, error: error.message || 'Error al consultar cirugías'});
+            });
+        return true;
+    }
+
     return false;
 });

@@ -55,7 +55,10 @@ const uiState = {
     recetasVisibles: [],
     categoriaRecetasActiva: '',
     examenes: [],
+    cirugias: [],
+    hcCirugia: '',
 };
+let __cirugiaAutoCheckDone = false;
 
 function getSectionElement(sectionId) {
     return document.getElementById(sectionId);
@@ -220,6 +223,32 @@ function obtenerAfiliacion() {
     return '';
 }
 
+function detectarHcNumber() {
+    // Intenta leer de la ficha de paciente
+    const cont = document.querySelector('.media-body');
+    if (cont) {
+        const ps = cont.querySelectorAll('p');
+        for (const p of ps) {
+            if (p.textContent && p.textContent.includes('HC #:')) {
+                const hc = p.textContent.split('HC #:')[1]?.trim();
+                if (hc) return hc;
+            }
+        }
+    }
+    // Inputs comunes en formularios
+    const selectors = [
+        '#docsolicitudprocedimientosdoctorsearch-hcnumber',
+        'input[name="DocSolicitudProcedimientosDoctorSearch[hcNumber]"]',
+        '#historiaclinica-historiaclinica',
+        'input[name="HistoriaClinica[historiaClinica]"]'
+    ];
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el && el.value) return el.value.trim();
+    }
+    return '';
+}
+
 function actualizarBusquedaPlaceholder(inputId, textoBase) {
     const input = document.getElementById(inputId);
     if (input) {
@@ -260,7 +289,166 @@ function actualizarNavegacion(seccionId) {
 
 window.mostrarSeccion = function (seccionId) {
     actualizarNavegacion(seccionId);
+    if (seccionId === 'cirugia' && typeof inicializarCirugiaSection === 'function') {
+        inicializarCirugiaSection();
+    }
 };
+
+function renderCirugias(lista) {
+    const cont = document.getElementById('contenedorCirugias');
+    if (!cont) return;
+    cont.innerHTML = '';
+
+    if (!Array.isArray(lista) || lista.length === 0) {
+        setSectionState('cirugia', {
+            type: 'empty',
+            message: 'No se encontraron solicitudes quirúrgicas pendientes para este paciente.',
+            containerId: 'contenedorCirugias',
+        });
+        return;
+    }
+
+    const badge = (estado) => {
+        const norm = (estado || '').toString().toUpperCase();
+        const map = {
+            PENDIENTE: 'badge-warn',
+            APROBADA: 'badge-ok',
+            RECHAZADA: 'badge-error',
+            EN_PROCESO: 'badge-info',
+        };
+        const cls = map[norm] || 'badge-info';
+        return `<span class="badge ${cls}">${estado || 'SIN ESTADO'}</span>`;
+    };
+
+    const fragment = document.createDocumentFragment();
+    lista.forEach((item, idx) => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.setAttribute('role', 'listitem');
+        card.innerHTML = `
+            <header class="card-header">
+                <div>
+                    <p class="card-kicker">Solicitud #${idx + 1}</p>
+                    <h4>${item?.procedimiento || 'Procedimiento no especificado'}</h4>
+                </div>
+                ${badge(item?.estado)}
+            </header>
+            <div class="card-body">
+                <p><strong>HC:</strong> ${item?.hcNumber || uiState.hcCirugia || 'N/D'}</p>
+                <p><strong>Cirujano:</strong> ${item?.doctor || 'N/D'}</p>
+                <p><strong>Fecha:</strong> ${item?.fecha || 'N/D'}</p>
+                ${item?.observacion ? `<p><strong>Obs:</strong> ${item.observacion}</p>` : ''}
+            </div>
+        `;
+        fragment.appendChild(card);
+    });
+    cont.appendChild(fragment);
+    setSectionState('cirugia', {type: 'ready', containerId: 'contenedorCirugias'});
+}
+
+async function consultarCirugias(hcNumberInput) {
+    const hc = (hcNumberInput || uiState.hcCirugia || detectarHcNumber() || '').trim();
+    const inputEl = document.getElementById('inputHcCirugia');
+    if (inputEl && !inputEl.value && hc) {
+        inputEl.value = hc;
+    }
+    uiState.hcCirugia = hc;
+
+    if (!hc) {
+        setSectionState('cirugia', {
+            type: 'error',
+            message: 'Ingresa un HC para consultar las solicitudes.',
+            containerId: 'contenedorCirugias',
+        });
+        return;
+    }
+
+    setSectionState('cirugia', {
+        type: 'loading',
+        message: `Consultando solicitudes quirúrgicas para HC ${hc}...`,
+        containerId: 'contenedorCirugias',
+    });
+
+    try {
+        const data = await obtenerEstadoCirugias(hc);
+        const lista = Array.isArray(data?.solicitudes) ? data.solicitudes : (Array.isArray(data) ? data : []);
+        uiState.cirugias = lista;
+        renderCirugias(lista);
+        if (lista.length > 0) {
+            notificarCirugiasPrevias(lista, hc);
+        }
+    } catch (error) {
+        console.error('Error consultando solicitudes quirúrgicas:', error);
+        setSectionState('cirugia', {
+            type: 'error',
+            message: 'No fue posible obtener las solicitudes quirúrgicas. Revisa tu conexión o vuelve a intentar.',
+            containerId: 'contenedorCirugias',
+            action: {handler: () => consultarCirugias(hc), label: 'Reintentar'},
+        });
+    }
+}
+
+function inicializarCirugiaSection() {
+    const input = document.getElementById('inputHcCirugia');
+    if (!input) return;
+    const hcDetectado = detectarHcNumber();
+    if (hcDetectado) {
+        input.value = hcDetectado;
+        uiState.hcCirugia = hcDetectado;
+    }
+}
+
+async function obtenerEstadoCirugias(hc) {
+    // Preferir fetch desde el service worker para evitar CORS desde el content script
+    if (isExtensionContextActive()) {
+        try {
+            const resp = await safeSendMessage({action: 'cirugiasEstado', hcNumber: hc});
+            if (resp && resp.success !== false) {
+                return resp.data ?? resp;
+            }
+        } catch (err) {
+            console.warn('Fallo fetch de cirugias via background, reintentando via CiveApiClient:', err);
+        }
+    }
+    return window.CiveApiClient.get('/cirugias/estado.php', {
+        query: {hcNumber: hc},
+        credentials: 'omit',
+    });
+}
+
+function notificarCirugiasPrevias(lista, hc) {
+    if (!Array.isArray(lista) || lista.length === 0) return;
+    const existeSwal = typeof Swal !== 'undefined' && Swal.fire;
+    const resumen = lista.slice(0, 3).map((c) => `${c.procedimiento || 'Procedimiento'} · ${c.estado || 'Estado N/D'}`).join('\n');
+    const texto = `HC ${hc}: ya existe(n) ${lista.length} solicitud(es) de cirugía.\n${resumen}${lista.length > 3 ? '\n…' : ''}`;
+    if (existeSwal) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Solicitudes quirúrgicas detectadas',
+            text: texto,
+            confirmButtonText: 'Ver en planificador',
+            footer: 'Revisa antes de crear una nueva solicitud.',
+        }).then(() => {
+            if (typeof window.mostrarSeccion === 'function') {
+                window.mostrarSeccion('cirugia');
+            }
+        });
+    } else {
+        alert(texto);
+    }
+}
+
+async function verificarCirugiasPreviasAuto() {
+    if (__cirugiaAutoCheckDone) return;
+    const hc = detectarHcNumber();
+    if (!hc) return;
+    __cirugiaAutoCheckDone = true;
+    try {
+        await consultarCirugias(hc);
+    } catch (e) {
+        console.warn('Chequeo automático de cirugías falló:', e);
+    }
+}
 
 async function cargarExamenes() {
     const contenedorId = 'contenedorExamenes';
@@ -737,3 +925,6 @@ window.mostrarProcedimientosPorCategoria = mostrarProcedimientosPorCategoria;
 window.aplicarFiltroRecetas = aplicarFiltroRecetas;
 window.aplicarFiltroProcedimientos = aplicarFiltroProcedimientos;
 window.aplicarFiltroProtocolos = aplicarFiltroProtocolos;
+window.consultarCirugias = consultarCirugias;
+window.inicializarCirugiaSection = inicializarCirugiaSection;
+window.verificarCirugiasPreviasAuto = verificarCirugiasPreviasAuto;

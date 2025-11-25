@@ -4,6 +4,7 @@ const NAV_SECTIONS = [
     {id: 'procedimientos', icon: 'fas fa-briefcase-medical', label: 'Procedimientos'},
     {id: 'recetas', icon: 'fas fa-prescription-bottle-alt', label: 'Recetas'},
     {id: 'consulta', icon: 'fas fa-user-md', label: 'Consulta'},
+    {id: 'cirugia', icon: 'fas fa-syringe', label: 'Cirugía'},
 ];
 
 function createShortcutCard({id, icon, label, description}) {
@@ -60,6 +61,7 @@ function buildPopupTemplate(isLocal) {
         {id: 'btnProtocolos', icon: 'fas fa-file-medical', label: 'Protocolos', description: 'Plantillas estandarizadas por afiliación'},
         {id: 'btnConsulta', icon: 'fas fa-user-md', label: 'Consulta', description: 'Atajos hacia consultas previas y control POP'},
         {id: 'btnRecetas', icon: 'fas fa-prescription-bottle-alt', label: 'Recetas', description: 'Catálogo de recetas frecuentes'},
+        {id: 'btnCirugia', icon: 'fas fa-syringe', label: 'Planificador de cirugía', description: 'Revisa solicitudes y evita duplicados'},
         ...(isLocal ? [{id: 'btnExamenes', icon: 'fas fa-notes-medical', label: 'Exámenes', description: 'Herramientas disponibles en modo local'}] : []),
     ];
 
@@ -175,6 +177,30 @@ function buildPopupTemplate(isLocal) {
                     footer: `
                         <footer class="section-footer">
                             <button id="btnBackConsulta" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
+                            </button>
+                        </footer>
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'cirugia',
+                    title: 'Planificador de cirugía',
+                    tools: `
+                        <div class="input-search" style="gap:8px; display:flex; align-items:center;">
+                            <span class="sr-only">Buscar por HC</span>
+                            <i class="fas fa-id-card" aria-hidden="true"></i>
+                            <input id="inputHcCirugia" type="search" placeholder="HC del paciente" autocomplete="off" />
+                            <button id="btnConsultarCirugia" class="btn-primary" type="button">
+                                <i class="fas fa-search" aria-hidden="true"></i>
+                                <span>Consultar</span>
+                            </button>
+                        </div>
+                    `,
+                    body: '<div id="contenedorCirugias" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackCirugia" class="btn-secondary" type="button">
                                 <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
                                 <span>Volver</span>
                             </button>

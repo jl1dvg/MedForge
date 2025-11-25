@@ -59,6 +59,14 @@ window.inicializarEventos = function () {
             }
         },
         {
+            id: "btnCirugia", evento: () => {
+                console.log("Botón Cirugía clickeado");
+                registrarAccion('cirugia');
+                mostrarSeccion("cirugia");
+                if (window.inicializarCirugiaSection) window.inicializarCirugiaSection();
+            }
+        },
+        {
             id: "btnConsultaAnterior", evento: () => {
                 console.log("Botón Consulta Anterior clickeado");
                 registrarAccion('consulta_anterior');
@@ -101,6 +109,13 @@ window.inicializarEventos = function () {
             id: "btnBackConsulta", evento: () => {
                 console.log("Botón Back Consulta clickeado");
                 registrarAccion('back_consulta');
+                mostrarSeccion("inicio");
+            }
+        },
+        {
+            id: "btnBackCirugia", evento: () => {
+                console.log("Botón Back Cirugía clickeado");
+                registrarAccion('back_cirugia');
                 mostrarSeccion("inicio");
             }
         },
@@ -164,6 +179,27 @@ window.inicializarEventos = function () {
             });
         }
     });
+
+    const btnConsultarCirugia = document.getElementById("btnConsultarCirugia");
+    if (btnConsultarCirugia) {
+        btnConsultarCirugia.addEventListener("click", () => {
+            registrarAccion('consultar_cirugia');
+            const hc = document.getElementById('inputHcCirugia')?.value || '';
+            if (window.consultarCirugias) window.consultarCirugias(hc);
+        });
+    }
+
+    const inputHcCirugia = document.getElementById("inputHcCirugia");
+    if (inputHcCirugia) {
+        inputHcCirugia.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                const hc = inputHcCirugia.value || '';
+                registrarAccion('consultar_cirugia_enter');
+                if (window.consultarCirugias) window.consultarCirugias(hc);
+            }
+        });
+    }
 
     console.log("Eventos de botones inicializados.");
 };
