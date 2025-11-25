@@ -11,6 +11,9 @@
     const constraints = contract.constraints || {};
     const buttonLimit = typeof constraints.buttonLimit === 'number' ? constraints.buttonLimit : 3;
     const stageValues = Array.isArray(constraints.stageValues) ? constraints.stageValues : [];
+    const storagePath = typeof parsed.storage?.path === 'string' && parsed.storage.path
+        ? parsed.storage.path
+        : 'storage/whatsapp_autoresponder_flow.json';
 
     const state = {
         flow: clone(parsed.flow || {}),
@@ -63,6 +66,10 @@
                         <i class="mdi mdi-cloud-upload-outline me-1"></i>Publicar
                     </button>
                 </div>
+            </div>
+            <div class="text-muted small mb-3 d-flex gap-2 align-items-center">
+                <i class="mdi mdi-database-off-outline"></i>
+                <span>El flujo se respalda en ${escapeHtml(storagePath)}.</span>
             </div>
             <div class="alert d-none" role="alert" data-flow-builder-status></div>
             <div class="flow-builder__grid">
