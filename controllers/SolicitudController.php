@@ -43,4 +43,15 @@ class SolicitudController
     {
         $this->solicitudModel->actualizarEstado($id, $estado);
     }
+    public function obtenerEstadosPorHc(string $hcNumber): array
+    {
+        $solicitudes = $this->solicitudModel->obtenerEstadosPorHc($hcNumber);
+
+        return [
+            'success'      => true,
+            'hcNumber'     => $hcNumber,
+            'total'        => count($solicitudes),
+            'solicitudes'  => $solicitudes,
+        ];
+    }
 }

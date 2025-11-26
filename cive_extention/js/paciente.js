@@ -150,11 +150,51 @@
             // ✅ Claves de control: prompt por pestaña (session) y estado persistente (local)
             const KEY_PROMPT = `prompt_iniciar_${paciente.form_id}`;         // sessionStorage (anti-duplicado modal)
             const KEY_ESTADO = `estado_atencion_${paciente.form_id}`;        // localStorage (persistente entre cierres)
+            const KEY_ALERT_SOL = `alert_solicitudes_${paciente.identificacion || paciente.hcNumber || ''}`;
 
             // 1) Arranque rápido desde localStorage (UX inmediata)
             const estadoLocal = localStorage.getItem(KEY_ESTADO);
             if (estadoLocal === 'en_proceso') {
                 establecerBloqueoFormulario(false);
+            }
+
+            // 1b) Chequear solicitudes quirúrgicas previas y notificar (una vez por sesión por HC)
+            const hc = paciente.identificacion || paciente.hcNumber || '';
+            if (hc && !sessionStorage.getItem(KEY_ALERT_SOL)) {
+                sessionStorage.setItem(KEY_ALERT_SOL, '1');
+                sendBg('solicitudesEstado', {hcNumber: hc})
+                    .then((resp) => {
+                        const lista = Array.isArray(resp?.solicitudes) ? resp.solicitudes : [];
+                        if (!lista.length) return;
+                        const masReciente = lista[0];
+                        const resumen = `${masReciente.tipo || 'Solicitud'} · ${masReciente.estado || 'N/D'} · ${masReciente.fecha || ''}`;
+                        const html = `
+                            <p style="margin:4px 0 0">HC <b>${hc}</b> tiene <b>${lista.length}</b> solicitud(es) registrada(s).</p>
+                            <p style="margin:6px 0 0"><b>Más reciente:</b> ${resumen}</p>
+                        `;
+                        if (typeof Swal !== 'undefined') {
+                            Swal.fire({
+                                icon: 'info',
+                                title: 'Solicitudes existentes',
+                                html,
+                                confirmButtonText: 'Ver planificador',
+                                cancelButtonText: 'Cerrar',
+                                showCancelButton: true,
+                                reverseButtons: true,
+                            }).then((res) => {
+                                if (res.isConfirmed && typeof window.mostrarSeccion === 'function') {
+                                    window.mostrarSeccion('cirugia');
+                                }
+                            });
+                        } else if (window.toastr && typeof window.toastr.info === 'function') {
+                            window.toastr.info(resumen, 'Solicitudes existentes');
+                        } else {
+                            alert(`Solicitudes previas para HC ${hc} (${lista.length}). Más reciente: ${resumen}`);
+                        }
+                    })
+                    .catch(() => {
+                        sessionStorage.removeItem(KEY_ALERT_SOL); // permitir reintento si falla
+                    });
             }
 
             // 2) Reconciliar con el backend (usa mismo endpoint con action=estado)

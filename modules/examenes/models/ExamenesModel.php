@@ -16,6 +16,33 @@ class ExamenesModel
         $this->db = $pdo;
     }
 
+    public function obtenerEstadosPorHc(string $hcNumber): array
+    {
+        $sql = "
+            SELECT 
+                sp.id,
+                sp.hc_number,
+                sp.form_id,
+                sp.tipo,
+                sp.afiliacion,
+                sp.procedimiento,
+                sp.doctor,
+                sp.fecha,
+                sp.prioridad,
+                sp.estado,
+                sp.created_at
+            FROM solicitud_procedimiento sp
+            WHERE sp.hc_number = :hcNumber
+            ORDER BY sp.created_at DESC
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':hcNumber', $hcNumber);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function fetchSolicitudesConDetallesFiltrado(array $filtros = []): array
     {
         $sql = "SELECT
