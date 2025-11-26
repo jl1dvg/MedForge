@@ -99,8 +99,10 @@ class NoFacturadosService
         }
 
         if (!empty($filters['busqueda'])) {
-            $conditions[] = '(base.hc_number LIKE :busqueda OR base.paciente LIKE :busqueda)';
-            $params[':busqueda'] = '%' . $filters['busqueda'] . '%';
+            // Duplicated placeholders are not allowed in some PDO drivers, use two distinct ones
+            $conditions[] = '(base.hc_number LIKE :busqueda_hc OR base.paciente LIKE :busqueda_paciente)';
+            $params[':busqueda_hc'] = '%' . $filters['busqueda'] . '%';
+            $params[':busqueda_paciente'] = '%' . $filters['busqueda'] . '%';
         }
 
         if (!empty($filters['procedimiento'])) {
