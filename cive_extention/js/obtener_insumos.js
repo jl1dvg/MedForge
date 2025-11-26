@@ -876,5 +876,3 @@ async function completarDatosTiempoAnestesia(codigoTiempoAnestesia = "999999", c
         });
     }
 }
-
-

@@ -457,5 +457,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'proyeccionesPost') {
+        const path = (request.path || '').toString();
+        const body = request.body || {};
+        if (!path.startsWith('/')) {
+            sendResponse({success: false, error: 'Path inválido'});
+            return false;
+        }
+        fetch(`https://asistentecive.consulmed.me${path}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            body: JSON.stringify(body),
+        })
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => sendResponse({success: true, data}))
+            .catch((error) => {
+                console.error('Error en proyeccionesPost:', error);
+                sendResponse({success: false, error: error.message || 'Error al enviar proyecciones'});
+            });
+        return true;
+    }
+
     return false;
 });

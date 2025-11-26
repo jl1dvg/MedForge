@@ -289,21 +289,21 @@
                                 if (result.isConfirmed) {
                                     establecerBloqueoFormulario(false);
                                     console.log(`🟡 Confirmando llegada para ID: ${paciente.form_id}`);
-                                    window.CiveApiClient.post('/proyecciones/consulta.php', {
-                                        body: {form_id: paciente.form_id, estado: 'iniciar_atencion'},
-                                        bodyType: 'auto',
-                                    })
-                                        .then(data => {
-                                            if (data.success) {
-                                                console.log('✅ Estado actualizado a "en proceso" correctamente.');
-                                                localStorage.setItem(KEY_ESTADO, 'en_proceso');
-                                            } else {
-                                                console.error('❌ Error al actualizar el estado:', data.message);
-                                            }
-                                        })
-                                        .catch(error => {
-                                            console.error('❌ Error al enviar la solicitud:', error.message);
-                                        });
+                sendBg('proyeccionesPost', {
+                    path: '/proyecciones/consulta.php',
+                    body: {form_id: paciente.form_id, estado: 'iniciar_atencion'},
+                })
+                    .then(data => {
+                        if (data && data.success) {
+                            console.log('✅ Estado actualizado a "en proceso" correctamente.');
+                            localStorage.setItem(KEY_ESTADO, 'en_proceso');
+                        } else {
+                            console.error('❌ Error al actualizar el estado:', data?.message || 'sin mensaje');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Error al enviar la solicitud:', error.message);
+                    });
                                 } else {
                                     sessionStorage.removeItem(KEY_PROMPT);
                                     establecerBloqueoFormulario(true);
@@ -478,11 +478,9 @@
                         civeBypass: true
                     });
 
-                    window.CiveApiClient.post(endpointPath, {
+                    sendBg('proyeccionesPost', {
+                        path: endpointPath,
                         body: {form_id: paciente.form_id, estado},
-                        bodyType: 'auto',
-                        timeoutMs: 15000,
-                        retries: 1,
                     })
                         .then((data) => {
                             if (typeof Swal !== 'undefined' && Swal.isVisible && Swal.isVisible()) {

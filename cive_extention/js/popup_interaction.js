@@ -399,21 +399,15 @@ function inicializarCirugiaSection() {
 }
 
 async function obtenerEstadoCirugias(hc) {
-    // Preferir fetch desde el service worker para evitar CORS desde el content script
+    // Solo vía background para evitar CORS desde la página
     if (isExtensionContextActive()) {
-        try {
-            const resp = await safeSendMessage({action: 'solicitudesEstado', hcNumber: hc});
-            if (resp && resp.success !== false) {
-                return resp.data ?? resp;
-            }
-        } catch (err) {
-            console.warn('Fallo fetch de solicitudes via background, reintentando via CiveApiClient:', err);
+        const resp = await safeSendMessage({action: 'solicitudesEstado', hcNumber: hc});
+        if (resp && resp.success !== false) {
+            return resp.data ?? resp;
         }
+        throw new Error(resp?.error || 'No se pudo consultar solicitudes');
     }
-    return window.CiveApiClient.get('/solicitudes/estado.php', {
-        query: {hcNumber: hc},
-        credentials: 'omit',
-    });
+    throw new Error('Contexto de extensión no disponible para solicitudesEstado');
 }
 
 function notificarCirugiasPrevias(lista, hc) {

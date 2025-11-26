@@ -237,9 +237,9 @@ function togglePopupState({popup, expanded}) {
 }
 
 window.inicializarUI = function () {
-    // Evitar renderizar el asistente en el dominio principal; solo correr lógica de fondo
+    // Evitar renderizar el asistente en dominios productivos de CIVE
     const host = (window.location && window.location.hostname || '').toLowerCase();
-    if (host.includes('cive.consulmed.me')) {
+    if (host.includes('cive.consulmed.me') || host.includes('asistentecive.consulmed.me')) {
         console.info('CIVE Extension: UI deshabilitada en este dominio.');
         return;
     }

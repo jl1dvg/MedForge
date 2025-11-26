@@ -12,11 +12,11 @@
 <div class="col-md-6 invoice-col text-end">
     <strong>Paciente</strong>
     <address>
-        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto) ?></strong><br>
-        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber) ?></span><br>
+        <strong class="text-blue fs-24"><?= htmlspecialchars($nombreCompleto ?? '') ?></strong><br>
+        HC: <span class="badge bg-primary"><?= htmlspecialchars($hcNumber ?? '') ?></span><br>
         Afiliación: <span class="badge bg-info"><?= $afiliacion ?></span><br>
         <?php if (!empty($paciente['ci'])): ?>
-            Cédula: <?= htmlspecialchars($paciente['ci']) ?><br>
+            Cédula: <?= htmlspecialchars($paciente['ci'] ?? '') ?><br>
         <?php endif; ?>
         <?php if (!empty($paciente['fecha_nacimiento'])): ?>
             F. Nacimiento: <?= date('d/m/Y', strtotime($paciente['fecha_nacimiento'])) ?>
@@ -34,7 +34,7 @@
                 Vigencia:</b> <?= !empty($fecha_vigencia) ? date('d/m/Y', strtotime($fecha_vigencia)) : '--' ?>
         </div>
         <div class="col-md-6 col-lg-3">
-            <b>Médico:</b> <?= htmlspecialchars($doctor) ?>
+            <b>Médico:</b> <?= htmlspecialchars($doctor ?? '') ?>
         </div>
     </div>
 </div>

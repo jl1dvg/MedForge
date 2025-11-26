@@ -1,10 +1,21 @@
 <?php
 $codigoDerivacionPrincipal = $codigoDerivacion;
 $fecha_registroPrincipal = $fecha_registro;
+$codigoDerivacionObtenida = '';
+
+// Renderizar procedimientos scrappeados cuando se intentó scrapear
 if (!empty($scrapingOutput)):
-    $codigo_derivacion = $scrapingOutput["codigo_derivacion"] ?? '';
-    $fecha_registro = $scrapingOutput["fecha_registro"] ?? '';
-    $partes = explode("📋 Procedimientos proyectados:", $scrapingOutput);
+    // Tolerar respuestas en string o array
+    if (is_array($scrapingOutput)) {
+        $codigo_derivacion = $scrapingOutput["codigo_derivacion"] ?? '';
+        $fecha_registro = $scrapingOutput["fecha_registro"] ?? '';
+    } else {
+        $codigo_derivacion = '';
+        $fecha_registro = '';
+    }
+    $codigoDerivacionObtenida = $codigo_derivacion;
+
+    $partes = explode("📋 Procedimientos proyectados:", (string)$scrapingOutput);
     if (isset($partes[1])):
         $lineas = array_filter(array_map('trim', explode("\n", trim($partes[1]))));
         $grupos = [];
@@ -112,11 +123,11 @@ if (!empty($scrapingOutput)):
                                 <span class="text-fade fw-500"><?= htmlspecialchars($g['fecha']) ?></span>
                                 <span class="text-fade fw-500"><?= htmlspecialchars($g['doctor']) ?></span>
                                 <?php
-                                $derivacion = $billingController->obtenerDerivacionPorFormId($g['form_id']);
-                                $codigoDerivacion = is_array($derivacion) && isset($derivacion['cod_derivacion']) ? $derivacion['cod_derivacion'] : '';
-                                ?>
-                                <span class="text-fade fw-500"><?= htmlspecialchars($codigoDerivacion) ?></span>
-                            </div>
+                        $derivacion = $billingController->obtenerDerivacionPorFormId($g['form_id']);
+                        $codigoDerivacion = is_array($derivacion) && isset($derivacion['cod_derivacion']) ? $derivacion['cod_derivacion'] : '';
+                        ?>
+                        <span class="text-fade fw-500"><?= htmlspecialchars($codigoDerivacion) ?></span>
+                    </div>
                             <span class="badge bg-<?= $g['color'] ?>"><?= htmlspecialchars($g['estado']) ?></span>
                         </div>
                     <?php endforeach; ?>
@@ -265,4 +276,32 @@ if (!empty($scrapingOutput)):
     <?php
     endif;
 endif;
+
+// Modal de error si el scraping no devolvió código de derivación
+if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
+    <div class="modal fade" id="scrapeErrorModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">No se obtuvo el código de derivación</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p>El scraping no devolvió un código de derivación. Verifica que el formulario tenga derivación y vuelve a intentar.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            const modalEl = document.getElementById('scrapeErrorModal');
+            if (!modalEl || typeof bootstrap === 'undefined') return;
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        })();
+    </script>
+<?php endif; ?>
 ?>

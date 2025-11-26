@@ -1,3 +1,16 @@
+<?php
+$protocolo = $datos['protocoloExtendido'] ?? [];
+$procedimientos = $datos['procedimientos'] ?? [];
+$anestesias = $datos['anestesia'] ?? [];
+$medicamentos = $datos['medicamentos'] ?? [];
+$oxigeno = $datos['oxigeno'] ?? [];
+$insumos = $datos['insumos'] ?? [];
+$derechos = $datos['derechos'] ?? [];
+$formId = $datos['billing']['form_id'] ?? '';
+$membrete = $protocolo['membrete'] ?? '';
+$fechaInicio = $protocolo['fecha_inicio'] ?? null;
+$fechaInicioFormatted = $fechaInicio ? date('d/m/Y', strtotime($fechaInicio)) : '--';
+?>
 <div class="mb-2">
     <span class="badge bg-primary">Procedimientos (Cirujano)</span>
     <span class="badge bg-info text-dark">Ayudante</span>
@@ -11,10 +24,10 @@
     <div class="card-header bg-primary text-white">
         <div class="d-flex justify-content-between align-items-center flex-wrap">
             <h5 class="mb-0 me-auto">
-                <?= htmlspecialchars($datos['protocoloExtendido']['membrete'] . ' - ' . date('d/m/Y', strtotime($datos['protocoloExtendido']['fecha_inicio']))) ?>
+                <?= htmlspecialchars($membrete . ' - ' . $fechaInicioFormatted) ?>
             </h5>
             <button type="button" class="btn btn-sm btn-danger ms-2"
-                    onclick="confirmarEliminacion('<?= $datos['billing']['form_id'] ?? '' ?>')">
+                    onclick="confirmarEliminacion('<?= $formId ?>')">
                 🗑️ Eliminar Factura
             </button>
         </div>
@@ -44,7 +57,7 @@
                 $has67036 = false;
 
                 // Check if any procedimiento has codigo 67036
-                foreach ($datos['procedimientos'] as $p) {
+                foreach ($procedimientos as $p) {
                     if (($p['proc_codigo'] ?? '') === '67036') {
                         $has67036 = true;
                         break;
@@ -54,7 +67,7 @@
                 // Separar procedimientos en 67036 y otros
                 $procedimientos67036 = [];
                 $otrosProcedimientos = [];
-                foreach ($datos['procedimientos'] as $p) {
+                foreach ($procedimientos as $p) {
                     if (($p['proc_codigo'] ?? '') === '67036') {
                         $procedimientos67036[] = $p;
                     } else {
@@ -150,8 +163,8 @@
                 }
 
                 // AYUDANTE - omit if 67036 present
-                if (!$has67036 && (!empty($datos['protocoloExtendido']['cirujano_2']) || !empty($datos['protocoloExtendido']['primer_ayudante']))) {
-                    foreach ($datos['procedimientos'] as $index => $p) {
+                if (!$has67036 && (!empty($protocolo['cirujano_2']) || !empty($protocolo['primer_ayudante']))) {
+                    foreach ($procedimientos as $index => $p) {
                         $codigo = $p['proc_codigo'] ?? '';
                         $descripcion = $p['proc_detalle'] ?? '';
                         $valorUnitario = (float)($p['proc_precio'] ?? 0);
@@ -183,12 +196,12 @@
                 }
 
                 // --- ANESTESIA POR PROCEDIMIENTO PRINCIPAL ---
-                $codigoAnestesia = $datos['procedimientos'][0]['proc_codigo'] ?? '';
+                $codigoAnestesia = $procedimientos[0]['proc_codigo'] ?? '';
                 $precioReal = $codigoAnestesia ? $billingController->obtenerValorAnestesia($codigoAnestesia) : null;
-                $esCirugia = $billingController->esCirugiaPorFormId($datos['billing']['form_id'] ?? null);
+                $esCirugia = $billingController->esCirugiaPorFormId($formId);
 
-                if ($esCirugia && !empty($datos['procedimientos']) && isset($datos['procedimientos'][0]['proc_codigo'])) {
-                    $p = $datos['procedimientos'][0];
+                if ($esCirugia && !empty($procedimientos) && isset($procedimientos[0]['proc_codigo'])) {
+                    $p = $procedimientos[0];
                     $precio = (float)($p['proc_precio'] ?? 0);
                     $valorUnitario = $precioReal ?? $precio;
                     $cantidad = 1;
@@ -212,7 +225,7 @@
                 }
 
                 // ANESTESIA
-                foreach ($datos['anestesia'] as $a) {
+                foreach ($anestesias as $a) {
                     $codigo = $a['codigo'] ?? '';
                     $descripcion = $a['nombre'] ?? '';
                     $tiempoRaw = $a['tiempo'] ?? 0;
@@ -244,8 +257,8 @@
 
                 // FARMACIA e INSUMOS
                 $fuenteDatos = [
-                    ['grupo' => 'FARMACIA', 'items' => array_merge($datos['medicamentos'], $datos['oxigeno'])],
-                    ['grupo' => 'INSUMOS', 'items' => $datos['insumos']],
+                    ['grupo' => 'FARMACIA', 'items' => array_merge($medicamentos, $oxigeno)],
+                    ['grupo' => 'INSUMOS', 'items' => $insumos],
                 ];
 
                 foreach ($fuenteDatos as $bloque) {
@@ -330,10 +343,10 @@
                             $n++;
                         }
                     }
-                }
+}
 
 // SERVICIOS INSTITUCIONALES (derechos)
-foreach ($datos['derechos'] as $servicio) {
+foreach ($derechos as $servicio) {
     $codigo = $servicio['codigo'] ?? '';
     $descripcion = $servicio['detalle'] ?? '';
     $cantidad = $servicio['cantidad'] ?? 1;
