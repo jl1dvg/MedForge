@@ -8,8 +8,8 @@ modo_quieto = "--quiet" in sys.argv
 
 USERNAME = "jdevera"
 PASSWORD = "0925619736"
-LOGIN_URL = "http://cive.ddns.net:8085/site/login"
-LOG_URL = f"http://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
+LOGIN_URL = "https://cive.ddns.net:8085/site/login"
+LOG_URL = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -51,7 +51,7 @@ def iniciar_sesion_y_extraer_log():
         return
 
     # Paso 2: Buscar el ID interno del paciente usando el número de historia clínica
-    buscar_url = f"http://cive.ddns.net:8085/documentacion/doc-documento/paciente-list?q={hc_number}"
+    buscar_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/paciente-list?q={hc_number}"
     r = session.get(buscar_url, headers=headers)
     match = re.search(r'"id":"(\d+)"', r.text)
     if not match:
@@ -61,7 +61,7 @@ def iniciar_sesion_y_extraer_log():
 
     # Paso 3: Buscar el enlace de modificación desde el form_id y el id del paciente
     form_id = sys.argv[1]
-    paciente_view_url = f"http://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
+    paciente_view_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
     r = session.get(paciente_view_url, headers=headers)
     soup = BeautifulSoup(r.text, "html.parser")
     link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
@@ -69,7 +69,7 @@ def iniciar_sesion_y_extraer_log():
         print("❌ No se encontró el enlace de actualización.")
         return
     href = link_tag["href"]
-    update_url = "http://cive.ddns.net:8085" + href.replace("&amp;", "&")
+    update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
 
     # Paso 4: Entrar al formulario de modificación y extraer los datos
     r = session.get(update_url, headers=headers)
@@ -110,7 +110,7 @@ def iniciar_sesion_y_extraer_log():
     # Una vez que ya tenemos todos los procedimientos proyectados desde el formulario de solicitud,
     # ahora vamos a buscar en otra página (la vista del paciente) información adicional de cada procedimiento.
     # Queremos saber cuándo se ejecutó, quién fue el doctor responsable y si ya fue dado de alta.
-    tabla_view_url = f"http://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
+    tabla_view_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
     r = session.get(tabla_view_url, headers=headers)
     soup_tabla = BeautifulSoup(r.text, "html.parser")
 

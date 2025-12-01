@@ -122,6 +122,7 @@
         "js/extraer_prefactura.js",
         "js/popup_interaction.js",
         "js/notifications.js",
+        "js/plan_revision.js",
         "js/generate_pdf.js",
         "js/examenes.js",
         "js/consulta.js",

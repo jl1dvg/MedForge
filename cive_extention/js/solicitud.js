@@ -7,6 +7,13 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
         return t;
     }
 
+    function extraerValor(opEl) {
+        if (!opEl) return '';
+        const val = (opEl.value || '').toString().trim();
+        if (!val || /^seleccione/i.test(val) || /^ninguno$/i.test(val)) return '';
+        return val;
+    }
+
     function limpiarTextoPlano(str) {
         if (!str) return '';
         const t = String(str).trim();
@@ -100,14 +107,28 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             if (sub) {
                 sub.querySelectorAll('tbody .multiple-input-list__item').forEach(row => {
                     const principal = row.querySelector('.list-cell__tipo input[type="checkbox"]')?.checked ? 'SI' : 'NO';
-                    const lente = extraerTexto(row.querySelector('.list-cell__lente select')?.selectedOptions?.[0]);
-                    const poder = extraerTexto(row.querySelector('.list-cell__poder select')?.selectedOptions?.[0]);
+                    const lenteSelect = row.querySelector('.list-cell__lente select');
+                    const lenteOption = lenteSelect?.selectedOptions?.[0];
+                    const lenteId = extraerValor(lenteOption);
+                    const lente = extraerTexto(lenteOption);
+
+                    const poderSelect = row.querySelector('.list-cell__poder select');
+                    const poderOption = poderSelect?.selectedOptions?.[0];
+                    const poder = extraerTexto(poderOption);
+
                     const lateralidad = extraerTexto(row.querySelector('.list-cell__lateralidad select')?.selectedOptions?.[0]);
                     const obs = limpiarTextoPlano(row.querySelector('.list-cell__observaciones textarea')?.value);
 
                     // evita empujar filas totalmente vacías
                     if (principal === 'SI' || lente || poder || lateralidad || obs) {
-                        detalles.push({principal, lente, poder, lateralidad, observaciones: obs});
+                        detalles.push({
+                            principal,
+                            lente_id: lenteId,
+                            lente,
+                            poder,
+                            lateralidad,
+                            observaciones: obs
+                        });
                     }
                 });
             }
@@ -116,7 +137,7 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             const tieneContenido = tipoTxt || afiliacionTxt || procedimientoTxt || doctorTxt || fecha || observacion || productoTxt || ojos.length || detalles.length;
             if (!tieneContenido) return;
 
-            data.solicitudes.push({
+            const payloadSolicitud = {
                 secuencia: i + 1,
                 tipo: tipoTxt,
                 afiliacion: afiliacionTxt,
@@ -130,7 +151,22 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
                 observacion: observacion || '',
                 sesiones: sesionesVal,
                 detalles
-            });
+            };
+
+            // Exponer también campos planos a nivel de solicitud (para no depender de detalles en el backend)
+            if (detalles.length > 0) {
+                const principalDetalle = detalles.find(d => d.principal === 'SI') || detalles[0];
+                payloadSolicitud.lente_id = principalDetalle.lente_id || '';
+                payloadSolicitud.lente_nombre = principalDetalle.lente || '';
+                payloadSolicitud.lente_poder = principalDetalle.poder || '';
+                payloadSolicitud.lente_observacion = principalDetalle.observaciones || '';
+                payloadSolicitud.incision = principalDetalle.incision || '';
+                if (!payloadSolicitud.ojo || payloadSolicitud.ojo.length === 0) {
+                    payloadSolicitud.ojo = principalDetalle.lateralidad ? [principalDetalle.lateralidad] : [];
+                }
+            }
+
+            data.solicitudes.push(payloadSolicitud);
         });
 
         if (!data.solicitudes.length) return;

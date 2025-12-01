@@ -331,6 +331,90 @@ class ExamenesModel
         }
     }
 
+    /**
+     * Actualiza parcialmente una solicitud para reflejar cambios de estado o datos de agenda desde la extensión.
+     */
+    public function actualizarSolicitudParcial(int $id, array $campos): array
+    {
+        $limpiar = function ($v) {
+            if (is_string($v)) {
+                $v = trim($v);
+                if ($v === '' || strtoupper($v) === 'SELECCIONE') {
+                    return null;
+                }
+                return $v;
+            }
+            return $v === '' ? null : $v;
+        };
+
+        $normFecha = function ($v) {
+            $v = is_string($v) ? trim($v) : $v;
+            if (!$v) return null;
+            if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $v)) {
+                return $v;
+            }
+            $fmt = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
+            foreach ($fmt as $f) {
+                $dt = \DateTime::createFromFormat($f, $v);
+                if ($dt instanceof \DateTime) {
+                    return $dt->format(strlen($f) >= 10 ? 'Y-m-d H:i:s' : 'Y-m-d');
+                }
+            }
+            return null;
+        };
+
+        $permitidos = [
+            'estado', 'doctor', 'fecha', 'prioridad', 'observacion',
+            'procedimiento', 'producto', 'ojo', 'afiliacion', 'duracion',
+            'lente_id', 'lente_nombre', 'lente_poder', 'lente_observacion',
+            'incision',
+        ];
+
+        $set = [];
+        $params = [':id' => $id];
+
+        foreach ($permitidos as $campo) {
+            if (!array_key_exists($campo, $campos)) continue;
+
+            $valor = $campos[$campo];
+            if ($campo === 'fecha') {
+                $valor = $normFecha($valor);
+            } elseif ($campo === 'prioridad') {
+                $valor = is_string($valor) ? strtoupper(trim($valor)) : $valor;
+            } elseif ($campo === 'ojo' && is_array($valor)) {
+                $valor = implode(',', array_filter(array_map($limpiar, $valor)));
+            } else {
+                $valor = $limpiar($valor);
+            }
+
+            $set[] = "{$campo} = :{$campo}";
+            $params[":{$campo}"] = $valor;
+        }
+
+        if (empty($set)) {
+            return ['success' => false, 'message' => 'No se enviaron campos para actualizar'];
+        }
+
+        $sql = 'UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $stmtDatos = $this->db->prepare("
+            SELECT sp.*, COALESCE(cd.fecha, sp.fecha) AS fecha_programada
+            FROM solicitud_procedimiento sp
+            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+            WHERE sp.id = :id
+        ");
+        $stmtDatos->execute([':id' => $id]);
+        $row = $stmtDatos->fetch(PDO::FETCH_ASSOC);
+
+        return [
+            'success' => true,
+            'message' => 'Solicitud actualizada correctamente',
+            'data' => $row ?: null,
+        ];
+    }
+
     public function obtenerSolicitudBasicaPorId(int $id): ?array
     {
         $stmt = $this->db->prepare("SELECT

@@ -43,6 +43,11 @@ class SolicitudController
     {
         $this->solicitudModel->actualizarEstado($id, $estado);
     }
+
+    public function actualizarSolicitudParcial(int $id, array $campos): array
+    {
+        return $this->solicitudModel->actualizarSolicitudParcial($id, $campos);
+    }
     public function obtenerEstadosPorHc(string $hcNumber): array
     {
         $solicitudes = $this->solicitudModel->obtenerEstadosPorHc($hcNumber);

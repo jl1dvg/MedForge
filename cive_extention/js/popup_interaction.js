@@ -57,6 +57,8 @@ const uiState = {
     examenes: [],
     cirugias: [],
     hcCirugia: '',
+    doctores: [],
+    lentes: [],
 };
 let __cirugiaAutoCheckDone = false;
 
@@ -325,6 +327,7 @@ function renderCirugias(lista) {
         const card = document.createElement('article');
         card.className = 'card';
         card.setAttribute('role', 'listitem');
+        const hc = item?.hcNumber || item?.hc_number || uiState.hcCirugia || 'N/D';
         card.innerHTML = `
             <header class="card-header">
                 <div>
@@ -334,12 +337,24 @@ function renderCirugias(lista) {
                 ${badge(item?.estado)}
             </header>
             <div class="card-body">
-                <p><strong>HC:</strong> ${item?.hcNumber || uiState.hcCirugia || 'N/D'}</p>
+                <p><strong>HC:</strong> ${hc}</p>
                 <p><strong>Cirujano:</strong> ${item?.doctor || 'N/D'}</p>
                 <p><strong>Fecha:</strong> ${item?.fecha || 'N/D'}</p>
                 ${item?.observacion ? `<p><strong>Obs:</strong> ${item.observacion}</p>` : ''}
             </div>
+            <footer class="card-footer">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-accion="editar" data-id="${item?.id || ''}">
+                    Editar
+                </button>
+            </footer>
         `;
+        card.querySelector('button[data-accion="editar"]')?.addEventListener('click', () => {
+            if (item?.id) {
+                abrirModalEditarSolicitud(item);
+            } else {
+                Swal.fire('Sin ID', 'No se puede editar porque la solicitud no trae ID.', 'warning');
+            }
+        });
         fragment.appendChild(card);
     });
     cont.appendChild(fragment);
@@ -408,6 +423,216 @@ async function obtenerEstadoCirugias(hc) {
         throw new Error(resp?.error || 'No se pudo consultar solicitudes');
     }
     throw new Error('Contexto de extensión no disponible para solicitudesEstado');
+}
+
+async function obtenerDoctores() {
+    if (uiState.doctores && uiState.doctores.length) return uiState.doctores;
+    if (!isExtensionContextActive()) throw new Error('Contexto extensión no activo');
+    const resp = await safeSendMessage({action: 'listarDoctores'});
+    if (resp && resp.success !== false) {
+        const lista = Array.isArray(resp.doctores) ? resp.doctores : [];
+        uiState.doctores = lista;
+        return lista;
+    }
+    throw new Error(resp?.error || 'No se pudo obtener doctores');
+}
+
+async function obtenerLentes() {
+    if (uiState.lentes && uiState.lentes.length) return uiState.lentes;
+    if (!isExtensionContextActive()) throw new Error('Contexto extensión no activo');
+    const resp = await safeSendMessage({action: 'listarLentes'});
+    if (resp && resp.success !== false) {
+        const lista = Array.isArray(resp.lentes) ? resp.lentes : [];
+        uiState.lentes = lista;
+        return lista;
+    }
+    throw new Error(resp?.error || 'No se pudo obtener lentes');
+}
+
+function toDatetimeLocal(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function actualizarSolicitud(id, payload) {
+    if (!isExtensionContextActive()) {
+        throw new Error('Contexto de extensión no disponible para actualizar solicitudes');
+    }
+    const resp = await safeSendMessage({action: 'solicitudActualizar', id, payload});
+    if (resp && resp.success !== false) {
+        return resp.data ?? resp;
+    }
+    throw new Error(resp?.error || 'No se pudo actualizar la solicitud');
+}
+
+function abrirModalEditarSolicitud(item) {
+    const estado = item?.estado || '';
+    const doctor = item?.doctor || '';
+    const fecha = item?.fecha || '';
+    const prioridad = item?.prioridad || '';
+    const observacion = item?.observacion || '';
+    const procedimiento = item?.procedimiento || '';
+    const producto = item?.producto || '';
+    const ojo = item?.ojo || item?.lateralidad || '';
+    const afiliacion = item?.afiliacion || '';
+    const duracion = item?.duracion || '';
+    const lenteId = item?.lente_id || '';
+    const lenteNombre = item?.lente_nombre || '';
+    const lentePoder = item?.lente_poder || '';
+    const lenteObs = item?.lente_observacion || '';
+    const incision = item?.incision || '';
+
+    const html = `
+        <div class="cive-form-grid">
+            <label>Estado</label>
+            <input id="sol-estado" class="swal2-input" value="${estado}" placeholder="PENDIENTE / APROBADA / RECHAZADA" readonly />
+            <label>Doctor</label>
+            <select id="sol-doctor" class="swal2-select" data-value="${doctor}"></select>
+            <label>Fecha</label>
+            <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${toDatetimeLocal(fecha)}" />
+            <label>Prioridad</label>
+            <input id="sol-prioridad" class="swal2-input" value="${prioridad}" placeholder="URGENTE / NORMAL" readonly />
+            <label>Observación</label>
+            <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${observacion}</textarea>
+            <label>Procedimiento</label>
+            <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${procedimiento}</textarea>
+            <label>Producto</label>
+            <input id="sol-producto" class="swal2-input" value="${producto}" placeholder="Producto asociado" />
+            <label>Ojo</label>
+            <select id="sol-ojo" class="swal2-select">
+                <option value="">Selecciona ojo</option>
+                <option value="DERECHO"${ojo === 'DERECHO' ? ' selected' : ''}>DERECHO</option>
+                <option value="IZQUIERDO"${ojo === 'IZQUIERDO' ? ' selected' : ''}>IZQUIERDO</option>
+                <option value="AMBOS OJOS"${ojo === 'AMBOS OJOS' ? ' selected' : ''}>AMBOS OJOS</option>
+            </select>
+            <label>Afiliación</label>
+            <input id="sol-afiliacion" class="swal2-input" value="${afiliacion}" placeholder="Afiliación" readonly />
+            <label>Duración</label>
+            <input id="sol-duracion" class="swal2-input" value="${duracion}" placeholder="Minutos" readonly />
+            <label>Lente</label>
+            <select id="sol-lente-id" class="swal2-select" data-value="${lenteId}">
+                <option value="">Selecciona lente</option>
+            </select>
+            <label>Nombre de lente</label>
+            <input id="sol-lente-nombre" class="swal2-input" value="${lenteNombre}" placeholder="Nombre del lente" readonly />
+            <label>Poder del lente</label>
+            <input id="sol-lente-poder" class="swal2-input" value="${lentePoder}" placeholder="+20, +20.50, etc." />
+            <label>Observación de lente</label>
+            <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${lenteObs}</textarea>
+            <label>Incisión</label>
+            <input id="sol-incision" class="swal2-input" value="${incision}" placeholder="Ej: Clear cornea temporal" />
+        </div>
+    `;
+
+    Swal.fire({
+        title: `Editar solicitud #${item?.id || ''}`,
+        html,
+        width: 600,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar cambios',
+        cancelButtonText: 'Cancelar',
+        focusConfirm: false,
+        didOpen: async () => {
+            // Poblar doctores en el select
+            try {
+                const doctores = await obtenerDoctores();
+                const sel = document.getElementById('sol-doctor');
+                if (sel) {
+                    sel.innerHTML = '<option value="">Selecciona doctor</option>';
+                    doctores.forEach((d) => {
+                        const opt = document.createElement('option');
+                        opt.value = d;
+                        opt.textContent = d;
+                        sel.appendChild(opt);
+                    });
+                    const preset = sel.dataset.value || doctor || '';
+                    if (preset) sel.value = preset;
+                }
+            } catch (err) {
+                console.warn('No se pudieron cargar doctores para el select:', err);
+                const sel = document.getElementById('sol-doctor');
+                if (sel) {
+                    sel.innerHTML = '';
+                    const opt = document.createElement('option');
+                    opt.value = doctor;
+                    opt.textContent = doctor || 'Doctor no disponible';
+                    sel.appendChild(opt);
+                }
+            }
+
+            // Poblar lentes en el select
+            try {
+                const lentes = await obtenerLentes();
+                const selLente = document.getElementById('sol-lente-id');
+                if (selLente) {
+                    selLente.innerHTML = '<option value="">Selecciona lente</option>';
+                    lentes.forEach((l) => {
+                        const opt = document.createElement('option');
+                        opt.value = l.id;
+                        opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${l.poder ? ' (' + l.poder + ')' : ''}`;
+                        opt.dataset.nombre = l.nombre;
+                        opt.dataset.poder = l.poder || '';
+                        selLente.appendChild(opt);
+                    });
+                    const preset = selLente.dataset.value || lenteId || '';
+                    if (preset) selLente.value = preset;
+
+                    const syncLente = () => {
+                        const optSel = selLente.selectedOptions?.[0];
+                        const nombre = optSel?.dataset?.nombre || '';
+                        const poder = optSel?.dataset?.poder || '';
+                        const nombreInput = document.getElementById('sol-lente-nombre');
+                        const poderInput = document.getElementById('sol-lente-poder');
+                        if (nombreInput) nombreInput.value = nombre || nombreInput.value;
+                        if (poderInput && poder) poderInput.value = poder;
+                    };
+                    selLente.addEventListener('change', syncLente);
+                    syncLente();
+                }
+            } catch (err) {
+                console.warn('No se pudieron cargar lentes para el select:', err);
+            }
+        },
+        preConfirm: () => {
+            return {
+                estado: document.getElementById('sol-estado')?.value.trim(),
+                doctor: document.getElementById('sol-doctor')?.value.trim(),
+                fecha: document.getElementById('sol-fecha')?.value.trim(),
+                prioridad: document.getElementById('sol-prioridad')?.value.trim(),
+                observacion: document.getElementById('sol-observacion')?.value.trim(),
+                procedimiento: document.getElementById('sol-procedimiento')?.value.trim(),
+                producto: document.getElementById('sol-producto')?.value.trim(),
+                ojo: document.getElementById('sol-ojo')?.value.trim(),
+                afiliacion: document.getElementById('sol-afiliacion')?.value.trim(),
+                duracion: document.getElementById('sol-duracion')?.value.trim(),
+                lente_id: document.getElementById('sol-lente-id')?.value.trim(),
+                lente_nombre: document.getElementById('sol-lente-nombre')?.value.trim(),
+                lente_poder: document.getElementById('sol-lente-poder')?.value.trim(),
+                lente_observacion: document.getElementById('sol-lente-obs')?.value.trim(),
+                incision: document.getElementById('sol-incision')?.value.trim(),
+            };
+        }
+    }).then(async (result) => {
+        if (!result.isConfirmed) return;
+        const payload = result.value || {};
+        try {
+            setSectionState('cirugia', {type: 'loading', message: 'Guardando cambios...', containerId: 'contenedorCirugias'});
+            await actualizarSolicitud(item.id, payload);
+            const idx = uiState.cirugias.findIndex((c) => c.id === item.id);
+            if (idx >= 0) {
+                uiState.cirugias[idx] = {...uiState.cirugias[idx], ...payload};
+            }
+            renderCirugias(uiState.cirugias);
+            Swal.fire('Guardado', 'Solicitud actualizada en MedForge', 'success');
+        } catch (err) {
+            console.error('Error actualizando solicitud:', err);
+            Swal.fire('Error', err?.message || 'No se pudo actualizar la solicitud', 'error');
+            setSectionState('cirugia', {type: 'ready', containerId: 'contenedorCirugias'});
+        }
+    });
 }
 
 function notificarCirugiasPrevias(lista, hc) {

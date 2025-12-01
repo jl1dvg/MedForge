@@ -60,11 +60,10 @@ class GuardarSolicitudController
             return null;
         };
 
-        // NOTA: se agregan columnas nuevas: sesiones, detalles_json
-        // SQL con upsert
+        // SQL con upsert, usando columnas explícitas (sin detalles_json)
         $sql = "INSERT INTO solicitud_procedimiento 
-                (hc_number, form_id, secuencia, tipo, afiliacion, procedimiento, doctor, fecha, duracion, ojo, prioridad, producto, observacion, sesiones, detalles_json) 
-                VALUES (:hc, :form_id, :secuencia, :tipo, :afiliacion, :procedimiento, :doctor, :fecha, :duracion, :ojo, :prioridad, :producto, :observacion, :sesiones, :detalles_json)
+                (hc_number, form_id, secuencia, tipo, afiliacion, procedimiento, doctor, fecha, duracion, ojo, prioridad, producto, observacion, sesiones, lente_id, lente_nombre, lente_poder, lente_observacion, incision) 
+                VALUES (:hc, :form_id, :secuencia, :tipo, :afiliacion, :procedimiento, :doctor, :fecha, :duracion, :ojo, :prioridad, :producto, :observacion, :sesiones, :lente_id, :lente_nombre, :lente_poder, :lente_observacion, :incision)
                 ON DUPLICATE KEY UPDATE 
                     tipo = VALUES(tipo),
                     afiliacion = VALUES(afiliacion),
@@ -77,7 +76,11 @@ class GuardarSolicitudController
                     producto = VALUES(producto),
                     observacion = VALUES(observacion),
                     sesiones = VALUES(sesiones),
-                    detalles_json = VALUES(detalles_json)";
+                    lente_id = VALUES(lente_id),
+                    lente_nombre = VALUES(lente_nombre),
+                    lente_poder = VALUES(lente_poder),
+                    lente_observacion = VALUES(lente_observacion),
+                    incision = VALUES(incision)";
 
         $stmt = $this->db->prepare($sql);
 
@@ -104,9 +107,35 @@ class GuardarSolicitudController
                 $ojoVal = $clean($ojoVal);
             }
 
-            // detalles viene como array de objetos: lo guardamos como JSON
-            $detalles = $solicitud['detalles'] ?? null;
-            $detallesJson = $detalles ? json_encode($detalles, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
+            // Mapear detalles (lente/insumos) al esquema plano
+            $lenteId = $clean($solicitud['lente_id'] ?? null);
+            $lenteNombre = $clean($solicitud['lente_nombre'] ?? null);
+            $lentePoder = $clean($solicitud['lente_poder'] ?? null);
+            $lenteObs = $clean($solicitud['lente_observacion'] ?? null);
+            $incision = $clean($solicitud['incision'] ?? null);
+
+            $detalles = $solicitud['detalles'] ?? [];
+            if (is_array($detalles)) {
+                // Preferir el primer detalle marcado como principal o el primero con datos
+                $detallePlano = null;
+                foreach ($detalles as $d) {
+                    if (!is_array($d)) continue;
+                    $detallePlano = $d;
+                    if (!empty($d['principal']) || !empty($d['tipo'])) {
+                        break;
+                    }
+                }
+                if ($detallePlano) {
+                    $lenteId = $lenteId ?: $clean($detallePlano['id_lente_intraocular'] ?? $detallePlano['lente_id'] ?? null);
+                    $lenteNombre = $lenteNombre ?: $clean($detallePlano['lente'] ?? $detallePlano['lente_nombre'] ?? null);
+                    $lentePoder = $lentePoder ?: $clean($detallePlano['poder'] ?? $detallePlano['lente_poder'] ?? null);
+                    $lenteObs = $lenteObs ?: $clean($detallePlano['observaciones'] ?? $detallePlano['lente_observacion'] ?? null);
+                    $incision = $incision ?: $clean($detallePlano['incision'] ?? null);
+                    if (!$ojoVal) {
+                        $ojoVal = $clean($detallePlano['lateralidad'] ?? null);
+                    }
+                }
+            }
 
             $stmt->execute([
                 ':hc' => $data['hcNumber'],
@@ -123,7 +152,11 @@ class GuardarSolicitudController
                 ':producto' => $producto,
                 ':observacion' => $observacion,
                 ':sesiones' => $sesiones,
-                ':detalles_json' => $detallesJson,
+                ':lente_id' => $lenteId,
+                ':lente_nombre' => $lenteNombre,
+                ':lente_poder' => $lentePoder,
+                ':lente_observacion' => $lenteObs,
+                ':incision' => $incision,
             ]);
 
             $this->pusherConfigService->trigger([

@@ -482,5 +482,72 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'solicitudActualizar') {
+        const id = request.id;
+        const payload = request.payload || {};
+        if (!id) {
+            sendResponse({success: false, error: 'Falta id de solicitud'});
+            return false;
+        }
+        fetch('https://asistentecive.consulmed.me/api/solicitudes/estado.php', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            body: JSON.stringify({id, ...payload}),
+        })
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => sendResponse({success: true, data}))
+            .catch((error) => {
+                console.error('Error en solicitudActualizar:', error);
+                sendResponse({success: false, error: error.message || 'Error al actualizar solicitud'});
+            });
+        return true;
+    }
+
+    if (request.action === 'listarDoctores') {
+        fetch('https://asistentecive.consulmed.me/api/solicitudes/kanban_data.php', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+            body: new URLSearchParams({}),
+        })
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => {
+                const doctores = Array.isArray(data?.options?.doctores) ? data.options.doctores : [];
+                sendResponse({success: true, doctores});
+            })
+            .catch((error) => {
+                console.error('Error en listarDoctores:', error);
+                sendResponse({success: false, error: error.message || 'No se pudo obtener doctores'});
+            });
+        return true;
+    }
+
+    if (request.action === 'listarLentes') {
+        fetch('https://asistentecive.consulmed.me/api/lentes/index.php', {
+            method: 'GET',
+            credentials: 'include',
+        })
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return resp.json();
+            })
+            .then((data) => {
+                const lentes = Array.isArray(data?.lentes) ? data.lentes : [];
+                sendResponse({success: true, lentes});
+            })
+            .catch((error) => {
+                console.error('Error en listarLentes:', error);
+                sendResponse({success: false, error: error.message || 'No se pudo obtener lentes'});
+            });
+        return true;
+    }
+
     return false;
 });
