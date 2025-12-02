@@ -78,22 +78,42 @@ $protocoloData = $protocolo ?? [];
 
 <div class="form-group">
     <label for="codigos">Códigos quirúrgicos</label>
+    <small class="text-muted d-block">Lateralidad y selector se generan en base al orden de la fila.</small>
     <div class="table-responsive">
         <table id="tablaCodigos" class="table table-bordered">
             <thead>
             <tr>
                 <th>Nombre</th>
-                <th>Lateralidad</th>
-                <th>Selector</th>
+                <th>Lateralidad (auto)</th>
+                <th>Selector (auto)</th>
                 <th>Acciones</th>
             </tr>
             </thead>
             <tbody>
-            <?php foreach ($codigos as $codigo): ?>
+            <?php
+            $extraerIndice = static function ($valor) {
+                if (preg_match('/procedimientoprotocolo-(\d+)-/i', $valor ?? '', $m)) {
+                    return (int)$m[1];
+                }
+                return null;
+            };
+            ?>
+            <?php foreach ($codigos as $idx => $codigo): ?>
+                <?php
+                $indice = $extraerIndice($codigo['lateralidad'] ?? '') ?? $extraerIndice($codigo['selector'] ?? '') ?? $idx;
+                $lateralidadAuto = sprintf('#select2-consultasubsecuente-procedimientoprotocolo-%d-lateralidadprocedimiento-container', $indice);
+                $selectorAuto = sprintf('#select2-consultasubsecuente-procedimientoprotocolo-%d-procinterno-container', $indice);
+                ?>
                 <tr>
                     <td><input type="text" class="form-control" name="codigos[]" value="<?= htmlspecialchars($codigo['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></td>
-                    <td><input type="text" class="form-control" name="lateralidades[]" value="<?= htmlspecialchars($codigo['lateralidad'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></td>
-                    <td><input type="text" class="form-control" name="selectores[]" value="<?= htmlspecialchars($codigo['selector'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></td>
+                    <td>
+                        <input type="hidden" class="codigo-lateralidad" name="lateralidades[]" value="<?= htmlspecialchars($lateralidadAuto, ENT_QUOTES, 'UTF-8') ?>">
+                        <span class="text-muted small codigo-indice">#<?= (int)$indice ?></span>
+                    </td>
+                    <td>
+                        <input type="hidden" class="codigo-selector" name="selectores[]" value="<?= htmlspecialchars($selectorAuto, ENT_QUOTES, 'UTF-8') ?>">
+                        <span class="text-muted small codigo-indice">#<?= (int)$indice ?></span>
+                    </td>
                     <td><button type="button" class="btn btn-danger remove-codigo"><i class="fa fa-trash"></i></button></td>
                 </tr>
             <?php endforeach; ?>

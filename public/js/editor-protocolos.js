@@ -4,16 +4,36 @@ $(function () {
     "use strict";
 
     const operatorioEditor = document.getElementById('operatorio');
+    const baseLateralidad = index => `#select2-consultasubsecuente-procedimientoprotocolo-${index}-lateralidadprocedimiento-container`;
+    const baseSelector = index => `#select2-consultasubsecuente-procedimientoprotocolo-${index}-procinterno-container`;
+    const regexIndice = /procedimientoprotocolo-(\d+)-/i;
+
+    function inferirIndice(lateralidad = '', selector = '', fallback = 0) {
+        const candidato = lateralidad || selector || '';
+        const match = candidato.match(regexIndice);
+        return match ? parseInt(match[1], 10) : fallback;
+    }
+
+    function reindexCodigos() {
+        $('#tablaCodigos tbody tr').each(function (idx) {
+            $(this).find('input.codigo-lateralidad').val(baseLateralidad(idx));
+            $(this).find('input.codigo-selector').val(baseSelector(idx));
+            $(this).find('.codigo-indice').text(`#${idx}`);
+        });
+    }
 
     // ---------- CÓDIGOS QUIRÚRGICOS ----------
     function cargarCodigos() {
-        if (Array.isArray(codigos)) {
-            codigos.forEach(c => {
-                if (typeof agregarFilaCodigo === 'function') {
-                    agregarFilaCodigo(c.nombre, c.lateralidad, c.selector);
-                }
-            });
+        const tbody = $('#tablaCodigos tbody');
+        // Evita duplicar filas si ya fueron renderizadas por PHP
+        if (!Array.isArray(codigos) || tbody.children().length > 0) {
+            return;
         }
+        codigos.forEach(c => {
+            if (typeof agregarFilaCodigo === 'function') {
+                agregarFilaCodigo(c.nombre, c.lateralidad, c.selector);
+            }
+        });
     }
 
     // ---------- STAFF QUIRÚRGICO ----------
@@ -263,6 +283,7 @@ $(function () {
 
     // Cargar códigos y staff si existen
     cargarCodigos();
+    reindexCodigos();
     cargarStaff();
 
     // SUBMIT DEL FORMULARIO
@@ -305,15 +326,23 @@ $(function () {
     });
     // Permite agregar filas de códigos quirúrgicos dinámicamente
     function agregarFilaCodigo(nombre = '', lateralidad = '', selector = '') {
+        const indice = inferirIndice(lateralidad, selector, $('#tablaCodigos tbody tr').length);
         const fila = `
             <tr>
                 <td><input type="text" class="form-control" name="codigos[]" value="${nombre}"></td>
-                <td><input type="text" class="form-control" name="lateralidades[]" value="${lateralidad}"></td>
-                <td><input type="text" class="form-control" name="selectores[]" value="${selector}"></td>
+                <td>
+                    <input type="hidden" class="codigo-lateralidad" name="lateralidades[]" value="${baseLateralidad(indice)}">
+                    <span class="text-muted small codigo-indice">#${indice}</span>
+                </td>
+                <td>
+                    <input type="hidden" class="codigo-selector" name="selectores[]" value="${baseSelector(indice)}">
+                    <span class="text-muted small codigo-indice">#${indice}</span>
+                </td>
                 <td><button type="button" class="btn btn-danger remove-codigo"><i class="fa fa-trash"></i></button></td>
             </tr>
         `;
         $('#tablaCodigos tbody').append(fila);
+        reindexCodigos();
     }
 
     $('#agregar-codigo').on('click', function () {
@@ -322,6 +351,7 @@ $(function () {
 
     $('#tablaCodigos').on('click', '.remove-codigo', function () {
         $(this).closest('tr').remove();
+        reindexCodigos();
     });
 
     // Permite agregar filas de staff quirúrgico dinámicamente
