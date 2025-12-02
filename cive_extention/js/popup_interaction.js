@@ -340,6 +340,11 @@ function renderCirugias(lista) {
                 <p><strong>HC:</strong> ${hc}</p>
                 <p><strong>Cirujano:</strong> ${item?.doctor || 'N/D'}</p>
                 <p><strong>Fecha:</strong> ${item?.fecha || 'N/D'}</p>
+                ${item?.afiliacion ? `<p><strong>Afiliación:</strong> ${item.afiliacion}</p>` : ''}
+                ${item?.ojo ? `<p><strong>Ojo:</strong> ${item.ojo}</p>` : ''}
+                ${item?.lente_nombre || item?.lente_id ? `<p><strong>Lente:</strong> ${item.lente_nombre || ''} ${item.lente_id ? '(' + item.lente_id + ')' : ''}</p>` : ''}
+                ${item?.lente_poder ? `<p><strong>Poder:</strong> ${item.lente_poder}</p>` : ''}
+                ${item?.incision ? `<p><strong>Incisión:</strong> ${item.incision}</p>` : ''}
                 ${item?.observacion ? `<p><strong>Obs:</strong> ${item.observacion}</p>` : ''}
             </div>
             <footer class="card-footer">
@@ -449,6 +454,28 @@ async function obtenerLentes() {
     throw new Error(resp?.error || 'No se pudo obtener lentes');
 }
 
+function generarPoderes(lente) {
+    const powers = [];
+    const min = lente?.rango_desde;
+    const max = lente?.rango_hasta;
+    const paso = lente?.rango_paso || 0.5;
+    const inicioInc = lente?.rango_inicio_incremento || min;
+    const toNum = (v) => (v === null || v === undefined || v === '' ? null : parseFloat(v));
+    const minNum = toNum(min);
+    const maxNum = toNum(max);
+    const pasoNum = toNum(paso) || 0.5;
+    const inicioNum = toNum(inicioInc);
+
+    if (minNum !== null && maxNum !== null) {
+        for (let v = minNum; v <= maxNum + 1e-6; v += pasoNum) {
+            const rounded = Math.round(v * 100) / 100;
+            if (inicioNum !== null && v < inicioNum && v > 0) continue; // saltar incrementos antes del inicio definido
+            powers.push(rounded.toFixed(2));
+        }
+    }
+    return powers;
+}
+
 function toDatetimeLocal(value) {
     if (!value) return '';
     const d = new Date(value);
@@ -486,51 +513,132 @@ function abrirModalEditarSolicitud(item) {
     const incision = item?.incision || '';
 
     const html = `
-        <div class="cive-form-grid">
-            <label>Estado</label>
-            <input id="sol-estado" class="swal2-input" value="${estado}" placeholder="PENDIENTE / APROBADA / RECHAZADA" readonly />
-            <label>Doctor</label>
-            <select id="sol-doctor" class="swal2-select" data-value="${doctor}"></select>
-            <label>Fecha</label>
-            <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${toDatetimeLocal(fecha)}" />
-            <label>Prioridad</label>
-            <input id="sol-prioridad" class="swal2-input" value="${prioridad}" placeholder="URGENTE / NORMAL" readonly />
-            <label>Observación</label>
-            <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${observacion}</textarea>
-            <label>Procedimiento</label>
-            <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${procedimiento}</textarea>
-            <label>Producto</label>
-            <input id="sol-producto" class="swal2-input" value="${producto}" placeholder="Producto asociado" />
-            <label>Ojo</label>
-            <select id="sol-ojo" class="swal2-select">
-                <option value="">Selecciona ojo</option>
-                <option value="DERECHO"${ojo === 'DERECHO' ? ' selected' : ''}>DERECHO</option>
-                <option value="IZQUIERDO"${ojo === 'IZQUIERDO' ? ' selected' : ''}>IZQUIERDO</option>
-                <option value="AMBOS OJOS"${ojo === 'AMBOS OJOS' ? ' selected' : ''}>AMBOS OJOS</option>
-            </select>
-            <label>Afiliación</label>
-            <input id="sol-afiliacion" class="swal2-input" value="${afiliacion}" placeholder="Afiliación" readonly />
-            <label>Duración</label>
-            <input id="sol-duracion" class="swal2-input" value="${duracion}" placeholder="Minutos" readonly />
-            <label>Lente</label>
-            <select id="sol-lente-id" class="swal2-select" data-value="${lenteId}">
-                <option value="">Selecciona lente</option>
-            </select>
-            <label>Nombre de lente</label>
-            <input id="sol-lente-nombre" class="swal2-input" value="${lenteNombre}" placeholder="Nombre del lente" readonly />
-            <label>Poder del lente</label>
-            <input id="sol-lente-poder" class="swal2-input" value="${lentePoder}" placeholder="+20, +20.50, etc." />
-            <label>Observación de lente</label>
-            <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${lenteObs}</textarea>
-            <label>Incisión</label>
-            <input id="sol-incision" class="swal2-input" value="${incision}" placeholder="Ej: Clear cornea temporal" />
+        <div class="cive-modal-card">
+            <div class="cive-modal-section">
+                <h4><i class="fas fa-user-md"></i> Datos de solicitud</h4>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Estado</label>
+                            <input id="sol-estado" class="swal2-input" value="${estado}" placeholder="PENDIENTE / APROBADA / RECHAZADA" readonly />
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Doctor</label>
+                            <select id="sol-doctor" class="swal2-select" data-value="${doctor}"></select>
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Fecha</label>
+                            <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${toDatetimeLocal(fecha)}" />
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Prioridad</label>
+                            <input id="sol-prioridad" class="swal2-input" value="${prioridad}" placeholder="URGENTE / NORMAL" readonly />
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Producto</label>
+                            <input id="sol-producto" class="swal2-input" value="${producto}" placeholder="Producto asociado" />
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Ojo</label>
+                            <select id="sol-ojo" class="swal2-select">
+                                <option value="">Selecciona ojo</option>
+                                <option value="DERECHO"${ojo === 'DERECHO' ? ' selected' : ''}>DERECHO</option>
+                                <option value="IZQUIERDO"${ojo === 'IZQUIERDO' ? ' selected' : ''}>IZQUIERDO</option>
+                                <option value="AMBOS OJOS"${ojo === 'AMBOS OJOS' ? ' selected' : ''}>AMBOS OJOS</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Afiliación</label>
+                            <input id="sol-afiliacion" class="swal2-input" value="${afiliacion}" placeholder="Afiliación" readonly />
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Duración</label>
+                            <input id="sol-duracion" class="swal2-input" value="${duracion}" placeholder="Minutos" readonly />
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-full cive-form-group">
+                        <label>Procedimiento</label>
+                        <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${procedimiento}</textarea>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-full cive-form-group">
+                        <label>Observación</label>
+                        <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${observacion}</textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="cive-modal-section">
+                <h4><i class="fas fa-eye"></i> Lente e incisión</h4>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Lente</label>
+                            <select id="sol-lente-id" class="swal2-select" data-value="${lenteId}">
+                                <option value="">Selecciona lente</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Nombre de lente</label>
+                            <input id="sol-lente-nombre" class="swal2-input" value="${lenteNombre}" placeholder="Nombre del lente" readonly />
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Poder del lente</label>
+                            <select id="sol-lente-poder" class="swal2-select">
+                                <option value="">Selecciona poder</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="cive-col-6">
+                        <div class="cive-form-group">
+                            <label>Incisión</label>
+                            <input id="sol-incision" class="swal2-input" value="${incision}" placeholder="Ej: Clear cornea temporal" />
+                        </div>
+                    </div>
+                </div>
+                <div class="cive-row">
+                    <div class="cive-col-full cive-form-group">
+                        <label>Observación de lente</label>
+                        <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${lenteObs}</textarea>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
 
     Swal.fire({
         title: `Editar solicitud #${item?.id || ''}`,
         html,
-        width: 600,
+        width: 800,
+        customClass: {popup: 'cive-modal-wide'},
         showCancelButton: true,
         confirmButtonText: 'Guardar cambios',
         cancelButtonText: 'Cancelar',
@@ -567,6 +675,7 @@ function abrirModalEditarSolicitud(item) {
             try {
                 const lentes = await obtenerLentes();
                 const selLente = document.getElementById('sol-lente-id');
+                const selPoder = document.getElementById('sol-lente-poder');
                 if (selLente) {
                     selLente.innerHTML = '<option value="">Selecciona lente</option>';
                     lentes.forEach((l) => {
@@ -575,6 +684,10 @@ function abrirModalEditarSolicitud(item) {
                         opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${l.poder ? ' (' + l.poder + ')' : ''}`;
                         opt.dataset.nombre = l.nombre;
                         opt.dataset.poder = l.poder || '';
+                        opt.dataset.rango_desde = l.rango_desde ?? '';
+                        opt.dataset.rango_hasta = l.rango_hasta ?? '';
+                        opt.dataset.rango_paso = l.rango_paso ?? '';
+                        opt.dataset.rango_inicio_incremento = l.rango_inicio_incremento ?? '';
                         selLente.appendChild(opt);
                     });
                     const preset = selLente.dataset.value || lenteId || '';
@@ -584,10 +697,38 @@ function abrirModalEditarSolicitud(item) {
                         const optSel = selLente.selectedOptions?.[0];
                         const nombre = optSel?.dataset?.nombre || '';
                         const poder = optSel?.dataset?.poder || '';
+                        const rangoDesde = optSel?.dataset?.rango_desde || '';
+                        const rangoHasta = optSel?.dataset?.rango_hasta || '';
+                        const rangoPaso = optSel?.dataset?.rango_paso || '';
+                        const rangoInicio = optSel?.dataset?.rango_inicio_incremento || '';
                         const nombreInput = document.getElementById('sol-lente-nombre');
-                        const poderInput = document.getElementById('sol-lente-poder');
+                        const poderSelect = document.getElementById('sol-lente-poder');
                         if (nombreInput) nombreInput.value = nombre || nombreInput.value;
-                        if (poderInput && poder) poderInput.value = poder;
+                        if (poderSelect) {
+                            poderSelect.innerHTML = '<option value=\"\">Selecciona poder</option>';
+                            const lenteObj = {
+                                rango_desde: rangoDesde,
+                                rango_hasta: rangoHasta,
+                                rango_paso: rangoPaso,
+                                rango_inicio_incremento: rangoInicio,
+                            };
+                            const powers = generarPoderes(lenteObj);
+                            if (powers.length) {
+                                powers.forEach((p) => {
+                                    const optP = document.createElement('option');
+                                    optP.value = p;
+                                    optP.textContent = p;
+                                    poderSelect.appendChild(optP);
+                                });
+                            }
+                            if (poder) {
+                                const optP = document.createElement('option');
+                                optP.value = poder;
+                                optP.textContent = poder;
+                                poderSelect.appendChild(optP);
+                            }
+                            poderSelect.value = lentePoder || poder || '';
+                        }
                     };
                     selLente.addEventListener('change', syncLente);
                     syncLente();
