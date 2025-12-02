@@ -457,6 +457,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    // Proxy genérico de API para saltar CORS desde el content script
+    if (request.action === 'apiRequest') {
+        const url = request.url || '';
+        const method = (request.method || 'GET').toUpperCase();
+        const headers = request.headers || {};
+        const expectJson = request.expectJson !== false;
+        const bodyType = request.bodyType || null;
+        const body = request.body;
+
+        if (!/^https?:\/\//i.test(url)) {
+            sendResponse({success: false, error: 'URL inválida'});
+            return false;
+        }
+
+        const fetchOptions = {
+            method,
+            credentials: 'include',
+            headers: {...headers},
+        };
+
+        if (method !== 'GET' && body !== undefined) {
+            if (bodyType === 'form') {
+                fetchOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+                fetchOptions.body = new URLSearchParams(body).toString();
+            } else if (bodyType === 'raw') {
+                fetchOptions.body = body;
+            } else { // json o auto
+                fetchOptions.headers['Content-Type'] = 'application/json;charset=UTF-8';
+                fetchOptions.body = JSON.stringify(body);
+            }
+        }
+
+        fetch(url, fetchOptions)
+            .then((resp) => {
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return expectJson ? resp.json() : resp.text();
+            })
+            .then((data) => sendResponse({success: true, data}))
+            .catch((error) => {
+                console.error('Error en apiRequest:', error);
+                sendResponse({success: false, error: error.message || 'Error al hacer fetch en background'});
+            });
+        return true;
+    }
+
     if (request.action === 'proyeccionesPost') {
         const path = (request.path || '').toString();
         const body = request.body || {};

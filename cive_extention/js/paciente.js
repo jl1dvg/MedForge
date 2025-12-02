@@ -1,4 +1,18 @@
 (function () {
+    // Helper para llamar al background desde cualquier flujo de este archivo
+    const sendBg = (action, payload) => new Promise((resolve, reject) => {
+        if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+            reject(new Error('Contexto de extensión no disponible'));
+            return;
+        }
+        chrome.runtime.sendMessage({action, ...payload}, (resp) => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(new Error(err.message || 'Error de runtime'));
+            if (resp && resp.success === false) return reject(new Error(resp.error || 'Fallo en background'));
+            resolve(resp && resp.data !== undefined ? resp.data : resp);
+        });
+    });
+
     function detectarConfirmacionAsistencia() {
         document.querySelectorAll('button[id^="button-confirmar-"], .swal2-container button[id^="button-confirmar-"]').forEach(boton => {
             if (boton.dataset.civeLlegadaListener === 'true') {
@@ -133,19 +147,6 @@
         if (datos) {
             const paciente = JSON.parse(datos);
             console.log("🧾 Datos del paciente cargados en la vista destino:", paciente);
-
-            const sendBg = (action, payload) => new Promise((resolve, reject) => {
-                if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
-                    reject(new Error('Contexto de extensión no disponible'));
-                    return;
-                }
-                chrome.runtime.sendMessage({action, ...payload}, (resp) => {
-                    const err = chrome.runtime.lastError;
-                    if (err) return reject(new Error(err.message || 'Error de runtime'));
-                    if (resp && resp.success === false) return reject(new Error(resp.error || 'Fallo en background'));
-                    resolve(resp && resp.data !== undefined ? resp.data : resp);
-                });
-            });
 
             // ✅ Claves de control: prompt por pestaña (session) y estado persistente (local)
             const KEY_PROMPT = `prompt_iniciar_${paciente.form_id}`;         // sessionStorage (anti-duplicado modal)

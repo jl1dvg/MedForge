@@ -16,6 +16,24 @@
         proceduresCacheTtlMs: 300000,
     };
 
+    // Proxy helper: usa el background script para saltar CORS cuando sea posible.
+    const sendBg = (action, payload) => new Promise((resolve, reject) => {
+        try {
+            if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+                return reject(new Error('Background no disponible'));
+            }
+        } catch (error) {
+            return reject(new Error('Background no disponible'));
+        }
+
+        chrome.runtime.sendMessage({action, ...payload}, (resp) => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(new Error(err.message || 'Error de runtime'));
+            if (resp && resp.success === false) return reject(new Error(resp.error || 'Fallo en background'));
+            resolve(resp && resp.data !== undefined ? resp.data : resp);
+        });
+    });
+
     function now() {
         return Date.now();
     }
@@ -197,6 +215,7 @@
 
         const runner = (async () => {
             let lastError;
+            let triedBackground = false;
             for (let attempt = 0; attempt <= retries; attempt++) {
                 for (const credentialMode of credentialModes) {
                     for (const encoding of bodyStrategies) {
@@ -220,6 +239,31 @@
 
                 if (attempt < retries) {
                     await delay(retryDelayMs);
+                }
+            }
+
+            // Último recurso: proxy vía background (salta CORS). Solo si es cross-origin y disponible.
+            const canProxy = !isSameOrigin(url) && !triedBackground;
+            if (canProxy) {
+                triedBackground = true;
+                try {
+                    const data = await sendBg('apiRequest', {
+                        url,
+                        method,
+                        headers,
+                        body,
+                        bodyType: bodyStrategies.find(Boolean) || null,
+                        expectJson: options.expectJson !== false,
+                    });
+                    if (finalCacheKey && cacheTtlMs) {
+                        CACHE.set(finalCacheKey, {
+                            data,
+                            expiresAt: now() + cacheTtlMs,
+                        });
+                    }
+                    return data;
+                } catch (error) {
+                    lastError = error;
                 }
             }
 
