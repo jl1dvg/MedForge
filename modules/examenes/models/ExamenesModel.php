@@ -28,7 +28,16 @@ class ExamenesModel
                 sp.procedimiento,
                 sp.doctor,
                 sp.fecha,
+                sp.duracion,
+                sp.ojo,
                 sp.prioridad,
+                sp.producto,
+                sp.observacion,
+                sp.lente_id,
+                sp.lente_nombre,
+                sp.lente_poder,
+                sp.lente_observacion,
+                sp.incision,
                 sp.estado,
                 sp.created_at
             FROM solicitud_procedimiento sp

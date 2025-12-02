@@ -37,7 +37,7 @@ class LenteModel
         $tipoOptico = trim($data['tipo_optico'] ?? '');
 
         if ($marca === '' || $modelo === '' || $nombre === '') {
-            return ['success' => false, 'message': 'Marca, modelo y nombre son obligatorios'];
+            return ['success' => false, 'message' => 'Marca, modelo y nombre son obligatorios'];
         }
 
         if ($tipoOptico && !in_array($tipoOptico, ['una_pieza', 'multipieza'], true)) {

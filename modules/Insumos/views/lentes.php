@@ -39,7 +39,7 @@ $scripts = array_merge($scripts ?? [], [
                 </div>
                 <div class="box-body">
                     <div class="table-responsive">
-                        <table id="lentesTabla" class="table table-bordered table-striped table-hover table-sm align-middle">
+                        <table id="lentesTabla" class="table table-sm table-striped table-hover align-middle">
                             <thead class="table-primary text-dark fw-semibold">
                             <tr>
                                 <th>Marca</th>
@@ -53,7 +53,7 @@ $scripts = array_merge($scripts ?? [], [
                                 <th>Const. A US</th>
                                 <th>Tipo óptico</th>
                                 <th>Observación</th>
-                                <th>Acciones</th>
+                                <th style="width:120px;">Acciones</th>
                             </tr>
                             </thead>
                             <tbody id="lentesBody"></tbody>
@@ -74,6 +74,15 @@ $scripts = array_merge($scripts ?? [], [
     table#lentesTabla th {
         text-transform: uppercase;
         letter-spacing: 0.02em;
+    }
+    table#lentesTabla td {
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    table#lentesTabla td:nth-child(3),
+    table#lentesTabla td:nth-child(4),
+    table#lentesTabla td:nth-child(11) {
+        white-space: normal;
     }
     .badge-inline {
         display: inline-block;
