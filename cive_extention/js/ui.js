@@ -385,17 +385,64 @@ window.inicializarUI = function () {
     actualizarEstadoConexion();
 
     // Restaurar última posición guardada
+    function clampPosition(pos) {
+        const padding = 8;
+        const rect = button.getBoundingClientRect();
+        const width = rect.width || button.offsetWidth || 64;
+        const height = rect.height || button.offsetHeight || 48;
+        const maxX = Math.max(padding, window.innerWidth - width - padding);
+        const maxY = Math.max(padding, window.innerHeight - height - padding);
+        return {
+            x: Math.min(Math.max(padding, pos.x), maxX),
+            y: Math.min(Math.max(padding, pos.y), maxY),
+        };
+    }
+
+    function applyPosition(pos, {persist} = {}) {
+        const clamped = clampPosition(pos);
+        button.style.left = `${clamped.x}px`;
+        button.style.top = `${clamped.y}px`;
+        button.style.right = 'auto';
+        button.style.bottom = 'auto';
+        if (persist) {
+            try {
+                localStorage.setItem('civeFloatingPos', JSON.stringify(clamped));
+            } catch (e) {
+                console.warn('No se pudo guardar la posición del botón:', e);
+            }
+        }
+        return clamped;
+    }
+
+    function restoreDefaultPosition() {
+        button.style.left = '';
+        button.style.top = '';
+        button.style.right = '16px';
+        button.style.bottom = '20px';
+    }
+
     try {
         const pos = JSON.parse(localStorage.getItem('civeFloatingPos') || 'null');
         if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
-            button.style.left = `${pos.x}px`;
-            button.style.top = `${pos.y}px`;
-            button.style.right = 'auto';
-            button.style.bottom = 'auto';
+            const clamped = applyPosition(pos, {persist: true});
+            const rect = button.getBoundingClientRect();
+            const fueraDeVista = rect.left > window.innerWidth || rect.top > window.innerHeight || rect.right < 0 || rect.bottom < 0;
+            if (fueraDeVista || clamped.x !== pos.x || clamped.y !== pos.y) {
+                applyPosition(clamped, {persist: true});
+            }
+        } else {
+            restoreDefaultPosition();
         }
     } catch (e) {
         console.warn('No se pudo restaurar posición del botón:', e);
+        restoreDefaultPosition();
     }
+
+    window.addEventListener('resize', () => {
+        const rect = button.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        applyPosition({x: rect.left, y: rect.top}, {persist: true});
+    });
 
     const estilos = [
         {href: 'css/floating_button.css'},

@@ -163,35 +163,26 @@
             const hc = paciente.identificacion || paciente.hcNumber || '';
             if (hc && !sessionStorage.getItem(KEY_ALERT_SOL)) {
                 sessionStorage.setItem(KEY_ALERT_SOL, '1');
+                const mostrarAlertSolicitudes = (lista) => {
+                    const masReciente = lista[0];
+                    const resumen = `${masReciente.tipo || 'Solicitud'} · ${masReciente.estado || 'N/D'} · ${masReciente.fecha || ''}`;
+                    const textoCorto = `HC ${hc}: ${lista.length} solicitudes. Más reciente: ${resumen}`;
+
+                    // Preferir toastr para no bloquear el flujo de "Iniciar consulta"
+                    if (window.toastr && typeof window.toastr.info === 'function') {
+                        window.toastr.info(textoCorto, 'Solicitudes existentes');
+                        return;
+                    }
+
+                    // Fallback no bloqueante
+                    console.info('Solicitudes existentes:', textoCorto);
+                };
+
                 sendBg('solicitudesEstado', {hcNumber: hc})
                     .then((resp) => {
                         const lista = Array.isArray(resp?.solicitudes) ? resp.solicitudes : [];
                         if (!lista.length) return;
-                        const masReciente = lista[0];
-                        const resumen = `${masReciente.tipo || 'Solicitud'} · ${masReciente.estado || 'N/D'} · ${masReciente.fecha || ''}`;
-                        const html = `
-                            <p style="margin:4px 0 0">HC <b>${hc}</b> tiene <b>${lista.length}</b> solicitud(es) registrada(s).</p>
-                            <p style="margin:6px 0 0"><b>Más reciente:</b> ${resumen}</p>
-                        `;
-                        if (typeof Swal !== 'undefined') {
-                            Swal.fire({
-                                icon: 'info',
-                                title: 'Solicitudes existentes',
-                                html,
-                                confirmButtonText: 'Ver planificador',
-                                cancelButtonText: 'Cerrar',
-                                showCancelButton: true,
-                                reverseButtons: true,
-                            }).then((res) => {
-                                if (res.isConfirmed && typeof window.mostrarSeccion === 'function') {
-                                    window.mostrarSeccion('cirugia');
-                                }
-                            });
-                        } else if (window.toastr && typeof window.toastr.info === 'function') {
-                            window.toastr.info(resumen, 'Solicitudes existentes');
-                        } else {
-                            alert(`Solicitudes previas para HC ${hc} (${lista.length}). Más reciente: ${resumen}`);
-                        }
+                        mostrarAlertSolicitudes(lista);
                     })
                     .catch(() => {
                         sessionStorage.removeItem(KEY_ALERT_SOL); // permitir reintento si falla
