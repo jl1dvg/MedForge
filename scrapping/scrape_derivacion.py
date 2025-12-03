@@ -6,6 +6,10 @@ import re
 import os
 import base64
 
+# Limitar hilos de OpenBLAS/Numpy para no chocar con RLIMIT_NPROC del hosting
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 # OCR dependencies (optional)
 try:
     from pdf2image import convert_from_path
@@ -374,6 +378,7 @@ if __name__ == "__main__":
             diagnostico = r.get("diagnostico", "").strip()
             form_id = sys.argv[1] if len(sys.argv) > 1 else None
             hc_number = r.get("identificacion", "DESCONOCIDO")
+            primer_doc = next((d for d in r.get("documentos_afiliacion", []) if d.get("file_base64")), None)
 
             data = {
                 "form_id": form_id,
@@ -387,6 +392,9 @@ if __name__ == "__main__":
                 "parentesco": r.get("parentesco", ""),
                 "procedimientos": r.get("procedimientos", [])
             }
+            if primer_doc:
+                data["archivo_nombre"] = f"{hc_number}_{form_id}.pdf"
+                data["archivo_base64"] = primer_doc.get("file_base64")
 
             if modo_quieto:
                 print(json.dumps(data))

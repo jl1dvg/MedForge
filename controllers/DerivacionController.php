@@ -22,14 +22,15 @@ class DerivacionController
         $referido = null,
         $diagnostico = null,
         $sede = null,
-        $parentesco = null
+        $parentesco = null,
+        $archivoPath = null
     )
     {
         $stmt = $this->db->prepare("
         INSERT INTO derivaciones_form_id (
-            cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico, sede, parentesco
+            cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico, sede, parentesco, archivo_derivacion_path
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             fecha_registro = VALUES(fecha_registro),
             fecha_vigencia = VALUES(fecha_vigencia),
@@ -37,7 +38,8 @@ class DerivacionController
             referido = VALUES(referido),
             diagnostico = VALUES(diagnostico),
             sede = VALUES(sede),
-            parentesco = VALUES(parentesco)
+            parentesco = VALUES(parentesco),
+            archivo_derivacion_path = VALUES(archivo_derivacion_path)
     ");
 
         return $stmt->execute([
@@ -49,7 +51,8 @@ class DerivacionController
             $referido,
             $diagnostico,
             $sede,
-            $parentesco
+            $parentesco,
+            $archivoPath
         ]);
     }
 
@@ -258,4 +261,3 @@ class DerivacionController
         return $stmt->fetchColumn() > 0;
     }
 }
-

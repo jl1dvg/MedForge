@@ -130,7 +130,7 @@ if (!function_exists('isTreeOpen')) {
                         </li>
                     <?php endif; ?>
 
-                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones', '/turnoAgenda']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Atención al paciente</span>
@@ -140,6 +140,11 @@ if (!function_exists('isTreeOpen')) {
                             <li class="<?= isActive('/pacientes') ?>">
                                 <a href="/pacientes">
                                     <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
+                                </a>
+                            </li>
+                            <li class="<?= isActive('/derivaciones') ?>">
+                                <a href="/derivaciones">
+                                    <i class="mdi mdi-file-find"></i>Derivaciones
                                 </a>
                             </li>
                             <li class="<?= isActivePrefix('/turnoAgenda') ?>">
