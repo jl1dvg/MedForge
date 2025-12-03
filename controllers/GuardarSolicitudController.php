@@ -60,6 +60,21 @@ class GuardarSolicitudController
             return null;
         };
 
+        // Validar que todas las solicitudes tengan procedimiento antes de persistir
+        $missingProcedimientos = [];
+        foreach ($data['solicitudes'] as $idx => $solicitud) {
+            $procedimientoVal = $clean($solicitud['procedimiento'] ?? null);
+            if ($procedimientoVal === null) {
+                $missingProcedimientos[] = $solicitud['secuencia'] ?? ($idx + 1);
+            }
+        }
+        if ($missingProcedimientos) {
+            return [
+                "success" => false,
+                "message" => "El procedimiento es obligatorio en todas las solicitudes (faltante en: " . implode(', ', $missingProcedimientos) . ")"
+            ];
+        }
+
         // SQL con upsert, usando columnas explícitas (sin detalles_json)
         $sql = "INSERT INTO solicitud_procedimiento 
                 (hc_number, form_id, secuencia, tipo, afiliacion, procedimiento, doctor, fecha, duracion, ojo, prioridad, producto, observacion, sesiones, lente_id, lente_nombre, lente_poder, lente_observacion, incision) 
