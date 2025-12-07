@@ -1,6 +1,7 @@
 import { actualizarEstadoSolicitud } from './estado.js';
 import { showToast } from './toast.js';
 import { getDataStore } from './config.js';
+import { llamarTurnoSolicitud } from './turnero.js';
 
 function obtenerTarjetaActiva() {
     return document.querySelector('.kanban-card.view-details.active');
@@ -38,7 +39,7 @@ function abrirEnNuevaPestana(url) {
     return false;
 }
 
-function actualizarDesdeBoton(nuevoEstado) {
+function actualizarDesdeBoton(nuevoEstado, options = {}) {
     const tarjeta = obtenerTarjetaActiva();
     if (!tarjeta) {
         showToast('Selecciona una solicitud antes de continuar', false);
@@ -50,11 +51,61 @@ function actualizarDesdeBoton(nuevoEstado) {
         tarjeta.dataset.form,
         nuevoEstado,
         getDataStore(),
-        window.aplicarFiltros
+        window.aplicarFiltros,
+        options
     ).then(() => cerrarModal());
 }
 
 export function inicializarBotonesModal() {
+    const generarTurnoBtn = document.getElementById('btnGenerarTurnoModal');
+    if (generarTurnoBtn && generarTurnoBtn.dataset.listenerAttached !== 'true') {
+        generarTurnoBtn.dataset.listenerAttached = 'true';
+        generarTurnoBtn.addEventListener('click', () => {
+            const tarjeta = obtenerTarjetaActiva();
+            if (!tarjeta) {
+                showToast('Selecciona una solicitud antes de generar turno', false);
+                return;
+            }
+            generarTurnoBtn.disabled = true;
+            llamarTurnoSolicitud({ id: tarjeta.dataset.id })
+                .then((data) => {
+                    const turno = data?.turno ?? tarjeta.dataset.turno;
+                    const estado = data?.estado ?? 'Llamado';
+                    tarjeta.dataset.turno = turno || '';
+                    tarjeta.dataset.estado = estado;
+                    const store = getDataStore();
+                    if (Array.isArray(store)) {
+                        const item = store.find(s => String(s.id) === String(tarjeta.dataset.id));
+                        if (item) {
+                            item.turno = turno;
+                            item.estado = estado;
+                            item.kanban_estado = estado;
+                        }
+                    }
+                    showToast('Turno generado', true);
+                    if (typeof window.aplicarFiltros === 'function') {
+                        window.aplicarFiltros();
+                    }
+                })
+                .catch((error) => {
+                    console.error('❌ Error al generar turno:', error);
+                    showToast(error?.message || 'No se pudo generar el turno', false);
+                })
+                .finally(() => {
+                    generarTurnoBtn.disabled = false;
+                });
+        });
+    }
+
+    const enAtencionBtn = document.getElementById('btnMarcarAtencionModal');
+    if (enAtencionBtn && enAtencionBtn.dataset.listenerAttached !== 'true') {
+        enAtencionBtn.dataset.listenerAttached = 'true';
+        enAtencionBtn.addEventListener('click', () => {
+            const estado = enAtencionBtn.dataset.estado || 'En atención';
+            actualizarDesdeBoton(estado, { force: true, completado: true }).catch(() => {});
+        });
+    }
+
     const revisarBtn = document.getElementById('btnRevisarCodigos');
     if (revisarBtn && revisarBtn.dataset.listenerAttached !== 'true') {
         revisarBtn.dataset.listenerAttached = 'true';
@@ -112,8 +163,20 @@ export function inicializarBotonesModal() {
                 }
             }
 
-            const estado = coberturaBtn.dataset.estado || 'Docs Completos';
-            actualizarDesdeBoton(estado).catch(() => {});
+            // Pasar a revisión de códigos (pendiente)
+            const estado = coberturaBtn.dataset.estado || 'Revisión Códigos';
+            const completado = coberturaBtn.dataset.completado === '1';
+            actualizarDesdeBoton(estado, { force: true, completado }).catch(() => {});
+        });
+    }
+
+    const coberturaExitosaBtn = document.getElementById('btnCoberturaExitosa');
+    if (coberturaExitosaBtn && coberturaExitosaBtn.dataset.listenerAttached !== 'true') {
+        coberturaExitosaBtn.dataset.listenerAttached = 'true';
+        coberturaExitosaBtn.addEventListener('click', () => {
+            const estado = coberturaExitosaBtn.dataset.estado || 'Revisión Códigos';
+            const completado = coberturaExitosaBtn.dataset.completado === '1';
+            actualizarDesdeBoton(estado, { force: true, completado }).catch(() => {});
         });
     }
 }

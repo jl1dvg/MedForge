@@ -208,7 +208,8 @@
 
         const credentialModes = (() => {
             if (credentials === 'include' && !isSameOrigin(url)) {
-                return ['include', 'omit'];
+                // Evita ruido CORS: primero intenta vía background y, si falla, retrocede a fetch sin credenciales.
+                return ['background', 'include', 'omit'];
             }
             return [credentials];
         })();
@@ -218,6 +219,33 @@
             let triedBackground = false;
             for (let attempt = 0; attempt <= retries; attempt++) {
                 for (const credentialMode of credentialModes) {
+                    if (credentialMode === 'background') {
+                        const canProxy = !isSameOrigin(url);
+                        if (canProxy && !triedBackground) {
+                            triedBackground = true;
+                            try {
+                                const data = await sendBg('apiRequest', {
+                                    url,
+                                    method,
+                                    headers,
+                                    body,
+                                    bodyType: bodyStrategies.find(Boolean) || null,
+                                    expectJson: options.expectJson !== false,
+                                });
+                                if (finalCacheKey && cacheTtlMs) {
+                                    CACHE.set(finalCacheKey, {
+                                        data,
+                                        expiresAt: now() + cacheTtlMs,
+                                    });
+                                }
+                                return data;
+                            } catch (error) {
+                                lastError = error;
+                            }
+                        }
+                        continue;
+                    }
+
                     for (const encoding of bodyStrategies) {
                         try {
                             const result = await attemptFetch(encoding, credentialMode);
@@ -232,38 +260,13 @@
                             lastError = error;
                         }
                     }
-                    if (credentialMode !== credentials) {
+                    if (credentialMode !== credentials && credentialMode !== 'background') {
                         console.info(`[CIVE] Reintentando ${method} ${url} sin credenciales por política CORS.`);
                     }
                 }
 
                 if (attempt < retries) {
                     await delay(retryDelayMs);
-                }
-            }
-
-            // Último recurso: proxy vía background (salta CORS). Solo si es cross-origin y disponible.
-            const canProxy = !isSameOrigin(url) && !triedBackground;
-            if (canProxy) {
-                triedBackground = true;
-                try {
-                    const data = await sendBg('apiRequest', {
-                        url,
-                        method,
-                        headers,
-                        body,
-                        bodyType: bodyStrategies.find(Boolean) || null,
-                        expectJson: options.expectJson !== false,
-                    });
-                    if (finalCacheKey && cacheTtlMs) {
-                        CACHE.set(finalCacheKey, {
-                            data,
-                            expiresAt: now() + cacheTtlMs,
-                        });
-                    }
-                    return data;
-                } catch (error) {
-                    lastError = error;
                 }
             }
 

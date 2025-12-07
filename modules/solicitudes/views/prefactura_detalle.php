@@ -184,14 +184,12 @@ if (!empty($derivacion['fecha_vigencia'])) {
     <div class="col-12">
         <div class="p-3 border rounded bg-light">
             <h5 class="mb-3">📝 Examen Físico y Plan</h5>
-
             <div class="mb-3">
                 <strong>Examen Físico:</strong><br>
                 <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
                     <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
                 </div>
             </div>
-
             <div>
                 <strong>Plan:</strong><br>
                 <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">

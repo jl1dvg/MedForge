@@ -9,11 +9,13 @@ const NORMALIZE = {
     estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
 };
 
+const getEstadoSlug = item => NORMALIZE.estado(item.kanban_estado ?? item.estado);
+
 function agruparPorEstado(solicitudes) {
     const agrupadas = {};
 
     solicitudes.forEach(item => {
-        const estado = NORMALIZE.estado(item.estado);
+        const estado = getEstadoSlug(item);
         if (!agrupadas[estado]) {
             agrupadas[estado] = [];
         }
@@ -45,8 +47,8 @@ function actualizarContadores(agrupadas) {
 }
 
 export function initKanban(data = []) {
-    renderKanban(data, (id, formId, estado) =>
-        actualizarEstadoSolicitud(id, formId, estado, getDataStore(), window.aplicarFiltros)
+    renderKanban(data, (id, formId, estado, options = {}) =>
+        actualizarEstadoSolicitud(id, formId, estado, getDataStore(), window.aplicarFiltros, options)
     );
 
     const agrupadas = agruparPorEstado(data);

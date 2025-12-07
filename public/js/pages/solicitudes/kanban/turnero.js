@@ -42,15 +42,21 @@ export async function llamarTurnoSolicitud({ id = null, turno = null, estado = '
         body: JSON.stringify(payload),
     });
 
+    const raw = await respuesta.text();
+    let datos = null;
+    try {
+        datos = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+        datos = null;
+    }
+
     if (!respuesta.ok) {
+        const msg = datos?.error || raw || 'No se pudo comunicar con el turnero';
         if (respuesta.status === 401) {
             throw new Error('Sesión expirada, vuelva a iniciar sesión');
         }
-
-        throw new Error('No se pudo comunicar con el turnero');
+        throw new Error(msg);
     }
-
-    const datos = await respuesta.json();
 
     if (!datos?.success) {
         const mensaje = datos?.error || 'No se pudo asignar el turno';

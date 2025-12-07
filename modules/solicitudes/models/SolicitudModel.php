@@ -152,9 +152,9 @@ class SolicitudModel
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             WHERE sp.estado IN ($placeholders)
             ORDER BY CASE WHEN sp.turno IS NULL THEN 1 ELSE 0 END,
-                     sp.turno ASC,
-                     sp.created_at ASC,
-                     sp.id ASC";
+                     sp.turno DESC,
+                     sp.created_at DESC,
+                     sp.id DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($estados);

@@ -124,6 +124,20 @@ class SolicitudEstadoService
             $progress = $this->computeProgress($checklist);
             $kanban = $this->computeKanbanEstado($checklist);
 
+            $stateSlug = $this->normalizeSlug($legacyEstado);
+            // Para etapas operativas iniciales, respetar el estado explícito en columna
+            if (in_array($stateSlug, ['recibida', 'llamado'], true)) {
+                $stage = $this->getStageBySlug($stateSlug);
+                if ($stage) {
+                    $kanban = [
+                        'slug' => $stage['column'] ?? $stage['slug'],
+                        'label' => $stage['label'] ?? ($stage['column'] ?? $stage['slug']),
+                        'next_slug' => $progress['next_slug'] ?? null,
+                        'next_label' => $progress['next_label'] ?? null,
+                    ];
+                }
+            }
+
             $row['checklist'] = $checklist;
             $row['checklist_progress'] = $progress;
             $row['kanban_estado'] = $kanban['slug'];

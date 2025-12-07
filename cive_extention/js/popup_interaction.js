@@ -72,6 +72,18 @@ const uiState = {
   lentes: [],
 };
 let __cirugiaAutoCheckDone = false;
+const ESTADO_APTO_OFTALMOLOGO = "APTO OFTALMOLOGO";
+
+function normalizarSlug(valor) {
+  return (valor ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
 
 async function ensureToastr() {
   if (window.toastr && typeof window.toastr.info === "function") {
@@ -696,6 +708,7 @@ async function obtenerEstadoCirugias(hc) {
     const resp = await safeSendMessage({
       action: "solicitudesEstado",
       hcNumber: hc,
+      pageOrigin: (window.location && window.location.origin) || null,
     });
     if (resp && resp.success !== false) {
       return resp.data ?? resp;
@@ -779,6 +792,91 @@ async function actualizarSolicitud(id, payload) {
     return resp.data ?? resp;
   }
   throw new Error(resp?.error || "No se pudo actualizar la solicitud");
+}
+
+async function marcarChecklistApto(item) {
+  if (!isExtensionContextActive()) return;
+  const solicitudId = item?.id || item?.form_id || item?.solicitud_id;
+  if (!solicitudId) return;
+
+  const slug = normalizarSlug(ESTADO_APTO_OFTALMOLOGO);
+  try {
+    const resp = await safeSendMessage({
+      action: "apiRequest",
+      url: "https://asistentecive.consulmed.me/solicitudes/actualizar-estado",
+      method: "POST",
+      headers: { "Content-Type": "application/json;charset=UTF-8" },
+      body: {
+        id: Number(solicitudId),
+        estado: slug,
+        completado: true,
+        force: true,
+      },
+    });
+
+    if (resp?.success) {
+      const idx = uiState.cirugias.findIndex((c) => c.id === solicitudId);
+      if (idx >= 0) {
+        uiState.cirugias[idx] = {
+          ...uiState.cirugias[idx],
+          estado: resp.estado || ESTADO_APTO_OFTALMOLOGO,
+          checklist: resp.checklist || uiState.cirugias[idx].checklist,
+          checklist_progress:
+            resp.checklist_progress || uiState.cirugias[idx].checklist_progress,
+        };
+      }
+    }
+  } catch (error) {
+    console.warn("No se pudo marcar checklist APTO OFTALMOLOGO:", error);
+  }
+}
+
+function appendPlanQuirurgicoEnTextarea(payload) {
+  const textarea = document.getElementById(
+    "docsolicitudprocedimientos-observacion_consulta"
+  );
+  if (!textarea) {
+    console.warn("Textarea de plan quirúrgico no encontrado en la página.");
+    return;
+  }
+
+  const detalles = [];
+  if (payload?.procedimiento) {
+    detalles.push(`Procedimiento: ${payload.procedimiento}`);
+  }
+  if (payload?.ojo) {
+    detalles.push(`Ojo: ${payload.ojo}`);
+  }
+  if (payload?.lente_nombre || payload?.lente_id) {
+    detalles.push(
+      `Lente: ${payload.lente_nombre || "N/D"}${
+        payload.lente_id ? " (" + payload.lente_id + ")" : ""
+      }`
+    );
+  }
+  if (payload?.lente_poder) {
+    detalles.push(`Poder: ${payload.lente_poder}`);
+  }
+  if (payload?.incision) {
+    detalles.push(`Incisión: ${payload.incision}`);
+  }
+  if (payload?.observacion) {
+    detalles.push(`Observación: ${payload.observacion}`);
+  }
+  if (payload?.lente_observacion) {
+    detalles.push(`Obs. lente: ${payload.lente_observacion}`);
+  }
+
+  if (!detalles.length) return;
+
+  const block = `PLAN QUIRURGICO (CIVE):\n${detalles.join("\n")}`;
+  const previo = textarea.value || "";
+  const separador = previo.trim() ? "\n\n" : "";
+  const wasDisabled = textarea.disabled;
+  if (wasDisabled) textarea.disabled = false;
+  textarea.value = `${previo}${separador}${block}`;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  if (wasDisabled) textarea.disabled = true;
 }
 
 function abrirModalEditarSolicitud(item) {
@@ -938,6 +1036,8 @@ function abrirModalEditarSolicitud(item) {
     cancelButtonText: "Cancelar",
     focusConfirm: false,
     didOpen: async () => {
+      const estadoInput = document.getElementById("sol-estado");
+      if (estadoInput) estadoInput.value = ESTADO_APTO_OFTALMOLOGO;
       // Poblar doctores en el select
       try {
         const doctores = await obtenerDoctores();
@@ -1037,7 +1137,7 @@ function abrirModalEditarSolicitud(item) {
     },
     preConfirm: () => {
       return {
-        estado: document.getElementById("sol-estado")?.value.trim(),
+        estado: ESTADO_APTO_OFTALMOLOGO,
         doctor: document.getElementById("sol-doctor")?.value.trim(),
         fecha: document.getElementById("sol-fecha")?.value.trim(),
         prioridad: document.getElementById("sol-prioridad")?.value.trim(),
@@ -1061,6 +1161,7 @@ function abrirModalEditarSolicitud(item) {
   }).then(async (result) => {
     if (!result.isConfirmed) return;
     const payload = result.value || {};
+    payload.estado = ESTADO_APTO_OFTALMOLOGO;
     try {
       setSectionState("cirugia", {
         type: "loading",
@@ -1072,7 +1173,9 @@ function abrirModalEditarSolicitud(item) {
       if (idx >= 0) {
         uiState.cirugias[idx] = { ...uiState.cirugias[idx], ...payload };
       }
+      marcarChecklistApto(item);
       renderCirugias(uiState.cirugias);
+      appendPlanQuirurgicoEnTextarea(payload);
       Swal.fire("Guardado", "Solicitud actualizada en MedForge", "success");
     } catch (err) {
       console.error("Error actualizando solicitud:", err);

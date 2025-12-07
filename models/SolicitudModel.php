@@ -35,10 +35,17 @@ class SolicitudModel
                 sp.secuencia,
                 sp.created_at,
                 pd.fecha_caducidad,
-                cd.diagnosticos
+                cd.diagnosticos,
+                cd.examen_fisico,
+                cd.plan,
+                u.profile_photo AS doctor_avatar,
+                d.fecha_vigencia AS derivacion_fecha_vigencia,
+                d.fecha_registro AS derivacion_fecha_registro
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
+            LEFT JOIN derivaciones_form_id d ON d.form_id = sp.form_id AND d.hc_number = sp.hc_number
+            LEFT JOIN users u ON LOWER(TRIM(sp.doctor)) = LOWER(TRIM(u.nombre))
             WHERE sp.procedimiento IS NOT NULL
               AND sp.procedimiento <> ''
               AND sp.procedimiento != 'SELECCIONE' 
@@ -65,12 +72,17 @@ class SolicitudModel
         }
 
         if (!empty($filtros['fechaTexto']) && str_contains($filtros['fechaTexto'], ' - ')) {
-            [$inicio, $fin] = explode(' - ', $filtros['fechaTexto']);
-            $inicio = DateTime::createFromFormat('d-m-Y', trim($inicio))->format('Y-m-d');
-            $fin = DateTime::createFromFormat('d-m-Y', trim($fin))->format('Y-m-d');
-            $sql .= " AND DATE(cd.fecha) BETWEEN ? AND ?";
-            $params[] = $inicio;
-            $params[] = $fin;
+            [$inicioRaw, $finRaw] = explode(' - ', $filtros['fechaTexto']);
+            $inicioDt = DateTime::createFromFormat('d-m-Y', trim($inicioRaw))
+                ?: DateTime::createFromFormat('d/m/Y', trim($inicioRaw));
+            $finDt = DateTime::createFromFormat('d-m-Y', trim($finRaw))
+                ?: DateTime::createFromFormat('d/m/Y', trim($finRaw));
+
+            if ($inicioDt && $finDt) {
+                $sql .= " AND DATE(COALESCE(cd.fecha, sp.created_at)) BETWEEN ? AND ?";
+                $params[] = $inicioDt->format('Y-m-d');
+                $params[] = $finDt->format('Y-m-d');
+            }
         }
 
         $sql .= " ORDER BY COALESCE(cd.fecha, sp.created_at) DESC";
@@ -98,7 +110,7 @@ class SolicitudModel
         $estadosNormalizados = array_values(array_filter(array_map($normalizar, $estados)));
 
         if (empty($estadosNormalizados)) {
-            $estadosNormalizados = array_map($normalizar, ['Recibido', 'Llamado', 'En atención', 'En atencion']);
+            $estadosNormalizados = array_map($normalizar, ['Llamado']);
         }
 
         $estadosNormalizados = array_values(array_unique(array_filter($estadosNormalizados)));
@@ -123,9 +135,9 @@ class SolicitudModel
             WHERE LOWER(sp.estado) IN ($placeholders)
               AND sp.turno IS NOT NULL
             ORDER BY CASE WHEN sp.turno IS NULL THEN 1 ELSE 0 END,
-                     sp.turno ASC,
-                     sp.created_at ASC,
-                     sp.id ASC";
+                     sp.turno DESC,
+                     sp.created_at DESC,
+                     sp.id DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($estadosNormalizados);

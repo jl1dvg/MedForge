@@ -12,7 +12,9 @@ use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
+use Modules\Solicitudes\Services\SolicitudEstadoService;
 use PDO;
+use RuntimeException;
 use Throwable;
 
 class SolicitudController extends BaseController
@@ -21,6 +23,7 @@ class SolicitudController extends BaseController
         'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
         'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
         'pagado', 'pagada', 'no procede', 'no_procede', 'no-procede', 'cerrado sin atención',
+        'facturada-cerrada', 'protocolo-completo', 'completado',
     ];
 
     private const SLA_WARNING_HOURS = 72;
@@ -29,6 +32,7 @@ class SolicitudController extends BaseController
     private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
     private SolicitudCrmService $crmService;
+    private SolicitudEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
@@ -39,6 +43,7 @@ class SolicitudController extends BaseController
         $this->solicitudModel = new SolicitudModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new SolicitudCrmService($pdo);
+        $this->estadoService = new SolicitudEstadoService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
     }
@@ -51,6 +56,8 @@ class SolicitudController extends BaseController
             __DIR__ . '/../views/solicitudes.php',
             [
                 'pageTitle' => 'Solicitudes Quirúrgicas',
+                'kanbanColumns' => $this->estadoService->getColumns(),
+                'kanbanStages' => $this->estadoService->getStages(),
                 'realtime' => $this->pusherConfig->getPublicConfig(),
             ]
         );
@@ -109,6 +116,7 @@ class SolicitudController extends BaseController
 
         try {
             $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filtros);
+            $solicitudes = $this->estadoService->enrichSolicitudes($solicitudes, $this->currentPermissions());
             $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
@@ -388,6 +396,9 @@ class SolicitudController extends BaseController
     {
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+        if (empty($row['fecha_programada']) && !empty($row['derivacion_fecha_vigencia'])) {
+            $row['fecha_programada'] = $row['derivacion_fecha_vigencia'];
+        }
 
         return array_merge($row, $this->computeOperationalMetadata($row));
     }
@@ -629,6 +640,9 @@ class SolicitudController extends BaseController
 
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
         $estado = trim($payload['estado'] ?? '');
+        $nota = isset($payload['nota']) ? trim((string) $payload['nota']) : null;
+        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+        $force = isset($payload['force']) ? (bool) $payload['force'] : false;
 
         if ($id <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
@@ -636,7 +650,15 @@ class SolicitudController extends BaseController
         }
 
         try {
-            $resultado = $this->solicitudModel->actualizarEstado($id, $estado);
+            $resultado = $this->estadoService->actualizarEtapa(
+                $id,
+                $estado,
+                $completado,
+                $this->getCurrentUserId(),
+                $this->currentPermissions(),
+                $force,
+                $nota
+            );
 
             $this->pusherConfig->trigger(
                 $resultado + [
@@ -648,10 +670,15 @@ class SolicitudController extends BaseController
 
             $this->json([
                 'success' => true,
-                'estado' => $resultado['estado'] ?? $estado,
+                'estado' => $resultado['kanban_estado'] ?? $estado,
+                'estado_label' => $resultado['kanban_estado_label'] ?? $resultado['kanban_estado'] ?? $estado,
                 'turno' => $resultado['turno'] ?? null,
+                'checklist' => $resultado['checklist'] ?? [],
+                'checklist_progress' => $resultado['checklist_progress'] ?? [],
                 'estado_anterior' => $resultado['estado_anterior'] ?? null,
             ]);
+        } catch (RuntimeException $e) {
+            $this->json(['success' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
@@ -867,7 +894,7 @@ class SolicitudController extends BaseController
 
     public function obtenerDatosParaVista($hc, $form_id)
     {
-        $data = $this->solicitudModel->obtenerDerivacionPorFormId($form_id);
+        $data = $this->ensureDerivacion($form_id, $hc);
         $solicitud = $this->solicitudModel->obtenerDatosYCirujanoSolicitud($form_id, $hc);
         $paciente = $this->pacienteService->getPatientDetails($hc);
         $diagnostico = $this->solicitudModel->obtenerDxDeSolicitud($form_id);
@@ -879,6 +906,38 @@ class SolicitudController extends BaseController
             'diagnostico' => $diagnostico,
             'consulta' => $consulta,
         ];
+    }
+
+    /**
+     * Verifica derivación; si no existe, intenta scrapear y reconsultar.
+     */
+    private function ensureDerivacion(string $formId, string $hcNumber): ?array
+    {
+        $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+        if ($derivacion) {
+            return $derivacion;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
+        if (!is_file($script)) {
+            return null;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s %s',
+            escapeshellarg($script),
+            escapeshellarg($formId),
+            escapeshellarg($hcNumber)
+        );
+
+        // Ejecutar scraping para poblar derivaciones_form_id cuando falte.
+        try {
+            @exec($cmd);
+        } catch (\Throwable $e) {
+            // silenciar para no romper flujo de prefactura
+        }
+
+        return $this->solicitudModel->obtenerDerivacionPorFormId($formId);
     }
 
     private function ordenarSolicitudes(array $solicitudes, string $criterio): array

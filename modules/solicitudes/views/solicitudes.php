@@ -320,14 +320,14 @@ array_push(
         @media (min-width: 992px) {
             .prefactura-modal-body {
                 display: grid;
-                grid-template-columns: minmax(260px, 360px) 1fr;
+                grid-template-columns: 1fr;
                 align-items: flex-start;
             }
 
             .prefactura-content-wrapper {
-                max-height: calc(80vh - 140px);
                 overflow-y: auto;
                 padding-right: 0.25rem;
+                grid-column: 1 / -1;
             }
         }
 
@@ -711,37 +711,44 @@ array_push(
     </div>
 
     <?php
-    $estados = [
-        'Recibido' => 'recibido',
-        'Llamado' => 'llamado',
-        'En atención' => 'en-atencion',
-        'Revisión Códigos' => 'revision-codigos',
-        'Docs Completos' => 'docs-completos',
-        'Aprobación Anestesia' => 'aprobacion-anestesia',
-        'Listo para Agenda' => 'listo-para-agenda',
-    ];
-    $colores = [
-        'recibido' => 'primary',
-        'llamado' => 'warning',
-        'en-atencion' => 'success',
-        'revision-codigos' => 'info',
-        'docs-completos' => 'success',
-        'aprobacion-anestesia' => 'warning',
-        'listo-para-agenda' => 'dark',
-    ];
+    $columnasConfig = $kanbanColumns ?? [];
+    $stagesConfig = $kanbanStages ?? [];
+
+    $estadoColumnas = [];
+    foreach ($stagesConfig as $stage) {
+        $slugColumna = $stage['column'] ?? $stage['slug'] ?? null;
+        if (!$slugColumna || isset($estadoColumnas[$slugColumna])) {
+            continue;
+        }
+
+        $meta = $columnasConfig[$slugColumna] ?? [];
+        $estadoColumnas[$slugColumna] = [
+            'label' => $meta['label'] ?? ucwords(str_replace('-', ' ', $slugColumna)),
+            'slug' => $slugColumna,
+            'color' => $meta['color'] ?? 'secondary',
+        ];
+    }
+
+    if (!isset($estadoColumnas['completado'])) {
+        $estadoColumnas['completado'] = [
+            'label' => 'Completado',
+            'slug' => 'completado',
+            'color' => $columnasConfig['completado']['color'] ?? 'secondary',
+        ];
+    }
     ?>
 
     <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
-        <?php foreach ($estados as $estadoLabel => $estadoId):
-            $color = $colores[$estadoId] ?? 'secondary';
+        <?php foreach ($estadoColumnas as $estadoId => $estadoMeta):
+            $color = $estadoMeta['color'] ?? 'secondary';
             ?>
             <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2">
                 <h5 class="text-center">
-                    <?= htmlspecialchars($estadoLabel, ENT_QUOTES, 'UTF-8') ?>
-                    <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>">0</span>
+                    <?= htmlspecialchars($estadoMeta['label'] ?? $estadoId, ENT_QUOTES, 'UTF-8') ?>
+                    <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>">0</span>
                     <small class="text-muted" id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
                 </h5>
-                <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
+                <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
             </div>
         <?php endforeach; ?>
     </div>
@@ -753,6 +760,7 @@ array_push(
                     <tr>
                         <th>Paciente</th>
                         <th>Detalle</th>
+                        <th>Progreso</th>
                         <th>Estado</th>
                         <th>Pipeline CRM</th>
                         <th>Responsable</th>
@@ -770,14 +778,7 @@ array_push(
     </div>
 
     <?php
-    $estadoMeta = [];
-    foreach ($estados as $label => $slug) {
-        $estadoMeta[$slug] = [
-            'label' => $label,
-            'slug' => $slug,
-            'color' => $colores[$slug] ?? 'secondary',
-        ];
-    }
+    $estadoMeta = $estadoColumnas;
     ?>
 
     <script>
@@ -813,6 +814,7 @@ array_push(
 
     <script>
         window.__solicitudesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+        window.__solicitudesChecklistStages = <?= json_encode($stagesConfig, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
@@ -1182,10 +1184,13 @@ array_push(
                     <div id="prefacturaContent">Cargando información...</div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
-                <button type="button" class="btn btn-warning" id="btnSolicitarCobertura" data-estado="Docs Completos">📤 Solicitar Cobertura</button>
+                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno</button>
+                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">👥 En atención</button>
+                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura" data-estado="Revisión Códigos" data-completado="0">📤 Solicitar Cobertura</button>
+                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">✅ Cobertura exitosa</button>
+                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
             </div>
         </div>
     </div>

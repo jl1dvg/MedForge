@@ -480,6 +480,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const detalleDoctor = item?.doctor || 'Sin doctor';
             const detalleAfiliacion = item?.afiliacion || 'Sin afiliación';
 
+            const progress = item?.checklist_progress || {};
+            const progressPercent = Number.isFinite(progress.percent) ? progress.percent : null;
+            const progressLabel = progressPercent !== null ? `${progressPercent}%` : '—';
+            const nextLabel = progress.next_label || progress.next_slug || '';
+            const progressHtml = `
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-center small text-muted mb-1">
+                        <span>${escapeHtml(progress.completed ?? 0)}/${escapeHtml(progress.total ?? 0)} pasos</span>
+                        <span>${escapeHtml(progressLabel)}</span>
+                    </div>
+                    <div class="progress" style="height:6px;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: ${progressPercent ?? 0}%;" aria-valuenow="${progressPercent ?? 0}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    ${nextLabel ? `<div class="small text-muted mt-1">Próximo: ${escapeHtml(nextLabel)}</div>` : ''}
+                </div>`;
+
             tr.innerHTML = `
                 <td>
                     <div class="fw-semibold">${escapeHtml(item?.full_name ?? 'Paciente sin nombre')}</div>
@@ -490,6 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="small text-muted">${escapeHtml(detalleDoctor)}</div>
                     <div class="small text-muted">${escapeHtml(detalleAfiliacion)}</div>
                 </td>
+                <td>${progressHtml}</td>
                 <td>
                     <span class="badge text-bg-light text-dark">${escapeHtml(item?.estado || 'Sin estado')}</span>
                 </td>

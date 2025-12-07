@@ -258,6 +258,7 @@ function findSolicitudById(id) {
   return store.find((item) => String(item.id) === String(id)) || null;
 }
 
+
 function getQuickColumnElement() {
   return document.getElementById("prefacturaQuickColumn");
 }
@@ -416,6 +417,8 @@ function renderPatientSummaryFallback(solicitudId) {
   const procedimiento = solicitud.procedimiento || "Sin procedimiento";
   const afiliacion =
     solicitud.afiliacion || solicitud.aseguradora || "Sin afiliación";
+  const examen = solicitud.examen_fisico || "No disponible";
+  const plan = solicitud.plan || "No disponible";
   const hcNumber = solicitud.hc_number || "—";
 
   container.innerHTML = `
@@ -438,6 +441,21 @@ function renderPatientSummaryFallback(solicitudId) {
                   )}</span>`
                 : ""
             }
+            <div class="mt-3 p-3 border rounded bg-light text-start w-100">
+                <h6 class="mb-3">📝 Examen Físico y Plan</h6>
+                <div class="mb-3">
+                    <strong>Examen Físico:</strong><br>
+                    <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
+                        ${escapeHtml(examen)}
+                    </div>
+                </div>
+                <div>
+                    <strong>Plan:</strong><br>
+                    <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
+                        ${escapeHtml(plan)}
+                    </div>
+                </div>
+            </div>
         </div>
     `;
   container.classList.remove("d-none");
@@ -535,6 +553,7 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
     `;
 
   modal.show();
+  actualizarBotonesModal(solicitudId);
 
   const { basePath } = getKanbanConfig();
 
@@ -574,6 +593,43 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
     },
     { once: true }
   );
+}
+
+function actualizarBotonesModal(solicitudId) {
+  const solicitud = findSolicitudById(solicitudId);
+  const normalize = (v) =>
+    (v ?? "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+
+  const estado = normalize(solicitud?.estado || solicitud?.kanban_estado);
+
+  const btnGenerarTurno = document.getElementById("btnGenerarTurnoModal");
+  const btnEnAtencion = document.getElementById("btnMarcarAtencionModal");
+  const btnRevisar = document.getElementById("btnRevisarCodigos");
+  const btnCobertura = document.getElementById("btnSolicitarCobertura");
+  const btnCoberturaExitosa = document.getElementById("btnCoberturaExitosa");
+
+  const show = (el, visible) => {
+    if (!el) return;
+    el.classList.toggle("d-none", !visible);
+  };
+
+  show(btnGenerarTurno, estado === "recibida");
+  show(btnEnAtencion, estado === "llamado");
+  show(btnRevisar, estado === "revision-codigos");
+  show(
+    btnCobertura,
+    estado === "recibida" ||
+      estado === "en-atencion" ||
+      estado === "revision-codigos" ||
+      estado === "espera-documentos"
+  );
+  show(btnCoberturaExitosa, estado === "en-atencion" || estado === "revision-codigos");
 }
 
 function handlePrefacturaClick(event) {

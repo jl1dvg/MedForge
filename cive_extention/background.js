@@ -410,26 +410,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'solicitudesEstado') {
         const hcNumber = (request.hcNumber || '').toString().trim();
+        const pageOrigin = (request.pageOrigin || '').toString();
         if (!hcNumber) {
             sendResponse({success: false, error: 'Falta hcNumber'});
             return false;
         }
-        const base = 'https://asistentecive.consulmed.me/api/solicitudes/estado.php';
-        const url = new URL(base);
-        url.searchParams.set('hcNumber', hcNumber);
-        fetch(url.toString(), {
-            method: 'GET',
-            credentials: 'include',
-        })
-            .then((resp) => {
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                return resp.json();
-            })
-            .then((data) => sendResponse({success: true, data}))
-            .catch((error) => {
-                console.error('Error en solicitudesEstado:', error);
-                sendResponse({success: false, error: error.message || 'Error al consultar solicitudes'});
-            });
+        const primaryUrl = new URL('https://asistentecive.consulmed.me/api/solicitudes/estado.php');
+        primaryUrl.searchParams.set('hcNumber', hcNumber);
+
+        const fallbacks = [];
+        if (pageOrigin && /^https?:\/\//i.test(pageOrigin)) {
+            try {
+                const alt = new URL('/api/solicitudes/estado.php', pageOrigin);
+                alt.searchParams.set('hcNumber', hcNumber);
+                fallbacks.push(alt.toString());
+            } catch (e) {
+                // ignore malformed origin
+            }
+        }
+
+        const tryFetch = async (url) => {
+            const resp = await fetch(url, {method: 'GET', credentials: 'include'});
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
+        };
+
+        (async () => {
+            const errors = [];
+            for (const url of [primaryUrl.toString(), ...fallbacks]) {
+                try {
+                    const data = await tryFetch(url);
+                    sendResponse({success: true, data});
+                    return;
+                } catch (err) {
+                    errors.push(err.message || String(err));
+                }
+            }
+            console.error('Error en solicitudesEstado:', errors.join(' | '));
+            sendResponse({success: false, error: errors[errors.length - 1] || 'Error al consultar solicitudes'});
+        })();
         return true;
     }
 
