@@ -48,7 +48,9 @@ function renderAvatar(nombreResponsable, avatarUrl) {
   if (avatarUrl) {
     return `
             <div class="kanban-avatar" data-avatar-root>
-                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(alt)}" loading="lazy" data-avatar-img>
+                <img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(
+      alt
+    )}" loading="lazy" data-avatar-img>
                 <div class="kanban-avatar__placeholder d-none" data-avatar-placeholder>
                     <span>${initials}</span>
                 </div>
@@ -67,35 +69,61 @@ function renderAvatar(nombreResponsable, avatarUrl) {
 
 function hydrateAvatar(container) {
   container
-    .querySelectorAll('.kanban-avatar[data-avatar-root]')
+    .querySelectorAll(".kanban-avatar[data-avatar-root]")
     .forEach((avatar) => {
-      const img = avatar.querySelector('[data-avatar-img]');
-      const placeholder = avatar.querySelector('[data-avatar-placeholder]');
+      const img = avatar.querySelector("[data-avatar-img]");
+      const placeholder = avatar.querySelector("[data-avatar-placeholder]");
 
       if (!placeholder) {
         return;
       }
 
       if (!img) {
-        placeholder.classList.remove('d-none');
-        avatar.classList.add('kanban-avatar--placeholder');
+        placeholder.classList.remove("d-none");
+        avatar.classList.add("kanban-avatar--placeholder");
         return;
       }
 
       const showPlaceholder = () => {
-        placeholder.classList.remove('d-none');
-        avatar.classList.add('kanban-avatar--placeholder');
+        placeholder.classList.remove("d-none");
+        avatar.classList.add("kanban-avatar--placeholder");
         if (img.parentElement === avatar) {
           img.remove();
         }
       };
 
-      img.addEventListener('error', showPlaceholder, { once: true });
+      img.addEventListener("error", showPlaceholder, { once: true });
 
       if (img.complete && img.naturalWidth === 0) {
         showPlaceholder();
       }
     });
+}
+
+function slugifyEstado(value) {
+  return (value ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function estadoLabelFromSlug(slug) {
+  const meta = window.__solicitudesEstadosMeta ?? {};
+  if (!slug) {
+    return "Sin estado";
+  }
+
+  const key = slugifyEstado(slug);
+  const entry = meta[key] || meta[slug];
+  if (entry && entry.label) {
+    return entry.label;
+  }
+
+  return slug;
 }
 
 function formatBadge(label, value, icon) {
@@ -118,12 +146,7 @@ const TURNO_BUTTON_LABELS = {
 };
 
 function normalizarEstado(value) {
-  return (value ?? "")
-    .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
+  return slugifyEstado(value);
 }
 
 function applyTurnoButtonState(button, shouldRecall) {
@@ -253,6 +276,11 @@ export function renderKanban(data, callbackEstadoActualizado) {
     col.innerHTML = "";
   });
 
+  const onEstadoChange =
+    typeof callbackEstadoActualizado === "function"
+      ? callbackEstadoActualizado
+      : () => Promise.resolve();
+
   const hoy = new Date();
 
   data.forEach((solicitud) => {
@@ -260,10 +288,17 @@ export function renderKanban(data, callbackEstadoActualizado) {
     tarjeta.className =
       "kanban-card border p-2 mb-2 rounded bg-light view-details";
     tarjeta.setAttribute("draggable", "true");
+    const estadoSlug =
+      slugifyEstado(solicitud.kanban_estado ?? solicitud.estado) || "";
+    const estadoLabel =
+      solicitud.estado_label ??
+      solicitud.kanban_estado_label ??
+      estadoLabelFromSlug(estadoSlug);
     tarjeta.dataset.hc = solicitud.hc_number ?? "";
     tarjeta.dataset.form = solicitud.form_id ?? "";
     tarjeta.dataset.secuencia = solicitud.secuencia ?? "";
-    tarjeta.dataset.estado = solicitud.estado ?? "";
+    tarjeta.dataset.estado = estadoSlug;
+    tarjeta.dataset.estadoLabel = estadoLabel;
     tarjeta.dataset.id = solicitud.id ?? "";
     tarjeta.dataset.afiliacion = solicitud.afiliacion ?? "";
     tarjeta.dataset.aseguradora =
@@ -393,31 +428,129 @@ export function renderKanban(data, callbackEstadoActualizado) {
       .filter(Boolean)
       .join("");
 
+    const checklist = Array.isArray(solicitud.checklist)
+      ? solicitud.checklist
+      : [];
+    const checklistProgress = solicitud.checklist_progress || {};
+    const pasosTotales =
+      checklistProgress.total ??
+      (Array.isArray(checklist) ? checklist.length : 0) ??
+      0;
+    const pasosCompletos = checklistProgress.completed ?? 0;
+    const porcentaje =
+      checklistProgress.percent ??
+      (pasosTotales ? Math.round((pasosCompletos / pasosTotales) * 100) : 0);
+    const proximoPaso = checklistProgress.next_label || "Completado";
+    const pendientesCriticos = [
+      "revision-codigos",
+      "espera-documentos",
+      "apto-oftalmologo",
+      "apto-anestesia",
+    ];
+    const checklistPreview = checklist
+      .slice(0, 6)
+      .map((item) => {
+        const slug = slugifyEstado(item.slug);
+        const isCriticalPending =
+          !item.completed && pendientesCriticos.includes(slug);
+
+        if (item.completed) {
+          return `<label class="form-check small mb-1">
+              <input type="checkbox" class="form-check-input" data-checklist-toggle data-etapa-slug="${escapeHtml(
+                item.slug
+              )}" checked ${item.can_toggle ? "" : "disabled"}>
+              <span class="ms-1">✅ ${escapeHtml(item.label)}</span>
+            </label>`;
+        }
+
+        if (isCriticalPending) {
+          return `<div class="small mb-1 text-warning">
+              <i class="mdi mdi-alert-outline me-1"></i>${escapeHtml(
+                item.label
+              )} pendiente
+            </div>`;
+        }
+
+        return `<label class="form-check small mb-1">
+            <input type="checkbox" class="form-check-input" data-checklist-toggle data-etapa-slug="${escapeHtml(
+              item.slug
+            )}" ${item.can_toggle ? "" : "disabled"}>
+            <span class="ms-1">⬜ ${escapeHtml(item.label)}</span>
+          </label>`;
+      })
+      .join("");
+    const checklistHtml =
+      checklist.length > 0
+        ? `<div class="kanban-checklist mt-2">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <small class="text-muted">${escapeHtml(
+                `${pasosCompletos}/${pasosTotales} pasos`
+              )} · Próximo: ${escapeHtml(proximoPaso || "—")}</small>
+              <span class="badge bg-light text-dark">${escapeHtml(
+                `${porcentaje}%`
+              )}</span>
+            </div>
+            <div class="progress progress-thin my-1" style="height: 6px;">
+              <div class="progress-bar bg-success" role="progressbar" style="width: ${porcentaje}%;"
+                aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div class="kanban-checklist-items">${checklistPreview}</div>
+          </div>`
+        : "";
+
+    const metaBadges = [
+      `<span class="badge bg-light text-dark">HC ${escapeHtml(
+        solicitud.hc_number ?? "—"
+      )}</span>`,
+      `<span class="badge bg-light text-dark"><i class="mdi mdi-calendar"></i> ${escapeHtml(
+        fechaFormateada
+      )}</span>`,
+      `<span class="badge bg-light text-dark"><i class="mdi mdi-account-tie-outline"></i> ${escapeHtml(
+        doctor
+      )}</span>`,
+      `<span class="badge bg-light text-dark"><i class="mdi mdi-hospital-building"></i> ${escapeHtml(
+        afiliacion
+      )}</span>`,
+      `<span class="badge bg-light text-dark"><i class="mdi mdi-eye-outline"></i> ${escapeHtml(
+        ojo
+      )}</span>`,
+    ].join(" ");
+
+    const observacionPreview =
+      observacion && observacion.length > 80
+        ? `${observacion.substring(0, 77)}...`
+        : observacion;
+
     tarjeta.innerHTML = `
             <div class="kanban-card-header">
-                ${renderAvatar(avatarNombre, avatarUrl)}
                 <div class="kanban-card-body">
-                    <strong>${escapeHtml(pacienteNombre)}</strong>
-                    <small>🆔 ${escapeHtml(solicitud.hc_number ?? "—")}</small>
-                    <small>📅 ${escapeHtml(
-                      fechaFormateada
-                    )} ${slaBadgeHtml}</small>
+                    <div class="d-flex align-items-start justify-content-between gap-2">
+                        <div>
+                            <strong>${escapeHtml(pacienteNombre)}</strong>
+                            <div class="text-primary fw-bold small">${escapeHtml(
+                              procedimiento
+                            )}</div>
+                        </div>
+                        <div class="text-end small">
+                            ${slaBadgeHtml}
+                            <div class="text-muted">${escapeHtml(
+                              slaSubtitle
+                            )}</div>
+                        </div>
+                    </div>
+                    <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
+                        ${prioridadBadgeHtml}
+                        ${metaBadges}
+                    </div>
                     ${
-                      slaSubtitle
-                        ? `<small>⏱️ ${escapeHtml(slaSubtitle)}</small>`
+                      observacionPreview
+                        ? `<div class="small text-muted mt-1">💬 ${escapeHtml(
+                            observacionPreview
+                          )}</div>`
                         : ""
                     }
-                    <small>🎯 ${prioridadBadgeHtml} <span class="text-muted">${escapeHtml(
-      prioridadOrigenLabel
-    )}</span></small>
-                    <small>🧑‍⚕️ ${escapeHtml(doctor)}</small>
-                    <small>🏥 ${escapeHtml(afiliacion)}</small>
-                    <small>🔍 <span class="text-primary fw-bold">${escapeHtml(
-                      procedimiento
-                    )}</span></small>
-                    <small>👁️ ${escapeHtml(ojo)}</small>
-                    <small>💬 ${escapeHtml(observacion)}</small>
                     ${alertsHtml}
+                    ${checklistHtml}
                 </div>
             </div>
             <div class="kanban-card-crm mt-2">
@@ -427,12 +560,6 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 <div class="crm-meta">
                     <span><i class="mdi mdi-account-tie-outline"></i>${escapeHtml(
                       responsable
-                    )}</span>
-                    <span><i class="mdi mdi-phone"></i>${escapeHtml(
-                      contactoTelefono
-                    )}</span>
-                    <span><i class="mdi mdi-email-outline"></i>${escapeHtml(
-                      contactoCorreo
                     )}</span>
                     ${
                       fuente
@@ -449,8 +576,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
     hydrateAvatar(tarjeta);
 
     const turnoAsignado = formatTurno(solicitud.turno);
-    const estadoActual = (solicitud.estado ?? "").toString();
-    const estadoNormalizado = normalizarEstado(estadoActual);
+    const estadoActualSlug = estadoSlug;
+    const estadoActualLabel = estadoLabel;
+    const estadoNormalizado = normalizarEstado(estadoActualSlug);
 
     const acciones = document.createElement("div");
     acciones.className =
@@ -459,7 +587,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
     const resumenEstado = document.createElement("span");
     resumenEstado.className = "badge badge-estado text-bg-light text-wrap";
     resumenEstado.textContent =
-      estadoActual !== "" ? estadoActual : "Sin estado";
+      estadoActualLabel !== "" ? estadoActualLabel : "Sin estado";
     acciones.appendChild(resumenEstado);
 
     const badgeTurno = document.createElement("span");
@@ -561,13 +689,54 @@ export function renderKanban(data, callbackEstadoActualizado) {
     crmButton.dataset.pacienteNombre = solicitud.full_name ?? "";
     tarjeta.appendChild(crmButton);
 
+    tarjeta.querySelectorAll("[data-checklist-toggle]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const slug = input.dataset.etapaSlug || "";
+        const marcado = input.checked;
+        input.disabled = true;
+
+        const resultado = onEstadoChange(
+          solicitud.id,
+          solicitud.form_id,
+          slug,
+          { completado: marcado }
+        );
+
+        const revert = () => {
+          input.checked = !marcado;
+        };
+
+        if (resultado && typeof resultado.then === "function") {
+          resultado
+            .then((resp) => {
+              solicitud.checklist = resp?.checklist ?? solicitud.checklist;
+              solicitud.checklist_progress =
+                resp?.checklist_progress ?? solicitud.checklist_progress;
+              if (typeof window.aplicarFiltros === "function") {
+                window.aplicarFiltros();
+              }
+            })
+            .catch((error) => {
+              revert();
+              if (!error || !error.__estadoNotificado) {
+                const mensaje =
+                  (error && error.message) ||
+                  "No se pudo actualizar el checklist";
+                showToast(mensaje, false);
+              }
+            })
+            .finally(() => {
+              input.disabled = false;
+            });
+        } else {
+          input.disabled = false;
+        }
+      });
+    });
+
     const estadoId =
       "kanban-" +
-      (solicitud.estado || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-");
+      slugifyEstado(solicitud.kanban_estado ?? solicitud.estado ?? estadoLabel);
 
     const columna = document.getElementById(estadoId);
     if (columna) {
@@ -584,6 +753,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const columnaAnterior = evt.from;
         const posicionAnterior = evt.oldIndex;
         const estadoAnterior = (item.dataset.estado ?? "").toString();
+        const estadoAnteriorLabel =
+          item.dataset.estadoLabel || estadoLabelFromSlug(estadoAnterior);
         const badgeEstado = item.querySelector(
           ".badge.badge-estado, .badge-estado"
         );
@@ -596,22 +767,20 @@ export function renderKanban(data, callbackEstadoActualizado) {
           ? botonTurno.dataset.hasTurno === "1"
           : false;
 
-        const nuevoEstado = evt.to.id
-          .replace("kanban-", "")
-          .replace(/-/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase());
+        const nuevoEstado = slugifyEstado(evt.to.id.replace("kanban-", ""));
 
-        const aplicarEstadoEnUI = (valor) => {
-          const etiqueta = (valor ?? "").toString();
-          item.dataset.estado = etiqueta;
+        const aplicarEstadoEnUI = (slug, label) => {
+          const etiqueta =
+            label || estadoLabelFromSlug(slug) || (slug ?? "").toString();
+          item.dataset.estado = slug;
+          item.dataset.estadoLabel = etiqueta;
           if (badgeEstado) {
-            badgeEstado.textContent =
-              etiqueta !== "" ? etiqueta : "Sin estado";
+            badgeEstado.textContent = etiqueta !== "" ? etiqueta : "Sin estado";
           }
         };
 
         const revertirMovimiento = () => {
-          aplicarEstadoEnUI(estadoAnterior);
+          aplicarEstadoEnUI(estadoAnterior, estadoAnteriorLabel);
           if (badgeTurno) {
             badgeTurno.textContent = turnoTextoAnterior;
           }
@@ -635,10 +804,11 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
         let resultado;
         try {
-          resultado = callbackEstadoActualizado(
+          resultado = onEstadoChange(
             item.dataset.id,
             item.dataset.form,
-            nuevoEstado
+            nuevoEstado,
+            {}
           );
         } catch (error) {
           revertirMovimiento();
@@ -654,8 +824,20 @@ export function renderKanban(data, callbackEstadoActualizado) {
         if (resultado && typeof resultado.then === "function") {
           resultado
             .then((response) => {
-              const estadoServidor = (response?.estado ?? nuevoEstado).toString();
-              aplicarEstadoEnUI(estadoServidor);
+              const estadoServidor = (
+                response?.estado ?? nuevoEstado
+              ).toString();
+              const estadoServidorLabel =
+                response?.estado_label ?? estadoLabelFromSlug(estadoServidor);
+              aplicarEstadoEnUI(estadoServidor, estadoServidorLabel);
+
+              const destinoId = "kanban-" + slugifyEstado(estadoServidor);
+              if (destinoId && destinoId !== evt.to.id) {
+                const destino = document.getElementById(destinoId);
+                if (destino) {
+                  destino.appendChild(item);
+                }
+              }
 
               if (badgeTurno) {
                 const turnoActual = formatTurno(response?.turno);
@@ -677,8 +859,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
               if (!error || !error.__estadoNotificado) {
                 const mensaje =
-                  (error && error.message) ||
-                  "No se pudo actualizar el estado";
+                  (error && error.message) || "No se pudo actualizar el estado";
                 showToast(mensaje, false);
               }
             });

@@ -15,6 +15,16 @@ export function showToast(message, isSuccess = true, timeoutMs = 4000) {
     `;
 
     container.appendChild(toast);
+
+    const closeBtn = toast.querySelector('.btn-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => toast.remove());
+    }
+    toast.addEventListener('click', event => {
+        if (event.target === toast) {
+            toast.remove();
+        }
+    });
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
         setTimeout(() => toast.remove(), timeoutMs);
     }

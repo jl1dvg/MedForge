@@ -115,7 +115,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
     <li class="list-group-item">
         <i class="bi bi-gender-ambiguous"></i> <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?><br>
         <i class="bi bi-shield-check"></i> <strong>Afiliación:</strong> <?= htmlspecialchars($paciente['afiliacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?><br>
-        <i class="bi bi-cake-fill"></i> <strong>Fecha Nacimiento:</strong>
+        <i class="bi bi-cake"></i> <strong>Fecha Nacimiento:</strong>
         <?php
         if ($fechaNacimiento) {
             try {
@@ -178,5 +178,26 @@ if (!empty($derivacion['fecha_vigencia'])) {
             </li>
             <li class="list-group-item"><i class="bi bi-clipboard2-pulse"></i> <strong>Diagnóstico:</strong> <?= htmlspecialchars($derivacion['diagnostico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
         </ul>
+    </div>
+</div>
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="p-3 border rounded bg-light">
+            <h5 class="mb-3">📝 Examen Físico y Plan</h5>
+
+            <div class="mb-3">
+                <strong>Examen Físico:</strong><br>
+                <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
+                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </div>
+            </div>
+
+            <div>
+                <strong>Plan:</strong><br>
+                <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
+                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
