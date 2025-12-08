@@ -180,6 +180,28 @@ if (!empty($derivacion['fecha_vigencia'])) {
         </ul>
     </div>
 </div>
+<div class="row g-3 mt-2">
+    <div class="col-12 col-md-6">
+        <h5>👁️ Datos para Oftalmología</h5>
+        <ul class="list-group mb-3">
+            <li class="list-group-item"><strong>Lente / Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Marca:</strong> <?= htmlspecialchars($solicitud['lente_marca'] ?? ($solicitud['lente_brand'] ?? 'No registrada'), ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Modelo:</strong> <?= htmlspecialchars($solicitud['lente_modelo'] ?? ($solicitud['lente_model'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?></li>
+        </ul>
+    </div>
+    <div class="col-12 col-md-6">
+        <h5>🩺 Paso preanestesia</h5>
+        <ul class="list-group mb-3">
+            <li class="list-group-item"><strong>Estado actual:</strong> <?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Cirujano responsable:</strong> <?= htmlspecialchars($solicitud['doctor'] ?? 'No asignado', ENT_QUOTES, 'UTF-8') ?></li>
+            <li class="list-group-item"><strong>Duración estimada:</strong> <?= htmlspecialchars($solicitud['duracion'] ?? '—', ENT_QUOTES, 'UTF-8') ?> minutos</li>
+        </ul>
+    </div>
+</div>
 <div class="row mt-4">
     <div class="col-12">
         <div class="p-3 border rounded bg-light">
