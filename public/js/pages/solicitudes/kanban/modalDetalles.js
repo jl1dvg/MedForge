@@ -5,6 +5,8 @@ import {
   getEstadosMeta,
 } from "./config.js";
 import { formatTurno } from "./turnero.js";
+import { actualizarEstadoSolicitud } from "./estado.js";
+import { showToast } from "./toast.js";
 
 let prefacturaListenerAttached = false;
 const STATUS_BADGE_TEXT_DARK = new Set(["warning", "light", "info"]);
@@ -258,9 +260,150 @@ function findSolicitudById(id) {
   return store.find((item) => String(item.id) === String(id)) || null;
 }
 
+function normalizeEstado(value) {
+  return (value ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+}
+
 
 function getQuickColumnElement() {
   return document.getElementById("prefacturaQuickColumn");
+}
+
+function buildContextualActionsHtml(solicitud = {}) {
+  const estado = normalizeEstado(solicitud.estado || solicitud.kanban_estado);
+  if (!estado) {
+    return "";
+  }
+
+  const baseInfo = {
+    paciente: solicitud.full_name || "Paciente sin nombre",
+    procedimiento: solicitud.procedimiento || "Sin procedimiento",
+    ojo: solicitud.ojo || "—",
+    producto: solicitud.producto || solicitud.lente_nombre || "No registrado",
+    marca: solicitud.lente_marca || solicitud.lente_brand || solicitud.producto || "No registrada",
+    modelo: solicitud.lente_modelo || solicitud.lente_model || "No registrado",
+    poder:
+      solicitud.lente_poder ||
+      solicitud.lente_power ||
+      solicitud.poder ||
+      solicitud.lente_dioptria ||
+      "No especificado",
+    observacion: solicitud.observacion || "Sin observaciones",
+  };
+
+  const blocks = [];
+
+  if (estado === "apto-anestesia") {
+    blocks.push(`
+        <div class="alert alert-warning border d-flex flex-column gap-2" id="prefacturaAnestesiaPanel">
+            <div class="d-flex align-items-center gap-2">
+                <i class="mdi mdi-stethoscope fs-4 text-warning"></i>
+                <div>
+                    <strong>Revisión de anestesia pendiente</strong>
+                    <p class="mb-0 text-muted">Confirma que el paciente ya fue evaluado por anestesia para avanzar.</p>
+                </div>
+            </div>
+            <button class="btn btn-warning w-100" data-context-action="confirmar-anestesia" data-id="${escapeHtml(
+              solicitud.id
+            )}" data-form-id="${escapeHtml(
+      solicitud.form_id
+    )}">
+                <i class="mdi mdi-check-decagram"></i> Marcar como apto anestesia
+            </button>
+        </div>
+    `);
+  }
+
+  if (estado === "apto-oftalmologo") {
+    blocks.push(`
+        <div class="alert alert-info border" id="prefacturaOftalmoPanel">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="mdi mdi-eye-outline fs-4 text-info"></i>
+                <div>
+                    <strong>Validación del oftalmólogo</strong>
+                    <p class="mb-0 text-muted">Revisa y confirma los datos del lente intraocular antes de pasar a anestesia.</p>
+                </div>
+            </div>
+            <div class="bg-white border rounded p-2 mb-2">
+                <div class="row g-2">
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Lente / Producto</small>
+                        <strong>${escapeHtml(baseInfo.producto)}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Ojo</small>
+                        <strong>${escapeHtml(baseInfo.ojo)}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Marca</small>
+                        <strong>${escapeHtml(baseInfo.marca)}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Modelo</small>
+                        <strong>${escapeHtml(baseInfo.modelo)}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Poder</small>
+                        <strong>${escapeHtml(baseInfo.poder)}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Observación</small>
+                        <strong>${escapeHtml(baseInfo.observacion)}</strong>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-info w-100" data-context-action="confirmar-oftalmo" data-id="${escapeHtml(
+              solicitud.id
+            )}" data-form-id="${escapeHtml(
+      solicitud.form_id
+    )}">
+                <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo
+            </button>
+        </div>
+    `);
+  }
+
+  if (estado === "listo-para-agenda") {
+    const basePath = getKanbanConfig().basePath || "";
+    const agendaUrl = `/reports/protocolo/pdf?hc_number=${encodeURIComponent(
+      solicitud.hc_number || ""
+    )}&form_id=${encodeURIComponent(solicitud.form_id || "")}`;
+    blocks.push(`
+        <div class="alert alert-dark border d-flex flex-column gap-2" id="prefacturaAgendaPanel">
+            <div class="d-flex align-items-center gap-2">
+                <i class="mdi mdi-calendar-clock fs-4 text-dark"></i>
+                <div>
+                    <strong>Listo para agendar</strong>
+                    <p class="mb-0 text-muted">Genera la orden de agenda y expórtala en PDF para coordinación.</p>
+                </div>
+            </div>
+            <div class="d-flex flex-column flex-md-row gap-2">
+                <button class="btn btn-outline-dark w-100" data-context-action="generar-agenda" data-id="${escapeHtml(
+                  solicitud.id
+                )}" data-form-id="${escapeHtml(
+      solicitud.form_id
+    )}" data-base-path="${escapeHtml(basePath)}">
+                    <i class="mdi mdi-calendar-plus"></i> Crear agenda
+                </button>
+                <a class="btn btn-dark w-100" href="${agendaUrl}" target="_blank" rel="noopener">
+                    <i class="mdi mdi-file-pdf-box"></i> Exportar protocolo PDF
+                </a>
+            </div>
+        </div>
+    `);
+  }
+
+  if (!blocks.length) {
+    return "";
+  }
+
+  return `<div class="mb-3 d-flex flex-column gap-2">${blocks.join("")}</div>`;
 }
 
 function syncQuickColumnVisibility() {
@@ -569,7 +712,9 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
       return response.text();
     })
     .then((html) => {
-      content.innerHTML = html;
+      const solicitud = findSolicitudById(solicitudId) || {};
+      const contextual = buildContextualActionsHtml(solicitud);
+      content.innerHTML = `${contextual}${html}`;
       relocatePatientAlert(solicitudId);
     })
     .catch((error) => {
@@ -645,6 +790,54 @@ function handlePrefacturaClick(event) {
   abrirPrefactura({ hc, formId, solicitudId });
 }
 
+function handleContextualAction(event) {
+  const button = event.target.closest("[data-context-action]");
+  if (!button) {
+    return;
+  }
+
+  const action = button.dataset.contextAction;
+  const solicitudId = button.dataset.id;
+  const formId = button.dataset.formId;
+  const basePath = button.dataset.basePath || getKanbanConfig().basePath;
+
+  const solicitud = findSolicitudById(solicitudId) || {};
+
+  if (action === "confirmar-oftalmo") {
+    actualizarEstadoSolicitud(
+      solicitudId,
+      formId,
+      "apto-anestesia",
+      getDataStore(),
+      window.aplicarFiltros
+    );
+    return;
+  }
+
+  if (action === "confirmar-anestesia") {
+    actualizarEstadoSolicitud(
+      solicitudId,
+      formId,
+      "listo-para-agenda",
+      getDataStore(),
+      window.aplicarFiltros
+    );
+    return;
+  }
+
+  if (action === "generar-agenda") {
+    if (!solicitudId || !formId) {
+      showToast("No se puede generar la agenda sin solicitud válida", false);
+      return;
+    }
+
+    const url = `${basePath}/agenda?hc_number=${encodeURIComponent(
+      solicitud.hc_number || ""
+    )}&form_id=${encodeURIComponent(formId)}`;
+    window.open(url, "_blank", "noopener");
+  }
+}
+
 export function inicializarModalDetalles() {
   if (prefacturaListenerAttached) {
     return;
@@ -652,4 +845,5 @@ export function inicializarModalDetalles() {
 
   prefacturaListenerAttached = true;
   document.addEventListener("click", handlePrefacturaClick);
+  document.addEventListener("click", handleContextualAction);
 }
