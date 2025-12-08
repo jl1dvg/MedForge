@@ -107,14 +107,14 @@ class SolicitudEstadoService
         }
 
         $ids = array_values(array_unique(array_filter(array_map(static function ($row) {
-            return isset($row['id']) ? (int) $row['id'] : null;
+            return isset($row['id']) ? (int)$row['id'] : null;
         }, $solicitudes))));
 
         $rowsBySolicitud = $this->fetchChecklistRows($ids);
 
         foreach ($solicitudes as &$row) {
-            $solicitudId = isset($row['id']) ? (int) $row['id'] : 0;
-            $legacyEstado = isset($row['estado']) ? (string) $row['estado'] : '';
+            $solicitudId = isset($row['id']) ? (int)$row['id'] : 0;
+            $legacyEstado = isset($row['estado']) ? (string)$row['estado'] : '';
             $checklist = $this->buildChecklistForSolicitud(
                 $solicitudId,
                 $rowsBySolicitud[$solicitudId] ?? [],
@@ -161,14 +161,15 @@ class SolicitudEstadoService
      * @return array<string, mixed>
      */
     public function actualizarEtapa(
-        int $solicitudId,
-        string $etapaSlug,
-        bool $completado,
-        ?int $usuarioId,
-        array $userPermissions = [],
-        bool $force = false,
+        int     $solicitudId,
+        string  $etapaSlug,
+        bool    $completado,
+        ?int    $usuarioId,
+        array   $userPermissions = [],
+        bool    $force = false,
         ?string $nota = null
-    ): array {
+    ): array
+    {
         $slug = $this->normalizeSlug($etapaSlug);
         $stage = $this->getStageBySlug($slug);
 
@@ -274,7 +275,7 @@ class SolicitudEstadoService
 
         $grouped = [];
         foreach ($rows as $row) {
-            $sid = (int) ($row['solicitud_id'] ?? 0);
+            $sid = (int)($row['solicitud_id'] ?? 0);
             if (!isset($grouped[$sid])) {
                 $grouped[$sid] = [];
             }
@@ -306,12 +307,19 @@ class SolicitudEstadoService
             $map[$slug] = $row;
         }
 
+        $hasChecklistRows = !empty($map);
+
         $checklist = [];
         foreach ($stages as $stage) {
             $slug = $stage['slug'];
             $row = $map[$slug] ?? [];
             $completed = !empty($row['completado_at']);
-            if (!$completed && $legacyOrder !== null && ($stage['order'] ?? 0) <= $legacyOrder) {
+            if (
+                !$completed &&
+                !$hasChecklistRows &&
+                $legacyOrder !== null &&
+                ($stage['order'] ?? 0) <= $legacyOrder
+            ) {
                 $completed = true;
             }
 
@@ -321,7 +329,7 @@ class SolicitudEstadoService
                 'label' => $stage['label'],
                 'order' => $stage['order'],
                 'column' => $stage['column'],
-                'required' => (bool) ($stage['required'] ?? true),
+                'required' => (bool)($stage['required'] ?? true),
                 'completed' => $completed,
                 'completado_at' => $row['completado_at'] ?? null,
                 'completado_por' => $row['completado_por'] ?? null,
@@ -511,13 +519,14 @@ class SolicitudEstadoService
     }
 
     private function markSingle(
-        int $solicitudId,
-        string $slug,
-        ?int $usuarioId,
+        int     $solicitudId,
+        string  $slug,
+        ?int    $usuarioId,
         ?string $nota,
-        bool $completed = true,
+        bool    $completed = true,
         ?string $timestamp = null
-    ): void {
+    ): void
+    {
         $stmt = $this->pdo->prepare(
             'INSERT INTO solicitud_checklist (solicitud_id, etapa_slug, completado_at, completado_por, nota)
              VALUES (:solicitud_id, :etapa_slug, :completado_at, :completado_por, :nota)
