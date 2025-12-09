@@ -730,7 +730,18 @@ class SolicitudController extends BaseController
 
     public function actualizarEstado(): void
     {
+        $logDir = realpath(__DIR__ . '/../../..') . '/storage/logs';
+        $logFile = $logDir . '/solicitudes_estado.log';
+        $log = static function (string $message) use ($logDir, $logFile): void {
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0777, true);
+            }
+            $prefix = '[' . date('c') . '] ';
+            @file_put_contents($logFile, $prefix . $message . PHP_EOL, FILE_APPEND);
+        };
+
         if (!$this->isAuthenticated()) {
+            $log('auth_failed');
             $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
             return;
         }
@@ -741,25 +752,42 @@ class SolicitudController extends BaseController
         }
 
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        $formId = isset($payload['form_id']) ? (int) $payload['form_id'] : 0;
         $estado = trim($payload['estado'] ?? '');
         $nota = isset($payload['nota']) ? trim((string) $payload['nota']) : null;
         $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
         $force = isset($payload['force']) ? (bool) $payload['force'] : false;
 
+        if ($id <= 0 && $formId > 0) {
+            $id = (int) $this->solicitudModel->findIdByFormId($formId);
+        }
+
         if ($id <= 0 || $estado === '') {
+            $log('invalid_payload id=' . json_encode($id) . ' estado=' . json_encode($estado) . ' raw=' . json_encode($payload));
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
             return;
         }
 
         try {
-            if (in_array($estado, ['apto-oftalmologo', 'apto-anestesia'], true)) {
-                error_log(sprintf(
-                    'actualizarEstado solicitud_id=%d etapa=%s completado=%s force=%s user=%s',
+            $esApto = in_array($estado, ['apto-oftalmologo', 'apto-anestesia'], true);
+
+            // Botón de confirmación debe marcar (nunca desmarcar) la etapa apto
+            if ($esApto && !$completado) {
+                $completado = true;
+                $force = true;
+                $payload['completado'] = true;
+                $payload['force'] = true;
+            }
+
+            if ($esApto) {
+                $log(sprintf(
+                    'actualizarEstado solicitud_id=%d etapa=%s completado=%s force=%s user=%s payload=%s',
                     $id,
                     $estado,
                     $completado ? '1' : '0',
                     $force ? '1' : '0',
-                    $this->getCurrentUserId() ?? 'anon'
+                    $this->getCurrentUserId() ?? 'anon',
+                    json_encode($payload)
                 ));
             }
 
@@ -781,6 +809,14 @@ class SolicitudController extends BaseController
                 PusherConfigService::EVENT_STATUS_UPDATED
             );
 
+            $log(sprintf(
+                'estado_actualizado_ok solicitud_id=%d estado=%s kanban=%s checklist=%s',
+                $id,
+                $estado,
+                $resultado['kanban_estado'] ?? $estado,
+                json_encode($resultado['checklist_progress'] ?? [])
+            ));
+
             $this->json([
                 'success' => true,
                 'estado' => $resultado['kanban_estado'] ?? $estado,
@@ -791,8 +827,20 @@ class SolicitudController extends BaseController
                 'estado_anterior' => $resultado['estado_anterior'] ?? null,
             ]);
         } catch (RuntimeException $e) {
+            $log(sprintf(
+                'estado_actualizado_runtime_error solicitud_id=%d estado=%s error=%s',
+                $id,
+                $estado,
+                $e->getMessage()
+            ));
             $this->json(['success' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
+            $log(sprintf(
+                'estado_actualizado_error solicitud_id=%d estado=%s error=%s',
+                $id,
+                $estado,
+                $e->getMessage()
+            ));
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
     }

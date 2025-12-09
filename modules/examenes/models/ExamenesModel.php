@@ -234,7 +234,13 @@ class ExamenesModel
 
     public function obtenerDatosYCirujanoSolicitud($form_id, $hc)
     {
-        $sql = "SELECT sp.*, u.*
+        $sql = "SELECT 
+                sp.*,
+                sp.id AS solicitud_id,
+                sp.id AS id,
+                u.id AS user_id,
+                u.nombre AS user_nombre,
+                u.email AS user_email
             FROM solicitud_procedimiento sp
             LEFT JOIN users u 
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')

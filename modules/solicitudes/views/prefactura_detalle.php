@@ -142,7 +142,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
 </div>
 
 <script>
-(() => {
+document.addEventListener('DOMContentLoaded', () => {
     const callout = document.getElementById('prefacturaCalloutPreanestesia');
     const estadoSpan = document.getElementById('prefacturaEstadoActual');
     const btnAptoAnestesia = document.getElementById('btnPrefacturaConfirmarAnestesia');
@@ -264,7 +264,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
             }
         });
     }
-})();
+});
 </script>
 
 <div class="row g-3">
@@ -392,7 +392,8 @@ if (!empty($derivacion['fecha_vigencia'])) {
 <?php
     $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
     $esAptoAnestesia = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'completado'], true);
-    $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+$calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+$solicitudId = $solicitud['solicitud_id'] ?? $solicitud['id'] ?? $solicitud['form_id'] ?? '';
 ?>
 <div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
     <h5 class="d-flex align-items-center justify-content-between mb-2">
@@ -400,7 +401,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
         <button type="button"
                 class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
                 data-context-action="confirmar-anestesia"
-                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                 <?= $esAptoAnestesia ? 'disabled' : '' ?>
@@ -417,14 +418,14 @@ if (!empty($derivacion['fecha_vigencia'])) {
     <div class="box-footer">
         <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
                 data-context-action="editar-lio"
-                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
         </button>
         <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
                 data-context-action="confirmar-oftalmo"
-                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo

@@ -321,7 +321,14 @@ class SolicitudModel
 
     public function obtenerDatosYCirujanoSolicitud($form_id, $hc)
     {
-        $sql = "SELECT sp.*, u.*
+        // Alias de ids para no confundir id de solicitud con id de usuario (sp.id vs u.id)
+        $sql = "SELECT 
+                sp.*,
+                sp.id AS solicitud_id,
+                sp.id AS id,
+                u.id AS user_id,
+                u.nombre AS user_nombre,
+                u.email AS user_email
             FROM solicitud_procedimiento sp
             LEFT JOIN users u 
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
@@ -332,6 +339,20 @@ class SolicitudModel
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$form_id, $hc]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function findIdByFormId(int $formId): ?int
+    {
+        if ($formId <= 0) {
+            return null;
+        }
+
+        $sql = 'SELECT id FROM solicitud_procedimiento WHERE form_id = ? ORDER BY created_at DESC LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$formId]);
+        $result = $stmt->fetchColumn();
+
+        return $result !== false ? (int) $result : null;
     }
 
     public function actualizarEstado(int $id, string $estado): array
