@@ -964,8 +964,13 @@ function handleContextualAction(event) {
       "apto-oftalmologo",
       getDataStore(),
       window.aplicarFiltros,
-      { force: true }
-    );
+      { force: true, completado: true }
+    )
+      .then(() => {
+        renderEstadoContext(solicitudId);
+        renderPatientSummaryFallback(solicitudId);
+      })
+      .catch(() => {});
     return;
   }
 
@@ -976,8 +981,13 @@ function handleContextualAction(event) {
       "apto-anestesia",
       getDataStore(),
       window.aplicarFiltros,
-      { force: true }
-    );
+      { force: true, completado: true }
+    )
+      .then(() => {
+        renderEstadoContext(solicitudId);
+        renderPatientSummaryFallback(solicitudId);
+      })
+      .catch(() => {});
     return;
   }
 

@@ -212,7 +212,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
         }
     };
 
-    // Confirmar plan por oftalmólogo: solo marca checklist/estado apto-oftalmologo, no mueve a anestesia.
+    // Confirmar plan por oftalmólogo: marca apto-oftalmologo y deja que el backend compute el siguiente pendiente.
     if (btnAptoOftalmo) {
         btnAptoOftalmo.addEventListener('click', async () => {
             const id = btnAptoOftalmo.dataset.id;
@@ -221,22 +221,8 @@ if (!empty($derivacion['fecha_vigencia'])) {
             btnAptoOftalmo.disabled = true;
             try {
                 const resp = await postEstado({id, formId, estado: 'apto-oftalmologo'});
-                // Actualiza store pero no cambia el callout (es pre-anestesia).
-                const store = window.__solicitudesKanban;
-                if (Array.isArray(store)) {
-                    const item = store.find((s) => String(s.id) === String(id));
-                    if (item) {
-                        item.estado = resp.estado || 'apto-oftalmologo';
-                        item.estado_label = resp.estado_label || resp.estado || 'apto-oftalmologo';
-                        if (resp.checklist) item.checklist = resp.checklist;
-                        if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
-                    }
-                }
-                if (typeof window.aplicarFiltros === 'function') {
-                    try { window.aplicarFiltros(); } catch (e) {}
-                } else {
-                    setTimeout(() => window.location.reload(), 400);
-                }
+                actualizarUI(resp.estado || 'apto-oftalmologo', 'oftalmo', resp);
+                setTimeout(() => window.location.reload(), 300);
             } catch (error) {
                 console.error('No se pudo marcar apto oftalmólogo:', error);
                 alert(error?.message || 'No se pudo marcar apto oftalmólogo.');
@@ -245,7 +231,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
         });
     }
 
-    // Confirmar apto anestesia: mueve a listo-para-agenda y actualiza callout.
+    // Confirmar apto anestesia: marca apto-anestesia y deja que el backend compute siguiente (ej. listo-para-agenda).
     if (btnAptoAnestesia) {
         btnAptoAnestesia.addEventListener('click', async () => {
             const id = btnAptoAnestesia.dataset.id;
@@ -253,8 +239,9 @@ if (!empty($derivacion['fecha_vigencia'])) {
             if (!id || !formId) return;
             btnAptoAnestesia.disabled = true;
             try {
-                const resp = await postEstado({id, formId, estado: 'listo-para-agenda'});
-                actualizarUI(resp.estado || 'listo-para-agenda', 'anestesia', resp);
+                const resp = await postEstado({id, formId, estado: 'apto-anestesia'});
+                actualizarUI(resp.estado || 'apto-anestesia', 'anestesia', resp);
+                setTimeout(() => window.location.reload(), 300);
             } catch (error) {
                 console.error('No se pudo marcar apto anestesia:', error);
                 alert(error?.message || 'No se pudo marcar apto anestesia.');
