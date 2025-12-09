@@ -738,18 +738,15 @@ async function obtenerLentesCatalogo() {
       window.location.origin) ||
     "";
 
-  const variants = new Set();
-  // Ruta estándar en el mismo host
-  variants.add("/api/lentes");
-  variants.add("/api/lentes/index.php");
+  const variants = new Set([
+    ...buildApiCandidates("/api/lentes"),
+    ...buildApiCandidates("/api/lentes/index.php"),
+  ]);
 
-  // Si estamos bajo /solicitudes, intentar sin prefijo y con él
-  variants.add("/solicitudes/api/lentes");
-  variants.add("/solicitudes/api/lentes/index.php");
-
-  // Rutas completas con origen actual
   if (origin) {
-    variants.forEach((p) => variants.add(`${origin}${p}`));
+    Array.from(variants)
+      .filter((p) => typeof p === "string" && p.startsWith("/"))
+      .forEach((p) => variants.add(`${origin}${p}`));
   }
 
   // Fallback absoluto a dominio de API (evitar si hay CORS)
