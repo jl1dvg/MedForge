@@ -961,9 +961,10 @@ function handleContextualAction(event) {
     actualizarEstadoSolicitud(
       solicitudId,
       formId,
-      "apto-anestesia",
+      "apto-oftalmologo",
       getDataStore(),
-      window.aplicarFiltros
+      window.aplicarFiltros,
+      { force: true }
     );
     return;
   }
@@ -972,9 +973,10 @@ function handleContextualAction(event) {
     actualizarEstadoSolicitud(
       solicitudId,
       formId,
-      "listo-para-agenda",
+      "apto-anestesia",
       getDataStore(),
-      window.aplicarFiltros
+      window.aplicarFiltros,
+      { force: true }
     );
     return;
   }
