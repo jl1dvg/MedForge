@@ -141,6 +141,131 @@ if (!empty($derivacion['fecha_vigencia'])) {
     </div>
 </div>
 
+<script>
+(() => {
+    const callout = document.getElementById('prefacturaCalloutPreanestesia');
+    const estadoSpan = document.getElementById('prefacturaEstadoActual');
+    const btnAptoAnestesia = document.getElementById('btnPrefacturaConfirmarAnestesia');
+    const btnAptoOftalmo = document.getElementById('btnPrefacturaConfirmarOftalmo');
+
+    if (!callout || !estadoSpan) return;
+
+    const postEstado = async ({id, formId, estado}) => {
+        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
+        const url = `${basePath.replace(/\/+$/, '')}/actualizar-estado`;
+        const payload = {
+            id: Number.parseInt(id, 10),
+            form_id: formId,
+            estado,
+            completado: true,
+            force: true,
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            body: JSON.stringify(payload),
+            credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data?.error || 'No se pudo actualizar el estado');
+        }
+        return data;
+    };
+
+    const actualizarUI = (nuevoEstado, tipo, resp = {}) => {
+        const estadoLabel = resp.estado_label || nuevoEstado;
+        estadoSpan.textContent = estadoLabel;
+        const estadoNorm = (nuevoEstado || '').toString().trim().toLowerCase();
+        const esAptoAnestesia = ['apto-anestesia', 'listo-para-agenda', 'completado'].includes(estadoNorm);
+        callout.classList.toggle('callout-success', esAptoAnestesia);
+        callout.classList.toggle('callout-warning', !esAptoAnestesia);
+        if (tipo === 'anestesia' && btnAptoAnestesia) {
+            btnAptoAnestesia.classList.remove('btn-outline-success');
+            btnAptoAnestesia.classList.add('btn-success');
+            btnAptoAnestesia.textContent = 'Apto por anestesia';
+            btnAptoAnestesia.disabled = true;
+        }
+        if (tipo === 'oftalmo' && btnAptoOftalmo) {
+            btnAptoOftalmo.disabled = true;
+        }
+
+        const store = window.__solicitudesKanban;
+        if (Array.isArray(store)) {
+            const lookupId = btnAptoAnestesia?.dataset.id || btnAptoOftalmo?.dataset.id;
+            const lookupForm = btnAptoAnestesia?.dataset.formId || btnAptoOftalmo?.dataset.formId;
+            const item = store.find(
+                (s) => String(s.id) === String(lookupId) || String(s.form_id) === String(lookupForm)
+            );
+            if (item) {
+                item.estado = resp.estado || nuevoEstado;
+                item.estado_label = resp.estado_label || resp.estado || estadoLabel || nuevoEstado;
+                if (resp.checklist) item.checklist = resp.checklist;
+                if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+            }
+        }
+
+        if (typeof window.aplicarFiltros === 'function') {
+            try { window.aplicarFiltros(); } catch (e) { /* ignore */ }
+        } else {
+            // Si no existe el refresco global, recarga la página para reflejar el checklist.
+            setTimeout(() => window.location.reload(), 400);
+        }
+    };
+
+    // Confirmar plan por oftalmólogo: solo marca checklist/estado apto-oftalmologo, no mueve a anestesia.
+    if (btnAptoOftalmo) {
+        btnAptoOftalmo.addEventListener('click', async () => {
+            const id = btnAptoOftalmo.dataset.id;
+            const formId = btnAptoOftalmo.dataset.formId;
+            if (!id || !formId) return;
+            btnAptoOftalmo.disabled = true;
+            try {
+                const resp = await postEstado({id, formId, estado: 'apto-oftalmologo'});
+                // Actualiza store pero no cambia el callout (es pre-anestesia).
+                const store = window.__solicitudesKanban;
+                if (Array.isArray(store)) {
+                    const item = store.find((s) => String(s.id) === String(id));
+                    if (item) {
+                        const estadoLabel = resp.estado_label || resp.estado || 'Apto oftalmólogo';
+                        item.estado = resp.estado || 'apto-oftalmologo';
+                        item.estado_label = estadoLabel;
+                        if (resp.checklist) item.checklist = resp.checklist;
+                        if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+                    }
+                }
+                if (typeof window.aplicarFiltros === 'function') {
+                    try { window.aplicarFiltros(); } catch (e) {}
+                } else {
+                    setTimeout(() => window.location.reload(), 400);
+                }
+            } catch (error) {
+                console.error('No se pudo marcar apto oftalmólogo:', error);
+                alert(error?.message || 'No se pudo marcar apto oftalmólogo.');
+                btnAptoOftalmo.disabled = false;
+            }
+        });
+    }
+
+    // Confirmar apto anestesia: marca checklist apto y deja el tablero en el siguiente paso pendiente.
+    if (btnAptoAnestesia) {
+        btnAptoAnestesia.addEventListener('click', async () => {
+            const id = btnAptoAnestesia.dataset.id;
+            const formId = btnAptoAnestesia.dataset.formId;
+            if (!id || !formId) return;
+            btnAptoAnestesia.disabled = true;
+            try {
+                const resp = await postEstado({id, formId, estado: 'apto-anestesia'});
+                actualizarUI(resp.estado || 'apto-anestesia', 'anestesia', resp);
+            } catch (error) {
+                console.error('No se pudo marcar apto anestesia:', error);
+                alert(error?.message || 'No se pudo marcar apto anestesia.');
+                btnAptoAnestesia.disabled = false;
+            }
+        });
+    }
+})();
+</script>
 
 <div class="row g-3">
     <div class="col-12 col-md-6">
