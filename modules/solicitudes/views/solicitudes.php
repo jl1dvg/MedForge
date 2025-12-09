@@ -644,6 +644,62 @@ array_push(
         .accordion-button[data-preserve-disabled="true"] {
             pointer-events: auto !important;
         }
+
+        /* Estilos del modal tipo CIVE */
+        .cive-modal-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .cive-modal-section {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 12px;
+            background: #fff;
+        }
+        .cive-modal-section h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .cive-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 12px;
+        }
+        .cive-col-6 {
+            flex: 1 1 calc(50% - 12px);
+            min-width: 200px;
+        }
+        .cive-col-full {
+            flex: 1 1 100%;
+        }
+        .cive-form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .cive-form-group label {
+            font-size: 12px;
+            color: #4b5563;
+        }
+        .cive-form-group input,
+        .cive-form-group select,
+        .cive-form-group textarea {
+            box-sizing: border-box;
+        }
+        .swal2-popup.cive-modal-wide {
+            width: 800px !important;
+            max-width: 90vw;
+        }
     </style>
     <div class="kanban-toolbar">
         <div>
@@ -1201,6 +1257,7 @@ array_push(
 <script>
     window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
 </script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>

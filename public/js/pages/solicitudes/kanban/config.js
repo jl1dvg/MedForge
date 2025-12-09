@@ -52,6 +52,7 @@ function computeConfig() {
     return {
         key,
         basePath: raw.basePath || '/solicitudes',
+        apiBasePath: raw.apiBasePath || '/api',
         storageKeyView: raw.storageKeyView || `${key}:view-mode`,
         dataKey: raw.dataKey || `__${key}Kanban`,
         estadosMetaKey: raw.estadosMetaKey || `__${key}EstadosMeta`,

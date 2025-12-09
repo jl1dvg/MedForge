@@ -1,6 +1,6 @@
 <?php
 
-use Controllers\SolicitudController;
+use Modules\Solicitudes\Controllers\SolicitudController;
 use Core\Router;
 
 return function (Router $router) {
@@ -22,6 +22,14 @@ return function (Router $router) {
 
     $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
         (new SolicitudController($pdo))->enviarRecordatorios();
+    });
+
+    $router->get('/solicitudes/api/estado', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->apiEstadoGet();
+    });
+
+    $router->post('/solicitudes/api/estado', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->apiEstadoPost();
     });
 
     $router->get('/solicitudes/prefactura', function (\PDO $pdo) {

@@ -1,6 +1,6 @@
 <?php
 
-namespace Controllers;
+namespace Modules\Solicitudes\Controllers;
 
 use Core\BaseController;
 use Helpers\JsonLogger;
@@ -77,6 +77,23 @@ class SolicitudController extends BaseController
             ],
             'layout-turnero.php'
         );
+    }
+
+    public function obtenerEstadosPorHc(string $hcNumber): array
+    {
+        $solicitudes = $this->solicitudModel->obtenerEstadosPorHc($hcNumber);
+
+        return [
+            'success' => true,
+            'hcNumber' => $hcNumber,
+            'total' => count($solicitudes),
+            'solicitudes' => $solicitudes,
+        ];
+    }
+
+    public function actualizarSolicitudParcial(int $id, array $campos): array
+    {
+        return $this->solicitudModel->actualizarSolicitudParcial($id, $campos);
     }
 
     public function kanbanData(): void
@@ -361,7 +378,82 @@ class SolicitudController extends BaseController
             @unlink($destinoRuta);
             $this->json(['success' => false, 'error' => 'No se pudo registrar el adjunto'], 500);
         }
-            }
+    }
+
+    public function apiEstadoGet(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $hcNumber = $_GET['hcNumber'] ?? $_GET['hc_number'] ?? null;
+
+        if (!$hcNumber) {
+            $this->json(
+                ['success' => false, 'message' => 'Parámetro hcNumber requerido'],
+                400
+            );
+            return;
+        }
+
+        try {
+            $response = $this->obtenerEstadosPorHc((string) $hcNumber);
+            $this->json($response);
+        } catch (\Throwable $e) {
+            error_log('apiEstadoGet error: ' . $e->getMessage());
+            $this->json(
+                ['success' => false, 'message' => 'Error al obtener la solicitud', 'error' => $e->getMessage()],
+                500
+            );
+        }
+    }
+
+    public function apiEstadoPost(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $id = isset($payload['id']) ? (int) $payload['id'] : null;
+
+        if (!$id) {
+            $this->json(
+                ['success' => false, 'message' => 'Parámetro id requerido para actualizar la solicitud'],
+                400
+            );
+            return;
+        }
+
+        $campos = [
+            'estado' => $payload['estado'] ?? null,
+            'doctor' => $payload['doctor'] ?? null,
+            'fecha' => $payload['fecha'] ?? null,
+            'prioridad' => $payload['prioridad'] ?? null,
+            'observacion' => $payload['observacion'] ?? null,
+            'procedimiento' => $payload['procedimiento'] ?? null,
+            'producto' => $payload['producto'] ?? null,
+            'ojo' => $payload['ojo'] ?? null,
+            'afiliacion' => $payload['afiliacion'] ?? null,
+            'duracion' => $payload['duracion'] ?? null,
+            'lente_id' => $payload['lente_id'] ?? null,
+            'lente_nombre' => $payload['lente_nombre'] ?? null,
+            'lente_poder' => $payload['lente_poder'] ?? null,
+            'lente_observacion' => $payload['lente_observacion'] ?? null,
+            'incision' => $payload['incision'] ?? null,
+        ];
+
+        try {
+            $resultado = $this->actualizarSolicitudParcial($id, $campos);
+            $status = (!is_array($resultado) || ($resultado['success'] ?? false) === false) ? 422 : 200;
+            $this->json(is_array($resultado) ? $resultado : ['success' => false], $status);
+        } catch (\Throwable $e) {
+            error_log('apiEstadoPost error: ' . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'Error al actualizar la solicitud', 'error' => $e->getMessage()], 500);
+        }
+    }
 
     private function getRequestBody(): array
     {

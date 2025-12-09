@@ -9,16 +9,9 @@ import { actualizarEstadoSolicitud } from "./estado.js";
 import { showToast } from "./toast.js";
 
 let prefacturaListenerAttached = false;
+const solicitudDetalleCache = new Map();
 const STATUS_BADGE_TEXT_DARK = new Set(["warning", "light", "info"]);
 const PATIENT_ALERT_TEXT = /paciente/i;
-const OFTALMOLOGO_SLUG = "apto-oftalmologo";
-const ESTADO_APTO_OFTALMOLOGO = "APTO OFTALMOLOGO";
-let cachedLentes = null;
-let cachedDoctores = null;
-let lentesPromise = null;
-let doctoresPromise = null;
-let swalLoader = null;
-const detalleCache = new Map();
 
 const SLA_META = {
   en_rango: {
@@ -94,20 +87,6 @@ function slugifyEstado(value) {
     .replace(/^-+|-+$/g, "");
 
   return normalized;
-}
-
-function toDatetimeLocal(value) {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate()
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function getEstadoBadge(estado) {
@@ -292,177 +271,6 @@ function normalizeEstado(value) {
     .replace(/[^a-z0-9]+/g, "-");
 }
 
-function ensureSwal() {
-  if (typeof window !== "undefined" && window.Swal) {
-    return Promise.resolve(window.Swal);
-  }
-
-  if (swalLoader) {
-    return swalLoader;
-  }
-
-  swalLoader = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/sweetalert2@11";
-    script.async = true;
-    script.onload = () => {
-      resolve(window.Swal);
-      swalLoader = null;
-    };
-    script.onerror = (e) => {
-      swalLoader = null;
-      reject(e);
-    };
-    document.head.appendChild(script);
-  });
-
-  return swalLoader;
-}
-
-function generarPoderes(lente) {
-  const powers = [];
-  const min = lente?.rango_desde;
-  const max = lente?.rango_hasta;
-  const paso = lente?.rango_paso || 0.5;
-  const inicioInc = lente?.rango_inicio_incremento || min;
-  const toNum = (v) =>
-    v === null || v === undefined || v === "" ? null : parseFloat(v);
-  const minNum = toNum(min);
-  const maxNum = toNum(max);
-  const pasoNum = toNum(paso) || 0.5;
-  const inicioNum = toNum(inicioInc);
-
-  if (minNum !== null && maxNum !== null) {
-    for (let v = minNum; v <= maxNum + 1e-6; v += pasoNum) {
-      const rounded = Math.round(v * 100) / 100;
-      if (inicioNum !== null && v < inicioNum && v > 0) continue;
-      powers.push(rounded.toFixed(2));
-    }
-  }
-  return powers;
-}
-
-async function obtenerDoctoresKanban() {
-  if (cachedDoctores) {
-    return cachedDoctores;
-  }
-  if (doctoresPromise) {
-    return doctoresPromise;
-  }
-  doctoresPromise = Promise.resolve().then(() => {
-    const store = getDataStore();
-    const docs = Array.isArray(store)
-      ? Array.from(
-          new Set(
-            store
-              .map((s) => s.doctor)
-              .filter((d) => d && d.toString().trim() !== "")
-              .map((d) => d.toString().trim())
-          )
-        )
-      : [];
-    cachedDoctores = docs;
-    doctoresPromise = null;
-    return docs;
-  });
-  return doctoresPromise;
-}
-
-async function obtenerLentesKanban() {
-  if (cachedLentes) {
-    return cachedLentes;
-  }
-  if (lentesPromise) {
-    return lentesPromise;
-  }
-
-  lentesPromise = fetch("/api/lentes/index.php", {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  })
-    .then(async (resp) => {
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || data?.success === false) {
-        throw new Error(data?.message || "No se pudo obtener lentes");
-      }
-      const lista = Array.isArray(data?.lentes) ? data.lentes : [];
-      cachedLentes = lista;
-      return lista;
-    })
-    .catch((error) => {
-      console.error("Error obteniendo lentes:", error);
-      throw error;
-    })
-    .finally(() => {
-      lentesPromise = null;
-    });
-  return lentesPromise;
-}
-
-async function guardarSolicitudParcial(id, payload) {
-  const body = { id: Number(id), ...payload };
-  const resp = await fetch("/api/solicitudes/estado.php", {
-    method: "POST",
-    headers: { "Content-Type": "application/json;charset=UTF-8" },
-    body: JSON.stringify(body),
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || data?.success === false) {
-    const msg =
-      data?.message ||
-      data?.error ||
-      data?.mensaje ||
-      "No se pudo actualizar la solicitud";
-    throw new Error(msg);
-  }
-  return data?.data || null;
-}
-
-function mergeSolicitudEnStore(id, updates = {}) {
-  const store = getDataStore();
-  if (!Array.isArray(store) || !store.length) {
-    return;
-  }
-  const idx = store.findIndex((item) => String(item.id) === String(id));
-  if (idx >= 0) {
-    store[idx] = { ...store[idx], ...updates };
-  }
-}
-
-async function cargarDetalleSolicitud(item = {}) {
-  if (!item || (!item.hc_number && !item.hcNumber)) {
-    return item;
-  }
-  const idKey = String(item.id || item.form_id || "");
-  if (idKey && detalleCache.has(idKey)) {
-    return { ...item, ...detalleCache.get(idKey) };
-  }
-
-  try {
-    const hc = encodeURIComponent(item.hc_number || item.hcNumber || "");
-    const resp = await fetch(`/api/solicitudes/estado.php?hcNumber=${hc}`, {
-      headers: { "Content-Type": "application/json" },
-    });
-    const data = await resp.json().catch(() => ({}));
-    const lista = Array.isArray(data?.solicitudes) ? data.solicitudes : Array.isArray(data?.data) ? data.data : [];
-    const match =
-      lista.find(
-        (row) =>
-          String(row.id) === String(item.id) ||
-          (row.form_id && item.form_id && String(row.form_id) === String(item.form_id))
-      ) || lista[0];
-    if (match) {
-      detalleCache.set(idKey, match);
-      mergeSolicitudEnStore(item.id, match);
-      return { ...item, ...match };
-    }
-  } catch (err) {
-    console.warn("No se pudo cargar detalle de solicitud:", err);
-  }
-
-  return item;
-}
-
 
 function getQuickColumnElement() {
   return document.getElementById("prefacturaQuickColumn");
@@ -487,7 +295,9 @@ function buildContextualActionsHtml(solicitud = {}) {
       solicitud.poder ||
       solicitud.lente_dioptria ||
       "No especificado",
-    observacion: solicitud.observacion || "Sin observaciones",
+    observacion:
+      solicitud.lente_observacion || solicitud.observacion || "Sin observaciones",
+    incision: solicitud.incision || "No definida",
   };
 
   const blocks = [];
@@ -513,7 +323,7 @@ function buildContextualActionsHtml(solicitud = {}) {
     `);
   }
 
-  if (estado === OFTALMOLOGO_SLUG) {
+  if (estado === "apto-oftalmologo") {
     blocks.push(`
         <div class="alert alert-info border" id="prefacturaOftalmoPanel">
             <div class="d-flex align-items-center gap-2 mb-2">
@@ -549,15 +359,28 @@ function buildContextualActionsHtml(solicitud = {}) {
                         <small class="text-muted d-block">Observación</small>
                         <strong>${escapeHtml(baseInfo.observacion)}</strong>
                     </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted d-block">Incisión</small>
+                        <strong>${escapeHtml(baseInfo.incision)}</strong>
+                    </div>
                 </div>
             </div>
-            <button class="btn btn-info w-100" data-context-action="planificar-oftalmo" data-id="${escapeHtml(
-              solicitud.id
-            )}" data-form-id="${escapeHtml(
+            <div class="d-grid gap-2 d-md-flex">
+                <button class="btn btn-outline-info flex-fill" data-context-action="editar-lio" data-id="${escapeHtml(
+                  solicitud.id
+                )}" data-form-id="${escapeHtml(
+      solicitud.form_id
+    )}" data-hc="${escapeHtml(solicitud.hc_number || "")}">
+                    <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
+                </button>
+                <button class="btn btn-info flex-fill" data-context-action="confirmar-oftalmo" data-id="${escapeHtml(
+                  solicitud.id
+                )}" data-form-id="${escapeHtml(
       solicitud.form_id
     )}">
-                <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO y confirmar
-            </button>
+                    <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo
+                </button>
+            </div>
         </div>
     `);
   }
@@ -869,6 +692,199 @@ function resolverDataset(trigger) {
   return { hc, formId, solicitudId };
 }
 
+function buildApiCandidates(pathname) {
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  const { basePath } = getKanbanConfig();
+  const normalizedBase =
+    basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
+  const locationPath =
+    typeof window !== "undefined" ? window.location.pathname || "" : "";
+  const rootPrefix =
+    normalizedBase && locationPath.includes(normalizedBase)
+      ? locationPath.slice(0, locationPath.indexOf(normalizedBase))
+      : "";
+  const variants = new Set();
+
+  variants.add(path);
+
+  if (normalizedBase) {
+    if (!path.startsWith(normalizedBase)) {
+      variants.add(`${normalizedBase}${path}`);
+    }
+
+    const stripped = path.startsWith(normalizedBase)
+      ? path.slice(normalizedBase.length) || "/"
+      : path;
+    variants.add(stripped.startsWith("/") ? stripped : `/${stripped}`);
+  }
+
+  if (rootPrefix) {
+    variants.add(`${rootPrefix}${path}`);
+  }
+
+  return Array.from(variants);
+}
+
+let __lentesCache = null;
+
+async function obtenerLentesCatalogo() {
+  if (__lentesCache && Array.isArray(__lentesCache)) {
+    return __lentesCache;
+  }
+
+  const origin =
+    (typeof window !== "undefined" &&
+      window.location &&
+      window.location.origin) ||
+    "";
+
+  const variants = new Set();
+  // Ruta estándar en el mismo host
+  variants.add("/api/lentes");
+  variants.add("/api/lentes/index.php");
+
+  // Si estamos bajo /solicitudes, intentar sin prefijo y con él
+  variants.add("/solicitudes/api/lentes");
+  variants.add("/solicitudes/api/lentes/index.php");
+
+  // Rutas completas con origen actual
+  if (origin) {
+    variants.forEach((p) => variants.add(`${origin}${p}`));
+  }
+
+  // Fallback absoluto a dominio de API (evitar si hay CORS)
+  variants.add("https://asistentecive.consulmed.me/api/lentes");
+
+  for (const url of variants) {
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const lista = Array.isArray(data?.lentes) ? data.lentes : [];
+      __lentesCache = lista;
+      return lista;
+    } catch (e) {
+      // intentar siguiente url
+    }
+  }
+  throw new Error("No se pudieron obtener lentes");
+}
+
+function generarPoderes(lente) {
+  const powers = [];
+  const min = lente?.rango_desde;
+  const max = lente?.rango_hasta;
+  const paso = lente?.rango_paso || 0.5;
+  const inicioInc = lente?.rango_inicio_incremento || min;
+  const toNum = (v) =>
+    v === null || v === undefined || v === "" ? null : parseFloat(v);
+  const minNum = toNum(min);
+  const maxNum = toNum(max);
+  const pasoNum = toNum(paso) || 0.5;
+  const inicioNum = toNum(inicioInc);
+
+  if (minNum !== null && maxNum !== null) {
+    for (let v = minNum; v <= maxNum + 1e-6; v += pasoNum) {
+      const rounded = Math.round(v * 100) / 100;
+      if (inicioNum !== null && v < inicioNum && v > 0) continue;
+      powers.push(rounded.toFixed(2));
+    }
+  }
+  if (!powers.length && lente?.poder) {
+    const p = toNum(lente.poder);
+    powers.push(p !== null ? p.toFixed(2) : lente.poder);
+  }
+  return powers;
+}
+
+async function fetchWithFallback(urls, options) {
+  let lastError;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) {
+        return response;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("No se pudo completar la solicitud");
+}
+
+async function fetchDetalleSolicitud({ hcNumber, solicitudId, formId }) {
+  const cacheKey = [hcNumber, solicitudId, formId].filter(Boolean).join(":");
+  if (solicitudDetalleCache.has(cacheKey)) {
+    return solicitudDetalleCache.get(cacheKey);
+  }
+
+  if (!hcNumber) {
+    throw new Error("No se puede solicitar detalle sin HC");
+  }
+
+  const searchParams = new URLSearchParams({ hcNumber });
+  if (formId) {
+    searchParams.set("form_id", formId);
+  }
+
+  const { basePath } = getKanbanConfig();
+  const normalizedBase =
+    basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
+  const apiPath = `${normalizedBase}/api/estado?${searchParams}`;
+  const urls = buildApiCandidates(apiPath);
+  const response = await fetchWithFallback(urls);
+  if (!response.ok) {
+    throw new Error("No se pudo obtener el detalle de la solicitud");
+  }
+
+  const payload = await response.json();
+  const lista = Array.isArray(payload?.solicitudes) ? payload.solicitudes : [];
+  const detalle = lista.find(
+    (item) =>
+      String(item.id) === String(solicitudId) ||
+      String(item.form_id) === String(formId)
+  );
+
+  if (!detalle) {
+    throw new Error("No se encontró información de la solicitud");
+  }
+
+  solicitudDetalleCache.set(cacheKey, detalle);
+  return detalle;
+}
+
+async function hydrateSolicitudFromDetalle({ solicitudId, formId, hcNumber }) {
+  const base = findSolicitudById(solicitudId) || {};
+  if (!hcNumber && !base.hc_number) {
+    return base;
+  }
+
+  try {
+    const detalle = await fetchDetalleSolicitud({
+      hcNumber: hcNumber || base.hc_number,
+      solicitudId,
+      formId: formId || base.form_id,
+    });
+
+    const merged = { ...base, ...detalle };
+    const store = getDataStore();
+    const target = store.find((item) => String(item.id) === String(solicitudId));
+    if (target && typeof target === "object") {
+      Object.assign(target, merged);
+    }
+    return merged;
+  } catch (error) {
+    console.warn("No se pudo hidratar solicitud con detalle", error);
+    return base;
+  }
+}
+
 function abrirPrefactura({ hc, formId, solicitudId }) {
   if (!hc || !formId) {
     console.warn(
@@ -893,20 +909,21 @@ function abrirPrefactura({ hc, formId, solicitudId }) {
 
   const { basePath } = getKanbanConfig();
 
-  fetch(
-    `${basePath}/prefactura?hc_number=${encodeURIComponent(
-      hc
-    )}&form_id=${encodeURIComponent(formId)}`
-  )
-    .then((response) => {
+  const prefacturaUrl = `${basePath}/prefactura?hc_number=${encodeURIComponent(
+    hc
+  )}&form_id=${encodeURIComponent(formId)}`;
+
+  Promise.all([
+    fetch(prefacturaUrl).then((response) => {
       if (!response.ok) {
         throw new Error("No se encontró la prefactura");
       }
       return response.text();
-    })
-    .then((html) => {
-      const solicitud = findSolicitudById(solicitudId) || {};
-      const contextual = buildContextualActionsHtml(solicitud);
+    }),
+    hydrateSolicitudFromDetalle({ solicitudId, formId, hcNumber: hc }),
+  ])
+    .then(([html, solicitud]) => {
+      const contextual = buildContextualActionsHtml(solicitud || {});
       content.innerHTML = `${contextual}${html}`;
       relocatePatientAlert(solicitudId);
     })
@@ -992,6 +1009,7 @@ function handleContextualAction(event) {
   const action = button.dataset.contextAction;
   const solicitudId = button.dataset.id;
   const formId = button.dataset.formId;
+  const hcNumber = button.dataset.hc;
   const basePath = button.dataset.basePath || getKanbanConfig().basePath;
 
   const solicitud = findSolicitudById(solicitudId) || {};
@@ -1004,11 +1022,6 @@ function handleContextualAction(event) {
       getDataStore(),
       window.aplicarFiltros
     );
-    return;
-  }
-
-  if (action === "planificar-oftalmo") {
-    abrirPlanQuirurgicoOftalmo(solicitud);
     return;
   }
 
@@ -1034,6 +1047,369 @@ function handleContextualAction(event) {
     )}&form_id=${encodeURIComponent(formId)}`;
     window.open(url, "_blank", "noopener");
   }
+
+  if (action === "editar-lio") {
+    if (typeof Swal === "undefined") {
+      showToast("No se puede abrir el editor sin SweetAlert", false);
+      return;
+    }
+
+    hydrateSolicitudFromDetalle({
+      solicitudId,
+      formId,
+      hcNumber: hcNumber || solicitud.hc_number,
+    })
+      .then((detalle) => {
+        const merged = { ...solicitud, ...detalle };
+        const baseProducto =
+          merged.lente_nombre || merged.producto || merged.lente_brand || "";
+        const baseObservacion =
+          merged.lente_observacion || merged.observacion || "";
+        const lenteSeleccionada = merged.lente_id || "";
+        const poderSeleccionado = merged.lente_poder || merged.poder || "";
+
+        const toDatetimeLocal = (value) => {
+          if (!value) return "";
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return "";
+          const pad = (n) => String(n).padStart(2, "0");
+          return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+            date.getDate()
+          )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        };
+
+        const html = `
+          <div class="cive-modal-card">
+            <div class="cive-modal-section">
+              <h4><i class="fas fa-user-md"></i> Datos de solicitud</h4>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Estado</label>
+                    <input id="sol-estado" class="swal2-input" value="${escapeHtml(
+                      merged.estado || merged.kanban_estado || ""
+                    )}" placeholder="Estado" readonly />
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Doctor</label>
+                    <select id="sol-doctor" class="swal2-select">
+                      <option value="${escapeHtml(
+                        merged.doctor || merged.crm_responsable_nombre || ""
+                      )}">
+                        ${escapeHtml(merged.doctor || merged.crm_responsable_nombre || "No definido")}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Fecha</label>
+                    <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${escapeHtml(
+                      toDatetimeLocal(merged.fecha || merged.fecha_programada)
+                    )}" />
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Prioridad</label>
+                    <input id="sol-prioridad" class="swal2-input" value="${escapeHtml(
+                      merged.prioridad || merged.prioridad_automatica || "Normal"
+                    )}" placeholder="URGENTE / NORMAL" readonly />
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Producto</label>
+                    <input id="sol-producto" class="swal2-input" value="${escapeHtml(
+                      baseProducto
+                    )}" placeholder="Producto asociado" />
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Ojo</label>
+                    <select id="sol-ojo" class="swal2-select">
+                      <option value="">Selecciona ojo</option>
+                      <option value="DERECHO"${
+                        (merged.ojo || "").toUpperCase() === "DERECHO" ? " selected" : ""
+                      }>DERECHO</option>
+                      <option value="IZQUIERDO"${
+                        (merged.ojo || "").toUpperCase() === "IZQUIERDO" ? " selected" : ""
+                      }>IZQUIERDO</option>
+                      <option value="AMBOS OJOS"${
+                        (merged.ojo || "").toUpperCase() === "AMBOS OJOS" ? " selected" : ""
+                      }>AMBOS OJOS</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Afiliación</label>
+                    <input id="sol-afiliacion" class="swal2-input" value="${escapeHtml(
+                      merged.afiliacion || ""
+                    )}" placeholder="Afiliación" readonly />
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Duración</label>
+                    <input id="sol-duracion" class="swal2-input" value="${escapeHtml(
+                      merged.duracion || ""
+                    )}" placeholder="Minutos" readonly />
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-full cive-form-group">
+                  <label>Procedimiento</label>
+                  <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${escapeHtml(
+                    merged.procedimiento || ""
+                  )}</textarea>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-full cive-form-group">
+                  <label>Observación</label>
+                  <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${escapeHtml(
+                    merged.observacion || ""
+                  )}</textarea>
+                </div>
+              </div>
+            </div>
+            <div class="cive-modal-section">
+              <h4><i class="fas fa-eye"></i> Lente e incisión</h4>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Lente</label>
+                    <select id="sol-lente-id" class="swal2-select" data-value="${escapeHtml(
+                      lenteSeleccionada
+                    )}">
+                      <option value="">Cargando lentes...</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Nombre de lente</label>
+                    <input id="sol-lente-nombre" class="swal2-input" value="${escapeHtml(
+                      merged.lente_nombre || baseProducto
+                    )}" placeholder="Nombre del lente" />
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Poder del lente</label>
+                    <select id="sol-lente-poder" class="swal2-select" data-value="${escapeHtml(
+                      poderSeleccionado
+                    )}">
+                      <option value="">Selecciona poder</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cive-col-6">
+                  <div class="cive-form-group">
+                    <label>Incisión</label>
+                    <input id="sol-incision" class="swal2-input" value="${escapeHtml(
+                      merged.incision || ""
+                    )}" placeholder="Ej: Clear cornea temporal" />
+                  </div>
+                </div>
+              </div>
+              <div class="cive-row">
+                <div class="cive-col-full cive-form-group">
+                  <label>Observación de lente</label>
+                  <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${escapeHtml(
+                    baseObservacion
+                  )}</textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        Swal.fire({
+          title: `Editar solicitud #${escapeHtml(solicitudId || "")}`,
+          html,
+          width: 800,
+          customClass: { popup: "cive-modal-wide" },
+          confirmButtonText: "Guardar cambios",
+          cancelButtonText: "Cancelar",
+          showCancelButton: true,
+          focusConfirm: false,
+          didOpen: async () => {
+            const lenteSelect = document.getElementById("sol-lente-id");
+            const poderSelect = document.getElementById("sol-lente-poder");
+            const nombreInput = document.getElementById("sol-lente-nombre");
+            if (!lenteSelect || !poderSelect) return;
+
+            try {
+              const lentes = await obtenerLentesCatalogo();
+
+              lenteSelect.innerHTML =
+                '<option value="">Selecciona lente</option>';
+              lentes.forEach((l) => {
+                const opt = document.createElement("option");
+                opt.value = l.id;
+                opt.textContent = `${l.marca ?? ""} · ${l.modelo ?? ""} · ${
+                  l.nombre ?? ""
+                }`.replace(/\s+·\s+·\s+$/, "").trim();
+                opt.dataset.nombre = l.nombre ?? "";
+                opt.dataset.poder = l.poder ?? "";
+                opt.dataset.rango_desde = l.rango_desde ?? "";
+                opt.dataset.rango_hasta = l.rango_hasta ?? "";
+                opt.dataset.rango_paso = l.rango_paso ?? "";
+                opt.dataset.rango_inicio_incremento =
+                  l.rango_inicio_incremento ?? "";
+                lenteSelect.appendChild(opt);
+              });
+
+              const presetLente =
+                lenteSelect.dataset.value || lenteSeleccionada || "";
+              if (presetLente) {
+                lenteSelect.value = presetLente;
+              }
+
+              const syncPoderes = () => {
+                const optSel = lenteSelect.selectedOptions?.[0];
+                const nombre = optSel?.dataset?.nombre || "";
+                const poderBase = optSel?.dataset?.poder || "";
+                const lenteObj = {
+                  rango_desde: optSel?.dataset?.rango_desde,
+                  rango_hasta: optSel?.dataset?.rango_hasta,
+                  rango_paso: optSel?.dataset?.rango_paso,
+                  rango_inicio_incremento: optSel?.dataset?.rango_inicio_incremento,
+                };
+                if (nombre && nombreInput && !nombreInput.value) {
+                  nombreInput.value = nombre;
+                }
+
+                poderSelect.innerHTML =
+                  '<option value="">Selecciona poder</option>';
+                const powers = generarPoderes(lenteObj);
+                powers.forEach((p) => {
+                  const optP = document.createElement("option");
+                  optP.value = p;
+                  optP.textContent = p;
+                  poderSelect.appendChild(optP);
+                });
+
+                const presetPoder =
+                  poderSelect.dataset.value ||
+                  poderSeleccionado ||
+                  poderBase ||
+                  "";
+                if (!powers.length && poderBase) {
+                  const opt = document.createElement("option");
+                  opt.value = poderBase;
+                  opt.textContent = poderBase;
+                  poderSelect.appendChild(opt);
+                }
+                if (presetPoder) {
+                  const exists = Array.from(poderSelect.options).some(
+                    (o) => o.value === presetPoder
+                  );
+                  if (!exists) {
+                    const opt = document.createElement("option");
+                    opt.value = presetPoder;
+                    opt.textContent = presetPoder;
+                    poderSelect.appendChild(opt);
+                  }
+                  poderSelect.value = presetPoder;
+                }
+              };
+
+              lenteSelect.addEventListener("change", syncPoderes);
+              syncPoderes();
+            } catch (error) {
+              console.warn("No se pudieron cargar lentes:", error);
+              lenteSelect.innerHTML = `<option value="${escapeHtml(
+                lenteSeleccionada
+              )}">${escapeHtml(
+                baseProducto || "Sin lentes disponibles"
+              )}</option>`;
+            }
+          },
+          preConfirm: () => {
+            const producto =
+              document.getElementById("sol-producto")?.value.trim() || "";
+            const poder =
+              document.getElementById("sol-lente-poder")?.value.trim() || "";
+            const lenteId =
+              document.getElementById("sol-lente-id")?.value.trim() || "";
+            const ojo = document.getElementById("sol-ojo")?.value.trim() || "";
+            const incision =
+              document.getElementById("sol-incision")?.value.trim() || "";
+            const observacion =
+              document.getElementById("sol-lente-obs")?.value.trim() || "";
+            const notas =
+              document.getElementById("sol-observacion")?.value.trim() || "";
+
+            return {
+              producto,
+              lente_nombre:
+              document.getElementById("sol-lente-nombre")?.value.trim() ||
+              producto,
+              lente_id: lenteId,
+              lente_poder: poder,
+              lente_observacion: observacion,
+              observacion: notas || observacion,
+              ojo,
+              incision,
+            };
+          },
+        }).then((result) => {
+          if (!result.isConfirmed) return;
+
+          const payload = { id: solicitudId, ...result.value };
+          const { basePath } = getKanbanConfig();
+          const normalizedBase =
+            basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
+          const postUrls = buildApiCandidates(`${normalizedBase}/api/estado`);
+          fetchWithFallback(postUrls, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then((res) => res.json())
+            .then((resp) => {
+              if (!resp?.success) {
+                throw new Error(resp?.message || "No se guardaron los cambios");
+              }
+
+              const store = getDataStore();
+              const item = store.find(
+                (entry) => String(entry.id) === String(solicitudId)
+              );
+              if (item) {
+                Object.assign(item, result.value);
+              }
+              solicitudDetalleCache.delete(String(solicitudId));
+              showToast("Datos de LIO actualizados", true);
+              renderEstadoContext(solicitudId);
+              abrirPrefactura({ hc: hcNumber || solicitud.hc_number, formId, solicitudId });
+            })
+            .catch((err) => {
+              console.error("No se pudo guardar LIO", err);
+              showToast(err?.message || "Error al guardar", false);
+            });
+        });
+      })
+      .catch((error) => {
+        console.error("No se pudo cargar el editor de LIO", error);
+        showToast("No pudimos obtener los datos del lente", false);
+      });
+  }
 }
 
 export function inicializarModalDetalles() {
@@ -1044,338 +1420,4 @@ export function inicializarModalDetalles() {
   prefacturaListenerAttached = true;
   document.addEventListener("click", handlePrefacturaClick);
   document.addEventListener("click", handleContextualAction);
-}
-
-function buildPlanificadorHtml(item = {}) {
-  const estado = ESTADO_APTO_OFTALMOLOGO;
-  const doctor = item?.doctor || "";
-  const fecha = item?.fecha || "";
-  const prioridad = item?.prioridad || "";
-  const observacion = item?.observacion || "";
-  const procedimiento = item?.procedimiento || "";
-  const producto = item?.producto || item?.lente_nombre || "";
-  const ojo = item?.ojo || item?.lateralidad || "";
-  const afiliacion = item?.afiliacion || "";
-  const duracion = item?.duracion || "";
-  const lenteId = item?.lente_id || "";
-  const lenteNombre = item?.lente_nombre || "";
-  const lentePoder = item?.lente_poder || "";
-  const lenteObs = item?.lente_observacion || "";
-  const incision = item?.incision || "";
-
-  return `
-    <div class="cive-modal-card">
-      <div class="cive-modal-section">
-        <h4><i class="fas fa-user-md"></i> Datos de solicitud</h4>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Estado</label>
-              <input id="sol-estado" class="swal2-input" value="${estado}" readonly />
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Doctor</label>
-              <select id="sol-doctor" class="swal2-select" data-value="${escapeHtml(
-                doctor
-              )}"></select>
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Fecha</label>
-              <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${toDatetimeLocal(
-                fecha
-              )}" />
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Prioridad</label>
-              <input id="sol-prioridad" class="swal2-input" value="${escapeHtml(
-                prioridad
-              )}" placeholder="URGENTE / NORMAL" readonly />
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Producto</label>
-              <input id="sol-producto" class="swal2-input" value="${escapeHtml(
-                producto
-              )}" placeholder="Producto asociado" />
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Ojo</label>
-              <select id="sol-ojo" class="swal2-select">
-                <option value="">Selecciona ojo</option>
-                <option value="DERECHO"${
-                  ojo === "DERECHO" ? " selected" : ""
-                }>DERECHO</option>
-                <option value="IZQUIERDO"${
-                  ojo === "IZQUIERDO" ? " selected" : ""
-                }>IZQUIERDO</option>
-                <option value="AMBOS OJOS"${
-                  ojo === "AMBOS OJOS" ? " selected" : ""
-                }>AMBOS OJOS</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Afiliación</label>
-              <input id="sol-afiliacion" class="swal2-input" value="${escapeHtml(
-                afiliacion
-              )}" placeholder="Afiliación" readonly />
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Duración</label>
-              <input id="sol-duracion" class="swal2-input" value="${escapeHtml(
-                duracion
-              )}" placeholder="Minutos" readonly />
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-full cive-form-group">
-            <label>Procedimiento</label>
-            <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${escapeHtml(
-              procedimiento
-            )}</textarea>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-full cive-form-group">
-            <label>Observación</label>
-            <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${escapeHtml(
-              observacion
-            )}</textarea>
-          </div>
-        </div>
-      </div>
-      <div class="cive-modal-section">
-        <h4><i class="fas fa-eye"></i> Lente e incisión</h4>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Lente</label>
-              <select id="sol-lente-id" class="swal2-select" data-value="${escapeHtml(
-                lenteId
-              )}">
-                <option value="">Selecciona lente</option>
-              </select>
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Nombre de lente</label>
-              <input id="sol-lente-nombre" class="swal2-input" value="${escapeHtml(
-                lenteNombre
-              )}" placeholder="Nombre del lente" readonly />
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Poder del lente</label>
-              <select id="sol-lente-poder" class="swal2-select">
-                <option value="">Selecciona poder</option>
-              </select>
-            </div>
-          </div>
-          <div class="cive-col-6">
-            <div class="cive-form-group">
-              <label>Incisión</label>
-              <input id="sol-incision" class="swal2-input" value="${escapeHtml(
-                incision
-              )}" placeholder="Ej: Clear cornea temporal" />
-            </div>
-          </div>
-        </div>
-        <div class="cive-row">
-          <div class="cive-col-full cive-form-group">
-            <label>Observación de lente</label>
-            <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${escapeHtml(
-              lenteObs
-            )}</textarea>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-async function abrirPlanQuirurgicoOftalmo(item = {}) {
-  const itemDetallado = await cargarDetalleSolicitud(item);
-  const html = buildPlanificadorHtml(itemDetallado);
-
-  const SwalLib = await ensureSwal().catch((err) => {
-    console.error("No se pudo cargar SweetAlert2:", err);
-    showToast("No se pudo abrir el plan quirúrgico (SweetAlert2 faltante)", false);
-    return null;
-  });
-  if (!SwalLib) return;
-
-  SwalLib.fire({
-    title: `Validar lente / HC ${escapeHtml(itemDetallado?.hc_number || item?.hc_number || "")}`,
-    html,
-    width: 820,
-    customClass: { popup: "cive-modal-wide" },
-    showCancelButton: true,
-    confirmButtonText: "Guardar y pasar a anestesia",
-    cancelButtonText: "Cancelar",
-    focusConfirm: false,
-    didOpen: async () => {
-      const estadoInput = document.getElementById("sol-estado");
-      if (estadoInput) estadoInput.value = ESTADO_APTO_OFTALMOLOGO;
-
-      try {
-        const doctores = await obtenerDoctoresKanban();
-        const sel = document.getElementById("sol-doctor");
-        if (sel) {
-          sel.innerHTML = '<option value="">Selecciona doctor</option>';
-          doctores.forEach((d) => {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.textContent = d;
-            sel.appendChild(opt);
-          });
-          const preset = sel.dataset.value || item?.doctor || "";
-          if (preset) sel.value = preset;
-        }
-      } catch (err) {
-        console.warn("No se pudieron cargar doctores para el select:", err);
-      }
-
-      try {
-        const lentes = await obtenerLentesKanban();
-        const selLente = document.getElementById("sol-lente-id");
-        const selPoder = document.getElementById("sol-lente-poder");
-        if (selLente) {
-          selLente.innerHTML = '<option value="">Selecciona lente</option>';
-          lentes.forEach((l) => {
-            const opt = document.createElement("option");
-            opt.value = l.id;
-            opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${
-              l.poder ? " (" + l.poder + ")" : ""
-            }`;
-            opt.dataset.nombre = l.nombre;
-            opt.dataset.poder = l.poder || "";
-            opt.dataset.rango_desde = l.rango_desde ?? "";
-            opt.dataset.rango_hasta = l.rango_hasta ?? "";
-            opt.dataset.rango_paso = l.rango_paso ?? "";
-            opt.dataset.rango_inicio_incremento =
-              l.rango_inicio_incremento ?? "";
-            selLente.appendChild(opt);
-          });
-          const preset = selLente.dataset.value || item?.lente_id || "";
-          if (preset) selLente.value = preset;
-
-          const syncLente = () => {
-            const optSel = selLente.selectedOptions?.[0];
-            const nombre = optSel?.dataset?.nombre || "";
-            const poder = optSel?.dataset?.poder || "";
-            const rangoDesde = optSel?.dataset?.rango_desde || "";
-            const rangoHasta = optSel?.dataset?.rango_hasta || "";
-            const rangoPaso = optSel?.dataset?.rango_paso || "";
-            const rangoInicio =
-              optSel?.dataset?.rango_inicio_incremento || "";
-            const nombreInput = document.getElementById("sol-lente-nombre");
-            const poderSelect = document.getElementById("sol-lente-poder");
-            if (nombreInput) nombreInput.value = nombre || nombreInput.value;
-            if (poderSelect) {
-              poderSelect.innerHTML =
-                '<option value="">Selecciona poder</option>';
-              const lenteObj = {
-                rango_desde: rangoDesde,
-                rango_hasta: rangoHasta,
-                rango_paso: rangoPaso,
-                rango_inicio_incremento: rangoInicio,
-              };
-              const powers = generarPoderes(lenteObj);
-              powers.forEach((p) => {
-                const optP = document.createElement("option");
-                optP.value = p;
-                optP.textContent = p;
-                poderSelect.appendChild(optP);
-              });
-              if (poder && !powers.includes(poder)) {
-                const optP = document.createElement("option");
-                optP.value = poder;
-                optP.textContent = poder;
-                poderSelect.appendChild(optP);
-              }
-              poderSelect.value = item?.lente_poder || poder || "";
-            }
-          };
-          selLente.addEventListener("change", syncLente);
-          syncLente();
-        }
-      } catch (err) {
-        console.warn("No se pudieron cargar lentes para el select:", err);
-      }
-    },
-    preConfirm: () => {
-      return {
-        estado: ESTADO_APTO_OFTALMOLOGO,
-        doctor: document.getElementById("sol-doctor")?.value.trim(),
-        fecha: document.getElementById("sol-fecha")?.value.trim(),
-        prioridad: document.getElementById("sol-prioridad")?.value.trim(),
-        observacion: document.getElementById("sol-observacion")?.value.trim(),
-        procedimiento: document
-          .getElementById("sol-procedimiento")
-          ?.value.trim(),
-        producto: document.getElementById("sol-producto")?.value.trim(),
-        ojo: document.getElementById("sol-ojo")?.value.trim(),
-        afiliacion: document.getElementById("sol-afiliacion")?.value.trim(),
-        duracion: document.getElementById("sol-duracion")?.value.trim(),
-        lente_id: document.getElementById("sol-lente-id")?.value.trim(),
-        lente_nombre: document.getElementById("sol-lente-nombre")?.value.trim(),
-        lente_poder: document.getElementById("sol-lente-poder")?.value.trim(),
-        lente_observacion: document
-          .getElementById("sol-lente-obs")
-          ?.value.trim(),
-        incision: document.getElementById("sol-incision")?.value.trim(),
-      };
-    },
-  }).then(async (result) => {
-    if (!result.isConfirmed) return;
-    const payload = result.value || {};
-    payload.estado = ESTADO_APTO_OFTALMOLOGO;
-    try {
-      showToast("Guardando solicitud...", true);
-      const updated = await guardarSolicitudParcial(item.id, payload);
-      if (updated) {
-        mergeSolicitudEnStore(item.id, updated);
-      } else {
-        mergeSolicitudEnStore(item.id, payload);
-      }
-      await actualizarEstadoSolicitud(
-        item.id,
-        item.form_id,
-        "apto-anestesia",
-        getDataStore(),
-        window.aplicarFiltros
-      );
-      showToast("✅ Solicitud actualizada y marcada como apto oftalmólogo");
-    } catch (err) {
-      console.error("Error actualizando solicitud:", err);
-      Swal.fire(
-        "Error",
-        err?.message || "No se pudo actualizar la solicitud",
-        "error"
-      );
-    }
-  });
 }
