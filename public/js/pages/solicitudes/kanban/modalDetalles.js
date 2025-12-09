@@ -323,68 +323,6 @@ function buildContextualActionsHtml(solicitud = {}) {
     `);
   }
 
-  if (estado === "apto-oftalmologo") {
-    blocks.push(`
-        <div class="alert alert-info border" id="prefacturaOftalmoPanel">
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <i class="mdi mdi-eye-outline fs-4 text-info"></i>
-                <div>
-                    <strong>Validación del oftalmólogo</strong>
-                    <p class="mb-0 text-muted">Revisa y confirma los datos del lente intraocular antes de pasar a anestesia.</p>
-                </div>
-            </div>
-            <div class="bg-white border rounded p-2 mb-2">
-                <div class="row g-2">
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Lente / Producto</small>
-                        <strong>${escapeHtml(baseInfo.producto)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Ojo</small>
-                        <strong>${escapeHtml(baseInfo.ojo)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Marca</small>
-                        <strong>${escapeHtml(baseInfo.marca)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Modelo</small>
-                        <strong>${escapeHtml(baseInfo.modelo)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Poder</small>
-                        <strong>${escapeHtml(baseInfo.poder)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Observación</small>
-                        <strong>${escapeHtml(baseInfo.observacion)}</strong>
-                    </div>
-                    <div class="col-sm-6">
-                        <small class="text-muted d-block">Incisión</small>
-                        <strong>${escapeHtml(baseInfo.incision)}</strong>
-                    </div>
-                </div>
-            </div>
-            <div class="d-grid gap-2 d-md-flex">
-                <button class="btn btn-outline-info flex-fill" data-context-action="editar-lio" data-id="${escapeHtml(
-                  solicitud.id
-                )}" data-form-id="${escapeHtml(
-      solicitud.form_id
-    )}" data-hc="${escapeHtml(solicitud.hc_number || "")}">
-                    <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
-                </button>
-                <button class="btn btn-info flex-fill" data-context-action="confirmar-oftalmo" data-id="${escapeHtml(
-                  solicitud.id
-                )}" data-form-id="${escapeHtml(
-      solicitud.form_id
-    )}">
-                    <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo
-                </button>
-            </div>
-        </div>
-    `);
-  }
-
   if (estado === "listo-para-agenda") {
     const basePath = getKanbanConfig().basePath || "";
     const agendaUrl = `/reports/protocolo/pdf?hc_number=${encodeURIComponent(
@@ -732,32 +670,40 @@ async function obtenerLentesCatalogo() {
     return __lentesCache;
   }
 
+  const { basePath } = getKanbanConfig();
+  const normalizedBase =
+    basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
   const origin =
     (typeof window !== "undefined" &&
       window.location &&
       window.location.origin) ||
     "";
 
-  const variants = new Set([
-    ...buildApiCandidates("/api/lentes"),
-    ...buildApiCandidates("/api/lentes/index.php"),
-  ]);
+  const candidates = new Set();
+  const appendCandidate = (path) => {
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    candidates.add(normalized);
+    if (normalizedBase && !normalized.startsWith(normalizedBase)) {
+      candidates.add(`${normalizedBase}${normalized}`);
+    }
+    if (origin) {
+      candidates.add(`${origin}${normalized}`);
+    }
+  };
 
-  if (origin) {
-    Array.from(variants)
-      .filter((p) => typeof p === "string" && p.startsWith("/"))
-      .forEach((p) => variants.add(`${origin}${p}`));
-  }
+  // Preferir los endpoints locales para evitar CORS
+  appendCandidate("/insumos/lentes/list");
+  appendCandidate("/api/lentes/index.php");
+  appendCandidate("/api/lentes");
 
   // Fallback absoluto a dominio de API (evitar si hay CORS)
-  variants.add("https://asistentecive.consulmed.me/api/lentes");
+  candidates.add("https://asistentecive.consulmed.me/api/lentes/index.php");
 
-  for (const url of variants) {
+  for (const url of candidates) {
     try {
       const resp = await fetch(url, {
         method: "GET",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
       });
       if (!resp.ok) continue;
       const data = await resp.json();
@@ -1076,162 +1022,166 @@ function handleContextualAction(event) {
         };
 
         const html = `
-          <div class="cive-modal-card">
-            <div class="cive-modal-section">
-              <h4><i class="fas fa-user-md"></i> Datos de solicitud</h4>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Estado</label>
-                    <input id="sol-estado" class="swal2-input" value="${escapeHtml(
-                      merged.estado || merged.kanban_estado || ""
-                    )}" placeholder="Estado" readonly />
+          <div class="box box-solid">
+            <div class="box-header with-border">
+              <h4 class="box-title">Editar solicitud #${escapeHtml(
+                solicitudId || ""
+              )}</h4>
+            </div>
+            <form class="form">
+              <div class="box-body">
+                <h4 class="box-title text-info mb-0"><i class="ti-user me-15"></i> Datos de solicitud</h4>
+                <hr class="my-15">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Estado</label>
+                      <input id="sol-estado" class="form-control" value="${escapeHtml(
+                        merged.estado || merged.kanban_estado || ""
+                      )}" placeholder="Estado" readonly />
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Doctor</label>
+                      <select id="sol-doctor" class="form-select">
+                        <option value="${escapeHtml(
+                          merged.doctor || merged.crm_responsable_nombre || ""
+                        )}">
+                          ${escapeHtml(
+                            merged.doctor || merged.crm_responsable_nombre || "No definido"
+                          )}
+                        </option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Doctor</label>
-                    <select id="sol-doctor" class="swal2-select">
-                      <option value="${escapeHtml(
-                        merged.doctor || merged.crm_responsable_nombre || ""
-                      )}">
-                        ${escapeHtml(merged.doctor || merged.crm_responsable_nombre || "No definido")}
-                      </option>
-                    </select>
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Fecha</label>
+                      <input id="sol-fecha" type="datetime-local" class="form-control" value="${escapeHtml(
+                        toDatetimeLocal(merged.fecha || merged.fecha_programada)
+                      )}" />
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Prioridad</label>
+                      <input id="sol-prioridad" class="form-control" value="${escapeHtml(
+                        merged.prioridad || merged.prioridad_automatica || "Normal"
+                      )}" placeholder="URGENTE / NORMAL" readonly />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Fecha</label>
-                    <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${escapeHtml(
-                      toDatetimeLocal(merged.fecha || merged.fecha_programada)
-                    )}" />
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Producto</label>
+                      <input id="sol-producto" class="form-control" value="${escapeHtml(
+                        baseProducto
+                      )}" placeholder="Producto asociado" />
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Ojo</label>
+                      <select id="sol-ojo" class="form-select">
+                        <option value="">Selecciona ojo</option>
+                        <option value="DERECHO"${
+                          (merged.ojo || "").toUpperCase() === "DERECHO" ? " selected" : ""
+                        }>DERECHO</option>
+                        <option value="IZQUIERDO"${
+                          (merged.ojo || "").toUpperCase() === "IZQUIERDO" ? " selected" : ""
+                        }>IZQUIERDO</option>
+                        <option value="AMBOS OJOS"${
+                          (merged.ojo || "").toUpperCase() === "AMBOS OJOS" ? " selected" : ""
+                        }>AMBOS OJOS</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Prioridad</label>
-                    <input id="sol-prioridad" class="swal2-input" value="${escapeHtml(
-                      merged.prioridad || merged.prioridad_automatica || "Normal"
-                    )}" placeholder="URGENTE / NORMAL" readonly />
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Afiliación</label>
+                      <input id="sol-afiliacion" class="form-control" value="${escapeHtml(
+                        merged.afiliacion || ""
+                      )}" placeholder="Afiliación" readonly />
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Duración</label>
+                      <input id="sol-duracion" class="form-control" value="${escapeHtml(
+                        merged.duracion || ""
+                      )}" placeholder="Minutos" readonly />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Producto</label>
-                    <input id="sol-producto" class="swal2-input" value="${escapeHtml(
-                      baseProducto
-                    )}" placeholder="Producto asociado" />
-                  </div>
-                </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Ojo</label>
-                    <select id="sol-ojo" class="swal2-select">
-                      <option value="">Selecciona ojo</option>
-                      <option value="DERECHO"${
-                        (merged.ojo || "").toUpperCase() === "DERECHO" ? " selected" : ""
-                      }>DERECHO</option>
-                      <option value="IZQUIERDO"${
-                        (merged.ojo || "").toUpperCase() === "IZQUIERDO" ? " selected" : ""
-                      }>IZQUIERDO</option>
-                      <option value="AMBOS OJOS"${
-                        (merged.ojo || "").toUpperCase() === "AMBOS OJOS" ? " selected" : ""
-                      }>AMBOS OJOS</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Afiliación</label>
-                    <input id="sol-afiliacion" class="swal2-input" value="${escapeHtml(
-                      merged.afiliacion || ""
-                    )}" placeholder="Afiliación" readonly />
-                  </div>
-                </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Duración</label>
-                    <input id="sol-duracion" class="swal2-input" value="${escapeHtml(
-                      merged.duracion || ""
-                    )}" placeholder="Minutos" readonly />
-                  </div>
-                </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-full cive-form-group">
-                  <label>Procedimiento</label>
-                  <textarea id="sol-procedimiento" class="swal2-textarea" rows="2" placeholder="Descripción">${escapeHtml(
+                <div class="form-group">
+                  <label class="form-label">Procedimiento</label>
+                  <textarea id="sol-procedimiento" class="form-control" rows="2" placeholder="Descripción">${escapeHtml(
                     merged.procedimiento || ""
                   )}</textarea>
                 </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-full cive-form-group">
-                  <label>Observación</label>
-                  <textarea id="sol-observacion" class="swal2-textarea" rows="2" placeholder="Notas">${escapeHtml(
+                <div class="form-group">
+                  <label class="form-label">Observación</label>
+                  <textarea id="sol-observacion" class="form-control" rows="2" placeholder="Notas">${escapeHtml(
                     merged.observacion || ""
                   )}</textarea>
                 </div>
-              </div>
-            </div>
-            <div class="cive-modal-section">
-              <h4><i class="fas fa-eye"></i> Lente e incisión</h4>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Lente</label>
-                    <select id="sol-lente-id" class="swal2-select" data-value="${escapeHtml(
-                      lenteSeleccionada
-                    )}">
-                      <option value="">Cargando lentes...</option>
-                    </select>
+
+                <h4 class="box-title text-info mb-0 mt-20"><i class="ti-save me-15"></i> Lente e incisión</h4>
+                <hr class="my-15">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Lente</label>
+                      <select id="sol-lente-id" class="form-select" data-value="${escapeHtml(
+                        lenteSeleccionada
+                      )}">
+                        <option value="">Cargando lentes...</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Nombre de lente</label>
+                      <input id="sol-lente-nombre" class="form-control" value="${escapeHtml(
+                        merged.lente_nombre || baseProducto
+                      )}" placeholder="Nombre del lente" />
+                    </div>
                   </div>
                 </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Nombre de lente</label>
-                    <input id="sol-lente-nombre" class="swal2-input" value="${escapeHtml(
-                      merged.lente_nombre || baseProducto
-                    )}" placeholder="Nombre del lente" />
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Poder del lente</label>
+                      <select id="sol-lente-poder" class="form-select" data-value="${escapeHtml(
+                        poderSeleccionado
+                      )}">
+                        <option value="">Selecciona poder</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label class="form-label">Incisión</label>
+                      <input id="sol-incision" class="form-control" value="${escapeHtml(
+                        merged.incision || ""
+                      )}" placeholder="Ej: Clear cornea temporal" />
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Poder del lente</label>
-                    <select id="sol-lente-poder" class="swal2-select" data-value="${escapeHtml(
-                      poderSeleccionado
-                    )}">
-                      <option value="">Selecciona poder</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="cive-col-6">
-                  <div class="cive-form-group">
-                    <label>Incisión</label>
-                    <input id="sol-incision" class="swal2-input" value="${escapeHtml(
-                      merged.incision || ""
-                    )}" placeholder="Ej: Clear cornea temporal" />
-                  </div>
-                </div>
-              </div>
-              <div class="cive-row">
-                <div class="cive-col-full cive-form-group">
-                  <label>Observación de lente</label>
-                  <textarea id="sol-lente-obs" class="swal2-textarea" rows="2" placeholder="Notas de lente">${escapeHtml(
+                <div class="form-group">
+                  <label class="form-label">Observación de lente</label>
+                  <textarea id="sol-lente-obs" class="form-control" rows="2" placeholder="Notas de lente">${escapeHtml(
                     baseObservacion
                   )}</textarea>
                 </div>
               </div>
-            </div>
+            </form>
           </div>
         `;
 

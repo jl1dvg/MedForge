@@ -13,10 +13,10 @@ if (empty($solicitud)) {
 }
 
 $nombrePaciente = trim(implode(' ', array_filter([
-    $paciente['fname'] ?? '',
-    $paciente['mname'] ?? '',
-    $paciente['lname'] ?? '',
-    $paciente['lname2'] ?? '',
+        $paciente['fname'] ?? '',
+        $paciente['mname'] ?? '',
+        $paciente['lname'] ?? '',
+        $paciente['lname2'] ?? '',
 ])));
 
 $fechaNacimiento = $paciente['fecha_nacimiento'] ?? null;
@@ -44,8 +44,8 @@ if ($fechaSolicitudRaw) {
 }
 
 $semaforo = [
-    'color' => 'secondary',
-    'texto' => 'Sin datos',
+        'color' => 'secondary',
+        'texto' => 'Sin datos',
 ];
 if ($diasTranscurridos !== null) {
     if ($diasTranscurridos <= 3) {
@@ -63,7 +63,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
     try {
         $vigencia = new DateTime($derivacion['fecha_vigencia']);
         $hoy = new DateTime();
-        $intervalo = (int) $hoy->diff($vigencia)->format('%r%a');
+        $intervalo = (int)$hoy->diff($vigencia)->format('%r%a');
 
         if ($intervalo >= 60) {
             $vigenciaBadge = ['color' => 'success', 'texto' => '🟢 Vigente'];
@@ -86,14 +86,15 @@ if (!empty($derivacion['fecha_vigencia'])) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
 <div class="alert alert-primary text-center fw-bold">
-    🧑 Paciente: <?= htmlspecialchars($nombrePaciente ?: 'Sin nombre', ENT_QUOTES, 'UTF-8') ?> — <?= htmlspecialchars($edad, ENT_QUOTES, 'UTF-8') ?>
+    🧑 Paciente: <?= htmlspecialchars($nombrePaciente ?: 'Sin nombre', ENT_QUOTES, 'UTF-8') ?>
+    — <?= htmlspecialchars($edad, ENT_QUOTES, 'UTF-8') ?>
 </div>
 
 <ul class="list-group mb-4 bg-light-subtle">
     <li class="list-group-item fw-bold text-center bg-light-subtle">
         <?php if ($fechaSolicitud): ?>
             🕒 Fecha de Solicitud: <?= htmlspecialchars($fechaSolicitud->format('d-m-Y'), ENT_QUOTES, 'UTF-8') ?><br>
-            <small class="text-muted">(hace <?= (int) $diasTranscurridos ?> días)</small><br>
+            <small class="text-muted">(hace <?= (int)$diasTranscurridos ?> días)</small><br>
         <?php else: ?>
             <span class="text-muted">Fecha no disponible</span><br>
         <?php endif; ?>
@@ -103,18 +104,25 @@ if (!empty($derivacion['fecha_vigencia'])) {
     </li>
 </ul>
 
-<ul class="list-group mb-4 bg-light-subtle">
-    <li class="list-group-item">
-        <strong>Formulario ID:</strong> <?= htmlspecialchars((string) ($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?><br>
-        <strong>HC #:</strong> <?= htmlspecialchars((string) ($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-    </li>
-</ul>
-
-<h5 class="mt-4 border-bottom pb-1">📄 Datos del Paciente</h5>
-<ul class="list-group mb-4 bg-light-subtle">
-    <li class="list-group-item">
-        <i class="bi bi-gender-ambiguous"></i> <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?><br>
-        <i class="bi bi-shield-check"></i> <strong>Afiliación:</strong> <?= htmlspecialchars($paciente['afiliacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?><br>
+<div class="box box-outline-success">
+    <div class="box-header">
+        <h5 class="box-title"><strong>📄 Datos del Paciente</strong></h5>
+    </div>
+    <div class="box-body">
+        <i class="bi bi-gender-ambiguous"></i>
+        <strong>HC
+            #:</strong> <?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+        <br>
+        <i class="bi bi-gender-ambiguous"></i>
+        <strong>Formulario
+            ID:</strong> <?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+        <br>
+        <i class="bi bi-gender-ambiguous"></i>
+        <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+        <br>
+        <i class="bi bi-shield-check"></i>
+        <strong>Afiliación:</strong> <?= htmlspecialchars($paciente['afiliacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+        <br>
         <i class="bi bi-cake"></i> <strong>Fecha Nacimiento:</strong>
         <?php
         if ($fechaNacimiento) {
@@ -128,94 +136,336 @@ if (!empty($derivacion['fecha_vigencia'])) {
             echo 'No disponible';
         }
         ?><br>
-        <i class="bi bi-phone"></i> <strong>Celular:</strong> <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-    </li>
-</ul>
+        <i class="bi bi-phone"></i>
+        <strong>Celular:</strong> <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+    </div>
+</div>
+
+<script>
+(() => {
+    const callout = document.getElementById('prefacturaCalloutPreanestesia');
+    const estadoSpan = document.getElementById('prefacturaEstadoActual');
+    const btnAptoAnestesia = document.getElementById('btnPrefacturaConfirmarAnestesia');
+    const btnAptoOftalmo = document.getElementById('btnPrefacturaConfirmarOftalmo');
+
+    if (!callout || !estadoSpan) return;
+
+    const postEstado = async ({id, formId, estado}) => {
+        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
+        const url = `${basePath.replace(/\/+$/, '')}/actualizar-estado`;
+        const payload = {
+            id: Number.parseInt(id, 10),
+            form_id: formId,
+            estado,
+            completado: true,
+            force: true,
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            body: JSON.stringify(payload),
+            credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data?.error || 'No se pudo actualizar el estado');
+        }
+        return data;
+    };
+
+    const actualizarUI = (nuevoEstado, tipo, resp = {}) => {
+        estadoSpan.textContent = nuevoEstado;
+        const estadoNorm = (nuevoEstado || '').toString().trim().toLowerCase();
+        const esAptoAnestesia = ['apto-anestesia', 'listo-para-agenda', 'completado'].includes(estadoNorm);
+        callout.classList.toggle('callout-success', esAptoAnestesia);
+        callout.classList.toggle('callout-warning', !esAptoAnestesia);
+        if (tipo === 'anestesia' && btnAptoAnestesia) {
+            btnAptoAnestesia.classList.remove('btn-outline-success');
+            btnAptoAnestesia.classList.add('btn-success');
+            btnAptoAnestesia.textContent = 'Apto por anestesia';
+            btnAptoAnestesia.disabled = true;
+        }
+        if (tipo === 'oftalmo' && btnAptoOftalmo) {
+            btnAptoOftalmo.disabled = true;
+        }
+
+        const store = window.__solicitudesKanban;
+        if (Array.isArray(store)) {
+            const lookupId = btnAptoAnestesia?.dataset.id || btnAptoOftalmo?.dataset.id;
+            const lookupForm = btnAptoAnestesia?.dataset.formId || btnAptoOftalmo?.dataset.formId;
+            const item = store.find(
+                (s) => String(s.id) === String(lookupId) || String(s.form_id) === String(lookupForm)
+            );
+            if (item) {
+                item.estado = resp.estado || nuevoEstado;
+                item.estado_label = resp.estado_label || resp.estado || nuevoEstado;
+                if (resp.checklist) item.checklist = resp.checklist;
+                if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+            }
+        }
+
+        if (typeof window.aplicarFiltros === 'function') {
+            try { window.aplicarFiltros(); } catch (e) { /* ignore */ }
+        } else {
+            // Si no existe el refresco global, recarga la página para reflejar el checklist.
+            setTimeout(() => window.location.reload(), 400);
+        }
+    };
+
+    // Confirmar plan por oftalmólogo: solo marca checklist/estado apto-oftalmologo, no mueve a anestesia.
+    if (btnAptoOftalmo) {
+        btnAptoOftalmo.addEventListener('click', async () => {
+            const id = btnAptoOftalmo.dataset.id;
+            const formId = btnAptoOftalmo.dataset.formId;
+            if (!id || !formId) return;
+            btnAptoOftalmo.disabled = true;
+            try {
+                const resp = await postEstado({id, formId, estado: 'apto-oftalmologo'});
+                // Actualiza store pero no cambia el callout (es pre-anestesia).
+                const store = window.__solicitudesKanban;
+                if (Array.isArray(store)) {
+                    const item = store.find((s) => String(s.id) === String(id));
+                    if (item) {
+                        item.estado = resp.estado || 'apto-oftalmologo';
+                        item.estado_label = resp.estado_label || resp.estado || 'apto-oftalmologo';
+                        if (resp.checklist) item.checklist = resp.checklist;
+                        if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+                    }
+                }
+                if (typeof window.aplicarFiltros === 'function') {
+                    try { window.aplicarFiltros(); } catch (e) {}
+                } else {
+                    setTimeout(() => window.location.reload(), 400);
+                }
+            } catch (error) {
+                console.error('No se pudo marcar apto oftalmólogo:', error);
+                alert(error?.message || 'No se pudo marcar apto oftalmólogo.');
+                btnAptoOftalmo.disabled = false;
+            }
+        });
+    }
+
+    // Confirmar apto anestesia: mueve a listo-para-agenda y actualiza callout.
+    if (btnAptoAnestesia) {
+        btnAptoAnestesia.addEventListener('click', async () => {
+            const id = btnAptoAnestesia.dataset.id;
+            const formId = btnAptoAnestesia.dataset.formId;
+            if (!id || !formId) return;
+            btnAptoAnestesia.disabled = true;
+            try {
+                const resp = await postEstado({id, formId, estado: 'listo-para-agenda'});
+                actualizarUI(resp.estado || 'listo-para-agenda', 'anestesia', resp);
+            } catch (error) {
+                console.error('No se pudo marcar apto anestesia:', error);
+                alert(error?.message || 'No se pudo marcar apto anestesia.');
+                btnAptoAnestesia.disabled = false;
+            }
+        });
+    }
+})();
+</script>
 
 <div class="row g-3">
     <div class="col-12 col-md-6">
-        <h5>🗂️ Información de la Solicitud</h5>
-        <ul class="list-group mb-3">
-            <li class="list-group-item"><strong>Afiliación:</strong> <?= htmlspecialchars($solicitud['afiliacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Doctor:</strong> <?= htmlspecialchars($solicitud['doctor'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Duración:</strong> <?= htmlspecialchars($solicitud['duracion'] ?? '—', ENT_QUOTES, 'UTF-8') ?> minutos</li>
-            <li class="list-group-item"><strong>Prioridad:</strong> <?= htmlspecialchars($solicitud['prioridad'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Estado:</strong> <?= htmlspecialchars($solicitud['estado'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item">
-                <i class="bi bi-clipboard2-pulse"></i>
-                <strong>Diagnósticos:</strong>
-                <?php if ($diagnosticos): ?>
-                    <ul class="mb-0 mt-2">
-                        <?php foreach ($diagnosticos as $dx): ?>
-                            <li>
-                                <span class="text-primary"><?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
-                                — <?= htmlspecialchars($dx['descripcion'] ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                (<?= htmlspecialchars($dx['lateralidad'] ?? '', ENT_QUOTES, 'UTF-8') ?>)
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php else: ?>
-                    <span class="text-muted">No disponibles</span>
-                <?php endif; ?>
-            </li>
-        </ul>
+        <div class="box box-outline-info">
+            <div class="box-header">
+                <h5 class="box-title"><strong>🗂️ Información de la Solicitud</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Doctor:</strong> <?= htmlspecialchars($solicitud['doctor'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Prioridad:</strong> <?= htmlspecialchars($solicitud['prioridad'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Estado:</strong> <?= htmlspecialchars($solicitud['estado'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <strong>Diagnósticos:</strong>
+                    <?php if ($diagnosticos): ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($diagnosticos as $dx): ?>
+                                <li>
+                                    <span class="text-primary"><?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
+                                    — <?= htmlspecialchars($dx['descripcion'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    (<?= htmlspecialchars($dx['lateralidad'] ?? '', ENT_QUOTES, 'UTF-8') ?>)
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <span class="text-muted">No disponibles</span>
+                    <?php endif; ?>
+                </li>
+            </ul>
+            <div class="box-body"></div>
+        </div>
     </div>
 
     <div class="col-12 col-md-6">
-        <h5>📌 Información de la Derivación</h5>
-        <ul class="list-group mb-3">
-            <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código Derivación:</strong> <?= htmlspecialchars($derivacion['cod_derivacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha Registro:</strong> <?= htmlspecialchars($derivacion['fecha_registro'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha Vigencia:</strong> <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item">
-                <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
-                <?php if ($vigenciaBadge): ?>
-                    <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
+        <div class="box box-outline-primary">
+            <div class="box-header">
+                <h5 class="box-title"><strong>📌 Información de la Derivación</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código
+                        Derivación:</strong> <?= htmlspecialchars($derivacion['cod_derivacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha
+                        Registro:</strong> <?= htmlspecialchars($derivacion['fecha_registro'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha
+                        Vigencia:</strong> <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
+                    <?php if ($vigenciaBadge): ?>
+                        <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
                         <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
                     </span>
-                <?php endif; ?>
-            </li>
-            <li class="list-group-item"><i class="bi bi-clipboard2-pulse"></i> <strong>Diagnóstico:</strong> <?= htmlspecialchars($derivacion['diagnostico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-        </ul>
+                    <?php endif; ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <strong>Diagnóstico:</strong>
+                    <?php if (!empty($derivacion['diagnosticos']) && is_array($derivacion['diagnosticos'])): ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($derivacion['diagnosticos'] as $dx): ?>
+                                <li>
+                                    <span class="text-primary">
+                                        <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                    — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if (!empty($dx['lateralidad'])): ?>
+                                        (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php elseif (!empty($derivacion['diagnostico'])): ?>
+                        <?php
+                        // Si viene como string tipo "Z010 - ...; H251 - ...; ..."
+                        $items = array_filter(array_map('trim', explode(';', $derivacion['diagnostico'])));
+                        ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($items as $item): ?>
+                                <li><?= htmlspecialchars($item, ENT_QUOTES, 'UTF-8') ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <span class="text-muted">No disponible</span>
+                    <?php endif; ?>
+                </li>
+            </ul>
+            <div class="box-body"></div>
+        </div>
     </div>
 </div>
-<div class="row g-3 mt-2">
-    <div class="col-12 col-md-6">
-        <h5>👁️ Datos para Oftalmología</h5>
-        <ul class="list-group mb-3">
-            <li class="list-group-item"><strong>Lente / Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Marca:</strong> <?= htmlspecialchars($solicitud['lente_marca'] ?? ($solicitud['lente_brand'] ?? 'No registrada'), ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Modelo:</strong> <?= htmlspecialchars($solicitud['lente_modelo'] ?? ($solicitud['lente_model'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?></li>
-        </ul>
+
+<div class="box box-outline-warning">
+    <div class="box-header">
+        <h5 class="box-title"><strong>👁️ Datos para Oftalmología</strong></h5>
     </div>
-    <div class="col-12 col-md-6">
-        <h5>🩺 Paso preanestesia</h5>
-        <ul class="list-group mb-3">
-            <li class="list-group-item"><strong>Estado actual:</strong> <?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Cirujano responsable:</strong> <?= htmlspecialchars($solicitud['doctor'] ?? 'No asignado', ENT_QUOTES, 'UTF-8') ?></li>
-            <li class="list-group-item"><strong>Duración estimada:</strong> <?= htmlspecialchars($solicitud['duracion'] ?? '—', ENT_QUOTES, 'UTF-8') ?> minutos</li>
-        </ul>
+    <ul class="list-group list-group-flush">
+        <li class="list-group-item"><strong>Lente /
+                Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?>
+        </li>
+        <li class="list-group-item">
+            <strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?>
+        </li>
+        <li class="list-group-item">
+            <strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
+        <li class="list-group-item">
+            <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision']?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
+        </li>
+        <li class="list-group-item">
+            <strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
+        </li>
+    </ul>
+    <div class="box-body">
+<?php
+    $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
+    $esAptoAnestesia = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'completado'], true);
+    $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+?>
+<div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
+    <h5 class="d-flex align-items-center justify-content-between mb-2">
+        <span><strong>🩺 Paso preanestesia</strong></span>
+        <button type="button"
+                class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
+                data-context-action="confirmar-anestesia"
+                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                <?= $esAptoAnestesia ? 'disabled' : '' ?>
+                id="btnPrefacturaConfirmarAnestesia">
+            <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
+        </button>
+    </h5>
+    <div>
+        <strong>Estado actual:</strong>
+        <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
+    </div>
+</div>
+    </div>
+    <div class="box-footer">
+        <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
+                data-context-action="editar-lio"
+                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
+        </button>
+        <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
+                data-context-action="confirmar-oftalmo"
+                data-id="<?= htmlspecialchars((string)($solicitud['id'] ?? $solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo
+        </button>
     </div>
 </div>
 <div class="row mt-4">
     <div class="col-12">
-        <div class="p-3 border rounded bg-light">
-            <h5 class="mb-3">📝 Examen Físico y Plan</h5>
-            <div class="mb-3">
-                <strong>Examen Físico:</strong><br>
-                <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
-                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </div>
+        <div class="box box-outline-primary">
+            <div class="box-header with-border">
+                <h4 class="box-title">📝 Examen físico y plan</h4>
+                <h6 class="box-subtitle">Revisa la exploración y las indicaciones en pestañas verticales.</h6>
             </div>
-            <div>
-                <strong>Plan:</strong><br>
-                <div class="bg-white p-2 border rounded" style="white-space: pre-wrap;">
-                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+            <div class="box-body">
+                <div class="vtabs">
+                    <ul class="nav nav-tabs tabs-vertical" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab" aria-selected="true">
+                                <span><i class="ion-eye me-2"></i>Examen físico</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#tab-plan" role="tab" aria-selected="false">
+                                <span><i class="ion-document-text me-2"></i>Plan</span>
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane active" id="tab-examen-fisico" role="tabpanel">
+                            <div class="p-15">
+                                <div style="white-space: pre-wrap;">
+                                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane" id="tab-plan" role="tabpanel">
+                            <div class="p-15">
+                                <div style="white-space: pre-wrap;">
+                                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
