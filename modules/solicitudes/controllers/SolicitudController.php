@@ -128,6 +128,16 @@ class SolicitudController extends BaseController
             'fechaTexto' => trim($payload['fechaTexto'] ?? ''),
         ];
 
+        if ($filtros['fechaTexto'] === '') {
+            $hoy = new DateTimeImmutable('today');
+            $inicio = $hoy->sub(new DateInterval('P30D'));
+            $filtros['fechaTexto'] = sprintf(
+                '%s - %s',
+                $inicio->format('d-m-Y'),
+                $hoy->format('d-m-Y')
+            );
+        }
+
         $kanbanPreferences = $this->leadConfig->getKanbanPreferences();
         $pipelineStages = $this->leadConfig->getPipelineStages();
 

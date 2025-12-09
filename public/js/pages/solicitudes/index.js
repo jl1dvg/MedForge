@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
+    const dateFilter = document.getElementById('kanbanDateFilter');
 
     const VIEW_DEFAULT = 'kanban';
     let currentView = localStorage.getItem(STORAGE_KEY_VIEW) === 'table' ? 'table' : VIEW_DEFAULT;
@@ -139,6 +140,34 @@ document.addEventListener('DOMContentLoaded', () => {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-');
     };
+
+    const formatDate = (date) => {
+        const pad = (value) => String(value).padStart(2, '0');
+        return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
+    };
+
+    const buildDefaultDateRange = () => {
+        if (typeof moment === 'function') {
+            const end = moment().endOf('day');
+            const start = moment().subtract(29, 'days').startOf('day');
+            return {
+                start,
+                end,
+                label: `${start.format('DD-MM-YYYY')} - ${end.format('DD-MM-YYYY')}`,
+            };
+        }
+
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setDate(endDate.getDate() - 29);
+        return {
+            start: startDate,
+            end: endDate,
+            label: `${formatDate(startDate)} - ${formatDate(endDate)}`,
+        };
+    };
+
+    const defaultDateRange = buildDefaultDateRange();
 
     const calcularDias = (fechaIso) => {
         if (!fechaIso) {
@@ -685,14 +714,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (dateFilter && !dateFilter.value) {
+        dateFilter.value = defaultDateRange.label;
+    }
+
     if (typeof $ !== 'undefined' && typeof $.fn.daterangepicker === 'function') {
-        $('#kanbanDateFilter')
+        const $datePicker = $('#kanbanDateFilter')
             .daterangepicker({
                 locale: {
                     format: 'DD-MM-YYYY',
                     applyLabel: 'Aplicar',
                     cancelLabel: 'Cancelar',
                 },
+                startDate: defaultDateRange.start,
+                endDate: defaultDateRange.end,
                 autoUpdateInput: false,
             })
             .on('apply.daterangepicker', function (ev, picker) {
@@ -703,6 +738,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.value = '';
                 window.aplicarFiltros();
             });
+
+        const daterangepicker = $datePicker.data('daterangepicker');
+        if (daterangepicker && dateFilter && dateFilter.value === defaultDateRange.label) {
+            daterangepicker.setStartDate(defaultDateRange.start);
+            daterangepicker.setEndDate(defaultDateRange.end);
+        }
     }
 
     if (realtimeConfig.enabled) {
@@ -911,5 +952,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    cargarKanban();
+    cargarKanban(obtenerFiltros());
 });
