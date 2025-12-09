@@ -752,6 +752,17 @@ class SolicitudController extends BaseController
         }
 
         try {
+            if (in_array($estado, ['apto-oftalmologo', 'apto-anestesia'], true)) {
+                error_log(sprintf(
+                    'actualizarEstado solicitud_id=%d etapa=%s completado=%s force=%s user=%s',
+                    $id,
+                    $estado,
+                    $completado ? '1' : '0',
+                    $force ? '1' : '0',
+                    $this->getCurrentUserId() ?? 'anon'
+                ));
+            }
+
             $resultado = $this->estadoService->actualizarEtapa(
                 $id,
                 $estado,

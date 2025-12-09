@@ -1,3 +1,8 @@
+if (window.__CIVE_EXAMENES_JS_LOADED__) {
+    console.debug('examenes.js ya estaba cargado; se omite reinyección.');
+} else {
+    window.__CIVE_EXAMENES_JS_LOADED__ = true;
+
 // ==== Helpers de contexto de extensión ====
 function isExtensionContextActive() {
     try {
@@ -535,4 +540,10 @@ OI: ${OI}`;
                 .catch(error => console.log('Error en la ejecución de examen:', error));
         });
     }
+}
+
+// Exponer funciones principales para otros scripts/inyecciones
+window.ejecutarEnPagina = ejecutarEnPagina;
+window.ejecutarExamenes = ejecutarExamenes;
+window.crearPopupFallbackOD_OI = crearPopupFallbackOD_OI;
 }

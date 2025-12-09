@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Asistente CIVE",
-  "version": "7.1.5",
+  "version": "7.1.7",
   "description": "Descripción de mi extensión",
   "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "host_permissions": [
@@ -22,9 +22,31 @@
   "commands": {
     "ejecutar-examen-directo": {
       "suggested_key": {
-        "default": "Ctrl+Shift+E"
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
       },
-      "description": "Ejecutar examen con ID predefinido"
+      "description": "Ejecutar OCT macular (atajo legado)"
+    },
+    "ejecutar-examen-octno": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+1",
+        "mac": "Command+Shift+1"
+      },
+      "description": "Ejecutar OCT nervio óptico"
+    },
+    "ejecutar-examen-angio": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+2",
+        "mac": "Command+Shift+2"
+      },
+      "description": "Ejecutar Angiografía"
+    },
+    "ejecutar-examen-selector": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+9",
+        "mac": "Command+Shift+9"
+      },
+      "description": "Elegir examen y ejecutarlo"
     }
   },
   "action": {

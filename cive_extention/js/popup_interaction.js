@@ -876,24 +876,27 @@ function appendPlanQuirurgicoEnTextarea(payload) {
   if (wasDisabled) textarea.disabled = false;
   textarea.value = `${previo}${separador}${block}`;
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
-  if (wasDisabled) textarea.disabled = true;function abrirModalEditarSolicitud(item) {
-        const estado = item?.estado || "";
-        const doctor = item?.doctor || "";
-        const fecha = item?.fecha || "";
-        const prioridad = item?.prioridad || "";
-        const observacion = item?.observacion || "";
-        const procedimiento = item?.procedimiento || "";
-        const producto = item?.producto || "";
-        const ojo = item?.ojo || item?.lateralidad || "";
-        const afiliacion = item?.afiliacion || "";
-        const duracion = item?.duracion || "";
-        const lenteId = item?.lente_id || "";
-        const lenteNombre = item?.lente_nombre || "";
-        const lentePoder = item?.lente_poder || "";
-        const lenteObs = item?.lente_observacion || "";
-        const incision = item?.incision || "";
+  if (wasDisabled) textarea.disabled = true;
+}
 
-        const html = `
+function abrirModalEditarSolicitud(item) {
+  const estado = item?.estado || "";
+  const doctor = item?.doctor || "";
+  const fecha = item?.fecha || "";
+  const prioridad = item?.prioridad || "";
+  const observacion = item?.observacion || "";
+  const procedimiento = item?.procedimiento || "";
+  const producto = item?.producto || "";
+  const ojo = item?.ojo || item?.lateralidad || "";
+  const afiliacion = item?.afiliacion || "";
+  const duracion = item?.duracion || "";
+  const lenteId = item?.lente_id || "";
+  const lenteNombre = item?.lente_nombre || "";
+  const lentePoder = item?.lente_poder || "";
+  const lenteObs = item?.lente_observacion || "";
+  const incision = item?.incision || "";
+
+  const html = `
         <div class="cive-modal-card">
             <div class="cive-modal-section">
                 <h4><i class="fas fa-user-md"></i> Datos de solicitud</h4>
@@ -916,8 +919,8 @@ function appendPlanQuirurgicoEnTextarea(payload) {
                         <div class="cive-form-group">
                             <label>Fecha</label>
                             <input id="sol-fecha" type="datetime-local" class="swal2-input" value="${toDatetimeLocal(
-            fecha
-        )}" />
+                              fecha
+                            )}" />
                         </div>
                     </div>
                     <div class="cive-col-6">
@@ -940,14 +943,14 @@ function appendPlanQuirurgicoEnTextarea(payload) {
                             <select id="sol-ojo" class="swal2-select">
                                 <option value="">Selecciona ojo</option>
                                 <option value="DERECHO"${
-            ojo === "DERECHO" ? " selected" : ""
-        }>DERECHO</option>
+                                  ojo === "DERECHO" ? " selected" : ""
+                                }>DERECHO</option>
                                 <option value="IZQUIERDO"${
-            ojo === "IZQUIERDO" ? " selected" : ""
-        }>IZQUIERDO</option>
+                                  ojo === "IZQUIERDO" ? " selected" : ""
+                                }>IZQUIERDO</option>
                                 <option value="AMBOS OJOS"${
-            ojo === "AMBOS OJOS" ? " selected" : ""
-        }>AMBOS OJOS</option>
+                                  ojo === "AMBOS OJOS" ? " selected" : ""
+                                }>AMBOS OJOS</option>
                             </select>
                         </div>
                     </div>
@@ -1023,174 +1026,171 @@ function appendPlanQuirurgicoEnTextarea(payload) {
         </div>
     `;
 
-        Swal.fire({
-            title: `Editar solicitud #${item?.id || ""}`,
-            html,
-            width: 800,
-            customClass: { popup: "cive-modal-wide" },
-            showCancelButton: true,
-            confirmButtonText: "Guardar cambios",
-            cancelButtonText: "Cancelar",
-            focusConfirm: false,
-            didOpen: async () => {
-                const estadoInput = document.getElementById("sol-estado");
-                if (estadoInput) estadoInput.value = ESTADO_APTO_OFTALMOLOGO;
-                // Poblar doctores en el select
-                try {
-                    const doctores = await obtenerDoctores();
-                    const sel = document.getElementById("sol-doctor");
-                    if (sel) {
-                        sel.innerHTML = '<option value="">Selecciona doctor</option>';
-                        doctores.forEach((d) => {
-                            const opt = document.createElement("option");
-                            opt.value = d;
-                            opt.textContent = d;
-                            sel.appendChild(opt);
-                        });
-                        const preset = sel.dataset.value || doctor || "";
-                        if (preset) sel.value = preset;
-                    }
-                } catch (err) {
-                    console.warn("No se pudieron cargar doctores para el select:", err);
-                    const sel = document.getElementById("sol-doctor");
-                    if (sel) {
-                        sel.innerHTML = "";
-                        const opt = document.createElement("option");
-                        opt.value = doctor;
-                        opt.textContent = doctor || "Doctor no disponible";
-                        sel.appendChild(opt);
-                    }
-                }
+  Swal.fire({
+    title: `Editar solicitud #${item?.id || ""}`,
+    html,
+    width: 800,
+    customClass: { popup: "cive-modal-wide" },
+    showCancelButton: true,
+    confirmButtonText: "Guardar cambios",
+    cancelButtonText: "Cancelar",
+    focusConfirm: false,
+    didOpen: async () => {
+      const estadoInput = document.getElementById("sol-estado");
+      if (estadoInput) estadoInput.value = ESTADO_APTO_OFTALMOLOGO;
+      // Poblar doctores en el select
+      try {
+        const doctores = await obtenerDoctores();
+        const sel = document.getElementById("sol-doctor");
+        if (sel) {
+          sel.innerHTML = '<option value="">Selecciona doctor</option>';
+          doctores.forEach((d) => {
+            const opt = document.createElement("option");
+            opt.value = d;
+            opt.textContent = d;
+            sel.appendChild(opt);
+          });
+          const preset = sel.dataset.value || doctor || "";
+          if (preset) sel.value = preset;
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar doctores para el select:", err);
+        const sel = document.getElementById("sol-doctor");
+        if (sel) {
+          sel.innerHTML = "";
+          const opt = document.createElement("option");
+          opt.value = doctor;
+          opt.textContent = doctor || "Doctor no disponible";
+          sel.appendChild(opt);
+        }
+      }
 
-                // Poblar lentes en el select
-                try {
-                    const lentes = await obtenerLentes();
-                    const selLente = document.getElementById("sol-lente-id");
-                    const selPoder = document.getElementById("sol-lente-poder");
-                    if (selLente) {
-                        selLente.innerHTML = '<option value="">Selecciona lente</option>';
-                        lentes.forEach((l) => {
-                            const opt = document.createElement("option");
-                            opt.value = l.id;
-                            opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${
-                                l.poder ? " (" + l.poder + ")" : ""
-                            }`;
-                            opt.dataset.nombre = l.nombre;
-                            opt.dataset.poder = l.poder || "";
-                            opt.dataset.rango_desde = l.rango_desde ?? "";
-                            opt.dataset.rango_hasta = l.rango_hasta ?? "";
-                            opt.dataset.rango_paso = l.rango_paso ?? "";
-                            opt.dataset.rango_inicio_incremento =
-                                l.rango_inicio_incremento ?? "";
-                            selLente.appendChild(opt);
-                        });
-                        const preset = selLente.dataset.value || lenteId || "";
-                        if (preset) selLente.value = preset;
+      // Poblar lentes en el select
+      try {
+        const lentes = await obtenerLentes();
+        const selLente = document.getElementById("sol-lente-id");
+        const selPoder = document.getElementById("sol-lente-poder");
+        if (selLente) {
+          selLente.innerHTML = '<option value="">Selecciona lente</option>';
+          lentes.forEach((l) => {
+            const opt = document.createElement("option");
+            opt.value = l.id;
+            opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${
+              l.poder ? " (" + l.poder + ")" : ""
+            }`;
+            opt.dataset.nombre = l.nombre;
+            opt.dataset.poder = l.poder || "";
+            opt.dataset.rango_desde = l.rango_desde ?? "";
+            opt.dataset.rango_hasta = l.rango_hasta ?? "";
+            opt.dataset.rango_paso = l.rango_paso ?? "";
+            opt.dataset.rango_inicio_incremento =
+              l.rango_inicio_incremento ?? "";
+            selLente.appendChild(opt);
+          });
+          const preset = selLente.dataset.value || lenteId || "";
+          if (preset) selLente.value = preset;
 
-                        const syncLente = () => {
-                            const optSel = selLente.selectedOptions?.[0];
-                            const nombre = optSel?.dataset?.nombre || "";
-                            const poder = optSel?.dataset?.poder || "";
-                            const rangoDesde = optSel?.dataset?.rango_desde || "";
-                            const rangoHasta = optSel?.dataset?.rango_hasta || "";
-                            const rangoPaso = optSel?.dataset?.rango_paso || "";
-                            const rangoInicio = optSel?.dataset?.rango_inicio_incremento || "";
-                            const nombreInput = document.getElementById("sol-lente-nombre");
-                            const poderSelect = document.getElementById("sol-lente-poder");
-                            if (nombreInput) nombreInput.value = nombre || nombreInput.value;
-                            if (poderSelect) {
-                                poderSelect.innerHTML =
-                                    '<option value="">Selecciona poder</option>';
-                                const lenteObj = {
-                                    rango_desde: rangoDesde,
-                                    rango_hasta: rangoHasta,
-                                    rango_paso: rangoPaso,
-                                    rango_inicio_incremento: rangoInicio,
-                                };
-                                const powers = generarPoderes(lenteObj);
-                                if (powers.length) {
-                                    powers.forEach((p) => {
-                                        const optP = document.createElement("option");
-                                        optP.value = p;
-                                        optP.textContent = p;
-                                        poderSelect.appendChild(optP);
-                                    });
-                                }
-                                if (poder) {
-                                    const optP = document.createElement("option");
-                                    optP.value = poder;
-                                    optP.textContent = poder;
-                                    poderSelect.appendChild(optP);
-                                }
-                                poderSelect.value = lentePoder || poder || "";
-                            }
-                        };
-                        selLente.addEventListener("change", syncLente);
-                        syncLente();
-                    }
-                } catch (err) {
-                    console.warn("No se pudieron cargar lentes para el select:", err);
-                }
-            },
-            preConfirm: () => {
-                return {
-                    estado: ESTADO_APTO_OFTALMOLOGO,
-                    doctor: document.getElementById("sol-doctor")?.value.trim(),
-                    fecha: document.getElementById("sol-fecha")?.value.trim(),
-                    prioridad: document.getElementById("sol-prioridad")?.value.trim(),
-                    observacion: document.getElementById("sol-observacion")?.value.trim(),
-                    procedimiento: document
-                        .getElementById("sol-procedimiento")
-                        ?.value.trim(),
-                    producto: document.getElementById("sol-producto")?.value.trim(),
-                    ojo: document.getElementById("sol-ojo")?.value.trim(),
-                    afiliacion: document.getElementById("sol-afiliacion")?.value.trim(),
-                    duracion: document.getElementById("sol-duracion")?.value.trim(),
-                    lente_id: document.getElementById("sol-lente-id")?.value.trim(),
-                    lente_nombre: document.getElementById("sol-lente-nombre")?.value.trim(),
-                    lente_poder: document.getElementById("sol-lente-poder")?.value.trim(),
-                    lente_observacion: document
-                        .getElementById("sol-lente-obs")
-                        ?.value.trim(),
-                    incision: document.getElementById("sol-incision")?.value.trim(),
-                };
-            },
-        }).then(async (result) => {
-            if (!result.isConfirmed) return;
-            const payload = result.value || {};
-            payload.estado = ESTADO_APTO_OFTALMOLOGO;
-            try {
-                setSectionState("cirugia", {
-                    type: "loading",
-                    message: "Guardando cambios...",
-                    containerId: "contenedorCirugias",
+          const syncLente = () => {
+            const optSel = selLente.selectedOptions?.[0];
+            const nombre = optSel?.dataset?.nombre || "";
+            const poder = optSel?.dataset?.poder || "";
+            const rangoDesde = optSel?.dataset?.rango_desde || "";
+            const rangoHasta = optSel?.dataset?.rango_hasta || "";
+            const rangoPaso = optSel?.dataset?.rango_paso || "";
+            const rangoInicio = optSel?.dataset?.rango_inicio_incremento || "";
+            const nombreInput = document.getElementById("sol-lente-nombre");
+            const poderSelect = document.getElementById("sol-lente-poder");
+            if (nombreInput) nombreInput.value = nombre || nombreInput.value;
+            if (poderSelect) {
+              poderSelect.innerHTML =
+                '<option value="">Selecciona poder</option>';
+              const lenteObj = {
+                rango_desde: rangoDesde,
+                rango_hasta: rangoHasta,
+                rango_paso: rangoPaso,
+                rango_inicio_incremento: rangoInicio,
+              };
+              const powers = generarPoderes(lenteObj);
+              if (powers.length) {
+                powers.forEach((p) => {
+                  const optP = document.createElement("option");
+                  optP.value = p;
+                  optP.textContent = p;
+                  poderSelect.appendChild(optP);
                 });
-                await actualizarSolicitud(item.id, payload);
-                const idx = uiState.cirugias.findIndex((c) => c.id === item.id);
-                if (idx >= 0) {
-                    uiState.cirugias[idx] = { ...uiState.cirugias[idx], ...payload };
-                }
-                marcarChecklistApto(item);
-                renderCirugias(uiState.cirugias);
-                appendPlanQuirurgicoEnTextarea(payload);
-                Swal.fire("Guardado", "Solicitud actualizada en MedForge", "success");
-            } catch (err) {
-                console.error("Error actualizando solicitud:", err);
-                Swal.fire(
-                    "Error",
-                    err?.message || "No se pudo actualizar la solicitud",
-                    "error"
-                );
-                setSectionState("cirugia", {
-                    type: "ready",
-                    containerId: "contenedorCirugias",
-                });
+              }
+              if (poder) {
+                const optP = document.createElement("option");
+                optP.value = poder;
+                optP.textContent = poder;
+                poderSelect.appendChild(optP);
+              }
+              poderSelect.value = lentePoder || poder || "";
             }
-        });
+          };
+          selLente.addEventListener("change", syncLente);
+          syncLente();
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar lentes para el select:", err);
+      }
+    },
+    preConfirm: () => {
+      return {
+        estado: ESTADO_APTO_OFTALMOLOGO,
+        doctor: document.getElementById("sol-doctor")?.value.trim(),
+        fecha: document.getElementById("sol-fecha")?.value.trim(),
+        prioridad: document.getElementById("sol-prioridad")?.value.trim(),
+        observacion: document.getElementById("sol-observacion")?.value.trim(),
+        procedimiento: document
+          .getElementById("sol-procedimiento")
+          ?.value.trim(),
+        producto: document.getElementById("sol-producto")?.value.trim(),
+        ojo: document.getElementById("sol-ojo")?.value.trim(),
+        afiliacion: document.getElementById("sol-afiliacion")?.value.trim(),
+        duracion: document.getElementById("sol-duracion")?.value.trim(),
+        lente_id: document.getElementById("sol-lente-id")?.value.trim(),
+        lente_nombre: document.getElementById("sol-lente-nombre")?.value.trim(),
+        lente_poder: document.getElementById("sol-lente-poder")?.value.trim(),
+        lente_observacion: document
+          .getElementById("sol-lente-obs")
+          ?.value.trim(),
+        incision: document.getElementById("sol-incision")?.value.trim(),
+      };
+    },
+  }).then(async (result) => {
+    if (!result.isConfirmed) return;
+    const payload = result.value || {};
+    payload.estado = ESTADO_APTO_OFTALMOLOGO;
+    try {
+      setSectionState("cirugia", {
+        type: "loading",
+        message: "Guardando cambios...",
+        containerId: "contenedorCirugias",
+      });
+      await actualizarSolicitud(item.id, payload);
+      const idx = uiState.cirugias.findIndex((c) => c.id === item.id);
+      if (idx >= 0) {
+        uiState.cirugias[idx] = { ...uiState.cirugias[idx], ...payload };
+      }
+      marcarChecklistApto(item);
+      renderCirugias(uiState.cirugias);
+      appendPlanQuirurgicoEnTextarea(payload);
+      Swal.fire("Guardado", "Solicitud actualizada en MedForge", "success");
+    } catch (err) {
+      console.error("Error actualizando solicitud:", err);
+      Swal.fire(
+        "Error",
+        err?.message || "No se pudo actualizar la solicitud",
+        "error"
+      );
+      setSectionState("cirugia", {
+        type: "ready",
+        containerId: "contenedorCirugias",
+      });
     }
-
+  });
 }
-
 
 function notificarCirugiasPrevias(lista, hc) {
   if (!Array.isArray(lista) || lista.length === 0) return;

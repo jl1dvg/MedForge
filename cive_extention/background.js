@@ -8,6 +8,11 @@ const STORAGE_KEYS = {
 const DEFAULT_CONTROL_ENDPOINT = 'https://cive.consulmed.me/api/cive-extension/config';
 const DEFAULT_REFRESH_INTERVAL_MS = 900000; // 15 minutos
 const SYNC_ALARM_NAME = 'civeExtension.sync';
+const EXAM_COMMAND_MAP = {
+    'ejecutar-examen-directo': 'octm', // compatibilidad con atajo previo
+    'ejecutar-examen-octno': 'octno',
+    'ejecutar-examen-angio': 'angio',
+};
 
 function storageGet(keys) {
     return new Promise((resolve) => {
@@ -217,23 +222,31 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
 });
 
-chrome.commands.onCommand.addListener((command) => {
-    if (command !== 'ejecutar-examen-directo') {
+function ejecutarExamenEnPestanaActiva(examenId) {
+    if (!examenId) {
         return;
     }
-
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
         if (!tabs || tabs.length === 0) {
             console.error('No se encontró la pestaña activa.');
             return;
         }
+        const tabId = tabs[0].id;
+        if (!tabId) {
+            console.error('No se pudo obtener el ID de la pestaña.');
+            return;
+        }
 
         chrome.scripting.executeScript({
-            target: {tabId: tabs[0].id},
+            target: {tabId},
             files: ['js/examenes.js']
         }, () => {
+            if (chrome.runtime.lastError) {
+                console.error('Error al inyectar examenes.js:', chrome.runtime.lastError.message);
+                return;
+            }
             chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id},
+                target: {tabId},
                 func: (examenId) => {
                     if (typeof ejecutarExamenes === 'function') {
                         ejecutarExamenes(examenId);
@@ -241,10 +254,68 @@ chrome.commands.onCommand.addListener((command) => {
                         console.error('ejecutarExamenes no está definida.');
                     }
                 },
-                args: ['octm']
+                args: [examenId]
             });
         });
     });
+}
+
+chrome.commands.onCommand.addListener((command) => {
+    if (command === 'ejecutar-examen-selector') {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (!tabs || tabs.length === 0) {
+                console.error('No se encontró la pestaña activa.');
+                return;
+            }
+            const tabId = tabs[0].id;
+            if (!tabId) {
+                console.error('No se pudo obtener el ID de la pestaña.');
+                return;
+            }
+
+            chrome.scripting.executeScript({
+                target: {tabId},
+                files: ['js/examenes.js']
+            }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('Error al inyectar examenes.js:', chrome.runtime.lastError.message);
+                    return;
+                }
+                chrome.scripting.executeScript({
+                    target: {tabId},
+                    func: () => {
+                        const url = chrome.runtime.getURL('data/examenes.json');
+                        fetch(url)
+                            .then((resp) => resp.json())
+                            .then((data) => {
+                                const examenes = Array.isArray(data?.examenes) ? data.examenes : [];
+                                if (!examenes.length) {
+                                    alert('No hay exámenes configurados.');
+                                    return;
+                                }
+                                const listado = examenes
+                                    .map((ex) => `${ex.id} — ${ex.cirugia || ''}`.trim())
+                                    .join('\n');
+                                const input = prompt(`Escribe el ID de examen a ejecutar:\n${listado}`, examenes[0].id);
+                                const seleccionado = examenes.find((ex) => ex.id === input);
+                                if (seleccionado && typeof ejecutarExamenes === 'function') {
+                                    ejecutarExamenes(seleccionado.id);
+                                } else if (input) {
+                                    alert('ID de examen no reconocido.');
+                                }
+                            })
+                            .catch((error) => console.error('Error cargando lista de exámenes:', error));
+                    },
+                });
+            });
+        });
+        return;
+    }
+
+    const examenId = EXAM_COMMAND_MAP[command];
+    if (examenId) {
+        ejecutarExamenEnPestanaActiva(examenId);
+    }
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

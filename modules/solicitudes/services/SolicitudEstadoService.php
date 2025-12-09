@@ -34,8 +34,11 @@ class SolicitudEstadoService
         ['slug' => 'en-atencion', 'label' => 'En atención', 'order' => 30, 'column' => 'revision-codigos', 'required' => true],
         ['slug' => 'revision-codigos', 'label' => 'Revisión de códigos', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
         ['slug' => 'espera-documentos', 'label' => 'Espera de documentos', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
+
+        // ✅ Aptos vuelven a ser requeridos
         ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmólogo', 'order' => 60, 'column' => 'apto-oftalmologo', 'required' => true],
         ['slug' => 'apto-anestesia', 'label' => 'Apto anestesia', 'order' => 70, 'column' => 'apto-anestesia', 'required' => true],
+
         ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 80, 'column' => 'listo-para-agenda', 'required' => true],
         ['slug' => 'programada', 'label' => 'Programada', 'order' => 90, 'column' => 'programada', 'required' => true],
     ];
@@ -181,6 +184,13 @@ class SolicitudEstadoService
         $antes = $this->buildChecklistForSolicitud($solicitudId, $checklistRows[$solicitudId] ?? [], $userPermissions);
         $kanbanAntes = $this->computeKanbanEstado($antes);
 
+        $isAptoStage = in_array($slug, ['apto-oftalmologo', 'apto-anestesia'], true);
+        if ($completado && $isAptoStage) {
+            // Para etapas de apto (oftalmólogo / anestesia), permitimos marcarla
+            // en cualquier momento sin exigir etapas previas.
+            $force = true;
+        }
+
         if ($completado && !$force) {
             $pendientePrevio = $this->findPrimerPendiente($antes, $stage['order']);
             if ($pendientePrevio && $pendientePrevio['slug'] !== $slug) {
@@ -204,6 +214,9 @@ class SolicitudEstadoService
                     // Completa recibida, llamado y en atención, y limpia etapas posteriores
                     $this->forceCompleteUntil($solicitudId, $slug, $usuarioId, $nota);
                     $this->clearAfterStage($solicitudId, $slug);
+                } elseif (in_array($slug, ['apto-oftalmologo', 'apto-anestesia'], true)) {
+                    // Para aptos, sólo marcar esa etapa sin tocar previas ni posteriores
+                    $this->markSingle($solicitudId, $slug, $usuarioId, $nota, true);
                 } else {
                     $this->forceCompleteUntil($solicitudId, $slug, $usuarioId, $nota);
                 }
@@ -242,6 +255,7 @@ class SolicitudEstadoService
         $progress = $this->computeProgress($despuesChecklist);
         $kanban = $this->computeKanbanEstado($despuesChecklist);
 
+// Actualizar estado legacy SIEMPRE al nuevo estado de tablero
         $this->actualizarEstadoLegacy($solicitudId, $kanban['slug']);
 
         return [
@@ -375,11 +389,20 @@ class SolicitudEstadoService
     {
         $columns = $this->getColumns();
         $nextPending = null;
-        $lastCompleted = null;
+        $lastRequiredCompleted = null;
 
         foreach ($checklist as $item) {
+            $required = $item['required'] ?? true;
+
             if (!empty($item['completed'])) {
-                $lastCompleted = $item;
+                if ($required) {
+                    $lastRequiredCompleted = $item;
+                }
+                continue;
+            }
+
+            // Etapas NO requeridas (apto) no definen columna del kanban
+            if (!$required) {
                 continue;
             }
 
@@ -400,10 +423,11 @@ class SolicitudEstadoService
             ];
         }
 
-        $slug = $lastCompleted
-            ? ($lastCompleted['column'] ?? $lastCompleted['slug'])
-            : ($checklist[0]['column'] ?? $checklist[0]['slug'] ?? 'recibida');
-        $label = $columns[$slug]['label'] ?? ($lastCompleted['label'] ?? $slug);
+        $fallback = $lastRequiredCompleted ?: ($checklist[0] ?? null);
+        $slug = $fallback
+            ? ($fallback['column'] ?? $fallback['slug'])
+            : 'recibida';
+        $label = $columns[$slug]['label'] ?? ($fallback['label'] ?? $slug);
 
         return [
             'slug' => $slug,
