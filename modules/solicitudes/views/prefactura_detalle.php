@@ -85,22 +85,53 @@ if (!empty($derivacion['fecha_vigencia'])) {
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
-<div class="alert alert-primary text-center fw-bold">
-    🧑 Paciente: <?= htmlspecialchars($nombrePaciente ?: 'Sin nombre', ENT_QUOTES, 'UTF-8') ?>
-    — <?= htmlspecialchars($edad, ENT_QUOTES, 'UTF-8') ?>
+<div class="alert alert-primary mb-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+        <div>
+            <div class="fw-bold fs-5">
+                🧑 <?= htmlspecialchars($nombrePaciente ?: 'Sin nombre') ?>
+            </div>
+            <small class="text-muted">
+                HC: <?= htmlspecialchars((string)($solicitud['hc_number'] ?? '—')) ?>
+                · <?= htmlspecialchars($edad) ?>
+            </small>
+        </div>
+        <div class="mt-2 mt-md-0 text-md-end">
+            <div>
+                <i class="bi bi-person-badge"></i>
+                <strong><?= htmlspecialchars($solicitud['doctor'] ?? 'Sin doctor') ?></strong>
+            </div>
+            <small class="text-muted">
+                <?= htmlspecialchars($paciente['afiliacion'] ?? 'Afiliación no disponible') ?>
+            </small>
+        </div>
+    </div>
 </div>
 
-<ul class="list-group mb-4 bg-light-subtle">
-    <li class="list-group-item fw-bold text-center bg-light-subtle">
-        <?php if ($fechaSolicitud): ?>
-            🕒 Fecha de Solicitud: <?= htmlspecialchars($fechaSolicitud->format('d-m-Y'), ENT_QUOTES, 'UTF-8') ?><br>
-            <small class="text-muted">(hace <?= (int)$diasTranscurridos ?> días)</small><br>
-        <?php else: ?>
-            <span class="text-muted">Fecha no disponible</span><br>
-        <?php endif; ?>
-        <span class="badge bg-<?= htmlspecialchars($semaforo['color'], ENT_QUOTES, 'UTF-8') ?>">
-            <?= htmlspecialchars($semaforo['texto'], ENT_QUOTES, 'UTF-8') ?>
+<ul class="list-group mb-3">
+    <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+        <div>
+            <strong>🕒 Fecha de solicitud:</strong><br>
+            <?php if ($fechaSolicitud): ?>
+                <?= htmlspecialchars($fechaSolicitud->format('d-m-Y')) ?>
+                <br>
+                <small class="text-muted">
+                    Hace <?= (int)$diasTranscurridos ?> día(s)
+                </small>
+            <?php else: ?>
+                <span class="text-muted">No disponible</span>
+            <?php endif; ?>
+        </div>
+        <div class="mt-2 mt-md-0 text-md-end">
+            <span class="badge bg-<?= htmlspecialchars($semaforo['color']) ?>">
+                <?= htmlspecialchars($semaforo['texto']) ?>
         </span>
+            <?php if ($vigenciaBadge): ?>
+                <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color']) ?> ms-1">
+                    <?= htmlspecialchars($vigenciaBadge['texto']) ?>
+                </span>
+            <?php endif; ?>
+        </div>
     </li>
 </ul>
 
@@ -142,129 +173,139 @@ if (!empty($derivacion['fecha_vigencia'])) {
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const callout = document.getElementById('prefacturaCalloutPreanestesia');
-    const estadoSpan = document.getElementById('prefacturaEstadoActual');
-    const btnAptoAnestesia = document.getElementById('btnPrefacturaConfirmarAnestesia');
-    const btnAptoOftalmo = document.getElementById('btnPrefacturaConfirmarOftalmo');
+    document.addEventListener('DOMContentLoaded', () => {
+        const callout = document.getElementById('prefacturaCalloutPreanestesia');
+        const estadoSpan = document.getElementById('prefacturaEstadoActual');
+        const btnAptoAnestesia = document.getElementById('btnPrefacturaConfirmarAnestesia');
+        const btnAptoOftalmo = document.getElementById('btnPrefacturaConfirmarOftalmo');
 
-    if (!callout || !estadoSpan) return;
+        if (!callout || !estadoSpan) return;
 
-    const postEstado = async ({id, formId, estado}) => {
-        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
-        const url = `${basePath.replace(/\/+$/, '')}/actualizar-estado`;
-        const payload = {
-            id: Number.parseInt(id, 10),
-            form_id: formId,
-            estado,
-            completado: true,
-            force: true,
+        const postEstado = async ({id, formId, estado}) => {
+            const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
+            const url = `${basePath.replace(/\/+$/, '')}/actualizar-estado`;
+            const payload = {
+                id: Number.parseInt(id, 10),
+                form_id: formId,
+                estado,
+                completado: true,
+                force: true,
+            };
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json;charset=UTF-8'},
+                body: JSON.stringify(payload),
+                credentials: 'include',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(data?.error || 'No se pudo actualizar el estado');
+            }
+            return data;
         };
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json;charset=UTF-8'},
-            body: JSON.stringify(payload),
-            credentials: 'include',
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-            throw new Error(data?.error || 'No se pudo actualizar el estado');
-        }
-        return data;
-    };
 
-    const actualizarUI = (nuevoEstado, tipo, resp = {}) => {
-        const estadoLabel = resp.estado_label || nuevoEstado;
-        estadoSpan.textContent = estadoLabel;
-        const estadoNorm = (nuevoEstado || '').toString().trim().toLowerCase();
-        const esAptoAnestesia = ['apto-anestesia', 'listo-para-agenda', 'completado'].includes(estadoNorm);
-        callout.classList.toggle('callout-success', esAptoAnestesia);
-        callout.classList.toggle('callout-warning', !esAptoAnestesia);
-        if (tipo === 'anestesia' && btnAptoAnestesia) {
-            btnAptoAnestesia.classList.remove('btn-outline-success');
-            btnAptoAnestesia.classList.add('btn-success');
-            btnAptoAnestesia.textContent = 'Apto por anestesia';
-            btnAptoAnestesia.disabled = true;
-        }
-        if (tipo === 'oftalmo' && btnAptoOftalmo) {
-            btnAptoOftalmo.disabled = true;
-        }
-
-        const store = window.__solicitudesKanban;
-        if (Array.isArray(store)) {
-            const lookupId = btnAptoAnestesia?.dataset.id || btnAptoOftalmo?.dataset.id;
-            const lookupForm = btnAptoAnestesia?.dataset.formId || btnAptoOftalmo?.dataset.formId;
-            const item = store.find(
-                (s) => String(s.id) === String(lookupId) || String(s.form_id) === String(lookupForm)
-            );
-            if (item) {
-                item.estado = resp.estado || nuevoEstado;
-                item.estado_label = resp.estado_label || resp.estado || estadoLabel || nuevoEstado;
-                if (resp.checklist) item.checklist = resp.checklist;
-                if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+        const actualizarUI = (nuevoEstado, tipo, resp = {}) => {
+            const estadoLabel = resp.estado_label || nuevoEstado;
+            estadoSpan.textContent = estadoLabel;
+            const estadoNorm = (nuevoEstado || '').toString().trim().toLowerCase();
+            // IMPORTANTE:
+            // - "apto-anestesia" como estado de Kanban = estación pendiente de revisión.
+            // - Solo consideramos "apto" (success) cuando la solicitud ya avanzó
+            //   más allá de esa estación.
+            const esAptoAnestesia = ['listo-para-agenda', 'programada', 'completado'].includes(estadoNorm);
+            callout.classList.toggle('callout-success', esAptoAnestesia);
+            callout.classList.toggle('callout-warning', !esAptoAnestesia);
+            if (tipo === 'anestesia' && btnAptoAnestesia) {
+                btnAptoAnestesia.classList.remove('btn-outline-success');
+                btnAptoAnestesia.classList.add('btn-success');
+                btnAptoAnestesia.textContent = 'Apto por anestesia';
+                btnAptoAnestesia.disabled = true;
             }
-        }
+            if (tipo === 'oftalmo' && btnAptoOftalmo) {
+                btnAptoOftalmo.disabled = true;
+            }
 
-        if (typeof window.aplicarFiltros === 'function') {
-            try { window.aplicarFiltros(); } catch (e) { /* ignore */ }
-        } else {
-            // Si no existe el refresco global, recarga la página para reflejar el checklist.
-            setTimeout(() => window.location.reload(), 400);
-        }
-    };
+            const store = window.__solicitudesKanban;
+            if (Array.isArray(store)) {
+                const lookupId = btnAptoAnestesia?.dataset.id || btnAptoOftalmo?.dataset.id;
+                const lookupForm = btnAptoAnestesia?.dataset.formId || btnAptoOftalmo?.dataset.formId;
+                const item = store.find(
+                    (s) => String(s.id) === String(lookupId) || String(s.form_id) === String(lookupForm)
+                );
+                if (item) {
+                    item.estado = resp.estado || nuevoEstado;
+                    item.estado_label = resp.estado_label || resp.estado || estadoLabel || nuevoEstado;
+                    if (resp.checklist) item.checklist = resp.checklist;
+                    if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+                }
+            }
 
-    // Confirmar plan por oftalmólogo: solo marca checklist/estado apto-oftalmologo, no mueve a anestesia.
-    if (btnAptoOftalmo) {
-        btnAptoOftalmo.addEventListener('click', async () => {
-            const id = btnAptoOftalmo.dataset.id;
-            const formId = btnAptoOftalmo.dataset.formId;
-            if (!id || !formId) return;
-            btnAptoOftalmo.disabled = true;
-            try {
-                const resp = await postEstado({id, formId, estado: 'apto-oftalmologo'});
-                // Actualiza store pero no cambia el callout (es pre-anestesia).
-                const store = window.__solicitudesKanban;
-                if (Array.isArray(store)) {
-                    const item = store.find((s) => String(s.id) === String(id));
-                    if (item) {
-                        const estadoLabel = resp.estado_label || resp.estado || 'Apto oftalmólogo';
-                        item.estado = resp.estado || 'apto-oftalmologo';
-                        item.estado_label = estadoLabel;
-                        if (resp.checklist) item.checklist = resp.checklist;
-                        if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+            if (typeof window.aplicarFiltros === 'function') {
+                try {
+                    window.aplicarFiltros();
+                } catch (e) { /* ignore */
+                }
+            } else {
+                // Si no existe el refresco global, recarga la página para reflejar el checklist.
+                setTimeout(() => window.location.reload(), 400);
+            }
+        };
+
+        // Confirmar plan por oftalmólogo: solo marca checklist/estado apto-oftalmologo, no mueve a anestesia.
+        if (btnAptoOftalmo) {
+            btnAptoOftalmo.addEventListener('click', async () => {
+                const id = btnAptoOftalmo.dataset.id;
+                const formId = btnAptoOftalmo.dataset.formId;
+                if (!id || !formId) return;
+                btnAptoOftalmo.disabled = true;
+                try {
+                    const resp = await postEstado({id, formId, estado: 'apto-oftalmologo'});
+                    // Actualiza store pero no cambia el callout (es pre-anestesia).
+                    const store = window.__solicitudesKanban;
+                    if (Array.isArray(store)) {
+                        const item = store.find((s) => String(s.id) === String(id));
+                        if (item) {
+                            const estadoLabel = resp.estado_label || resp.estado || 'Apto oftalmólogo';
+                            item.estado = resp.estado || 'apto-oftalmologo';
+                            item.estado_label = estadoLabel;
+                            if (resp.checklist) item.checklist = resp.checklist;
+                            if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+                        }
                     }
+                    if (typeof window.aplicarFiltros === 'function') {
+                        try {
+                            window.aplicarFiltros();
+                        } catch (e) {
+                        }
+                    } else {
+                        setTimeout(() => window.location.reload(), 400);
+                    }
+                } catch (error) {
+                    console.error('No se pudo marcar apto oftalmólogo:', error);
+                    alert(error?.message || 'No se pudo marcar apto oftalmólogo.');
+                    btnAptoOftalmo.disabled = false;
                 }
-                if (typeof window.aplicarFiltros === 'function') {
-                    try { window.aplicarFiltros(); } catch (e) {}
-                } else {
-                    setTimeout(() => window.location.reload(), 400);
-                }
-            } catch (error) {
-                console.error('No se pudo marcar apto oftalmólogo:', error);
-                alert(error?.message || 'No se pudo marcar apto oftalmólogo.');
-                btnAptoOftalmo.disabled = false;
-            }
-        });
-    }
+            });
+        }
 
-    // Confirmar apto anestesia: marca checklist apto y deja el tablero en el siguiente paso pendiente.
-    if (btnAptoAnestesia) {
-        btnAptoAnestesia.addEventListener('click', async () => {
-            const id = btnAptoAnestesia.dataset.id;
-            const formId = btnAptoAnestesia.dataset.formId;
-            if (!id || !formId) return;
-            btnAptoAnestesia.disabled = true;
-            try {
-                const resp = await postEstado({id, formId, estado: 'apto-anestesia'});
-                actualizarUI(resp.estado || 'apto-anestesia', 'anestesia', resp);
-            } catch (error) {
-                console.error('No se pudo marcar apto anestesia:', error);
-                alert(error?.message || 'No se pudo marcar apto anestesia.');
-                btnAptoAnestesia.disabled = false;
-            }
-        });
-    }
-});
+        // Confirmar apto anestesia: marca checklist apto y deja el tablero en el siguiente paso pendiente.
+        if (btnAptoAnestesia) {
+            btnAptoAnestesia.addEventListener('click', async () => {
+                const id = btnAptoAnestesia.dataset.id;
+                const formId = btnAptoAnestesia.dataset.formId;
+                if (!id || !formId) return;
+                btnAptoAnestesia.disabled = true;
+                try {
+                    const resp = await postEstado({id, formId, estado: 'apto-anestesia'});
+                    actualizarUI(resp.estado || 'apto-anestesia', 'anestesia', resp);
+                } catch (error) {
+                    console.error('No se pudo marcar apto anestesia:', error);
+                    alert(error?.message || 'No se pudo marcar apto anestesia.');
+                    btnAptoAnestesia.disabled = false;
+                }
+            });
+        }
+    });
 </script>
 
 <div class="row g-3">
@@ -382,53 +423,87 @@ document.addEventListener('DOMContentLoaded', () => {
         <li class="list-group-item">
             <strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
         <li class="list-group-item">
-            <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision']?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
+            <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision'] ?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
         </li>
         <li class="list-group-item">
             <strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
         </li>
     </ul>
     <div class="box-body">
-<?php
-    $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
-    $esAptoAnestesia = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'completado'], true);
-$calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
-$solicitudId = $solicitud['solicitud_id'] ?? $solicitud['id'] ?? $solicitud['form_id'] ?? '';
-?>
-<div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
-    <h5 class="d-flex align-items-center justify-content-between mb-2">
-        <span><strong>🩺 Paso preanestesia</strong></span>
-        <button type="button"
-                class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
-                data-context-action="confirmar-anestesia"
-                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
-                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                <?= $esAptoAnestesia ? 'disabled' : '' ?>
-                id="btnPrefacturaConfirmarAnestesia">
-            <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
-        </button>
-    </h5>
-    <div>
-        <strong>Estado actual:</strong>
-        <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
-    </div>
-</div>
+        <?php
+        $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
+
+        // IMPORTANTE:
+        // - Estado "apto-anestesia" en el Kanban significa "PENDIENTE de confirmación por anestesia".
+        // - Solo debe verse como "success" cuando la solicitud YA PASÓ de esa estación,
+        //   por ejemplo: listo-para-agenda, programada, completado.
+        $esAptoAnestesia = in_array($estadoActual, ['listo-para-agenda', 'programada', 'completado'], true);
+        $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+
+        // Apto oftalmólogo:
+        // Por ahora lo inferimos como "ya confirmado" si la solicitud está
+        // en una etapa igual o posterior a apto-anestesia en el Kanban.
+        // Idealmente esto se debería leer del checklist (etapa_slug = apto-oftalmologo).
+        $esAptoOftalmo = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'programada', 'completado'], true);
+
+        $badgeOftalmo = $esAptoOftalmo
+                ? '<span class="badge bg-success">Oftalmólogo: Apto</span>'
+                : '<span class="badge bg-warning text-dark">Oftalmólogo: Pendiente</span>';
+
+        $badgeAnestesia = $esAptoAnestesia
+                ? '<span class="badge bg-success">Anestesia: Apto</span>'
+                : '<span class="badge bg-warning text-dark">Anestesia: Pendiente</span>';
+
+        // IDs unificados para botones (kanban / modal)
+        $kanbanSolicitudId = isset($_GET['solicitud_id']) ? (int)$_GET['solicitud_id'] : null;
+        $solicitudIdRaw = (int)($solicitud['id'] ?? 0);
+        $formId = (int)($solicitud['form_id'] ?? 0);
+
+        // PRIORIDAD: usa SIEMPRE el id que viene del kanban si existe
+        $dataId = $kanbanSolicitudId ?: ($solicitudIdRaw ?: $formId);
+        $solicitudIdBtn = $dataId;
+        ?>
+
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <?= $badgeOftalmo ?>
+            <?= $badgeAnestesia ?>
+        </div>
+        <div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
+            <h5 class="d-flex align-items-center justify-content-between mb-2">
+                <span><strong>🩺 Paso preanestesia</strong></span>
+                <button type="button"
+                        class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
+                        data-context-action="confirmar-anestesia"
+                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                        data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        <?= $esAptoAnestesia ? 'disabled' : '' ?>
+                        id="btnPrefacturaConfirmarAnestesia">
+                    <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
+                </button>
+            </h5>
+            <div>
+                <strong>Estado actual:</strong>
+                <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+        </div>
     </div>
     <div class="box-footer">
         <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
                 data-context-action="editar-lio"
-                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
+                data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
         </button>
         <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
                 data-context-action="confirmar-oftalmo"
-                data-id="<?= htmlspecialchars((string)$solicitudId, ENT_QUOTES, 'UTF-8') ?>"
-                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <i class="mdi mdi-check-circle-outline"></i> Confirmar apto oftalmólogo
+                data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
+                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                <?= $esAptoOftalmo ? 'disabled' : '' ?>>
+            <i class="mdi mdi-check-circle-outline"></i>
+            <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Confirmar apto oftalmólogo' ?>
         </button>
     </div>
 </div>
@@ -443,7 +518,8 @@ $solicitudId = $solicitud['solicitud_id'] ?? $solicitud['id'] ?? $solicitud['for
                 <div class="vtabs">
                     <ul class="nav nav-tabs tabs-vertical" role="tablist">
                         <li class="nav-item">
-                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab" aria-selected="true">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab"
+                               aria-selected="true">
                                 <span><i class="ion-eye me-2"></i>Examen físico</span>
                             </a>
                         </li>
