@@ -146,7 +146,7 @@ class SolicitudController extends BaseController
             $solicitudes = $this->estadoService->enrichSolicitudes($solicitudes, $this->currentPermissions());
             $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
-            $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
+            $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int)($kanbanPreferences['column_limit'] ?? 0));
             $metrics = $this->buildOperationalMetrics($solicitudes);
 
             $responsables = $this->leadConfig->getAssignableUsers();
@@ -267,7 +267,7 @@ class SolicitudController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $nota = trim((string) ($payload['nota'] ?? ''));
+        $nota = trim((string)($payload['nota'] ?? ''));
 
         if ($nota === '') {
             $this->json(['success' => false, 'error' => 'La nota no puede estar vacía'], 422);
@@ -309,8 +309,8 @@ class SolicitudController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
-        $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
+        $tareaId = isset($payload['tarea_id']) ? (int)$payload['tarea_id'] : 0;
+        $estado = isset($payload['estado']) ? (string)$payload['estado'] : '';
 
         if ($tareaId <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
@@ -339,15 +339,15 @@ class SolicitudController extends BaseController
         }
 
         $archivo = $_FILES['archivo'];
-        if ((int) ($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
+        if ((int)($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
             $this->json(['success' => false, 'error' => 'El archivo es inválido'], 422);
             return;
         }
 
-        $descripcion = isset($_POST['descripcion']) ? trim((string) $_POST['descripcion']) : null;
-        $nombreOriginal = (string) ($archivo['name'] ?? 'adjunto');
-        $mimeType = isset($archivo['type']) ? (string) $archivo['type'] : null;
-        $tamano = isset($archivo['size']) ? (int) $archivo['size'] : null;
+        $descripcion = isset($_POST['descripcion']) ? trim((string)$_POST['descripcion']) : null;
+        $nombreOriginal = (string)($archivo['name'] ?? 'adjunto');
+        $mimeType = isset($archivo['type']) ? (string)$archivo['type'] : null;
+        $tamano = isset($archivo['size']) ? (int)$archivo['size'] : null;
 
         $carpetaBase = rtrim(PUBLIC_PATH . '/uploads/solicitudes/' . $solicitudId, '/');
         if (!is_dir($carpetaBase) && !mkdir($carpetaBase, 0775, true) && !is_dir($carpetaBase)) {
@@ -408,7 +408,7 @@ class SolicitudController extends BaseController
         }
 
         try {
-            $response = $this->obtenerEstadosPorHc((string) $hcNumber);
+            $response = $this->obtenerEstadosPorHc((string)$hcNumber);
             $this->json($response);
         } catch (\Throwable $e) {
             error_log('apiEstadoGet error: ' . $e->getMessage());
@@ -427,7 +427,7 @@ class SolicitudController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : null;
+        $id = isset($payload['id']) ? (int)$payload['id'] : null;
 
         if (!$id) {
             $this->json(
@@ -491,7 +491,7 @@ class SolicitudController extends BaseController
 
     private function getCurrentUserId(): ?int
     {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
     }
 
     private function transformSolicitudRow(array $row): array
@@ -536,7 +536,7 @@ class SolicitudController extends BaseController
     private function computeOperationalMetadata(array $row): array
     {
         $now = new DateTimeImmutable('now');
-        $estado = strtolower(trim((string) ($row['estado'] ?? '')));
+        $estado = strtolower(trim((string)($row['estado'] ?? '')));
         $isTerminal = $estado !== '' && in_array($estado, self::TERMINAL_STATES, true);
 
         $fechaProgramada = $this->parseDate($row['fecha_programada'] ?? ($row['fecha'] ?? null));
@@ -580,7 +580,7 @@ class SolicitudController extends BaseController
             default => 'Normal',
         };
 
-        $prioridadManual = trim((string) ($row['prioridad'] ?? ''));
+        $prioridadManual = trim((string)($row['prioridad'] ?? ''));
         $prioridadMostrada = $prioridadManual !== '' ? $prioridadManual : $autoPriorityLabel;
 
         $fechaCaducidad = $this->parseDate($row['fecha_caducidad'] ?? null);
@@ -626,7 +626,7 @@ class SolicitudController extends BaseController
         }
 
         try {
-            return new DateTimeImmutable((string) $value);
+            return new DateTimeImmutable((string)$value);
         } catch (\Exception $e) {
             return null;
         }
@@ -660,13 +660,13 @@ class SolicitudController extends BaseController
         ];
 
         foreach ($solicitudes as $row) {
-            $sla = (string) ($row['sla_status'] ?? 'sin_fecha');
+            $sla = (string)($row['sla_status'] ?? 'sin_fecha');
             if (!array_key_exists($sla, $metrics['sla'])) {
                 $metrics['sla'][$sla] = 0;
             }
             $metrics['sla'][$sla] += 1;
 
-            $autoPriority = (string) ($row['prioridad_automatica'] ?? '');
+            $autoPriority = (string)($row['prioridad_automatica'] ?? '');
             if ($autoPriority !== '') {
                 if (!array_key_exists($autoPriority, $metrics['prioridad'])) {
                     $metrics['prioridad'][$autoPriority] = 0;
@@ -681,7 +681,7 @@ class SolicitudController extends BaseController
                 $metrics['alerts']['pendiente_consentimiento'] += 1;
             }
 
-            $teamKey = (string) ($row['crm_responsable_id'] ?? 'sin_asignar');
+            $teamKey = (string)($row['crm_responsable_id'] ?? 'sin_asignar');
             if (!isset($metrics['teams'][$teamKey])) {
                 $metrics['teams'][$teamKey] = [
                     'responsable_id' => $row['crm_responsable_id'] ?? null,
@@ -719,7 +719,7 @@ class SolicitudController extends BaseController
             $scoreB = ($b['vencido'] * 3) + ($b['critico'] * 2) + $b['advertencia'];
 
             if ($scoreA === $scoreB) {
-                return strcmp((string) $a['responsable_nombre'], (string) $b['responsable_nombre']);
+                return strcmp((string)$a['responsable_nombre'], (string)$b['responsable_nombre']);
             }
 
             return $scoreB <=> $scoreA;
@@ -751,15 +751,15 @@ class SolicitudController extends BaseController
             $payload = $_POST;
         }
 
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        $formId = isset($payload['form_id']) ? (int) $payload['form_id'] : 0;
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
+        $formId = isset($payload['form_id']) ? (int)$payload['form_id'] : 0;
         $estado = trim($payload['estado'] ?? '');
-        $nota = isset($payload['nota']) ? trim((string) $payload['nota']) : null;
-        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
-        $force = isset($payload['force']) ? (bool) $payload['force'] : false;
+        $nota = isset($payload['nota']) ? trim((string)$payload['nota']) : null;
+        $completado = isset($payload['completado']) ? (bool)$payload['completado'] : true;
+        $force = isset($payload['force']) ? (bool)$payload['force'] : false;
 
         if ($id <= 0 && $formId > 0) {
-            $id = (int) $this->solicitudModel->findIdByFormId($formId);
+            $id = (int)$this->solicitudModel->findIdByFormId($formId);
         }
 
         if ($id <= 0 || $estado === '') {
@@ -841,7 +841,13 @@ class SolicitudController extends BaseController
                 $estado,
                 $e->getMessage()
             ));
-            $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
+
+            // ⚠️ Solo mientras depuras:
+            $this->json([
+                'success' => false,
+                'error' => $e->getMessage(),        // ← mensaje real
+                'trace' => $e->getTraceAsString(),  // opcional, para ti
+            ], 500);
         }
     }
 
@@ -853,8 +859,8 @@ class SolicitudController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
-        $horasPasadas = isset($payload['horas_pasadas']) ? (int) $payload['horas_pasadas'] : 48;
+        $horas = isset($payload['horas']) ? (int)$payload['horas'] : 24;
+        $horasPasadas = isset($payload['horas_pasadas']) ? (int)$payload['horas_pasadas'] : 48;
 
         $scheduler = new SolicitudReminderService($this->pdo, $this->pusherConfig);
         $enviados = $scheduler->dispatchUpcoming($horas, $horasPasadas);
@@ -875,24 +881,24 @@ class SolicitudController extends BaseController
 
         $estados = [];
         if (!empty($_GET['estado'])) {
-            $estados = array_values(array_filter(array_map('trim', explode(',', (string) $_GET['estado']))));
+            $estados = array_values(array_filter(array_map('trim', explode(',', (string)$_GET['estado']))));
         }
 
         try {
             $solicitudes = $this->solicitudModel->fetchTurneroSolicitudes($estados);
 
             foreach ($solicitudes as &$solicitud) {
-                $nombreCompleto = trim((string) ($solicitud['full_name'] ?? ''));
+                $nombreCompleto = trim((string)($solicitud['full_name'] ?? ''));
                 $solicitud['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-                $solicitud['turno'] = isset($solicitud['turno']) ? (int) $solicitud['turno'] : null;
-                $estadoNormalizado = $this->normalizarEstadoTurnero((string) ($solicitud['estado'] ?? ''));
+                $solicitud['turno'] = isset($solicitud['turno']) ? (int)$solicitud['turno'] : null;
+                $estadoNormalizado = $this->normalizarEstadoTurnero((string)($solicitud['estado'] ?? ''));
                 $solicitud['estado'] = $estadoNormalizado ?? ($solicitud['estado'] ?? null);
 
                 $solicitud['hora'] = null;
                 $solicitud['fecha'] = null;
 
                 if (!empty($solicitud['created_at'])) {
-                    $timestamp = strtotime((string) $solicitud['created_at']);
+                    $timestamp = strtotime((string)$solicitud['created_at']);
                     if ($timestamp !== false) {
                         $solicitud['hora'] = date('H:i', $timestamp);
                         $solicitud['fecha'] = date('d/m/Y', $timestamp);
@@ -925,9 +931,9 @@ class SolicitudController extends BaseController
             $payload = $_POST;
         }
 
-        $id = isset($payload['id']) ? (int) $payload['id'] : null;
-        $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $id = isset($payload['id']) ? (int)$payload['id'] : null;
+        $turno = isset($payload['turno']) ? (int)$payload['turno'] : null;
+        $estadoSolicitado = isset($payload['estado']) ? trim((string)$payload['estado']) : 'Llamado';
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -948,14 +954,14 @@ class SolicitudController extends BaseController
                 return;
             }
 
-            $nombreCompleto = trim((string) ($registro['full_name'] ?? ''));
+            $nombreCompleto = trim((string)($registro['full_name'] ?? ''));
             $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-            $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
+            $registro['estado'] = $this->normalizarEstadoTurnero((string)($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
 
             try {
                 $this->pusherConfig->trigger(
                     [
-                        'id' => (int) ($registro['id'] ?? $id ?? 0),
+                        'id' => (int)($registro['id'] ?? $id ?? 0),
                         'turno' => $registro['turno'] ?? $turno,
                         'estado' => $registro['estado'] ?? $estadoNormalizado,
                         'hc_number' => $registro['hc_number'] ?? null,
@@ -973,7 +979,7 @@ class SolicitudController extends BaseController
                     $notificationError,
                     [
                         'registro' => [
-                            'id' => (int) ($registro['id'] ?? $id ?? 0),
+                            'id' => (int)($registro['id'] ?? $id ?? 0),
                             'turno' => $registro['turno'] ?? $turno,
                             'estado' => $registro['estado'] ?? $estadoNormalizado,
                         ],
@@ -1069,7 +1075,7 @@ class SolicitudController extends BaseController
         ];
     }
 
-    /**
+    /** 
      * Verifica derivación; si no existe, intenta scrapear y reconsultar.
      */
     private function ensureDerivacion(string $formId, string $hcNumber): ?array
@@ -1079,7 +1085,7 @@ class SolicitudController extends BaseController
             return $derivacion;
         }
 
-        $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
+        $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
         if (!is_file($script)) {
             return null;
         }
@@ -1139,7 +1145,7 @@ class SolicitudController extends BaseController
             return 0;
         }
 
-        $timestamp = strtotime((string) $valor);
+        $timestamp = strtotime((string)$valor);
 
         return $timestamp ?: 0;
     }

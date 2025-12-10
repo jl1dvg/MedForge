@@ -15,7 +15,7 @@
 /* Estilos para el botón flotante accesible */
 #floatingButton {
     border-radius: 999px;
-    padding: 12px 16px;
+    padding: 12px;
     position: fixed;
     bottom: 20px;
     right: 16px;
@@ -27,34 +27,19 @@
     transition: background 120ms ease-out, box-shadow 120ms ease-out, transform 120ms ease-out, filter 120ms ease-out;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 0;
     cursor: pointer;
     font-family: var(--cive-font-family);
     font-size: 1rem;
     line-height: 1.2;
     min-height: 48px;
-    min-width: 56px;
+    min-width: 48px;
 }
 
 #floatingButton img {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-}
-
-#floatingButton .label {
-    display: inline-flex;
-    flex-direction: column;
-    line-height: 1.1;
-}
-
-#floatingButton .label strong {
-    font-size: 1rem;
-}
-
-#floatingButton .label span {
-    font-size: 0.85rem;
-    color: var(--cive-color-neutral-10);
 }
 
 #floatingButton .status-badge {

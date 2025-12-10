@@ -259,10 +259,7 @@ window.inicializarUI = function () {
     img.setAttribute('aria-hidden', 'true');
     button.appendChild(img);
 
-    const label = document.createElement('span');
-    label.className = 'label';
-    label.innerHTML = `<strong>Asistente</strong><span>Alt+Shift+A</span>`;
-    button.appendChild(label);
+    // Eliminar texto/label del botón para dejar solo el ícono
 
     const statusBadge = document.createElement('span');
     statusBadge.className = 'status-badge';

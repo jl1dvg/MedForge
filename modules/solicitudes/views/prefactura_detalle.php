@@ -85,28 +85,25 @@ if (!empty($derivacion['fecha_vigencia'])) {
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
-<div class="alert alert-primary mb-3">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+<?php if (!empty($derivacion['archivo_derivacion_path']) || !empty($derivacion['id'])): ?>
+    <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
         <div>
-            <div class="fw-bold fs-5">
-                🧑 <?= htmlspecialchars($nombrePaciente ?: 'Sin nombre') ?>
-            </div>
-            <small class="text-muted">
-                HC: <?= htmlspecialchars((string)($solicitud['hc_number'] ?? '—')) ?>
-                · <?= htmlspecialchars($edad) ?>
-            </small>
+            <strong>📎 Derivación:</strong>
+            <span class="text-muted ms-1">Documento adjunto disponible.</span>
         </div>
-        <div class="mt-2 mt-md-0 text-md-end">
-            <div>
-                <i class="bi bi-person-badge"></i>
-                <strong><?= htmlspecialchars($solicitud['doctor'] ?? 'Sin doctor') ?></strong>
-            </div>
-            <small class="text-muted">
-                <?= htmlspecialchars($paciente['afiliacion'] ?? 'Afiliación no disponible') ?>
-            </small>
-        </div>
+        <?php
+        $archivoHref = null;
+        if (!empty($derivacion['id'])) {
+            $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacion['id']);
+        } elseif (!empty($derivacion['archivo_derivacion_path'])) {
+            $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
+        }
+        ?>
+        <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
+            <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+        </a>
     </div>
-</div>
+<?php endif; ?>
 
 <ul class="list-group mb-3">
     <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-md-center">
@@ -141,18 +138,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
     </div>
     <div class="box-body">
         <i class="bi bi-gender-ambiguous"></i>
-        <strong>HC
-            #:</strong> <?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-        <br>
-        <i class="bi bi-gender-ambiguous"></i>
-        <strong>Formulario
-            ID:</strong> <?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-        <br>
-        <i class="bi bi-gender-ambiguous"></i>
         <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-        <br>
-        <i class="bi bi-shield-check"></i>
-        <strong>Afiliación:</strong> <?= htmlspecialchars($paciente['afiliacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
         <br>
         <i class="bi bi-cake"></i> <strong>Fecha Nacimiento:</strong>
         <?php
@@ -317,9 +303,6 @@ if (!empty($derivacion['fecha_vigencia'])) {
             <ul class="list-group list-group-flush">
                 <li class="list-group-item">
                     <strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Doctor:</strong> <?= htmlspecialchars($solicitud['doctor'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
                 </li>
                 <li class="list-group-item">
                     <strong>Prioridad:</strong> <?= htmlspecialchars($solicitud['prioridad'] ?? '—', ENT_QUOTES, 'UTF-8') ?>

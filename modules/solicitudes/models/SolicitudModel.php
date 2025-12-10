@@ -330,7 +330,7 @@ class SolicitudModel
                 u.nombre AS user_nombre,
                 u.email AS user_email
             FROM solicitud_procedimiento sp
-            LEFT JOIN users u 
+            LEFT JOIN users u
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
             WHERE sp.form_id = ? AND sp.hc_number = ?
             ORDER BY sp.created_at DESC

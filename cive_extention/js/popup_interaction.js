@@ -801,18 +801,34 @@ async function marcarChecklistApto(item) {
 
   const slug = normalizarSlug(ESTADO_APTO_OFTALMOLOGO);
   try {
-    const resp = await safeSendMessage({
-      action: "apiRequest",
-      url: "https://asistentecive.consulmed.me/solicitudes/actualizar-estado",
-      method: "POST",
-      headers: { "Content-Type": "application/json;charset=UTF-8" },
-      body: {
-        id: Number(solicitudId),
-        estado: slug,
-        completado: true,
-        force: true,
-      },
-    });
+    const origin =
+      (window.location && window.location.origin) || "https://asistentecive.consulmed.me";
+    const candidates = [
+      `${origin.replace(/\/+$/, "")}/solicitudes/actualizar-estado`,
+      "https://asistentecive.consulmed.me/solicitudes/actualizar-estado",
+    ];
+
+    let resp = null;
+    let lastError = null;
+    for (const url of candidates) {
+      try {
+        resp = await safeSendMessage({
+          action: "apiRequest",
+          url,
+          method: "POST",
+          headers: { "Content-Type": "application/json;charset=UTF-8" },
+          body: {
+            id: Number(solicitudId),
+            estado: slug,
+            completado: true,
+            force: true,
+          },
+        });
+        if (resp && resp.success !== false) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
 
     if (resp?.success) {
       const idx = uiState.cirugias.findIndex((c) => c.id === solicitudId);
@@ -825,6 +841,8 @@ async function marcarChecklistApto(item) {
             resp.checklist_progress || uiState.cirugias[idx].checklist_progress,
         };
       }
+    } else if (lastError) {
+      throw lastError;
     }
   } catch (error) {
     console.warn("No se pudo marcar checklist APTO OFTALMOLOGO:", error);

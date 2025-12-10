@@ -644,7 +644,21 @@ document.addEventListener('DOMContentLoaded', () => {
         search: searchInput?.value ?? '',
     });
 
+    const setFilterValues = (f) => {
+        if (!f) return;
+        const afSelect = document.getElementById('kanbanAfiliacionFilter');
+        const docSelect = document.getElementById('kanbanDoctorFilter');
+        const priSelect = document.getElementById('kanbanSemaforoFilter');
+        const dateInput = document.getElementById('kanbanDateFilter');
+        if (afSelect && f.afiliacion !== undefined) afSelect.value = f.afiliacion;
+        if (docSelect && f.doctor !== undefined) docSelect.value = f.doctor;
+        if (priSelect && f.prioridad !== undefined) priSelect.value = f.prioridad;
+        if (dateInput && f.fechaTexto !== undefined) dateInput.value = f.fechaTexto;
+        if (searchInput && f.search !== undefined) searchInput.value = f.search;
+    };
+
     const cargarKanban = (filtros = {}) => {
+        const filtrosSeleccionados = obtenerFiltros();
         console.groupCollapsed('%cKANBAN ▶ Filtros aplicados', 'color:#0b7285');
         console.log(filtros);
         console.groupEnd();
@@ -696,6 +710,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     setCrmOptions({});
                 }
 
+                // Restaurar selección de filtros después de repoblar opciones
+                setFilterValues(filtrosSeleccionados);
                 renderFromCache();
             })
             .catch(error => {
@@ -729,6 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 startDate: defaultDateRange.start,
                 endDate: defaultDateRange.end,
                 autoUpdateInput: false,
+                parentEl: 'body',
             })
             .on('apply.daterangepicker', function (ev, picker) {
                 this.value = `${picker.startDate.format('DD-MM-YYYY')} - ${picker.endDate.format('DD-MM-YYYY')}`;
@@ -743,6 +760,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (daterangepicker && dateFilter && dateFilter.value === defaultDateRange.label) {
             daterangepicker.setStartDate(defaultDateRange.start);
             daterangepicker.setEndDate(defaultDateRange.end);
+            // Asegura que arranque oculto y con un z-index alto
+            if (daterangepicker.container && daterangepicker.container[0]) {
+                daterangepicker.container.hide();
+                daterangepicker.container.css('z-index', 2050);
+            }
         }
     }
 

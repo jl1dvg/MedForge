@@ -16,11 +16,11 @@ class SolicitudEstadoService
     private const DEFAULT_COLUMNS = [
         'recibida' => ['label' => 'Recibida', 'color' => 'primary'],
         'llamado' => ['label' => 'Llamado', 'color' => 'warning'],
-        'revision-codigos' => ['label' => 'Revisión códigos', 'color' => 'info'],
-        'espera-documentos' => ['label' => 'Espera de documentos', 'color' => 'secondary'],
-        'apto-oftalmologo' => ['label' => 'Apto oftalmólogo', 'color' => 'secondary'],
-        'apto-anestesia' => ['label' => 'Apto anestesia', 'color' => 'warning'],
-        'listo-para-agenda' => ['label' => 'Listo para agenda', 'color' => 'dark'],
+        'revision-codigos' => ['label' => '⚠️ Cobertura', 'color' => 'info'],
+        'espera-documentos' => ['label' => '⚠️ Documentación', 'color' => 'secondary'],
+        'apto-oftalmologo' => ['label' => '⚠️ Oftalmólogo', 'color' => 'secondary'],
+        'apto-anestesia' => ['label' => '⚠️ Anestesia', 'color' => 'warning'],
+        'listo-para-agenda' => ['label' => '✅ Listo', 'color' => 'dark'],
         'programada' => ['label' => 'Programada', 'color' => 'primary'],
         'completado' => ['label' => 'Completado', 'color' => 'secondary'],
     ];
@@ -32,12 +32,12 @@ class SolicitudEstadoService
         ['slug' => 'recibida', 'label' => 'Recibida', 'order' => 10, 'column' => 'recibida', 'required' => true],
         ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
         ['slug' => 'en-atencion', 'label' => 'En atención', 'order' => 30, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'revision-codigos', 'label' => 'Revisión de códigos', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'espera-documentos', 'label' => 'Espera de documentos', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
+        ['slug' => 'revision-codigos', 'label' => '⚠ Cobertura', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
+        ['slug' => 'espera-documentos', 'label' => '⚠ Documentación', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
 
         // ✅ Aptos vuelven a ser requeridos
-        ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmólogo', 'order' => 60, 'column' => 'apto-oftalmologo', 'required' => true],
-        ['slug' => 'apto-anestesia', 'label' => 'Apto anestesia', 'order' => 70, 'column' => 'apto-anestesia', 'required' => true],
+        ['slug' => 'apto-oftalmologo', 'label' => '⚠ Apto oftalmólogo', 'order' => 60, 'column' => 'apto-oftalmologo', 'required' => true],
+        ['slug' => 'apto-anestesia', 'label' => '⚠ Apto anestesia', 'order' => 70, 'column' => 'apto-anestesia', 'required' => true],
 
         ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 80, 'column' => 'listo-para-agenda', 'required' => true],
         ['slug' => 'programada', 'label' => 'Programada', 'order' => 90, 'column' => 'programada', 'required' => true],

@@ -21,6 +21,7 @@ if (!isset($styles) || !is_array($styles)) {
 }
 
 $styles[] = 'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css';
+$styles[] = '/public/css/kanban-scroll.css';
 
 if (!isset($scripts) || !is_array($scripts)) {
     $scripts = [];
@@ -794,19 +795,21 @@ array_push(
     }
     ?>
 
-    <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
-        <?php foreach ($estadoColumnas as $estadoId => $estadoMeta):
-            $color = $estadoMeta['color'] ?? 'secondary';
-            ?>
-            <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2">
-                <h5 class="text-center">
-                    <?= htmlspecialchars($estadoMeta['label'] ?? $estadoId, ENT_QUOTES, 'UTF-8') ?>
-                    <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>">0</span>
-                    <small class="text-muted" id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
-                </h5>
-                <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
-            </div>
-        <?php endforeach; ?>
+    <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper bg-light p-3">
+        <div class="kanban-scroll d-flex flex-nowrap gap-3">
+            <?php foreach ($estadoColumnas as $estadoId => $estadoMeta):
+                $color = $estadoMeta['color'] ?? 'secondary';
+                ?>
+                <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2 flex-shrink-0">
+                    <h5 class="text-center">
+                        <?= htmlspecialchars($estadoMeta['label'] ?? $estadoId, ENT_QUOTES, 'UTF-8') ?>
+                        <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>">0</span>
+                        <small class="text-muted" id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
+                    </h5>
+                    <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
+                </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 
     <div id="solicitudesViewTable" class="table-view d-none">

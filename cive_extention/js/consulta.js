@@ -1,96 +1,99 @@
-// Función que se ejecutará en la página actual
-function consultaAnterior() {
-    // Función para obtener el contenido después del elemento <b> con el texto específico
-    function getContentAfterBold(parent, text) {
-        const boldElement = Array.from(parent.querySelectorAll('b')).find(b => b.textContent.includes(text));
-        return boldElement ? boldElement.nextSibling.textContent.trim() : null;
+// Consulta anterior vía API (MedForge)
+(function () {
+    const EXAM_SELECTOR = '#consultas-fisico-0-observacion';
+    const PLAN_SELECTOR = '#docsolicitudprocedimientos-observacion_consulta';
+
+    function getIdentifiers() {
+        const params = new URLSearchParams(window.location.search);
+        const formId = params.get('idSolicitud') || params.get('id') || params.get('form_id') || null;
+
+        let hcNumber = null;
+        const hcInput = document.querySelector('#numero-historia-clinica');
+        if (hcInput && hcInput.value) {
+            hcNumber = hcInput.value.trim();
+        } else {
+            const hcFromMedia = document.querySelector('.media-body p:nth-of-type(2)');
+            if (hcFromMedia) {
+                const text = hcFromMedia.textContent || '';
+                const parts = text.split('HC #:');
+                if (parts[1]) {
+                    hcNumber = parts[1].trim();
+                }
+            }
+        }
+
+        if (!hcNumber) {
+            try {
+                const stored = JSON.parse(localStorage.getItem('datosPacienteSeleccionado') || '{}');
+                hcNumber = stored.identificacion || stored.hcNumber || null;
+            } catch (error) {
+                // ignore parse errors
+            }
+        }
+
+        return {formId, hcNumber};
     }
 
-    // Función para obtener el contenido dentro de la clase "timeline-body"
-    function getContentFromTimelineBody(parent) {
-        const timelineBody = parent.querySelector('.timeline-body span.mostrar-todo');
-        return timelineBody ? timelineBody.textContent.trim() : null;
+    function setIfEmpty(selector, value) {
+        if (!value) return false;
+        const field = document.querySelector(selector);
+        if (!field) return false;
+        const current = String(field.value || '').trim();
+        if (current !== '') return false;
+        field.value = value.trim();
+        return true;
     }
 
-    // Encuentra el primer <li> que contiene "SERVICIOS OFTALMOLOGICOS GENERALES"
-    const liElement = Array.from(document.querySelectorAll('li')).find(li => li.textContent.includes("SERVICIOS OFTALMOLOGICOS GENERALES"));
-    // Encuentra el primer <li> que contiene "TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA"
-    const liElementPlan = Array.from(document.querySelectorAll('li')).find(li => li.textContent.includes("TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA"));
-
-    if (liElement) {
-        const motivoConsulta = getContentAfterBold(liElement, "MOTIVO CONSULTA:");
-        const enfermedadActual = getContentAfterBold(liElement, "ENFERMEDAD ACTUAL:");
-        const observacion = getContentAfterBold(liElement, "OBSERVACIÓN:");
-        const medicacion = getContentAfterBold(liElement, "MEDICACIÓN:");
-        const enfermedadPresuntivo = getContentAfterBold(liElement, "ENFERMEDAD PRESUNTIVO:");
-        const enfermedadDefinitivo = getContentAfterBold(liElement, "ENFERMEDAD DEFINITIVO:");
-
-        console.log('MOTIVO CONSULTA:', motivoConsulta);
-        console.log('ENFERMEDAD ACTUAL:', enfermedadActual);
-        console.log('OBSERVACIÓN:', observacion);
-        console.log('MEDICACIÓN:', medicacion);
-        console.log('ENFERMEDAD PRESUNTIVO:', enfermedadPresuntivo);
-        console.log('ENFERMEDAD DEFINITIVO:', enfermedadDefinitivo);
-
-        // Asigna los valores extraídos a los textareas correspondientes
-        const motivoConsultaTextarea = document.getElementById('consultas-motivoconsulta');
-        if (motivoConsultaTextarea) {
-            motivoConsultaTextarea.value = motivoConsulta;
-        } else {
-            console.log('Textarea para motivoConsulta no encontrado.');
+    async function fetchConsultaAnterior() {
+        if (!window.CiveApiClient || typeof window.CiveApiClient.get !== 'function') {
+            console.warn('CIVE Extension: CiveApiClient no está disponible para consulta anterior.');
+            return null;
         }
 
-        const observacionTextarea = document.getElementById('consultas-fisico-0-observacion');
-        if (observacionTextarea) {
-            observacionTextarea.value = observacion;
-        } else {
-            console.log('Textarea para observacion no encontrado.');
+        await (window.configCIVE ? window.configCIVE.ready : Promise.resolve());
+        const {formId, hcNumber} = getIdentifiers();
+        if (!hcNumber) {
+            console.warn('CIVE Extension: no se pudo obtener HC para consulta anterior.');
+            return null;
         }
 
-        const enfermedadActualTextarea = document.getElementById('consultas-enfermedadactual');
-        if (enfermedadActualTextarea) {
-            enfermedadActualTextarea.value = enfermedadActual;
-        } else {
-            console.log('Textarea para enfermedadActual no encontrado.');
+        const query = {hcNumber};
+        if (formId) {
+            query.form_id = formId;
         }
 
-        const medicacionTextarea = document.getElementById('consultas-medicacion');
-        if (medicacionTextarea) {
-            medicacionTextarea.value = medicacion;
-        } else {
-            console.log('Textarea para medicacion no encontrado.');
-        }
+        try {
+            const resp = await window.CiveApiClient.get('/consultas/anterior.php', {
+                query,
+                retries: 1,
+                retryDelayMs: 500,
+            });
 
-        const enfermedadDefinitivoTextarea = document.getElementById('consultas-enfermedad-definitivo');
-        if (enfermedadDefinitivoTextarea) {
-            enfermedadDefinitivoTextarea.value = enfermedadDefinitivo;
-        } else {
-            console.log('Textarea para enfermedadDefinitivo no encontrado.');
+            if (resp && resp.success && resp.data) {
+                return resp.data;
+            }
+            console.info('CIVE Extension: sin consulta anterior disponible.', resp?.message || '');
+        } catch (error) {
+            console.error('CIVE Extension: error al obtener consulta anterior.', error);
         }
-    } else {
-        console.log('No se encontró un <li> con "SERVICIOS OFTALMOLOGICOS GENERALES".');
-    }
-    if (liElementPlan) {
-        const plan = getContentFromTimelineBody(liElementPlan);
-
-        console.log('PLAN:', plan);
-
-        // Asigna el valor del plan al textarea correspondiente
-        const planTextarea = document.getElementById('docsolicitudprocedimientos-observacion_consulta');
-        if (planTextarea) {
-            planTextarea.value = plan;
-        } else {
-            console.log('Textarea para plan no encontrado.');
-        }
-    } else {
-        console.log('No se encontró un <li> con "TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA".');
+        return null;
     }
 
-    hacerClickEnPresuntivo('.form-group.field-consultas-tipo_externa .cbx-container .cbx', 1)
-        .then(() => hacerClickEnSelect2('#select2-consultas-fisico-0-tipoexamen_id-container'))
-        .then(() => establecerBusqueda('#select2-consultas-fisico-0-tipoexamen_id-container', "OJOS"))
-        .then(() => seleccionarOpcion());
-}
+    window.consultaAnterior = async function consultaAnterior() {
+        const data = await fetchConsultaAnterior();
+        if (!data) return;
+
+        const examen = data.examen_fisico || data.examenFisico || '';
+        const plan = data.plan || '';
+
+        const filledExam = setIfEmpty(EXAM_SELECTOR, examen);
+        const filledPlan = setIfEmpty(PLAN_SELECTOR, plan);
+
+        if (!filledExam && !filledPlan) {
+            console.info('CIVE Extension: los campos ya tienen información, no se sobrescribe la consulta anterior.');
+        }
+    };
+})();
 
 // Función que se ejecutará en la página actual para protocolos de cirugía
 function ejecutarPopEnPagina() {

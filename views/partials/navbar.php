@@ -214,7 +214,7 @@ if (!function_exists('isTreeOpen')) {
                         </ul>
                     </li>
 
-                    <li class="treeview<?= isTreeOpen(['/insumos', '/insumos/medicamentos']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/insumos', '/insumos/medicamentos', '/insumos/lentes']) ?>">
                         <a href="#">
                             <i class="mdi mdi-medical-bag"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
@@ -230,6 +230,11 @@ if (!function_exists('isTreeOpen')) {
                             <li class="<?= isActive('/insumos/medicamentos') ?>">
                                 <a href="/insumos/medicamentos">
                                     <i class="mdi mdi-pill"></i>Lista de Medicamentos
+                                </a>
+                            </li>
+                            <li class="<?= isActive('/insumos/lentes') ?>">
+                                <a href="/insumos/lentes">
+                                    <i class="mdi mdi-glasses"></i>Catálogo de Lentes
                                 </a>
                             </li>
                         </ul>

@@ -1,0 +1,21 @@
+.kanban-board-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.kanban-board-wrapper .kanban-scroll {
+    min-width: 100%;
+    width: max-content;
+}
+
+.kanban-board-wrapper .kanban-column {
+    width: 320px;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 768px) {
+    .kanban-board-wrapper .kanban-column {
+        width: 280px;
+    }
+}
