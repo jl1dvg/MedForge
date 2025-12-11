@@ -13,6 +13,7 @@ use Modules\Pacientes\Services\PacienteService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
+use Modules\Solicitudes\Services\CalendarBlockService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -32,6 +33,7 @@ class SolicitudController extends BaseController
     private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
     private SolicitudCrmService $crmService;
+    private CalendarBlockService $calendarBlocks;
     private SolicitudEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
@@ -46,6 +48,7 @@ class SolicitudController extends BaseController
         $this->estadoService = new SolicitudEstadoService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
+        $this->calendarBlocks = new CalendarBlockService($pdo);
     }
 
     public function index(): void
@@ -215,6 +218,31 @@ class SolicitudController extends BaseController
             $this->json(['success' => true, 'data' => $resumen]);
         } catch (\Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo cargar el detalle CRM'], 500);
+        }
+    }
+
+    public function crmRegistrarBloqueo(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+
+        try {
+            $resultado = $this->crmService->registrarBloqueoAgenda(
+                $solicitudId,
+                $payload,
+                $this->getCurrentUserId()
+            );
+
+            $this->json(['success' => true, 'data' => $resultado]);
+        } catch (\Throwable $e) {
+            $this->json([
+                'success' => false,
+                'error' => $e->getMessage() ?: 'No se pudo registrar el bloqueo de agenda',
+            ], 500);
         }
     }
 
@@ -591,12 +619,25 @@ class SolicitudController extends BaseController
         $alertConsentimiento = !$isTerminal
             && ($fechaCaducidad === null || $fechaCaducidad <= $now);
 
+        $adjuntos = (int) ($row['crm_total_adjuntos'] ?? 0);
+        $tareasPendientes = (int) ($row['crm_tareas_pendientes'] ?? 0);
+        $alertDocumentos = !$isTerminal && $adjuntos === 0;
+        $alertAutorizacion = !$isTerminal
+            && !empty($row['afiliacion'])
+            && ($tareasPendientes > 0 || $alertDocumentos);
+
         $alerts = [];
         if ($alertReprogramacion) {
             $alerts[] = 'Requiere reprogramación';
         }
         if ($alertConsentimiento) {
             $alerts[] = 'Pendiente de consentimiento';
+        }
+        if ($alertDocumentos) {
+            $alerts[] = 'Faltan documentos de soporte';
+        }
+        if ($alertAutorizacion) {
+            $alerts[] = 'Autorización pendiente';
         }
 
         return [
@@ -611,6 +652,8 @@ class SolicitudController extends BaseController
             'created_at_iso' => $createdAt instanceof DateTimeImmutable ? $createdAt->format(DateTimeImmutable::ATOM) : null,
             'alert_reprogramacion' => $alertReprogramacion,
             'alert_pendiente_consentimiento' => $alertConsentimiento,
+            'alert_documentos_faltantes' => $alertDocumentos,
+            'alert_autorizacion_pendiente' => $alertAutorizacion,
             'alertas_operativas' => $alerts,
         ];
     }
@@ -650,6 +693,8 @@ class SolicitudController extends BaseController
             'alerts' => [
                 'requiere_reprogramacion' => 0,
                 'pendiente_consentimiento' => 0,
+                'documentos_faltantes' => 0,
+                'autorizacion_pendiente' => 0,
             ],
             'prioridad' => [
                 'urgente' => 0,
@@ -680,6 +725,12 @@ class SolicitudController extends BaseController
             if (!empty($row['alert_pendiente_consentimiento'])) {
                 $metrics['alerts']['pendiente_consentimiento'] += 1;
             }
+            if (!empty($row['alert_documentos_faltantes'])) {
+                $metrics['alerts']['documentos_faltantes'] += 1;
+            }
+            if (!empty($row['alert_autorizacion_pendiente'])) {
+                $metrics['alerts']['autorizacion_pendiente'] += 1;
+            }
 
             $teamKey = (string)($row['crm_responsable_id'] ?? 'sin_asignar');
             if (!isset($metrics['teams'][$teamKey])) {
@@ -692,6 +743,8 @@ class SolicitudController extends BaseController
                     'advertencia' => 0,
                     'reprogramar' => 0,
                     'sin_consentimiento' => 0,
+                    'documentos' => 0,
+                    'autorizaciones' => 0,
                 ];
             }
 
@@ -711,6 +764,12 @@ class SolicitudController extends BaseController
             }
             if (!empty($row['alert_pendiente_consentimiento'])) {
                 $metrics['teams'][$teamKey]['sin_consentimiento'] += 1;
+            }
+            if (!empty($row['alert_documentos_faltantes'])) {
+                $metrics['teams'][$teamKey]['documentos'] += 1;
+            }
+            if (!empty($row['alert_autorizacion_pendiente'])) {
+                $metrics['teams'][$teamKey]['autorizaciones'] += 1;
             }
         }
 

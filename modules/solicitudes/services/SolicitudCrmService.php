@@ -7,6 +7,7 @@ use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
+use Modules\Solicitudes\Services\CalendarBlockService;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -20,6 +21,7 @@ class SolicitudCrmService
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
     private WhatsAppMessenger $whatsapp;
+    private CalendarBlockService $calendarBlocks;
 
     public function __construct(PDO $pdo)
     {
@@ -27,6 +29,7 @@ class SolicitudCrmService
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
+        $this->calendarBlocks = new CalendarBlockService($pdo);
     }
 
     public function obtenerResponsables(): array
@@ -70,7 +73,17 @@ class SolicitudCrmService
             'tareas' => $this->obtenerTareas($solicitudId),
             'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
             'lead' => $lead,
+            'bloqueos_agenda' => $this->calendarBlocks->listarPorSolicitud($solicitudId),
         ];
+    }
+
+    public function registrarBloqueoAgenda(int $solicitudId, array $payload, ?int $usuarioId = null): array
+    {
+        $bloqueo = $this->calendarBlocks->registrar($solicitudId, $payload, $usuarioId);
+        $resumen = $this->obtenerResumen($solicitudId);
+        $resumen['ultimo_bloqueo'] = $bloqueo;
+
+        return $resumen;
     }
 
     public function guardarDetalles(int $solicitudId, array $data, ?int $usuarioId = null): void

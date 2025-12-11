@@ -31,6 +31,22 @@ class SolicitudReminderService
             'maxOffsetHours' => 72.0,
             'source' => 'scheduled',
         ],
+        'surgery_24h' => [
+            'event' => PusherConfigService::EVENT_SURGERY_PRECHECK_24H,
+            'label' => 'Confirmación 24h',
+            'context' => 'Confirmar asistencia del paciente y bloquear agenda quirúrgica/consultorio.',
+            'minOffsetHours' => 22.0,
+            'maxOffsetHours' => 26.0,
+            'source' => 'scheduled',
+        ],
+        'surgery_2h' => [
+            'event' => PusherConfigService::EVENT_SURGERY_PRECHECK_2H,
+            'label' => 'Recordatorio 2h',
+            'context' => 'Ultimar sala, instrumentista y documentación antes de la cirugía.',
+            'minOffsetHours' => 1.0,
+            'maxOffsetHours' => 3.5,
+            'source' => 'scheduled',
+        ],
         'surgery' => [
             'event' => PusherConfigService::EVENT_SURGERY_REMINDER,
             'label' => 'Recordatorio de cirugía',
@@ -45,6 +61,14 @@ class SolicitudReminderService
             'context' => 'Agendar control, confirmar indicaciones y gestionar incidencias reportadas.',
             'minOffsetHours' => -48.0,
             'maxOffsetHours' => -6.0,
+            'source' => 'scheduled',
+        ],
+        'postconsulta' => [
+            'event' => PusherConfigService::EVENT_POST_CONSULTA,
+            'label' => 'Postconsulta',
+            'context' => 'Enviar instrucciones y encuesta de satisfacción al paciente.',
+            'minOffsetHours' => -6.0,
+            'maxOffsetHours' => -1.0,
             'source' => 'scheduled',
         ],
         'exams' => [

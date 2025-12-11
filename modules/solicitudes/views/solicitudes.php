@@ -1043,6 +1043,45 @@ array_push(
                         </div>
                     </form>
                 </section>
+                <section class="crm-offcanvas-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Bloqueo de agenda</h6>
+                        <small class="text-muted" id="crmBloqueosResumen"></small>
+                    </div>
+                    <div id="crmBloqueosList" class="list-group mb-3"></div>
+                    <form id="crmBloqueoForm" class="row g-2">
+                        <div class="col-md-6">
+                            <label for="crmBloqueoInicio" class="form-label">Inicio</label>
+                            <input type="datetime-local" id="crmBloqueoInicio" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmBloqueoFin" class="form-label">Fin</label>
+                            <input type="datetime-local" id="crmBloqueoFin" class="form-control">
+                            <small class="text-muted">Si se omite, se toma la duración indicada.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmBloqueoDuracion" class="form-label">Duración (min)</label>
+                            <input type="number" min="15" step="5" id="crmBloqueoDuracion" class="form-control" placeholder="60">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmBloqueoSala" class="form-label">Sala / quirófano</label>
+                            <input type="text" id="crmBloqueoSala" class="form-control" placeholder="Sala 1, Láser, etc.">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmBloqueoDoctor" class="form-label">Doctor</label>
+                            <input type="text" id="crmBloqueoDoctor" class="form-control" placeholder="Nombre del médico">
+                        </div>
+                        <div class="col-12">
+                            <label for="crmBloqueoMotivo" class="form-label">Motivo</label>
+                            <input type="text" id="crmBloqueoMotivo" class="form-control" placeholder="Reserva de sala, valoración, etc.">
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-outline-dark">
+                                <i class="mdi mdi-calendar-lock-outline me-1"></i>Bloquear horario
+                            </button>
+                        </div>
+                    </form>
+                </section>
             </div>
         </div>
     </div>

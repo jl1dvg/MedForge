@@ -56,6 +56,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->crmAgregarNota((int) $solicitudId);
     });
 
+    $router->post('/solicitudes/{id}/crm/bloqueo', function (\PDO $pdo, $solicitudId) {
+        (new SolicitudController($pdo))->crmRegistrarBloqueo((int) $solicitudId);
+    });
+
     $router->post('/solicitudes/{id}/crm/tareas', function (\PDO $pdo, $solicitudId) {
         (new SolicitudController($pdo))->crmGuardarTarea((int) $solicitudId);
     });

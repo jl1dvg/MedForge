@@ -269,6 +269,22 @@ function getAlertBadges(item = {}) {
         });
     }
 
+    if (item.alert_documentos_faltantes) {
+        alerts.push({
+            label: "Docs faltantes",
+            icon: "mdi-file-alert-outline",
+            className: "badge bg-warning text-dark",
+        });
+    }
+
+    if (item.alert_autorizacion_pendiente) {
+        alerts.push({
+            label: "Autorización",
+            icon: "mdi-account-lock",
+            className: "badge bg-info text-dark",
+        });
+    }
+
     return alerts;
 }
 
