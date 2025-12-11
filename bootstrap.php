@@ -61,6 +61,7 @@ spl_autoload_register(function ($class) {
 
 // === Cargar variables de entorno (.env) ===
 use Dotenv\Dotenv;
+use Helpers\SecurityGuard;
 
 if (class_exists(Dotenv::class)) {
     $dotenv = Dotenv::createImmutable(__DIR__);
@@ -212,6 +213,8 @@ function buildAssetUrl(string $path, string $prefix = ''): string
 
     return $relativeUrl . $queryString;
 }
+
+SecurityGuard::enforceRequestSecurity();
 
 function getAssetVersionKey(string $relativePath): ?string
 {

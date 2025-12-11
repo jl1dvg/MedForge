@@ -2,6 +2,7 @@
 
 namespace Services;
 
+use Helpers\SecurityAuditLogger;
 use PDO;
 use Exception;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -52,6 +53,12 @@ class ExportService
         $GLOBALS['datos_facturacion'] = $datos;
         $GLOBALS['form_id_facturacion'] = $formId;
 
+        SecurityAuditLogger::log('billing_export_excel', [
+            'form_id' => $formId,
+            'grupo_afiliacion' => $grupoAfiliacion,
+            'modo' => $modo,
+        ]);
+
         $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
 
         if ($modo === 'bulk') {
@@ -80,6 +87,11 @@ class ExportService
         $GLOBALS['spreadsheet'] = $spreadsheet;
 
         $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
+
+        SecurityAuditLogger::log('billing_export_excel_multiple', [
+            'grupo_afiliacion' => $grupoAfiliacion,
+            'total_registros' => count($datosMultiples),
+        ]);
 
         $sheetIndex = 0;
         foreach ($datosMultiples as $datos) {
@@ -121,6 +133,12 @@ class ExportService
 
             $archivoPlantilla = $this->resolverPlantilla($grupoAfiliacion);
 
+            SecurityAuditLogger::log('billing_export_excel_file', [
+                'form_id' => $formId,
+                'destino' => $destino,
+                'grupo_afiliacion' => $grupoAfiliacion,
+            ]);
+
             ob_start();
             require $archivoPlantilla;
             $error_output = ob_get_clean();
@@ -149,6 +167,11 @@ class ExportService
             throw new \InvalidArgumentException('Formato de mes inválido, se esperaba YYYY-MM.');
         }
         $finMes = (clone $inicioMes)->modify('first day of next month');
+
+        SecurityAuditLogger::log('billing_export_monthly', [
+            'mes' => $mes,
+            'grupo_afiliacion' => $grupoAfiliacion,
+        ]);
 
         $stmt = $this->db->prepare("
             SELECT pd.form_id

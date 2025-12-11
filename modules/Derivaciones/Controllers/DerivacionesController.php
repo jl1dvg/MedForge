@@ -3,6 +3,7 @@
 namespace Modules\Derivaciones\Controllers;
 
 use Core\BaseController;
+use Helpers\SecurityAuditLogger;
 use Modules\Derivaciones\Services\DerivacionesService;
 use PDO;
 
@@ -188,6 +189,11 @@ class DerivacionesController extends BaseController
             header('Content-Disposition: inline; filename="' . $filename . '"');
             header('Content-Length: ' . filesize($real));
         }
+
+        SecurityAuditLogger::log('derivacion_file_download', [
+            'derivacion_id' => $id,
+            'filename' => $filename,
+        ]);
 
         readfile($real);
     }

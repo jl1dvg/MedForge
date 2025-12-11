@@ -360,7 +360,7 @@ echo "</table>";
             $hora = date('H:i', strtotime($fechaCompleta));
             echo $fecha ?></td>
         <td colspan="7" class="blanco"><?php echo $hora; ?></td>
-        <td colspan="21" class="blanco"><?php echo htmlspecialchars($solicitud['doctor']); ?></td>
+        <td colspan="21" class="blanco"><?php echo htmlspecialchars((string)($solicitud['doctor'] ?? '')); ?></td>
         <td colspan="19" class="blanco"></td>
         <td colspan="16" class="blanco"></td>
     </tr>
@@ -371,10 +371,10 @@ echo "</table>";
     </tr>
     <tr>
         <td colspan="15" class="blanco"
-            style="height: 40px"><?php echo htmlspecialchars($solicitud['cedula']); ?></td>
+            style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['cedula'] ?? '')); ?></td>
         <td colspan="26" class="blanco"><?php if (!empty($solicitud['firma'])): ?>
                 <div style="margin-bottom: -25px;">
-                    <img src="<?= htmlspecialchars($solicitud['firma']) ?>" alt="Firma del cirujano"
+                    <img src="<?= htmlspecialchars((string)$solicitud['firma']) ?>" alt="Firma del cirujano"
                          style="max-height: 60px;">
                 </div>
             <?php endif; ?>

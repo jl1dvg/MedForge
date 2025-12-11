@@ -3,6 +3,7 @@
 namespace Modules\CRM\Controllers;
 
 use Core\BaseController;
+use Helpers\SecurityAuditLogger;
 use InvalidArgumentException;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Models\ProjectModel;
@@ -39,6 +40,8 @@ class CRMController extends BaseController
     {
         $this->requireAuth();
         $this->requireCrmPermission('crm.view');
+
+        $this->auditCrm('crm_dashboard_access');
 
         $permissions = [
             'manageLeads' => $this->canCrm(['crm.leads.manage']),
@@ -94,6 +97,7 @@ class CRMController extends BaseController
             }
 
             $leads = $this->leads->list($filters);
+            $this->auditCrm('crm_leads_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $leads]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los leads'], 500);
@@ -130,6 +134,7 @@ class CRMController extends BaseController
                 $this->getCurrentUserId()
             );
 
+            $this->auditCrm('crm_lead_created', ['hc_number' => $hcNumber]);
             $this->json(['ok' => true, 'data' => $lead], 201);
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
@@ -158,6 +163,7 @@ class CRMController extends BaseController
                 return;
             }
 
+            $this->auditCrm('crm_lead_updated', ['hc_number' => $hcNumber]);
             $this->json(['ok' => true, 'data' => $updated]);
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
@@ -186,6 +192,7 @@ class CRMController extends BaseController
                 return;
             }
 
+            $this->auditCrm('crm_lead_converted', ['hc_number' => $hcNumber]);
             $this->json(['ok' => true, 'data' => $converted]);
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
@@ -218,6 +225,7 @@ class CRMController extends BaseController
             }
 
             $projects = $this->projects->list($filters);
+            $this->auditCrm('crm_projects_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $projects]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los proyectos'], 500);
@@ -252,6 +260,10 @@ class CRMController extends BaseController
                 $this->getCurrentUserId()
             );
 
+            $this->auditCrm('crm_project_created', [
+                'project_id' => $project['id'] ?? null,
+                'lead_id' => $payload['lead_id'] ?? null,
+            ]);
             $this->json(['ok' => true, 'data' => $project], 201);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear el proyecto'], 500);
@@ -279,6 +291,10 @@ class CRMController extends BaseController
                 return;
             }
 
+            $this->auditCrm('crm_project_status_updated', [
+                'project_id' => $projectId,
+                'status' => $status,
+            ]);
             $this->json(['ok' => true, 'data' => $project]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo actualizar el proyecto'], 500);
@@ -306,6 +322,7 @@ class CRMController extends BaseController
             }
 
             $tasks = $this->tasks->list($filters);
+            $this->auditCrm('crm_tasks_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $tasks]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar las tareas'], 500);
@@ -346,6 +363,10 @@ class CRMController extends BaseController
                 $this->getCurrentUserId()
             );
 
+            $this->auditCrm('crm_task_created', [
+                'project_id' => $projectId,
+                'task_id' => $task['id'] ?? null,
+            ]);
             $this->json(['ok' => true, 'data' => $task], 201);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear la tarea'], 500);
@@ -373,6 +394,10 @@ class CRMController extends BaseController
                 return;
             }
 
+            $this->auditCrm('crm_task_status_updated', [
+                'task_id' => $taskId,
+                'status' => $status,
+            ]);
             $this->json(['ok' => true, 'data' => $task]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo actualizar la tarea'], 500);
@@ -400,6 +425,7 @@ class CRMController extends BaseController
             }
 
             $tickets = $this->tickets->list($filters);
+            $this->auditCrm('crm_tickets_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $tickets]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los tickets'], 500);
@@ -435,6 +461,10 @@ class CRMController extends BaseController
                 $this->getCurrentUserId()
             );
 
+            $this->auditCrm('crm_ticket_created', [
+                'ticket_id' => $ticket['id'] ?? null,
+                'related_project_id' => $payload['related_project_id'] ?? null,
+            ]);
             $this->json(['ok' => true, 'data' => $ticket], 201);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear el ticket'], 500);
@@ -469,6 +499,10 @@ class CRMController extends BaseController
             }
 
             $updated = $this->tickets->find($ticketId);
+            $this->auditCrm('crm_ticket_replied', [
+                'ticket_id' => $ticketId,
+                'status' => $payload['status'] ?? null,
+            ]);
             $this->json(['ok' => true, 'data' => $updated]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo registrar la respuesta'], 500);
@@ -496,6 +530,7 @@ class CRMController extends BaseController
             }
 
             $proposals = $this->proposals->list($filters);
+            $this->auditCrm('crm_proposals_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $proposals]);
         } catch (Throwable $exception) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar las propuestas'], 500);
@@ -511,6 +546,10 @@ class CRMController extends BaseController
 
         try {
             $proposal = $this->proposals->create($payload, $this->getCurrentUserId());
+            $this->auditCrm('crm_proposal_created', [
+                'proposal_id' => $proposal['id'] ?? null,
+                'lead_id' => $payload['lead_id'] ?? null,
+            ]);
             $this->json(['ok' => true, 'data' => $proposal], 201);
         } catch (RuntimeException $exception) {
             $this->json(['ok' => false, 'error' => $exception->getMessage()], 422);
@@ -540,12 +579,21 @@ class CRMController extends BaseController
                 return;
             }
 
+            $this->auditCrm('crm_proposal_status_updated', [
+                'proposal_id' => $proposalId,
+                'status' => $status,
+            ]);
             $this->json(['ok' => true, 'data' => $proposal]);
         } catch (RuntimeException $exception) {
             $this->json(['ok' => false, 'error' => $exception->getMessage()], 422);
         } catch (Throwable $exception) {
             $this->json(['ok' => false, 'error' => 'No se pudo actualizar el estado'], 500);
         }
+    }
+
+    private function auditCrm(string $action, array $context = []): void
+    {
+        SecurityAuditLogger::log($action, ['module' => 'crm'] + $context);
     }
 
     private function getBody(): array
@@ -586,12 +634,12 @@ class CRMController extends BaseController
 
     private function requireCrmPermission(string $permission): void
     {
-        $this->requirePermission([$permission, 'crm.manage', 'administrativo']);
+        $this->requirePermission([$permission, 'crm.manage']);
     }
 
     private function canCrm(array $permissions): bool
     {
-        $checks = array_merge($permissions, ['crm.manage', 'administrativo']);
+        $checks = array_merge($permissions, ['crm.manage']);
 
         return $this->hasPermission($checks);
     }
