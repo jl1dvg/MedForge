@@ -19,20 +19,22 @@ td.morado {
     text-align: left;
     vertical-align: middle;
     background-color: #CCCCFF;
-    font-size: 8pt;
+    font-size: 4pt;
     font-weight: bold;
-    height: 20px;
+    height: 10px;
 }
 
 td.morado_border {
     text-align: left;
     vertical-align: middle;
     background-color: #CCCCFF;
-    font-size: 6pt;
+    font-size: 5pt;
     font-weight: bold;
-    height: 20px;
+    height: 10px;
     border-top: 1px solid #808080;
     border-right: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-bottom: 1px solid #808080;
 }
 
 td.verde {
@@ -74,6 +76,23 @@ td.cyan_vert {
     border-top: 1px solid #808080;
     border-right: 1px solid #808080;
     writing-mode: vertical-rl;
+}
+
+td.marcado {
+    font-size: 6.0pt;
+    font-weight: bold;
+    vertical-align: middle;
+    text-align: center;
+    align-content: center;
+    color: #fb0000;
+    height: 7px;
+    border-top: .5pt solid #5F5F5F;
+    border-right: .5pt solid #5F5F5F;
+    border-bottom: .5pt solid #5F5F5F;
+    border-left: 1.0pt solid #5F5F5F;
+    background: #CCFFFF;
+    padding: 0; /* Elimina el padding */
+    margin: 0; /* Por si las celdas tienen margen */
 }
 
 td.verde_normal {
@@ -953,12 +972,12 @@ td.morado {
     height: 15px;
 }
 
-td.verde {
-    height: 15px;
+td.verde_010 {
+    height: 12px;
     text-align: center;
     vertical-align: middle;
     background-color: #CCFFCC;
-    font-size: 7pt;
+    font-size: 5pt;
     font-weight: bold;
     border-top: 1px solid #808080;
     border-right: 1px solid #808080;
@@ -1777,6 +1796,28 @@ td.cyan_normal {
     border-bottom: .5pt solid #5F5F5F;
     border-left: 1.0pt solid #5F5F5F;
     background: #CCFFFF;
+    padding: 0; /* Elimina el padding */
+    margin: 0; /* Por si las celdas tienen margen */
+}
+
+td.xl117 {
+    font-size: 4.0pt;
+    height: 7px;
+    vertical-align: middle;
+    background: #ffffff;
+    padding: 0; /* Elimina el padding */
+    margin: 0; /* Por si las celdas tienen margen */
+}
+
+td.blanco_010 {
+    font-size: 4.0pt;
+    height: 7px;
+    vertical-align: middle;
+    border-top: .5pt solid #5F5F5F;
+    border-right: .5pt solid #5F5F5F;
+    border-bottom: .5pt solid #5F5F5F;
+    border-left: 1.0pt solid #5F5F5F;
+    background: #ffffff;
     padding: 0; /* Elimina el padding */
     margin: 0; /* Por si las celdas tienen margen */
 }
