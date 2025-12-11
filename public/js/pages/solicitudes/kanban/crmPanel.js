@@ -280,6 +280,34 @@ function bindForms() {
         });
     }
 
+    const bloqueoForm = document.getElementById('crmBloqueoForm');
+    if (bloqueoForm) {
+        bloqueoForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!currentSolicitudId) {
+                showToast('Selecciona una solicitud para bloquear agenda', false);
+                return;
+            }
+
+            const payload = collectBloqueoPayload(bloqueoForm);
+            if (!payload.fecha_inicio) {
+                showToast('Indica al menos la fecha y hora de inicio', false);
+                return;
+            }
+
+            const { basePath } = getKanbanConfig();
+            const ok = await submitJson(
+                `${basePath}/${currentSolicitudId}/crm/bloqueo`,
+                payload,
+                'Bloqueo de agenda registrado'
+            );
+
+            if (ok) {
+                bloqueoForm.reset();
+            }
+        });
+    }
+
     const agregarCampoBtn = document.getElementById('crmAgregarCampo');
     if (agregarCampoBtn) {
         agregarCampoBtn.addEventListener('click', () => {
@@ -338,6 +366,24 @@ function collectCamposPersonalizados() {
             };
         })
         .filter(Boolean);
+}
+
+function collectBloqueoPayload(form) {
+    const inicio = form.querySelector('#crmBloqueoInicio')?.value ?? '';
+    const fin = form.querySelector('#crmBloqueoFin')?.value ?? '';
+    const duracion = form.querySelector('#crmBloqueoDuracion')?.value ?? '';
+    const sala = form.querySelector('#crmBloqueoSala')?.value ?? '';
+    const doctor = form.querySelector('#crmBloqueoDoctor')?.value ?? '';
+    const motivo = form.querySelector('#crmBloqueoMotivo')?.value ?? '';
+
+    return {
+        fecha_inicio: inicio,
+        fecha_fin: fin,
+        duracion_minutos: duracion ? Number.parseInt(duracion, 10) : null,
+        sala,
+        doctor,
+        motivo,
+    };
 }
 
 function collectTareaPayload(form) {
@@ -636,6 +682,7 @@ function renderCrmData(data) {
     renderAdjuntos(data.adjuntos ?? []);
     renderTareas(data.tareas ?? []);
     renderCampos(data.campos_personalizados ?? []);
+    renderBloqueos(data.bloqueos_agenda ?? []);
 }
 
 function renderResumen(detalle, lead) {
@@ -913,6 +960,69 @@ function renderTareas(tareas) {
         item.appendChild(acciones);
         list.appendChild(item);
     });
+}
+
+function renderBloqueos(bloqueos) {
+    const list = document.getElementById('crmBloqueosList');
+    const resumen = document.getElementById('crmBloqueosResumen');
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = '';
+
+    if (!Array.isArray(bloqueos) || bloqueos.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'crm-list-empty';
+        empty.textContent = 'Sin bloqueos activos';
+        list.appendChild(empty);
+        if (resumen) {
+            resumen.textContent = '0 bloqueos';
+        }
+        return;
+    }
+
+    bloqueos.forEach(bloqueo => {
+        const item = document.createElement('div');
+        item.className = 'list-group-item d-flex justify-content-between align-items-start gap-2';
+
+        const cuerpo = document.createElement('div');
+        cuerpo.className = 'flex-grow-1';
+
+        const titulo = document.createElement('h6');
+        titulo.className = 'mb-1';
+        const doctor = bloqueo.doctor || 'Sin doctor';
+        const sala = bloqueo.sala || 'Sin sala';
+        titulo.textContent = `${doctor} · ${sala}`;
+        cuerpo.appendChild(titulo);
+
+        const horario = document.createElement('p');
+        horario.className = 'mb-1 text-muted';
+        const inicio = bloqueo.fecha_inicio ? formatDateTime(bloqueo.fecha_inicio) : '—';
+        const fin = bloqueo.fecha_fin ? formatDateTime(bloqueo.fecha_fin) : '—';
+        horario.textContent = `${inicio} → ${fin}`;
+        cuerpo.appendChild(horario);
+
+        if (bloqueo.motivo) {
+            const motivo = document.createElement('p');
+            motivo.className = 'mb-0 small text-muted';
+            motivo.textContent = bloqueo.motivo;
+            cuerpo.appendChild(motivo);
+        }
+
+        item.appendChild(cuerpo);
+
+        const icon = document.createElement('span');
+        icon.className = 'badge text-bg-dark';
+        icon.innerHTML = '<i class="mdi mdi-calendar-lock-outline"></i>';
+        item.appendChild(icon);
+
+        list.appendChild(item);
+    });
+
+    if (resumen) {
+        resumen.textContent = `${bloqueos.length} bloqueo(s)`;
+    }
 }
 
 async function actualizarEstadoTarea(tareaId, estado) {

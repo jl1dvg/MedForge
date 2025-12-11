@@ -13,8 +13,11 @@ class PusherConfigService
     public const EVENT_STATUS_UPDATED = 'status_updated';
     public const EVENT_CRM_UPDATED = 'crm_updated';
     public const EVENT_SURGERY_REMINDER = 'surgery_reminder';
+    public const EVENT_SURGERY_PRECHECK_24H = 'surgery_precheck_24h';
+    public const EVENT_SURGERY_PRECHECK_2H = 'surgery_precheck_2h';
     public const EVENT_PREOP_REMINDER = 'preop_reminder';
     public const EVENT_POSTOP_REMINDER = 'postop_reminder';
+    public const EVENT_POST_CONSULTA = 'post_consulta';
     public const EVENT_EXAMS_EXPIRING = 'exams_expiring';
     public const EVENT_EXAM_REMINDER = 'exam_reminder';
     public const EVENT_TURNERO_UPDATED = 'turnero_updated';
@@ -25,8 +28,11 @@ class PusherConfigService
         self::EVENT_STATUS_UPDATED => 'kanban.estado-actualizado',
         self::EVENT_CRM_UPDATED => 'crm.detalles-actualizados',
         self::EVENT_SURGERY_REMINDER => 'recordatorio-cirugia',
+        self::EVENT_SURGERY_PRECHECK_24H => 'recordatorio-cirugia-24h',
+        self::EVENT_SURGERY_PRECHECK_2H => 'recordatorio-cirugia-2h',
         self::EVENT_PREOP_REMINDER => 'recordatorio-preop',
         self::EVENT_POSTOP_REMINDER => 'recordatorio-postop',
+        self::EVENT_POST_CONSULTA => 'postconsulta',
         self::EVENT_EXAMS_EXPIRING => 'alerta-examenes-por-vencer',
         self::EVENT_EXAM_REMINDER => 'recordatorio-examen',
         self::EVENT_TURNERO_UPDATED => 'turnero.turno-actualizado',
