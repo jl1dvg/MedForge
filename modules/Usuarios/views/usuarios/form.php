@@ -145,7 +145,7 @@ if (!function_exists('usuarios_permission_id')) {
                                 <input type="text" name="subespecialidad" class="form-control" value="<?= usuarios_form_old($usuario, 'subespecialidad'); ?>">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Firma</label>
+                                <label class="form-label">Sello</label>
                                 <?php
                                 $firmaPath = $usuario['firma'] ?? null;
                                 if ($firmaPath && !preg_match('/^https?:/i', $firmaPath)) {
@@ -154,17 +154,40 @@ if (!function_exists('usuarios_permission_id')) {
                                 ?>
                                 <?php if (!empty($usuario['firma'])): ?>
                                     <div class="mb-2">
-                                        <img src="<?= htmlspecialchars($firmaPath, ENT_QUOTES, 'UTF-8'); ?>" alt="Firma actual" class="img-fluid border rounded" style="max-height: 120px;">
+                                        <img src="<?= htmlspecialchars($firmaPath, ENT_QUOTES, 'UTF-8'); ?>" alt="Sello actual" class="img-fluid border rounded" style="max-height: 120px;">
                                     </div>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" name="remove_firma" id="remove_firma" value="1">
-                                        <label class="form-check-label" for="remove_firma">Eliminar firma actual</label>
+                                        <label class="form-check-label" for="remove_firma">Eliminar sello actual</label>
                                     </div>
                                 <?php endif; ?>
-                                <input type="file" name="firma_file" class="form-control" accept="image/png,image/jpeg,image/webp">
-                                <small class="text-muted">Formatos permitidos: PNG, JPG o WEBP. Tamaño máximo 2&nbsp;MB.</small>
+                                <input type="file" name="firma_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
+                                <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Tamaño máximo 2&nbsp;MB.</small>
                                 <?php if (!empty($errors['firma_file'])): ?>
                                     <div class="text-danger small mt-1"><?= htmlspecialchars($errors['firma_file'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Firma digital</label>
+                                <?php
+                                $signaturePath = $usuario['signature_path'] ?? null;
+                                if ($signaturePath && !preg_match('/^https?:/i', $signaturePath)) {
+                                    $signaturePath = rtrim(BASE_URL, '/') . '/' . ltrim($signaturePath, '/');
+                                }
+                                ?>
+                                <?php if (!empty($usuario['signature_path'])): ?>
+                                    <div class="mb-2">
+                                        <img src="<?= htmlspecialchars($signaturePath, ENT_QUOTES, 'UTF-8'); ?>" alt="Firma digital" class="img-fluid border rounded" style="max-height: 120px;">
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="remove_signature" id="remove_signature" value="1">
+                                        <label class="form-check-label" for="remove_signature">Eliminar firma digital actual</label>
+                                    </div>
+                                <?php endif; ?>
+                                <input type="file" name="signature_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
+                                <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB y dimensiones moderadas.</small>
+                                <?php if (!empty($errors['signature_file'])): ?>
+                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['signature_file'], ENT_QUOTES, 'UTF-8'); ?></div>
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-6">

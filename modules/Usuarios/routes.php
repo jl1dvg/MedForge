@@ -9,6 +9,10 @@ return static function (Router $router) {
         (new UsuariosController($pdo))->index();
     });
 
+    $router->get('/usuarios/media', static function (\PDO $pdo) {
+        (new UsuariosController($pdo))->media();
+    });
+
     $router->match(['GET', 'POST'], '/usuarios/create', static function (\PDO $pdo) {
         $controller = new UsuariosController($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {

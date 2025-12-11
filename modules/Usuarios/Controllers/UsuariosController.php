@@ -7,12 +7,30 @@ use Core\Permissions;
 use Modules\Usuarios\Models\RolModel;
 use Modules\Usuarios\Models\UsuarioModel;
 use Modules\Usuarios\Support\PermissionRegistry;
+use Modules\Usuarios\Support\UserMediaValidator;
 use PDO;
 
 class UsuariosController extends BaseController
 {
-    private const UPLOAD_MAX_SIZE = 2097152; // 2MB
-    private const ALLOWED_MIME_TYPES = [
+    private const MEDIA_TYPES = [
+        'firma' => [
+            'input' => 'firma_file',
+            'remove' => 'remove_firma',
+            'directory' => UserMediaValidator::TYPE_SEAL,
+            'path_key' => 'firma',
+            'meta_prefix' => 'firma',
+        ],
+        'signature' => [
+            'input' => 'signature_file',
+            'remove' => 'remove_signature',
+            'directory' => UserMediaValidator::TYPE_SIGNATURE,
+            'path_key' => 'signature_path',
+            'meta_prefix' => 'signature',
+        ],
+    ];
+
+    private const PROFILE_MAX_SIZE = 2097152; // 2MB
+    private const PROFILE_MIME_TYPES = [
         'image/png' => 'png',
         'image/jpeg' => 'jpg',
         'image/webp' => 'webp',
@@ -20,12 +38,14 @@ class UsuariosController extends BaseController
 
     private UsuarioModel $usuarios;
     private RolModel $roles;
+    private UserMediaValidator $mediaValidator;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->usuarios = new UsuarioModel($pdo);
         $this->roles = new RolModel($pdo);
+        $this->mediaValidator = new UserMediaValidator();
     }
 
     public function index(): void
@@ -93,6 +113,7 @@ class UsuariosController extends BaseController
             unset($formData['password']);
             $formData['firma'] = null;
             $formData['profile_photo'] = null;
+            $formData['signature_path'] = null;
             $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
                 'pageTitle' => 'Nuevo usuario',
                 'roles' => $this->roles->all(),
@@ -172,6 +193,7 @@ class UsuariosController extends BaseController
             unset($formData['password']);
             $formData['firma'] = $existing['firma'] ?? null;
             $formData['profile_photo'] = $existing['profile_photo'] ?? null;
+            $formData['signature_path'] = $existing['signature_path'] ?? null;
             $usuario = array_merge($existing, $formData);
             $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
                 'pageTitle' => 'Editar usuario',
@@ -225,9 +247,37 @@ class UsuariosController extends BaseController
 
         $this->usuarios->delete($id);
         $this->deleteFile($usuario['firma'] ?? null);
+        $this->deleteFile($usuario['signature_path'] ?? null);
         $this->deleteFile($usuario['profile_photo'] ?? null);
         header('Location: /usuarios?status=deleted');
         exit;
+    }
+
+    public function media(): void
+    {
+        $this->requireAuth();
+
+        $requestedId = isset($_GET['id']) ? (int) $_GET['id'] : (int) ($_SESSION['user_id'] ?? 0);
+        if ($requestedId <= 0) {
+            $this->json(['error' => 'missing_user_id'], 400);
+            return;
+        }
+
+        if (!$this->canAccessMedia($requestedId)) {
+            $this->json(['error' => 'forbidden'], 403);
+            return;
+        }
+
+        $usuario = $this->usuarios->find($requestedId);
+        if (!$usuario) {
+            $this->json(['error' => 'not_found'], 404);
+            return;
+        }
+
+        $this->json([
+            'seal' => $this->serializeMediaPayload($usuario, 'firma'),
+            'signature' => $this->serializeMediaPayload($usuario, 'signature_path'),
+        ]);
     }
 
     private function collectInput(bool $isCreate, ?array $existing = null): array
@@ -251,7 +301,18 @@ class UsuariosController extends BaseController
             'role_id' => $this->resolveRoleId($_POST['role_id'] ?? null),
             'permisos' => json_encode($permissions, JSON_UNESCAPED_UNICODE),
             'firma' => $existing['firma'] ?? null,
+            'firma_mime' => $existing['firma_mime'] ?? null,
+            'firma_size' => $existing['firma_size'] ?? null,
+            'firma_hash' => $existing['firma_hash'] ?? null,
+            'firma_updated_at' => $existing['firma_updated_at'] ?? null,
+            'firma_updated_by' => $existing['firma_updated_by'] ?? null,
             'profile_photo' => $existing['profile_photo'] ?? null,
+            'signature_path' => $existing['signature_path'] ?? null,
+            'signature_mime' => $existing['signature_mime'] ?? null,
+            'signature_size' => $existing['signature_size'] ?? null,
+            'signature_hash' => $existing['signature_hash'] ?? null,
+            'signature_updated_at' => $existing['signature_updated_at'] ?? null,
+            'signature_updated_by' => $existing['signature_updated_by'] ?? null,
         ];
 
         $data['nombre'] = $this->buildFullName($data);
@@ -321,6 +382,52 @@ class UsuariosController extends BaseController
         return $errors;
     }
 
+    protected function canAccessMedia(int $userId): bool
+    {
+        $currentUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+        if ($currentUserId > 0 && $currentUserId === $userId) {
+            return true;
+        }
+
+        return $this->hasPermission([
+            'administrativo',
+            'admin.usuarios.manage',
+            'admin.usuarios.view',
+            'admin.usuarios',
+            'superuser',
+        ]);
+    }
+
+    private function serializeMediaPayload(array $usuario, string $pathKey): ?array
+    {
+        $prefix = $pathKey === 'firma' ? 'firma' : 'signature';
+        $path = $usuario[$pathKey] ?? null;
+
+        if (!$path) {
+            return null;
+        }
+
+        return [
+            'path' => $path,
+            'url' => $this->normalizeMediaUrl($path),
+            'mime' => $usuario[$prefix . '_mime'] ?? null,
+            'size' => isset($usuario[$prefix . '_size']) ? (int) $usuario[$prefix . '_size'] : null,
+            'hash' => $usuario[$prefix . '_hash'] ?? null,
+            'updated_at' => $usuario[$prefix . '_updated_at'] ?? null,
+            'updated_by' => isset($usuario[$prefix . '_updated_by']) ? (int) $usuario[$prefix . '_updated_by'] : null,
+        ];
+    }
+
+    private function normalizeMediaUrl(string $path): string
+    {
+        if (preg_match('#^(?:https?:)?//#i', $path)) {
+            return $path;
+        }
+
+        $normalized = '/' . ltrim($path, '/');
+        return rtrim(BASE_URL, '/') . $normalized;
+    }
+
     private function resolveRoleId($roleId): ?int
     {
         if ($roleId === null || $roleId === '') {
@@ -336,19 +443,14 @@ class UsuariosController extends BaseController
         $errors = [];
         $pending = ['delete' => [], 'new' => []];
 
-        [$data['firma'], $firmaErrors] = $this->processSingleUpload(
-            'firma_file',
-            $data['firma'] ?? null,
-            $existing['firma'] ?? null,
-            isset($_POST['remove_firma']),
-            $pending
-        );
-        if ($firmaErrors !== null) {
-            $errors['firma_file'] = $firmaErrors;
+        foreach (self::MEDIA_TYPES as $type => $config) {
+            [$data, $error] = $this->processMediaType($config, $data, $existing, $pending);
+            if ($error !== null) {
+                $errors[$config['input']] = $error;
+            }
         }
 
-        [$data['profile_photo'], $photoErrors] = $this->processSingleUpload(
-            'profile_photo_file',
+        [$data['profile_photo'], $photoErrors] = $this->processProfilePhoto(
             $data['profile_photo'] ?? null,
             $existing['profile_photo'] ?? null,
             isset($_POST['remove_profile_photo']),
@@ -361,37 +463,83 @@ class UsuariosController extends BaseController
         return [$data, $errors, $pending];
     }
 
-    private function processSingleUpload(string $inputName, ?string $current, ?string $existing, bool $removeRequested, array &$pending): array
+    private function processMediaType(array $config, array $data, ?array $existing, array &$pending): array
+    {
+        $pathKey = $config['path_key'];
+        $metaPrefix = $config['meta_prefix'];
+        $removeRequested = isset($_POST[$config['remove']]);
+        $existingPath = is_array($existing) ? ($existing[$pathKey] ?? null) : null;
+        $currentPath = $data[$pathKey] ?? $existingPath;
+
+        if ($removeRequested && $existingPath) {
+            $this->markForDeletion($pending, $existingPath);
+            $currentPath = null;
+            $this->clearMediaMetadata($data, $metaPrefix, true);
+        }
+
+        if (!$this->hasUploadedFile($config['input'])) {
+            return [$this->updateMediaPath($data, $pathKey, $currentPath), null];
+        }
+
+        $validation = $this->mediaValidator->validate($_FILES[$config['input']]);
+        if ($validation['error'] !== null) {
+            return [$data, $validation['error']];
+        }
+
+        $filename = $this->mediaValidator->generateFilename($validation['extension']);
+        $destination = $this->mediaValidator->destinationFor($config['directory'], $filename, BASE_PATH);
+        $destinationDir = dirname($destination['absolute']);
+
+        if (!is_dir($destinationDir) && !mkdir($destinationDir, 0775, true) && !is_dir($destinationDir)) {
+            return [$data, 'No se pudo preparar el directorio de carga.'];
+        }
+
+        if (!move_uploaded_file($_FILES[$config['input']]['tmp_name'], $destination['absolute'])) {
+            return [$data, 'No se pudo guardar el archivo subido.'];
+        }
+
+        $publicPath = $destination['public'];
+        $this->markForNew($pending, $publicPath);
+
+        if ($existingPath && !$removeRequested) {
+            $this->markForDeletion($pending, $existingPath);
+        }
+
+        $currentPath = $publicPath;
+        $this->applyMediaMetadata($data, $metaPrefix, $validation);
+
+        return [$this->updateMediaPath($data, $pathKey, $currentPath), null];
+    }
+
+    private function processProfilePhoto(?string $current, ?string $existing, bool $removeRequested, array &$pending): array
     {
         $currentPath = $current ?? $existing;
 
         if ($removeRequested && $existing) {
-            if (!in_array($existing, $pending['delete'], true)) {
-                $pending['delete'][] = $existing;
-            }
+            $this->markForDeletion($pending, $existing);
             $currentPath = null;
         }
 
-        if (!$this->hasUploadedFile($inputName)) {
+        if (!$this->hasUploadedFile('profile_photo_file')) {
             return [$currentPath, null];
         }
 
-        $file = $_FILES[$inputName];
+        $file = $_FILES['profile_photo_file'];
 
         if ($file['error'] !== UPLOAD_ERR_OK) {
             return [$currentPath, $this->uploadErrorMessage($file['error'])];
         }
 
-        if (($file['size'] ?? 0) > self::UPLOAD_MAX_SIZE) {
+        if (($file['size'] ?? 0) > self::PROFILE_MAX_SIZE) {
             return [$currentPath, 'El archivo excede el tamaño máximo permitido (2 MB).'];
         }
 
         $mime = $this->detectMimeType($file['tmp_name'] ?? '');
-        if ($mime === null || !isset(self::ALLOWED_MIME_TYPES[$mime])) {
+        if ($mime === null || !isset(self::PROFILE_MIME_TYPES[$mime])) {
             return [$currentPath, 'El archivo debe ser una imagen PNG, JPG o WEBP.'];
         }
 
-        $extension = self::ALLOWED_MIME_TYPES[$mime];
+        $extension = self::PROFILE_MIME_TYPES[$mime];
         $filename = $this->generateFilename($extension);
         $destinationDir = BASE_PATH . '/public/uploads/users';
         if (!is_dir($destinationDir) && !mkdir($destinationDir, 0775, true) && !is_dir($destinationDir)) {
@@ -404,15 +552,58 @@ class UsuariosController extends BaseController
         }
 
         $publicPath = '/uploads/users/' . $filename;
-        if (!in_array($publicPath, $pending['new'], true)) {
-            $pending['new'][] = $publicPath;
-        }
+        $this->markForNew($pending, $publicPath);
 
-        if ($existing && !$removeRequested && !in_array($existing, $pending['delete'], true)) {
-            $pending['delete'][] = $existing;
+        if ($existing && !$removeRequested) {
+            $this->markForDeletion($pending, $existing);
         }
 
         return [$publicPath, null];
+    }
+
+    private function markForDeletion(array &$pending, string $path): void
+    {
+        if (!in_array($path, $pending['delete'], true)) {
+            $pending['delete'][] = $path;
+        }
+    }
+
+    private function markForNew(array &$pending, string $path): void
+    {
+        if (!in_array($path, $pending['new'], true)) {
+            $pending['new'][] = $path;
+        }
+    }
+
+    private function applyMediaMetadata(array &$data, string $prefix, array $validation): void
+    {
+        $timestamp = date('Y-m-d H:i:s');
+        $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+
+        $data[$prefix . '_mime'] = $validation['mime'];
+        $data[$prefix . '_size'] = $validation['size'];
+        $data[$prefix . '_hash'] = $validation['hash'];
+        $data[$prefix . '_updated_at'] = $timestamp;
+        $data[$prefix . '_updated_by'] = $userId ?: null;
+    }
+
+    private function clearMediaMetadata(array &$data, string $prefix, bool $withAudit = false): void
+    {
+        $data[$prefix . '_mime'] = null;
+        $data[$prefix . '_size'] = null;
+        $data[$prefix . '_hash'] = null;
+
+        if ($withAudit) {
+            $data[$prefix . '_updated_at'] = date('Y-m-d H:i:s');
+            $data[$prefix . '_updated_by'] = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        }
+    }
+
+    private function updateMediaPath(array $data, string $pathKey, ?string $path): array
+    {
+        $data[$pathKey] = $path;
+
+        return $data;
     }
 
     private function hasUploadedFile(string $inputName): bool
