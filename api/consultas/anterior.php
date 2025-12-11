@@ -33,61 +33,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-try {
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Método no permitido']);
-        exit;
-    }
-
-    $formId = $_GET['form_id'] ?? $_GET['formId'] ?? null;
-    $hcNumber = $_GET['hcNumber'] ?? $_GET['hc_number'] ?? null;
+$hcNumber     = $_GET['hcNumber']     ?? null;
+$formIdActual = $_GET['form_id']      ?? null;
+$procedimientoActual = $_GET['procedimiento'] ?? null;
 
     if (!$hcNumber) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Parámetro requerido: hcNumber']);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Parámetro hcNumber requerido'
+    ]);
         exit;
     }
 
-    $sql = "SELECT form_id, hc_number, examen_fisico, plan, fecha
-            FROM consulta_data
-            WHERE hc_number = :hc_number";
-
-    $params = [':hc_number' => $hcNumber];
-
-    if ($formId !== null && $formId !== '') {
-        $sql .= ctype_digit((string)$formId)
-            ? " AND form_id < :form_id"
-            : " AND form_id <> :form_id";
-        $params[':form_id'] = $formId;
+// Sacar la "base" del procedimiento, antes del código
+// Ej: "SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001"
+// base = "SERVICIOS OFTALMOLOGICOS GENERALES"
+$baseProcedimiento = null;
+if ($procedimientoActual) {
+    $partes = explode(' - ', $procedimientoActual);
+    $baseProcedimiento = trim($partes[0]); // "SERVICIOS OFTALMOLOGICOS GENERALES"
     }
 
-    $sql .= " ORDER BY fecha DESC, form_id DESC LIMIT 1";
+try {
+    // Construir SQL
+    $sql  = "SELECT cd.form_id,
+                    cd.hc_number,
+                    cd.examen_fisico,
+                    cd.plan,
+                    cd.fecha
+             FROM procedimiento_proyectado AS pp
+             LEFT JOIN consulta_data AS cd
+                    ON pp.form_id = cd.form_id
+             WHERE pp.hc_number = :hcNumber";
+
+    $params = [':hcNumber' => $hcNumber];
+
+    // Filtrar por familia de procedimiento si la tenemos
+    if ($baseProcedimiento) {
+        $sql .= " AND pp.procedimiento_proyectado LIKE :baseProc";
+        $params[':baseProc'] = $baseProcedimiento . '%';
+
+        // Excluir el procedimiento exacto actual (ej. SER-OFT-001)
+        $sql .= " AND pp.procedimiento_proyectado <> :procActual";
+        $params[':procActual'] = $procedimientoActual;
+    }
+
+    // Solo consultas ANTERIORES a la actual, si mandas form_id
+    if ($formIdActual) {
+        $sql .= " AND pp.form_id < :formIdActual";
+        $params[':formIdActual'] = $formIdActual;
+    }
+
+    // No queremos consultas sin examen físico
+    $sql .= " AND cd.examen_fisico IS NOT NULL
+              AND cd.examen_fisico <> ''";
+
+    // Tomar la más reciente dentro de esas
+    $sql .= " ORDER BY cd.fecha DESC, cd.form_id DESC
+        LIMIT 1
+    ";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$row) {
-        echo json_encode(['success' => false, 'message' => 'No hay consultas anteriores registradas.']);
-        exit;
-    }
-
+    if ($row) {
     echo json_encode([
         'success' => true,
         'data' => [
             'form_id' => $row['form_id'],
             'hc_number' => $row['hc_number'],
-            'examen_fisico' => $row['examen_fisico'] ?? '',
-            'plan' => $row['plan'] ?? '',
-            'fecha' => $row['fecha'] ?? null,
-        ],
+                'examen_fisico' => $row['examen_fisico'],
+                'plan'          => $row['plan'],
+                'fecha'         => $row['fecha'],
+            ]
     ]);
+    } else {
+        echo json_encode([
+            'success' => true,
+            'data'    => null,
+            'message' => 'No se encontró consulta anterior con examen físico.'
+        ]);
+    }
+
 } catch (Throwable $e) {
-    http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'No se pudo obtener la consulta anterior',
-        'error' => $e->getMessage(),
+        'message' => 'Error al buscar consulta anterior',
+        'error'   => $e->getMessage()
     ]);
 }

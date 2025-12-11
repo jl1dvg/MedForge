@@ -1075,7 +1075,7 @@ class SolicitudController extends BaseController
         ];
     }
 
-    /** 
+    /**
      * Verifica derivación; si no existe, intenta scrapear y reconsultar.
      */
     private function ensureDerivacion(string $formId, string $hcNumber): ?array

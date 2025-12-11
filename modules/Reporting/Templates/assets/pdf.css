@@ -24,6 +24,17 @@ td.morado {
     height: 20px;
 }
 
+td.morado_border {
+    text-align: left;
+    vertical-align: middle;
+    background-color: #CCCCFF;
+    font-size: 6pt;
+    font-weight: bold;
+    height: 20px;
+    border-top: 1px solid #808080;
+    border-right: 1px solid #808080;
+}
+
 td.verde {
     height: 20px;
     text-align: center;
@@ -923,7 +934,9 @@ a {
     word-wrap: break-word;
     direction: ltr;
     padding: 0px 3px 0px 3px;
-}/* styles.css */
+}
+
+/* styles.css */
 table {
     width: 100%;
     border: 2px solid #808080;
