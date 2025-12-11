@@ -78,7 +78,7 @@ $canEditUsers = $canCreateUsers;
                                 <tr>
                                     <th scope="col">Foto</th>
                                     <th scope="col" data-sort="username" aria-sort="none">Usuario <span class="sort-indicator">⇅</span></th>
-                                    <th scope="col" data-sort="nombre" aria-sort="none">Nombre <span class="sort-indicator">⇅</span></th>
+                                    <th scope="col" data-sort="full_name" aria-sort="none">Nombre <span class="sort-indicator">⇅</span></th>
                                     <th scope="col">Correo</th>
                                     <th scope="col">Rol</th>
                                     <th scope="col">Permisos</th>
@@ -95,13 +95,31 @@ $canEditUsers = $canCreateUsers;
                                     <?php foreach ($usuarios as $usuario): ?>
                                         <?php
                                         $username = (string) ($usuario['username'] ?? '');
-                                        $nombre = (string) ($usuario['nombre'] ?? '');
+                                        $fullName = trim((string) ($usuario['display_full_name'] ?? ''));
+                                        if ($fullName === '') {
+                                            $fullName = trim((string) ($usuario['nombre'] ?? ''));
+                                        }
+                                        $fullName = $fullName !== '' ? $fullName : trim(implode(' ', array_filter([
+                                            $usuario['first_name'] ?? '',
+                                            $usuario['middle_name'] ?? '',
+                                            $usuario['last_name'] ?? '',
+                                            $usuario['second_last_name'] ?? '',
+                                        ], static fn($v) => (string) $v !== '')));
+                                        if ($fullName === '') {
+                                            $fullName = $username;
+                                        }
                                         $profilePhotoUrl = format_profile_photo_url($usuario['profile_photo'] ?? null);
-                                        $displayName = $nombre !== '' ? $nombre : $username;
+                                        $displayName = $fullName !== '' ? $fullName : $username;
                                         $initial = $displayName !== '' ? $displayName : 'Usuario';
                                         $initial = mb_strtoupper(mb_substr($initial, 0, 1, 'UTF-8'), 'UTF-8');
                                         $usernameSortValue = mb_strtolower($username, 'UTF-8');
-                                        $nombreSortValue = mb_strtolower($nombre, 'UTF-8');
+                                        $nombreSortValue = mb_strtolower(trim(implode(' ', array_filter([
+                                            $usuario['last_name'] ?? '',
+                                            $usuario['second_last_name'] ?? '',
+                                            $usuario['first_name'] ?? '',
+                                            $usuario['middle_name'] ?? '',
+                                            $fullName !== '' ? $fullName : $username,
+                                        ], static fn($v) => (string) $v !== ''))), 'UTF-8');
                                         ?>
                                         <tr>
                                             <td class="text-center">
@@ -119,7 +137,7 @@ $canEditUsers = $canCreateUsers;
                                                 <?= htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>
                                             </td>
                                             <td data-sort-value="<?= htmlspecialchars($nombreSortValue, ENT_QUOTES, 'UTF-8'); ?>">
-                                                <?= htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8'); ?>
+                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8'); ?>
                                             </td>
                                             <td><?= htmlspecialchars($usuario['email'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
                                             <td><?= htmlspecialchars($roleMap[$usuario['role_id']] ?? 'Sin asignar', ENT_QUOTES, 'UTF-8'); ?></td>

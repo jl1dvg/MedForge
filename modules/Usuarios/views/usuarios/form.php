@@ -76,8 +76,53 @@ if (!function_exists('usuarios_permission_id')) {
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Nombre completo</label>
-                                <input type="text" name="nombre" class="form-control" value="<?= usuarios_form_old($usuario, 'nombre'); ?>">
+                                <label class="form-label">Nombre *</label>
+                                <input type="text" name="first_name" class="form-control" maxlength="100"
+                                       pattern="[A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-'\"\.\s]+"
+                                       value="<?= usuarios_form_old($usuario, 'first_name'); ?>" required>
+                                <?php if (!empty($errors['first_name'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['first_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Segundo nombre</label>
+                                <input type="text" name="middle_name" class="form-control" maxlength="100"
+                                       pattern="[A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-'\"\.\s]+"
+                                       value="<?= usuarios_form_old($usuario, 'middle_name'); ?>">
+                                <?php if (!empty($errors['middle_name'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['middle_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Primer apellido *</label>
+                                <input type="text" name="last_name" class="form-control" maxlength="100"
+                                       pattern="[A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-'\"\.\s]+"
+                                       value="<?= usuarios_form_old($usuario, 'last_name'); ?>" required>
+                                <?php if (!empty($errors['last_name'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['last_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Segundo apellido</label>
+                                <input type="text" name="second_last_name" class="form-control" maxlength="100"
+                                       pattern="[A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-'\"\.\s]+"
+                                       value="<?= usuarios_form_old($usuario, 'second_last_name'); ?>">
+                                <?php if (!empty($errors['second_last_name'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['second_last_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label">Nombre completo (solo lectura)</label>
+                                <?php
+                                $fullName = trim(implode(' ', array_filter([
+                                    $usuario['first_name'] ?? '',
+                                    $usuario['middle_name'] ?? '',
+                                    $usuario['last_name'] ?? '',
+                                    $usuario['second_last_name'] ?? '',
+                                ], static fn($v) => (string) $v !== '')));
+                                ?>
+                                <input type="text" class="form-control" value="<?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8'); ?>" readonly>
+                                <small class="text-muted">Se compone automáticamente a partir de los campos anteriores.</small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Cédula</label>

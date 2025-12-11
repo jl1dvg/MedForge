@@ -237,7 +237,10 @@ class UsuariosController extends BaseController
         $data = [
             'username' => trim((string) ($_POST['username'] ?? '')),
             'email' => trim((string) ($_POST['email'] ?? '')),
-            'nombre' => trim((string) ($_POST['nombre'] ?? '')),
+            'first_name' => $this->normalizeNameInput($_POST['first_name'] ?? ''),
+            'middle_name' => $this->normalizeNameInput($_POST['middle_name'] ?? ''),
+            'last_name' => $this->normalizeNameInput($_POST['last_name'] ?? ''),
+            'second_last_name' => $this->normalizeNameInput($_POST['second_last_name'] ?? ''),
             'cedula' => trim((string) ($_POST['cedula'] ?? '')),
             'registro' => trim((string) ($_POST['registro'] ?? '')),
             'sede' => trim((string) ($_POST['sede'] ?? '')),
@@ -250,6 +253,8 @@ class UsuariosController extends BaseController
             'firma' => $existing['firma'] ?? null,
             'profile_photo' => $existing['profile_photo'] ?? null,
         ];
+
+        $data['nombre'] = $this->buildFullName($data);
 
         $password = isset($_POST['password']) ? trim((string) $_POST['password']) : '';
         if ($isCreate || $password !== '') {
@@ -269,6 +274,36 @@ class UsuariosController extends BaseController
 
         if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors['email'] = 'El correo electrónico no es válido.';
+        }
+
+        $nameFields = [
+            'first_name' => 'Nombre',
+            'last_name' => 'Primer apellido',
+            'middle_name' => 'Segundo nombre',
+            'second_last_name' => 'Segundo apellido',
+        ];
+
+        if ($data['first_name'] === '') {
+            $errors['first_name'] = 'El nombre es obligatorio.';
+        }
+
+        if ($data['last_name'] === '') {
+            $errors['last_name'] = 'El primer apellido es obligatorio.';
+        }
+
+        foreach ($nameFields as $field => $label) {
+            $value = $data[$field] ?? '';
+            if ($value === '') {
+                continue;
+            }
+
+            if (!$this->isValidNameCharacters($value)) {
+                $errors[$field] = $label . ' contiene caracteres no permitidos.';
+            }
+
+            if (mb_strlen($value, 'UTF-8') > 100) {
+                $errors[$field] = $label . ' no puede exceder 100 caracteres.';
+            }
         }
 
         if ($isCreate && (!isset($data['password']) || $data['password'] === '')) {
@@ -456,5 +491,28 @@ class UsuariosController extends BaseController
         foreach ($paths as $path) {
             $this->deleteFile($path);
         }
+    }
+
+    private function normalizeNameInput($value): string
+    {
+        $normalized = preg_replace('/\s+/', ' ', trim((string) $value));
+        return mb_substr($normalized, 0, 100, 'UTF-8');
+    }
+
+    private function isValidNameCharacters(string $value): bool
+    {
+        return !preg_match("/[^A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-\.\'\"\s]/u", $value);
+    }
+
+    private function buildFullName(array $data): string
+    {
+        $parts = array_filter([
+            $data['first_name'] ?? '',
+            $data['middle_name'] ?? '',
+            $data['last_name'] ?? '',
+            $data['second_last_name'] ?? '',
+        ], static fn($v) => (string) $v !== '');
+
+        return trim(implode(' ', $parts));
     }
 }

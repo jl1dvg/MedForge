@@ -15,14 +15,26 @@ class UsuarioModel
 
     public function all(): array
     {
-        $sql = 'SELECT u.*, r.name AS role_name FROM users u LEFT JOIN roles r ON r.id = u.role_id ORDER BY u.username';
+        $fullNameExpression = "TRIM(CONCAT_WS(' ', NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.middle_name), ''), NULLIF(TRIM(u.last_name), ''), NULLIF(TRIM(u.second_last_name), '')))";
+        $sql = "SELECT u.*, r.name AS role_name,
+                       {$fullNameExpression} AS normalized_full_name,
+                       COALESCE(NULLIF({$fullNameExpression}, ''), TRIM(u.nombre), u.username) AS display_full_name
+                FROM users u
+                LEFT JOIN roles r ON r.id = u.role_id
+                ORDER BY u.last_name, u.second_last_name, u.first_name, u.middle_name, u.username";
         $stmt = $this->pdo->query($sql);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function find(int $id): ?array
     {
-        $sql = 'SELECT u.*, r.name AS role_name FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = :id LIMIT 1';
+        $fullNameExpression = "TRIM(CONCAT_WS(' ', NULLIF(TRIM(u.first_name), ''), NULLIF(TRIM(u.middle_name), ''), NULLIF(TRIM(u.last_name), ''), NULLIF(TRIM(u.second_last_name), '')))";
+        $sql = "SELECT u.*, r.name AS role_name,
+                       {$fullNameExpression} AS normalized_full_name,
+                       COALESCE(NULLIF({$fullNameExpression}, ''), TRIM(u.nombre), u.username) AS display_full_name
+                FROM users u
+                LEFT JOIN roles r ON r.id = u.role_id
+                WHERE u.id = :id LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['id' => $id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -84,6 +96,10 @@ class UsuarioModel
             'is_subscribed' => 0,
             'is_approved' => 0,
             'nombre' => '',
+            'first_name' => '',
+            'middle_name' => '',
+            'last_name' => '',
+            'second_last_name' => '',
             'cedula' => '',
             'registro' => '',
             'sede' => '',
