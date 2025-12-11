@@ -14,10 +14,11 @@ if (!$avatarUrl) {
 }
 
 $firmaUrl = null;
-if (!empty($doctor['firma'])) {
-    $firmaUrl = format_profile_photo_url($doctor['firma']);
+$preferredSignature = $doctor['signature_path'] ?? $doctor['firma'] ?? null;
+if (!empty($preferredSignature)) {
+    $firmaUrl = format_profile_photo_url($preferredSignature);
     if (!$firmaUrl) {
-        $firmaUrl = asset(ltrim($doctor['firma'], '/'));
+        $firmaUrl = asset(ltrim($preferredSignature, '/'));
     }
 }
 
