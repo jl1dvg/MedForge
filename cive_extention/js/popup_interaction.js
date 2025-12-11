@@ -796,7 +796,9 @@ async function actualizarSolicitud(id, payload) {
 
 async function marcarChecklistApto(item) {
   if (!isExtensionContextActive()) return;
-  const solicitudId = item?.id || item?.form_id || item?.solicitud_id;
+  const solicitudId = item?.id || item?.solicitud_id || item?.form_id;
+  const formId = item?.form_id || item?.formId || item?.form;
+  const hc = item?.hc_number || item?.hc || uiState.hcCirugia || "";
   if (!solicitudId) return;
 
   const slug = normalizarSlug(ESTADO_APTO_OFTALMOLOGO);
@@ -819,7 +821,12 @@ async function marcarChecklistApto(item) {
           headers: { "Content-Type": "application/json;charset=UTF-8" },
           body: {
             id: Number(solicitudId),
+            form_id: formId ? Number(formId) : undefined,
+            hc,
+            hc_number: hc,
             estado: slug,
+            etapa: slug,
+            etapa_slug: slug,
             completado: true,
             force: true,
           },
@@ -831,7 +838,7 @@ async function marcarChecklistApto(item) {
     }
 
     if (resp?.success) {
-      const idx = uiState.cirugias.findIndex((c) => c.id === solicitudId);
+      const idx = uiState.cirugias.findIndex((c) => String(c.id) === String(solicitudId));
       if (idx >= 0) {
         uiState.cirugias[idx] = {
           ...uiState.cirugias[idx],

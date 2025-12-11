@@ -2,12 +2,14 @@
 (function () {
     const EXAM_SELECTOR = '#consultas-fisico-0-observacion';
     const PLAN_SELECTOR = '#docsolicitudprocedimientos-observacion_consulta';
+    const PREV_EXAM_BTN_ID = 'cive-prev-exam-btn';
 
     function getIdentifiers() {
         const params = new URLSearchParams(window.location.search);
         const formId = params.get('idSolicitud') || params.get('id') || params.get('form_id') || null;
 
         let hcNumber = null;
+        let procedimiento = null;
         const hcInput = document.querySelector('#numero-historia-clinica');
         if (hcInput && hcInput.value) {
             hcNumber = hcInput.value.trim();
@@ -26,12 +28,13 @@
             try {
                 const stored = JSON.parse(localStorage.getItem('datosPacienteSeleccionado') || '{}');
                 hcNumber = stored.identificacion || stored.hcNumber || null;
+                procedimiento = stored.procedimiento_proyectado || null;
             } catch (error) {
                 // ignore parse errors
             }
         }
 
-        return {formId, hcNumber};
+        return {formId, hcNumber, procedimiento};
     }
 
     function setIfEmpty(selector, value) {
@@ -44,6 +47,83 @@
         return true;
     }
 
+    function formatDateLabel(value) {
+        if (!value) return 'consulta previa';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return 'consulta previa';
+        const day = `${parsed.getDate()}`.padStart(2, '0');
+        const month = `${parsed.getMonth() + 1}`.padStart(2, '0');
+        const year = parsed.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
+
+    function placePrevExamButton(examText, planText, fecha) {
+        const textarea = document.querySelector(EXAM_SELECTOR);
+        const planField = document.querySelector(PLAN_SELECTOR);
+        if (!textarea) {
+            console.warn('CIVE Extension: textarea de examen físico no encontrado.');
+            return;
+        }
+        const row = textarea.closest('tr') || textarea.closest('.multiple-input-list__item');
+        if (!row) {
+            console.warn('CIVE Extension: fila de examen físico no encontrada.');
+            return;
+        }
+
+        const plusCell = row.querySelector('.list-cell__button');
+        if (!plusCell) {
+            console.warn('CIVE Extension: celda de botones no encontrada para examen físico.');
+            return;
+        }
+
+        // Mantener el botón "+" tal como está
+        const plusButton = plusCell.querySelector('.multiple-input-list__btn');
+
+        // Normalizar estilos del botón "+" por si alguna vez lo pusimos en flex/column
+        if (plusButton) {
+            plusButton.style.display = '';
+            plusButton.style.flexDirection = '';
+            plusButton.style.gap = '';
+            plusButton.style.alignItems = '';
+        }
+
+        // Crear (o reutilizar) un contenedor independiente para el botón de examen previo
+        let btnContainer = plusCell.querySelector('.cive-prev-exam-container');
+        if (!btnContainer) {
+            btnContainer = document.createElement('div');
+            btnContainer.className = 'cive-prev-exam-container';
+            plusCell.appendChild(btnContainer);
+        }
+
+        // Acomodar ambos (plus y copia) en la misma celda pero uno al lado del otro
+        plusCell.style.display = 'flex';
+        plusCell.style.flexDirection = 'row';
+        plusCell.style.gap = '6px';
+        plusCell.style.alignItems = 'center';
+
+        // Si el botón ya existe (aunque esté dentro del plus), lo movemos al contenedor
+        let btn = plusCell.querySelector(`#${PREV_EXAM_BTN_ID}`);
+        if (btn) {
+            btnContainer.appendChild(btn);
+        } else {
+            // Crear el botón si todavía no existe
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = PREV_EXAM_BTN_ID;
+            btn.className = 'btn btn-info btn-sm';
+            btn.textContent = `Examen físico de ${formatDateLabel(fecha)}`;
+            btn.addEventListener('click', () => {
+                if (textarea) {
+                    textarea.value = examText || '';
+                }
+                if (planField) {
+                    planField.value = planText || '';
+                }
+            });
+            btnContainer.appendChild(btn);
+        }
+    }
+
     async function fetchConsultaAnterior() {
         if (!window.CiveApiClient || typeof window.CiveApiClient.get !== 'function') {
             console.warn('CIVE Extension: CiveApiClient no está disponible para consulta anterior.');
@@ -51,7 +131,7 @@
         }
 
         await (window.configCIVE ? window.configCIVE.ready : Promise.resolve());
-        const {formId, hcNumber} = getIdentifiers();
+        const {formId, hcNumber, procedimiento} = getIdentifiers();
         if (!hcNumber) {
             console.warn('CIVE Extension: no se pudo obtener HC para consulta anterior.');
             return null;
@@ -61,15 +141,18 @@
         if (formId) {
             query.form_id = formId;
         }
+        if (procedimiento) {
+            query.procedimiento = procedimiento;
+        }
 
         try {
             const resp = await window.CiveApiClient.get('/consultas/anterior.php', {
-                query,
-                retries: 1,
-                retryDelayMs: 500,
+                query, retries: 1, retryDelayMs: 500,
             });
+            console.log('CIVE Extension: respuesta cruda de /consultas/anterior.php', resp);
 
             if (resp && resp.success && resp.data) {
+                console.log('CIVE Extension: datos de consulta anterior obtenidos del API', resp.data);
                 return resp.data;
             }
             console.info('CIVE Extension: sin consulta anterior disponible.', resp?.message || '');
@@ -86,13 +169,42 @@
         const examen = data.examen_fisico || data.examenFisico || '';
         const plan = data.plan || '';
 
-        const filledExam = setIfEmpty(EXAM_SELECTOR, examen);
-        const filledPlan = setIfEmpty(PLAN_SELECTOR, plan);
+        console.log('CIVE Extension: usando datos de consulta anterior para examen previo', {
+            dataCompleta: data, examenPrevio: examen, planPrevio: plan
+        });
 
-        if (!filledExam && !filledPlan) {
-            console.info('CIVE Extension: los campos ya tienen información, no se sobrescribe la consulta anterior.');
+        // Asegurarnos de que el textarea exista (el formulario puede llegar vía PJAX)
+        try {
+            if (typeof esperarElemento === 'function') {
+                // Usamos el helper global si está disponible
+                await esperarElemento(EXAM_SELECTOR);
+            }
+        } catch (e) {
+            console.warn('CIVE Extension: no se pudo esperar al campo de examen físico.', e);
         }
+
+        // Intentar colocar el botón aunque el campo ya tenga texto
+        placePrevExamButton(examen, plan, data.fecha);
     };
+
+    // Intento automático de insertar el botón de examen físico previo
+    try {
+        const autoInit = () => {
+            if (window.consultaAnterior) {
+                window.consultaAnterior().catch && window.consultaAnterior().catch(err => {
+                    console.warn('CIVE Extension: error al ejecutar consultaAnterior automáticamente.', err);
+                });
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', autoInit);
+        } else {
+            autoInit();
+        }
+    } catch (e) {
+        console.warn('CIVE Extension: no se pudo inicializar automáticamente consultaAnterior.', e);
+    }
 })();
 
 // Función que se ejecutará en la página actual para protocolos de cirugía
@@ -223,8 +335,7 @@ function ejecutarPopEnPagina() {
                 cantidad: 21,
                 totalFarmacia: 1,
                 observaciones: `TRAZIDEX OFTENO SUSP. OFT. X 5 ML 1 GOTAS GOTERO CADA 4 HORAS x 21 DÍAS EN ${ojoRealizado}`
-            }],
-            recetaCount: 1
+            }], recetaCount: 1
         };
 
         realizarSecuenciaDeAcciones(item).then(() => {
