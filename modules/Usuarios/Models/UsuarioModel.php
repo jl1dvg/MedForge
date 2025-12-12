@@ -75,16 +75,44 @@ class UsuarioModel
         return (int) $stmt->fetchColumn();
     }
 
+    public function findPotentialDuplicates(string $firstName, string $lastName, ?string $birthDate, ?int $excludeId = null): array
+    {
+        if ($birthDate === null || $birthDate === '') {
+            return [];
+        }
+
+        $sql = 'SELECT id, username, first_name, last_name, birth_date FROM users WHERE first_name = :first_name AND last_name = :last_name AND birth_date = :birth_date';
+
+        $params = [
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'birth_date' => $birthDate,
+        ];
+
+        if ($excludeId !== null) {
+            $sql .= ' AND id <> :exclude_id';
+            $params['exclude_id'] = $excludeId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
     private function preparePayload(array $data, bool $isCreate): array
     {
         $defaults = [
             'username' => '',
             'password' => null,
             'email' => '',
+            'birth_date' => null,
             'is_subscribed' => 0,
             'is_approved' => 0,
             'nombre' => '',
             'cedula' => '',
+            'national_id_encrypted' => null,
+            'passport_number_encrypted' => null,
             'registro' => '',
             'sede' => '',
             'firma' => null,
@@ -93,6 +121,9 @@ class UsuarioModel
             'firma_hash' => null,
             'firma_updated_at' => null,
             'firma_updated_by' => null,
+            'seal_status' => 'pending',
+            'seal_status_updated_at' => null,
+            'seal_status_updated_by' => null,
             'profile_photo' => null,
             'signature_path' => null,
             'signature_mime' => null,
@@ -100,6 +131,9 @@ class UsuarioModel
             'signature_hash' => null,
             'signature_updated_at' => null,
             'signature_updated_by' => null,
+            'signature_status' => 'pending',
+            'signature_status_updated_at' => null,
+            'signature_status_updated_by' => null,
             'especialidad' => '',
             'subespecialidad' => '',
             'permisos' => '[]',

@@ -9,6 +9,7 @@
 
 $usuario = $usuario ?? [];
 $errors = $errors ?? [];
+$warnings = $warnings ?? [];
 $selectedPermissions = $selectedPermissions ?? [];
 
 if (!function_exists('usuarios_form_old')) {
@@ -60,6 +61,16 @@ if (!function_exists('usuarios_permission_id')) {
                 </div>
                 <div class="box-body">
                     <form action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8'); ?>" method="POST" enctype="multipart/form-data">
+                        <?php if (!empty($warnings)): ?>
+                            <div class="alert alert-warning">
+                                <p class="mb-2 fw-semibold"><i class="mdi mdi-alert"></i> Posibles duplicados detectados:</p>
+                                <ul class="mb-0 ps-3">
+                                    <?php foreach ($warnings as $warning): ?>
+                                        <li><?= htmlspecialchars($warning, ENT_QUOTES, 'UTF-8'); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        <?php endif; ?>
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Nombre de usuario *</label>
@@ -109,6 +120,37 @@ if (!function_exists('usuarios_permission_id')) {
                                        value="<?= usuarios_form_old($usuario, 'second_last_name'); ?>">
                                 <?php if (!empty($errors['second_last_name'])): ?>
                                     <div class="text-danger small"><?= htmlspecialchars($errors['second_last_name'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Fecha de nacimiento</label>
+                                <input type="date" name="birth_date" class="form-control" value="<?= usuarios_form_old($usuario, 'birth_date'); ?>">
+                                <?php if (!empty($errors['birth_date'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['birth_date'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Identificación nacional</label>
+                                <input type="text" name="national_id" class="form-control" maxlength="32" pattern="[A-Za-z0-9-]{4,32}"
+                                       value="<?= usuarios_form_old($usuario, 'national_id'); ?>" placeholder="Se mantiene si se deja en blanco al editar">
+                                <small class="text-muted">Se almacena de forma protegida. Usa solo letras, números y guiones.</small>
+                                <?php if (!empty($usuario['national_id_masked'])): ?>
+                                    <div class="text-muted small">Actual: <?= htmlspecialchars($usuario['national_id_masked'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($errors['national_id'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['national_id'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Pasaporte</label>
+                                <input type="text" name="passport_number" class="form-control" maxlength="32" pattern="[A-Za-z0-9-]{4,32}"
+                                       value="<?= usuarios_form_old($usuario, 'passport_number'); ?>" placeholder="Se mantiene si se deja en blanco al editar">
+                                <small class="text-muted">Se almacena de forma protegida. Usa solo letras, números y guiones.</small>
+                                <?php if (!empty($usuario['passport_number_masked'])): ?>
+                                    <div class="text-muted small">Actual: <?= htmlspecialchars($usuario['passport_number_masked'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($errors['passport_number'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['passport_number'], ENT_QUOTES, 'UTF-8'); ?></div>
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-12">
@@ -163,6 +205,17 @@ if (!function_exists('usuarios_permission_id')) {
                                 <?php endif; ?>
                                 <input type="file" name="firma_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
                                 <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Tamaño máximo 2&nbsp;MB.</small>
+                                <div class="mt-2">
+                                    <label class="form-label mb-1">Estado del sello</label>
+                                    <select name="seal_status" class="form-select form-select-sm">
+                                        <option value="pending" <?= (usuarios_form_old($usuario, 'seal_status', 'pending') === 'pending') ? 'selected' : ''; ?>>Pendiente de revisión</option>
+                                        <option value="verified" <?= (usuarios_form_old($usuario, 'seal_status', 'pending') === 'verified') ? 'selected' : ''; ?>>Verificado</option>
+                                        <option value="not_provided" <?= (usuarios_form_old($usuario, 'seal_status', 'pending') === 'not_provided') ? 'selected' : ''; ?>>No proporcionado</option>
+                                    </select>
+                                    <?php if (!empty($errors['seal_status'])): ?>
+                                        <div class="text-danger small"><?= htmlspecialchars($errors['seal_status'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                    <?php endif; ?>
+                                </div>
                                 <?php if (!empty($errors['firma_file'])): ?>
                                     <div class="text-danger small mt-1"><?= htmlspecialchars($errors['firma_file'], ENT_QUOTES, 'UTF-8'); ?></div>
                                 <?php endif; ?>
@@ -186,6 +239,17 @@ if (!function_exists('usuarios_permission_id')) {
                                 <?php endif; ?>
                                 <input type="file" name="signature_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
                                 <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB y dimensiones moderadas.</small>
+                                <div class="mt-2">
+                                    <label class="form-label mb-1">Estado de la firma</label>
+                                    <select name="signature_status" class="form-select form-select-sm">
+                                        <option value="pending" <?= (usuarios_form_old($usuario, 'signature_status', 'pending') === 'pending') ? 'selected' : ''; ?>>Pendiente de revisión</option>
+                                        <option value="verified" <?= (usuarios_form_old($usuario, 'signature_status', 'pending') === 'verified') ? 'selected' : ''; ?>>Verificada</option>
+                                        <option value="not_provided" <?= (usuarios_form_old($usuario, 'signature_status', 'pending') === 'not_provided') ? 'selected' : ''; ?>>No proporcionada</option>
+                                    </select>
+                                    <?php if (!empty($errors['signature_status'])): ?>
+                                        <div class="text-danger small"><?= htmlspecialchars($errors['signature_status'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                    <?php endif; ?>
+                                </div>
                                 <?php if (!empty($errors['signature_file'])): ?>
                                     <div class="text-danger small mt-1"><?= htmlspecialchars($errors['signature_file'], ENT_QUOTES, 'UTF-8'); ?></div>
                                 <?php endif; ?>
