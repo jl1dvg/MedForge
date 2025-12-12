@@ -7,6 +7,7 @@ use Core\Permissions;
 use Modules\Usuarios\Models\RolModel;
 use Modules\Usuarios\Models\UsuarioModel;
 use Modules\Usuarios\Support\PermissionRegistry;
+use Modules\Usuarios\Support\SensitiveDataProtector;
 use Modules\Usuarios\Support\UserMediaValidator;
 use PDO;
 
@@ -36,9 +37,12 @@ class UsuariosController extends BaseController
         'image/webp' => 'webp',
     ];
 
+    private const VERIFICATION_STATES = ['pending', 'verified', 'not_provided'];
+
     private UsuarioModel $usuarios;
     private RolModel $roles;
     private UserMediaValidator $mediaValidator;
+    private SensitiveDataProtector $protector;
 
     public function __construct(PDO $pdo)
     {
@@ -46,6 +50,7 @@ class UsuariosController extends BaseController
         $this->usuarios = new UsuarioModel($pdo);
         $this->roles = new RolModel($pdo);
         $this->mediaValidator = new UserMediaValidator();
+        $this->protector = new SensitiveDataProtector();
     }
 
     public function index(): void
@@ -57,6 +62,10 @@ class UsuariosController extends BaseController
 
         foreach ($usuarios as &$usuario) {
             $usuario['permisos_lista'] = Permissions::normalize($usuario['permisos'] ?? null);
+            $usuario = $this->hydrateSensitiveFields($usuario);
+            $usuario['profile_completeness'] = $this->profileCompleteness($usuario);
+            $usuario['seal_status'] = $this->normalizeStatus($usuario['seal_status'] ?? null, (bool) ($usuario['firma'] ?? null));
+            $usuario['signature_status'] = $this->normalizeStatus($usuario['signature_status'] ?? null, (bool) ($usuario['signature_path'] ?? null));
         }
         unset($usuario);
 
@@ -68,6 +77,8 @@ class UsuariosController extends BaseController
 
         $status = $_GET['status'] ?? null;
         $error = $_GET['error'] ?? null;
+        $warnings = $_SESSION['user_warnings'] ?? [];
+        unset($_SESSION['user_warnings']);
 
         $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/index.php', [
             'pageTitle' => 'Usuarios',
@@ -75,6 +86,7 @@ class UsuariosController extends BaseController
             'roleMap' => $roleMap,
             'status' => $status,
             'error' => $error,
+            'warnings' => $warnings,
             'permissionLabels' => $labels,
         ]);
     }
@@ -96,6 +108,7 @@ class UsuariosController extends BaseController
                 'is_approved' => 0,
             ],
             'errors' => [],
+            'warnings' => [],
         ]);
     }
 
@@ -106,6 +119,7 @@ class UsuariosController extends BaseController
         $data = $this->collectInput(true);
         [$data, $uploadErrors, $pendingUploads] = $this->handleMediaUploads($data, null);
         $errors = array_merge($this->validate($data, true), $uploadErrors);
+        $warnings = $this->duplicateWarnings($data, null);
 
         if (!empty($errors)) {
             $this->rollbackUploads($pendingUploads);
@@ -123,12 +137,20 @@ class UsuariosController extends BaseController
                 'method' => 'POST',
                 'usuario' => $formData,
                 'errors' => $errors,
+                'warnings' => $warnings,
             ]);
             return;
         }
 
         if (isset($data['password'])) {
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
+        }
+
+        $data = $this->transformSensitiveFields($data);
+        $data = $this->applyVerificationStatuses($data, null);
+
+        if (!empty($warnings)) {
+            $_SESSION['user_warnings'] = $warnings;
         }
 
         $this->usuarios->create($data);
@@ -153,6 +175,8 @@ class UsuariosController extends BaseController
             exit;
         }
 
+        $usuario = $this->hydrateSensitiveFields($usuario);
+
         $selectedPermissions = Permissions::normalize($usuario['permisos'] ?? null);
 
         $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
@@ -164,6 +188,7 @@ class UsuariosController extends BaseController
             'method' => 'POST',
             'usuario' => $usuario,
             'errors' => [],
+            'warnings' => [],
         ]);
     }
 
@@ -183,9 +208,12 @@ class UsuariosController extends BaseController
             exit;
         }
 
+        $existing = $this->hydrateSensitiveFields($existing);
+
         $data = $this->collectInput(false, $existing);
         [$data, $uploadErrors, $pendingUploads] = $this->handleMediaUploads($data, $existing);
         $errors = array_merge($this->validate($data, false), $uploadErrors);
+        $warnings = $this->duplicateWarnings($data, $id);
 
         if (!empty($errors)) {
             $this->rollbackUploads($pendingUploads);
@@ -204,12 +232,20 @@ class UsuariosController extends BaseController
                 'method' => 'POST',
                 'usuario' => $usuario,
                 'errors' => $errors,
+                'warnings' => $warnings,
             ]);
             return;
         }
 
         if (isset($data['password'])) {
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
+        }
+
+        $data = $this->transformSensitiveFields($data);
+        $data = $this->applyVerificationStatuses($data, $existing);
+
+        if (!empty($warnings)) {
+            $_SESSION['user_warnings'] = $warnings;
         }
 
         $this->usuarios->update($id, $data);
@@ -284,6 +320,18 @@ class UsuariosController extends BaseController
     {
         $permissions = PermissionRegistry::sanitizeSelection($_POST['permissions'] ?? []);
 
+        $nationalIdInput = $this->normalizeSensitive($_POST['national_id'] ?? '');
+        $passportInput = $this->normalizeSensitive($_POST['passport_number'] ?? '');
+
+        if (!$isCreate) {
+            if ($nationalIdInput === '' && isset($existing['national_id'])) {
+                $nationalIdInput = (string) $existing['national_id'];
+            }
+            if ($passportInput === '' && isset($existing['passport_number'])) {
+                $passportInput = (string) $existing['passport_number'];
+            }
+        }
+
         $data = [
             'username' => trim((string) ($_POST['username'] ?? '')),
             'email' => trim((string) ($_POST['email'] ?? '')),
@@ -291,13 +339,18 @@ class UsuariosController extends BaseController
             'middle_name' => $this->normalizeNameInput($_POST['middle_name'] ?? ''),
             'last_name' => $this->normalizeNameInput($_POST['last_name'] ?? ''),
             'second_last_name' => $this->normalizeNameInput($_POST['second_last_name'] ?? ''),
+            'birth_date' => $this->normalizeDate($_POST['birth_date'] ?? null),
             'cedula' => trim((string) ($_POST['cedula'] ?? '')),
+            'national_id' => $nationalIdInput,
+            'passport_number' => $passportInput,
             'registro' => trim((string) ($_POST['registro'] ?? '')),
             'sede' => trim((string) ($_POST['sede'] ?? '')),
             'especialidad' => trim((string) ($_POST['especialidad'] ?? '')),
             'subespecialidad' => trim((string) ($_POST['subespecialidad'] ?? '')),
             'is_subscribed' => isset($_POST['is_subscribed']) ? 1 : 0,
             'is_approved' => isset($_POST['is_approved']) ? 1 : 0,
+            'seal_status' => $this->sanitizeStatus($_POST['seal_status'] ?? ($existing['seal_status'] ?? null)),
+            'signature_status' => $this->sanitizeStatus($_POST['signature_status'] ?? ($existing['signature_status'] ?? null)),
             'role_id' => $this->resolveRoleId($_POST['role_id'] ?? null),
             'permisos' => json_encode($permissions, JSON_UNESCAPED_UNICODE),
             'firma' => $existing['firma'] ?? null,
@@ -335,6 +388,10 @@ class UsuariosController extends BaseController
 
         if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors['email'] = 'El correo electrónico no es válido.';
+        }
+
+        if ($data['birth_date'] !== null && !$this->isValidDate($data['birth_date'])) {
+            $errors['birth_date'] = 'La fecha de nacimiento no es válida.';
         }
 
         $nameFields = [
@@ -377,6 +434,22 @@ class UsuariosController extends BaseController
 
         if ($data['role_id'] !== null && !$this->roles->find($data['role_id'])) {
             $errors['role_id'] = 'El rol seleccionado no existe.';
+        }
+
+        if ($data['national_id'] !== '' && !$this->isValidIdentityValue($data['national_id'])) {
+            $errors['national_id'] = 'La identificación nacional debe tener entre 4 y 32 caracteres alfanuméricos.';
+        }
+
+        if ($data['passport_number'] !== '' && !$this->isValidIdentityValue($data['passport_number'])) {
+            $errors['passport_number'] = 'El número de pasaporte debe tener entre 4 y 32 caracteres alfanuméricos.';
+        }
+
+        if (!in_array($data['seal_status'], self::VERIFICATION_STATES, true)) {
+            $errors['seal_status'] = 'El estado del sello no es válido.';
+        }
+
+        if (!in_array($data['signature_status'], self::VERIFICATION_STATES, true)) {
+            $errors['signature_status'] = 'El estado de la firma no es válido.';
         }
 
         return $errors;
@@ -705,5 +778,151 @@ class UsuariosController extends BaseController
         ], static fn($v) => (string) $v !== '');
 
         return trim(implode(' ', $parts));
+    }
+
+    private function normalizeDate($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $date = date_create_from_format('Y-m-d', (string) $value);
+
+        return $date ? $date->format('Y-m-d') : null;
+    }
+
+    private function isValidDate(?string $date): bool
+    {
+        if ($date === null) {
+            return true;
+        }
+
+        $dt = date_create_from_format('Y-m-d', $date);
+        return $dt !== false && $dt->format('Y-m-d') === $date;
+    }
+
+    private function normalizeSensitive($value): string
+    {
+        $normalized = preg_replace('/\s+/', '', (string) $value) ?? '';
+        return mb_substr($normalized, 0, 64, 'UTF-8');
+    }
+
+    private function isValidIdentityValue(string $value): bool
+    {
+        return (bool) preg_match('/^[A-Za-z0-9-]{4,32}$/', $value);
+    }
+
+    private function sanitizeStatus($value): string
+    {
+        $normalized = is_string($value) ? strtolower(trim($value)) : '';
+        return in_array($normalized, self::VERIFICATION_STATES, true) ? $normalized : 'pending';
+    }
+
+    private function normalizeStatus(?string $status, bool $hasMedia): string
+    {
+        if (!$hasMedia) {
+            return 'not_provided';
+        }
+
+        $normalized = $this->sanitizeStatus($status);
+        return $normalized === 'not_provided' ? 'pending' : $normalized;
+    }
+
+    private function duplicateWarnings(array $data, ?int $excludeId): array
+    {
+        if (empty($data['first_name']) || empty($data['last_name']) || empty($data['birth_date'])) {
+            return [];
+        }
+
+        $matches = $this->usuarios->findPotentialDuplicates($data['first_name'], $data['last_name'], $data['birth_date'], $excludeId);
+        if (empty($matches)) {
+            return [];
+        }
+
+        $warnings = [];
+        foreach ($matches as $match) {
+            $warnings[] = sprintf(
+                'Posible duplicado con %s (ID %d, nacimiento %s).',
+                trim(($match['first_name'] ?? '') . ' ' . ($match['last_name'] ?? '')),
+                (int) ($match['id'] ?? 0),
+                $match['birth_date'] ?? 'sin fecha'
+            );
+        }
+
+        return $warnings;
+    }
+
+    private function transformSensitiveFields(array $data): array
+    {
+        $data['national_id_encrypted'] = $this->protector->encrypt($data['national_id'] ?? null);
+        $data['passport_number_encrypted'] = $this->protector->encrypt($data['passport_number'] ?? null);
+
+        unset($data['national_id'], $data['passport_number']);
+
+        return $data;
+    }
+
+    private function hydrateSensitiveFields(array $usuario): array
+    {
+        $usuario['national_id'] = $this->protector->decrypt($usuario['national_id_encrypted'] ?? null);
+        $usuario['passport_number'] = $this->protector->decrypt($usuario['passport_number_encrypted'] ?? null);
+        $usuario['national_id_masked'] = $this->protector->mask($usuario['national_id']);
+        $usuario['passport_number_masked'] = $this->protector->mask($usuario['passport_number']);
+
+        return $usuario;
+    }
+
+    private function applyVerificationStatuses(array $data, ?array $existing): array
+    {
+        $timestamp = date('Y-m-d H:i:s');
+        $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+
+        $previousSealPath = $existing['firma'] ?? null;
+        $currentSealPath = $data['firma'] ?? $previousSealPath;
+        $sealHasChanged = $previousSealPath !== $currentSealPath;
+        $sealHasMedia = !empty($currentSealPath);
+        $sealStatus = $sealHasChanged ? 'pending' : ($data['seal_status'] ?? ($existing['seal_status'] ?? null));
+        $data['seal_status'] = $this->normalizeStatus($sealStatus, $sealHasMedia);
+        if ($sealHasChanged || ($existing && ($existing['seal_status'] ?? null) !== $data['seal_status'])) {
+            $data['seal_status_updated_at'] = $timestamp;
+            $data['seal_status_updated_by'] = $userId;
+        }
+
+        $previousSignaturePath = $existing['signature_path'] ?? null;
+        $currentSignaturePath = $data['signature_path'] ?? $previousSignaturePath;
+        $signatureHasChanged = $previousSignaturePath !== $currentSignaturePath;
+        $signatureHasMedia = !empty($currentSignaturePath);
+        $signatureStatus = $signatureHasChanged ? 'pending' : ($data['signature_status'] ?? ($existing['signature_status'] ?? null));
+        $data['signature_status'] = $this->normalizeStatus($signatureStatus, $signatureHasMedia);
+        if ($signatureHasChanged || ($existing && ($existing['signature_status'] ?? null) !== $data['signature_status'])) {
+            $data['signature_status_updated_at'] = $timestamp;
+            $data['signature_status_updated_by'] = $userId;
+        }
+
+        return $data;
+    }
+
+    private function profileCompleteness(array $usuario): array
+    {
+        $checks = [
+            'nombre' => !empty($usuario['first_name']) && !empty($usuario['last_name']),
+            'contacto' => !empty($usuario['email']),
+            'sello' => !empty($usuario['firma']),
+            'firma' => !empty($usuario['signature_path']),
+        ];
+
+        $completed = count(array_filter($checks));
+        $total = count($checks);
+        $ratio = $total > 0 ? $completed / $total : 0;
+
+        if ($ratio >= 0.99) {
+            return ['label' => 'Completo', 'class' => 'bg-success', 'ratio' => $ratio];
+        }
+
+        if ($ratio >= 0.5) {
+            return ['label' => 'Parcial', 'class' => 'bg-warning text-dark', 'ratio' => $ratio];
+        }
+
+        return ['label' => 'Incompleto', 'class' => 'bg-secondary', 'ratio' => $ratio];
     }
 }

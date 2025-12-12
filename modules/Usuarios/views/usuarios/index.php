@@ -4,11 +4,13 @@
 /** @var array $permissionLabels */
 /** @var string|null $status */
 /** @var string|null $error */
+/** @var array $warnings */
 
 use Core\Permissions;
 
 $status = $status ?? null;
 $error = $error ?? null;
+$warnings = $warnings ?? [];
 $sessionPermissions = Permissions::normalize($_SESSION['permisos'] ?? []);
 $canCreateUsers = Permissions::containsAny($sessionPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios']);
 $canEditUsers = $canCreateUsers;
@@ -44,6 +46,17 @@ $canEditUsers = $canCreateUsers;
                         <div class="alert alert-success">Usuario actualizado correctamente.</div>
                     <?php elseif ($status === 'deleted'): ?>
                         <div class="alert alert-success">Usuario eliminado correctamente.</div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($warnings)): ?>
+                        <div class="alert alert-warning">
+                            <p class="mb-2 fw-semibold"><i class="mdi mdi-alert"></i> Avisos importantes:</p>
+                            <ul class="mb-0 ps-3">
+                                <?php foreach ($warnings as $warning): ?>
+                                    <li><?= htmlspecialchars($warning, ENT_QUOTES, 'UTF-8'); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
                     <?php endif; ?>
 
                     <?php if ($error === 'not_found'): ?>
@@ -83,13 +96,14 @@ $canEditUsers = $canCreateUsers;
                                     <th scope="col">Rol</th>
                                     <th scope="col">Permisos</th>
                                     <th scope="col">Estado</th>
+                                    <th scope="col">Perfil</th>
                                     <th scope="col" class="text-end">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($usuarios)): ?>
                                     <tr>
-                                        <td colspan="8" class="text-center">No hay usuarios registrados.</td>
+                                        <td colspan="9" class="text-center">No hay usuarios registrados.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($usuarios as $usuario): ?>
@@ -160,6 +174,19 @@ $canEditUsers = $canCreateUsers;
                                                 <?php if (!empty($usuario['is_subscribed'])): ?>
                                                     <span class="badge bg-info">Suscrito</span>
                                                 <?php endif; ?>
+                                                <div class="mt-1 small text-muted">
+                                                    <span class="badge bg-light text-dark border">Sello: <?= htmlspecialchars($usuario['seal_status'] ?? 'no disponible', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                    <span class="badge bg-light text-dark border">Firma: <?= htmlspecialchars($usuario['signature_status'] ?? 'no disponible', ENT_QUOTES, 'UTF-8'); ?></span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <?php $completeness = $usuario['profile_completeness'] ?? ['label' => 'N/D', 'class' => 'bg-secondary', 'ratio' => 0]; ?>
+                                                <span class="badge <?= htmlspecialchars($completeness['class'], ENT_QUOTES, 'UTF-8'); ?>">
+                                                    <?= htmlspecialchars($completeness['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                                    <?php if (isset($completeness['ratio'])): ?>
+                                                        (<?= number_format(($completeness['ratio'] ?? 0) * 100, 0); ?>%)
+                                                    <?php endif; ?>
+                                                </span>
                                             </td>
                                             <td class="text-end">
                                                 <?php if ($canEditUsers): ?>
