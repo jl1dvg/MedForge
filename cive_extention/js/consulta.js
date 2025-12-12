@@ -207,6 +207,151 @@
     }
 })();
 
+// Botón para marcar apto anestesia desde la consulta
+(function () {
+    const BUTTON_ID = 'cive-apto-anestesia-btn';
+    const TARGET_PROC_CODE = 'SRV-ANE-002';
+    const TARGET_PROC_NAME = 'ANESTESIOLOGIA CONSULTA';
+
+    const normalize = (value) => (value || '').toString().trim().toUpperCase();
+
+    function getPacienteSeleccionado() {
+        if (window.datosPacienteSeleccionado && typeof window.datosPacienteSeleccionado === 'object') {
+            return window.datosPacienteSeleccionado;
+        }
+        try {
+            const stored = localStorage.getItem('datosPacienteSeleccionado');
+            if (!stored) return {};
+            return JSON.parse(stored);
+        } catch (e) {
+            console.warn('CIVE Extension: no se pudo leer datosPacienteSeleccionado.', e);
+            return {};
+        }
+    }
+
+    function getSolicitudContext() {
+        const params = new URLSearchParams(window.location.search);
+        const paciente = getPacienteSeleccionado();
+        const formId = params.get('idSolicitud') || params.get('form_id') || params.get('id') || paciente.form_id || paciente.idSolicitud || null;
+        const idSolicitud = params.get('idSolicitud') || params.get('id') || paciente.form_id || paciente.idSolicitud || null;
+        const procedimiento = paciente.procedimiento_proyectado || paciente.procedimiento || '';
+        return {idSolicitud, formId: formId || idSolicitud, procedimiento};
+    }
+
+    function shouldShowButton(procedimiento) {
+        const norm = normalize(procedimiento);
+        return norm.includes(TARGET_PROC_CODE) && norm.includes(TARGET_PROC_NAME);
+    }
+
+    function waitForTerminarButton(maxAttempts = 12, delay = 500) {
+        return new Promise((resolve, reject) => {
+            const search = (attempt) => {
+                const btn = document.getElementById('button-terminar');
+                if (btn) return resolve(btn);
+                if (attempt <= 0) return reject(new Error('Botón "Terminar la Consulta" no encontrado.'));
+                setTimeout(() => search(attempt - 1), delay);
+            };
+            search(maxAttempts);
+        });
+    }
+
+    async function postAptoAnestesia({id, formId}) {
+        const parsedId = Number.parseInt(id, 10);
+        if (!Number.isFinite(parsedId)) {
+            throw new Error('Id de solicitud no válido para apto anestesia.');
+        }
+        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
+        const url = `${basePath.replace(/\/+$/, '')}/actualizar-estado`;
+        const payload = {
+            id: parsedId,
+            form_id: formId || parsedId,
+            estado: 'apto-anestesia',
+            completado: true,
+            force: true,
+        };
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            body: JSON.stringify(payload),
+            credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data?.error || 'No se pudo marcar apto anestesia.');
+        }
+        return data;
+    }
+
+    function placeButton(nextTo) {
+        const existing = document.getElementById(BUTTON_ID);
+        if (existing) return existing;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = BUTTON_ID;
+        btn.className = 'btn btn-info';
+        btn.style.marginLeft = '8px';
+        btn.textContent = 'Apto anestesia';
+        nextTo.insertAdjacentElement('afterend', btn);
+        return btn;
+    }
+
+    async function initAptoButton() {
+        const {idSolicitud, formId, procedimiento} = getSolicitudContext();
+        if (!shouldShowButton(procedimiento)) {
+            return;
+        }
+        if (!idSolicitud && !formId) {
+            console.warn('CIVE Extension: sin identificadores para marcar apto anestesia.');
+            return;
+        }
+        if (document.getElementById(BUTTON_ID)) return;
+
+        try {
+            const terminarBtn = await waitForTerminarButton();
+            const aptoBtn = placeButton(terminarBtn);
+            const solicitudId = idSolicitud || formId;
+            aptoBtn.addEventListener('click', async () => {
+                const originalText = aptoBtn.textContent;
+                aptoBtn.disabled = true;
+                aptoBtn.textContent = 'Marcando apto...';
+                try {
+                    const resp = await postAptoAnestesia({id: solicitudId, formId});
+                    aptoBtn.classList.remove('btn-info');
+                    aptoBtn.classList.add('btn-success');
+                    aptoBtn.textContent = 'Apto por anestesia';
+
+                    const store = window.__solicitudesKanban;
+                    if (Array.isArray(store)) {
+                        const item = store.find(
+                            (s) => String(s.id) === String(solicitudId) || String(s.form_id) === String(formId)
+                        );
+                        if (item) {
+                            item.estado = resp.estado || 'apto-anestesia';
+                            item.estado_label = resp.estado_label || resp.estado || 'Apto por anestesia';
+                            if (resp.checklist) item.checklist = resp.checklist;
+                            if (resp.checklist_progress) item.checklist_progress = resp.checklist_progress;
+                        }
+                    }
+                } catch (error) {
+                    console.error('CIVE Extension: error al marcar apto anestesia.', error);
+                    alert(error?.message || 'No se pudo marcar apto por anestesia.');
+                    aptoBtn.disabled = false;
+                    aptoBtn.textContent = originalText;
+                    return;
+                }
+            });
+        } catch (error) {
+            console.warn('CIVE Extension: no se pudo colocar el botón de apto anestesia.', error);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAptoButton);
+    } else {
+        initAptoButton();
+    }
+})();
+
 // Función que se ejecutará en la página actual para protocolos de cirugía
 function ejecutarPopEnPagina() {
     // Función para obtener el contenido después del elemento <th> con el texto específico
