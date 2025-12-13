@@ -11,6 +11,8 @@ $usuario = $usuario ?? [];
 $errors = $errors ?? [];
 $warnings = $warnings ?? [];
 $selectedPermissions = $selectedPermissions ?? [];
+$mediaHistory = $mediaHistory ?? [];
+$restorableMedia = $restorableMedia ?? ['seal' => [], 'signature' => []];
 
 if (!function_exists('usuarios_form_old')) {
     function usuarios_form_old(array $usuario, string $key, string $default = ''): string
@@ -202,8 +204,25 @@ if (!function_exists('usuarios_permission_id')) {
                                         <input class="form-check-input" type="checkbox" name="remove_firma" id="remove_firma" value="1">
                                         <label class="form-check-label" for="remove_firma">Eliminar sello actual</label>
                                     </div>
+                                    <div class="small text-muted mb-2">
+                                        <div>Creado: <?= htmlspecialchars($usuario['firma_created_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_created_by']) ? '(por ID ' . (int) $usuario['firma_created_by'] . ')' : ''; ?></div>
+                                        <div>Actualizado: <?= htmlspecialchars($usuario['firma_updated_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_updated_by']) ? '(por ID ' . (int) $usuario['firma_updated_by'] . ')' : ''; ?></div>
+                                        <div>Verificado: <?= htmlspecialchars($usuario['firma_verified_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_verified_by']) ? '(por ID ' . (int) $usuario['firma_verified_by'] . ')' : ''; ?></div>
+                                        <div>Eliminado: <?= htmlspecialchars($usuario['firma_deleted_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_deleted_by']) ? '(por ID ' . (int) $usuario['firma_deleted_by'] . ')' : ''; ?></div>
+                                    </div>
                                 <?php endif; ?>
                                 <input type="file" name="firma_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
+                                <?php if (!empty($restorableMedia['seal'])): ?>
+                                    <label class="form-label mt-2">Restaurar sello previo</label>
+                                    <select name="restore_firma_version" class="form-select form-select-sm">
+                                        <option value="">Selecciona una versión</option>
+                                        <?php foreach ($restorableMedia['seal'] as $snapshot): ?>
+                                            <option value="<?= (int) ($snapshot['version'] ?? 0); ?>">
+                                                Versión <?= (int) ($snapshot['version'] ?? 0); ?> • <?= htmlspecialchars($snapshot['action'] ?? 'subida', ENT_QUOTES, 'UTF-8'); ?> • <?= htmlspecialchars($snapshot['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php endif; ?>
                                 <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Tamaño máximo 2&nbsp;MB.</small>
                                 <div class="mt-2">
                                     <label class="form-label mb-1">Estado del sello</label>
@@ -236,8 +255,26 @@ if (!function_exists('usuarios_permission_id')) {
                                         <input class="form-check-input" type="checkbox" name="remove_signature" id="remove_signature" value="1">
                                         <label class="form-check-label" for="remove_signature">Eliminar firma digital actual</label>
                                     </div>
+                                    <div class="small text-muted mb-2">
+                                        <div>Creado: <?= htmlspecialchars($usuario['signature_created_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_created_by']) ? '(por ID ' . (int) $usuario['signature_created_by'] . ')' : ''; ?></div>
+                                        <div>Actualizado: <?= htmlspecialchars($usuario['signature_updated_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_updated_by']) ? '(por ID ' . (int) $usuario['signature_updated_by'] . ')' : ''; ?></div>
+                                        <div>Verificado: <?= htmlspecialchars($usuario['signature_verified_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_verified_by']) ? '(por ID ' . (int) $usuario['signature_verified_by'] . ')' : ''; ?></div>
+                                        <div>Eliminado: <?= htmlspecialchars($usuario['signature_deleted_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_deleted_by']) ? '(por ID ' . (int) $usuario['signature_deleted_by'] . ')' : ''; ?></div>
+                                    </div>
                                 <?php endif; ?>
                                 <input type="file" name="signature_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
+                                <?php if (!empty($restorableMedia['signature'])): ?>
+                                    <label class="form-label mt-2">Restaurar firma previa</label>
+                                    <select name="restore_signature_path_version" class="form-select form-select-sm">
+                                        <option value="">Selecciona una versión</option>
+        
+                                        <?php foreach ($restorableMedia['signature'] as $snapshot): ?>
+                                            <option value="<?= (int) ($snapshot['version'] ?? 0); ?>">
+                                                Versión <?= (int) ($snapshot['version'] ?? 0); ?> • <?= htmlspecialchars($snapshot['action'] ?? 'subida', ENT_QUOTES, 'UTF-8'); ?> • <?= htmlspecialchars($snapshot['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php endif; ?>
                                 <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB y dimensiones moderadas.</small>
                                 <div class="mt-2">
                                     <label class="form-label mb-1">Estado de la firma</label>
@@ -338,6 +375,43 @@ if (!function_exists('usuarios_permission_id')) {
                             <button type="submit" class="btn btn-primary">Guardar</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="box">
+                <div class="box-header with-border d-flex justify-content-between align-items-center">
+                    <h4 class="box-title mb-0">Historial de auditoría</h4>
+                    <span class="badge bg-light text-dark border">Medios</span>
+                </div>
+                <div class="box-body">
+                    <?php if (empty($mediaHistory)): ?>
+                        <p class="text-muted mb-0">Sin eventos registrados.</p>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Versión</th>
+                                        <th>Tipo</th>
+                                        <th>Acción</th>
+                                        <th>Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($mediaHistory as $audit): ?>
+                                        <tr>
+                                            <td>#<?= (int) ($audit['version'] ?? 0); ?></td>
+                                            <td><?= htmlspecialchars($audit['media_type'] ?? 'n/d', ENT_QUOTES, 'UTF-8'); ?></td>
+                                            <td><?= htmlspecialchars($audit['action'] ?? 'n/d', ENT_QUOTES, 'UTF-8'); ?></td>
+                                            <td><?= htmlspecialchars($audit['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                    <p class="small text-muted mt-2 mb-0">Se registran cargas, reemplazos, eliminaciones, verificaciones y restauraciones de sello/firma.</p>
                 </div>
             </div>
         </div>
