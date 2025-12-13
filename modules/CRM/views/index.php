@@ -93,16 +93,111 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
 
                     <div class="tab-content">
                         <div class="tab-pane fade show active" id="crm-tab-leads" role="tabpanel">
+                            <div class="card mb-3 shadow-sm border-0 bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                        <div>
+                                            <h5 class="mb-1">Resumen del pipeline</h5>
+                                            <p class="text-muted mb-0">Visualiza el avance de los leads y accede rápido a los estados.</p>
+                                        </div>
+                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                            <a class="btn btn-primary" href="#lead-form">
+                                                <i class="mdi mdi-plus"></i> Nuevo lead
+                                            </a>
+                                            <button class="btn btn-outline-primary" type="button" id="lead-refresh-btn">
+                                                <i class="mdi mdi-refresh"></i> Recargar
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center mt-3" id="lead-status-summary"></div>
+                                    <div class="row g-2 align-items-end mt-1">
+                                        <div class="col-md-4">
+                                            <label for="lead-search" class="form-label mb-1">Buscar</label>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
+                                                <input type="search" class="form-control" id="lead-search" placeholder="Nombre, email, teléfono o HC">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="lead-filter-status" class="form-label mb-1">Estado</label>
+                                            <select id="lead-filter-status" class="form-select form-select-sm">
+                                                <option value="">Todos</option>
+                                                <?php foreach (($leadStatuses ?? []) as $status): ?>
+                                                    <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $status)), ENT_QUOTES, 'UTF-8') ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="lead-filter-source" class="form-label mb-1">Origen</label>
+                                            <select id="lead-filter-source" class="form-select form-select-sm">
+                                                <option value="">Todos</option>
+                                                <?php foreach (($leadSources ?? []) as $source): ?>
+                                                    <option value="<?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label for="lead-filter-assigned" class="form-label mb-1">Asignado</label>
+                                            <select id="lead-filter-assigned" class="form-select form-select-sm">
+                                                <option value="">Todos</option>
+                                                <?php foreach (($assignableUsers ?? []) as $user): ?>
+                                                    <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-12 d-flex flex-wrap gap-2 mt-2">
+                                            <button class="btn btn-sm btn-secondary" type="button" id="lead-clear-filters">
+                                                Limpiar filtros
+                                            </button>
+                                            <span class="text-muted small">Los filtros se aplican de inmediato sobre la tabla.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="row g-3">
                                 <div class="col-xl-7">
+                                    <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 gap-2">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <div class="input-group input-group-sm" style="width: 160px;">
+                                                <span class="input-group-text"><i class="mdi mdi-format-list-numbered"></i></span>
+                                                <select id="lead-page-size" class="form-select">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50">50</option>
+                                                    <option value="-1">Todos</option>
+                                                </select>
+                                            </div>
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" id="lead-export-btn">
+                                                <i class="mdi mdi-export"></i> Exportar
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" id="lead-bulk-actions-btn" data-bs-toggle="modal" data-bs-target="#lead-bulk-modal">
+                                                <i class="mdi mdi-format-list-checks"></i> Acciones masivas
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" id="lead-reload-table">
+                                                <i class="mdi mdi-refresh"></i>
+                                            </button>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <div class="input-group input-group-sm" style="width: 220px;">
+                                                <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
+                                                <input type="search" class="form-control" id="lead-table-search" placeholder="Buscar en tabla">
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="table-responsive rounded card-table shadow-sm">
                                         <table class="table table-striped table-sm align-middle" id="crm-leads-table">
                                             <thead class="bg-primary text-white">
                                                 <tr>
+                                                    <th class="text-center" style="width:32px;">
+                                                        <input type="checkbox" id="lead-select-all" class="form-check-input">
+                                                    </th>
+                                                    <th style="width:70px;">#</th>
                                                     <th>Nombre</th>
                                                     <th>Contacto</th>
                                                     <th>Estado</th>
                                                     <th>Origen</th>
+                                                    <th>Etiquetas</th>
                                                     <th>Asignado</th>
                                                     <th>Actualizado</th>
                                                     <th class="text-end">Acciones</th>
@@ -110,6 +205,10 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                             </thead>
                                             <tbody></tbody>
                                         </table>
+                                    </div>
+                                    <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 gap-2">
+                                        <div class="text-muted small" id="lead-table-info">Mostrando 0 de 0</div>
+                                        <ul class="pagination pagination-sm mb-0" id="lead-pagination"></ul>
                                     </div>
                                 </div>
                                 <div class="col-xl-5">
@@ -225,6 +324,71 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                             No tienes permisos para crear o convertir leads en el CRM.
                                         </div>
                                     <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <div class="modal fade" id="lead-bulk-modal" tabindex="-1" aria-labelledby="lead-bulk-modal-label" aria-hidden="true">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="lead-bulk-modal-label">Acciones masivas</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" value="1" id="lead-bulk-delete">
+                                                        <label class="form-check-label" for="lead-bulk-delete">Eliminar seleccionados</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" value="1" id="lead-bulk-lost">
+                                                        <label class="form-check-label" for="lead-bulk-lost">Marcar como perdido</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" value="1" id="lead-bulk-public">
+                                                        <label class="form-check-label" for="lead-bulk-public">Visibilidad pública</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="lead-bulk-status" class="form-label">Cambiar estado</label>
+                                                    <select id="lead-bulk-status" class="form-select">
+                                                        <option value="">Sin cambio</option>
+                                                        <?php foreach (($leadStatuses ?? []) as $status): ?>
+                                                            <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $status)), ENT_QUOTES, 'UTF-8') ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="lead-bulk-source" class="form-label">Origen</label>
+                                                    <select id="lead-bulk-source" class="form-select">
+                                                        <option value="">Sin cambio</option>
+                                                        <?php foreach (($leadSources ?? []) as $source): ?>
+                                                            <option value="<?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($source, ENT_QUOTES, 'UTF-8') ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label for="lead-bulk-assigned" class="form-label">Asignar a</label>
+                                                    <select id="lead-bulk-assigned" class="form-select">
+                                                        <option value="">Sin cambio</option>
+                                                        <?php foreach (($assignableUsers ?? []) as $user): ?>
+                                                            <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <p class="text-muted small mt-3 mb-0" id="lead-bulk-helper">Selecciona al menos un lead para aplicar los cambios.</p>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                            <button type="button" class="btn btn-primary" id="lead-bulk-apply">Aplicar</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
