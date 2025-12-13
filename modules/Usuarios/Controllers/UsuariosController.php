@@ -5,6 +5,7 @@ namespace Modules\Usuarios\Controllers;
 use Core\BaseController;
 use Core\Permissions;
 use Modules\Usuarios\Models\RolModel;
+use Modules\Usuarios\Models\UserMediaHistoryModel;
 use Modules\Usuarios\Models\UsuarioModel;
 use Modules\Usuarios\Support\PermissionRegistry;
 use Modules\Usuarios\Support\SensitiveDataProtector;
@@ -20,6 +21,7 @@ class UsuariosController extends BaseController
             'directory' => UserMediaValidator::TYPE_SEAL,
             'path_key' => 'firma',
             'meta_prefix' => 'firma',
+            'type' => UserMediaValidator::TYPE_SEAL,
         ],
         'signature' => [
             'input' => 'signature_file',
@@ -27,6 +29,7 @@ class UsuariosController extends BaseController
             'directory' => UserMediaValidator::TYPE_SIGNATURE,
             'path_key' => 'signature_path',
             'meta_prefix' => 'signature',
+            'type' => UserMediaValidator::TYPE_SIGNATURE,
         ],
     ];
 
@@ -41,6 +44,7 @@ class UsuariosController extends BaseController
 
     private UsuarioModel $usuarios;
     private RolModel $roles;
+    private UserMediaHistoryModel $mediaHistory;
     private UserMediaValidator $mediaValidator;
     private SensitiveDataProtector $protector;
 
@@ -49,6 +53,7 @@ class UsuariosController extends BaseController
         parent::__construct($pdo);
         $this->usuarios = new UsuarioModel($pdo);
         $this->roles = new RolModel($pdo);
+        $this->mediaHistory = new UserMediaHistoryModel($pdo);
         $this->mediaValidator = new UserMediaValidator();
         $this->protector = new SensitiveDataProtector();
     }
@@ -109,6 +114,11 @@ class UsuariosController extends BaseController
             ],
             'errors' => [],
             'warnings' => [],
+            'mediaHistory' => [],
+            'restorableMedia' => [
+                UserMediaValidator::TYPE_SEAL => [],
+                UserMediaValidator::TYPE_SIGNATURE => [],
+            ],
         ]);
     }
 
@@ -147,14 +157,15 @@ class UsuariosController extends BaseController
         }
 
         $data = $this->transformSensitiveFields($data);
-        $data = $this->applyVerificationStatuses($data, null);
+        $data = $this->applyVerificationStatuses($data, null, $pendingUploads['history']);
 
         if (!empty($warnings)) {
             $_SESSION['user_warnings'] = $warnings;
         }
 
-        $this->usuarios->create($data);
+        $userId = $this->usuarios->create($data);
         $this->finalizeUploads($pendingUploads);
+        $this->flushMediaHistory($userId, $pendingUploads['history']);
         header('Location: /usuarios?status=created');
         exit;
     }
@@ -178,6 +189,11 @@ class UsuariosController extends BaseController
         $usuario = $this->hydrateSensitiveFields($usuario);
 
         $selectedPermissions = Permissions::normalize($usuario['permisos'] ?? null);
+        $mediaHistory = $this->mediaHistory->recentForUser($id, 12);
+        $restorable = [
+            UserMediaValidator::TYPE_SEAL => $this->mediaHistory->restorableVersions($id, UserMediaValidator::TYPE_SEAL, 5),
+            UserMediaValidator::TYPE_SIGNATURE => $this->mediaHistory->restorableVersions($id, UserMediaValidator::TYPE_SIGNATURE, 5),
+        ];
 
         $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
             'pageTitle' => 'Editar usuario',
@@ -189,6 +205,8 @@ class UsuariosController extends BaseController
             'usuario' => $usuario,
             'errors' => [],
             'warnings' => [],
+            'mediaHistory' => $mediaHistory,
+            'restorableMedia' => $restorable,
         ]);
     }
 
@@ -233,6 +251,11 @@ class UsuariosController extends BaseController
                 'usuario' => $usuario,
                 'errors' => $errors,
                 'warnings' => $warnings,
+                'mediaHistory' => $this->mediaHistory->recentForUser($id, 12),
+                'restorableMedia' => [
+                    UserMediaValidator::TYPE_SEAL => $this->mediaHistory->restorableVersions($id, UserMediaValidator::TYPE_SEAL, 5),
+                    UserMediaValidator::TYPE_SIGNATURE => $this->mediaHistory->restorableVersions($id, UserMediaValidator::TYPE_SIGNATURE, 5),
+                ],
             ]);
             return;
         }
@@ -242,7 +265,7 @@ class UsuariosController extends BaseController
         }
 
         $data = $this->transformSensitiveFields($data);
-        $data = $this->applyVerificationStatuses($data, $existing);
+        $data = $this->applyVerificationStatuses($data, $existing, $pendingUploads['history']);
 
         if (!empty($warnings)) {
             $_SESSION['user_warnings'] = $warnings;
@@ -250,6 +273,7 @@ class UsuariosController extends BaseController
 
         $this->usuarios->update($id, $data);
         $this->finalizeUploads($pendingUploads);
+        $this->flushMediaHistory($id, $pendingUploads['history']);
 
         // Si el usuario editado es el mismo autenticado, refrescar permisos en sesión
         if ((int) ($_SESSION['user_id'] ?? 0) === $id) {
@@ -357,15 +381,27 @@ class UsuariosController extends BaseController
             'firma_mime' => $existing['firma_mime'] ?? null,
             'firma_size' => $existing['firma_size'] ?? null,
             'firma_hash' => $existing['firma_hash'] ?? null,
+            'firma_created_at' => $existing['firma_created_at'] ?? null,
+            'firma_created_by' => $existing['firma_created_by'] ?? null,
             'firma_updated_at' => $existing['firma_updated_at'] ?? null,
             'firma_updated_by' => $existing['firma_updated_by'] ?? null,
+            'firma_verified_at' => $existing['firma_verified_at'] ?? null,
+            'firma_verified_by' => $existing['firma_verified_by'] ?? null,
+            'firma_deleted_at' => $existing['firma_deleted_at'] ?? null,
+            'firma_deleted_by' => $existing['firma_deleted_by'] ?? null,
             'profile_photo' => $existing['profile_photo'] ?? null,
             'signature_path' => $existing['signature_path'] ?? null,
             'signature_mime' => $existing['signature_mime'] ?? null,
             'signature_size' => $existing['signature_size'] ?? null,
             'signature_hash' => $existing['signature_hash'] ?? null,
+            'signature_created_at' => $existing['signature_created_at'] ?? null,
+            'signature_created_by' => $existing['signature_created_by'] ?? null,
             'signature_updated_at' => $existing['signature_updated_at'] ?? null,
             'signature_updated_by' => $existing['signature_updated_by'] ?? null,
+            'signature_verified_at' => $existing['signature_verified_at'] ?? null,
+            'signature_verified_by' => $existing['signature_verified_by'] ?? null,
+            'signature_deleted_at' => $existing['signature_deleted_at'] ?? null,
+            'signature_deleted_by' => $existing['signature_deleted_by'] ?? null,
         ];
 
         $data['nombre'] = $this->buildFullName($data);
@@ -486,8 +522,14 @@ class UsuariosController extends BaseController
             'mime' => $usuario[$prefix . '_mime'] ?? null,
             'size' => isset($usuario[$prefix . '_size']) ? (int) $usuario[$prefix . '_size'] : null,
             'hash' => $usuario[$prefix . '_hash'] ?? null,
+            'created_at' => $usuario[$prefix . '_created_at'] ?? null,
+            'created_by' => isset($usuario[$prefix . '_created_by']) ? (int) $usuario[$prefix . '_created_by'] : null,
             'updated_at' => $usuario[$prefix . '_updated_at'] ?? null,
             'updated_by' => isset($usuario[$prefix . '_updated_by']) ? (int) $usuario[$prefix . '_updated_by'] : null,
+            'verified_at' => $usuario[$prefix . '_verified_at'] ?? null,
+            'verified_by' => isset($usuario[$prefix . '_verified_by']) ? (int) $usuario[$prefix . '_verified_by'] : null,
+            'deleted_at' => $usuario[$prefix . '_deleted_at'] ?? null,
+            'deleted_by' => isset($usuario[$prefix . '_deleted_by']) ? (int) $usuario[$prefix . '_deleted_by'] : null,
         ];
     }
 
@@ -514,7 +556,7 @@ class UsuariosController extends BaseController
     private function handleMediaUploads(array $data, ?array $existing): array
     {
         $errors = [];
-        $pending = ['delete' => [], 'new' => []];
+        $pending = ['delete' => [], 'new' => [], 'history' => []];
 
         foreach (self::MEDIA_TYPES as $type => $config) {
             [$data, $error] = $this->processMediaType($config, $data, $existing, $pending);
@@ -540,14 +582,27 @@ class UsuariosController extends BaseController
     {
         $pathKey = $config['path_key'];
         $metaPrefix = $config['meta_prefix'];
+        $mediaType = $config['type'];
         $removeRequested = isset($_POST[$config['remove']]);
+        $restoreVersion = isset($_POST['restore_' . $pathKey . '_version']) ? (int) $_POST['restore_' . $pathKey . '_version'] : null;
         $existingPath = is_array($existing) ? ($existing[$pathKey] ?? null) : null;
         $currentPath = $data[$pathKey] ?? $existingPath;
+
+        if ($restoreVersion && ($existing['id'] ?? null)) {
+            $restored = $this->mediaHistory->findVersion((int) $existing['id'], $mediaType, $restoreVersion);
+            if ($restored && !empty($restored['path'])) {
+                $currentPath = $restored['path'];
+                $this->applyRestoredMetadata($data, $metaPrefix, $restored);
+                $pending['history'][] = $this->buildHistoryEvent($mediaType, 'restore', $restored, $existingPath);
+                $removeRequested = false;
+            }
+        }
 
         if ($removeRequested && $existingPath) {
             $this->markForDeletion($pending, $existingPath);
             $currentPath = null;
             $this->clearMediaMetadata($data, $metaPrefix, true);
+            $pending['history'][] = $this->buildHistoryEvent($mediaType, 'delete', $this->captureMetadata($existing, $metaPrefix, $existingPath), $existingPath);
         }
 
         if (!$this->hasUploadedFile($config['input'])) {
@@ -579,7 +634,8 @@ class UsuariosController extends BaseController
         }
 
         $currentPath = $publicPath;
-        $this->applyMediaMetadata($data, $metaPrefix, $validation);
+        $this->applyMediaMetadata($data, $metaPrefix, $validation, true);
+        $pending['history'][] = $this->buildHistoryEvent($mediaType, $existingPath ? 'replace' : 'upload', $this->captureMetadata($data, $metaPrefix, $publicPath), $existingPath);
 
         return [$this->updateMediaPath($data, $pathKey, $currentPath), null];
     }
@@ -648,7 +704,7 @@ class UsuariosController extends BaseController
         }
     }
 
-    private function applyMediaMetadata(array &$data, string $prefix, array $validation): void
+    private function applyMediaMetadata(array &$data, string $prefix, array $validation, bool $isNewAsset): void
     {
         $timestamp = date('Y-m-d H:i:s');
         $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
@@ -658,6 +714,15 @@ class UsuariosController extends BaseController
         $data[$prefix . '_hash'] = $validation['hash'];
         $data[$prefix . '_updated_at'] = $timestamp;
         $data[$prefix . '_updated_by'] = $userId ?: null;
+
+        if ($isNewAsset) {
+            $data[$prefix . '_created_at'] = $timestamp;
+            $data[$prefix . '_created_by'] = $userId ?: null;
+            $data[$prefix . '_deleted_at'] = null;
+            $data[$prefix . '_deleted_by'] = null;
+            $data[$prefix . '_verified_at'] = null;
+            $data[$prefix . '_verified_by'] = null;
+        }
     }
 
     private function clearMediaMetadata(array &$data, string $prefix, bool $withAudit = false): void
@@ -665,11 +730,56 @@ class UsuariosController extends BaseController
         $data[$prefix . '_mime'] = null;
         $data[$prefix . '_size'] = null;
         $data[$prefix . '_hash'] = null;
+        $data[$prefix . '_created_at'] = null;
+        $data[$prefix . '_created_by'] = null;
+        $data[$prefix . '_verified_at'] = null;
+        $data[$prefix . '_verified_by'] = null;
+        $data[$prefix . '_deleted_at'] = $withAudit ? date('Y-m-d H:i:s') : null;
+        $data[$prefix . '_deleted_by'] = $withAudit && isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
         if ($withAudit) {
             $data[$prefix . '_updated_at'] = date('Y-m-d H:i:s');
             $data[$prefix . '_updated_by'] = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
         }
+    }
+
+    private function captureMetadata(array $source, string $prefix, ?string $path): array
+    {
+        return [
+            'path' => $path,
+            'mime' => $source[$prefix . '_mime'] ?? null,
+            'size' => $source[$prefix . '_size'] ?? null,
+            'hash' => $source[$prefix . '_hash'] ?? null,
+            'acted_at' => $source[$prefix . '_updated_at'] ?? date('Y-m-d H:i:s'),
+            'acted_by' => $source[$prefix . '_updated_by'] ?? (isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null),
+        ];
+    }
+
+    private function buildHistoryEvent(string $mediaType, string $action, array $meta, ?string $previousPath = null): array
+    {
+        $meta['previous_path'] = $previousPath;
+        $meta['status'] = $action;
+        $meta['media_type'] = $mediaType;
+        $meta['action'] = $action;
+        $meta['acted_at'] = $meta['acted_at'] ?? date('Y-m-d H:i:s');
+        $meta['acted_by'] = $meta['acted_by'] ?? (isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null);
+
+        return $meta;
+    }
+
+    private function applyRestoredMetadata(array &$data, string $prefix, array $record): void
+    {
+        $data[$prefix . '_mime'] = $record['mime'] ?? null;
+        $data[$prefix . '_size'] = $record['size'] ?? null;
+        $data[$prefix . '_hash'] = $record['hash'] ?? null;
+        $data[$prefix . '_created_at'] = $record['acted_at'] ?? date('Y-m-d H:i:s');
+        $data[$prefix . '_created_by'] = isset($record['acted_by']) ? (int) $record['acted_by'] : null;
+        $data[$prefix . '_updated_at'] = $record['acted_at'] ?? date('Y-m-d H:i:s');
+        $data[$prefix . '_updated_by'] = isset($record['acted_by']) ? (int) $record['acted_by'] : null;
+        $data[$prefix . '_deleted_at'] = null;
+        $data[$prefix . '_deleted_by'] = null;
+        $data[$prefix . '_verified_at'] = null;
+        $data[$prefix . '_verified_by'] = null;
     }
 
     private function updateMediaPath(array $data, string $pathKey, ?string $path): array
@@ -729,6 +839,17 @@ class UsuariosController extends BaseController
         }
     }
 
+    private function logSoftDeletion(string $path): void
+    {
+        $logDir = BASE_PATH . '/storage/logs';
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0775, true);
+        }
+
+        $message = sprintf("[%s] Media soft-deleted (preserved): %s\n", date('c'), $path);
+        @file_put_contents($logDir . '/user_media.log', $message, FILE_APPEND);
+    }
+
     private function uploadErrorMessage(int $errorCode): string
     {
         return match ($errorCode) {
@@ -743,9 +864,12 @@ class UsuariosController extends BaseController
 
     private function finalizeUploads(array $pending): void
     {
+        // Soft delete: keep historical assets for potential restores.
         $paths = array_unique($pending['delete'] ?? []);
         foreach ($paths as $path) {
-            $this->deleteFile($path);
+            if (!empty($path)) {
+                $this->logSoftDeletion($path);
+            }
         }
     }
 
@@ -754,6 +878,21 @@ class UsuariosController extends BaseController
         $paths = array_unique($pending['new'] ?? []);
         foreach ($paths as $path) {
             $this->deleteFile($path);
+        }
+    }
+
+    private function flushMediaHistory(int $userId, array $events): void
+    {
+        if ($userId <= 0 || empty($events)) {
+            return;
+        }
+
+        foreach ($events as $event) {
+            if (empty($event['media_type']) || empty($event['action'])) {
+                continue;
+            }
+
+            $this->mediaHistory->record($userId, $event['media_type'], $event['action'], $event);
         }
     }
 
@@ -872,7 +1011,7 @@ class UsuariosController extends BaseController
         return $usuario;
     }
 
-    private function applyVerificationStatuses(array $data, ?array $existing): array
+    private function applyVerificationStatuses(array $data, ?array $existing, ?array &$pendingHistory = null): array
     {
         $timestamp = date('Y-m-d H:i:s');
         $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
@@ -888,6 +1027,17 @@ class UsuariosController extends BaseController
             $data['seal_status_updated_by'] = $userId;
         }
 
+        if ($data['seal_status'] === 'verified') {
+            $data['firma_verified_at'] = $timestamp;
+            $data['firma_verified_by'] = $userId;
+            if (is_array($pendingHistory)) {
+                $pendingHistory[] = $this->buildHistoryEvent(UserMediaValidator::TYPE_SEAL, 'verify', $this->captureMetadata($data, 'firma', $currentSealPath), $previousSealPath);
+            }
+        } else {
+            $data['firma_verified_at'] = null;
+            $data['firma_verified_by'] = null;
+        }
+
         $previousSignaturePath = $existing['signature_path'] ?? null;
         $currentSignaturePath = $data['signature_path'] ?? $previousSignaturePath;
         $signatureHasChanged = $previousSignaturePath !== $currentSignaturePath;
@@ -897,6 +1047,17 @@ class UsuariosController extends BaseController
         if ($signatureHasChanged || ($existing && ($existing['signature_status'] ?? null) !== $data['signature_status'])) {
             $data['signature_status_updated_at'] = $timestamp;
             $data['signature_status_updated_by'] = $userId;
+        }
+
+        if ($data['signature_status'] === 'verified') {
+            $data['signature_verified_at'] = $timestamp;
+            $data['signature_verified_by'] = $userId;
+            if (is_array($pendingHistory)) {
+                $pendingHistory[] = $this->buildHistoryEvent(UserMediaValidator::TYPE_SIGNATURE, 'verify', $this->captureMetadata($data, 'signature', $currentSignaturePath), $previousSignaturePath);
+            }
+        } else {
+            $data['signature_verified_at'] = null;
+            $data['signature_verified_by'] = null;
         }
 
         return $data;
