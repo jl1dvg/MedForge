@@ -24,6 +24,7 @@
 
     const state = {
         leadStatuses: Array.isArray(bootstrapData.leadStatuses) ? bootstrapData.leadStatuses : [],
+        leadSources: Array.isArray(bootstrapData.leadSources) ? bootstrapData.leadSources : [],
         projectStatuses: Array.isArray(bootstrapData.projectStatuses) ? bootstrapData.projectStatuses : [],
         taskStatuses: Array.isArray(bootstrapData.taskStatuses) ? bootstrapData.taskStatuses : [],
         ticketStatuses: Array.isArray(bootstrapData.ticketStatuses) ? bootstrapData.ticketStatuses : [],
@@ -39,6 +40,14 @@
 
     const elements = {
         leadTableBody: root.querySelector('#crm-leads-table tbody'),
+        leadTableInfo: root.querySelector('#lead-table-info'),
+        leadPagination: root.querySelector('#lead-pagination'),
+        leadPageSize: root.querySelector('#lead-page-size'),
+        leadTableSearch: root.querySelector('#lead-table-search'),
+        leadSelectAll: root.querySelector('#lead-select-all'),
+        leadExportBtn: root.querySelector('#lead-export-btn'),
+        leadBulkActionsBtn: root.querySelector('#lead-bulk-actions-btn'),
+        leadReloadTable: root.querySelector('#lead-reload-table'),
         projectTableBody: root.querySelector('#crm-projects-table tbody'),
         taskTableBody: root.querySelector('#crm-tasks-table tbody'),
         ticketTableBody: root.querySelector('#crm-tickets-table tbody'),
@@ -48,6 +57,21 @@
         convertHelper: root.querySelector('#convert-helper'),
         convertSelected: root.querySelector('#convert-lead-selected'),
         convertSubmit: root.querySelector('#lead-convert-form button[type="submit"]'),
+        leadStatusSummary: root.querySelector('#lead-status-summary'),
+        leadSearchInput: root.querySelector('#lead-search'),
+        leadFilterStatus: root.querySelector('#lead-filter-status'),
+        leadFilterSource: root.querySelector('#lead-filter-source'),
+        leadFilterAssigned: root.querySelector('#lead-filter-assigned'),
+        leadClearFilters: root.querySelector('#lead-clear-filters'),
+        leadRefreshBtn: root.querySelector('#lead-refresh-btn'),
+        leadBulkStatus: root.querySelector('#lead-bulk-status'),
+        leadBulkSource: root.querySelector('#lead-bulk-source'),
+        leadBulkAssigned: root.querySelector('#lead-bulk-assigned'),
+        leadBulkDelete: root.querySelector('#lead-bulk-delete'),
+        leadBulkLost: root.querySelector('#lead-bulk-lost'),
+        leadBulkPublic: root.querySelector('#lead-bulk-public'),
+        leadBulkApply: root.querySelector('#lead-bulk-apply'),
+        leadBulkHelper: root.querySelector('#lead-bulk-helper'),
         projectForm: root.querySelector('#project-form'),
         taskForm: root.querySelector('#task-form'),
         ticketForm: root.querySelector('#ticket-form'),
@@ -100,6 +124,20 @@
         package: (window.bootstrap && elements.proposalPackageModal) ? new window.bootstrap.Modal(elements.proposalPackageModal) : null,
         code: (window.bootstrap && elements.proposalCodeModal) ? new window.bootstrap.Modal(elements.proposalCodeModal) : null,
     };
+
+    const leadFilters = {
+        search: '',
+        status: '',
+        source: '',
+        assigned: '',
+    };
+
+    const leadTableState = {
+        page: 1,
+        pageSize: 10,
+    };
+
+    const selectedLeads = new Set();
 
     state.leads = mapLeads(state.leads);
     state.proposals = mapProposals(state.proposals);
@@ -208,9 +246,11 @@
         return payload;
     }
 
-    function updateCounters() {
+    function updateCounters(visibleLeadsCount) {
         if (elements.leadsCount) {
-            elements.leadsCount.textContent = `Leads: ${state.leads.length}`;
+            const visible = typeof visibleLeadsCount === 'number' ? visibleLeadsCount : state.leads.length;
+            const total = state.leads.length;
+            elements.leadsCount.textContent = `Leads: ${visible}${visible !== total ? ` / ${total}` : ''}`;
         }
         if (elements.projectsCount) {
             elements.projectsCount.textContent = `Proyectos: ${state.projects.length}`;
@@ -327,23 +367,228 @@
         return state.tickets.find((ticket) => Number(ticket.id) === Number(id)) || null;
     }
 
+    function getFilteredLeads() {
+        const search = (leadFilters.search || '').toLowerCase();
+
+        return state.leads.filter((lead) => {
+            if (leadFilters.status) {
+                if (leadFilters.status === 'sin_estado') {
+                    if (lead.status) {
+                        return false;
+                    }
+                } else if ((lead.status || '') !== leadFilters.status) {
+                    return false;
+                }
+            }
+            if (leadFilters.source && (lead.source || '').toLowerCase() !== leadFilters.source.toLowerCase()) {
+                return false;
+            }
+            if (leadFilters.assigned && String(lead.assigned_to || '') !== String(leadFilters.assigned)) {
+                return false;
+            }
+            if (search) {
+                const haystack = [
+                    lead.name,
+                    lead.email,
+                    lead.phone,
+                    lead.source,
+                    lead.assigned_name,
+                    lead.hc_number,
+                ]
+                    .filter(Boolean)
+                    .map((value) => String(value).toLowerCase())
+                    .join(' ');
+                if (!haystack.includes(search)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }
+
+    function clampPage(totalItems) {
+        if (leadTableState.pageSize === -1) {
+            leadTableState.page = 1;
+            return;
+        }
+        const totalPages = Math.max(1, Math.ceil(totalItems / leadTableState.pageSize));
+        if (leadTableState.page > totalPages) {
+            leadTableState.page = totalPages;
+        }
+        if (leadTableState.page < 1) {
+            leadTableState.page = 1;
+        }
+    }
+
+    function getPaginatedLeads() {
+        const filtered = getFilteredLeads();
+        clampPage(filtered.length);
+        if (leadTableState.pageSize === -1) {
+            return { items: filtered, total: filtered.length, totalPages: 1 };
+        }
+        const start = (leadTableState.page - 1) * leadTableState.pageSize;
+        const end = start + leadTableState.pageSize;
+        const items = filtered.slice(start, end);
+        const totalPages = Math.max(1, Math.ceil(filtered.length / leadTableState.pageSize));
+        return { items, total: filtered.length, totalPages };
+    }
+
+    function renderPagination(totalPages) {
+        if (!elements.leadPagination) {
+            return;
+        }
+        clearContainer(elements.leadPagination);
+
+        const prev = document.createElement('li');
+        prev.className = `page-item ${leadTableState.page === 1 ? 'disabled' : ''}`;
+        const prevLink = document.createElement('a');
+        prevLink.className = 'page-link';
+        prevLink.href = '#';
+        prevLink.textContent = 'Anterior';
+        prevLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (leadTableState.page > 1) {
+                leadTableState.page -= 1;
+                renderLeads();
+            }
+        });
+        prev.appendChild(prevLink);
+        elements.leadPagination.appendChild(prev);
+
+        for (let page = 1; page <= totalPages; page += 1) {
+            const item = document.createElement('li');
+            item.className = `page-item ${leadTableState.page === page ? 'active' : ''}`;
+            const link = document.createElement('a');
+            link.className = 'page-link';
+            link.href = '#';
+            link.textContent = String(page);
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                leadTableState.page = page;
+                renderLeads();
+            });
+            item.appendChild(link);
+            elements.leadPagination.appendChild(item);
+        }
+
+        const next = document.createElement('li');
+        next.className = `page-item ${leadTableState.page === totalPages ? 'disabled' : ''}`;
+        const nextLink = document.createElement('a');
+        nextLink.className = 'page-link';
+        nextLink.href = '#';
+        nextLink.textContent = 'Siguiente';
+        nextLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (leadTableState.page < totalPages) {
+                leadTableState.page += 1;
+                renderLeads();
+            }
+        });
+        next.appendChild(nextLink);
+        elements.leadPagination.appendChild(next);
+    }
+
+    function renderLeadStatusSummary() {
+        if (!elements.leadStatusSummary) {
+            return;
+        }
+
+        clearContainer(elements.leadStatusSummary);
+
+        const counts = {};
+        const statuses = [...state.leadStatuses];
+
+        state.leads.forEach((lead) => {
+            const statusKey = lead.status || 'sin_estado';
+            counts[statusKey] = (counts[statusKey] || 0) + 1;
+            if (lead.status && !statuses.includes(lead.status)) {
+                statuses.push(lead.status);
+            }
+        });
+
+        const totalButton = document.createElement('button');
+        totalButton.type = 'button';
+        totalButton.className = `btn btn-sm ${leadFilters.status === '' ? 'btn-primary text-white' : 'btn-outline-secondary'} d-flex align-items-center gap-2`;
+        totalButton.dataset.statusFilter = '';
+        totalButton.innerHTML = `<span class="fw-600">Todos</span><span class="badge bg-light text-dark">${state.leads.length}</span>`;
+        elements.leadStatusSummary.appendChild(totalButton);
+
+        statuses.forEach((status) => {
+            const count = counts[status] || 0;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.statusFilter = status;
+            button.className = `btn btn-sm ${leadFilters.status === status ? 'btn-primary text-white' : 'btn-outline-secondary'} d-flex align-items-center gap-2`;
+            button.innerHTML = `<span class="fw-600">${titleize(status)}</span><span class="badge ${count ? 'bg-primary-light text-primary' : 'bg-light text-muted'}">${count}</span>`;
+            elements.leadStatusSummary.appendChild(button);
+        });
+
+        if (counts.sin_estado && counts.sin_estado > 0 && !statuses.includes('sin_estado')) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.statusFilter = 'sin_estado';
+            button.className = `btn btn-sm ${leadFilters.status === 'sin_estado' ? 'btn-primary text-white' : 'btn-outline-secondary'} d-flex align-items-center gap-2`;
+            button.innerHTML = `<span class="fw-600">Sin estado</span><span class="badge bg-light text-dark">${counts.sin_estado}</span>`;
+            elements.leadStatusSummary.appendChild(button);
+        }
+    }
+
+    function syncLeadFiltersUI() {
+        if (elements.leadSearchInput) {
+            elements.leadSearchInput.value = leadFilters.search || '';
+        }
+        if (elements.leadFilterStatus) {
+            elements.leadFilterStatus.value = leadFilters.status || '';
+        }
+        if (elements.leadFilterSource) {
+            elements.leadFilterSource.value = leadFilters.source || '';
+        }
+        if (elements.leadFilterAssigned) {
+            elements.leadFilterAssigned.value = leadFilters.assigned || '';
+        }
+    }
+
     function renderLeads() {
         if (!elements.leadTableBody) {
             return;
         }
         clearContainer(elements.leadTableBody);
 
-        if (!state.leads.length) {
+        const { items: leadsToRender, total, totalPages } = getPaginatedLeads();
+
+        if (!leadsToRender.length) {
             const emptyRow = document.createElement('tr');
             const cell = document.createElement('td');
-            cell.colSpan = 7;
+            cell.colSpan = 10;
             cell.className = 'text-center text-muted py-4';
             cell.textContent = 'Aún no se han registrado leads.';
             emptyRow.appendChild(cell);
             elements.leadTableBody.appendChild(emptyRow);
         } else {
-            state.leads.forEach((lead) => {
+            leadsToRender.forEach((lead) => {
                 const row = document.createElement('tr');
+
+                const selectCell = document.createElement('td');
+                selectCell.className = 'text-center';
+                const selectInput = document.createElement('input');
+                selectInput.type = 'checkbox';
+                selectInput.className = 'form-check-input js-lead-select';
+                selectInput.dataset.leadId = lead.id;
+                selectInput.checked = selectedLeads.has(String(lead.id));
+                selectInput.addEventListener('change', () => {
+                    if (selectInput.checked) {
+                        selectedLeads.add(String(lead.id));
+                    } else {
+                        selectedLeads.delete(String(lead.id));
+                    }
+                    syncLeadSelectionUI();
+                });
+                selectCell.appendChild(selectInput);
+                row.appendChild(selectCell);
+
+                const numberCell = document.createElement('td');
+                numberCell.innerHTML = `<strong>${lead.id || '-'}</strong>`;
+                row.appendChild(numberCell);
 
                 const nameCell = document.createElement('td');
                 const nameStrong = document.createElement('strong');
@@ -385,6 +630,25 @@
                 sourceCell.textContent = lead.source ? titleize(lead.source) : '-';
                 row.appendChild(sourceCell);
 
+                const tagsCell = document.createElement('td');
+                if (Array.isArray(lead.tags) && lead.tags.length) {
+                    lead.tags.slice(0, 3).forEach((tag) => {
+                        const badge = document.createElement('span');
+                        badge.className = 'badge bg-light text-muted border me-1';
+                        badge.textContent = limitText(tag, 18);
+                        tagsCell.appendChild(badge);
+                    });
+                    if (lead.tags.length > 3) {
+                        const extra = document.createElement('span');
+                        extra.className = 'badge bg-secondary';
+                        extra.textContent = `+${lead.tags.length - 3}`;
+                        tagsCell.appendChild(extra);
+                    }
+                } else {
+                    tagsCell.innerHTML = '<span class="text-muted">-</span>';
+                }
+                row.appendChild(tagsCell);
+
                 const assignedCell = document.createElement('td');
                 assignedCell.textContent = lead.assigned_name || 'Sin asignar';
                 row.appendChild(assignedCell);
@@ -413,7 +677,32 @@
 
         populateLeadSelects();
         syncConvertFormSelection();
-        updateCounters();
+        renderLeadStatusSummary();
+        renderPagination(totalPages);
+        updateCounters(total);
+        syncLeadSelectionUI();
+        renderLeadInfo(total, leadsToRender.length);
+    }
+
+    function renderLeadInfo(total, visible) {
+        if (!elements.leadTableInfo) {
+            return;
+        }
+        const pageSizeText = leadTableState.pageSize === -1 ? 'todos' : leadTableState.pageSize;
+        elements.leadTableInfo.textContent = `Mostrando ${visible} de ${total} leads (página ${leadTableState.page}, ${pageSizeText} por página)`;
+    }
+
+    function syncLeadSelectionUI() {
+        if (elements.leadSelectAll) {
+            const paginated = getPaginatedLeads();
+            const allSelected = paginated.items.length > 0 && paginated.items.every((lead) => selectedLeads.has(String(lead.id)));
+            elements.leadSelectAll.checked = allSelected;
+            elements.leadSelectAll.indeterminate = !allSelected && paginated.items.some((lead) => selectedLeads.has(String(lead.id)));
+        }
+        if (elements.leadBulkHelper) {
+            const count = selectedLeads.size;
+            elements.leadBulkHelper.textContent = count ? `${count} leads seleccionados.` : 'Selecciona al menos un lead para aplicar los cambios.';
+        }
     }
 
     function renderProjects() {
@@ -789,6 +1078,8 @@
         return request('/crm/leads')
             .then((data) => {
                 state.leads = mapLeads(data.data);
+                selectedLeads.clear();
+                leadTableState.page = 1;
                 renderLeads();
             })
             .catch((error) => {
@@ -1386,6 +1677,206 @@
                     console.error('No se pudo crear el lead', error);
                     showToast('error', error.message || 'No se pudo crear el lead');
                 });
+        });
+    }
+
+    if (elements.leadStatusSummary) {
+        elements.leadStatusSummary.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-status-filter]');
+            if (!button) {
+                return;
+            }
+            const status = button.dataset.statusFilter || '';
+            leadFilters.status = status === 'sin_estado' ? 'sin_estado' : status;
+            syncLeadFiltersUI();
+            renderLeads();
+        });
+    }
+
+    if (elements.leadSearchInput) {
+        let searchTimeout;
+        elements.leadSearchInput.addEventListener('input', () => {
+            const value = elements.leadSearchInput.value || '';
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                leadFilters.search = value.trim();
+                renderLeads();
+            }, 200);
+        });
+    }
+
+    if (elements.leadFilterStatus) {
+        elements.leadFilterStatus.addEventListener('change', () => {
+            leadFilters.status = elements.leadFilterStatus.value || '';
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadFilterSource) {
+        elements.leadFilterSource.addEventListener('change', () => {
+            leadFilters.source = elements.leadFilterSource.value || '';
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadFilterAssigned) {
+        elements.leadFilterAssigned.addEventListener('change', () => {
+            leadFilters.assigned = elements.leadFilterAssigned.value || '';
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadClearFilters) {
+        elements.leadClearFilters.addEventListener('click', () => {
+            leadFilters.search = '';
+            leadFilters.status = '';
+            leadFilters.source = '';
+            leadFilters.assigned = '';
+            syncLeadFiltersUI();
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadRefreshBtn) {
+        elements.leadRefreshBtn.addEventListener('click', () => {
+            loadLeads();
+        });
+    }
+
+    if (elements.leadTableSearch) {
+        let searchTimeout;
+        elements.leadTableSearch.addEventListener('input', () => {
+            const value = elements.leadTableSearch.value || '';
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                leadFilters.search = value.trim();
+                leadTableState.page = 1;
+                renderLeads();
+            }, 150);
+        });
+    }
+
+    if (elements.leadPageSize) {
+        elements.leadPageSize.addEventListener('change', () => {
+            const value = Number(elements.leadPageSize.value);
+            leadTableState.pageSize = Number.isNaN(value) ? 10 : value;
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadSelectAll) {
+        elements.leadSelectAll.addEventListener('change', () => {
+            const paginated = getPaginatedLeads();
+            paginated.items.forEach((lead) => {
+                if (elements.leadSelectAll.checked) {
+                    selectedLeads.add(String(lead.id));
+                } else {
+                    selectedLeads.delete(String(lead.id));
+                }
+            });
+            syncLeadSelectionUI();
+            renderLeads();
+        });
+    }
+
+    if (elements.leadReloadTable) {
+        elements.leadReloadTable.addEventListener('click', () => {
+            leadTableState.page = 1;
+            renderLeads();
+        });
+    }
+
+    if (elements.leadExportBtn) {
+        elements.leadExportBtn.addEventListener('click', () => {
+            const data = getFilteredLeads();
+            const csv = ['"ID","Nombre","Correo","Teléfono","Estado","Origen","Asignado"'];
+            data.forEach((lead) => {
+                csv.push([
+                    lead.id,
+                    escapeHtml(lead.name || ''),
+                    escapeHtml(lead.email || ''),
+                    escapeHtml(lead.phone || ''),
+                    escapeHtml(titleize(lead.status || '')),
+                    escapeHtml(titleize(lead.source || '')),
+                    escapeHtml(lead.assigned_name || ''),
+                ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','));
+            });
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'leads.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast('success', 'Exportación generada');
+        });
+    }
+
+    function applyBulkChanges() {
+        if (!selectedLeads.size) {
+            showToast('warning', 'Selecciona al menos un lead');
+            return;
+        }
+
+        const status = elements.leadBulkStatus ? elements.leadBulkStatus.value : '';
+        const source = elements.leadBulkSource ? elements.leadBulkSource.value : '';
+        const assigned = elements.leadBulkAssigned ? elements.leadBulkAssigned.value : '';
+        const shouldDelete = elements.leadBulkDelete && elements.leadBulkDelete.checked;
+        const markLost = elements.leadBulkLost && elements.leadBulkLost.checked;
+
+        state.leads = state.leads.reduce((acc, lead) => {
+            const isSelected = selectedLeads.has(String(lead.id));
+            if (!isSelected) {
+                acc.push(lead);
+                return acc;
+            }
+
+            if (shouldDelete) {
+                return acc;
+            }
+
+            const updated = { ...lead };
+            if (status) {
+                updated.status = status;
+            }
+            if (source) {
+                updated.source = source;
+            }
+            if (assigned) {
+                updated.assigned_to = assigned;
+                const user = state.assignableUsers.find((u) => String(u.id) === String(assigned));
+                updated.assigned_name = user ? user.nombre : updated.assigned_name;
+            }
+            if (markLost) {
+                updated.status = 'lost';
+            }
+
+            acc.push(updated);
+            return acc;
+        }, []);
+
+        selectedLeads.clear();
+        if (elements.leadBulkDelete) elements.leadBulkDelete.checked = false;
+        if (elements.leadBulkLost) elements.leadBulkLost.checked = false;
+        if (elements.leadBulkPublic) elements.leadBulkPublic.checked = false;
+        if (elements.leadBulkStatus) elements.leadBulkStatus.value = '';
+        if (elements.leadBulkSource) elements.leadBulkSource.value = '';
+        if (elements.leadBulkAssigned) elements.leadBulkAssigned.value = '';
+
+        renderLeads();
+        showToast('success', 'Acciones masivas aplicadas');
+    }
+
+    if (elements.leadBulkApply) {
+        elements.leadBulkApply.addEventListener('click', () => {
+            applyBulkChanges();
         });
     }
 
