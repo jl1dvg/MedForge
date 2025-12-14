@@ -9,10 +9,10 @@ class ProtocoloHelper
     public static function buscarUsuarioPorNombre(PDO $db, string $nombreCompleto): ?array
     {
         $nombreCompletoNormalizado = trim($nombreCompleto);
-        $sql = "SELECT * FROM users WHERE nombre COLLATE utf8mb4_unicode_ci LIKE ?";
+        $sql = "SELECT * FROM users WHERE (full_name COLLATE utf8mb4_unicode_ci LIKE ? OR nombre COLLATE utf8mb4_unicode_ci LIKE ?)";
         $stmt = $db->prepare($sql);
         $param = "%" . $nombreCompletoNormalizado . "%";
-        $stmt->execute([$param]);
+        $stmt->execute([$param, $param]);
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 

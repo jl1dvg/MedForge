@@ -37,8 +37,34 @@ class SolicitudDataFormatter
         self::normalizeScalarField($solicitud, 'doctor');
         self::normalizeScalarField($solicitud, 'cedula');
         self::normalizeScalarField($solicitud, 'firma');
+        self::normalizeScalarField($solicitud, 'signature_path');
         self::normalizeScalarField($solicitud, 'procedimiento');
         self::normalizeScalarField($solicitud, 'ojo');
+
+        $doctorFullName = self::buildStructuredFullName([
+            $solicitud['doctor_first_name'] ?? null,
+            $solicitud['doctor_middle_name'] ?? null,
+            $solicitud['doctor_last_name'] ?? null,
+            $solicitud['doctor_second_last_name'] ?? null,
+        ]);
+
+        if ($doctorFullName !== null) {
+            $solicitud['doctor_full_name'] = $doctorFullName;
+
+            if (empty($solicitud['doctor'])) {
+                $solicitud['doctor'] = $doctorFullName;
+            }
+        }
+
+        $preferredSignature = self::firstNonEmpty([
+            $solicitud['signature_path'] ?? null,
+            $solicitud['firma'] ?? null,
+        ]);
+
+        if ($preferredSignature !== null) {
+            $solicitud['signature_path'] = $preferredSignature;
+            $solicitud['firma'] = $preferredSignature;
+        }
 
         $normalized['paciente'] = $paciente;
         $normalized['solicitud'] = $solicitud;
@@ -521,6 +547,26 @@ class SolicitudDataFormatter
         }
 
         return $age . ' años';
+    }
+
+    /**
+     * @param array<int, mixed> $parts
+     */
+    private static function buildStructuredFullName(array $parts): ?string
+    {
+        $normalized = array_values(array_filter(array_map([self::class, 'stringifyValue'], $parts), static function ($value) {
+            if ($value === null) {
+                return false;
+            }
+
+            return trim((string) $value) !== '';
+        }));
+
+        if ($normalized === []) {
+            return null;
+        }
+
+        return implode(' ', array_map(static fn($value) => trim((string) $value), $normalized));
     }
 
     private static function buildFullName(array $paciente): ?string
