@@ -17,8 +17,151 @@
         "'": '&#39;',
     };
 
+    const ACCEPTED_UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+    const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
+
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char] ?? char);
+    }
+
+    function setLiveStatus(message) {
+        const region = document.getElementById('uploadA11yStatus');
+        if (region) {
+            region.textContent = message || '';
+        }
+    }
+
+    function setupUploadHandler(options) {
+        const input = document.getElementById(options.inputId);
+        if (!input || typeof options.onLoad !== 'function') {
+            return null;
+        }
+
+        const dropZone = options.dropZoneSelector ? document.querySelector(options.dropZoneSelector) : null;
+        const progressContainer = options.progressSelector ? document.querySelector(options.progressSelector) : null;
+        const progressBar = progressContainer?.querySelector('.progress-bar') || null;
+        const errorBox = options.errorSelector ? document.querySelector(options.errorSelector) : null;
+        const previewLabel = options.previewSelector ? document.querySelector(options.previewSelector) : null;
+
+        const resetProgress = () => {
+            if (progressContainer && progressBar) {
+                progressContainer.classList.add('d-none');
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
+            }
+        };
+
+        const setProgress = (percent) => {
+            if (!progressContainer || !progressBar) {
+                return;
+            }
+            const value = Math.min(100, Math.max(0, percent));
+            progressContainer.classList.remove('d-none');
+            progressBar.style.width = `${value}%`;
+            progressBar.textContent = `${Math.round(value)}%`;
+            if (value >= 100) {
+                setTimeout(resetProgress, 800);
+            }
+        };
+
+        const setError = (message) => {
+            if (errorBox) {
+                errorBox.textContent = message || '';
+                errorBox.classList.toggle('d-none', !message);
+            }
+            setLiveStatus(message || '');
+        };
+
+        const handleFile = (file) => {
+            setError('');
+            if (!file) {
+                return;
+            }
+
+            if (file.size > MAX_UPLOAD_SIZE) {
+                setError('El archivo supera el límite de 5 MB.');
+                return;
+            }
+
+            if (file.type && !ACCEPTED_UPLOAD_TYPES.includes(file.type)) {
+                setError('Formato no permitido. Usa PNG, JPG o WebP.');
+                return;
+            }
+
+            if (previewLabel) {
+                previewLabel.textContent = `Preparando vista previa de ${file.name}`;
+            }
+            setLiveStatus(`Cargando archivo ${file.name}`);
+            const reader = new FileReader();
+            reader.onprogress = (event) => {
+                if (event.lengthComputable) {
+                    const percent = (event.loaded / event.total) * 100;
+                    setProgress(percent);
+                }
+            };
+            reader.onerror = () => {
+                setError('No se pudo leer el archivo.');
+                resetProgress();
+            };
+            reader.onload = () => {
+                setProgress(100);
+                options.onLoad(file, reader.result);
+                setLiveStatus(`Vista previa lista para ${file.name}`);
+                if (previewLabel) {
+                    previewLabel.textContent = `Vista previa lista: ${file.name}`;
+                }
+            };
+
+            reader.readAsDataURL(file);
+        };
+
+        input.addEventListener('change', () => handleFile(input.files && input.files[0]));
+
+        if (dropZone) {
+            ['dragenter', 'dragover'].forEach((eventName) => {
+                dropZone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    dropZone.classList.add('drop-zone--active');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach((eventName) => {
+                dropZone.addEventListener(eventName, (event) => {
+                    event.preventDefault();
+                    dropZone.classList.remove('drop-zone--active');
+                });
+            });
+
+            dropZone.addEventListener('drop', (event) => {
+                const file = event.dataTransfer?.files?.[0];
+                handleFile(file);
+            });
+
+            dropZone.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    input.click();
+                }
+            });
+        }
+
+        return {
+            openPicker() {
+                input.click();
+            },
+            handleFile,
+        };
+    }
+
+    function focusAlert(alertElement) {
+        if (!alertElement) {
+            return;
+        }
+        alertElement.setAttribute('role', 'alert');
+        if (!alertElement.hasAttribute('tabindex')) {
+            alertElement.setAttribute('tabindex', '-1');
+        }
+        alertElement.focus();
     }
 
     class CanvasSignaturePad {
@@ -160,26 +303,25 @@
             });
         }
 
-        if (config.loadInputId) {
-            const uploadInput = document.getElementById(config.loadInputId);
-            const loadButton = document.querySelector(`[data-action="load-from-file"][data-input="${config.loadInputId}"]`);
-            if (loadButton && uploadInput) {
-                loadButton.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    uploadInput.click();
-                });
-                uploadInput.addEventListener('change', () => {
-                    const file = uploadInput.files && uploadInput.files[0];
-                    if (!file) {
-                        return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        pad.loadFromDataUrl(reader.result);
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
+        const uploadHandler = config.loadInputId
+            ? setupUploadHandler({
+                  inputId: config.loadInputId,
+                  dropZoneSelector: `[data-drop-zone="${config.loadInputId}"]`,
+                  progressSelector: `[data-upload-progress="${config.loadInputId}"]`,
+                  errorSelector: `[data-upload-error="${config.loadInputId}"]`,
+                  previewSelector: `[data-upload-preview="${config.loadInputId}"]`,
+                  onLoad: (_file, dataUrl) => pad.loadFromDataUrl(dataUrl),
+              })
+            : null;
+
+        if (config.loadInputId && uploadHandler) {
+            const loadButton = document.querySelector(
+                `[data-action="load-from-file"][data-input="${config.loadInputId}"]`
+            );
+            loadButton?.addEventListener('click', (event) => {
+                event.preventDefault();
+                uploadHandler.openPicker();
+            });
         }
 
         return {
@@ -275,36 +417,37 @@
             });
         }
 
-        if (config.loadInputId) {
-            const uploadInput = document.getElementById(config.loadInputId);
-            const loadButton = document.querySelector(`[data-action="load-from-file"][data-input="${config.loadInputId}"]`);
-            if (uploadInput && loadButton) {
-                loadButton.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    uploadInput.click();
-                });
-                uploadInput.addEventListener('change', () => {
-                    const file = uploadInput.files && uploadInput.files[0];
-                    if (!file) {
-                        return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const image = new Image();
-                        image.onload = () => {
-                            canvas.width = image.width;
-                            canvas.height = image.height;
-                            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-                            hiddenInput.value = canvas.toDataURL('image/png');
-                            canvas.classList.remove('d-none');
-                            video.classList.add('d-none');
-                            hasCapture = true;
-                        };
-                        image.src = reader.result;
-                    };
-                    reader.readAsDataURL(file);
-                });
-            }
+        const uploadHandler = config.loadInputId
+            ? setupUploadHandler({
+                  inputId: config.loadInputId,
+                  dropZoneSelector: `[data-drop-zone="${config.loadInputId}"]`,
+                  progressSelector: `[data-upload-progress="${config.loadInputId}"]`,
+                  errorSelector: `[data-upload-error="${config.loadInputId}"]`,
+                  previewSelector: `[data-upload-preview="${config.loadInputId}"]`,
+                  onLoad: (_file, dataUrl) => {
+                      const image = new Image();
+                      image.onload = () => {
+                          canvas.width = image.width;
+                          canvas.height = image.height;
+                          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+                          hiddenInput.value = canvas.toDataURL('image/png');
+                          canvas.classList.remove('d-none');
+                          video.classList.add('d-none');
+                          hasCapture = true;
+                      };
+                      image.src = dataUrl;
+                  },
+              })
+            : null;
+
+        if (config.loadInputId && uploadHandler) {
+            const loadButton = document.querySelector(
+                `[data-action="load-from-file"][data-input="${config.loadInputId}"]`
+            );
+            loadButton?.addEventListener('click', (event) => {
+                event.preventDefault();
+                uploadHandler.openPicker();
+            });
         }
 
         return {
@@ -337,6 +480,9 @@
     }
 
     ready(function () {
+        const validationAlert = document.getElementById('validationErrors');
+        validationAlert?.focus();
+
         const stepOrder = ['lookup', 'register', 'checkin'];
         const stepperBadges = Array.from(document.querySelectorAll('#verificationStepper [data-step]'));
         const stepPanels = Array.from(document.querySelectorAll('.wizard-panel[data-step-panel]'));
@@ -856,6 +1002,7 @@
                     alertBox.className = 'alert alert-danger';
                     alertBox.textContent = data.message ? String(data.message) : 'No se pudo validar la identidad del paciente.';
                     consentWrapper?.classList.add('d-none');
+                    focusAlert(alertBox);
                     return;
                 }
 
@@ -874,6 +1021,7 @@
 
                 alertBox.className = `alert ${statusClass}`;
                 alertBox.innerHTML = `<strong>${statusLabel}</strong><br>${signatureScore} · ${faceScore}`;
+                focusAlert(alertBox);
 
                 if (data.consentDocument) {
                     consentWrapper?.classList.remove('d-none');
@@ -894,6 +1042,7 @@
                     verificationResult.classList.remove('d-none');
                     alertBox.className = 'alert alert-danger';
                     alertBox.textContent = 'Ocurrió un error inesperado al verificar la identidad.';
+                    focusAlert(alertBox);
                 }
             } finally {
                 submitButton && (submitButton.disabled = false);

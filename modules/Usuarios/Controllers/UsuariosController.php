@@ -13,6 +13,7 @@ use PDO;
 
 class UsuariosController extends BaseController
 {
+    private const FORM_SCRIPTS = ['js/modules/user-media-upload.js'];
     private const MEDIA_TYPES = [
         'firma' => [
             'input' => 'firma_file',
@@ -109,6 +110,7 @@ class UsuariosController extends BaseController
             ],
             'errors' => [],
             'warnings' => [],
+            'scripts' => self::FORM_SCRIPTS,
         ]);
     }
 
@@ -138,6 +140,7 @@ class UsuariosController extends BaseController
                 'usuario' => $formData,
                 'errors' => $errors,
                 'warnings' => $warnings,
+                'scripts' => self::FORM_SCRIPTS,
             ]);
             return;
         }
@@ -189,6 +192,7 @@ class UsuariosController extends BaseController
             'usuario' => $usuario,
             'errors' => [],
             'warnings' => [],
+            'scripts' => self::FORM_SCRIPTS,
         ]);
     }
 
@@ -233,6 +237,7 @@ class UsuariosController extends BaseController
                 'usuario' => $usuario,
                 'errors' => $errors,
                 'warnings' => $warnings,
+                'scripts' => self::FORM_SCRIPTS,
             ]);
             return;
         }

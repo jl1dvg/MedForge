@@ -20,12 +20,14 @@
 <section class="content">
     <div class="row">
         <div class="col-xxl-7 col-xl-8">
+            <div id="uploadA11yStatus" class="visually-hidden" aria-live="polite"></div>
+
             <?php if (!empty($status) && $status === 'stored'): ?>
-                <div class="alert alert-success"><i class="mdi mdi-check-circle"></i> La certificación se guardó correctamente.</div>
+                <div class="alert alert-success" role="alert" aria-live="assertive"><i class="mdi mdi-check-circle"></i> La certificación se guardó correctamente.</div>
             <?php endif; ?>
 
             <?php if (!empty($errors)): ?>
-                <div class="alert alert-danger">
+                <div class="alert alert-danger" role="alert" aria-live="assertive" tabindex="-1" id="validationErrors">
                     <strong>Revise los datos ingresados:</strong>
                     <ul class="mb-0 mt-2">
                         <?php foreach ($errors as $message): ?>
@@ -76,7 +78,7 @@
                             <h5 class="mb-0">2. Completar certificación biométrica</h5>
                             <span class="badge bg-primary" id="registrationStatusBadge">Nuevo registro</span>
                         </div>
-                        <div class="alert alert-warning d-none" id="registrationMissingData"></div>
+                        <div class="alert alert-warning d-none" id="registrationMissingData" role="alert" aria-live="polite"></div>
                         <form id="patientCertificationForm" action="/pacientes/certificaciones" method="post" enctype="multipart/form-data">
                             <input type="hidden" name="patient_id" id="registrationPatientId" value="<?= htmlspecialchars($old['patient_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                             <div class="row g-3">
@@ -109,26 +111,38 @@
                                     <label class="form-label mb-0">Firma manuscrita del paciente</label>
                                     <span class="badge bg-secondary" data-field-state="signature">Pendiente</span>
                                 </div>
-                                <div class="signature-pad" data-target="signature">
+                                <div class="signature-pad drop-zone" data-target="signature" data-drop-zone="signatureUpload" tabindex="0" aria-label="Zona para firma del paciente" aria-describedby="signatureGuidance">
                                     <canvas id="patientSignatureCanvas" width="520" height="220" class="border rounded bg-white w-100"></canvas>
                                     <div class="mt-2 d-flex gap-2 flex-wrap">
                                         <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-signature">Limpiar</button>
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="signatureUpload">Cargar imagen</button>
                                         <input type="file" accept="image/*" class="d-none" id="signatureUpload">
                                     </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="signatureUpload" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="text-danger small mt-2 d-none" data-upload-error="signatureUpload" role="alert"></div>
+                                    <small class="text-muted d-block mt-2" id="signatureGuidance">Formatos recomendados: JPG, PNG o WebP. Tamaño sugerido: 800x400 px. Máximo 5 MB. Puede arrastrar y soltar la imagen o usar los botones.</small>
+                                    <small class="text-muted d-block" data-upload-preview="signatureUpload"></small>
                                 </div>
                                 <input type="hidden" name="signature_data" id="signatureDataField">
                             </div>
 
                             <div class="mb-4">
                                 <label class="form-label">Firma del documento (opcional)</label>
-                                <div class="signature-pad" data-target="document-signature">
+                                <div class="signature-pad drop-zone" data-target="document-signature" data-drop-zone="documentSignatureUpload" tabindex="0" aria-label="Zona para firma en documento" aria-describedby="documentSignatureGuidance">
                                     <canvas id="documentSignatureCanvas" width="520" height="160" class="border rounded bg-white w-100"></canvas>
                                     <div class="mt-2 d-flex gap-2 flex-wrap">
                                         <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-document-signature">Limpiar</button>
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="documentSignatureUpload">Cargar imagen</button>
                                         <input type="file" accept="image/*" class="d-none" id="documentSignatureUpload">
                                     </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="documentSignatureUpload" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="text-danger small mt-2 d-none" data-upload-error="documentSignatureUpload" role="alert"></div>
+                                    <small class="text-muted d-block mt-2" id="documentSignatureGuidance">Usaremos esta firma en el documento de consentimiento. Formatos: JPG, PNG o WebP. Tamaño sugerido: 800x400 px. Máximo 5 MB. Arrastre el archivo o seleccione una imagen.</small>
+                                    <small class="text-muted d-block" data-upload-preview="documentSignatureUpload"></small>
                                 </div>
                                 <input type="hidden" name="document_signature_data" id="documentSignatureDataField">
                             </div>
@@ -152,20 +166,25 @@
                                     <label class="form-label mb-0">Captura facial del paciente</label>
                                     <span class="badge bg-secondary" data-field-state="face">Pendiente</span>
                                 </div>
-                                <div class="face-capture" data-target="face">
-                                    <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
-                                        <video id="faceCaptureVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
-                                        <canvas id="faceCaptureCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
-                                    </div>
+                                  <div class="face-capture drop-zone" data-target="face" data-drop-zone="faceUpload" tabindex="0" aria-label="Zona para captura de rostro" aria-describedby="faceGuidance">
+                                      <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
+                                          <video id="faceCaptureVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
+                                          <canvas id="faceCaptureCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
+                                      </div>
                                     <div class="mt-2 d-flex flex-wrap gap-2">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="start-camera">Iniciar cámara</button>
                                         <button class="btn btn-sm btn-outline-success" type="button" data-action="capture-face">Capturar</button>
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-face">Resetear</button>
-                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="faceUpload">Cargar imagen</button>
-                                        <input type="file" accept="image/*" class="d-none" id="faceUpload">
-                                    </div>
-                                    <small class="text-muted d-block mt-2">Para mayor precisión procure buena iluminación y que el rostro ocupe la mayor parte del encuadre.</small>
-                                </div>
+                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-face">Resetear</button>
+                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="faceUpload">Cargar imagen</button>
+                                          <input type="file" accept="image/*" class="d-none" id="faceUpload">
+                                      </div>
+                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="faceUpload" aria-hidden="true">
+                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                      </div>
+                                      <div class="text-danger small mt-2 d-none" data-upload-error="faceUpload" role="alert"></div>
+                                      <small class="text-muted d-block mt-2" id="faceGuidance">Para mayor precisión, use una imagen iluminada de 960x720 px aprox. Formatos: JPG, PNG o WebP. Máximo 5 MB. Puede arrastrar el archivo o cargarlo manualmente.</small>
+                                      <small class="text-muted d-block" data-upload-preview="faceUpload"></small>
+                                  </div>
                                 <input type="hidden" name="face_image" id="faceImageDataField">
                             </div>
 
@@ -196,36 +215,48 @@
                                 </div>
                             </div>
 
-                            <div class="mb-4" id="checkinFaceCapture">
-                                <label class="form-label d-block">Captura facial (momento actual)<span class="text-danger">*</span></label>
-                                <div class="face-capture" data-target="verification-face">
-                                    <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
-                                        <video id="verificationFaceVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
-                                        <canvas id="verificationFaceCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
-                                    </div>
+                              <div class="mb-4" id="checkinFaceCapture">
+                                  <label class="form-label d-block">Captura facial (momento actual)<span class="text-danger">*</span></label>
+                                  <div class="face-capture drop-zone" data-target="verification-face" data-drop-zone="verificationFaceUpload" tabindex="0" aria-label="Zona para captura facial de verificación" aria-describedby="verificationFaceGuidance">
+                                      <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
+                                          <video id="verificationFaceVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
+                                          <canvas id="verificationFaceCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
+                                      </div>
                                     <div class="mt-2 d-flex flex-wrap gap-2">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="start-verification-camera">Iniciar cámara</button>
                                         <button class="btn btn-sm btn-outline-success" type="button" data-action="capture-verification-face">Capturar</button>
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-verification-face">Resetear</button>
-                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationFaceUpload">Cargar imagen</button>
-                                        <input type="file" accept="image/*" class="d-none" id="verificationFaceUpload">
-                                    </div>
-                                </div>
-                                <input type="hidden" name="face_image" id="verificationFaceDataField">
-                            </div>
+                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-verification-face">Resetear</button>
+                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationFaceUpload">Cargar imagen</button>
+                                          <input type="file" accept="image/*" class="d-none" id="verificationFaceUpload">
+                                      </div>
+                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationFaceUpload" aria-hidden="true">
+                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                      </div>
+                                      <div class="text-danger small mt-2 d-none" data-upload-error="verificationFaceUpload" role="alert"></div>
+                                      <small class="text-muted d-block mt-2" id="verificationFaceGuidance">Arrastre una foto reciente o capture desde la cámara. Formatos: JPG, PNG o WebP. Tamaño sugerido: 960x720 px. Máximo 5 MB.</small>
+                                      <small class="text-muted d-block" data-upload-preview="verificationFaceUpload"></small>
+                                  </div>
+                                  <input type="hidden" name="face_image" id="verificationFaceDataField">
+                              </div>
 
-                            <div class="mb-4 d-none" id="checkinSignatureCapture">
-                                <label class="form-label d-block">Firma actual del paciente<span class="text-danger">*</span></label>
-                                <div class="signature-pad" data-target="verification-signature">
-                                    <canvas id="verificationSignatureCanvas" width="520" height="180" class="border rounded bg-white w-100"></canvas>
-                                    <div class="mt-2 d-flex gap-2 flex-wrap">
-                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-verification-signature">Limpiar</button>
-                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationSignatureUpload">Cargar imagen</button>
-                                        <input type="file" accept="image/*" class="d-none" id="verificationSignatureUpload">
-                                    </div>
-                                </div>
-                                <input type="hidden" name="signature_data" id="verificationSignatureDataField">
-                            </div>
+                              <div class="mb-4 d-none" id="checkinSignatureCapture">
+                                  <label class="form-label d-block">Firma actual del paciente<span class="text-danger">*</span></label>
+                                  <div class="signature-pad drop-zone" data-target="verification-signature" data-drop-zone="verificationSignatureUpload" tabindex="0" aria-label="Zona para firma de verificación" aria-describedby="verificationSignatureGuidance">
+                                      <canvas id="verificationSignatureCanvas" width="520" height="180" class="border rounded bg-white w-100"></canvas>
+                                      <div class="mt-2 d-flex gap-2 flex-wrap">
+                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-verification-signature">Limpiar</button>
+                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationSignatureUpload">Cargar imagen</button>
+                                          <input type="file" accept="image/*" class="d-none" id="verificationSignatureUpload">
+                                      </div>
+                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationSignatureUpload" aria-hidden="true">
+                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                      </div>
+                                      <div class="text-danger small mt-2 d-none" data-upload-error="verificationSignatureUpload" role="alert"></div>
+                                      <small class="text-muted d-block mt-2" id="verificationSignatureGuidance">Si no hay plantilla facial disponible, suba o dibuje la firma actual. Formatos: JPG, PNG o WebP. Tamaño sugerido: 800x400 px. Máximo 5 MB.</small>
+                                      <small class="text-muted d-block" data-upload-preview="verificationSignatureUpload"></small>
+                                  </div>
+                                  <input type="hidden" name="signature_data" id="verificationSignatureDataField">
+                              </div>
 
                             <div class="d-flex justify-content-between align-items-center">
                                 <button type="button" class="btn btn-outline-secondary" data-action="back-to-registration"><i class="mdi mdi-chevron-left"></i> Volver al registro</button>
