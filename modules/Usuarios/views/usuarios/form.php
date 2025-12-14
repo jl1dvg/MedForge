@@ -11,8 +11,6 @@ $usuario = $usuario ?? [];
 $errors = $errors ?? [];
 $warnings = $warnings ?? [];
 $selectedPermissions = $selectedPermissions ?? [];
-$mediaHistory = $mediaHistory ?? [];
-$restorableMedia = $restorableMedia ?? ['seal' => [], 'signature' => []];
 
 if (!function_exists('usuarios_form_old')) {
     function usuarios_form_old(array $usuario, string $key, string $default = ''): string
@@ -62,6 +60,7 @@ if (!function_exists('usuarios_permission_id')) {
                     <h4 class="box-title">Datos del usuario</h4>
                 </div>
                 <div class="box-body">
+                    <div id="userUploadA11yStatus" class="visually-hidden" aria-live="polite"></div>
                     <form action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8'); ?>" method="POST" enctype="multipart/form-data">
                         <?php if (!empty($warnings)): ?>
                             <div class="alert alert-warning">
@@ -71,6 +70,11 @@ if (!function_exists('usuarios_permission_id')) {
                                         <li><?= htmlspecialchars($warning, ENT_QUOTES, 'UTF-8'); ?></li>
                                     <?php endforeach; ?>
                                 </ul>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($errors)): ?>
+                            <div class="alert alert-danger" role="alert" aria-live="assertive" tabindex="-1" data-validation-alert>
+                                <i class="mdi mdi-alert-circle-outline"></i> Revisa los campos marcados para continuar.
                             </div>
                         <?php endif; ?>
                         <div class="row g-3">
@@ -204,26 +208,25 @@ if (!function_exists('usuarios_permission_id')) {
                                         <input class="form-check-input" type="checkbox" name="remove_firma" id="remove_firma" value="1">
                                         <label class="form-check-label" for="remove_firma">Eliminar sello actual</label>
                                     </div>
-                                    <div class="small text-muted mb-2">
-                                        <div>Creado: <?= htmlspecialchars($usuario['firma_created_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_created_by']) ? '(por ID ' . (int) $usuario['firma_created_by'] . ')' : ''; ?></div>
-                                        <div>Actualizado: <?= htmlspecialchars($usuario['firma_updated_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_updated_by']) ? '(por ID ' . (int) $usuario['firma_updated_by'] . ')' : ''; ?></div>
-                                        <div>Verificado: <?= htmlspecialchars($usuario['firma_verified_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_verified_by']) ? '(por ID ' . (int) $usuario['firma_verified_by'] . ')' : ''; ?></div>
-                                        <div>Eliminado: <?= htmlspecialchars($usuario['firma_deleted_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['firma_deleted_by']) ? '(por ID ' . (int) $usuario['firma_deleted_by'] . ')' : ''; ?></div>
+                                <?php endif; ?>
+                                <div class="drop-zone mt-2" data-upload-drop-zone="firma_file" tabindex="0" aria-label="Zona de carga para sello" aria-describedby="firma_help">
+                                    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                                        <div class="fw-semibold">Arrastra y suelta tu sello o usa el botón de selección.</div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-upload-trigger="firma_file">
+                                            <i class="mdi mdi-upload"></i> Seleccionar archivo
+                                        </button>
                                     </div>
-                                <?php endif; ?>
-                                <input type="file" name="firma_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
-                                <?php if (!empty($restorableMedia['seal'])): ?>
-                                    <label class="form-label mt-2">Restaurar sello previo</label>
-                                    <select name="restore_firma_version" class="form-select form-select-sm">
-                                        <option value="">Selecciona una versión</option>
-                                        <?php foreach ($restorableMedia['seal'] as $snapshot): ?>
-                                            <option value="<?= (int) ($snapshot['version'] ?? 0); ?>">
-                                                Versión <?= (int) ($snapshot['version'] ?? 0); ?> • <?= htmlspecialchars($snapshot['action'] ?? 'subida', ENT_QUOTES, 'UTF-8'); ?> • <?= htmlspecialchars($snapshot['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                                <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Tamaño máximo 2&nbsp;MB.</small>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="firma_file" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <?php $firmaError = $errors['firma_file'] ?? null; ?>
+                                    <div class="text-danger small mt-2 <?= $firmaError ? '' : 'd-none'; ?>" data-upload-error="firma_file" role="alert">
+                                        <?= $firmaError ? htmlspecialchars($firmaError, ENT_QUOTES, 'UTF-8') : ''; ?>
+                                    </div>
+                                    <div class="mt-2" data-upload-preview="firma_file"></div>
+                                    <div class="text-muted small mt-2" id="firma_help">Formatos permitidos: PNG, WEBP o SVG. Tamaño máximo 2&nbsp;MB. Dimensiones recomendadas: 800x400 px. La zona es accesible con teclado.</div>
+                                    <input type="file" name="firma_file" id="firma_file" class="form-control mt-2" accept="image/png,image/webp,image/svg+xml">
+                                </div>
                                 <div class="mt-2">
                                     <label class="form-label mb-1">Estado del sello</label>
                                     <select name="seal_status" class="form-select form-select-sm">
@@ -235,9 +238,6 @@ if (!function_exists('usuarios_permission_id')) {
                                         <div class="text-danger small"><?= htmlspecialchars($errors['seal_status'], ENT_QUOTES, 'UTF-8'); ?></div>
                                     <?php endif; ?>
                                 </div>
-                                <?php if (!empty($errors['firma_file'])): ?>
-                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['firma_file'], ENT_QUOTES, 'UTF-8'); ?></div>
-                                <?php endif; ?>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Firma digital</label>
@@ -255,27 +255,25 @@ if (!function_exists('usuarios_permission_id')) {
                                         <input class="form-check-input" type="checkbox" name="remove_signature" id="remove_signature" value="1">
                                         <label class="form-check-label" for="remove_signature">Eliminar firma digital actual</label>
                                     </div>
-                                    <div class="small text-muted mb-2">
-                                        <div>Creado: <?= htmlspecialchars($usuario['signature_created_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_created_by']) ? '(por ID ' . (int) $usuario['signature_created_by'] . ')' : ''; ?></div>
-                                        <div>Actualizado: <?= htmlspecialchars($usuario['signature_updated_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_updated_by']) ? '(por ID ' . (int) $usuario['signature_updated_by'] . ')' : ''; ?></div>
-                                        <div>Verificado: <?= htmlspecialchars($usuario['signature_verified_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_verified_by']) ? '(por ID ' . (int) $usuario['signature_verified_by'] . ')' : ''; ?></div>
-                                        <div>Eliminado: <?= htmlspecialchars($usuario['signature_deleted_at'] ?? 'N/D', ENT_QUOTES, 'UTF-8'); ?> <?= isset($usuario['signature_deleted_by']) ? '(por ID ' . (int) $usuario['signature_deleted_by'] . ')' : ''; ?></div>
+                                <?php endif; ?>
+                                <div class="drop-zone mt-2" data-upload-drop-zone="signature_file" tabindex="0" aria-label="Zona de carga para firma digital" aria-describedby="signature_help">
+                                    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                                        <div class="fw-semibold">Arrastra o pega tu firma digital para previsualizarla al instante.</div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-upload-trigger="signature_file">
+                                            <i class="mdi mdi-upload"></i> Seleccionar archivo
+                                        </button>
                                     </div>
-                                <?php endif; ?>
-                                <input type="file" name="signature_file" class="form-control" accept="image/png,image/webp,image/svg+xml">
-                                <?php if (!empty($restorableMedia['signature'])): ?>
-                                    <label class="form-label mt-2">Restaurar firma previa</label>
-                                    <select name="restore_signature_path_version" class="form-select form-select-sm">
-                                        <option value="">Selecciona una versión</option>
-        
-                                        <?php foreach ($restorableMedia['signature'] as $snapshot): ?>
-                                            <option value="<?= (int) ($snapshot['version'] ?? 0); ?>">
-                                                Versión <?= (int) ($snapshot['version'] ?? 0); ?> • <?= htmlspecialchars($snapshot['action'] ?? 'subida', ENT_QUOTES, 'UTF-8'); ?> • <?= htmlspecialchars($snapshot['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                <?php endif; ?>
-                                <small class="text-muted">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB y dimensiones moderadas.</small>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="signature_file" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <?php $signatureError = $errors['signature_file'] ?? null; ?>
+                                    <div class="text-danger small mt-2 <?= $signatureError ? '' : 'd-none'; ?>" data-upload-error="signature_file" role="alert">
+                                        <?= $signatureError ? htmlspecialchars($signatureError, ENT_QUOTES, 'UTF-8') : ''; ?>
+                                    </div>
+                                    <div class="mt-2" data-upload-preview="signature_file"></div>
+                                    <div class="text-muted small mt-2" id="signature_help">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB. Dimensiones sugeridas hasta 1600x900 px. Totalmente navegable con teclado.</div>
+                                    <input type="file" name="signature_file" id="signature_file" class="form-control mt-2" accept="image/png,image/webp,image/svg+xml">
+                                </div>
                                 <div class="mt-2">
                                     <label class="form-label mb-1">Estado de la firma</label>
                                     <select name="signature_status" class="form-select form-select-sm">
@@ -287,9 +285,6 @@ if (!function_exists('usuarios_permission_id')) {
                                         <div class="text-danger small"><?= htmlspecialchars($errors['signature_status'], ENT_QUOTES, 'UTF-8'); ?></div>
                                     <?php endif; ?>
                                 </div>
-                                <?php if (!empty($errors['signature_file'])): ?>
-                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['signature_file'], ENT_QUOTES, 'UTF-8'); ?></div>
-                                <?php endif; ?>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Foto de perfil</label>
@@ -308,11 +303,24 @@ if (!function_exists('usuarios_permission_id')) {
                                         <label class="form-check-label" for="remove_profile_photo">Eliminar foto actual</label>
                                     </div>
                                 <?php endif; ?>
-                                <input type="file" name="profile_photo_file" class="form-control" accept="image/png,image/jpeg,image/webp">
-                                <small class="text-muted">Recomendado 400x400px. Tamaño máximo 2&nbsp;MB.</small>
-                                <?php if (!empty($errors['profile_photo_file'])): ?>
-                                    <div class="text-danger small mt-1"><?= htmlspecialchars($errors['profile_photo_file'], ENT_QUOTES, 'UTF-8'); ?></div>
-                                <?php endif; ?>
+                                <div class="drop-zone mt-2" data-upload-drop-zone="profile_photo_file" tabindex="0" aria-label="Zona de carga para foto de perfil" aria-describedby="profile_photo_help">
+                                    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                                        <div class="fw-semibold">Arrastra tu foto o utiliza el botón para explorar archivos.</div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-upload-trigger="profile_photo_file">
+                                            <i class="mdi mdi-upload"></i> Seleccionar foto
+                                        </button>
+                                    </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="profile_photo_file" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <?php $photoError = $errors['profile_photo_file'] ?? null; ?>
+                                    <div class="text-danger small mt-2 <?= $photoError ? '' : 'd-none'; ?>" data-upload-error="profile_photo_file" role="alert">
+                                        <?= $photoError ? htmlspecialchars($photoError, ENT_QUOTES, 'UTF-8') : ''; ?>
+                                    </div>
+                                    <div class="mt-2" data-upload-preview="profile_photo_file"></div>
+                                    <div class="text-muted small mt-2" id="profile_photo_help">Formatos permitidos: PNG, JPG o WEBP. Máximo 2&nbsp;MB. Recomendado 400x400 px y fondo neutro. La zona admite teclado y arrastrar y soltar.</div>
+                                    <input type="file" name="profile_photo_file" id="profile_photo_file" class="form-control mt-2" accept="image/png,image/jpeg,image/webp">
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Contraseña <?= isset($usuario['id']) ? '(dejar en blanco para mantener)' : '*'; ?></label>
@@ -375,43 +383,6 @@ if (!function_exists('usuarios_permission_id')) {
                             <button type="submit" class="btn btn-primary">Guardar</button>
                         </div>
                     </form>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="box">
-                <div class="box-header with-border d-flex justify-content-between align-items-center">
-                    <h4 class="box-title mb-0">Historial de auditoría</h4>
-                    <span class="badge bg-light text-dark border">Medios</span>
-                </div>
-                <div class="box-body">
-                    <?php if (empty($mediaHistory)): ?>
-                        <p class="text-muted mb-0">Sin eventos registrados.</p>
-                    <?php else: ?>
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Versión</th>
-                                        <th>Tipo</th>
-                                        <th>Acción</th>
-                                        <th>Fecha</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($mediaHistory as $audit): ?>
-                                        <tr>
-                                            <td>#<?= (int) ($audit['version'] ?? 0); ?></td>
-                                            <td><?= htmlspecialchars($audit['media_type'] ?? 'n/d', ENT_QUOTES, 'UTF-8'); ?></td>
-                                            <td><?= htmlspecialchars($audit['action'] ?? 'n/d', ENT_QUOTES, 'UTF-8'); ?></td>
-                                            <td><?= htmlspecialchars($audit['acted_at'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                    <p class="small text-muted mt-2 mb-0">Se registran cargas, reemplazos, eliminaciones, verificaciones y restauraciones de sello/firma.</p>
                 </div>
             </div>
         </div>

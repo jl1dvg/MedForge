@@ -32481,3 +32481,25 @@ img.away, img.busy, img.offline, img.online {
 .global-search-open .form-control:focus {
     box-shadow: 0 0 0 0.15rem rgba(79, 70, 229, 0.2);
 }
+
+.drop-zone {
+    border: 1px dashed #c5ccd8;
+    border-radius: 12px;
+    padding: 12px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.drop-zone:focus {
+    outline: 2px solid #1f6feb;
+    outline-offset: 2px;
+}
+
+.drop-zone--active {
+    border-color: #1f6feb;
+    box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.15);
+    background-color: #f1f6ff;
+}
+
+.drop-zone .progress {
+    height: 8px;
+}
