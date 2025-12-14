@@ -334,10 +334,15 @@ class UsuariosController extends BaseController
             return;
         }
 
-        $this->json([
+        $payload = [
+            'user' => $this->buildUserIdentityPayload($usuario),
             'seal' => $this->serializeMediaPayload($usuario, 'firma'),
             'signature' => $this->serializeMediaPayload($usuario, 'signature_path'),
-        ]);
+        ];
+
+        $this->applyMediaCachingHeaders($payload);
+
+        $this->json($payload);
     }
 
     private function collectInput(bool $isCreate, ?array $existing = null): array
@@ -505,6 +510,58 @@ class UsuariosController extends BaseController
             'admin.usuarios',
             'superuser',
         ]);
+    }
+
+    private function applyMediaCachingHeaders(array $payload): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        $ttl = 900;
+        $stale = 120;
+        $hashSource = json_encode([
+            $payload['seal']['hash'] ?? null,
+            $payload['signature']['hash'] ?? null,
+            $payload['seal']['updated_at'] ?? null,
+            $payload['signature']['updated_at'] ?? null,
+        ]);
+
+        header('Cache-Control: public, max-age=' . $ttl . ', stale-while-revalidate=' . $stale);
+        header('CDN-Cache-Control: public, max-age=' . $ttl . ', stale-while-revalidate=' . $stale);
+
+        if ($hashSource !== false) {
+            header('ETag: "' . sha1($hashSource) . '"');
+        }
+    }
+
+    private function buildUserIdentityPayload(array $usuario): array
+    {
+        $fullName = $this->safeString($usuario['full_name'] ?? null)
+            ?? $this->safeString($usuario['nombre'] ?? null);
+
+        return [
+            'id' => isset($usuario['id']) ? (int) $usuario['id'] : null,
+            'full_name' => $fullName,
+            'legacy_full_name' => $this->safeString($usuario['nombre'] ?? null),
+            'first_name' => $this->safeString($usuario['first_name'] ?? null),
+            'middle_name' => $this->safeString($usuario['middle_name'] ?? null),
+            'last_name' => $this->safeString($usuario['last_name'] ?? null),
+            'second_last_name' => $this->safeString($usuario['second_last_name'] ?? null),
+            'username' => $this->safeString($usuario['username'] ?? null),
+            'email' => $this->safeString($usuario['email'] ?? null),
+        ];
+    }
+
+    private function safeString($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     private function serializeMediaPayload(array $usuario, string $pathKey): ?array
@@ -904,7 +961,7 @@ class UsuariosController extends BaseController
 
     private function isValidNameCharacters(string $value): bool
     {
-        return !preg_match("/[^A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-\.\'\"\s]/u", $value);
+        return !preg_match("/[^A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-\.\'"\s]/u", $value);
     }
 
     private function buildFullName(array $data): string

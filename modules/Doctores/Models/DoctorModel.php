@@ -22,6 +22,11 @@ class DoctorModel
             SELECT
                 u.id,
                 u.nombre,
+                u.full_name,
+                u.first_name,
+                u.middle_name,
+                u.last_name,
+                u.second_last_name,
                 u.username,
                 u.email,
                 u.especialidad,
@@ -62,6 +67,11 @@ class DoctorModel
             SELECT
                 u.id,
                 u.nombre,
+                u.full_name,
+                u.first_name,
+                u.middle_name,
+                u.last_name,
+                u.second_last_name,
                 u.username,
                 u.email,
                 u.especialidad,
@@ -94,9 +104,16 @@ class DoctorModel
      */
     private function mapDoctorRow(array $row): array
     {
-        $name = $this->nullIfEmpty($row['nombre'] ?? null);
+        $structuredFullName = $this->buildFullNameFromParts([
+            $row['first_name'] ?? null,
+            $row['middle_name'] ?? null,
+            $row['last_name'] ?? null,
+            $row['second_last_name'] ?? null,
+        ]);
+        $legacyFullName = $this->nullIfEmpty($row['nombre'] ?? null);
+        $fullName = $this->nullIfEmpty($row['full_name'] ?? null) ?? $structuredFullName ?? $legacyFullName;
         $username = $this->nullIfEmpty($row['username'] ?? null);
-        $displayName = $name ?? $username ?? $this->nullIfEmpty($row['email'] ?? null) ?? 'Usuario sin nombre';
+        $displayName = $fullName ?? $username ?? $this->nullIfEmpty($row['email'] ?? null) ?? 'Usuario sin nombre';
 
         $prefixedName = $displayName;
         if ($this->shouldPrefixDoctorTitle($displayName)) {
@@ -108,6 +125,12 @@ class DoctorModel
         return [
             'id' => (int) ($row['id'] ?? 0),
             'name' => $displayName,
+            'full_name' => $fullName,
+            'legacy_full_name' => $legacyFullName,
+            'first_name' => $this->nullIfEmpty($row['first_name'] ?? null),
+            'middle_name' => $this->nullIfEmpty($row['middle_name'] ?? null),
+            'last_name' => $this->nullIfEmpty($row['last_name'] ?? null),
+            'second_last_name' => $this->nullIfEmpty($row['second_last_name'] ?? null),
             'display_name' => $prefixedName,
             'email' => $this->nullIfEmpty($row['email'] ?? null),
             'especialidad' => $this->nullIfEmpty($row['especialidad'] ?? null),
@@ -142,6 +165,28 @@ class DoctorModel
         $trimmed = trim($value);
 
         return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * @param array<int, mixed> $parts
+     */
+    private function buildFullNameFromParts(array $parts): ?string
+    {
+        $normalized = array_values(array_filter(array_map(static function ($value) {
+            if ($value === null) {
+                return null;
+            }
+
+            $trimmed = trim((string) $value);
+
+            return $trimmed === '' ? null : $trimmed;
+        }, $parts)));
+
+        if ($normalized === []) {
+            return null;
+        }
+
+        return implode(' ', $normalized);
     }
 
     /**
