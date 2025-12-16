@@ -2,7 +2,17 @@
     const CACHE = new Map();
     const inFlight = new Map();
 
-    const DEFAULT_API_BASE_URL = 'https://asistentecive.consulmed.me/api';
+    const DEFAULT_API_BASE_URL = (() => {
+        try {
+            if (typeof window !== 'undefined' && window.location && window.location.origin) {
+                const base = window.location.origin.replace(/\/$/, '');
+                return `${base}/api`;
+            }
+        } catch (e) {
+            // ignore
+        }
+        return 'https://asistentecive.consulmed.me/api';
+    })();
     const API_HOST_FIXES = {
         'asitentecive.consulmed.me': 'asistentecive.consulmed.me',
     };
