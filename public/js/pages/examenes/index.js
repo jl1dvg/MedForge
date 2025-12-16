@@ -4,9 +4,20 @@ import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 import { createNotificationPanel } from './notifications/panel.js';
 import { formatTurno } from './kanban/turnero.js';
+import {
+    getKanbanConfig,
+    getDataStore,
+    setDataStore,
+    getEstadosMeta,
+    resolveAttr,
+    resolveId,
+    getTableBodySelector,
+    getRealtimeConfig,
+} from './kanban/config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    const realtimeConfig = window.MEDF_PusherConfig || {};
+    const config = getKanbanConfig();
+    const realtimeConfig = getRealtimeConfig();
     const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
     const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
     const toastDurationMs = autoDismissSeconds === null
@@ -84,17 +95,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const estadosMeta = window.__examenesEstadosMeta || {};
+    const estadosMeta = getEstadosMeta();
     // Estados que NO deben aparecer en el overview
     const OVERVIEW_EXCLUDED_STATES = new Set(['llamado', 'en-atencion']);
-    const STORAGE_KEY_VIEW = 'examenes:view-mode';
-    const viewButtons = Array.from(document.querySelectorAll('[data-examenes-view]'));
-    const kanbanContainer = document.getElementById('examenesViewKanban');
-    const tableContainer = document.getElementById('examenesViewTable');
-    const totalCounter = document.getElementById('examenesTotalCount');
-    const overviewContainer = document.getElementById('examenesOverview');
-    const tableBody = document.querySelector('#examenesTable tbody');
-    const tableEmptyState = document.getElementById('examenesTableEmpty');
+    const STORAGE_KEY_VIEW = config.storageKeyView;
+    const viewAttr = resolveAttr('view');
+    const viewButtons = Array.from(document.querySelectorAll(`[${viewAttr}]`));
+    const kanbanContainer = document.getElementById(resolveId('ViewKanban'));
+    const tableContainer = document.getElementById(resolveId('ViewTable'));
+    const totalCounter = document.getElementById(resolveId('TotalCount'));
+    const overviewContainer = document.getElementById(resolveId('Overview'));
+    const tableBody = document.querySelector(getTableBodySelector());
+    const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
 
     const VIEW_DEFAULT = 'kanban';
@@ -390,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         viewButtons.forEach(button => {
-            const buttonView = button.getAttribute('data-examenes-view') === 'table' ? 'table' : VIEW_DEFAULT;
+            const buttonView = button.getAttribute(viewAttr) === 'table' ? 'table' : VIEW_DEFAULT;
             button.classList.toggle('active', buttonView === normalized);
         });
 
@@ -400,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderFromCache = () => {
-        const baseData = Array.isArray(window.__examenesKanban) ? window.__examenesKanban : [];
+        const baseData = getDataStore();
         const filtradas = aplicarFiltrosLocales(baseData);
 
         updateOverview(filtradas);
@@ -412,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     viewButtons.forEach(button => {
         button.addEventListener('click', event => {
             event.preventDefault();
-            const view = button.getAttribute('data-examenes-view');
+            const view = button.getAttribute(viewAttr);
             switchView(view);
         });
     });
@@ -462,18 +474,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.json();
             })
             .then(({ data = [], options = {} }) => {
-                window.__examenesKanban = Array.isArray(data) ? data : [];
+                const store = setDataStore(Array.isArray(data) ? data : []);
 
                 if (options.afiliaciones) {
                     poblarAfiliacionesUnicas(options.afiliaciones);
                 } else {
-                    poblarAfiliacionesUnicas(window.__examenesKanban);
+                    poblarAfiliacionesUnicas(store);
                 }
 
                 if (options.doctores) {
                     poblarDoctoresUnicos(options.doctores);
                 } else {
-                    poblarDoctoresUnicos(window.__examenesKanban);
+                    poblarDoctoresUnicos(store);
                 }
 
                 if (options.crm) {

@@ -110,10 +110,57 @@ function formatBadge(label, value, icon) {
     return `<span class="badge">${safeIcon}${safeLabel !== '' ? `${safeLabel}: ` : ''}${safeValue}</span>`;
 }
 
+function slugifyEstado(value) {
+    return (value ?? '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function estadoLabelFromSlug(slug) {
+    if (!slug) {
+        return 'Sin estado';
+    }
+
+    const meta = window.__examenesEstadosMeta ?? {};
+    const key = slugifyEstado(slug);
+    const entry = meta[key] || meta[slug];
+
+    if (entry && entry.label) {
+        return entry.label;
+    }
+
+    return slug;
+}
+
+const TURNO_BUTTON_LABELS = {
+    recall: '<i class="mdi mdi-phone-incoming"></i> Volver a llamar',
+    generate: '<i class="mdi mdi-bell-ring-outline"></i> Generar turno',
+};
+
+function applyTurnoButtonState(button, shouldRecall) {
+    if (!button) {
+        return;
+    }
+
+    button.innerHTML = shouldRecall
+        ? TURNO_BUTTON_LABELS.recall
+        : TURNO_BUTTON_LABELS.generate;
+    button.dataset.hasTurno = shouldRecall ? '1' : '0';
+}
+
 export function renderKanban(data, callbackEstadoActualizado) {
     document.querySelectorAll('.kanban-items').forEach(col => {
         col.innerHTML = '';
     });
+
+    const onEstadoChange = typeof callbackEstadoActualizado === 'function'
+        ? callbackEstadoActualizado
+        : () => Promise.resolve();
 
     const hoy = new Date();
 
@@ -124,7 +171,17 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.hc = examen.hc_number ?? '';
         tarjeta.dataset.form = examen.form_id ?? '';
         tarjeta.dataset.codigo = examen.examen_codigo ?? '';
-        tarjeta.dataset.estado = examen.estado ?? '';
+        const examenNombre = examen.examen || examen.examen_nombre || 'Sin examen';
+        const estadoBase = examen.kanban_estado ?? examen.estado;
+        const estadoSlug = slugifyEstado(estadoBase);
+        const estadoLabel =
+            examen.estado_label ||
+            examen.kanban_estado_label ||
+            estadoLabelFromSlug(estadoSlug) ||
+            estadoBase ||
+            'Sin estado';
+        tarjeta.dataset.estado = estadoSlug;
+        tarjeta.dataset.estadoLabel = estadoLabel;
         tarjeta.dataset.id = examen.id ?? '';
         tarjeta.dataset.afiliacion = examen.afiliacion ?? '';
         tarjeta.dataset.aseguradora = examen.aseguradora ?? examen.aseguradoraNombre ?? '';
@@ -160,7 +217,6 @@ export function renderKanban(data, callbackEstadoActualizado) {
             : 'Sin vencimiento';
 
         const pacienteNombre = examen.full_name ?? 'Paciente sin nombre';
-        const examenNombre = examen.examen || examen.examen_nombre || 'Sin examen';
         const afiliacion = examen.afiliacion || 'Sin afiliación';
         const lateralidad = examen.lateralidad || '—';
         const observaciones = examen.observaciones || 'Sin nota';
@@ -202,14 +258,15 @@ export function renderKanban(data, callbackEstadoActualizado) {
         hydrateAvatar(tarjeta);
 
         const turnoAsignado = formatTurno(examen.turno);
-        const estadoActual = (examen.estado ?? '').toString();
+        const estadoActualSlug = estadoSlug;
+        const estadoActualLabel = estadoLabel;
 
         const acciones = document.createElement('div');
         acciones.className = 'kanban-card-actions d-flex align-items-center justify-content-between gap-2 flex-wrap mt-2';
 
         const resumenEstado = document.createElement('span');
         resumenEstado.className = 'badge badge-estado text-bg-light text-wrap';
-        resumenEstado.textContent = estadoActual !== '' ? estadoActual : 'Sin estado';
+        resumenEstado.textContent = estadoActualLabel !== '' ? estadoActualLabel : 'Sin estado';
         acciones.appendChild(resumenEstado);
 
         const badgeTurno = document.createElement('span');
@@ -220,7 +277,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const botonLlamar = document.createElement('button');
         botonLlamar.type = 'button';
         botonLlamar.className = 'btn btn-sm btn-outline-primary llamar-turno-btn';
-        botonLlamar.innerHTML = turnoAsignado ? '<i class="mdi mdi-phone-incoming"></i> Volver a llamar' : '<i class="mdi mdi-bell-ring-outline"></i> Generar turno';
+        applyTurnoButtonState(botonLlamar, Boolean(turnoAsignado) || estadoActualSlug === 'llamado');
 
         botonLlamar.addEventListener('click', event => {
             event.preventDefault();
@@ -230,22 +287,44 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 return;
             }
 
+            const teniaTurnoAntes = botonLlamar.dataset.hasTurno === '1';
             botonLlamar.disabled = true;
             botonLlamar.setAttribute('aria-busy', 'true');
             const textoOriginal = botonLlamar.innerHTML;
             botonLlamar.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando';
+            let exito = false;
 
             llamarTurnoExamen({ id: examen.id })
                 .then(data => {
                     const turno = formatTurno(data?.turno);
                     const nombre = data?.full_name ?? examen.full_name ?? 'Paciente sin nombre';
+                    const estadoRespuesta = (data?.estado ?? estadoActualLabel ?? '').toString();
+                    const estadoRespuestaSlug = slugifyEstado(data?.estado_slug ?? data?.kanban_estado ?? estadoRespuesta);
+                    const estadoRespuestaLabel =
+                        data?.estado_label ?? estadoLabelFromSlug(estadoRespuestaSlug) ?? estadoRespuesta;
 
                     if (turno) {
                         badgeTurno.textContent = `Turno #${turno}`;
                     }
 
                     if (data?.estado) {
-                        resumenEstado.textContent = data.estado;
+                        tarjeta.dataset.estado = estadoRespuestaSlug;
+                        tarjeta.dataset.estadoLabel = estadoRespuestaLabel;
+                        resumenEstado.textContent = estadoRespuestaLabel !== '' ? estadoRespuestaLabel : 'Sin estado';
+                    }
+
+                    applyTurnoButtonState(
+                        botonLlamar,
+                        Boolean(turno) || estadoRespuestaSlug === 'llamado'
+                    );
+                    exito = true;
+
+                    const destinoId = estadoRespuestaSlug ? `kanban-${estadoRespuestaSlug}` : null;
+                    if (destinoId && destinoId !== tarjeta.parentElement?.id) {
+                        const destino = document.getElementById(destinoId);
+                        if (destino) {
+                            destino.appendChild(tarjeta);
+                        }
                     }
 
                     showToast(`🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ''}`);
@@ -254,7 +333,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
                         const item = window.__examenesKanban.find(s => String(s.id) === String(examen.id));
                         if (item) {
                             item.turno = data?.turno ?? item.turno;
-                            item.estado = data?.estado ?? item.estado;
+                            item.estado = estadoRespuestaLabel || item.estado;
+                            item.estado_label = estadoRespuestaLabel || item.estado_label;
+                            item.kanban_estado = estadoRespuestaSlug || item.kanban_estado;
+                            item.kanban_estado_label = estadoRespuestaLabel || item.kanban_estado_label;
                         }
                     }
 
@@ -269,7 +351,13 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 .finally(() => {
                     botonLlamar.disabled = false;
                     botonLlamar.removeAttribute('aria-busy');
-                    botonLlamar.innerHTML = textoOriginal;
+                    if (!exito) {
+                        applyTurnoButtonState(botonLlamar, teniaTurnoAntes);
+                        botonLlamar.innerHTML = textoOriginal;
+                    }
+                    if (exito) {
+                        botonLlamar.innerHTML = botonLlamar.innerHTML || textoOriginal;
+                    }
                 });
         });
 
@@ -284,11 +372,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         crmButton.dataset.pacienteNombre = examen.full_name ?? '';
         tarjeta.appendChild(crmButton);
 
-        const estadoId = 'kanban-' + (examen.estado || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-');
+        const estadoId = `kanban-${estadoSlug}`;
 
         const columna = document.getElementById(estadoId);
         if (columna) {
@@ -302,23 +386,107 @@ export function renderKanban(data, callbackEstadoActualizado) {
             animation: 150,
             onEnd: evt => {
                 const item = evt.item;
-                const nuevoEstado = evt.to.id
-                    .replace('kanban-', '')
-                    .replace(/-/g, ' ')
-                    .replace(/\b\w/g, c => c.toUpperCase());
+                const columnaAnterior = evt.from;
+                const posicionAnterior = evt.oldIndex;
+                const estadoAnteriorSlug = (item.dataset.estado ?? '').toString();
+                const estadoAnteriorLabel =
+                    item.dataset.estadoLabel || estadoLabelFromSlug(estadoAnteriorSlug) || 'Sin estado';
+                const badgeEstado = item.querySelector('.badge.badge-estado, .badge-estado');
+                const badgeTurno = item.querySelector('.badge-turno');
+                const botonTurno = item.querySelector('.llamar-turno-btn');
+                const turnoTextoAnterior = badgeTurno ? badgeTurno.textContent : 'Sin turno asignado';
+                const botonTeniaTurnoAntes = botonTurno ? botonTurno.dataset.hasTurno === '1' : false;
 
-                item.dataset.estado = nuevoEstado;
+                const nuevoEstadoSlug = slugifyEstado(evt.to.id.replace('kanban-', ''));
+                const nuevoEstadoLabel = estadoLabelFromSlug(nuevoEstadoSlug);
 
-                const resultado = callbackEstadoActualizado(
-                    item.dataset.id,
-                    item.dataset.form,
-                    nuevoEstado
-                );
+                const aplicarEstadoEnUI = (slug, label) => {
+                    const etiqueta = label || estadoLabelFromSlug(slug) || (slug ?? '').toString();
+                    item.dataset.estado = slug;
+                    item.dataset.estadoLabel = etiqueta;
+                    if (badgeEstado) {
+                        badgeEstado.textContent = etiqueta !== '' ? etiqueta : 'Sin estado';
+                    }
+                    if (botonTurno) {
+                        const debeRecordar = botonTeniaTurnoAntes || slug === 'llamado';
+                        applyTurnoButtonState(botonTurno, debeRecordar);
+                    }
+                };
 
-                if (resultado && typeof resultado.catch === 'function') {
-                    resultado.catch(() => {
-                        showToast('No se pudo actualizar el estado', false);
-                    });
+                const revertirMovimiento = () => {
+                    aplicarEstadoEnUI(estadoAnteriorSlug, estadoAnteriorLabel);
+                    if (badgeTurno) {
+                        badgeTurno.textContent = turnoTextoAnterior;
+                    }
+                    if (botonTurno) {
+                        applyTurnoButtonState(botonTurno, botonTeniaTurnoAntes);
+                    }
+                    if (columnaAnterior) {
+                        const referencia = columnaAnterior.children[posicionAnterior] || null;
+                        columnaAnterior.insertBefore(item, referencia);
+                    }
+                };
+
+                aplicarEstadoEnUI(nuevoEstadoSlug, nuevoEstadoLabel);
+
+                let resultado;
+                try {
+                    resultado = onEstadoChange(
+                        item.dataset.id,
+                        item.dataset.form,
+                        nuevoEstadoLabel,
+                        { estado_slug: nuevoEstadoSlug }
+                    );
+                } catch (error) {
+                    revertirMovimiento();
+
+                    if (!error || !error.__estadoNotificado) {
+                        const mensaje = (error && error.message) || 'No se pudo actualizar el estado';
+                        showToast(mensaje, false);
+                    }
+                    return;
+                }
+
+                if (resultado && typeof resultado.then === 'function') {
+                    resultado
+                        .then(response => {
+                            const estadoServidor = (response?.estado ?? nuevoEstadoLabel ?? '').toString();
+                            const estadoServidorLabel = (response?.estado_label ?? estadoServidor).toString();
+                            const estadoServidorSlug = slugifyEstado(
+                                response?.estado_slug ?? response?.kanban_estado ?? estadoServidor
+                            );
+                            aplicarEstadoEnUI(estadoServidorSlug, estadoServidorLabel);
+
+                            const destinoId = estadoServidorSlug ? `kanban-${estadoServidorSlug}` : null;
+                            if (destinoId && destinoId !== evt.to.id) {
+                                const destino = document.getElementById(destinoId);
+                                if (destino) {
+                                    destino.appendChild(item);
+                                }
+                            }
+
+                            if (badgeTurno) {
+                                const turnoActual = formatTurno(response?.turno);
+                                badgeTurno.textContent = turnoActual
+                                    ? `Turno #${turnoActual}`
+                                    : 'Sin turno asignado';
+                            }
+
+                            if (botonTurno) {
+                                const turnoActual = formatTurno(response?.turno);
+                                const debeRecordar =
+                                    Boolean(turnoActual) || estadoServidorSlug === 'llamado';
+                                applyTurnoButtonState(botonTurno, debeRecordar);
+                            }
+                        })
+                        .catch(error => {
+                            revertirMovimiento();
+
+                            if (!error || !error.__estadoNotificado) {
+                                const mensaje = (error && error.message) || 'No se pudo actualizar el estado';
+                                showToast(mensaje, false);
+                            }
+                        });
                 }
             },
         });

@@ -12,6 +12,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->turnero();
     });
 
+    $router->get('/turneros/unificado', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->turneroUnificado();
+    });
+
     $router->post('/solicitudes/kanban-data', function (\PDO $pdo) {
         (new SolicitudController($pdo))->kanbanData();
     });

@@ -82,6 +82,20 @@ class SolicitudController extends BaseController
         );
     }
 
+    public function turneroUnificado(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/turnero-unificado.php',
+            [
+                'pageTitle' => 'Turneros quirúrgicos y de exámenes',
+                'bodyClass' => 'turnero-body',
+            ],
+            'layout-turnero.php'
+        );
+    }
+
     public function obtenerEstadosPorHc(string $hcNumber): array
     {
         $solicitudes = $this->solicitudModel->obtenerEstadosPorHc($hcNumber);

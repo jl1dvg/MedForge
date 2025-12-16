@@ -125,12 +125,26 @@ class GuardarConsultaController
                 $examenes = [];
             }
 
+            $doctorEnviado = $data['doctor']
+                ?? $data['doctorTratante']
+                ?? $data['doctorConsulta']
+                ?? $data['doctor_consulta']
+                ?? $data['doctorConsultaNombre']
+                ?? null;
+
+            $solicitanteEnviado = $data['solicitanteExamen']
+                ?? $data['solicitante']
+                ?? $data['referidoPor']
+                ?? $data['referido_por']
+                ?? null;
+
             try {
+                // Sincronizar tabla normalizada de exámenes (consulta_examenes)
                 $this->examenSync->syncFromPayload(
                     $form_id,
                     $hcNumber,
-                    $data['doctor'] ?? $data['doctorTratante'] ?? null,
-                    $data['solicitanteExamen'] ?? $data['referidoPor'] ?? null,
+                    $doctorEnviado,
+                    $solicitanteEnviado,
                     $fechaActual,
                     $examenes
                 );

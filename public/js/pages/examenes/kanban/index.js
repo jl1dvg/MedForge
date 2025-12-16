@@ -4,15 +4,22 @@ import { inicializarModalDetalles } from './modalDetalles.js';
 import { inicializarBotonesModal } from './botonesModal.js';
 import { initCrmInteractions, getCrmKanbanPreferences } from './crmPanel.js';
 
-const NORMALIZE = {
-    estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
-};
+const slugifyEstado = value => (value ?? '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const getEstadoSlug = item => slugifyEstado(item.estado || item.estado_label || item.kanban_estado);
 
 function agruparPorEstado(examenes) {
     const agrupadas = {};
 
     examenes.forEach(item => {
-        const estado = NORMALIZE.estado(item.estado);
+        const estado = getEstadoSlug(item);
         if (!agrupadas[estado]) {
             agrupadas[estado] = [];
         }
@@ -44,8 +51,8 @@ function actualizarContadores(agrupadas) {
 }
 
 export function initKanban(data = []) {
-    renderKanban(data, (id, formId, estado) =>
-        actualizarEstadoExamen(id, formId, estado, window.__examenesKanban || [], window.aplicarFiltros)
+    renderKanban(data, (id, formId, estado, options = {}) =>
+        actualizarEstadoExamen(id, formId, estado, window.__examenesKanban || [], window.aplicarFiltros, options)
     );
 
     const agrupadas = agruparPorEstado(data);

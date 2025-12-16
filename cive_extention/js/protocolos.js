@@ -255,9 +255,13 @@ async function extraerDatosYEnviar() {
 
         // Extraer los exámenes seleccionados
         data.examenes = [];
-        document.querySelectorAll('.examendiv').forEach(examenDiv => {
+        document.querySelectorAll('.examendiv, .examendivimagen').forEach(examenDiv => {
             const examenCheckbox = examenDiv.querySelector('input[type="text"]');
-            if (examenCheckbox && examenCheckbox.value === '1') { // Verificar si el examen está seleccionado
+            const wrapper = examenDiv.querySelector('.cbx');
+            const hasIcon = !!wrapper?.querySelector('.cbx-icon i');
+            const isChecked = Boolean(examenCheckbox && examenCheckbox.value === '1') || hasIcon;
+
+            if (isChecked) { // Verificar si el examen está seleccionado
                 const examenNombreCompleto = examenDiv.querySelector('.cbx-label').textContent.trim();
 
                 // Descomponer el nombre de forma flexible

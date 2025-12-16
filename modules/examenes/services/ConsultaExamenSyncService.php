@@ -235,7 +235,11 @@ class ConsultaExamenSyncService
 
     private function syncNormalized(string $formId, string $hcNumber, ?string $doctor, ?string $solicitante, ?DateTimeImmutable $fecha, array $normalizados): int
     {
-        $this->pdo->beginTransaction();
+        $manageTx = !$this->pdo->inTransaction();
+
+        if ($manageTx) {
+            $this->pdo->beginTransaction();
+        }
 
         try {
             $deleteStmt = $this->pdo->prepare('DELETE FROM consulta_examenes WHERE form_id = :form_id AND hc_number = :hc');
@@ -245,7 +249,9 @@ class ConsultaExamenSyncService
             ]);
 
             if (empty($normalizados)) {
-                $this->pdo->commit();
+                if ($manageTx) {
+                    $this->pdo->commit();
+                }
                 return 0;
             }
 
@@ -270,15 +276,17 @@ class ConsultaExamenSyncService
                 ]);
             }
 
-            $this->pdo->commit();
+            if ($manageTx) {
+                $this->pdo->commit();
+            }
 
             return count($normalizados);
         } catch (PDOException $e) {
-            $this->pdo->rollBack();
+            if ($manageTx && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             throw $e;
         }
-
-        return 0;
     }
 
     private function normalizarExamen(array $examen): ?array
@@ -366,7 +374,7 @@ class ConsultaExamenSyncService
     {
         $texto = $this->sanitizeText($estado) ?? '';
         if ($texto === '') {
-            return 'Pendiente';
+            return 'Recibido';
         }
 
         $mapa = [
@@ -377,6 +385,7 @@ class ConsultaExamenSyncService
             'completa' => 'Completado',
             'listo' => 'Completado',
             'cancelado' => 'Cancelado',
+            'recibido' => 'Recibido',
         ];
 
         $clave = function_exists('mb_strtolower') ? mb_strtolower($texto, 'UTF-8') : strtolower($texto);

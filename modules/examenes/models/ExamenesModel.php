@@ -181,6 +181,7 @@ class ExamenesModel
                 CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
                 sp.estado,
                 sp.prioridad,
+                sp.procedimiento,
                 sp.created_at,
                 sp.turno
             FROM solicitud_procedimiento sp
