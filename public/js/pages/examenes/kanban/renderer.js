@@ -111,7 +111,7 @@ function formatBadge(label, value, icon) {
 }
 
 function slugifyEstado(value) {
-    return (value ?? '')
+    const raw = (value ?? '')
         .toString()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -119,6 +119,17 @@ function slugifyEstado(value) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
+
+    // Normalizar slugs conocidos que difieren entre front y back.
+    if (raw === 'revision-de-cobertura') {
+        return 'revision-codigos';
+    }
+
+    if (raw === 'revision-cobertura') {
+        return 'revision-codigos';
+    }
+
+    return raw;
 }
 
 function estadoLabelFromSlug(slug) {
@@ -228,6 +239,49 @@ export function renderKanban(data, callbackEstadoActualizado) {
             formatBadge('Vencimiento', proximoVencimiento, '<i class="mdi mdi-calendar-clock"></i>'),
         ].filter(Boolean).join('');
 
+        const checklist = Array.isArray(examen.checklist) ? examen.checklist : [];
+        const checklistProgress = examen.checklist_progress || {};
+        const pasosTotales = checklistProgress.total ?? (Array.isArray(checklist) ? checklist.length : 0) ?? 0;
+        const pasosCompletos = checklistProgress.completed ?? 0;
+        const porcentaje = checklistProgress.percent ?? (pasosTotales ? Math.round((pasosCompletos / pasosTotales) * 100) : 0);
+        const pendientesCriticos = ['revision-codigos', 'espera-documentos', 'apto-oftalmologo', 'apto-anestesia'];
+
+        const checklistPreview = checklist.map(item => {
+            const slug = slugifyEstado(item.slug);
+            const isCriticalPending = !item.completed && pendientesCriticos.includes(slug);
+
+            if (item.completed) {
+                return `<label class="form-check small mb-1">
+                    <input type="checkbox" class="form-check-input" data-checklist-toggle data-etapa-slug="${escapeHtml(item.slug)}" checked ${item.can_toggle ? '' : 'disabled'}>
+                    <span class="ms-1">✅ ${escapeHtml(item.label)}</span>
+                </label>`;
+            }
+
+            if (isCriticalPending) {
+                return `<div class="small mb-1 text-warning">
+                    <i class="mdi mdi-alert-outline me-1"></i>${escapeHtml(item.label)}
+                </div>`;
+            }
+
+            return `<label class="form-check small mb-1">
+                <input type="checkbox" class="form-check-input" data-checklist-toggle data-etapa-slug="${escapeHtml(item.slug)}" ${item.can_toggle ? '' : 'disabled'}>
+                <span class="ms-1">⬜ ${escapeHtml(item.label)}</span>
+            </label>`;
+        }).join('');
+
+        const checklistHtml = checklist.length > 0
+            ? `<div class="kanban-checklist mt-2">
+                <div class="d-flex justify-content-end align-items-center gap-2">
+                    <span class="badge bg-light text-dark">${escapeHtml(`${porcentaje}%`)}</span>
+                </div>
+                <div class="progress progress-thin my-1" style="height: 6px;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: ${porcentaje}%;"
+                        aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <div class="kanban-checklist-items">${checklistPreview}</div>
+            </div>`
+            : '';
+
         tarjeta.innerHTML = `
             <div class="kanban-card-header">
                 ${renderAvatar(avatarNombre, avatarUrl)}
@@ -253,6 +307,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 </div>
                 <div class="crm-badges">${badges}</div>
             </div>
+            ${checklistHtml}
         `;
 
         hydrateAvatar(tarjeta);
@@ -371,6 +426,51 @@ export function renderKanban(data, callbackEstadoActualizado) {
         crmButton.dataset.examenId = examen.id ?? '';
         crmButton.dataset.pacienteNombre = examen.full_name ?? '';
         tarjeta.appendChild(crmButton);
+
+        tarjeta.querySelectorAll('[data-checklist-toggle]').forEach(input => {
+            input.addEventListener('click', e => e.stopPropagation());
+            input.addEventListener('change', () => {
+                const slug = input.dataset.etapaSlug || '';
+                const marcado = input.checked;
+                input.disabled = true;
+
+                const resultado = onEstadoChange(
+                    examen.id,
+                    examen.form_id,
+                    slug,
+                    { completado: marcado }
+                );
+
+                const revert = () => {
+                    input.checked = !marcado;
+                };
+
+                if (resultado && typeof resultado.then === 'function') {
+                    resultado
+                        .then(resp => {
+                            examen.checklist = resp?.checklist ?? examen.checklist;
+                            examen.checklist_progress = resp?.checklist_progress ?? examen.checklist_progress;
+                            examen.kanban_estado = resp?.kanban_estado ?? examen.kanban_estado;
+                            examen.kanban_estado_label = resp?.kanban_estado_label ?? examen.kanban_estado_label;
+                            if (typeof window.aplicarFiltros === 'function') {
+                                window.aplicarFiltros();
+                            }
+                        })
+                        .catch(error => {
+                            revert();
+                            if (!error || !error.__estadoNotificado) {
+                                const mensaje = (error && error.message) || 'No se pudo actualizar el checklist';
+                                showToast(mensaje, false);
+                            }
+                        })
+                        .finally(() => {
+                            input.disabled = false;
+                        });
+                } else {
+                    input.disabled = false;
+                }
+            });
+        });
 
         const estadoId = `kanban-${estadoSlug}`;
 

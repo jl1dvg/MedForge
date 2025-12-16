@@ -4,14 +4,22 @@ import { inicializarModalDetalles } from './modalDetalles.js';
 import { inicializarBotonesModal } from './botonesModal.js';
 import { initCrmInteractions, getCrmKanbanPreferences } from './crmPanel.js';
 
-const slugifyEstado = value => (value ?? '')
-    .toString()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+const slugifyEstado = value => {
+    const raw = (value ?? '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+    if (raw === 'revision-de-cobertura' || raw === 'revision-cobertura') {
+        return 'revision-codigos';
+    }
+
+    return raw;
+};
 
 const getEstadoSlug = item => slugifyEstado(item.estado || item.estado_label || item.kanban_estado);
 

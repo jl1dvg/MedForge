@@ -9,6 +9,7 @@ import {
     getDataStore,
     setDataStore,
     getEstadosMeta,
+    setEstadosMeta,
     resolveAttr,
     resolveId,
     getTableBodySelector,
@@ -475,6 +476,18 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(({ data = [], options = {} }) => {
                 const store = setDataStore(Array.isArray(data) ? data : []);
+
+                if (options.kanban_columns) {
+                    const meta = {};
+                    Object.entries(options.kanban_columns).forEach(([slug, metaItem]) => {
+                        meta[slug] = {
+                            slug,
+                            label: metaItem?.label || slug,
+                            color: metaItem?.color || 'secondary',
+                        };
+                    });
+                    setEstadosMeta(meta);
+                }
 
                 if (options.afiliaciones) {
                     poblarAfiliacionesUnicas(options.afiliaciones);

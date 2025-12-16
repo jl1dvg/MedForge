@@ -213,6 +213,15 @@ array_push(
             border-radius: 10px;
         }
 
+        .kanban-scroll {
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+
+        .kanban-column-wrapper {
+            min-width: 260px;
+        }
+
         .kanban-column {
             flex: 1 1 0;
             min-width: 220px;
@@ -593,39 +602,48 @@ array_push(
     </div>
 
     <?php
-    $estados = [
-        'Recibido' => 'recibido',
-        'Llamado' => 'llamado',
-        'En atención' => 'en-atencion',
-        'Revisión Códigos' => 'revision-codigos',
-        'Docs Completos' => 'docs-completos',
-        'Aprobación Anestesia' => 'aprobacion-anestesia',
-        'Listo para Agenda' => 'listo-para-agenda',
-    ];
-    $colores = [
-        'recibido' => 'primary',
-        'llamado' => 'warning',
-        'en-atencion' => 'success',
-        'revision-codigos' => 'info',
-        'docs-completos' => 'success',
-        'aprobacion-anestesia' => 'warning',
-        'listo-para-agenda' => 'dark',
-    ];
+    $kanbanColumns = $kanbanColumns ?? [];
+    if (empty($kanbanColumns)) {
+        $kanbanColumns = [
+            'recibida' => ['label' => 'Recibido', 'color' => 'primary'],
+            'llamado' => ['label' => 'Llamado', 'color' => 'warning'],
+            'revision-codigos' => ['label' => 'Revisión de Cobertura', 'color' => 'info'],
+            'espera-documentos' => ['label' => 'Documentación', 'color' => 'secondary'],
+            'apto-oftalmologo' => ['label' => 'Apto oftalmólogo', 'color' => 'secondary'],
+            'apto-anestesia' => ['label' => 'Apto anestesia', 'color' => 'warning'],
+            'listo-para-agenda' => ['label' => 'Listo para agenda', 'color' => 'dark'],
+            'programada' => ['label' => 'Programada', 'color' => 'primary'],
+        ];
+    }
+
+    $kanbanStages = $kanbanStages ?? [];
+    $estadoMeta = [];
+    foreach ($kanbanColumns as $slug => $meta) {
+        $estadoMeta[$slug] = [
+            'label' => $meta['label'] ?? ucfirst((string)$slug),
+            'slug' => $slug,
+            'color' => $meta['color'] ?? 'secondary',
+        ];
+    }
     ?>
 
-    <div id="examenesViewKanban" class="kanban-board kanban-board-wrapper d-flex justify-content-between p-3 bg-light flex-nowrap gap-3">
-        <?php foreach ($estados as $estadoLabel => $estadoId):
-            $color = $colores[$estadoId] ?? 'secondary';
-            ?>
-            <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2">
-                <h5 class="text-center">
-                    <?= htmlspecialchars($estadoLabel, ENT_QUOTES, 'UTF-8') ?>
-                    <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>">0</span>
-                    <small class="text-muted" id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
-                </h5>
-                <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
-            </div>
-        <?php endforeach; ?>
+    <div id="examenesViewKanban" class="kanban-board kanban-board-wrapper bg-light p-3">
+        <div class="kanban-scroll d-flex flex-nowrap gap-3">
+            <?php foreach ($kanbanColumns as $slug => $meta): ?>
+                <?php
+                    $label = $meta['label'] ?? ucfirst((string)$slug);
+                    $color = $meta['color'] ?? 'secondary';
+                ?>
+                <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2 flex-shrink-0">
+                    <h5 class="text-center">
+                        <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>">0</span>
+                        <small class="text-muted" id="percent-<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>"></small>
+                    </h5>
+                    <div class="kanban-items" id="kanban-<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
+                </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 
     <div id="examenesViewTable" class="table-view d-none">
@@ -650,17 +668,6 @@ array_push(
             No hay examenes para los filtros seleccionados.
         </div>
     </div>
-
-    <?php
-    $estadoMeta = [];
-    foreach ($estados as $label => $slug) {
-        $estadoMeta[$slug] = [
-            'label' => $label,
-            'slug' => $slug,
-            'color' => $colores[$slug] ?? 'secondary',
-        ];
-    }
-    ?>
 
     <script>
         window.__KANBAN_MODULE__ = {
@@ -690,6 +697,8 @@ array_push(
                 'desktop_notifications' => (bool)($realtime['desktop_notifications'] ?? false),
                 'auto_dismiss_seconds' => $realtime['auto_dismiss_seconds'] ?? 0,
             ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
+            kanbanColumns: <?= json_encode($kanbanColumns, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
+            kanbanStages: <?= json_encode($kanbanStages, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
         };
         window.__examenesEstadosMeta = <?= json_encode($estadoMeta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>

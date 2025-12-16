@@ -1,5 +1,5 @@
 const REFRESH_INTERVAL = 30000;
-const ESTADOS_PARAM = encodeURIComponent('Recibido,Llamado,En atención,Atendido');
+const DEFAULT_ESTADOS = ['Recibido', 'Llamado', 'En atención', 'Atendido'];
 const AUDIO_PREFS_KEY = 'turnero_audio_prefs';
 const PIN_STORAGE_KEY = 'turnero_turnos_pineados';
 const CALL_SOUND_COOLDOWN = 7000;
@@ -488,6 +488,23 @@ const buildCard = (item, columnKey, eventById) => {
 
 const columns = {};
 
+const parseEstadosConfig = raw => {
+    if (Array.isArray(raw)) {
+        return raw.map(value => String(value).trim()).filter(Boolean);
+    }
+    if (typeof raw === 'string') {
+        return raw.split(',').map(part => part.trim()).filter(Boolean);
+    }
+    return [];
+};
+
+const getEstadosParam = columnKey => {
+    const column = columns[columnKey];
+    const estados = parseEstadosConfig(column?.config?.estados);
+    const list = estados.length ? estados : DEFAULT_ESTADOS;
+    return encodeURIComponent(list.join(','));
+};
+
 const initColumns = () => {
     if (!container || typeof panelConfigs !== 'object') return;
 
@@ -665,8 +682,9 @@ const fetchColumn = async columnKey => {
     const column = columns[columnKey];
     const endpoint = column?.config?.endpoint;
     if (!endpoint) return [];
+    const estadosParam = getEstadosParam(columnKey);
 
-    const response = await fetch(`${endpoint}?estado=${ESTADOS_PARAM}`, {
+    const response = await fetch(`${endpoint}?estado=${estadosParam}`, {
         credentials: 'same-origin',
     });
 

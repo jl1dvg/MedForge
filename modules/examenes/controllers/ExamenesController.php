@@ -573,6 +573,9 @@ class ExamenesController extends BaseController
         $mapa = [
             'recibido' => 'Recibido',
             'llamado' => 'Llamado',
+            'revision de cobertura' => 'Revisión de Cobertura',
+            'revision cobertura' => 'Revisión de Cobertura',
+            'listo para agenda' => 'Listo para Agenda',
             'en atencion' => 'En atención',
             'en atención' => 'En atención',
             'atendido' => 'Atendido',

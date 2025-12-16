@@ -27,7 +27,7 @@ class ExamenModel
                 pd.celular AS paciente_celular,
                 ce.examen_codigo,
                 ce.examen_nombre,
-                ce.doctor,
+                pp.doctor,
                 ce.solicitante,
                 ce.estado,
                 ce.prioridad,
@@ -49,7 +49,7 @@ class ExamenModel
                     FROM users u
                     WHERE u.profile_photo IS NOT NULL
                       AND u.profile_photo <> ''
-                      AND LOWER(TRIM(ce.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                      AND LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
                     ORDER BY u.id ASC
                     LIMIT 1
                 ) AS doctor_avatar,
@@ -60,6 +60,7 @@ class ExamenModel
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM consulta_examenes ce
             INNER JOIN patient_data pd ON ce.hc_number = pd.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON ce.form_id = pp.form_id
             LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
             LEFT JOIN (
@@ -91,7 +92,7 @@ class ExamenModel
         }
 
         if (!empty($filtros['doctor'])) {
-            $sql .= " AND ce.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
+            $sql .= " AND pp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
             $params[] = '%' . trim($filtros['doctor']) . '%';
         }
 

@@ -6,6 +6,7 @@ $panels = [
         'endpoint' => '/examenes/turnero-data',
         'empty' => 'No hay pacientes en cola para exámenes.',
         'accent' => 'panel-examenes',
+        'estados' => ['Llamado'],
     ],
     'solicitudes' => [
         'title' => 'Quirúrgicas',

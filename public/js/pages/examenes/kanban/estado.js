@@ -1,13 +1,21 @@
 import { showToast } from './toast.js';
 
-const slugifyEstado = value => (value ?? '')
-    .toString()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+const slugifyEstado = value => {
+    const raw = (value ?? '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+    if (raw === 'revision-de-cobertura' || raw === 'revision-cobertura') {
+        return 'revision-codigos';
+    }
+
+    return raw;
+};
 
 export function actualizarEstadoExamen(
     id,
@@ -72,7 +80,7 @@ export function actualizarEstadoExamen(
         })
         .then(data => {
             const estadoRespuesta = (data.estado ?? estadoLabel ?? '').toString();
-            const estadoRespuestaLabel = (data.estado_label ?? estadoRespuesta).toString();
+            const estadoRespuestaLabel = (data.estado_label ?? data.kanban_estado_label ?? estadoRespuesta).toString();
             const estadoRespuestaSlug = slugifyEstado(data.estado_slug ?? data.kanban_estado ?? estadoRespuesta);
 
             if (Array.isArray(examenes)) {
@@ -81,11 +89,20 @@ export function actualizarEstadoExamen(
                     examenes.find(s => String(s.id) === String(id));
 
                 if (encontrada) {
-                    encontrada.estado = estadoRespuestaLabel || estadoRespuesta;
+                    encontrada.estado = estadoRespuestaSlug || estadoRespuesta;
                     encontrada.estado_label = estadoRespuestaLabel || estadoRespuesta;
                     encontrada.kanban_estado = estadoRespuestaSlug || estadoRespuesta;
                     encontrada.kanban_estado_label =
                         data.estado_label ?? data.kanban_estado_label ?? estadoRespuestaLabel ?? estadoRespuesta;
+                    if (data.checklist !== undefined) {
+                        encontrada.checklist = data.checklist;
+                    }
+                    if (data.checklist_progress !== undefined) {
+                        encontrada.checklist_progress = data.checklist_progress;
+                    }
+                    if (data.kanban_next !== undefined) {
+                        encontrada.kanban_next = data.kanban_next;
+                    }
 
                     if (data.turno !== undefined) {
                         encontrada.turno = data.turno;

@@ -7,6 +7,7 @@ use Helpers\JsonLogger;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
+use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Examenes\Services\ExamenReminderService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
@@ -18,6 +19,7 @@ class ExamenController extends BaseController
     private ExamenModel $examenModel;
     private PacienteService $pacienteService;
     private ExamenCrmService $crmService;
+    private ExamenEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
@@ -31,6 +33,7 @@ class ExamenController extends BaseController
         $this->examenModel = new ExamenModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new ExamenCrmService($pdo);
+        $this->estadoService = new ExamenEstadoService();
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
     }
@@ -58,6 +61,8 @@ class ExamenController extends BaseController
             __DIR__ . '/../views/examenes.php',
             [
                 'pageTitle' => 'Solicitudes de Exámenes',
+                'kanbanColumns' => $this->estadoService->getColumns(),
+                'kanbanStages' => $this->estadoService->getStages(),
                 'realtime' => $realtime,
             ]
         );
@@ -107,6 +112,7 @@ class ExamenController extends BaseController
 
         try {
             $examenes = $this->examenModel->fetchExamenesConDetallesFiltrado($filtros);
+            $examenes = $this->estadoService->enrichExamenes($examenes);
             $examenes = array_map([$this, 'transformExamenRow'], $examenes);
             $examenes = $this->ordenarExamenes($examenes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $examenes = $this->limitarExamenesPorEstado($examenes, (int) ($kanbanPreferences['column_limit'] ?? 0));
@@ -138,6 +144,8 @@ class ExamenController extends BaseController
                         'fuentes' => $fuentes,
                         'kanban' => $kanbanPreferences,
                     ],
+                    'kanban_columns' => $this->estadoService->getColumns(),
+                    'kanban_stages' => $this->estadoService->getStages(),
                 ],
             ]);
         } catch (Throwable $e) {
@@ -354,18 +362,31 @@ class ExamenController extends BaseController
 
         $payload = $this->getRequestBody();
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        $estado = trim((string) ($payload['estado'] ?? ''));
+        $estadoRaw = trim((string) ($payload['estado_slug'] ?? $payload['estado'] ?? $payload['etapa'] ?? ''));
+        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+        $force = isset($payload['force']) ? (bool) $payload['force'] : false;
 
-        if ($id <= 0 || $estado === '') {
+        if ($id <= 0 || $estadoRaw === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
             return;
         }
 
         try {
-            $resultado = $this->examenModel->actualizarEstado($id, $estado);
+            $target = $this->estadoService->getUpdateTarget($estadoRaw, $completado || $force);
+            $estadoLabel = $target['label'] ?? $estadoRaw;
+            $resultado = $this->examenModel->actualizarEstado($id, $estadoLabel);
+
+            $enriched = $this->estadoService->enrichExamenes([[
+                'id' => $resultado['id'] ?? $id,
+                'estado' => $estadoLabel,
+            ]]);
+            $estadoData = $enriched[0] ?? [];
+            $estadoData = array_merge($resultado, $estadoData);
 
             $this->pusherConfig->trigger(
-                $resultado + [
+                $estadoData + [
+                    'kanban_estado' => $estadoData['kanban_estado'] ?? $target['slug'],
+                    'kanban_estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
                     'channels' => $this->pusherConfig->getNotificationChannels(),
                 ],
                 self::PUSHER_CHANNEL,
@@ -374,9 +395,15 @@ class ExamenController extends BaseController
 
             $this->json([
                 'success' => true,
-                'estado' => $resultado['estado'] ?? $estado,
-                'turno' => $resultado['turno'] ?? null,
-                'estado_anterior' => $resultado['estado_anterior'] ?? null,
+                'estado' => $estadoData['kanban_estado'] ?? $target['slug'],
+                'estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
+                'kanban_estado' => $estadoData['kanban_estado'] ?? $target['slug'],
+                'kanban_estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
+                'turno' => $estadoData['turno'] ?? null,
+                'estado_anterior' => $estadoData['estado_anterior'] ?? null,
+                'checklist' => $estadoData['checklist'] ?? [],
+                'checklist_progress' => $estadoData['checklist_progress'] ?? [],
+                'kanban_next' => $estadoData['kanban_next'] ?? null,
             ]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
@@ -729,6 +756,9 @@ class ExamenController extends BaseController
         $mapa = [
             'recibido' => 'Recibido',
             'llamado' => 'Llamado',
+            'revision de cobertura' => 'Revisión de Cobertura',
+            'revision cobertura' => 'Revisión de Cobertura',
+            'listo para agenda' => 'Listo para Agenda',
             'en atencion' => 'En atención',
             'en atención' => 'En atención',
             'atendido' => 'Atendido',

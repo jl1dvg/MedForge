@@ -296,7 +296,7 @@ class ExamenesModel
             }
 
             $turno = null;
-            if (strcasecmp($estado, 'Recibido') === 0) {
+            if (strcasecmp($estado, 'Llamado') === 0) {
                 $turno = $this->asignarTurnoSiNecesario($id);
             }
 
