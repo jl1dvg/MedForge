@@ -5,6 +5,7 @@ namespace Controllers;
 use Core\BaseController;
 use Helpers\JsonLogger;
 use Modules\Examenes\Models\ExamenesModel;
+use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
@@ -18,6 +19,7 @@ class ExamenesController extends BaseController
     private ExamenesModel $solicitudModel;
     private PacienteService $pacienteService;
     private ExamenesCrmService $crmService;
+    private ExamenEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
@@ -28,6 +30,7 @@ class ExamenesController extends BaseController
         $this->solicitudModel = new ExamenesModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new ExamenesCrmService($pdo);
+        $this->estadoService = new ExamenEstadoService();
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
     }
@@ -40,6 +43,8 @@ class ExamenesController extends BaseController
             __DIR__ . '/../views/examenes.php',
             [
                 'pageTitle' => 'Solicitudes Quirúrgicas',
+                'kanbanColumns' => $this->estadoService->getColumns(),
+                'kanbanStages' => $this->estadoService->getStages(),
                 'realtime' => $this->pusherConfig->getPublicConfig(),
             ]
         );
@@ -99,6 +104,7 @@ class ExamenesController extends BaseController
         try {
             $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filtros);
             $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
+            $solicitudes = $this->estadoService->enrichExamenes($solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
 
@@ -573,6 +579,9 @@ class ExamenesController extends BaseController
         $mapa = [
             'recibido' => 'Recibido',
             'llamado' => 'Llamado',
+            'revision de cobertura' => 'Revisión de Cobertura',
+            'revision cobertura' => 'Revisión de Cobertura',
+            'listo para agenda' => 'Listo para Agenda',
             'en atencion' => 'En atención',
             'en atención' => 'En atención',
             'atendido' => 'Atendido',
@@ -687,7 +696,8 @@ class ExamenesController extends BaseController
         $filtradas = [];
 
         foreach ($solicitudes as $solicitud) {
-            $estado = $this->normalizarEstadoKanban($solicitud['estado'] ?? '');
+            $estadoBase = $solicitud['kanban_estado'] ?? $solicitud['estado'] ?? '';
+            $estado = $this->normalizarEstadoKanban($estadoBase);
             $contador[$estado] = ($contador[$estado] ?? 0);
 
             if ($contador[$estado] >= $limite) {

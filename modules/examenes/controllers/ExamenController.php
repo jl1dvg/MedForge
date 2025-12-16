@@ -7,6 +7,7 @@ use Helpers\JsonLogger;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
+use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Examenes\Services\ExamenReminderService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
@@ -18,6 +19,7 @@ class ExamenController extends BaseController
     private ExamenModel $examenModel;
     private PacienteService $pacienteService;
     private ExamenCrmService $crmService;
+    private ExamenEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private ?array $bodyCache = null;
@@ -31,6 +33,7 @@ class ExamenController extends BaseController
         $this->examenModel = new ExamenModel($pdo);
         $this->pacienteService = new PacienteService($pdo);
         $this->crmService = new ExamenCrmService($pdo);
+        $this->estadoService = new ExamenEstadoService();
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
     }
@@ -58,6 +61,8 @@ class ExamenController extends BaseController
             __DIR__ . '/../views/examenes.php',
             [
                 'pageTitle' => 'Solicitudes de Exámenes',
+                'kanbanColumns' => $this->estadoService->getColumns(),
+                'kanbanStages' => $this->estadoService->getStages(),
                 'realtime' => $realtime,
             ]
         );
@@ -108,6 +113,7 @@ class ExamenController extends BaseController
         try {
             $examenes = $this->examenModel->fetchExamenesConDetallesFiltrado($filtros);
             $examenes = array_map([$this, 'transformExamenRow'], $examenes);
+            $examenes = $this->estadoService->enrichExamenes($examenes);
             $examenes = $this->ordenarExamenes($examenes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $examenes = $this->limitarExamenesPorEstado($examenes, (int) ($kanbanPreferences['column_limit'] ?? 0));
 
@@ -713,7 +719,8 @@ class ExamenController extends BaseController
         $filtrados = [];
 
         foreach ($examenes as $examen) {
-            $estado = strtolower(trim((string) ($examen['estado'] ?? 'Pendiente')));
+            $estadoBase = $examen['kanban_estado'] ?? $examen['estado'] ?? 'Pendiente';
+            $estado = strtolower(trim((string) $estadoBase));
             $contadores[$estado] = ($contadores[$estado] ?? 0) + 1;
 
             if ($contadores[$estado] <= $limitePorColumna) {
@@ -729,6 +736,9 @@ class ExamenController extends BaseController
         $mapa = [
             'recibido' => 'Recibido',
             'llamado' => 'Llamado',
+            'revision de cobertura' => 'Revisión de Cobertura',
+            'revision cobertura' => 'Revisión de Cobertura',
+            'listo para agenda' => 'Listo para Agenda',
             'en atencion' => 'En atención',
             'en atención' => 'En atención',
             'atendido' => 'Atendido',
