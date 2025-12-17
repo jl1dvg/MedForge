@@ -14,6 +14,7 @@ use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Models\SettingsModel;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -37,6 +38,7 @@ class SolicitudController extends BaseController
     private SolicitudEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
+    private ?SettingsModel $settings = null;
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -86,11 +88,14 @@ class SolicitudController extends BaseController
     {
         $this->requireAuth();
 
+        $options = $this->loadTurneroSettings();
+
         $this->render(
             __DIR__ . '/../views/turnero-unificado.php',
             [
                 'pageTitle' => 'Turneros quirúrgicos y de exámenes',
                 'bodyClass' => 'turnero-body',
+                'turneroSettings' => $options,
             ],
             'layout-turnero.php'
         );
@@ -111,6 +116,65 @@ class SolicitudController extends BaseController
     public function actualizarSolicitudParcial(int $id, array $campos): array
     {
         return $this->solicitudModel->actualizarSolicitudParcial($id, $campos);
+    }
+
+    private function settings(): SettingsModel
+    {
+        if (!($this->settings instanceof SettingsModel)) {
+            $this->settings = new SettingsModel($this->pdo);
+        }
+
+        return $this->settings;
+    }
+
+    private function loadTurneroSettings(): array
+    {
+        $defaults = [
+            'soundEnabled' => true,
+            'volume' => 0.7,
+            'quiet' => [
+                'enabled' => false,
+                'start' => '22:00',
+                'end' => '06:00',
+            ],
+            'ttsEnabled' => true,
+            'ttsRepeat' => false,
+            'speakOnNew' => true,
+            'fullscreenDefault' => false,
+        ];
+
+        try {
+            $options = $this->settings()->getOptions([
+                'turnero_sound_enabled',
+                'turnero_sound_volume',
+                'turnero_quiet_enabled',
+                'turnero_quiet_start',
+                'turnero_quiet_end',
+                'turnero_tts_enabled',
+                'turnero_tts_repeat',
+                'turnero_speak_on_new',
+                'turnero_fullscreen_default',
+            ]);
+        } catch (Throwable) {
+            return $defaults;
+        }
+
+        $bool = static fn($value, $fallback = false) => in_array($value, ['1', 1, true, 'true', 'on', 'yes'], true) ? true : $fallback;
+        $volume = (float)($options['turnero_sound_volume'] ?? $defaults['volume']);
+
+        return [
+            'soundEnabled' => $bool($options['turnero_sound_enabled'] ?? $defaults['soundEnabled'], $defaults['soundEnabled']),
+            'volume' => max(0, min(1, $volume)),
+            'quiet' => [
+                'enabled' => $bool($options['turnero_quiet_enabled'] ?? $defaults['quiet']['enabled'], $defaults['quiet']['enabled']),
+                'start' => $options['turnero_quiet_start'] ?? $defaults['quiet']['start'],
+                'end' => $options['turnero_quiet_end'] ?? $defaults['quiet']['end'],
+            ],
+            'ttsEnabled' => $bool($options['turnero_tts_enabled'] ?? $defaults['ttsEnabled'], $defaults['ttsEnabled']),
+            'ttsRepeat' => $bool($options['turnero_tts_repeat'] ?? $defaults['ttsRepeat'], $defaults['ttsRepeat']),
+            'speakOnNew' => $bool($options['turnero_speak_on_new'] ?? $defaults['speakOnNew'], $defaults['speakOnNew']),
+            'fullscreenDefault' => $bool($options['turnero_fullscreen_default'] ?? $defaults['fullscreenDefault'], $defaults['fullscreenDefault']),
+        ];
     }
 
     public function kanbanData(): void

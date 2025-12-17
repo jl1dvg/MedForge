@@ -1,26 +1,18 @@
 const REFRESH_INTERVAL = 30000;
 const DEFAULT_ESTADOS = ['Recibido', 'Llamado', 'En atención', 'Atendido'];
-const AUDIO_PREFS_KEY = 'turnero_audio_prefs';
-const PIN_STORAGE_KEY = 'turnero_turnos_pineados';
 const CALL_SOUND_COOLDOWN = 7000;
 const SPEAK_COOLDOWN = 12000;
 const PRIORITY_SPEAK_DELAY = 650;
 
 const container = document.getElementById('turneroGrid');
 const panelConfigs = (typeof window !== 'undefined' && window.TURNERO_UNIFICADO_PANELES) || {};
+const serverConfig = (typeof window !== 'undefined' && window.TURNERO_UNIFICADO_CONFIG) || {};
 
 const elements = {
     clock: document.getElementById('turneroClock'),
     refresh: document.getElementById('turneroRefresh'),
+    fullscreen: document.getElementById('turneroFullscreen'),
     lastUpdate: document.getElementById('turneroLastUpdate'),
-    soundToggle: document.getElementById('soundToggle'),
-    volume: document.getElementById('volumeControl'),
-    quietToggle: document.getElementById('quietToggle'),
-    quietStart: document.getElementById('quietStart'),
-    quietEnd: document.getElementById('quietEnd'),
-    ttsToggle: document.getElementById('ttsToggle'),
-    ttsRepeat: document.getElementById('ttsRepeat'),
-    voiceSelect: document.getElementById('voiceSelect'),
 };
 
 const stateOrder = ['en espera', 'llamado', 'en atencion', 'atendido'];
@@ -38,27 +30,29 @@ const defaultPrefs = {
     ttsEnabled: true,
     voice: '',
     ttsRepeat: false,
+    speakOnNew: true,
+    fullscreenDefault: false,
 };
 
-let preferences = {...defaultPrefs};
+const preferences = {
+    ...defaultPrefs,
+    soundEnabled: Boolean(serverConfig.soundEnabled ?? defaultPrefs.soundEnabled),
+    volume: Math.max(0, Math.min(1, Number.parseFloat(serverConfig.volume ?? defaultPrefs.volume) || defaultPrefs.volume)),
+    quiet: {
+        ...defaultPrefs.quiet,
+        ...(serverConfig.quiet || {}),
+        enabled: Boolean(serverConfig?.quiet?.enabled ?? defaultPrefs.quiet.enabled),
+    },
+    ttsEnabled: Boolean(serverConfig.ttsEnabled ?? defaultPrefs.ttsEnabled),
+    ttsRepeat: Boolean(serverConfig.ttsRepeat ?? defaultPrefs.ttsRepeat),
+    speakOnNew: Boolean(serverConfig.speakOnNew ?? defaultPrefs.speakOnNew),
+    fullscreenDefault: Boolean(serverConfig.fullscreenDefault ?? defaultPrefs.fullscreenDefault),
+};
 let lastCallSoundAt = 0;
 const previousStates = {};
 const spokenRegistry = new Map();
 const latestData = {};
 let audioUnlocked = false;
-
-const pinnedTurnos = (() => {
-    try {
-        const raw = localStorage.getItem(PIN_STORAGE_KEY);
-        if (!raw) return new Set();
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return new Set();
-        return new Set(parsed.map(String));
-    } catch (err) {
-        console.warn('No se pudo leer pines locales', err);
-        return new Set();
-    }
-})();
 
 const normalizeText = value => {
     if (typeof value !== 'string') return '';
@@ -98,18 +92,7 @@ const isPriorityItem = item => {
     return false;
 };
 
-const isPinned = item => pinnedTurnos.has(getItemId(item));
-
-const savePinned = () => {
-    try {
-        localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify([...pinnedTurnos]));
-    } catch (err) {
-        console.warn('No se pudo guardar pines', err);
-    }
-};
-
 const priorityScore = item => {
-    if (isPinned(item)) return -1;
     if (isPriorityItem(item)) return 0;
     const normalized = normalizeText(item?.prioridad || '');
     if (normalized) return 1;
@@ -126,35 +109,6 @@ const parseTurnoNumero = turno => {
     const numero = Number.parseInt(turno, 10);
     return Number.isNaN(numero) ? Number.POSITIVE_INFINITY : numero;
 };
-
-const loadPreferences = () => {
-    try {
-        const raw = localStorage.getItem(AUDIO_PREFS_KEY);
-        if (!raw) {
-            preferences = {...defaultPrefs};
-            return;
-        }
-        const stored = JSON.parse(raw);
-        preferences = {
-            ...defaultPrefs,
-            ...stored,
-            quiet: {...defaultPrefs.quiet, ...(stored?.quiet || {})},
-        };
-    } catch (err) {
-        console.warn('No se pudieron cargar preferencias de audio', err);
-        preferences = {...defaultPrefs};
-    }
-};
-
-const persistPreferences = () => {
-    try {
-        localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify(preferences));
-    } catch (err) {
-        console.warn('No se pudieron guardar preferencias', err);
-    }
-};
-
-loadPreferences();
 
 const audioEngine = {
     ctx: null,
@@ -342,89 +296,18 @@ const speakNameForItem = (item, reason) => {
     }
 };
 
-const buildDetalle = item => {
-    const partes = [];
-    if (item?.fecha) partes.push(item.fecha);
-    if (item?.hora) partes.push(item.hora);
-    if (partes.length === 0) return '';
-    if (partes.length === 1) return partes[0];
-    return `${partes[0]} • ${partes[1]}`;
-};
-
-const buildExtras = item => {
-    const extras = [];
-    if (item?.hc_number) extras.push({label: 'HC', value: item.hc_number});
-    if (item?.kanban_estado) extras.push({label: 'Estado CRM', value: item.kanban_estado});
-    if (item?.doctor) extras.push({label: 'Médico', value: item.doctor});
-    if (item?.sala) extras.push({label: 'Sala', value: item.sala});
-    const detalle = buildDetalle(item);
-    if (detalle) extras.push({label: 'Registro', value: detalle});
-    return extras;
-};
-
 const buildCard = (item, columnKey, eventById) => {
     const card = document.createElement('article');
     card.className = 'turno-card';
     card.setAttribute('role', 'listitem');
     card.dataset.id = getItemId(item);
     card.dataset.column = columnKey;
-
-    const pinned = isPinned(item);
-
-    const pinBtn = document.createElement('button');
-    pinBtn.type = 'button';
-    pinBtn.className = 'turno-pin';
-    pinBtn.dataset.pinned = String(pinned);
-    pinBtn.textContent = pinned ? 'Prioritario' : 'Pin';
-    pinBtn.addEventListener('click', () => {
-        const id = getItemId(item);
-        const wasPinned = pinnedTurnos.has(id);
-        if (wasPinned) {
-            pinnedTurnos.delete(id);
-        } else {
-            pinnedTurnos.add(id);
-            playPriorityTone();
-            setTimeout(() => speakNameForItem(item, 'priority'), PRIORITY_SPEAK_DELAY);
-        }
-        savePinned();
-        renderColumn(columnKey, latestData[columnKey] || []);
-    });
-    card.appendChild(pinBtn);
+    card.setAttribute('aria-label', `Turno ${formatTurno(item.turno)} · ${item?.full_name || 'Paciente'}`);
 
     const numero = document.createElement('div');
     numero.className = 'turno-numero';
-    numero.textContent = `#${formatTurno(item.turno)}`;
+    numero.textContent = formatTurno(item.turno);
     card.appendChild(numero);
-
-    const detalles = document.createElement('div');
-    detalles.className = 'turno-detalles';
-    card.appendChild(detalles);
-
-    const nombre = document.createElement('div');
-    nombre.className = 'turno-nombre';
-    nombre.textContent = item?.full_name ? String(item.full_name) : 'Paciente sin nombre';
-    detalles.appendChild(nombre);
-
-    const descripcionTexto = item?.examen_nombre || item?.procedimiento || '';
-    if (descripcionTexto) {
-        const descripcion = document.createElement('div');
-        descripcion.className = 'turno-descripcion';
-        descripcion.textContent = descripcionTexto;
-        detalles.appendChild(descripcion);
-    }
-
-    const meta = document.createElement('div');
-    meta.className = 'turno-meta mt-1';
-    detalles.appendChild(meta);
-
-    const prioridadBadge = item?.prioridad ? String(item.prioridad) : '';
-    if (prioridadBadge || pinned) {
-        const badge = document.createElement('span');
-        badge.className = 'turno-badge';
-        badge.title = pinned ? 'Tarjeta fijada como prioritaria' : 'Prioridad';
-        badge.textContent = pinned ? 'PRIORITARIO' : prioridadBadge.toUpperCase();
-        meta.appendChild(badge);
-    }
 
     const estado = normalizeEstado(item?.estado);
     if (estado) {
@@ -432,7 +315,7 @@ const buildCard = (item, columnKey, eventById) => {
         const estadoClass = estadoClases.get(estado) ?? '';
         estadoEl.className = `turno-estado${estadoClass ? ` ${estadoClass}` : ''}`;
         estadoEl.textContent = estado.replace('en ', 'En ');
-        meta.appendChild(estadoEl);
+        card.appendChild(estadoEl);
         card.dataset.estado = estado;
         if (estado === 'llamado') {
             card.classList.add('is-llamado');
@@ -440,41 +323,16 @@ const buildCard = (item, columnKey, eventById) => {
         }
     }
 
-    const core = document.createElement('div');
-    core.className = 'turno-core';
-    meta.appendChild(core);
-
     const hora = item?.hora || '';
     if (hora) {
         const horaEl = document.createElement('span');
         horaEl.className = 'turno-hora';
         horaEl.textContent = hora;
-        core.appendChild(horaEl);
+        card.appendChild(horaEl);
     }
 
-    const extras = buildExtras(item);
-    if (extras.length) {
-        const detailBox = document.createElement('details');
-        detailBox.className = 'turno-detalles-extendidos';
-        const summary = document.createElement('summary');
-        summary.textContent = 'Más detalles';
-        detailBox.appendChild(summary);
-        const extraList = document.createElement('div');
-        extraList.className = 'turno-extra-list';
-        extras.forEach(extra => {
-            const row = document.createElement('div');
-            row.innerHTML = `<span>${extra.label}:</span> ${extra.value}`;
-            extraList.appendChild(row);
-        });
-        detailBox.appendChild(extraList);
-        detalles.appendChild(detailBox);
-    }
-
-    if (pinned || isPriorityItem(item)) {
+    if (isPriorityItem(item)) {
         card.classList.add('is-priority');
-        if (pinned) {
-            card.classList.add('is-pinned');
-        }
     }
 
     const event = eventById?.get(card.dataset.id);
@@ -592,7 +450,7 @@ const detectEvents = (columnKey, items) => {
     items.forEach(item => {
         const id = getItemId(item);
         const estado = normalizeEstado(item.estado);
-        const priorityFlag = isPriorityItem(item) || isPinned(item);
+        const priorityFlag = isPriorityItem(item);
         const prevEntry = prev.get(id);
 
         if (!prevEntry) {
@@ -619,7 +477,10 @@ const detectEvents = (columnKey, items) => {
 const triggerEvents = events => {
     events.forEach(event => {
         if (event.type === 'new') {
-            playNewTurnTone();
+            playCallTone();
+            if (preferences.speakOnNew) {
+                speakNameForItem(event.item, 'new');
+            }
         } else if (event.type === 'call') {
             playCallTone();
             speakNameForItem(event.item, 'call');
@@ -678,6 +539,36 @@ const setLastUpdate = () => {
     elements.lastUpdate.textContent = `Última actualización: ${formatter.format(now)}`;
 };
 
+const updateFullscreenLabel = active => {
+    if (!elements.fullscreen) return;
+    const label = elements.fullscreen.querySelector('span');
+    if (label) {
+        label.textContent = active ? 'Salir de pantalla completa' : 'Pantalla completa';
+    }
+    elements.fullscreen.setAttribute('aria-pressed', active ? 'true' : 'false');
+};
+
+const toggleFullscreen = () => {
+    const enableLocalFullscreen = () => {
+        document.body.classList.toggle('fullscreen-mode');
+        updateFullscreenLabel(document.body.classList.contains('fullscreen-mode'));
+    };
+
+    if (document.fullscreenElement) {
+        document.exitFullscreen().catch(enableLocalFullscreen);
+        return;
+    }
+
+    if (document.documentElement.requestFullscreen) {
+        document.documentElement
+            .requestFullscreen()
+            .then(() => updateFullscreenLabel(true))
+            .catch(enableLocalFullscreen);
+    } else {
+        enableLocalFullscreen();
+    }
+};
+
 const fetchColumn = async columnKey => {
     const column = columns[columnKey];
     const endpoint = column?.config?.endpoint;
@@ -715,79 +606,32 @@ const bindFilters = () => {
     });
 };
 
-const bindPreferences = () => {
-    if (elements.soundToggle) {
-        elements.soundToggle.checked = preferences.soundEnabled;
-        elements.soundToggle.addEventListener('change', () => {
-            preferences.soundEnabled = Boolean(elements.soundToggle.checked);
-            persistPreferences();
-        });
-    }
-    if (elements.volume) {
-        elements.volume.value = preferences.volume;
-        elements.volume.addEventListener('input', () => {
-            preferences.volume = Number.parseFloat(elements.volume.value) || 0;
-            persistPreferences();
-        });
-    }
-    if (elements.quietToggle) {
-        elements.quietToggle.checked = Boolean(preferences.quiet?.enabled);
-        elements.quietToggle.addEventListener('change', () => {
-            preferences.quiet.enabled = Boolean(elements.quietToggle.checked);
-            persistPreferences();
-        });
-    }
-    if (elements.quietStart) {
-        elements.quietStart.value = preferences.quiet.start;
-        elements.quietStart.addEventListener('change', () => {
-            preferences.quiet.start = elements.quietStart.value || '22:00';
-            persistPreferences();
-        });
-    }
-    if (elements.quietEnd) {
-        elements.quietEnd.value = preferences.quiet.end;
-        elements.quietEnd.addEventListener('change', () => {
-            preferences.quiet.end = elements.quietEnd.value || '06:00';
-            persistPreferences();
-        });
-    }
-    if (elements.ttsToggle) {
-        elements.ttsToggle.checked = preferences.ttsEnabled;
-        elements.ttsToggle.addEventListener('change', () => {
-            preferences.ttsEnabled = Boolean(elements.ttsToggle.checked);
-            persistPreferences();
-        });
-    }
-    if (elements.ttsRepeat) {
-        elements.ttsRepeat.checked = preferences.ttsRepeat;
-        elements.ttsRepeat.addEventListener('change', () => {
-            preferences.ttsRepeat = Boolean(elements.ttsRepeat.checked);
-            persistPreferences();
-        });
-    }
-    if (elements.voiceSelect) {
-        elements.voiceSelect.addEventListener('change', () => {
-            preferences.voice = elements.voiceSelect.value || '';
-            persistPreferences();
-        });
-    }
-};
-
 const start = () => {
     initColumns();
     if (!Object.keys(columns).length) return;
 
     bindFilters();
-    bindPreferences();
     ['pointerdown', 'touchstart', 'keydown'].forEach(evt => {
         document.addEventListener(evt, unlockAudio, {once: true, passive: true});
     });
     elements.refresh?.addEventListener('click', unlockAudio);
-    elements.soundToggle?.addEventListener('click', unlockAudio);
     // Primer click/tap en cualquier parte desbloquea audio; además, al presionar "Actualizar" intentamos sonar.
     elements.refresh?.addEventListener('click', () => {
         playNewTurnTone();
     });
+    if (elements.fullscreen) {
+        elements.fullscreen.addEventListener('click', toggleFullscreen);
+    }
+    document.addEventListener('fullscreenchange', () => {
+        const active = Boolean(document.fullscreenElement);
+        if (!active) {
+            document.body.classList.remove('fullscreen-mode');
+        } else {
+            document.body.classList.add('fullscreen-mode');
+        }
+        updateFullscreenLabel(active || document.body.classList.contains('fullscreen-mode'));
+    });
+    updateFullscreenLabel(document.body.classList.contains('fullscreen-mode'));
     populateVoices();
     if ('speechSynthesis' in window) {
         window.speechSynthesis.onvoiceschanged = populateVoices;
@@ -796,6 +640,11 @@ const start = () => {
     setInterval(renderClock, 1000);
 
     elements.refresh?.addEventListener('click', refresh);
+
+    if (preferences.fullscreenDefault) {
+        document.body.classList.add('fullscreen-mode');
+        updateFullscreenLabel(true);
+    }
 
     refresh();
     setInterval(refresh, REFRESH_INTERVAL);

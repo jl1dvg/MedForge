@@ -16,6 +16,8 @@ $panels = [
         'accent' => 'panel-quirurgico',
     ],
 ];
+
+$turneroSettings = $turneroSettings ?? [];
 ?>
 <section class="content">
     <style>
@@ -40,6 +42,17 @@ $panels = [
             box-shadow: 0 25px 55px rgba(10, 12, 24, 0.45);
             border: 1px solid rgba(148, 163, 184, 0.25);
             overflow: hidden;
+        }
+
+        body.turnero-body.fullscreen-mode {
+            padding: 0;
+        }
+
+        body.turnero-body.fullscreen-mode .turnero-wrapper {
+            max-width: none;
+            border-radius: 0;
+            min-height: 100vh;
+            width: 100%;
         }
 
         .turnero-header {
@@ -93,71 +106,9 @@ $panels = [
             width: fit-content;
         }
 
-        .turnero-controls {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(320px, 1fr));
-            gap: 0.85rem;
-            background: rgba(148, 163, 184, 0.08);
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            border-radius: 16px;
-            padding: 0.75rem 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .control-block {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 0.65rem;
-            color: #cbd5f5;
-        }
-
-        .control-block label {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            font-weight: 700;
+        .turnero-actions .btn-fullscreen {
+            background: rgba(148, 163, 184, 0.16);
             color: #e2e8f0;
-            margin: 0;
-        }
-
-        .control-block small {
-            color: #94a3b8;
-            font-weight: 600;
-        }
-
-        .control-toggle {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            background: rgba(148, 163, 184, 0.12);
-            border: 1px solid rgba(148, 163, 184, 0.24);
-            border-radius: 12px;
-            padding: 0.35rem 0.75rem;
-        }
-
-        .control-toggle input[type="checkbox"] {
-            accent-color: #38bdf8;
-        }
-
-        .volume-input {
-            width: 140px;
-            accent-color: #22d3ee;
-        }
-
-        .quiet-hours {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
-        .quiet-hours input[type="time"] {
-            background: rgba(15, 23, 42, 0.9);
-            border: 1px solid rgba(148, 163, 184, 0.3);
-            color: #e2e8f0;
-            border-radius: 10px;
-            padding: 0.35rem 0.6rem;
         }
 
         .turnero-grid {
@@ -278,14 +229,14 @@ $panels = [
 
         .turno-card {
             position: relative;
-            display: flex;
-            gap: 0.85rem;
-            align-items: flex-start;
-            padding: 1rem 1.1rem;
+            display: grid;
+            grid-template-columns: 1fr;
+            justify-items: center;
+            padding: 1.25rem 1rem;
             background: rgba(15, 23, 42, 0.8);
             border: 1px solid rgba(148, 163, 184, 0.28);
             border-radius: 18px;
-            min-height: 120px;
+            min-height: 140px;
             box-shadow: 0 12px 24px rgba(10, 12, 24, 0.3);
             transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
         }
@@ -300,19 +251,6 @@ $panels = [
             border-color: rgba(250, 204, 21, 0.55);
             box-shadow: 0 18px 32px rgba(250, 204, 21, 0.28);
             animation: pulseCall 2.5s ease-in-out infinite;
-        }
-
-        .turno-card.is-priority::before {
-            content: '\1F4CC';
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            font-size: 1.1rem;
-        }
-
-        .turno-card.is-pinned {
-            border-color: rgba(34, 211, 238, 0.8);
-            box-shadow: 0 18px 42px rgba(34, 211, 238, 0.28);
         }
 
         .turno-flash {
@@ -331,67 +269,13 @@ $panels = [
         }
 
         .turno-numero {
-            font-size: clamp(2.4rem, 4vw, 3.4rem);
-            font-weight: 800;
-            color: #38bdf8;
-            line-height: 1;
-            min-width: clamp(90px, 10vw, 120px);
-            text-align: center;
-        }
-
-        .turno-detalles {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-        }
-
-        .turno-nombre {
-            font-size: clamp(1.3rem, 3vw, 1.8rem);
-            font-weight: 700;
+            font-size: clamp(2.8rem, 6vw, 3.6rem);
+            font-weight: 900;
             color: #f8fafc;
-        }
-
-        .turno-descripcion {
-            color: #cbd5f5;
-            font-weight: 600;
-        }
-
-        .turno-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .turno-core {
-            display: flex;
-            gap: 0.65rem;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .turno-badge {
-            background: rgba(56, 189, 248, 0.2);
-            color: #38bdf8;
-            border-radius: 999px;
-            padding: 0.35rem 0.9rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            font-size: 0.85rem;
-        }
-
-        .turno-estado {
-            border-radius: 999px;
-            padding: 0.35rem 0.9rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            background: rgba(148, 163, 184, 0.25);
-            color: #e2e8f0;
-            font-size: 0.85rem;
+            line-height: 1;
+            letter-spacing: 0.08em;
+            min-width: clamp(90px, 10vw, 140px);
+            text-align: center;
         }
 
         .turno-estado.recibido { background: rgba(59, 130, 246, 0.25); color: #60a5fa; }
@@ -509,7 +393,7 @@ $panels = [
         }
 
         @media (max-width: 1024px) {
-            .turnero-header, .turnero-controls { grid-template-columns: 1fr; }
+            .turnero-header { grid-template-columns: 1fr; }
             .turnero-actions { align-items: flex-start; }
         }
 
@@ -520,8 +404,7 @@ $panels = [
                     "examenes"
                     "quirurgico";
             }
-            .turno-card { flex-direction: column; }
-            .turno-numero { min-width: 0; text-align: left; }
+            .turno-numero { min-width: 0; text-align: center; }
         }
     </style>
 
@@ -539,6 +422,10 @@ $panels = [
                 <div class="turnero-meta">
                     <span id="turneroClock">--:--:--</span>
                 </div>
+                <button id="turneroFullscreen" class="btn btn-outline-light btn-fullscreen" type="button">
+                    <i class="mdi mdi-fullscreen"></i>
+                    <span class="ms-1">Pantalla completa</span>
+                </button>
                 <button id="turneroRefresh" class="btn btn-outline-info" type="button">
                     <i class="mdi mdi-refresh"></i>
                     <span class="ms-1">Actualizar</span>
@@ -547,45 +434,6 @@ $panels = [
         </div>
 
         <p class="turnero-context" id="turneroLastUpdate" aria-live="polite">Última actualización: --</p>
-
-        <div class="turnero-controls" aria-label="Preferencias de audio y lectura">
-            <div class="control-block">
-                <div class="control-toggle">
-                    <input type="checkbox" id="soundToggle" checked>
-                    <label for="soundToggle">Sonido ON/OFF</label>
-                </div>
-                <label for="volumeControl">Volumen</label>
-                <input id="volumeControl" class="volume-input" type="range" min="0" max="1" step="0.05" value="0.7">
-                <div class="control-toggle">
-                    <input type="checkbox" id="quietToggle">
-                    <label for="quietToggle">Quiet hours</label>
-                </div>
-                <div class="quiet-hours" aria-label="Horario silencioso">
-                    <label for="quietStart"><small>Inicio</small></label>
-                    <input type="time" id="quietStart" value="22:00">
-                    <label for="quietEnd"><small>Fin</small></label>
-                    <input type="time" id="quietEnd" value="06:00">
-                </div>
-            </div>
-            <div class="control-block">
-                <div class="control-toggle">
-                    <input type="checkbox" id="ttsToggle" checked>
-                    <label for="ttsToggle">Leer nombres (TTS)</label>
-                </div>
-                <label for="voiceSelect">Voz/idioma</label>
-                <select id="voiceSelect" aria-label="Seleccionar voz TTS">
-                    <option value="">Automático (ES)</option>
-                </select>
-                <div class="control-toggle">
-                    <input type="checkbox" id="ttsRepeat">
-                    <label for="ttsRepeat">Repetir una vez</label>
-                </div>
-                <div class="audio-feedback" aria-live="polite">
-                    <span class="mdi mdi-volume-high"></span>
-                    <span>Alertas + resaltado visual activo</span>
-                </div>
-            </div>
-        </div>
 
         <div class="turnero-grid">
             <?php foreach (['examenes', 'solicitudes'] as $key): $panel = $panels[$key]; ?>
@@ -652,6 +500,7 @@ $panels = [
     </div>
 </section>
 <script>
+    window.TURNERO_UNIFICADO_CONFIG = <?= json_encode($turneroSettings ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     window.TURNERO_UNIFICADO_PANELES = <?= json_encode($panels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <?php

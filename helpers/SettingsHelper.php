@@ -219,6 +219,74 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'turnero' => [
+                'title' => 'Turneros',
+                'icon' => 'fa-solid fa-display',
+                'description' => 'Preferencias unificadas para el panel de turnos y su experiencia de audio.',
+                'groups' => [
+                    [
+                        'id' => 'pantalla',
+                        'title' => 'Pantalla y disposición',
+                        'description' => 'Controla cómo se muestra el turnero unificado.',
+                        'fields' => [
+                            self::checkboxField(
+                                'turnero_fullscreen_default',
+                                'Intentar iniciar en pantalla completa',
+                                false,
+                                'El navegador puede impedir la pantalla completa sin interacción previa. Siempre habrá un botón para activarla.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'audio',
+                        'title' => 'Audio y locución',
+                        'description' => 'Centraliza los sonidos y la lectura de nombres del turnero.',
+                        'fields' => [
+                            self::checkboxField(
+                                'turnero_sound_enabled',
+                                'Habilitar sonidos',
+                                true
+                            ),
+                            self::textField(
+                                'turnero_sound_volume',
+                                'Volumen de alertas (0 a 1)',
+                                false,
+                                'Ejemplo: 0.7 para un volumen moderado.'
+                            ),
+                            self::checkboxField(
+                                'turnero_quiet_enabled',
+                                'Activar horario silencioso'
+                            ),
+                            self::textField(
+                                'turnero_quiet_start',
+                                'Inicio silencio (HH:MM)',
+                                false,
+                                'Formato 24h, ejemplo 22:00'
+                            ),
+                            self::textField(
+                                'turnero_quiet_end',
+                                'Fin silencio (HH:MM)',
+                                false,
+                                'Formato 24h, ejemplo 06:00'
+                            ),
+                            self::checkboxField(
+                                'turnero_tts_enabled',
+                                'Leer el nombre al llamar',
+                                true
+                            ),
+                            self::checkboxField(
+                                'turnero_tts_repeat',
+                                'Repetir la locución'
+                            ),
+                            self::checkboxField(
+                                'turnero_speak_on_new',
+                                'Leer al crear un nuevo turno',
+                                true
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'billing' => [
                 'title' => 'Facturación',
                 'icon' => 'fa-solid fa-file-invoice-dollar',
