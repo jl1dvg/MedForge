@@ -112,8 +112,8 @@ class ExamenController extends BaseController
 
         try {
             $examenes = $this->examenModel->fetchExamenesConDetallesFiltrado($filtros);
-            $examenes = $this->estadoService->enrichExamenes($examenes);
             $examenes = array_map([$this, 'transformExamenRow'], $examenes);
+            $examenes = $this->estadoService->enrichExamenes($examenes);
             $examenes = $this->ordenarExamenes($examenes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $examenes = $this->limitarExamenesPorEstado($examenes, (int) ($kanbanPreferences['column_limit'] ?? 0));
 
@@ -144,8 +144,6 @@ class ExamenController extends BaseController
                         'fuentes' => $fuentes,
                         'kanban' => $kanbanPreferences,
                     ],
-                    'kanban_columns' => $this->estadoService->getColumns(),
-                    'kanban_stages' => $this->estadoService->getStages(),
                 ],
             ]);
         } catch (Throwable $e) {
@@ -362,31 +360,18 @@ class ExamenController extends BaseController
 
         $payload = $this->getRequestBody();
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        $estadoRaw = trim((string) ($payload['estado_slug'] ?? $payload['estado'] ?? $payload['etapa'] ?? ''));
-        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
-        $force = isset($payload['force']) ? (bool) $payload['force'] : false;
+        $estado = trim((string) ($payload['estado'] ?? ''));
 
-        if ($id <= 0 || $estadoRaw === '') {
+        if ($id <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
             return;
         }
 
         try {
-            $target = $this->estadoService->getUpdateTarget($estadoRaw, $completado || $force);
-            $estadoLabel = $target['label'] ?? $estadoRaw;
-            $resultado = $this->examenModel->actualizarEstado($id, $estadoLabel);
-
-            $enriched = $this->estadoService->enrichExamenes([[
-                'id' => $resultado['id'] ?? $id,
-                'estado' => $estadoLabel,
-            ]]);
-            $estadoData = $enriched[0] ?? [];
-            $estadoData = array_merge($resultado, $estadoData);
+            $resultado = $this->examenModel->actualizarEstado($id, $estado);
 
             $this->pusherConfig->trigger(
-                $estadoData + [
-                    'kanban_estado' => $estadoData['kanban_estado'] ?? $target['slug'],
-                    'kanban_estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
+                $resultado + [
                     'channels' => $this->pusherConfig->getNotificationChannels(),
                 ],
                 self::PUSHER_CHANNEL,
@@ -395,15 +380,9 @@ class ExamenController extends BaseController
 
             $this->json([
                 'success' => true,
-                'estado' => $estadoData['kanban_estado'] ?? $target['slug'],
-                'estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
-                'kanban_estado' => $estadoData['kanban_estado'] ?? $target['slug'],
-                'kanban_estado_label' => $estadoData['kanban_estado_label'] ?? $estadoLabel,
-                'turno' => $estadoData['turno'] ?? null,
-                'estado_anterior' => $estadoData['estado_anterior'] ?? null,
-                'checklist' => $estadoData['checklist'] ?? [],
-                'checklist_progress' => $estadoData['checklist_progress'] ?? [],
-                'kanban_next' => $estadoData['kanban_next'] ?? null,
+                'estado' => $resultado['estado'] ?? $estado,
+                'turno' => $resultado['turno'] ?? null,
+                'estado_anterior' => $resultado['estado_anterior'] ?? null,
             ]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo actualizar el estado'], 500);
@@ -740,7 +719,8 @@ class ExamenController extends BaseController
         $filtrados = [];
 
         foreach ($examenes as $examen) {
-            $estado = strtolower(trim((string) ($examen['estado'] ?? 'Pendiente')));
+            $estadoBase = $examen['kanban_estado'] ?? $examen['estado'] ?? 'Pendiente';
+            $estado = strtolower(trim((string) $estadoBase));
             $contadores[$estado] = ($contadores[$estado] ?? 0) + 1;
 
             if ($contadores[$estado] <= $limitePorColumna) {

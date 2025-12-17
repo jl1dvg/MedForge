@@ -247,6 +247,16 @@ class SettingsHelper
                                 'Habilitar sonidos',
                                 true
                             ),
+                            self::selectField(
+                                'turnero_bell_style',
+                                'Tipo de timbre',
+                                [
+                                    'classic' => 'Clásico (triple tono)',
+                                    'soft' => 'Suave / notificación breve',
+                                    'bright' => 'Agudo / alerta',
+                                ],
+                                'classic'
+                            ),
                             self::textField(
                                 'turnero_sound_volume',
                                 'Volumen de alertas (0 a 1)',
@@ -282,6 +292,12 @@ class SettingsHelper
                                 'turnero_speak_on_new',
                                 'Leer al crear un nuevo turno',
                                 true
+                            ),
+                            self::textField(
+                                'turnero_voice_preference',
+                                'Voz preferida para lectura',
+                                false,
+                                'Nombre exacto de la voz TTS del navegador. Déjalo vacío para seleccionar automáticamente una voz en español.'
                             ),
                         ],
                     ],

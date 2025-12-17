@@ -132,6 +132,7 @@ class SolicitudController extends BaseController
         $defaults = [
             'soundEnabled' => true,
             'volume' => 0.7,
+            'bellStyle' => 'classic',
             'quiet' => [
                 'enabled' => false,
                 'start' => '22:00',
@@ -140,12 +141,14 @@ class SolicitudController extends BaseController
             'ttsEnabled' => true,
             'ttsRepeat' => false,
             'speakOnNew' => true,
+            'voice' => '',
             'fullscreenDefault' => false,
         ];
 
         try {
             $options = $this->settings()->getOptions([
                 'turnero_sound_enabled',
+                'turnero_bell_style',
                 'turnero_sound_volume',
                 'turnero_quiet_enabled',
                 'turnero_quiet_start',
@@ -153,6 +156,7 @@ class SolicitudController extends BaseController
                 'turnero_tts_enabled',
                 'turnero_tts_repeat',
                 'turnero_speak_on_new',
+                'turnero_voice_preference',
                 'turnero_fullscreen_default',
             ]);
         } catch (Throwable) {
@@ -173,6 +177,10 @@ class SolicitudController extends BaseController
             'ttsEnabled' => $bool($options['turnero_tts_enabled'] ?? $defaults['ttsEnabled'], $defaults['ttsEnabled']),
             'ttsRepeat' => $bool($options['turnero_tts_repeat'] ?? $defaults['ttsRepeat'], $defaults['ttsRepeat']),
             'speakOnNew' => $bool($options['turnero_speak_on_new'] ?? $defaults['speakOnNew'], $defaults['speakOnNew']),
+            'bellStyle' => in_array($options['turnero_bell_style'] ?? '', ['classic', 'soft', 'bright'], true)
+                ? $options['turnero_bell_style']
+                : $defaults['bellStyle'],
+            'voice' => trim((string)($options['turnero_voice_preference'] ?? $defaults['voice'])),
             'fullscreenDefault' => $bool($options['turnero_fullscreen_default'] ?? $defaults['fullscreenDefault'], $defaults['fullscreenDefault']),
         ];
     }

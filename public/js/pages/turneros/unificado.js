@@ -23,9 +23,12 @@ const estadoClases = new Map([
     ['atendido', 'atendido'],
 ]);
 
+const allowedBellStyles = new Set(['classic', 'soft', 'bright']);
+
 const defaultPrefs = {
     soundEnabled: true,
     volume: 0.7,
+    bellStyle: 'classic',
     quiet: {enabled: false, start: '22:00', end: '06:00'},
     ttsEnabled: true,
     voice: '',
@@ -46,6 +49,8 @@ const preferences = {
     ttsEnabled: Boolean(serverConfig.ttsEnabled ?? defaultPrefs.ttsEnabled),
     ttsRepeat: Boolean(serverConfig.ttsRepeat ?? defaultPrefs.ttsRepeat),
     speakOnNew: Boolean(serverConfig.speakOnNew ?? defaultPrefs.speakOnNew),
+    bellStyle: allowedBellStyles.has(serverConfig.bellStyle) ? serverConfig.bellStyle : defaultPrefs.bellStyle,
+    voice: typeof serverConfig.voice === 'string' ? serverConfig.voice.trim() : defaultPrefs.voice,
     fullscreenDefault: Boolean(serverConfig.fullscreenDefault ?? defaultPrefs.fullscreenDefault),
 };
 let lastCallSoundAt = 0;
@@ -217,7 +222,22 @@ const playCallTone = () => {
     const now = Date.now();
     if (now - lastCallSoundAt < CALL_SOUND_COOLDOWN) return;
     lastCallSoundAt = now;
-    playTone(520, 220, 'square', 1.1);
+    const style = allowedBellStyles.has(preferences.bellStyle) ? preferences.bellStyle : 'classic';
+
+    if (style === 'soft') {
+        playTone(620, 200, 'sine', 0.9);
+        setTimeout(() => playTone(540, 240, 'triangle', 0.75), 140);
+        return;
+    }
+
+    if (style === 'bright') {
+        playTone(920, 180, 'square', 1.1);
+        setTimeout(() => playTone(1160, 200, 'sawtooth', 1), 140);
+        setTimeout(() => playTone(1020, 180, 'triangle', 0.95), 320);
+        return;
+    }
+
+    playTone(520, 220, 'square', 1.05);
     setTimeout(() => playTone(780, 260, 'sawtooth', 1), 160);
     setTimeout(() => playTone(660, 200, 'square', 0.9), 360);
 };
@@ -309,13 +329,33 @@ const buildCard = (item, columnKey, eventById) => {
     numero.textContent = formatTurno(item.turno);
     card.appendChild(numero);
 
+    const content = document.createElement('div');
+    content.className = 'turno-info';
+    card.appendChild(content);
+
+    const nombre = document.createElement('div');
+    nombre.className = 'turno-nombre';
+    nombre.textContent = item?.full_name || 'Paciente sin nombre';
+    content.appendChild(nombre);
+
     const estado = normalizeEstado(item?.estado);
+    const meta = document.createElement('div');
+    meta.className = 'turno-meta';
+
+    const prioridad = normalizeText(item?.prioridad || '');
+    if (prioridad) {
+        const badge = document.createElement('span');
+        badge.className = 'turno-badge';
+        badge.textContent = prioridad.toUpperCase();
+        meta.appendChild(badge);
+    }
+
     if (estado) {
         const estadoEl = document.createElement('span');
         const estadoClass = estadoClases.get(estado) ?? '';
         estadoEl.className = `turno-estado${estadoClass ? ` ${estadoClass}` : ''}`;
         estadoEl.textContent = estado.replace('en ', 'En ');
-        card.appendChild(estadoEl);
+        meta.appendChild(estadoEl);
         card.dataset.estado = estado;
         if (estado === 'llamado') {
             card.classList.add('is-llamado');
@@ -328,7 +368,26 @@ const buildCard = (item, columnKey, eventById) => {
         const horaEl = document.createElement('span');
         horaEl.className = 'turno-hora';
         horaEl.textContent = hora;
-        card.appendChild(horaEl);
+        meta.appendChild(horaEl);
+    }
+
+    if (item?.hc_number) {
+        const hc = document.createElement('span');
+        hc.className = 'turno-chip';
+        hc.textContent = `HC ${item.hc_number}`;
+        meta.appendChild(hc);
+    }
+
+    if (meta.childElementCount > 0) {
+        content.appendChild(meta);
+    }
+
+    const detalleTexto = item?.procedimiento || item?.examen_nombre || '';
+    if (detalleTexto) {
+        const detalle = document.createElement('div');
+        detalle.className = 'turno-detalle';
+        detalle.textContent = detalleTexto;
+        content.appendChild(detalle);
     }
 
     if (isPriorityItem(item)) {

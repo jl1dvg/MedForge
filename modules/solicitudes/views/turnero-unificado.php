@@ -230,9 +230,10 @@ $turneroSettings = $turneroSettings ?? [];
         .turno-card {
             position: relative;
             display: grid;
-            grid-template-columns: 1fr;
-            justify-items: center;
-            padding: 1.25rem 1rem;
+            grid-template-columns: minmax(110px, 150px) 1fr;
+            align-items: center;
+            gap: 0.75rem 1.25rem;
+            padding: 1.25rem 1.1rem;
             background: rgba(15, 23, 42, 0.8);
             border: 1px solid rgba(148, 163, 184, 0.28);
             border-radius: 18px;
@@ -278,6 +279,50 @@ $turneroSettings = $turneroSettings ?? [];
             text-align: center;
         }
 
+        .turno-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .turno-nombre {
+            font-size: clamp(1.35rem, 3.5vw, 1.9rem);
+            font-weight: 700;
+            color: #f8fafc;
+            line-height: 1.2;
+        }
+
+        .turno-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            align-items: center;
+        }
+
+        .turno-badge {
+            background: rgba(56, 189, 248, 0.2);
+            color: #38bdf8;
+            border-radius: 999px;
+            padding: 0.35rem 0.9rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        .turno-estado {
+            border-radius: 999px;
+            padding: 0.35rem 0.9rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: rgba(148, 163, 184, 0.25);
+            color: #e2e8f0;
+            font-size: 0.85rem;
+        }
+
         .turno-estado.recibido { background: rgba(59, 130, 246, 0.25); color: #60a5fa; }
         .turno-estado.llamado { background: rgba(245, 158, 11, 0.25); color: #fbbf24; }
         .turno-estado.en-atencion { background: rgba(52, 211, 153, 0.25); color: #34d399; }
@@ -286,6 +331,7 @@ $turneroSettings = $turneroSettings ?? [];
         .turno-detalle {
             font-size: 0.95rem;
             color: #94a3b8;
+            line-height: 1.4;
         }
 
         .turno-hora {
@@ -297,6 +343,18 @@ $turneroSettings = $turneroSettings ?? [];
             padding: 0.3rem 0.65rem;
             color: #cbd5f5;
             font-weight: 700;
+        }
+
+        .turno-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: rgba(34, 211, 238, 0.16);
+            border-radius: 999px;
+            padding: 0.3rem 0.65rem;
+            color: #67e8f9;
+            font-weight: 700;
+            letter-spacing: 0.02em;
         }
 
         .turno-pin {
@@ -404,6 +462,9 @@ $turneroSettings = $turneroSettings ?? [];
                     "examenes"
                     "quirurgico";
             }
+            .turno-card { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+            .turno-info { align-items: center; }
+            .turno-meta { justify-content: center; }
             .turno-numero { min-width: 0; text-align: center; }
         }
     </style>
