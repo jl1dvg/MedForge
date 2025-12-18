@@ -8,6 +8,10 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
         (new CRMController($pdo))->index();
     });
 
+    $router->get('/leads', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->index();
+    });
+
     $router->get('/crm/leads', static function (\PDO $pdo): void {
         (new CRMController($pdo))->listLeads();
     });
