@@ -15,6 +15,7 @@ class AutoresponderFlowRepository
     private PDO $pdo;
     private ?SettingsModel $settings = null;
     private string $fallbackPath;
+    private string $versionsDirectory;
     private bool $tableStorageEnabled;
     private bool $hasFlowTables;
     private bool $hasStructureTables;
@@ -23,6 +24,7 @@ class AutoresponderFlowRepository
     {
         $this->pdo = $pdo;
         $this->fallbackPath = BASE_PATH . '/storage/whatsapp_autoresponder_flow.json';
+        $this->versionsDirectory = BASE_PATH . '/storage/whatsapp_autoresponder_versions';
         $this->tableStorageEnabled = !$this->envFlag('WHATSAPP_AUTORESPONDER_DISABLE_TABLES');
         $this->hasFlowTables = $this->tableStorageEnabled && $this->detectFlowTables();
         $this->hasStructureTables = $this->hasFlowTables && $this->detectStructureTables();
@@ -65,6 +67,14 @@ class AutoresponderFlowRepository
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function loadActive(): array
+    {
+        return $this->load();
+    }
+
+    /**
      * @param array<string, mixed> $flow
      */
     public function save(array $flow): bool
@@ -78,6 +88,7 @@ class AutoresponderFlowRepository
             try {
                 if ($this->saveToFlowTables($flow)) {
                     $this->saveToFallback($encoded);
+                    $this->saveVersionedSnapshot($encoded);
 
                     return true;
                 }
@@ -102,11 +113,17 @@ class AutoresponderFlowRepository
             }
 
             $this->saveToFallback($encoded);
+            $this->saveVersionedSnapshot($encoded);
 
             return true;
         }
 
-        return $this->saveToFallback($encoded);
+        $saved = $this->saveToFallback($encoded);
+        if ($saved) {
+            $this->saveVersionedSnapshot($encoded);
+        }
+
+        return $saved;
     }
 
     /**
@@ -165,6 +182,42 @@ class AutoresponderFlowRepository
 
         if (!@copy($this->fallbackPath, $backupPath)) {
             error_log('No fue posible generar el respaldo previo del flujo en ' . $backupPath);
+        }
+    }
+
+    private function saveVersionedSnapshot(string $encoded): void
+    {
+        if (!is_dir($this->versionsDirectory) && !mkdir($concurrentDirectory = $this->versionsDirectory, 0775, true) && !is_dir($concurrentDirectory)) {
+            error_log('No fue posible crear el directorio de versiones de respaldo: ' . $this->versionsDirectory);
+
+            return;
+        }
+
+        $filename = rtrim($this->versionsDirectory, '/').'/flow_' . gmdate('Ymd_His') . '.json';
+        $bytes = @file_put_contents($filename, $encoded);
+        if ($bytes === false) {
+            error_log('No fue posible escribir la versión del flujo en ' . $filename);
+
+            return;
+        }
+
+        $this->pruneSnapshots($this->versionsDirectory, 20);
+    }
+
+    private function pruneSnapshots(string $directory, int $maxFiles): void
+    {
+        $files = glob(rtrim($directory, '/') . '/flow_*.json');
+        if (!is_array($files) || count($files) <= $maxFiles) {
+            return;
+        }
+
+        sort($files);
+        $excess = array_slice($files, 0, count($files) - $maxFiles);
+
+        foreach ($excess as $file) {
+            if (is_file($file)) {
+                @unlink($file);
+            }
         }
     }
 

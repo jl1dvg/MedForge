@@ -19,6 +19,11 @@ class LeadModel
     private PatientIdentityService $identityService;
     private ?bool $crmCustomerHasHcNumber = null;
     private SchemaInspector $schemaInspector;
+    /**
+     * @var array<string, string>
+     */
+    private array $notifiedStageCache = [];
+    private const STAGE_NOTIFY_COOLDOWN_MINUTES = 30;
 
     public function __construct(PDO $pdo)
     {
@@ -52,6 +57,8 @@ class LeadModel
                 l.email,
                 l.phone,
                 l.status,
+                l.last_stage_notified,
+                l.last_stage_notified_at,
                 l.source,
                 l.notes,
                 l.customer_id,
@@ -121,6 +128,8 @@ class LeadModel
                 l.email,
                 l.phone,
                 l.status,
+                l.last_stage_notified,
+                l.last_stage_notified_at,
                 l.source,
                 l.notes,
                 l.customer_id,
@@ -160,6 +169,8 @@ class LeadModel
                 l.email,
                 l.phone,
                 l.status,
+                l.last_stage_notified,
+                l.last_stage_notified_at,
                 l.source,
                 l.notes,
                 l.customer_id,
@@ -466,6 +477,15 @@ class LeadModel
             return;
         }
 
+        $templatePayload = $this->resolveStageTemplatePayload($event, $lead, $context);
+        if ($templatePayload !== null && $this->whatsapp->sendTemplateMessage($phones, $templatePayload)) {
+            if (isset($templatePayload['_stage'])) {
+                $this->markStageNotified((string) ($lead['hc_number'] ?? ''), (string) $templatePayload['_stage']);
+            }
+
+            return;
+        }
+
         $message = $this->buildLeadMessage($event, $lead, $context);
         if ($message === '') {
             return;
@@ -583,6 +603,224 @@ class LeadModel
         }
 
         return 'Hola ' . $name . ' 👋';
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     */
+    private function resolveStageTemplatePayload(string $event, array $lead, array $context = []): ?array
+    {
+        $stage = null;
+
+        if ($event === 'created') {
+            $stage = $lead['status'] ?? null;
+        } elseif ($event === 'status_updated') {
+            $stage = $lead['status'] ?? null;
+        } elseif ($event === 'updated') {
+            $previousStatus = $context['previous']['status'] ?? null;
+            if (($lead['status'] ?? null) !== $previousStatus) {
+                $stage = $lead['status'] ?? null;
+            }
+        } elseif ($event === 'converted') {
+            $stage = $this->configService->getWonStage();
+        }
+
+        if (!is_string($stage) || trim($stage) === '') {
+            return null;
+        }
+
+        if (!$this->shouldSendTemplateForStage($lead, $stage)) {
+            return null;
+        }
+
+        $templateConfig = $this->configService->findStageTemplate($stage);
+        if ($templateConfig === null) {
+            return null;
+        }
+
+        $components = $this->hydrateTemplateComponents($templateConfig['components'] ?? [], $lead, $context);
+        if (empty($components)) {
+            $components = $this->buildDefaultTemplateComponents($lead);
+        }
+
+        return [
+            'name' => $templateConfig['template'],
+            'language' => $templateConfig['language'] ?? 'es',
+            'components' => $components,
+            '_stage' => $stage,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     */
+    private function buildDefaultTemplateComponents(array $lead): array
+    {
+        $parameters = array_values(array_filter([
+            $this->buildTextParameter($lead['name'] ?? null),
+            $this->buildTextParameter($lead['status'] ?? null),
+            $this->buildTextParameter($lead['hc_number'] ?? null),
+        ]));
+
+        if (empty($parameters)) {
+            return [];
+        }
+
+        return [
+            [
+                'type' => 'body',
+                'parameters' => $parameters,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $components
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function hydrateTemplateComponents(array $components, array $lead, array $context = []): array
+    {
+        $replacements = $this->buildPlaceholderMap($lead, $context);
+
+        return $this->replacePlaceholdersRecursively($components, $replacements);
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     * @param array<string, mixed> $context
+     * @return array<string, string>
+     */
+    private function buildPlaceholderMap(array $lead, array $context = []): array
+    {
+        $brand = $this->whatsapp->getBrandName();
+        $status = (string) ($lead['status'] ?? '');
+        $source = (string) ($lead['source'] ?? '');
+        $assigned = (string) ($lead['assigned_name'] ?? '');
+        $hcNumber = (string) ($lead['hc_number'] ?? '');
+
+        return array_filter([
+            '{{nombre}}' => (string) ($lead['name'] ?? ''),
+            '{{paciente}}' => (string) ($lead['name'] ?? ''),
+            '{{estado}}' => $status,
+            '{{origen}}' => $source,
+            '{{asesor}}' => $assigned,
+            '{{hc}}' => $hcNumber,
+            '{{historia}}' => $hcNumber,
+            '{{brand}}' => $brand,
+            '{{marca}}' => $brand,
+            '{{fuente}}' => $source,
+            '{{telefono}}' => (string) ($lead['phone'] ?? ($context['phone'] ?? '')),
+        ], static fn($value) => (string) $value !== '');
+    }
+
+    /**
+     * @param array|string|int|float|null $value
+     * @param array<string, string> $replacements
+     * @return array|string|int|float|null
+     */
+    private function replacePlaceholdersRecursively($value, array $replacements)
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = $this->replacePlaceholdersRecursively($item, $replacements);
+            }
+
+            return $value;
+        }
+
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $rendered = strtr($value, $replacements);
+
+        return trim($rendered);
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function buildTextParameter($value): ?array
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+        if ($text === '') {
+            return null;
+        }
+
+        return ['type' => 'text', 'text' => $text];
+    }
+
+    private function shouldSendTemplateForStage(array $lead, string $stage): bool
+    {
+        $hcNumber = (string) ($lead['hc_number'] ?? '');
+        if ($hcNumber === '') {
+            return true;
+        }
+
+        $normalizedStage = mb_strtolower(trim($stage));
+        $cacheKey = $hcNumber . '|' . $normalizedStage;
+        if (isset($this->notifiedStageCache[$cacheKey])) {
+            return false;
+        }
+
+        $lastNotifiedStage = mb_strtolower(trim((string) ($lead['last_stage_notified'] ?? '')));
+        $lastNotifiedAt = $lead['last_stage_notified_at'] ?? null;
+
+        if ($lastNotifiedStage === $normalizedStage && $this->isWithinCooldown($lastNotifiedAt)) {
+            return false;
+        }
+
+        $this->notifiedStageCache[$cacheKey] = gmdate('c');
+
+        return true;
+    }
+
+    private function markStageNotified(string $hcNumber, string $stage): void
+    {
+        $hcNumber = $this->identityService->normalizeHcNumber($hcNumber);
+        if ($hcNumber === '' || !$this->hasLeadNotificationColumns()) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE crm_leads SET last_stage_notified = :stage, last_stage_notified_at = NOW() WHERE hc_number = :hc LIMIT 1'
+        );
+        $stmt->execute([
+            ':stage' => trim($stage),
+            ':hc' => $hcNumber,
+        ]);
+
+        $cacheKey = $hcNumber . '|' . mb_strtolower(trim($stage));
+        $this->notifiedStageCache[$cacheKey] = gmdate('c');
+    }
+
+    private function isWithinCooldown($lastNotifiedAt): bool
+    {
+        if ($lastNotifiedAt === null || $lastNotifiedAt === '') {
+            return false;
+        }
+
+        $timestamp = strtotime((string) $lastNotifiedAt);
+        if ($timestamp === false) {
+            return false;
+        }
+
+        $cooldownSeconds = self::STAGE_NOTIFY_COOLDOWN_MINUTES * 60;
+
+        return (time() - $timestamp) < $cooldownSeconds;
+    }
+
+    private function hasLeadNotificationColumns(): bool
+    {
+        return $this->schemaInspector->tableHasColumn('crm_leads', 'last_stage_notified')
+            && $this->schemaInspector->tableHasColumn('crm_leads', 'last_stage_notified_at');
     }
 
     private function upsertCustomer(array $lead, array $payload): int

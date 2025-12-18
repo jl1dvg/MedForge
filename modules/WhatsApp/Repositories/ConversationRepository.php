@@ -191,7 +191,7 @@ class ConversationRepository
     public function listConversations(string $search = '', int $limit = 25): array
     {
         $search = trim($search);
-        $sql = 'SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, unread_count, created_at, updated_at FROM whatsapp_conversations';
+        $sql = 'SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, needs_human, handoff_notes, unread_count, created_at, updated_at FROM whatsapp_conversations';
         $params = [];
 
         if ($search !== '') {
@@ -216,7 +216,7 @@ class ConversationRepository
 
     public function findConversationById(int $conversationId): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, unread_count, created_at, updated_at FROM whatsapp_conversations WHERE id = :id LIMIT 1');
+        $stmt = $this->pdo->prepare('SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, needs_human, handoff_notes, unread_count, created_at, updated_at FROM whatsapp_conversations WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => $conversationId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -249,5 +249,17 @@ class ConversationRepository
         $id = $stmt->fetchColumn();
 
         return $id === false ? null : (int) $id;
+    }
+
+    public function setHandoffFlag(int $conversationId, bool $needsHuman, ?string $notes = null): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, updated_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute([
+            ':needs_human' => $needsHuman ? 1 : 0,
+            ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
+            ':id' => $conversationId,
+        ]);
     }
 }

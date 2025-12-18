@@ -91,6 +91,8 @@ class ConversationService
 
         $conversationId = $this->repository->upsertConversation($number);
         $timestamp = date('Y-m-d H:i:s');
+        $source = isset($payload['source']) ? strtolower((string) $payload['source']) : '';
+        $clearHandoff = (bool) ($payload['clear_handoff'] ?? false) || $source === 'human';
 
         $this->repository->insertMessage($conversationId, [
             'direction' => 'outbound',
@@ -106,7 +108,12 @@ class ConversationService
             'last_message_direction' => 'outbound',
             'last_message_type' => $messageType,
             'last_message_preview' => $this->truncatePreview($body),
+            'set_unread' => 0,
         ]);
+
+        if ($clearHandoff) {
+            $this->repository->setHandoffFlag($conversationId, false, null);
+        }
 
         return $conversationId;
     }
@@ -126,6 +133,8 @@ class ConversationService
                 'display_name' => $row['display_name'] ?? null,
                 'patient_hc_number' => $row['patient_hc_number'] ?? null,
                 'patient_full_name' => $row['patient_full_name'] ?? null,
+                'needs_human' => (bool) ($row['needs_human'] ?? false),
+                'handoff_notes' => $row['handoff_notes'] ?? null,
                 'unread_count' => (int) ($row['unread_count'] ?? 0),
                 'last_message' => [
                     'at' => $this->formatIsoDate($row['last_message_at'] ?? $row['updated_at'] ?? $row['created_at'] ?? null),
@@ -170,6 +179,8 @@ class ConversationService
             'display_name' => $conversation['display_name'] ?? null,
             'patient_hc_number' => $conversation['patient_hc_number'] ?? null,
             'patient_full_name' => $conversation['patient_full_name'] ?? null,
+            'needs_human' => (bool) ($conversation['needs_human'] ?? false),
+            'handoff_notes' => $conversation['handoff_notes'] ?? null,
             'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
             'messages' => $mappedMessages,
         ];
@@ -190,7 +201,20 @@ class ConversationService
             'patient_full_name' => $conversation['patient_full_name'] ?? null,
             'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
             'unread_count' => (int) ($conversation['unread_count'] ?? 0),
+            'needs_human' => (bool) ($conversation['needs_human'] ?? false),
+            'handoff_notes' => $conversation['handoff_notes'] ?? null,
         ];
+    }
+
+    public function flagForHandoff(string $waNumber, ?string $notes = null): void
+    {
+        $conversationId = $this->ensureConversation($waNumber);
+        $this->repository->setHandoffFlag($conversationId, true, $notes);
+    }
+
+    public function clearHandoff(int $conversationId): void
+    {
+        $this->repository->setHandoffFlag($conversationId, false, null);
     }
 
     public function markConversationAsRead(int $conversationId): void

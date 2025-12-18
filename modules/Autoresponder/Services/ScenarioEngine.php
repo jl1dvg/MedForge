@@ -110,6 +110,14 @@ class ScenarioEngine
                 'last_payload' => $message,
             ]);
 
+            if (!empty($context['handoff_requested'])) {
+                $note = 'Escalado desde Flowmaker';
+                if (!empty($scenario['name'])) {
+                    $note .= ': ' . (string) $scenario['name'];
+                }
+                $this->conversations->flagForHandoff($sender, $note);
+            }
+
             $handled = true;
             break;
         }
