@@ -42,6 +42,7 @@ class LeadConfigurationService
     private PDO $pdo;
     private ?SettingsModel $settingsModel = null;
     private ?array $cachedPipeline = null;
+    private ?array $cachedStageTemplates = null;
     /**
      * @var array<string, array<string, mixed>>
      */
@@ -241,6 +242,52 @@ class LeadConfigurationService
         return $sources;
     }
 
+    /**
+     * @return array<int, array{stage: string, template: string, language: string, components: array<string, mixed>}>
+     */
+    public function getStageTemplates(): array
+    {
+        if ($this->cachedStageTemplates !== null) {
+            return $this->cachedStageTemplates;
+        }
+
+        $templates = [];
+
+        if ($this->settingsModel instanceof SettingsModel) {
+            try {
+                $raw = $this->settingsModel->getOption('crm_whatsapp_stage_templates');
+                $templates = $this->parseStageTemplates($raw ?? '');
+            } catch (PDOException $exception) {
+                $templates = [];
+            }
+        }
+
+        $this->cachedStageTemplates = $templates;
+
+        return $this->cachedStageTemplates;
+    }
+
+    public function findStageTemplate(string $stage): ?array
+    {
+        $stage = trim($stage);
+        if ($stage === '') {
+            return null;
+        }
+
+        $normalizedStage = $this->normalizeStage($stage, false);
+        if ($normalizedStage === '') {
+            return null;
+        }
+
+        foreach ($this->getStageTemplates() as $template) {
+            if (strcasecmp($template['stage'], $normalizedStage) === 0) {
+                return $template;
+            }
+        }
+
+        return null;
+    }
+
     private function appendSource(array &$sources, $candidate): void
     {
         $candidate = trim((string) $candidate);
@@ -251,6 +298,189 @@ class LeadConfigurationService
         if (!in_array($candidate, $sources, true)) {
             $sources[] = $candidate;
         }
+    }
+
+    /**
+     * @return array<int, array{stage: string, template: string, language: string, components: array<string, mixed>}>
+     */
+    private function parseStageTemplates(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $pipeline = $this->getPipelineStages();
+
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $this->parseStageTemplatesFromArray($decoded, $pipeline);
+        }
+
+        $rules = [];
+        $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+        foreach ($lines as $line) {
+            $rule = $this->parseStageTemplateLine($line, $pipeline);
+            if ($rule !== null) {
+                $rules[] = $rule;
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @param array<int|string, mixed> $data
+     * @param string[] $pipeline
+     * @return array<int, array{stage: string, template: string, language: string, components: array<string, mixed>}>
+     */
+    private function parseStageTemplatesFromArray(array $data, array $pipeline): array
+    {
+        $rules = [];
+
+        $isList = array_keys($data) === range(0, count($data) - 1);
+        foreach ($data as $key => $value) {
+            $rule = $isList
+                ? $this->parseStageTemplateEntry($value, $pipeline)
+                : $this->normalizeStageTemplate((string) $key, $value, $pipeline);
+
+            if ($rule !== null) {
+                $rules[] = $rule;
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @param mixed $entry
+     * @param string[] $pipeline
+     */
+    private function parseStageTemplateEntry($entry, array $pipeline): ?array
+    {
+        if (!is_array($entry)) {
+            return null;
+        }
+
+        $stage = (string) ($entry['stage'] ?? '');
+        $template = (string) ($entry['template'] ?? '');
+
+        return $this->normalizeStageTemplate($stage, $entry, $pipeline, $template);
+    }
+
+    /**
+     * @param mixed $config
+     * @param string[] $pipeline
+     */
+    private function normalizeStageTemplate(string $stage, $config, array $pipeline, ?string $templateOverride = null): ?array
+    {
+        $stage = $this->matchStageName(trim($stage), $pipeline) ?? trim($stage);
+        if ($stage === '') {
+            return null;
+        }
+
+        if (is_string($config)) {
+            $config = ['template' => $config];
+        }
+
+        if (!is_array($config)) {
+            return null;
+        }
+
+        $template = $templateOverride ?? (string) ($config['template'] ?? '');
+        if (trim($template) === '') {
+            return null;
+        }
+
+        $language = trim((string) ($config['language'] ?? 'es')) ?: 'es';
+        $components = $this->normalizeTemplateComponents($config['components'] ?? [], $stage);
+
+        return [
+            'stage' => $stage,
+            'template' => $template,
+            'language' => $language,
+            'components' => $components,
+        ];
+    }
+
+    /**
+     * @param string[] $pipeline
+     */
+    private function parseStageTemplateLine(string $line, array $pipeline): ?array
+    {
+        $parts = array_map('trim', explode('|', $line));
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        [$stageCandidate, $template, $language, $components] = array_pad($parts, 4, null);
+        $stage = $this->matchStageName($stageCandidate, $pipeline) ?? $stageCandidate;
+
+        if ($stage === '' || $template === null || trim($template) === '') {
+            return null;
+        }
+
+        $language = $language !== null && trim($language) !== '' ? trim($language) : 'es';
+        $components = $this->normalizeTemplateComponents($components, $stage);
+
+        return [
+            'stage' => $stage,
+            'template' => $template,
+            'language' => $language,
+            'components' => $components,
+        ];
+    }
+
+    /**
+     * @param mixed $components
+     * @return array<string, mixed>
+     */
+    private function normalizeTemplateComponents($components, ?string $stage = null): array
+    {
+        if (is_string($components)) {
+            $decoded = json_decode($components, true);
+            if (is_array($decoded)) {
+                $components = $decoded;
+            } else {
+                if ($this->shouldLogTemplateParseError()) {
+                    $suffix = $stage ? " para la etapa '{$stage}'" : '';
+                    error_log('No fue posible interpretar los componentes de la plantilla de etapa' . $suffix . ': JSON inválido.');
+                }
+            }
+        }
+
+        return is_array($components) ? $components : [];
+    }
+
+    private function shouldLogTemplateParseError(): bool
+    {
+        $env = strtolower((string) ($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?? ''));
+        if (in_array($env, ['local', 'development', 'dev', 'testing'], true)) {
+            return true;
+        }
+
+        $debugFlag = strtolower((string) ($_ENV['DEBUG_TEMPLATES'] ?? getenv('DEBUG_TEMPLATES') ?? ''));
+
+        return in_array($debugFlag, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * @param string[] $pipeline
+     */
+    private function matchStageName(string $candidate, array $pipeline): ?string
+    {
+        $candidate = trim($candidate);
+        if ($candidate === '') {
+            return null;
+        }
+
+        foreach ($pipeline as $stage) {
+            if (strcasecmp($stage, $candidate) === 0) {
+                return $stage;
+            }
+        }
+
+        return null;
     }
 
     /**

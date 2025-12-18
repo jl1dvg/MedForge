@@ -124,6 +124,12 @@ class SettingsHelper
                                 'Ingresa una etapa por línea en el orden de tu pipeline.',
                                 "Recibido\nContacto inicial\nSeguimiento\nDocs completos\nAutorizado\nAgendado\nCerrado\nPerdido"
                             ),
+                            self::textareaField(
+                                'crm_whatsapp_stage_templates',
+                                'Plantillas de WhatsApp por etapa',
+                                'Una regla por línea: Etapa | nombre_de_plantilla | idioma | componentes (JSON opcional).'
+                                    . " Ejemplo: Evaluación médica realizada | prequirurgico_confirmado | es | {\"components\":[{\"type\":\"body\",\"parameters\":[{\"type\":\"text\",\"text\":\"{{nombre}}\"}]}]}"
+                            ),
                             self::selectField(
                                 'crm_kanban_sort',
                                 'Orden predeterminado del Kanban',
