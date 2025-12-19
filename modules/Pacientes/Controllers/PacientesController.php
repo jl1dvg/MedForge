@@ -30,6 +30,18 @@ class PacientesController extends BaseController
         );
     }
 
+    public function flujo(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/flujo.php',
+            [
+                'pageTitle' => 'Flujo de Pacientes',
+            ]
+        );
+    }
+
     public function datatable(): void
     {
         if (!$this->isAuthenticated()) {

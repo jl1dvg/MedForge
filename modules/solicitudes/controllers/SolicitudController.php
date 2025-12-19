@@ -302,7 +302,30 @@ class SolicitudController extends BaseController
         try {
             $resumen = $this->crmService->obtenerResumen($solicitudId);
             $this->json(['success' => true, 'data' => $resumen]);
+        } catch (RuntimeException $e) {
+            JsonLogger::log(
+                'crm',
+                'CRM ▶ Resumen no encontrado o incompleto',
+                $e,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $message = trim($e->getMessage()) !== '' ? $e->getMessage() : 'Solicitud no encontrada';
+            $status = strcasecmp($message, 'Solicitud no encontrada') === 0 ? 404 : 422;
+            $this->json(['success' => false, 'error' => $message], $status);
         } catch (\Throwable $e) {
+            JsonLogger::log(
+                'crm',
+                'CRM ▶ Error al obtener resumen',
+                $e,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
             $this->json(['success' => false, 'error' => 'No se pudo cargar el detalle CRM'], 500);
         }
     }

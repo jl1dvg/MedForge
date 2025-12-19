@@ -15,4 +15,8 @@ return function (Router $router) {
     $router->match(['GET', 'POST'], '/pacientes/detalles', function (\PDO $pdo) {
         (new PacientesController($pdo))->detalles();
     });
+
+    $router->get('/pacientes/flujo', function (\PDO $pdo) {
+        (new PacientesController($pdo))->flujo();
+    });
 };

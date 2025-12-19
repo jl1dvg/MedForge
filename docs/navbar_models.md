@@ -9,7 +9,7 @@ El navbar se reorganizó siguiendo el enfoque por roles internos del Modelo B. C
 
 2. **Marketing y captación**
    - CRM (`/crm`).
-   - Flujo de pacientes (`/views/pacientes/flujo/flujo.php`).
+   - Flujo de pacientes (`/pacientes/flujo`).
    - Campañas y Leads (`/leads`).
    - Automatizaciones de WhatsApp (`/whatsapp/autoresponder`, permisos administrativos).
    - Plantillas de WhatsApp (`/whatsapp/templates`, permisos administrativos).

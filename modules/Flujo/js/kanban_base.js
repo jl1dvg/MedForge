@@ -2,11 +2,17 @@
 
 // Loader helpers
 function showLoader() {
-    document.getElementById('loader').style.display = 'block';
+    const loader = document.getElementById('loader');
+    if (loader) {
+        loader.style.display = 'block';
+    }
 }
 
 function hideLoader() {
-    document.getElementById('loader').style.display = 'none';
+    const loader = document.getElementById('loader');
+    if (loader) {
+        loader.style.display = 'none';
+    }
 }
 
 // Definir estados para columnas del tablero de Visitas
@@ -21,11 +27,13 @@ const ESTADOS_VISITA = [
 ];
 
 function renderColumnasVisita() {
-    const board = document.querySelector('.kanban-board');
-    if (!board) return;
+    const boardWrapper = document.querySelector('.kanban-board');
+    if (!boardWrapper) return;
+
+    const target = boardWrapper.querySelector('.kanban-scroll') || boardWrapper;
 
     // Limpiar columnas actuales
-    board.innerHTML = '';
+    target.innerHTML = '';
 
     ESTADOS_VISITA.forEach(estado => {
         const col = document.createElement('div');
@@ -40,7 +48,7 @@ function renderColumnasVisita() {
             </div>
             </div>
         `;
-        board.appendChild(col);
+        target.appendChild(col);
     });
 }
 
@@ -58,7 +66,18 @@ function poblarAfiliacionesUnicas(data) {
     if (!select) return;
     // Conservar solo la opción "Todas"
     select.innerHTML = '<option value="">Todas</option>';
-    const afiliaciones = [...new Set(data.map(d => d.afiliacion).filter(Boolean))].sort();
+    const afiliaciones = [...new Set(
+        data.flatMap(d => {
+            const values = [];
+            if (d.afiliacion) values.push(d.afiliacion);
+            if (Array.isArray(d.trayectos)) {
+                d.trayectos.forEach(t => {
+                    if (t.afiliacion) values.push(t.afiliacion);
+                });
+            }
+            return values;
+        }).filter(Boolean)
+    )].sort();
     afiliaciones.forEach(af => {
         const option = document.createElement('option');
         option.value = af;
@@ -71,6 +90,7 @@ function poblarAfiliacionesUnicas(data) {
 function llenarSelectDoctoresYFechas(datosFiltrados) {
     // Doctor
     const doctorFiltro = document.getElementById('kanbanDoctorFilter');
+    if (!doctorFiltro) return;
     const currentDoctor = doctorFiltro.value;
     doctorFiltro.innerHTML = '<option value="">Todos</option>';
 
@@ -139,8 +159,11 @@ function formatearProcedimientoCorto(proc) {
 // kanban_base.js (puedes ponerlo al final o cerca del render principal)
 function renderTabActivo() {
     const activeTab = document.querySelector('.tab-kanban.active');
-    if (!activeTab) return;
-    const tipo = activeTab.dataset.tipo;
+    const tipo = activeTab?.dataset?.tipo;
+    if (!tipo) {
+        renderKanban();
+        return;
+    }
     if (tipo === 'cirugia' && typeof renderKanbanCirugia === "function") {
         renderKanbanCirugia();
     } else if (tipo === 'consulta' && typeof renderKanbanConsulta === "function") {
@@ -244,6 +267,12 @@ function renderKanban() {
         const tarjeta = document.createElement('div');
         tarjeta.className = 'kanban-card view-details';
         tarjeta.setAttribute('data-visita-id', visita.visita_id);
+        tarjeta.dataset.doctor = [...doctores].join(', ');
+        tarjeta.dataset.afiliacion = trayectoPrincipal?.afiliacion || visita.afiliacion || '';
+        tarjeta.dataset.fecha = visita.fecha_visita || '';
+        if (trayectoPrincipal?.form_id) {
+            tarjeta.dataset.form = trayectoPrincipal.form_id;
+        }
         tarjeta.title = historialTooltip || '';
 
         tarjeta.innerHTML = `
@@ -363,9 +392,9 @@ function generarResumenKanban(filtrados) {
 // FUNCIONES DE FILTRO
 // =========================
 function filtrarSolicitudes() {
-    const selectedDate = document.getElementById('kanbanDateFilter').value;
-    const selectedAfiliacion = document.getElementById('kanbanAfiliacionFilter').value;
-    const selectedDoctor = document.getElementById('kanbanDoctorFilter').value;
+    const selectedDate = document.getElementById('kanbanDateFilter')?.value || '';
+    const selectedAfiliacion = document.getElementById('kanbanAfiliacionFilter')?.value || '';
+    const selectedDoctor = document.getElementById('kanbanDoctorFilter')?.value || '';
 
     return allSolicitudes.filter(visita => {
         // Filtro por fecha de la visita (no de trayecto)
@@ -388,8 +417,8 @@ function filtrarSolicitudes() {
 }
 
 function aplicarFiltros() {
-    const doctorFiltro = document.getElementById('kanbanDoctorFilter')?.value.toLowerCase() || '';
-    const afiliacionFiltro = document.getElementById('kanbanAfiliacionFilter')?.value.toLowerCase() || '';
+    const doctorFiltro = (document.getElementById('kanbanDoctorFilter')?.value || '').toLowerCase();
+    const afiliacionFiltro = (document.getElementById('kanbanAfiliacionFilter')?.value || '').toLowerCase();
     const fechaFiltro = document.getElementById('kanbanDateFilter')?.value || '';
     // const tipoFiltro = document.getElementById('kanbanTipoFiltro')?.value || '';
 
@@ -544,7 +573,10 @@ $(document).ready(function () {
 
     // Cargar solicitudes por defecto usando la fecha de hoy al cargar la página
     const today = moment().format('YYYY-MM-DD');
-    document.getElementById('kanbanDateFilter').value = today;
+    const dateInput = document.getElementById('kanbanDateFilter');
+    if (dateInput) {
+        dateInput.value = today;
+    }
     showLoader();
     fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
         .then(response => response.json())
@@ -574,10 +606,13 @@ $(document).ready(function () {
         },
         onSet: function (context) {
             const picker = this;
-            const selected = picker.get('select', 'yyyy-mm-dd');
+            const selected = picker.get('select', 'yyyy-mm-dd') || moment().format('YYYY-MM-DD');
+            if (dateInput) {
+                dateInput.value = selected;
+            }
             renderColumnasVisita(); // <- ¡Agregado aquí para resetear columnas antes de recargar!
             showLoader();
-            fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
+            fetch(`/public/ajax/flujo?fecha=${selected}&modo=visita`)
                 .then(response => response.json())
                 .then(data => {
                     allSolicitudes = data;

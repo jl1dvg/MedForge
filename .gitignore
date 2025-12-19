@@ -38,3 +38,6 @@ cive_extention/manifest.json
 /views/informes/informe_issfa.php
 /views/informes/informe_isspol.php
 /views/informes/informe_particulares.php
+!/views/pacientes/
+!/views/pacientes/flujo/
+!/views/pacientes/flujo/**

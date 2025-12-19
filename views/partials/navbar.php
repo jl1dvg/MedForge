@@ -75,7 +75,7 @@ if (!function_exists('isTreeOpen')) {
                             <span>Inicio</span>
                         </a>
                     </li>
-                    <li class="treeview<?= isTreeOpen(['/crm', '/views/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/crm', '/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) ?>">
                         <a href="#">
                             <i class="mdi mdi-sale"><span class="path1"></span><span class="path2"></span></i>
                             <span>Marketing y captación</span>
@@ -89,8 +89,8 @@ if (!function_exists('isTreeOpen')) {
                                     </a>
                                 </li>
                             <?php endif; ?>
-                            <li class="<?= isActivePrefix('/pacientes/flujo') ?: isActive('/views/pacientes/flujo/flujo.php') ?>">
-                                <a href="/views/pacientes/flujo/flujo.php">
+                            <li class="<?= isActivePrefix('/pacientes/flujo') ?>">
+                                <a href="/pacientes/flujo">
                                     <i class="mdi mdi-timetable"></i>Flujo de Pacientes
                                 </a>
                             </li>

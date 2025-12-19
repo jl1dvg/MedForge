@@ -643,20 +643,44 @@ async function loadCrmData(solicitudId) {
         let data;
         let rawText = '';
         try {
-            data = await response.json();
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                rawText = await response.text();
+                data = rawText ? JSON.parse(rawText) : null;
+            }
         } catch {
             try {
-                rawText = await response.text();
+                rawText = rawText || (await response.text());
             } catch {}
             const preview = rawText ? ` (preview: ${rawText.slice(0, 160)}...)` : '';
             throw new Error('Respuesta no válida del servidor (no JSON)' + preview);
         }
 
-        if (!response.ok || data.success === false) {
-            throw new Error(data.error || 'No se pudo cargar la información CRM');
+        const responsePayload = data && typeof data === 'object' ? data : null;
+        if (!response.ok || responsePayload?.success === false) {
+            const serverMessage = (responsePayload && typeof responsePayload.error === 'string') ? responsePayload.error : '';
+            let friendlyMessage = serverMessage;
+
+            if (response.status === 401) {
+                friendlyMessage = 'Sesión expirada. Actualiza la página e inicia sesión nuevamente.';
+            } else if (response.status === 404) {
+                friendlyMessage = serverMessage || 'Solicitud no encontrada o eliminada.';
+            } else if (response.status === 422) {
+                friendlyMessage = serverMessage || 'La solicitud tiene datos incompletos para mostrar el CRM.';
+            } else if (!friendlyMessage && response.status) {
+                friendlyMessage = `Error ${response.status} al cargar la información CRM`;
+            }
+
+            if (!friendlyMessage) {
+                friendlyMessage = 'No se pudo cargar la información CRM';
+            }
+
+            throw new Error(friendlyMessage);
         }
 
-        renderCrmData(data.data);
+        renderCrmData(responsePayload.data);
     } catch (error) {
         console.error('CRM ▶ Error al cargar', error);
         toggleError(error.message || 'No se pudo cargar la información del CRM');

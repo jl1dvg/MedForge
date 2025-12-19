@@ -713,7 +713,7 @@ class SolicitudCrmService
                 COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
-            INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+            LEFT JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
@@ -746,6 +746,10 @@ class SolicitudCrmService
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
             return null;
+        }
+
+        if (empty($row['paciente_nombre']) || empty($row['hc_number'])) {
+            throw new RuntimeException('Solicitud incompleta: datos de paciente no encontrados');
         }
 
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
