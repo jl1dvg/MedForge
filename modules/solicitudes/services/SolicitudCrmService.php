@@ -44,37 +44,45 @@ class SolicitudCrmService
 
     public function obtenerResumen(int $solicitudId): array
     {
-        $detalle = $this->obtenerDetalleSolicitud($solicitudId);
-        if (!$detalle) {
-            throw new RuntimeException('Solicitud no encontrada');
-        }
-
-        $seguidores = $detalle['seguidores'] ?? [];
-        unset($detalle['seguidores']);
-
-        if (!empty($seguidores)) {
-            $detalle['seguidores'] = $this->obtenerUsuariosPorIds($seguidores);
-        } else {
-            $detalle['seguidores'] = [];
-        }
-
-        $lead = null;
-        if (!empty($detalle['crm_lead_id'])) {
-            $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
-            if ($lead) {
-                $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
+        try {
+            $detalle = $this->obtenerDetalleSolicitud($solicitudId);
+            if (!$detalle) {
+                throw new RuntimeException('Solicitud no encontrada');
             }
-        }
 
-        return [
-            'detalle' => $detalle,
-            'notas' => $this->obtenerNotas($solicitudId),
-            'adjuntos' => $this->obtenerAdjuntos($solicitudId),
-            'tareas' => $this->obtenerTareas($solicitudId),
-            'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
-            'lead' => $lead,
-            'bloqueos_agenda' => $this->calendarBlocks->listarPorSolicitud($solicitudId),
-        ];
+            $seguidores = $detalle['seguidores'] ?? [];
+            unset($detalle['seguidores']);
+
+            if (!empty($seguidores)) {
+                $detalle['seguidores'] = $this->obtenerUsuariosPorIds($seguidores);
+            } else {
+                $detalle['seguidores'] = [];
+            }
+
+            $lead = null;
+            if (!empty($detalle['crm_lead_id'])) {
+                $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
+                if ($lead) {
+                    $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
+                }
+            }
+
+            return [
+                'detalle' => $detalle,
+                'notas' => $this->obtenerNotas($solicitudId),
+                'adjuntos' => $this->obtenerAdjuntos($solicitudId),
+                'tareas' => $this->obtenerTareas($solicitudId),
+                'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
+                'lead' => $lead,
+                'bloqueos_agenda' => $this->calendarBlocks->listarPorSolicitud($solicitudId),
+            ];
+        } catch (Throwable $exception) {
+            throw new RuntimeException(
+                'No se pudo obtener el detalle CRM: ' . ($exception->getMessage() ?: get_class($exception)),
+                0,
+                $exception
+            );
+        }
     }
 
     public function registrarBloqueoAgenda(int $solicitudId, array $payload, ?int $usuarioId = null): array

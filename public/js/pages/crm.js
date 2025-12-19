@@ -113,6 +113,39 @@
         proposalCodeSearchInput: document.getElementById('proposal-code-search-input'),
         proposalCodeSearchBtn: document.getElementById('proposal-code-search-btn'),
         proposalCodeResults: document.getElementById('proposal-code-results'),
+        proposalSearchInput: document.getElementById('proposal-search'),
+        proposalPreviewTitle: document.getElementById('proposal-preview-title'),
+        proposalPreviewStatus: document.getElementById('proposal-preview-status'),
+        proposalPreviewNumber: document.getElementById('proposal-preview-number'),
+        proposalPreviewTo: document.getElementById('proposal-preview-to'),
+        proposalPreviewValid: document.getElementById('proposal-preview-valid'),
+        proposalPreviewTotal: document.getElementById('proposal-preview-total'),
+        proposalPreviewOpen: document.getElementById('proposal-preview-open'),
+        proposalPreviewRefresh: document.getElementById('proposal-preview-refresh'),
+        proposalNewBtn: document.getElementById('proposal-new-btn'),
+        proposalPipelineBtn: document.getElementById('proposal-pipeline-btn'),
+        proposalExportBtn: document.getElementById('proposal-export-btn'),
+        proposalDetailModal: document.getElementById('proposal-detail-modal'),
+        proposalDetailTitle: document.getElementById('proposal-detail-title'),
+        proposalDetailStatus: document.getElementById('proposal-detail-status'),
+        proposalDetailSubtitle: document.getElementById('proposal-detail-subtitle'),
+        proposalDetailContent: document.getElementById('proposal-detail-content'),
+        proposalDetailEmpty: document.getElementById('proposal-detail-empty'),
+        proposalDetailLoading: document.getElementById('proposal-detail-loading'),
+        proposalDetailItemsBody: document.getElementById('proposal-detail-items-body'),
+        proposalDetailItemsCount: document.getElementById('proposal-detail-items-count'),
+        proposalDetailLead: document.getElementById('proposal-detail-lead'),
+        proposalDetailValidUntil: document.getElementById('proposal-detail-valid-until'),
+        proposalDetailCreated: document.getElementById('proposal-detail-created'),
+        proposalDetailTaxRate: document.getElementById('proposal-detail-tax-rate'),
+        proposalDetailSubtotal: document.getElementById('proposal-detail-subtotal'),
+        proposalDetailDiscount: document.getElementById('proposal-detail-discount'),
+        proposalDetailTax: document.getElementById('proposal-detail-tax'),
+        proposalDetailTotal: document.getElementById('proposal-detail-total'),
+        proposalDetailTimeline: document.getElementById('proposal-detail-timeline'),
+        proposalDetailStatusSelect: document.getElementById('proposal-detail-status-select'),
+        proposalDetailNotes: document.getElementById('proposal-detail-notes'),
+        proposalDetailTerms: document.getElementById('proposal-detail-terms'),
     };
 
     const proposalBuilder = {
@@ -123,6 +156,11 @@
     const proposalModals = {
         package: (window.bootstrap && elements.proposalPackageModal) ? new window.bootstrap.Modal(elements.proposalPackageModal) : null,
         code: (window.bootstrap && elements.proposalCodeModal) ? new window.bootstrap.Modal(elements.proposalCodeModal) : null,
+        detail: (window.bootstrap && elements.proposalDetailModal) ? new window.bootstrap.Modal(elements.proposalDetailModal) : null,
+    };
+
+    const proposalDetailState = {
+        current: null,
     };
 
     const leadFilters = {
@@ -135,6 +173,15 @@
     const leadTableState = {
         page: 1,
         pageSize: 10,
+    };
+
+    const proposalFilters = {
+        status: '',
+        search: '',
+    };
+
+    const proposalUIState = {
+        selectedId: null,
     };
 
     const selectedLeads = new Set();
@@ -199,7 +246,13 @@
 
     function showToast(type, message) {
         const text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
-        const method = type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'error';
+        const method = type === 'success'
+            ? 'success'
+            : type === 'warning'
+                ? 'warning'
+                : type === 'info'
+                    ? 'info'
+                    : 'error';
         if (window.toastr && typeof window.toastr[method] === 'function') {
             window.toastr[method](text);
         } else if (window.Swal && window.Swal.fire) {
@@ -266,6 +319,72 @@
     function clearContainer(container) {
         while (container && container.firstChild) {
             container.removeChild(container.firstChild);
+        }
+    }
+
+    function setTextContent(element, value, fallback = '—') {
+        if (!element) {
+            return;
+        }
+        const display = value === null || value === undefined || value === '' ? fallback : value;
+        element.textContent = display;
+    }
+
+    function syncPreviewStatusPill(element, status) {
+        if (!element) {
+            return;
+        }
+        const badge = proposalStatusBadge(status || 'draft');
+        element.className = badge.className;
+        element.textContent = badge.textContent;
+    }
+
+    function setProposalPreview(proposal) {
+        if (!proposal) {
+            setTextContent(elements.proposalPreviewTitle, 'Selecciona una propuesta');
+            setTextContent(elements.proposalPreviewNumber, '—');
+            setTextContent(elements.proposalPreviewTo, '—');
+            setTextContent(elements.proposalPreviewValid, '—');
+            setTextContent(elements.proposalPreviewTotal, '—');
+            syncPreviewStatusPill(elements.proposalPreviewStatus, 'draft');
+            if (elements.proposalPreviewOpen) elements.proposalPreviewOpen.disabled = true;
+            if (elements.proposalPreviewRefresh) elements.proposalPreviewRefresh.disabled = true;
+            return;
+        }
+
+        setTextContent(elements.proposalPreviewTitle, proposal.title || 'Propuesta');
+        setTextContent(elements.proposalPreviewNumber, proposal.proposal_number || `#${proposal.id}`);
+        setTextContent(elements.proposalPreviewTo, proposal.lead_name || proposal.customer_name || '—');
+        setTextContent(elements.proposalPreviewValid, proposal.valid_until ? formatDate(proposal.valid_until, false) : '—');
+        setTextContent(elements.proposalPreviewTotal, formatCurrency(proposal.total || 0));
+        syncPreviewStatusPill(elements.proposalPreviewStatus, proposal.status);
+        if (elements.proposalPreviewOpen) {
+            elements.proposalPreviewOpen.disabled = false;
+            elements.proposalPreviewOpen.dataset.proposalId = proposal.id;
+        }
+        if (elements.proposalPreviewRefresh) {
+            elements.proposalPreviewRefresh.disabled = false;
+            elements.proposalPreviewRefresh.dataset.proposalId = proposal.id;
+        }
+    }
+
+    function setSelectedProposal(proposalId) {
+        if (!proposalId) {
+            proposalUIState.selectedId = null;
+            setProposalPreview(null);
+            return;
+        }
+        proposalUIState.selectedId = proposalId;
+        const proposal = state.proposals.find((p) => Number(p.id) === Number(proposalId));
+        setProposalPreview(proposal || null);
+        if (elements.proposalTableBody) {
+            elements.proposalTableBody.querySelectorAll('.proposal-row').forEach((row) => {
+                if (String(row.dataset.proposalId) === String(proposalId)) {
+                    row.classList.add('table-active');
+                } else {
+                    row.classList.remove('table-active');
+                }
+            });
         }
     }
 
@@ -1173,18 +1292,39 @@
             clone.subtotal = Number(clone.subtotal || 0);
             clone.tax_total = Number(clone.tax_total || 0);
             clone.discount_total = Number(clone.discount_total || 0);
+            clone.tax_rate = Number(clone.tax_rate || 0);
             clone.status = clone.status || 'draft';
+            clone.currency = clone.currency || 'USD';
+            clone.items = Array.isArray(clone.items) ? clone.items : [];
+            const parsedItemsCount = Number(clone.items_count);
+            clone.items_count = Number.isFinite(parsedItemsCount) ? parsedItemsCount : clone.items.length;
             return clone;
+        });
+    }
+
+    function getFilteredProposals() {
+        const search = (proposalFilters.search || '').toLowerCase();
+        const status = proposalFilters.status || '';
+
+        return state.proposals.filter((proposal) => {
+            const matchesStatus = status ? proposal.status === status : true;
+            const matchesSearch = !search
+                ? true
+                : [proposal.proposal_number, proposal.title, proposal.lead_name, proposal.customer_name]
+                    .some((value) => (value || '').toLowerCase().includes(search));
+            return matchesStatus && matchesSearch;
         });
     }
 
     function proposalStatusBadge(status) {
         const map = {
             draft: 'bg-secondary',
+            open: 'bg-primary',
             sent: 'bg-info',
+            revised: 'bg-warning text-dark',
             accepted: 'bg-success',
             declined: 'bg-danger',
-            expired: 'bg-warning',
+            expired: 'bg-dark',
         };
         const className = map[status] || 'bg-secondary';
         const badge = document.createElement('span');
@@ -1199,8 +1339,9 @@
         }
 
         clearContainer(elements.proposalTableBody);
+        const proposals = getFilteredProposals();
 
-        if (!state.proposals.length) {
+        if (!proposals.length) {
             const row = document.createElement('tr');
             const cell = document.createElement('td');
             cell.colSpan = 6;
@@ -1208,43 +1349,77 @@
             cell.textContent = 'Aún no hay propuestas registradas.';
             row.appendChild(cell);
             elements.proposalTableBody.appendChild(row);
+            setProposalPreview(null);
             return;
         }
 
-        state.proposals.forEach((proposal) => {
+        const hasSelected = proposals.some((p) => String(p.id) === String(proposalUIState.selectedId));
+        if (!hasSelected) {
+            proposalUIState.selectedId = null;
+        }
+
+        proposals.forEach((proposal) => {
             const row = document.createElement('tr');
+            row.classList.add('proposal-row');
+            row.dataset.proposalId = proposal.id;
+            if (proposalUIState.selectedId && Number(proposalUIState.selectedId) === Number(proposal.id)) {
+                row.classList.add('table-active');
+            }
 
             const numberCell = document.createElement('td');
-            numberCell.innerHTML = `<strong>${proposal.proposal_number || `#${proposal.id}`}</strong>`;
+            const numberLink = document.createElement('a');
+            numberLink.href = '#';
+            numberLink.className = 'proposal-view-btn fw-semibold text-decoration-none';
+            numberLink.dataset.proposalId = proposal.id;
+            numberLink.textContent = proposal.proposal_number || `#${proposal.id}`;
+            numberCell.appendChild(numberLink);
+            const itemsBadge = document.createElement('span');
+            itemsBadge.className = 'badge bg-light text-muted ms-2';
+            itemsBadge.textContent = `${proposal.items_count ?? 0} ítems`;
+            numberCell.appendChild(itemsBadge);
             row.appendChild(numberCell);
+
+            const subjectCell = document.createElement('td');
+            subjectCell.textContent = proposal.title || '—';
+            row.appendChild(subjectCell);
 
             const leadCell = document.createElement('td');
             leadCell.textContent = proposal.lead_name || proposal.customer_name || '-';
             row.appendChild(leadCell);
-
-            const statusCell = document.createElement('td');
-            statusCell.appendChild(proposalStatusBadge(proposal.status));
-            row.appendChild(statusCell);
 
             const totalCell = document.createElement('td');
             totalCell.className = 'text-end';
             totalCell.textContent = formatCurrency(proposal.total);
             row.appendChild(totalCell);
 
-            const validCell = document.createElement('td');
-            validCell.textContent = proposal.valid_until ? formatDate(proposal.valid_until, false) : '—';
-            row.appendChild(validCell);
+            const statusCell = document.createElement('td');
+            statusCell.appendChild(proposalStatusBadge(proposal.status));
+            row.appendChild(statusCell);
 
             const actionCell = document.createElement('td');
             actionCell.className = 'text-end';
-            const select = createStatusSelect(state.proposalStatuses, proposal.status);
-            select.classList.add('form-select-sm', 'proposal-status-select');
-            select.dataset.proposalId = proposal.id;
-            actionCell.appendChild(select);
+            const actionsWrapper = document.createElement('div');
+            actionsWrapper.className = 'd-flex justify-content-end align-items-center gap-2';
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'btn btn-outline-primary btn-xs proposal-view-btn';
+            viewBtn.dataset.proposalId = proposal.id;
+            viewBtn.innerHTML = '<i class="mdi mdi-eye"></i>';
+            actionsWrapper.appendChild(viewBtn);
+            if (canManageProjects) {
+                const select = createStatusSelect(state.proposalStatuses, proposal.status);
+                select.classList.add('form-select-sm', 'proposal-status-select');
+                select.dataset.proposalId = proposal.id;
+                actionsWrapper.appendChild(select);
+            }
+            actionCell.appendChild(actionsWrapper);
             row.appendChild(actionCell);
 
             elements.proposalTableBody.appendChild(row);
         });
+
+        if (!proposalUIState.selectedId && proposals.length) {
+            setSelectedProposal(proposals[0].id);
+        }
     }
 
     function loadProposals() {
@@ -1266,7 +1441,7 @@
             });
     }
 
-    function updateProposalStatus(proposalId, status) {
+    function updateProposalStatus(proposalId, status, onSuccess) {
         if (!proposalId || !status) {
             return;
         }
@@ -1281,12 +1456,190 @@
                 } else {
                     loadProposals();
                 }
+                if (typeof onSuccess === 'function') {
+                    onSuccess(updated);
+                }
                 showToast('success', 'Estado actualizado');
             })
             .catch((error) => {
                 console.error('Error actualizando estado de propuesta', error);
                 showToast('error', error.message || 'No se pudo actualizar el estado');
                 loadProposals();
+            });
+    }
+
+    function setProposalDetailLoading(isLoading) {
+        if (elements.proposalDetailLoading) {
+            elements.proposalDetailLoading.classList.toggle('d-none', !isLoading);
+        }
+        if (elements.proposalDetailContent) {
+            elements.proposalDetailContent.classList.toggle('d-none', isLoading || !proposalDetailState.current);
+        }
+        if (elements.proposalDetailEmpty) {
+            elements.proposalDetailEmpty.classList.toggle('d-none', isLoading || Boolean(proposalDetailState.current));
+        }
+    }
+
+    function syncStatusPill(element, status) {
+        if (!element) {
+            return;
+        }
+        const badge = proposalStatusBadge(status || 'draft');
+        element.className = badge.className;
+        element.textContent = badge.textContent;
+    }
+
+    function populateProposalStatusSelect(select, status, proposalId) {
+        if (!select) {
+            return;
+        }
+        clearContainer(select);
+        const statuses = Array.isArray(state.proposalStatuses) ? state.proposalStatuses : [];
+        statuses.forEach((optionValue) => {
+            const option = document.createElement('option');
+            option.value = optionValue;
+            option.textContent = titleize(optionValue);
+            select.appendChild(option);
+        });
+        select.value = status || '';
+        select.dataset.proposalId = proposalId || '';
+        select.disabled = !canManageProjects;
+    }
+
+    function renderProposalTimeline(proposal) {
+        if (!elements.proposalDetailTimeline) {
+            return;
+        }
+        clearContainer(elements.proposalDetailTimeline);
+        const timeline = [
+            { label: 'Creada', value: proposal.created_at, withTime: true },
+            { label: 'Enviada', value: proposal.sent_at, withTime: true },
+            { label: 'Aceptada', value: proposal.accepted_at, withTime: true },
+            { label: 'Declinada', value: proposal.rejected_at, withTime: true },
+            { label: 'Vence', value: proposal.valid_until, withTime: false },
+        ].filter((entry) => entry.value);
+
+        if (!timeline.length) {
+            const empty = document.createElement('p');
+            empty.className = 'text-muted mb-0';
+            empty.textContent = 'Sin actividad registrada';
+            elements.proposalDetailTimeline.appendChild(empty);
+            return;
+        }
+
+        timeline.forEach((entry) => {
+            const row = document.createElement('div');
+            row.className = 'd-flex justify-content-between align-items-center small mb-1';
+            const label = document.createElement('span');
+            label.className = 'text-muted';
+            label.textContent = entry.label;
+            const date = document.createElement('span');
+            date.className = 'fw-semibold';
+            date.textContent = formatDate(entry.value, Boolean(entry.withTime));
+            row.appendChild(label);
+            row.appendChild(date);
+            elements.proposalDetailTimeline.appendChild(row);
+        });
+    }
+
+    function renderProposalDetailItems(items) {
+        if (!elements.proposalDetailItemsBody) {
+            return;
+        }
+        clearContainer(elements.proposalDetailItemsBody);
+        if (!items || !items.length) {
+            const row = document.createElement('tr');
+            row.className = 'text-center text-muted';
+            row.innerHTML = '<td colspan="5">Sin ítems</td>';
+            elements.proposalDetailItemsBody.appendChild(row);
+            return;
+        }
+
+        items.forEach((item) => {
+            const row = document.createElement('tr');
+            const discountValue = Number(item.discount_percent || 0);
+            row.innerHTML = `
+                <td>${item.description || ''}</td>
+                <td class="text-center">${Number(item.quantity || 0).toFixed(2)}</td>
+                <td class="text-end">${formatCurrency(item.unit_price || 0)}</td>
+                <td class="text-end">${discountValue ? `${discountValue.toFixed(2)}%` : '—'}</td>
+                <td class="text-end">${formatCurrency(calculateLineTotal(item))}</td>
+            `;
+            elements.proposalDetailItemsBody.appendChild(row);
+        });
+    }
+
+    function renderProposalDetail() {
+        const proposal = proposalDetailState.current;
+        if (elements.proposalDetailEmpty) {
+            elements.proposalDetailEmpty.classList.toggle('d-none', Boolean(proposal));
+        }
+        if (!proposal) {
+            if (elements.proposalDetailContent) {
+                elements.proposalDetailContent.classList.add('d-none');
+            }
+            return;
+        }
+
+        if (elements.proposalDetailContent) {
+            elements.proposalDetailContent.classList.remove('d-none');
+        }
+
+        setTextContent(elements.proposalDetailTitle, proposal.title || 'Propuesta');
+        setTextContent(
+            elements.proposalDetailSubtitle,
+            `${proposal.proposal_number || `#${proposal.id}`} · ${proposal.currency}`.trim(),
+            proposal.proposal_number || `#${proposal.id}`
+        );
+        syncStatusPill(elements.proposalDetailStatus, proposal.status);
+        setTextContent(elements.proposalDetailLead, proposal.lead_name || proposal.customer_name || '—');
+        setTextContent(elements.proposalDetailValidUntil, formatDate(proposal.valid_until, false));
+        setTextContent(elements.proposalDetailCreated, formatDate(proposal.created_at, true));
+        setTextContent(elements.proposalDetailTaxRate, proposal.tax_rate ? `${proposal.tax_rate}%` : '—');
+        setTextContent(elements.proposalDetailItemsCount, `${proposal.items_count || proposal.items.length || 0} ítems`, '0 ítems');
+        setTextContent(elements.proposalDetailNotes, proposal.notes || '—');
+        setTextContent(elements.proposalDetailTerms, proposal.terms || '—');
+
+        if (elements.proposalDetailSubtotal) {
+            elements.proposalDetailSubtotal.textContent = formatCurrency(proposal.subtotal || 0);
+        }
+        if (elements.proposalDetailDiscount) {
+            elements.proposalDetailDiscount.textContent = formatCurrency(proposal.discount_total || 0);
+        }
+        if (elements.proposalDetailTax) {
+            elements.proposalDetailTax.textContent = formatCurrency(proposal.tax_total || 0);
+        }
+        if (elements.proposalDetailTotal) {
+            elements.proposalDetailTotal.textContent = formatCurrency(proposal.total || 0);
+        }
+
+        populateProposalStatusSelect(elements.proposalDetailStatusSelect, proposal.status, proposal.id);
+        renderProposalDetailItems(proposal.items);
+        renderProposalTimeline(proposal);
+    }
+
+    function openProposalDetail(proposalId) {
+        if (!proposalId) {
+            showToast('error', 'No encontramos la propuesta seleccionada');
+            return;
+        }
+        setSelectedProposal(proposalId);
+        proposalDetailState.current = null;
+        setProposalDetailLoading(true);
+        if (proposalModals.detail) {
+            proposalModals.detail.show();
+        }
+        request(`/crm/proposals/${proposalId}`)
+            .then((response) => {
+                const proposals = mapProposals([response.data]);
+                proposalDetailState.current = proposals[0] || null;
+                renderProposalDetail();
+                setProposalDetailLoading(false);
+            })
+            .catch((error) => {
+                console.error('No se pudo cargar la propuesta', error);
+                showToast('error', error.message || 'No se pudo cargar la propuesta');
+                setProposalDetailLoading(false);
             });
     }
 
@@ -2105,7 +2458,62 @@
 
     if (elements.proposalStatusFilter) {
         elements.proposalStatusFilter.addEventListener('change', () => {
+            proposalFilters.status = elements.proposalStatusFilter.value || '';
             loadProposals();
+        });
+    }
+
+    if (elements.proposalSearchInput) {
+        let searchTimeout;
+        elements.proposalSearchInput.addEventListener('input', () => {
+            const value = elements.proposalSearchInput.value || '';
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                proposalFilters.search = value.trim();
+                renderProposals();
+            }, 200);
+        });
+    }
+
+    if (elements.proposalNewBtn) {
+        elements.proposalNewBtn.addEventListener('click', () => {
+            const target = elements.proposalTitle || elements.proposalLeadSelect;
+            if (target && typeof target.focus === 'function') {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.focus();
+            }
+        });
+    }
+
+    if (elements.proposalPipelineBtn) {
+        elements.proposalPipelineBtn.addEventListener('click', () => {
+            showToast('info', 'Vista de pipeline aún no implementada en esta instancia.');
+        });
+    }
+
+    if (elements.proposalExportBtn) {
+        elements.proposalExportBtn.addEventListener('click', () => {
+            showToast('info', 'Exportación masiva de PDF no está disponible en esta versión.');
+        });
+    }
+
+    if (elements.proposalPreviewOpen) {
+        elements.proposalPreviewOpen.addEventListener('click', (event) => {
+            event.preventDefault();
+            const proposalId = serializeNumber(elements.proposalPreviewOpen.dataset.proposalId);
+            if (proposalId) {
+                openProposalDetail(proposalId);
+            }
+        });
+    }
+
+    if (elements.proposalPreviewRefresh) {
+        elements.proposalPreviewRefresh.addEventListener('click', (event) => {
+            event.preventDefault();
+            const proposalId = serializeNumber(elements.proposalPreviewRefresh.dataset.proposalId);
+            if (proposalId) {
+                openProposalDetail(proposalId);
+            }
         });
     }
 
@@ -2218,8 +2626,31 @@
                 }
                 updateProposalStatus(proposalId, status);
             }
+            if (target.id === 'proposal-detail-status-select') {
+                const proposalId = serializeNumber(target.dataset.proposalId);
+                const status = target.value;
+                if (!proposalId || !status) {
+                    return;
+                }
+                updateProposalStatus(proposalId, status, () => openProposalDetail(proposalId));
+            }
         });
     }
+
+    root.addEventListener('click', (event) => {
+        const proposalRow = event.target.closest('.proposal-row');
+        if (proposalRow && !event.target.closest('select')) {
+            const proposalId = serializeNumber(proposalRow.dataset.proposalId);
+            setSelectedProposal(proposalId);
+        }
+        const proposalButton = event.target.closest('.proposal-view-btn');
+        if (proposalButton) {
+            event.preventDefault();
+            const proposalId = serializeNumber(proposalButton.dataset.proposalId);
+            setSelectedProposal(proposalId);
+            openProposalDetail(proposalId);
+        }
+    });
 
     if (canManageLeads || canManageTickets) {
         root.addEventListener('click', (event) => {

@@ -317,6 +317,7 @@ class SolicitudController extends BaseController
             $status = strcasecmp($message, 'Solicitud no encontrada') === 0 ? 404 : 422;
             $this->json(['success' => false, 'error' => $message], $status);
         } catch (\Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
             JsonLogger::log(
                 'crm',
                 'CRM ▶ Error al obtener resumen',
@@ -324,9 +325,16 @@ class SolicitudController extends BaseController
                 [
                     'solicitud_id' => $solicitudId,
                     'user_id' => $this->getCurrentUserId(),
+                    'error_id' => $errorId,
                 ]
             );
-            $this->json(['success' => false, 'error' => 'No se pudo cargar el detalle CRM'], 500);
+
+            $message = 'No se pudo cargar el detalle CRM';
+            if (trim((string) $e->getMessage()) !== '') {
+                $message .= sprintf(' (ref: %s)', $errorId);
+            }
+
+            $this->json(['success' => false, 'error' => $message], 500);
         }
     }
 

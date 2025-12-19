@@ -9,7 +9,9 @@ use Throwable;
 class ProposalModel
 {
     public const STATUS_DRAFT = 'draft';
+    public const STATUS_OPEN = 'open';
     public const STATUS_SENT = 'sent';
+    public const STATUS_REVISED = 'revised';
     public const STATUS_ACCEPTED = 'accepted';
     public const STATUS_DECLINED = 'declined';
     public const STATUS_EXPIRED = 'expired';
@@ -28,7 +30,9 @@ class ProposalModel
     {
         return [
             self::STATUS_DRAFT,
+            self::STATUS_OPEN,
             self::STATUS_SENT,
+            self::STATUS_REVISED,
             self::STATUS_ACCEPTED,
             self::STATUS_DECLINED,
             self::STATUS_EXPIRED,
@@ -62,10 +66,16 @@ class ProposalModel
             SELECT
                 p.*,
                 l.name AS lead_name,
-                c.name AS customer_name
+                c.name AS customer_name,
+                COALESCE(pi.items_count, 0) AS items_count
             FROM crm_proposals p
             LEFT JOIN crm_leads l ON l.id = p.lead_id
             LEFT JOIN crm_customers c ON c.id = p.customer_id
+            LEFT JOIN (
+                SELECT proposal_id, COUNT(*) AS items_count
+                FROM crm_proposal_items
+                GROUP BY proposal_id
+            ) pi ON pi.proposal_id = p.id
             WHERE " . implode(' AND ', $where) . "
             ORDER BY p.created_at DESC
             LIMIT :limit OFFSET :offset
@@ -106,6 +116,8 @@ class ProposalModel
         }
 
         $proposal['items'] = $this->itemsFor($id);
+        $proposal['items_count'] = count($proposal['items']);
+        $proposal['packages_snapshot'] = $this->decodeJson($proposal['packages_snapshot']);
 
         return $proposal;
     }
@@ -124,6 +136,10 @@ class ProposalModel
         $totals = $this->calculateTotals($items, $taxRate);
         $number = $this->generateNumber();
         $status = self::STATUS_DRAFT;
+        $leadId = $this->sanitizeNullableInt($payload['lead_id'] ?? null);
+        $customerId = $this->sanitizeNullableInt($payload['customer_id'] ?? null);
+        $validUntil = $this->normalizeDate($payload['valid_until'] ?? null);
+        $currency = $this->sanitizeCurrency($payload['currency'] ?? 'USD');
 
         $this->pdo->beginTransaction();
 
@@ -145,17 +161,17 @@ class ProposalModel
                 ':proposal_number' => $number['number'],
                 ':proposal_year' => $number['year'],
                 ':sequence' => $number['sequence'],
-                ':lead_id' => $payload['lead_id'] ?? null,
-                ':customer_id' => $payload['customer_id'] ?? null,
+                ':lead_id' => $leadId,
+                ':customer_id' => $customerId,
                 ':title' => $payload['title'] ?? 'Propuesta sin título',
                 ':status' => $status,
-                ':currency' => $payload['currency'] ?? 'USD',
+                ':currency' => $currency,
                 ':subtotal' => $totals['subtotal'],
                 ':discount_total' => $totals['discount'],
                 ':tax_rate' => $taxRate,
                 ':tax_total' => $totals['tax'],
                 ':total' => $totals['total'],
-                ':valid_until' => $payload['valid_until'] ?? null,
+                ':valid_until' => $validUntil,
                 ':notes' => $payload['notes'] ?? null,
                 ':terms' => $payload['terms'] ?? null,
                 ':packages_snapshot' => $snapshot ? json_encode($snapshot, JSON_UNESCAPED_UNICODE) : null,
@@ -181,7 +197,21 @@ class ProposalModel
             throw new RuntimeException('Estado inválido');
         }
 
-        $stmt = $this->pdo->prepare('UPDATE crm_proposals SET status = :status, updated_by = :updated_by WHERE id = :id');
+        $fields = ['status = :status', 'updated_by = :updated_by'];
+        if ($status === self::STATUS_SENT) {
+            $fields[] = 'sent_at = COALESCE(sent_at, NOW())';
+        }
+        if ($status === self::STATUS_ACCEPTED) {
+            $fields[] = 'accepted_at = NOW()';
+        }
+        if ($status === self::STATUS_DECLINED) {
+            $fields[] = 'rejected_at = NOW()';
+        }
+
+        $stmt = $this->pdo->prepare(sprintf(
+            'UPDATE crm_proposals SET %s WHERE id = :id',
+            implode(', ', $fields)
+        ));
         $stmt->execute([
             ':status' => $status,
             ':updated_by' => $userId,
@@ -204,7 +234,13 @@ class ProposalModel
         ');
         $stmt->execute([':proposal_id' => $proposalId]);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($items as &$item) {
+            $item['metadata'] = $this->decodeJson($item['metadata']);
+        }
+        unset($item);
+
+        return $items;
     }
 
     /**
@@ -240,6 +276,36 @@ class ProposalModel
     {
         $status = strtolower(trim($status));
         return in_array($status, $this->getStatuses(), true) ? $status : '';
+    }
+
+    private function sanitizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $int = (int) $value;
+        return $int > 0 ? $int : null;
+    }
+
+    private function normalizeDate(mixed $value): ?string
+    {
+        if (!$value) {
+            return null;
+        }
+
+        $date = date_create((string) $value);
+        return $date ? $date->format('Y-m-d') : null;
+    }
+
+    private function sanitizeCurrency(string $currency): string
+    {
+        $clean = strtoupper(trim($currency));
+        if ($clean === '') {
+            return 'USD';
+        }
+
+        return substr($clean, 0, 3);
     }
 
     /**
@@ -344,5 +410,23 @@ class ProposalModel
         return [
             'packages' => $packages,
         ];
+    }
+
+    private function decodeJson(mixed $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $decoded = json_decode($value, true);
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
     }
 }

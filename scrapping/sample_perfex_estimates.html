@@ -1,0 +1,275 @@
+<div class="content">
+    <div class="row">
+        <div class="panel-table-full">
+            <div id="vueApp" data-v-app="">
+                <div class="col-md-12 tw-mb-3">
+                    <h4 class="tw-my-0 tw-font-bold tw-text-xl">Estimates</h4>
+                    <a href="#" class="estimates-total tw-text-neutral-500 hover:tw-text-neutral-700 focus:tw-text-neutral-700" onclick="slideToggle('#stats-top'); init_estimates_total(true); return false;">
+                        View Financial Stats
+                    </a>
+                </div>
+                <div class="col-md-12">
+                    <div class="quick-top-stats tw-mb-6">
+                        <div class="tw-grid tw-grid-cols-2 md:tw-grid-cols-3 lg:tw-grid-cols-5 tw-mb-0 tw-gap-2">
+                            <button type="button" class="tw-bg-white tw-border tw-border-solid tw-border-neutral-300/80 tw-shadow-sm tw-py-2 tw-px-3.5 tw-rounded-lg tw-text-sm hover:tw-bg-neutral-100 tw-text-neutral-600 hover:tw-text-neutral-600 focus:tw-text-neutral-600 text-left odd:last:tw-col-span-2 md:odd:last:tw-col-auto">
+                                <div class="tw-flex tw-items-center">
+                                    <span class="tw-font-normal tw-text-base tw-inline-flex tw-items-center text-default"> Draft </span>
+                                    <span class="tw-ml-2 rtl:tw-mr-2 tw-text-xs tw-text-neutral-500 tw-mt-px"> (40.00%) </span>
+                                </div>
+                                <div class="tw-mt-0.5">
+                                    <div class="tw-text-neutral-600">
+                                        <span class="tw-font-semibold"> 4 / 10 </span>
+                                    </div>
+                                </div>
+                            </button>
+                            <button type="button" class="tw-bg-white tw-border tw-border-solid tw-border-neutral-300/80 tw-shadow-sm tw-py-2 tw-px-3.5 tw-rounded-lg tw-text-sm hover:tw-bg-neutral-100 tw-text-neutral-600 hover:tw-text-neutral-600 focus:tw-text-neutral-600 text-left odd:last:tw-col-span-2 md:odd:last:tw-col-auto">
+                                <div class="tw-flex tw-items-center">
+                                    <span class="tw-font-normal tw-text-base tw-inline-flex tw-items-center text-info"> Sent </span>
+                                    <span class="tw-ml-2 rtl:tw-mr-2 tw-text-xs tw-text-neutral-500 tw-mt-px"> (40.00%) </span>
+                                </div>
+                                <div class="tw-mt-0.5">
+                                    <div class="tw-text-neutral-600">
+                                        <span class="tw-font-semibold"> 4 / 10 </span>
+                                    </div>
+                                </div>
+                            </button>
+                            <button type="button" class="tw-bg-white tw-border tw-border-solid tw-border-neutral-300/80 tw-shadow-sm tw-py-2 tw-px-3.5 tw-rounded-lg tw-text-sm hover:tw-bg-neutral-100 tw-text-neutral-600 hover:tw-text-neutral-600 focus:tw-text-neutral-600 focus:tw-text-neutral-600 text-left odd:last:tw-col-span-2 md:odd:last:tw-col-auto">
+                                <div class="tw-flex tw-items-center">
+                                    <span class="tw-font-normal tw-text-base tw-inline-flex tw-items-center text-warning"> Expired </span>
+                                    <span class="tw-ml-2 rtl:tw-mr-2 tw-text-xs tw-text-neutral-500 tw-mt-px"> (0.00%) </span>
+                                </div>
+                                <div class="tw-mt-0.5">
+                                    <div class="tw-text-neutral-600">
+                                        <span class="tw-font-semibold"> 0 / 10 </span>
+                                    </div>
+                                </div>
+                            </button>
+                            <button type="button" class="tw-bg-white tw-border tw-border-solid tw-border-neutral-300/80 tw-shadow-sm tw-py-2 tw-px-3.5 tw-rounded-lg tw-text-sm hover:tw-bg-neutral-100 tw-text-neutral-600 hover:tw-text-neutral-600 focus:tw-text-neutral-600 text-left odd:last:tw-col-span-2 md:odd:last:tw-col-auto">
+                                <div class="tw-flex tw-items-center">
+                                    <span class="tw-font-normal tw-text-base tw-inline-flex tw-items-center text-danger"> Declined </span>
+                                    <span class="tw-ml-2 rtl:tw-mr-2 tw-text-xs tw-text-neutral-500 tw-mt-px"> (20.00%) </span>
+                                </div>
+                                <div class="tw-mt-0.5">
+                                    <div class="tw-text-neutral-600">
+                                        <span class="tw-font-semibold"> 2 / 10 </span>
+                                    </div>
+                                </div>
+                            </button>
+                            <button type="button" class="tw-bg-white tw-border tw-border-solid tw-border-neutral-300/80 tw-shadow-sm tw-py-2 tw-px-3.5 tw-rounded-lg tw-text-sm hover:tw-bg-neutral-100 tw-text-neutral-600 hover:tw-text-neutral-600 focus:tw-text-neutral-600 text-left odd:last:tw-col-span-2 md:odd:last:tw-col-auto">
+                                <div class="tw-flex tw-items-center">
+                                    <span class="tw-font-normal tw-text-base tw-inline-flex tw-items-center text-success"> Accepted </span>
+                                    <span class="tw-ml-2 rtl:tw-mr-2 tw-text-xs tw-text-neutral-500 tw-mt-px"> (0.00%) </span>
+                                </div>
+                                <div class="tw-mt-0.5">
+                                    <div class="tw-text-neutral-600">
+                                        <span class="tw-font-semibold"> 0 / 10 </span>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <div id="stats-top" class="hide">
+                        <div id="estimates_total"></div>
+                        <hr>
+                    </div>
+                    <div class="clearfix"></div>
+                    <div class="_filters _hidden_inputs hidden">
+                        <input type="hidden" name="sale_agent_1">
+                        <input type="hidden" name="sale_agent_2">
+                        <input type="hidden" name="sale_agent_3">
+                        <input type="hidden" name="sale_agent_5">
+                        <input type="hidden" name="sale_agent_7">
+                        <input type="hidden" name="sale_agent_8">
+                        <input type="hidden" name="sale_agent_9">
+                        <input type="hidden" name="estimates_1">
+                        <input type="hidden" name="estimates_2">
+                        <input type="hidden" name="estimates_5">
+                        <input type="hidden" name="estimates_3">
+                        <input type="hidden" name="estimates_4">
+                        <input type="hidden" name="year_2025" value="2025">
+                        <input type="hidden" name="not_sent">
+                        <input type="hidden" name="project_id">
+                        <input type="hidden" name="invoiced">
+                        <input type="hidden" name="not_invoiced">
+                    </div>
+                    <div class="clearfix"></div>
+                    <div class="row tw-mt-2">
+                        <div class="col-md-12" id="small-table">
+                            <div class="panel_s">
+                                <div class="panel-body">
+                                    <input type="hidden" name="estimateid">
+                                    <div class="">
+                                        <div id="estimates_wrapper" class="dataTables_wrapper form-inline dt-bootstrap no-footer">
+                                            <div class="table-responsive">
+                                                <table id="estimates" class="table table-estimates dataTable no-footer" role="grid" aria-describedby="estimates_info">
+                                                    <thead>
+                                                        <tr role="row">
+                                                            <th>Estimate #</th>
+                                                            <th>Amount</th>
+                                                            <th>Total Tax</th>
+                                                            <th>Customer</th>
+                                                            <th>Project</th>
+                                                            <th>Tags</th>
+                                                            <th>Date</th>
+                                                            <th>Expiry Date</th>
+                                                            <th>Reference #</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr class="has-row-options odd">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/10" class="tw-font-medium">EST-000010</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$250.00</span></td>
+                                                            <td><span class="tw-font-medium">$0.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/10">Berge, D'Amore and Stracke</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-danger  s-status estimate-status-3 estimate-status-danger">Declined</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options even">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/9" class="tw-font-medium">EST-000009</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$1,396.20</span></td>
+                                                            <td><span class="tw-font-medium">$106.20</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/9">Medhurst-Blick</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-info  s-status estimate-status-2 estimate-status-info">Sent</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options odd">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/8" class="tw-font-medium">EST-000008</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$2,740.00</span></td>
+                                                            <td><span class="tw-font-medium">$90.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/8">Effertz-Walker</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-01</td>
+                                                            <td></td>
+                                                            <td><span class="label label-default  s-status estimate-status-1 estimate-status-default">Draft</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options even">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/7" class="tw-font-medium">EST-000007</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$840.00</span></td>
+                                                            <td><span class="tw-font-medium">$0.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/7">Adams, Kertzmann and Klocko</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-default  s-status estimate-status-1 estimate-status-default">Draft</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options odd">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/6" class="tw-font-medium">EST-000006</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$1,620.00</span></td>
+                                                            <td><span class="tw-font-medium">$90.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/6">Gislason-Hodkiewicz</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-01</td>
+                                                            <td></td>
+                                                            <td><span class="label label-info  s-status estimate-status-2 estimate-status-info">Sent</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options even">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/5" class="tw-font-medium">EST-000005</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$3,647.00</span></td>
+                                                            <td><span class="tw-font-medium">$387.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/5">Tremblay-Kessler</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-15</td>
+                                                            <td></td>
+                                                            <td><span class="label label-info  s-status estimate-status-2 estimate-status-info">Sent</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options odd">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/4" class="tw-font-medium">EST-000004</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$2,600.00</span></td>
+                                                            <td><span class="tw-font-medium">$0.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/4">Cremin, Kozey and Ullrich</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-default  s-status estimate-status-1 estimate-status-default">Draft</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options even">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/3" class="tw-font-medium">EST-000003</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$1,050.00</span></td>
+                                                            <td><span class="tw-font-medium">$0.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/3">Schuster Group</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-default  s-status estimate-status-1 estimate-status-default">Draft</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options odd">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/2" class="tw-font-medium">EST-000002</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$1,951.40</span></td>
+                                                            <td><span class="tw-font-medium">$221.40</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/2">Kilback Ltd</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-info  s-status estimate-status-2 estimate-status-info">Sent</span></td>
+                                                        </tr>
+                                                        <tr class="has-row-options even">
+                                                            <td class="sorting_2">
+                                                                <a href="https://perfexcrm.com/demo/admin/estimates/list_estimates/1" class="tw-font-medium">EST-000001</a>
+                                                            </td>
+                                                            <td><span class="tw-font-medium">$4,868.00</span></td>
+                                                            <td><span class="tw-font-medium">$738.00</span></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/clients/client/1">Howe Inc</a></td>
+                                                            <td><a href="https://perfexcrm.com/demo/admin/projects/view/0"></a></td>
+                                                            <td></td>
+                                                            <td>2025-12-18</td>
+                                                            <td>2026-01-08</td>
+                                                            <td></td>
+                                                            <td><span class="label label-danger  s-status estimate-status-3 estimate-status-danger">Declined</span></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

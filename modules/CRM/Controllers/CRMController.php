@@ -11,6 +11,7 @@ use Modules\CRM\Models\ProposalModel;
 use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\CRM\Services\PerfexEstimatesParser;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -534,6 +535,105 @@ class CRMController extends BaseController
             $this->json(['ok' => true, 'data' => $proposals]);
         } catch (Throwable $exception) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar las propuestas'], 500);
+        }
+    }
+
+    public function showProposal(int $proposalId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $proposal = $this->proposals->find($proposalId);
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_proposal_viewed', ['proposal_id' => $proposalId]);
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la propuesta'], 500);
+        }
+    }
+
+    public function parsePerfexEstimates(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
+
+        $payload = $this->getBody();
+        $html = (string) ($payload['html'] ?? '');
+
+        if (trim($html) === '') {
+            $this->json(['ok' => false, 'error' => 'El cuerpo HTML es requerido'], 422);
+            return;
+        }
+
+        try {
+            $parser = new PerfexEstimatesParser();
+            $parsed = $parser->parse($html);
+            $this->auditCrm('crm_proposals_perfex_preview');
+            $this->json(['ok' => true, 'data' => $parsed]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo interpretar el listado de Perfex'], 500);
+        }
+    }
+
+    public function showProposal(int $proposalId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $proposal = $this->proposals->find($proposalId);
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_proposal_viewed', ['proposal_id' => $proposalId]);
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la propuesta'], 500);
+        }
+    }
+
+    public function getProposal(int $proposalId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $proposal = $this->proposals->find($proposalId);
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_proposal_viewed', ['proposal_id' => $proposalId]);
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la propuesta'], 500);
+        }
+    }
+
+    public function showProposal(int $proposalId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $proposal = $this->proposals->find($proposalId);
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_proposal_viewed', ['proposal_id' => $proposalId]);
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la propuesta'], 500);
         }
     }
 

@@ -20,7 +20,7 @@ array_push(
     'https://cdn.jsdelivr.net/npm/sweetalert2@11',
     'https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/picker.js',
     'https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/picker.date.js',
-    '/modules/Flujo/js/kanban_base.js'
+    '/js/pages/pacientes/flujo.js'
 );
 ?>
 
