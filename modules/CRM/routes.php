@@ -76,6 +76,10 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
         (new CRMController($pdo))->showProposal((int) $id);
     });
 
+    $router->get('/crm/proposals/{id}', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->getProposal((int) $id);
+    });
+
     $router->get('/crm/proposals', static function (\PDO $pdo): void {
         (new CRMController($pdo))->listProposals();
     });

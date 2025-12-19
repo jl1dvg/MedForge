@@ -637,6 +637,25 @@ class CRMController extends BaseController
         }
     }
 
+    public function getProposal(int $proposalId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $proposal = $this->proposals->find($proposalId);
+            if (!$proposal) {
+                $this->json(['ok' => false, 'error' => 'Propuesta no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_proposal_viewed', ['proposal_id' => $proposalId]);
+            $this->json(['ok' => true, 'data' => $proposal]);
+        } catch (Throwable $exception) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la propuesta'], 500);
+        }
+    }
+
     public function createProposal(): void
     {
         $this->requireAuth();
