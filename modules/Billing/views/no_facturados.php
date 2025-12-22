@@ -647,6 +647,7 @@ $scripts = array_merge($scripts ?? [], [
             revisados: new Set(),
             pendientes: new Set(),
             noQuirurgicos: new Set(),
+            imagenes: new Set(),
         };
 
         const tableConfigs = {
@@ -664,6 +665,11 @@ $scripts = array_merge($scripts ?? [], [
                 tableId: 'tablaNoQuirurgicos',
                 selectAllId: 'selectAllNoQuirurgicos',
                 baseFilters: {tipo: 'no_quirurgico'},
+            },
+            imagenes: {
+                tableId: 'tablaImagenes',
+                selectAllId: 'selectAllImagenes',
+                baseFilters: {tipo: 'imagen'},
             },
         };
 
@@ -773,9 +779,15 @@ $scripts = array_merge($scripts ?? [], [
             },
             {
                 data: 'tipo',
-                render: (data) => data === 'quirurgico'
-                    ? renderBadge('Quirúrgico', 'primary')
-                    : renderBadge('No quirúrgico', 'info'),
+                render: (data) => {
+                    if (data === 'quirurgico') {
+                        return renderBadge('Quirúrgico', 'primary');
+                    }
+                    if (data === 'imagen') {
+                        return renderBadge('Imágenes', 'info');
+                    }
+                    return renderBadge('No quirúrgico', 'info');
+                },
             },
             {
                 data: 'estado_revision',
@@ -868,7 +880,7 @@ $scripts = array_merge($scripts ?? [], [
                         showTableError(config.tableId, responseMessage);
                     },
                 },
-                order: [[5, 'desc']],
+                order: [[2, 'asc'], [4, 'desc']],
                 columns: buildColumns(tableKey),
                 language: {
                     emptyTable: 'No hay registros para mostrar.',
@@ -949,6 +961,7 @@ $scripts = array_merge($scripts ?? [], [
             revisados: createTable('revisados'),
             pendientes: createTable('pendientes'),
             noQuirurgicos: createTable('noQuirurgicos'),
+            imagenes: createTable('imagenes'),
         };
 
         filtrosForm?.addEventListener('submit', (event) => {

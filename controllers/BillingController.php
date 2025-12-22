@@ -144,7 +144,7 @@ class BillingController
             'conyuge' => 'CY',
             'conyuge pensionista' => 'CJ',
             'seguro campesino' => 'CA',
-            'seguro campesino jubilado' => 'CJ',
+            'seguro campesino jubilado' => 'JC',
             'seguro general' => 'SG',
             'seguro general jubilado' => 'JU',
             'seguro general por montepio' => 'MO',

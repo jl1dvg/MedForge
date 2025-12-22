@@ -31,7 +31,10 @@ class NoFacturadosService
                     pa.afiliacion,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     pr.procedimiento_proyectado AS procedimiento,
-                    'no_quirurgico' AS tipo,
+                    CASE
+                        WHEN pr.procedimiento_proyectado LIKE 'Imagenes%' THEN 'imagen'
+                        ELSE 'no_quirurgico'
+                    END AS tipo,
                     NULL AS estado_revision,
                     0 AS valor_estimado
                 FROM procedimiento_proyectado pr
@@ -49,7 +52,10 @@ class NoFacturadosService
                     pa.afiliacion,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
-                    'quirurgico' AS tipo,
+                    CASE
+                        WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Imagenes%' THEN 'imagen'
+                        ELSE 'quirurgico'
+                    END AS tipo,
                     pd.status AS estado_revision,
                     0 AS valor_estimado
                 FROM protocolo_data pd
@@ -144,13 +150,20 @@ class NoFacturadosService
         $limitStart = max(0, (int) $start);
         $limitLength = max(1, (int) $length);
 
-        $dataSql = $baseSql . $where . ' ORDER BY base.fecha DESC, base.form_id DESC LIMIT ' . $limitStart . ', ' . $limitLength;
+        $dataSql = $baseSql . $where . ' ORDER BY base.paciente ASC, base.fecha DESC, base.form_id DESC LIMIT ' . $limitStart . ', ' . $limitLength;
         $stmt = $this->db->prepare($dataSql);
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
         $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $data = array_map(function (array $row): array {
+            if (($row['tipo'] ?? '') === 'imagen') {
+                $row['procedimiento'] = $this->sanitizeImagenNombre($row['procedimiento'] ?? '');
+            }
+            return $row;
+        }, $data);
 
         $resumen = [
             'total' => $recordsFiltered,
@@ -191,5 +204,12 @@ class NoFacturadosService
         $sql = 'SELECT DISTINCT TRIM(base.afiliacion) AS afiliacion FROM (' . $baseSql . ') AS base WHERE base.afiliacion IS NOT NULL AND TRIM(base.afiliacion) <> \'\' ORDER BY afiliacion';
         $stmt = $this->db->query($sql);
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    private function sanitizeImagenNombre(string $nombre): string
+    {
+        $clean = trim($nombre);
+        $clean = preg_replace('/^Imagenes\\s*-\\s*[^-]+\\s*-\\s*/i', '', $clean) ?? $clean;
+        return $clean;
     }
 }

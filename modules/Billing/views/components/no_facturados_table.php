@@ -153,6 +153,12 @@
                                 quirúrgicos
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tabImagenes" data-bs-toggle="tab"
+                                    data-bs-target="#paneImagenes" type="button" role="tab" aria-controls="paneImagenes"
+                                    aria-selected="false">Imágenes
+                            </button>
+                        </li>
                     </ul>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="text-muted small" id="seleccionadosInfo">0 seleccionados</span>
@@ -272,6 +278,43 @@
                                     <i class="mdi mdi-alert-outline fs-4 mb-0"></i>
                                     <div>
                                         <div class="fw-bold">No pudimos cargar los no quirúrgicos.</div>
+                                        <div class="small text-muted" data-error-message>Revisa tu conexión o vuelve a
+                                            intentar.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="paneImagenes" role="tabpanel" aria-labelledby="tabImagenes">
+                            <div class="table-responsive">
+                                <table class="table table-lg invoice-archive" id="tablaImagenes">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center">
+                                            <input type="checkbox" class="form-check-input" id="selectAllImagenes"
+                                                   aria-label="Seleccionar todas las imágenes">
+                                        </th>
+                                        <th>Form ID</th>
+                                        <!--<th>HC</th>-->
+                                        <th>Paciente</th>
+                                        <th>Afiliación</th>
+                                        <th>Fecha</th>
+                                        <th>Tipo</th>
+                                        <th>Estado revisión</th>
+                                        <th>Procedimiento</th>
+                                        <th>Valor</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="alert alert-danger d-none rounded-0" role="alert"
+                                 data-table-error="tablaImagenes">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="mdi mdi-alert-outline fs-4 mb-0"></i>
+                                    <div>
+                                        <div class="fw-bold">No pudimos cargar las imágenes.</div>
                                         <div class="small text-muted" data-error-message>Revisa tu conexión o vuelve a
                                             intentar.
                                         </div>
