@@ -738,7 +738,20 @@ $scripts = array_merge($scripts ?? [], [
 
         const escapeAttr = (value) => String(value ?? '').replace(/"/g, '&quot;');
 
-        const formatProcedimiento = (value) => {
+        const getProcedimientoDisplay = (row) => {
+            if (!row) return '';
+            if (row.tipo === 'imagen') {
+                const codigo = row.procedimiento_codigo || '';
+                const detalle = row.procedimiento_detalle || row.procedimiento || '';
+                if (codigo && detalle) return `${codigo} (${String(detalle).toUpperCase()})`;
+            }
+            return row.procedimiento || '';
+        };
+
+        const formatProcedimiento = (value, row) => {
+            if (row?.tipo === 'imagen') {
+                return getProcedimientoDisplay(row);
+            }
             if (!value) return '';
             const text = String(value).toLowerCase();
             return text.charAt(0).toUpperCase() + text.slice(1);
@@ -804,7 +817,7 @@ $scripts = array_merge($scripts ?? [], [
             {
                 data: 'procedimiento',
                 defaultContent: '',
-                render: (data) => formatProcedimiento(data),
+                render: (data, type, row) => formatProcedimiento(data, row),
             },
             {
                 data: 'valor_estimado',
@@ -819,7 +832,7 @@ $scripts = array_merge($scripts ?? [], [
                     const formId = row.form_id ? String(row.form_id) : '';
                     const hcNumber = row.hc_number ? String(row.hc_number) : '';
                     const paciente = row.paciente ? escapeAttr(row.paciente) : '';
-                    const procedimiento = row.procedimiento ? escapeAttr(row.procedimiento) : '';
+                    const procedimiento = escapeAttr(getProcedimientoDisplay(row));
 
                     const previewLink = `
                         <a href="#"

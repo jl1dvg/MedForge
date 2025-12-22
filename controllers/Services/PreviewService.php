@@ -30,6 +30,8 @@ class PreviewService
 
         $appliedRules = [];
 
+        $esImagen = false;
+
         // 1. Procedimientos
         $stmt = $this->db->prepare("SELECT procedimientos, fecha_inicio FROM protocolo_data WHERE form_id = ?");
         $stmt->execute([$formId]);
@@ -59,16 +61,32 @@ class PreviewService
                 ");
 
                 foreach ($procedimientos as $p) {
-                    if (isset($p['procInterno']) && preg_match('/- (\d{5}) - (.+)$/', $p['procInterno'], $matches)) {
+                    $codigo = null;
+                    $detalle = null;
+                    $texto = $p['procInterno'] ?? '';
+
+                    if (isset($p['procInterno']) && preg_match('/-\\s+(\\d{5})\\s+-\\s+(.+)$/', $p['procInterno'], $matches)) {
                         $codigo = $matches[1];
                         $detalle = $matches[2];
+                    } else {
+                        $imagen = $this->extraerProcedimientoImagen($texto);
+                        if ($imagen) {
+                            $codigo = $imagen['codigo'];
+                            $detalle = $imagen['detalle'];
+                            $esImagen = true;
+                        }
+                    }
 
-                        $tarifarioStmt->execute([
-                            'codigo' => $codigo,
-                            'codigo_sin_0' => ltrim($codigo, '0')
-                        ]);
-                        $row = $tarifarioStmt->fetch(PDO::FETCH_ASSOC);
-                        $precio = $row ? (float)$row['valor_facturar_nivel3'] : 0;
+                    if ($codigo && $detalle) {
+                        $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $codigo);
+                        $precio = $tarifa['precio'];
+                        if ($tarifa['sinResultado']) {
+                            $this->logPreviewDebug('Tarifa no encontrada para procedimiento de protocolo', [
+                                'codigo' => $codigo,
+                                'detalle' => $detalle,
+                                'procInterno' => $texto,
+                            ]);
+                        }
 
                         $appliedRules[] = [
                             'titulo' => 'Tarifario 2014',
@@ -85,7 +103,55 @@ class PreviewService
             }
         }
 
+        // Fallback para procedimientos de imágenes (no quirúrgicos)
+        if (empty($preview['procedimientos'])) {
+            $stmtImagen = $this->db->prepare("SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? LIMIT 1");
+            $stmtImagen->execute([$formId]);
+            $procTexto = $stmtImagen->fetchColumn();
+
+            $imagen = $this->extraerProcedimientoImagen($procTexto ?: '');
+            if ($imagen) {
+                $esImagen = true;
+                $tarifarioStmt = $this->db->prepare("
+                    SELECT valor_facturar_nivel3, descripcion 
+                    FROM tarifario_2014 
+                    WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
+                ");
+                $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $imagen['codigo']);
+                $precio = $tarifa['precio'];
+                if ($tarifa['sinResultado']) {
+                    $this->logPreviewDebug('Tarifa no encontrada para imagen (fallback)', [
+                        'codigo' => $imagen['codigo'],
+                        'detalle' => $imagen['detalle'],
+                        'texto' => $procTexto,
+                    ]);
+                }
+
+                $preview['procedimientos'][] = [
+                    'procCodigo' => $imagen['codigo'],
+                    'procDetalle' => $imagen['detalle'],
+                    'procPrecio' => $precio
+                ];
+
+                $appliedRules[] = [
+                    'titulo' => 'Tarifario 2014',
+                    'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
+                ];
+            }
+        }
+
         // 2. Insumos y derechos (desde API)
+        if ($esImagen) {
+            return [
+                'procedimientos' => $preview['procedimientos'],
+                'insumos' => [],
+                'derechos' => [],
+                'oxigeno' => [],
+                'anestesia' => [],
+                'reglas' => $appliedRules,
+            ];
+        }
+
         $opts = [
             "http" => [
                 "method" => "POST",
@@ -380,5 +446,61 @@ class PreviewService
         $preview['reglas'] = $appliedRules;
 
         return $preview;
+    }
+
+    private function sanitizeImagenNombre(string $nombre): string
+    {
+        $clean = trim($nombre);
+        $clean = preg_replace('/^Imagenes\\s*-\\s*/i', '', $clean) ?? $clean;
+        $clean = preg_replace('/^Dia-\\d+\\s*-\\s*/i', '', $clean) ?? $clean;
+        return trim($clean);
+    }
+
+    private function extraerProcedimientoImagen(string $texto): ?array
+    {
+        $nombre = $this->sanitizeImagenNombre($texto);
+        preg_match_all('/\\d{3,}/', $nombre, $allCodes);
+        $codes = $allCodes[0] ?? [];
+        if (empty($codes)) {
+            $this->logPreviewDebug('No se encontraron códigos en texto de imagen', ['texto' => $texto, 'normalizado' => $nombre]);
+            return null;
+        }
+
+        // Preferimos el último código con longitud >=5 (p. ej., 281032); si no, el último encontrado
+        $codigo = null;
+        foreach (array_reverse($codes) as $code) {
+            if (strlen($code) >= 5) {
+                $codigo = $code;
+                break;
+            }
+        }
+        $codigo ??= end($codes);
+
+        // Quitar el prefijo hasta el código elegido para dejar el detalle limpio
+        $detalle = preg_replace('/^.*?' . preg_quote($codigo, '/') . '\\s*-\\s*/', '', $nombre) ?? $nombre;
+
+        return [
+            'codigo' => $codigo,
+            'detalle' => trim($detalle),
+        ];
+    }
+
+    private function obtenerTarifaCodigo(\PDOStatement $tarifarioStmt, string $codigo): array
+    {
+        $tarifarioStmt->execute([
+            'codigo' => $codigo,
+            'codigo_sin_0' => ltrim($codigo, '0')
+        ]);
+        $row = $tarifarioStmt->fetch(PDO::FETCH_ASSOC);
+
+        return [
+            'precio' => $row ? (float)($row['valor_facturar_nivel3'] ?? 0) : 0.0,
+            'sinResultado' => $row === false,
+        ];
+    }
+
+    private function logPreviewDebug(string $mensaje, array $context = []): void
+    {
+        error_log('[PreviewImagen] ' . $mensaje . ' ' . json_encode($context));
     }
 }

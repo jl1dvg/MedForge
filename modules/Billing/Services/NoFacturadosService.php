@@ -161,6 +161,12 @@ class NoFacturadosService
         $data = array_map(function (array $row): array {
             if (($row['tipo'] ?? '') === 'imagen') {
                 $row['procedimiento'] = $this->sanitizeImagenNombre($row['procedimiento'] ?? '');
+                $parts = $this->parseImagenProcedimiento($row['procedimiento']);
+                if ($parts) {
+                    $row['procedimiento_codigo'] = $parts['codigo'];
+                    $row['procedimiento_detalle'] = $parts['detalle'];
+                    $row['procedimiento_display'] = $parts['codigo'] . ' (' . $parts['detalle'] . ')';
+                }
             }
             return $row;
         }, $data);
@@ -206,10 +212,41 @@ class NoFacturadosService
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 
+    private function parseImagenProcedimiento(string $texto): ?array
+    {
+        $nombre = $this->sanitizeImagenNombre($texto);
+        preg_match_all('/\d{3,}/', $nombre, $allCodes);
+        $codes = $allCodes[0] ?? [];
+        if (empty($codes)) {
+            return null;
+        }
+
+        $codigo = null;
+        foreach (array_reverse($codes) as $code) {
+            if (strlen($code) >= 5) {
+                $codigo = $code;
+                break;
+            }
+        }
+        $codigo ??= end($codes);
+
+        $detalle = preg_replace('/^.*?' . preg_quote($codigo, '/') . '\s*-\s*/', '', $nombre) ?? $nombre;
+
+        return [
+            'codigo' => $codigo,
+            'detalle' => trim($detalle),
+        ];
+    }
+
     private function sanitizeImagenNombre(string $nombre): string
     {
         $clean = trim($nombre);
-        $clean = preg_replace('/^Imagenes\\s*-\\s*[^-]+\\s*-\\s*/i', '', $clean) ?? $clean;
-        return $clean;
+        if (preg_match('/(\\d{3,}.*)$/', $clean, $matches)) {
+            return trim($matches[1]);
+        }
+
+        $clean = preg_replace('/^Imagenes\\s*-\\s*/i', '', $clean) ?? $clean;
+        $clean = preg_replace('/^Dia-\\d+\\s*-\\s*/i', '', $clean) ?? $clean;
+        return trim($clean);
     }
 }
