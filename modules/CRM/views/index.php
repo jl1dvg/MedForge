@@ -690,18 +690,11 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
                         <div class="tab-pane fade" id="crm-tab-proposals" role="tabpanel">
                             <div class="card mb-3">
                                 <div class="card-header d-flex flex-wrap align-items-center gap-2">
                                     <div>
                                         <h5 class="mb-0">Propuestas</h5>
-                                        <small class="text-muted">Vista inspirada en Perfex para seguimiento</small>
                                     </div>
                                     <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-primary btn-sm" id="proposal-new-btn">
@@ -730,7 +723,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                 </div>
                                 <div class="card-body">
                                     <div class="row g-3">
-                                        <div class="col-xl-5">
+                                        <div class="col-xl-7">
                                             <div class="table-responsive rounded card-table shadow-sm">
                                                 <table class="table table-sm align-middle mb-0" id="crm-proposals-table">
                                                     <thead class="bg-info text-white">
@@ -747,7 +740,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                 </table>
                                             </div>
                                         </div>
-                                        <div class="col-xl-7">
+                                        <div class="col-xl-5">
                                             <div class="card mb-3">
                                                 <div class="card-header d-flex align-items-center justify-content-between">
                                                     <div>
@@ -775,22 +768,26 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                             <div id="proposal-preview-total" class="fw-bold fs-5">—</div>
                                                         </div>
                                                     </div>
-                                                    <div class="d-flex gap-2">
+                                                    <div class="d-flex gap-2 flex-wrap">
                                                         <button class="btn btn-primary btn-sm" id="proposal-preview-open" disabled>
                                                             <i class="mdi mdi-eye"></i> Ver detalle
                                                         </button>
                                                         <button class="btn btn-outline-secondary btn-sm" id="proposal-preview-refresh" disabled>
                                                             <i class="mdi mdi-refresh"></i> Actualizar
                                                         </button>
+                                                        <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#proposal-create-collapse" aria-expanded="false" aria-controls="proposal-create-collapse">
+                                                            <i class="mdi mdi-pencil-outline"></i> Crear/editar
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="card mb-3">
-                                                <div class="card-header">
-                                                    <h5 class="mb-0">Nueva propuesta rápida</h5>
-                                                </div>
-                                                <div class="card-body">
-                                                    <form id="proposal-form" class="row g-3">
+                                            <div class="collapse" id="proposal-create-collapse">
+                                                <div class="card mb-3">
+                                                    <div class="card-header">
+                                                        <h5 class="mb-0">Nueva propuesta rápida</h5>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <form id="proposal-form" class="row g-3">
                                                         <div class="col-12">
                                                             <label class="form-label">Lead</label>
                                                             <select class="form-select form-select-sm" id="proposal-lead"></select>
@@ -812,13 +809,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                             <textarea class="form-control form-control-sm" rows="2" id="proposal-notes"></textarea>
                                                         </div>
                                                     </form>
+                                                    </div>
                                                 </div>
-                                            </div>
 
-                                            <div class="card mb-3">
-                                                <div class="card-header d-flex flex-wrap align-items-center gap-2">
-                                                    <strong>Detalle económico</strong>
-                                                    <div class="ms-auto d-flex gap-2">
+                                                <div class="card mb-3">
+                                                    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                                                        <strong>Detalle económico</strong>
+                                                        <div class="ms-auto d-flex gap-2">
                                                         <button class="btn btn-outline-primary btn-sm" id="proposal-add-package-btn">
                                                             <i class="mdi mdi-package-variant-closed"></i> Agregar paquete
                                                         </button>
@@ -1056,3 +1053,6 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</section>

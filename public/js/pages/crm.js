@@ -244,6 +244,15 @@
         return `${value.slice(0, maxLength - 1)}…`;
     }
 
+    function formatCurrency(value) {
+        const amount = Number.isFinite(value) ? value : 0;
+        try {
+            return new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(amount);
+        } catch (error) {
+            return `$${amount.toFixed(2)}`;
+        }
+    }
+
     function showToast(type, message) {
         const text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
         const method = type === 'success'
