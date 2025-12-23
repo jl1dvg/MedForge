@@ -198,7 +198,7 @@ class InformesHelper
                 continue;
             }
             $afiliacion = self::normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
-            if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas)) continue;
+            if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas, true)) continue;
 
             $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
             if (!$datosPaciente) continue;
@@ -213,6 +213,7 @@ class InformesHelper
             }
 
             $total = InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+            $categoria = self::clasificarCategoriaFactura($datosPaciente);
 
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
@@ -221,6 +222,7 @@ class InformesHelper
                 'fecha' => $fechaFactura,
                 'total' => $total,
                 'id' => $factura['id'],
+                'categoria' => $categoria,
             ];
         }
 
@@ -270,5 +272,48 @@ class InformesHelper
             }
         }
         return implode(', ', $cie10s);
+    }
+
+    public static function clasificarCategoriaFactura(array $datosPaciente): string
+    {
+        // 1) Regla fuerte: "consulta" SOLO si se facturó con código 92002.
+        foreach (($datosPaciente['procedimientos'] ?? []) as $p) {
+            $codigo = trim((string)($p['proc_codigo'] ?? ''));
+            if ($codigo === '92002') {
+                return 'consulta';
+            }
+        }
+
+        // 2) Regla fuerte: "imagenes" SOLO si se facturó con alguno de los códigos permitidos.
+        $codigosImagen = [
+            '76512', '92081',
+            '281010', '281021', '281032',
+            '281186', '281197', '281230', '281306',
+        ];
+        $lookupImagen = array_flip($codigosImagen);
+
+        foreach (($datosPaciente['procedimientos'] ?? []) as $p) {
+            $codigo = trim((string)($p['proc_codigo'] ?? ''));
+            if ($codigo !== '' && isset($lookupImagen[$codigo])) {
+                return 'imagenes';
+            }
+        }
+
+        // 3) Fallback (opcional): si no hay códigos (casos antiguos) intentar clasificar por texto.
+        $formulario = $datosPaciente['formulario'] ?? [];
+        $procedimientoNombre = strtolower(trim((string)($formulario['procedimiento'] ?? '')));
+        if ($procedimientoNombre === '' && !empty($datosPaciente['protocoloExtendido']['membrete'])) {
+            $procedimientoNombre = strtolower((string)$datosPaciente['protocoloExtendido']['membrete']);
+        }
+        if ($procedimientoNombre !== '' && stripos($procedimientoNombre, 'imagenes') === 0) {
+            return 'imagenes';
+        }
+
+        $tipo = strtolower(trim((string)($formulario['tipo'] ?? '')));
+        if ($tipo !== '' && str_contains($tipo, 'imagen')) {
+            return 'imagenes';
+        }
+
+        return 'procedimientos';
     }
 }

@@ -234,143 +234,210 @@ $afiliacionesPermitidas = array_map(
                             $afiliacionesPermitidas
                         );
 
-                        $consolidadoAgrupado = [];
-                        foreach ($consolidado as $grupoPacientes) {
+                        $categoriasIess = [
+                            'procedimientos' => 'IESS procedimientos',
+                            'consulta' => 'IESS consulta',
+                            'imagenes' => 'IESS imágenes',
+                        ];
+
+                        $consolidadoPorCategoria = array_fill_keys(array_keys($categoriasIess), []);
+
+                        foreach ($consolidado as $mes => $grupoPacientes) {
                             foreach ($grupoPacientes as $p) {
                                 if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
                                     $p['fecha_ordenada'] = $p['fecha'];
                                 }
-                                if (empty($p['fecha_ordenada'])) {
-                                    continue;
+                                $categoria = $p['categoria'] ?? 'procedimientos';
+                                if (!isset($consolidadoPorCategoria[$categoria])) {
+                                    $categoria = 'procedimientos';
                                 }
-                                $hc = $p['hc_number'];
-                                $mesKey = date('Y-m', strtotime($p['fecha_ordenada']));
-                                $key = $hc;
-                                if (!isset($consolidadoAgrupado[$mesKey][$key])) {
-                                    $consolidadoAgrupado[$mesKey][$key] = [
-                                        'paciente' => $p,
-                                        'form_ids' => [],
-                                        'fecha_ingreso' => $p['fecha_ordenada'],
-                                        'fecha_egreso' => $p['fecha_ordenada'],
-                                        'total' => 0,
-                                        'procedimientos' => [],
-                                        'cie10' => [],
-                                        'cod_derivacion' => [],
-                                        'afiliacion' => '',
-                                    ];
-                                }
-                                $consolidadoAgrupado[$mesKey][$key]['form_ids'][] = $p['form_id'];
-                                $fechaActual = $p['fecha_ordenada'];
-                                $consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'] = min($consolidadoAgrupado[$mesKey][$key]['fecha_ingreso'], $fechaActual);
-                                $consolidadoAgrupado[$mesKey][$key]['fecha_egreso'] = max($consolidadoAgrupado[$mesKey][$key]['fecha_egreso'], $fechaActual);
-
-                                $datosPaciente = $datosCache[$p['form_id']] ?? $billingController->obtenerDatos($p['form_id']);
-                                if ($datosPaciente) {
-                                    $consolidadoAgrupado[$mesKey][$key]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                    $consolidadoAgrupado[$mesKey][$key]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
-                                    $datosCache[$p['form_id']] = $datosPaciente;
-                                }
-
-                                $formIdLoop = $p['form_id'];
-                                if (!isset($cacheDerivaciones[$formIdLoop])) {
-                                    $cacheDerivaciones[$formIdLoop] = $billingController->obtenerDerivacionPorFormId($formIdLoop);
-                                }
-                                $derivacion = $cacheDerivaciones[$formIdLoop];
-                                if (!empty($derivacion['diagnostico'])) {
-                                    $consolidadoAgrupado[$mesKey][$key]['cie10'][] = $derivacion['diagnostico'];
-                                }
-                                if (!empty($derivacion['cod_derivacion'])) {
-                                    $consolidadoAgrupado[$mesKey][$key]['cod_derivacion'][] = $derivacion['cod_derivacion'];
-                                }
-
-                                if (!isset($pacientesCache[$hc])) {
-                                    $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
-                                }
-                                $consolidadoAgrupado[$mesKey][$key]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
+                                $consolidadoPorCategoria[$categoria][$mes][] = $p;
+                            }
                         }
+
+                        $consolidadoAgrupadoPorCategoria = [];
+                        $buildConsolidadoAgrupado = function (array $pacientesPorMes) use (&$pacientesCache, &$datosCache, $pacienteService, $billingController, &$cacheDerivaciones) {
+                            $agrupado = [];
+                            foreach ($pacientesPorMes as $mes => $grupoPacientes) {
+                                foreach ($grupoPacientes as $p) {
+                                    if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
+                                        $p['fecha_ordenada'] = $p['fecha'];
+                                    }
+                                    $fechaOrdenada = $p['fecha_ordenada'] ?? '';
+                                    if (empty($fechaOrdenada)) {
+                                        continue;
+                                    }
+                                    $hc = $p['hc_number'];
+                                    $mesKey = $mes ?: date('Y-m', strtotime($fechaOrdenada));
+                                    if (!isset($agrupado[$mesKey][$hc])) {
+                                        $agrupado[$mesKey][$hc] = [
+                                            'paciente' => $p,
+                                            'form_ids' => [],
+                                            'fecha_ingreso' => $fechaOrdenada,
+                                            'fecha_egreso' => $fechaOrdenada,
+                                            'total' => 0,
+                                            'procedimientos' => [],
+                                            'cie10' => [],
+                                            'cod_derivacion' => [],
+                                            'afiliacion' => '',
+                                        ];
+                                    }
+                                    $agrupado[$mesKey][$hc]['form_ids'][] = $p['form_id'];
+                                    $agrupado[$mesKey][$hc]['fecha_ingreso'] = $agrupado[$mesKey][$hc]['fecha_ingreso'] ? min($agrupado[$mesKey][$hc]['fecha_ingreso'], $fechaOrdenada) : $fechaOrdenada;
+                                    $agrupado[$mesKey][$hc]['fecha_egreso'] = $agrupado[$mesKey][$hc]['fecha_egreso'] ? max($agrupado[$mesKey][$hc]['fecha_egreso'], $fechaOrdenada) : $fechaOrdenada;
+
+                                    if (!isset($datosCache[$p['form_id']])) {
+                                        $datosCache[$p['form_id']] = $billingController->obtenerDatos($p['form_id']);
+                                    }
+                                    $datosPaciente = $datosCache[$p['form_id']];
+                                    if ($datosPaciente) {
+                                        $agrupado[$mesKey][$hc]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                                        $agrupado[$mesKey][$hc]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
+                                    }
+
+                                    $formIdLoop = $p['form_id'];
+                                    if (!isset($cacheDerivaciones[$formIdLoop])) {
+                                        $cacheDerivaciones[$formIdLoop] = $billingController->obtenerDerivacionPorFormId($formIdLoop);
+                                    }
+                                    $derivacion = $cacheDerivaciones[$formIdLoop];
+                                    if (!empty($derivacion['diagnostico'])) {
+                                        $agrupado[$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
+                                    }
+                                    if (!empty($derivacion['cod_derivacion'])) {
+                                        $agrupado[$mesKey][$hc]['cod_derivacion'][] = $derivacion['cod_derivacion'];
+                                    }
+
+                                    if (!isset($pacientesCache[$hc])) {
+                                        $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
+                                    }
+                                    $agrupado[$mesKey][$hc]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
+                                }
+                            }
+
+                            return $agrupado;
+                        };
+
+                        foreach ($consolidadoPorCategoria as $categoria => $pacientesPorMes) {
+                            $consolidadoAgrupadoPorCategoria[$categoria] = $buildConsolidadoAgrupado($pacientesPorMes);
                         }
-                        $n = 1;
-                        foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
-                            $listaPacientes = array_values($pacientesAgrupados);
-                            $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                            $mesFormateado = $formatter->format(strtotime($mes . '-15'));
                         ?>
-                            <div class="d-flex justify-content-between align-items-center mt-4">
-                                <h5>Mes: <?= $mesFormateado ?></h5>
-                                <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
-                            </div>
-
-                            <div class="table-responsive" style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                <table class="table table-striped table-hover table-sm invoice-archive sticky-header">
-                                    <thead class="bg-success-light">
-                                <tr>
-                                    <th>#</th>
-                                        <th>🏛️</th>
-                                        <th>🪪 Cédula</th>
-                                        <th>👤 Nombres</th>
-                                        <th>📅➕</th>
-                                        <th>📅➖</th>
-                                        <th>📝 CIE10</th>
-                                        <th>🔬 Proc</th>
-                                        <th>⏳</th>
-                                        <th>⚧️</th>
-                                        <th>💲 Total</th>
-                                        <th>🧾Fact.</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($pacientesAgrupados as $hc => $info):
-                                        $pacienteInfo = $pacienteService->getPatientDetails($hc);
-                                        $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
-                                        $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
-                                        $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
-                                        $cie10 = InformesHelper::extraerCie10($cie10);
-                                        $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
-                                        $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
-                                    $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
-                                    $formIdsPaciente = implode(', ', $info['form_ids']);
-                                    ?>
-                                        <tr style='font-size: 12.5px;'>
-                                        <td class="text-center"><?= $n ?></td>
-                                            <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
-                                        <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
-                                            <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
-                                        <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
-                                        <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
-                                            <td><?= htmlspecialchars($cie10) ?></td>
-                                        <td><?= htmlspecialchars($formIdsPaciente) ?></td>
-                                            <td class="text-center"><?= $edad ?></td>
-                                        <td class="text-center">
-                                            <?php if (!empty($codigoDerivacion)): ?>
-                                                <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
-                                            <?php else: ?>
-                                                    <form method="post" style="display:inline;">
-                                                    <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($formIdsPaciente) ?>">
-                                                    <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
-                                                    <button type="submit" name="scrape_derivacion" class="btn btn-sm btn-warning">📌 Obtener Código Derivación</button>
-                                                </form>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td class="text-end">$
-                                            <?= number_format($info['total'], 2) ?></td>
-                                            <?php
-                                            $billingIdsDetalle = [];
-                                            foreach ($info['form_ids'] as $formIdLoop) {
-                                                $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
-                                                if ($id) {
-                                                    $billingIdsDetalle[] = $id;
-                                                }
-                                            }
-                                            $billingParam = implode(',', $billingIdsDetalle);
-                                            $urlDetalle = $basePath . '?billing_id=' . urlencode($billingParam);
+                        <ul class="nav nav-tabs" role="tablist">
+                            <?php foreach ($categoriasIess as $slug => $label): ?>
+                                <li class="nav-item" role="presentation">
+                                    <button
+                                            class="nav-link <?= $slug === 'procedimientos' ? 'active' : '' ?>"
+                                            id="tab-<?= htmlspecialchars($slug) ?>-tab"
+                                            data-bs-toggle="tab"
+                                            data-bs-target="#tab-<?= htmlspecialchars($slug) ?>"
+                                            type="button"
+                                            role="tab"
+                                            aria-controls="tab-<?= htmlspecialchars($slug) ?>"
+                                            aria-selected="<?= $slug === 'procedimientos' ? 'true' : 'false' ?>"
+                                    >
+                                        <?= htmlspecialchars($label) ?>
+                                    </button>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <div class="tab-content p-3 border border-top-0 rounded-bottom">
+                            <?php foreach ($categoriasIess as $slug => $label): ?>
+                                <?php $consolidadoAgrupado = $consolidadoAgrupadoPorCategoria[$slug] ?? []; ?>
+                                <div
+                                        class="tab-pane fade <?= $slug === 'procedimientos' ? 'show active' : '' ?>"
+                                        id="tab-<?= htmlspecialchars($slug) ?>"
+                                        role="tabpanel"
+                                        aria-labelledby="tab-<?= htmlspecialchars($slug) ?>-tab"
+                                >
+                                    <?php if (empty($consolidadoAgrupado)): ?>
+                                        <div class="alert alert-info mb-0">No hay registros para esta categoría en el periodo seleccionado.</div>
+                                    <?php else: ?>
+                                        <?php
+                                        $n = 1;
+                                        foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
+                                            $listaPacientes = array_values($pacientesAgrupados);
+                                            $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                            $mesFormateado = $formatter->format(strtotime($mes . '-15'));
                                             ?>
-                                            <td><a href="<?= htmlspecialchars($urlDetalle) ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
-                                    </tr>
-                                        <?php $n++; endforeach; ?>
-                                </tbody>
-                            </table>
+                                            <div class="d-flex justify-content-between align-items-center mt-4">
+                                                <h5>Mes: <?= $mesFormateado ?></h5>
+                                                <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
+                                            </div>
+
+                                            <div class="table-responsive" style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
+                                                <table class="table table-striped table-hover table-sm invoice-archive sticky-header">
+                                                    <thead class="bg-success-light">
+                                                    <tr>
+                                                        <th>#</th>
+                                                        <th>🏛️</th>
+                                                        <th>🪪 Cédula</th>
+                                                        <th>👤 Nombres</th>
+                                                        <th>📅➕</th>
+                                                        <th>📅➖</th>
+                                                        <th>📝 CIE10</th>
+                                                        <th>🔬 Proc</th>
+                                                        <th>⏳</th>
+                                                        <th>⚧️</th>
+                                                        <th>💲 Total</th>
+                                                        <th>🧾Fact.</th>
+                                                    </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                    <?php foreach ($pacientesAgrupados as $hc => $info):
+                                                        $pacienteInfo = $pacienteService->getPatientDetails($hc);
+                                                        $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
+                                                        $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
+                                                        $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
+                                                        $cie10 = InformesHelper::extraerCie10($cie10);
+                                                        $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
+                                                        $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
+                                                        $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
+                                                        $formIdsPaciente = implode(', ', $info['form_ids']);
+                                                        ?>
+                                                        <tr style='font-size: 12.5px;'>
+                                                            <td class="text-center"><?= $n ?></td>
+                                                            <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
+                                                            <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
+                                                            <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
+                                                            <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
+                                                            <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
+                                                            <td><?= htmlspecialchars($cie10) ?></td>
+                                                            <td><?= htmlspecialchars($formIdsPaciente) ?></td>
+                                                            <td class="text-center"><?= $edad ?></td>
+                                                            <td class="text-center">
+                                                                <?php if (!empty($codigoDerivacion)): ?>
+                                                                    <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
+                                                                <?php else: ?>
+                                                                    <form method="post" style="display:inline;">
+                                                                        <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($formIdsPaciente) ?>">
+                                                                        <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
+                                                                        <button type="submit" name="scrape_derivacion" class="btn btn-sm btn-warning">📌 Obtener Código Derivación</button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td class="text-end">$
+                                                                <?= number_format($info['total'], 2) ?></td>
+                                                            <?php
+                                                            $billingIdsDetalle = [];
+                                                            foreach ($info['form_ids'] as $formIdLoop) {
+                                                                $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
+                                                                if ($id) {
+                                                                    $billingIdsDetalle[] = $id;
+                                                                }
+                                                            }
+                                                            $billingParam = implode(',', $billingIdsDetalle);
+                                                            $urlDetalle = $basePath . '?billing_id=' . urlencode($billingParam);
+                                                            ?>
+                                                            <td><a href="<?= htmlspecialchars($urlDetalle) ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
+                                                        </tr>
+                                                        <?php $n++; endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
                         </div>
-                        <?php endforeach; ?>
                         <?php $consolidadoUrl = $basePath . '/consolidado' . ($mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : ''); ?>
                         <a href="<?= htmlspecialchars($consolidadoUrl) ?>" class="btn btn-primary mt-3">
                             Descargar Consolidado

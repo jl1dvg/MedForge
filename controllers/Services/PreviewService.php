@@ -95,8 +95,8 @@ class PreviewService
                         }
 
                         $appliedRules[] = [
-                            'titulo' => 'Tarifario 2014',
-                            'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $codigo, $detalle, $precio),
+                            'titulo' => 'Tarifario',
+                            'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigo, $detalle, $precio),
                         ];
 
                         $preview['procedimientos'][] = [
@@ -145,8 +145,8 @@ class PreviewService
                 ];
 
                 $appliedRules[] = [
-                    'titulo' => 'Tarifario 2014',
-                    'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $codigoConsulta, $detalleConsulta, $precio),
+                    'titulo' => 'Tarifario',
+                    'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigoConsulta, $detalleConsulta, $precio),
                 ];
             } else {
                 $imagen = $this->extraerProcedimientoImagen($procTexto);
@@ -174,8 +174,8 @@ class PreviewService
                     ];
 
                     $appliedRules[] = [
-                        'titulo' => 'Tarifario 2014',
-                        'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
+                        'titulo' => 'Tarifario',
+                        'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
                     ];
                 }
             }
