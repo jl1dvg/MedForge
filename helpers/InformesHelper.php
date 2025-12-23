@@ -187,9 +187,16 @@ class InformesHelper
         array             $filtros,
         BillingController $billingController,
         PacienteService   $pacienteService,
-        array             $afiliacionesPermitidas = []
+        array             $afiliacionesPermitidas = [],
+        ?string           $categoriaFiltro = null
     ): array
     {
+        $categoriaFiltro = $categoriaFiltro ? strtolower(trim($categoriaFiltro)) : null;
+        $categoriasValidas = ['procedimientos', 'consulta', 'imagenes'];
+        if ($categoriaFiltro && !in_array($categoriaFiltro, $categoriasValidas, true)) {
+            $categoriaFiltro = null;
+        }
+
         $consolidado = [];
 
         foreach ($facturas as $factura) {
@@ -214,6 +221,9 @@ class InformesHelper
 
             $total = InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
             $categoria = self::clasificarCategoriaFactura($datosPaciente);
+            if ($categoriaFiltro && $categoria !== $categoriaFiltro) {
+                continue;
+            }
 
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],

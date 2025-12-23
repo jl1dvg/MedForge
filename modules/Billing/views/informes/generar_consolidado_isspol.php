@@ -21,7 +21,7 @@ $pacientesCache = [];
 $datosCache = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, $pacientesCache, $datosCache);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();

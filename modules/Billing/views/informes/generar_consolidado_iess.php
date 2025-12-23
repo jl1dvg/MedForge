@@ -16,6 +16,15 @@ $billingController = new BillingController($pdo);
 $pacienteService = new PacienteService($pdo);
 
 $mes = $_GET['mes'] ?? null;
+$categoria = $_GET['categoria'] ?? null;
+$categoria = is_string($categoria) ? strtolower(trim($categoria)) : null;
+$categoriasValidas = ['procedimientos', 'consulta', 'imagenes'];
+if ($categoria && !in_array($categoria, $categoriasValidas, true)) {
+    $categoria = null;
+}
+// Si estamos descargando consolidado por categoría, hay casos donde NO debemos emitir bloques extra
+// (anestesia/insumos/derechos). Para CONSULTA e IMÁGENES solo deben salir líneas de PROCEDIMIENTOS.
+$soloProcedimientos = in_array($categoria, ['consulta', 'imagenes'], true);
 $facturas = $billingController->obtenerFacturasDisponibles();
 
 
@@ -23,7 +32,7 @@ $pacientesCache = [];
 $datosCache = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, $pacientesCache, $datosCache);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], $categoria);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
@@ -115,8 +124,10 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
         error_log("Fila para paciente: $nombrePaciente, form_id: $formId, sexo: " . ($pacienteInfo['sexo'] ?? '--'));
         $sexo = isset($pacienteInfo['sexo']) ? strtoupper(substr($pacienteInfo['sexo'], 0, 1)) : '--';
         $formDetails = $data['formulario'] ?? [];
-        $formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? '';
-        $formDetails['fecha_fin'] = $data['protocoloExtendido']['fecha_fin'] ?? ($formDetails['fecha_fin'] ?? '');
+        // Para consultas/imágenes a veces no existe protocoloExtendido; usa la fecha del consolidado como fallback
+        $fallbackFecha = $factura['fecha'] ?? ($factura['fecha_ordenada'] ?? '');
+        $formDetails['fecha_inicio'] = $data['protocoloExtendido']['fecha_inicio'] ?? ($formDetails['fecha_inicio'] ?? $fallbackFecha);
+        $formDetails['fecha_fin'] = $data['protocoloExtendido']['fecha_fin'] ?? ($formDetails['fecha_fin'] ?? $formDetails['fecha_inicio'] ?? $fallbackFecha);
         $fechaISO = $formDetails['fecha_inicio'] ?? '';
         $cedula = $pacienteInfo['cedula'] ?? '';
         $periodo = $fechaISO ? date('Y-m', strtotime($fechaISO)) : '';
@@ -271,6 +282,11 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 $sheet->getStyle("{$col}{$row}")->getBorders()->getAllBorders()->setBorderStyle('thin');
             }
             $row++;
+        }
+
+        // Para consolidados de CONSULTA o IMÁGENES, NO generar filas extra (anestesia/insumos/derechos)
+        if ($soloProcedimientos) {
+            continue;
         }
 
         if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante'])) {
@@ -616,7 +632,8 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
 
 // Headers para descarga
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment; filename="consolidado_iess.xlsx"');
+$nombreArchivo = 'consolidado_iess' . ($categoria ? "_{$categoria}" : '') . '.xlsx';
+header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
 header('Cache-Control: max-age=0');
 
 $writer = new Xlsx($spreadsheet);

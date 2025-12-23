@@ -438,10 +438,30 @@ $afiliacionesPermitidas = array_map(
                                 </div>
                             <?php endforeach; ?>
                         </div>
-                        <?php $consolidadoUrl = $basePath . '/consolidado' . ($mesSeleccionado ? '?mes=' . urlencode($mesSeleccionado) : ''); ?>
-                        <a href="<?= htmlspecialchars($consolidadoUrl) ?>" class="btn btn-primary mt-3">
-                            Descargar Consolidado
-                        </a>
+                        <?php
+                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null) use ($basePath, $mesSeleccionado): string {
+                            $params = [];
+                            if (!empty($mesSeleccionado)) {
+                                $params['mes'] = $mesSeleccionado;
+                            }
+                            if (!empty($categoriaSlug)) {
+                                $params['categoria'] = $categoriaSlug;
+                            }
+                            $query = $params ? '?' . http_build_query($params) : '';
+                            return $basePath . '/consolidado' . $query;
+                        };
+                        ?>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl()) ?>" class="btn btn-primary">
+                                Descargar Consolidado
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta')) ?>" class="btn btn-outline-primary">
+                                Consolidado de Consultas
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes')) ?>" class="btn btn-outline-info">
+                                Consolidado de Imágenes
+                            </a>
+                        </div>
                     <?php else: ?>
                         <div class="alert alert-info">📅 Por favor selecciona un mes para ver el consolidado.</div>
                     <?php endif; ?>
