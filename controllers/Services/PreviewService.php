@@ -31,6 +31,7 @@ class PreviewService
         $appliedRules = [];
 
         $esImagen = false;
+        $esConsulta = false;
 
         // 1. Procedimientos
         $stmt = $this->db->prepare("SELECT procedimientos, fecha_inicio FROM protocolo_data WHERE form_id = ?");
@@ -65,7 +66,12 @@ class PreviewService
                     $detalle = null;
                     $texto = $p['procInterno'] ?? '';
 
-                    if (isset($p['procInterno']) && preg_match('/-\\s+(\\d{5})\\s+-\\s+(.+)$/', $p['procInterno'], $matches)) {
+                    // Consultas específicas (SER-OFT-006 / SER-OFT-003) deben facturarse como 92002
+                    if ($this->esConsultaOftalmo92002($texto)) {
+                        $codigo = '92002';
+                        $detalle = $this->detalleConsultaOftalmo($texto);
+                        $esConsulta = true;
+                    } elseif (isset($p['procInterno']) && preg_match('/-\\s+(\\d{5,6})\\s+-\\s+(.+)$/', $p['procInterno'], $matches)) {
                         $codigo = $matches[1];
                         $detalle = $matches[2];
                     } else {
@@ -103,45 +109,80 @@ class PreviewService
             }
         }
 
-        // Fallback para procedimientos de imágenes (no quirúrgicos)
+        // Fallback para procedimientos de imágenes (no quirúrgicos) o consulta oftalmo
         if (empty($preview['procedimientos'])) {
             $stmtImagen = $this->db->prepare("SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? LIMIT 1");
             $stmtImagen->execute([$formId]);
             $procTexto = $stmtImagen->fetchColumn();
 
-            $imagen = $this->extraerProcedimientoImagen($procTexto ?: '');
-            if ($imagen) {
-                $esImagen = true;
+            $procTexto = $procTexto ?: '';
+
+            // Si es una consulta SER-OFT-006/003, facturar como 92002
+            if ($this->esConsultaOftalmo92002($procTexto)) {
+                $esConsulta = true;
                 $tarifarioStmt = $this->db->prepare("
                     SELECT valor_facturar_nivel3, descripcion 
                     FROM tarifario_2014 
                     WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
                 ");
-                $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $imagen['codigo']);
+
+                $codigoConsulta = '92002';
+                $detalleConsulta = $this->detalleConsultaOftalmo($procTexto);
+                $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $codigoConsulta);
                 $precio = $tarifa['precio'];
                 if ($tarifa['sinResultado']) {
-                    $this->logPreviewDebug('Tarifa no encontrada para imagen (fallback)', [
-                        'codigo' => $imagen['codigo'],
-                        'detalle' => $imagen['detalle'],
+                    $this->logPreviewDebug('Tarifa no encontrada para consulta 92002 (fallback)', [
+                        'codigo' => $codigoConsulta,
+                        'detalle' => $detalleConsulta,
                         'texto' => $procTexto,
                     ]);
                 }
 
                 $preview['procedimientos'][] = [
-                    'procCodigo' => $imagen['codigo'],
-                    'procDetalle' => $imagen['detalle'],
-                    'procPrecio' => $precio
+                    'procCodigo' => $codigoConsulta,
+                    'procDetalle' => $detalleConsulta,
+                    'procPrecio' => $precio,
                 ];
 
                 $appliedRules[] = [
                     'titulo' => 'Tarifario 2014',
-                    'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
+                    'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $codigoConsulta, $detalleConsulta, $precio),
                 ];
+            } else {
+                $imagen = $this->extraerProcedimientoImagen($procTexto);
+                if ($imagen) {
+                    $esImagen = true;
+                    $tarifarioStmt = $this->db->prepare("
+                        SELECT valor_facturar_nivel3, descripcion 
+                        FROM tarifario_2014 
+                        WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
+                    ");
+                    $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $imagen['codigo']);
+                    $precio = $tarifa['precio'];
+                    if ($tarifa['sinResultado']) {
+                        $this->logPreviewDebug('Tarifa no encontrada para imagen (fallback)', [
+                            'codigo' => $imagen['codigo'],
+                            'detalle' => $imagen['detalle'],
+                            'texto' => $procTexto,
+                        ]);
+                    }
+
+                    $preview['procedimientos'][] = [
+                        'procCodigo' => $imagen['codigo'],
+                        'procDetalle' => $imagen['detalle'],
+                        'procPrecio' => $precio
+                    ];
+
+                    $appliedRules[] = [
+                        'titulo' => 'Tarifario 2014',
+                        'detalle' => sprintf('Código %s (%s) con valor nivel 3: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
+                    ];
+                }
             }
         }
 
         // 2. Insumos y derechos (desde API)
-        if ($esImagen) {
+        if ($esImagen || $esConsulta) {
             return [
                 'procedimientos' => $preview['procedimientos'],
                 'insumos' => [],
@@ -502,5 +543,19 @@ class PreviewService
     private function logPreviewDebug(string $mensaje, array $context = []): void
     {
         error_log('[PreviewImagen] ' . $mensaje . ' ' . json_encode($context));
+    }
+
+    private function esConsultaOftalmo92002(string $texto): bool
+    {
+        $t = strtoupper(trim($texto));
+        // tolera sufijos como "... ojo derecho" etc.
+        return str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA')
+            || str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE');
+    }
+
+    private function detalleConsultaOftalmo(string $texto): string
+    {
+        // Mantener el texto original como detalle (sin alterar), solo trim.
+        return trim($texto);
     }
 }

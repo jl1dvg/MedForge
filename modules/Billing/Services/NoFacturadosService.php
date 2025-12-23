@@ -33,6 +33,7 @@ class NoFacturadosService
                     pr.procedimiento_proyectado AS procedimiento,
                     CASE
                         WHEN pr.procedimiento_proyectado LIKE 'Imagenes%' THEN 'imagen'
+                        WHEN pr.procedimiento_proyectado LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
                         ELSE 'no_quirurgico'
                     END AS tipo,
                     NULL AS estado_revision,
@@ -42,6 +43,13 @@ class NoFacturadosService
                 LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
                   AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
+                  AND (
+                        UPPER(pr.procedimiento_proyectado) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
+                        OR (
+                            UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
+                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                        )
+                  )
 
                 UNION ALL
 
@@ -54,6 +62,7 @@ class NoFacturadosService
                     TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
                     CASE
                         WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Imagenes%' THEN 'imagen'
+                        WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
                         ELSE 'quirurgico'
                     END AS tipo,
                     pd.status AS estado_revision,
@@ -62,6 +71,13 @@ class NoFacturadosService
                 INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
                 WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
+                  AND (
+                        UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
+                        OR (
+                            UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
+                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                        )
+                  )
             ) AS base
         SQL;
     }

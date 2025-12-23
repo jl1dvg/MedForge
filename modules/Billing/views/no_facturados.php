@@ -648,6 +648,7 @@ $scripts = array_merge($scripts ?? [], [
             pendientes: new Set(),
             noQuirurgicos: new Set(),
             imagenes: new Set(),
+            consultas: new Set(),
         };
 
         const tableConfigs = {
@@ -670,6 +671,11 @@ $scripts = array_merge($scripts ?? [], [
                 tableId: 'tablaImagenes',
                 selectAllId: 'selectAllImagenes',
                 baseFilters: {tipo: 'imagen'},
+            },
+            consultas: {
+                tableId: 'tablaConsultas',
+                selectAllId: 'selectAllConsultas',
+                baseFilters: {tipo: 'consulta'},
             },
         };
 
@@ -752,6 +758,9 @@ $scripts = array_merge($scripts ?? [], [
             if (row?.tipo === 'imagen') {
                 return getProcedimientoDisplay(row);
             }
+            if (row?.tipo === 'consulta') {
+                return getProcedimientoDisplay(row) || value;
+            }
             if (!value) return '';
             const text = String(value).toLowerCase();
             return text.charAt(0).toUpperCase() + text.slice(1);
@@ -798,6 +807,9 @@ $scripts = array_merge($scripts ?? [], [
                     }
                     if (data === 'imagen') {
                         return renderBadge('Imágenes', 'info');
+                    }
+                    if (data === 'consulta') {
+                        return renderBadge('Consulta', 'dark');
                     }
                     return renderBadge('No quirúrgico', 'info');
                 },
@@ -975,6 +987,7 @@ $scripts = array_merge($scripts ?? [], [
             pendientes: createTable('pendientes'),
             noQuirurgicos: createTable('noQuirurgicos'),
             imagenes: createTable('imagenes'),
+            consultas: createTable('consultas'),
         };
 
         filtrosForm?.addEventListener('submit', (event) => {
@@ -1024,18 +1037,91 @@ $scripts = array_merge($scripts ?? [], [
             return {ids: Array.from(selectedIds), rows};
         };
 
+        const facturarLote = async (rows, tableKey) => {
+            const items = rows.map((row) => ({
+                formId: String(row.form_id ?? ''),
+                hcNumber: String(row.hc_number ?? ''),
+            })).filter((item) => item.formId && item.hcNumber);
+
+            if (!items.length) {
+                alert('No se encontraron datos completos (form_id y HC) para facturar.');
+                return;
+            }
+
+            if (window.Swal) {
+                Swal.fire({
+                    title: 'Facturando en lote…',
+                    html: 'Procesando seleccionados, por favor espera.',
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading(),
+                });
+            }
+
+            const resultados = [];
+            for (const item of items) {
+                try {
+                    const formData = new FormData();
+                    formData.append('form_id', item.formId);
+                    formData.append('hc_number', item.hcNumber);
+
+                    const response = await fetch('/billing/no-facturados/crear', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    resultados.push({
+                        formId: item.formId,
+                        success: response.ok,
+                        status: response.status,
+                    });
+                } catch (error) {
+                    resultados.push({
+                        formId: item.formId,
+                        success: false,
+                        status: 'error',
+                        message: error?.message || 'Error desconocido',
+                    });
+                }
+            }
+
+            const exitos = resultados.filter((r) => r.success);
+            const fallidos = resultados.filter((r) => !r.success);
+
+            selectionState[tableKey].clear();
+            updateSelectionInfo();
+            recargarTablas();
+
+            if (window.Swal) {
+                Swal.fire({
+                    icon: fallidos.length ? 'warning' : 'success',
+                    title: fallidos.length ? 'Facturación parcial' : 'Facturación completada',
+                    html: `
+                        <div class="text-start">
+                            <div><strong>Éxitos:</strong> ${exitos.map((r) => r.formId).join(', ') || 'Ninguno'}</div>
+                            <div><strong>Fallidos:</strong> ${fallidos.map((r) => `${r.formId} (${r.status})`).join(', ') || 'Ninguno'}</div>
+                        </div>
+                    `,
+                });
+            } else {
+                alert(`Éxitos: ${exitos.map((r) => r.formId).join(', ') || 'Ninguno'}\nFallidos: ${fallidos.map((r) => `${r.formId} (${r.status})`).join(', ') || 'Ninguno'}`);
+            }
+        };
+
         const handleBulkAction = (action) => {
             const key = getActiveTableKey();
-            const {ids} = getSelectedRows(key);
+            const {ids, rows} = getSelectedRows(key);
             if (!ids.length) {
                 alert('Selecciona al menos un registro para continuar.');
                 return;
             }
             ids.forEach(invalidatePreview);
-            const mensaje = action === 'facturar'
-                ? 'Facturar en lote'
-                : 'Marcar como revisado';
 
+            if (action === 'facturar') {
+                facturarLote(rows, key);
+                return;
+            }
+
+            const mensaje = 'Marcar como revisado';
             if (window.Swal) {
                 Swal.fire({
                     icon: 'info',
