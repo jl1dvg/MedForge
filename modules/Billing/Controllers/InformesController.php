@@ -199,19 +199,46 @@ class InformesController extends BaseController
         $this->requireAuth();
 
         $config = $this->grupoConfigs[$grupo];
-        $formIdScrape = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
+        $formIdScrapeRaw = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
+        $formIdsScrape = array_values(array_filter(array_map(
+            'trim',
+            is_array($formIdScrapeRaw)
+                ? $formIdScrapeRaw
+                : preg_split('/\s*,\s*/', (string) $formIdScrapeRaw)
+        )));
         $hcNumberScrape = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
         $scrapingOutput = null;
 
-        if (isset($_POST['scrape_derivacion']) && $formIdScrape && $hcNumberScrape) {
+        if (isset($_POST['scrape_derivacion']) && $formIdsScrape && $hcNumberScrape) {
             $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
-            $command = sprintf(
-                '/usr/bin/python3 %s %s %s',
-                escapeshellarg($script),
-                escapeshellarg((string)$formIdScrape),
-                escapeshellarg((string)$hcNumberScrape)
-            );
-            $scrapingOutput = shell_exec($command);
+            $outputs = [];
+
+            foreach ($formIdsScrape as $formIdScrape) {
+                $command = sprintf(
+                    '/usr/bin/python3 %s %s %s',
+                    escapeshellarg($script),
+                    escapeshellarg((string) $formIdScrape),
+                    escapeshellarg((string) $hcNumberScrape)
+                );
+                $outputs[] = shell_exec($command);
+            }
+
+            $outputs = array_filter($outputs, static fn($output) => $output !== null && $output !== '');
+            if (count($outputs) === 1) {
+                $scrapingOutput = reset($outputs);
+            } elseif (!empty($outputs)) {
+                $procedimientos = [];
+                foreach ($outputs as $output) {
+                    $partes = explode("📋 Procedimientos proyectados:", (string) $output);
+                    if (isset($partes[1])) {
+                        $procedimientos[] = trim($partes[1]);
+                    }
+                }
+
+                $scrapingOutput = !empty($procedimientos)
+                    ? "📋 Procedimientos proyectados:\n" . implode("\n", $procedimientos)
+                    : implode("\n\n", $outputs);
+            }
         }
 
         $filtros = [

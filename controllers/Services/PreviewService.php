@@ -86,6 +86,7 @@ class PreviewService
                     if ($codigo && $detalle) {
                         $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $codigo);
                         $precio = $tarifa['precio'];
+                        $detalleTarifa = trim($tarifa['descripcion'] ?? '') ?: $detalle;
                         if ($tarifa['sinResultado']) {
                             $this->logPreviewDebug('Tarifa no encontrada para procedimiento de protocolo', [
                                 'codigo' => $codigo,
@@ -96,12 +97,13 @@ class PreviewService
 
                         $appliedRules[] = [
                             'titulo' => 'Tarifario',
-                            'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigo, $detalle, $precio),
+                            // Para consulta/imágenes, y en general, preferimos mostrar la descripción oficial del tarifario.
+                            'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigo, $detalleTarifa, $precio),
                         ];
 
                         $preview['procedimientos'][] = [
                             'procCodigo' => $codigo,
-                            'procDetalle' => $detalle,
+                            'procDetalle' => $detalleTarifa,
                             'procPrecio' => $precio
                         ];
                     }
@@ -138,27 +140,31 @@ class PreviewService
                     ]);
                 }
 
+                $detalleTarifa = trim($tarifa['descripcion'] ?? '') ?: $detalleConsulta;
+
                 $preview['procedimientos'][] = [
                     'procCodigo' => $codigoConsulta,
-                    'procDetalle' => $detalleConsulta,
+                    // Mostrar la descripción oficial del tarifario cuando exista.
+                    'procDetalle' => $detalleTarifa,
                     'procPrecio' => $precio,
                 ];
 
                 $appliedRules[] = [
                     'titulo' => 'Tarifario',
-                    'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigoConsulta, $detalleConsulta, $precio),
+                    'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $codigoConsulta, $detalleTarifa, $precio),
                 ];
             } else {
                 $imagen = $this->extraerProcedimientoImagen($procTexto);
                 if ($imagen) {
                     $esImagen = true;
                     $tarifarioStmt = $this->db->prepare("
-                        SELECT valor_facturar_nivel3, descripcion 
-                        FROM tarifario_2014 
-                        WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
-                    ");
+                    SELECT valor_facturar_nivel3, descripcion 
+                    FROM tarifario_2014 
+                    WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
+                ");
                     $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $imagen['codigo']);
                     $precio = $tarifa['precio'];
+                    $detalleTarifa = trim($tarifa['descripcion'] ?? '') ?: $imagen['detalle'];
                     if ($tarifa['sinResultado']) {
                         $this->logPreviewDebug('Tarifa no encontrada para imagen (fallback)', [
                             'codigo' => $imagen['codigo'],
@@ -169,13 +175,13 @@ class PreviewService
 
                     $preview['procedimientos'][] = [
                         'procCodigo' => $imagen['codigo'],
-                        'procDetalle' => $imagen['detalle'],
+                        'procDetalle' => $detalleTarifa,
                         'procPrecio' => $precio
                     ];
 
                     $appliedRules[] = [
                         'titulo' => 'Tarifario',
-                        'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $imagen['codigo'], $imagen['detalle'], $precio),
+                        'detalle' => sprintf('Código %s (%s) con valor: $%0.2f', $imagen['codigo'], $detalleTarifa, $precio),
                     ];
                 }
             }
@@ -536,6 +542,7 @@ class PreviewService
 
         return [
             'precio' => $row ? (float)($row['valor_facturar_nivel3'] ?? 0) : 0.0,
+            'descripcion' => $row['descripcion'] ?? null,
             'sinResultado' => $row === false,
         ];
     }
