@@ -439,7 +439,7 @@ $afiliacionesPermitidas = array_map(
                             <?php endforeach; ?>
                         </div>
                         <?php
-                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null) use ($basePath, $mesSeleccionado): string {
+                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS') use ($basePath, $mesSeleccionado): string {
                             $params = [];
                             if (!empty($mesSeleccionado)) {
                                 $params['mes'] = $mesSeleccionado;
@@ -447,19 +447,31 @@ $afiliacionesPermitidas = array_map(
                             if (!empty($categoriaSlug)) {
                                 $params['categoria'] = $categoriaSlug;
                             }
+                            if (!empty($formato)) {
+                                $params['formato'] = $formato;
+                            }
                             $query = $params ? '?' . http_build_query($params) : '';
                             return $basePath . '/consolidado' . $query;
                         };
                         ?>
                         <div class="d-flex flex-wrap gap-2 mt-3">
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl()) ?>" class="btn btn-primary">
-                                Descargar Consolidado
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS')) ?>" class="btn btn-primary">
+                                Consolidado (44 columnas)
                             </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta')) ?>" class="btn btn-outline-primary">
-                                Consolidado de Consultas
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS_SOAM')) ?>" class="btn btn-outline-primary">
+                                Consolidado (SOAM)
                             </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes')) ?>" class="btn btn-outline-info">
-                                Consolidado de Imágenes
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS')) ?>" class="btn btn-outline-primary">
+                                Consolidado de Consultas (44 columnas)
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM')) ?>" class="btn btn-outline-primary">
+                                Consolidado de Consultas (SOAM)
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS')) ?>" class="btn btn-outline-info">
+                                Consolidado de Imágenes (44 columnas)
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS_SOAM')) ?>" class="btn btn-outline-info">
+                                Consolidado de Imágenes (SOAM)
                             </a>
                         </div>
                     <?php else: ?>
