@@ -14,6 +14,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 $billingController = new BillingController($pdo);
 $pacienteService = new PacienteService($pdo);
+$formato = strtoupper($_GET['formato'] ?? 'IESS');
+$esFormatoSoam = in_array($formato, ['SOAM', 'IESS_SOAM'], true);
 
 $mes = $_GET['mes'] ?? null;
 $categoria = $_GET['categoria'] ?? null;
@@ -33,6 +35,44 @@ $datosCache = [];
 $filtros = ['mes' => $mes];
 
 $consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], $categoria);
+
+$formIdsConsolidado = [];
+foreach ($consolidado as $pacientesDelMes) {
+    foreach ($pacientesDelMes as $factura) {
+        if (!empty($factura['form_id'])) {
+            $formIdsConsolidado[] = $factura['form_id'];
+        }
+    }
+}
+$formIdsConsolidado = array_values(array_unique($formIdsConsolidado));
+
+if ($esFormatoSoam) {
+    if (empty($formIdsConsolidado)) {
+        http_response_code(400);
+        echo 'No se encontraron datos para el consolidado SOAM.';
+        exit;
+    }
+
+    $_GET['form_id'] = implode(',', $formIdsConsolidado);
+    $GLOBALS['controller'] = $billingController;
+    include BASE_PATH . '/views/billing/generar_excel_iess_soam.php';
+
+    $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
+    if (!($spreadsheet instanceof Spreadsheet)) {
+        http_response_code(500);
+        echo 'No se pudo generar el consolidado SOAM.';
+        exit;
+    }
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    $nombreArchivo = 'consolidado_iess_soam' . ($categoria ? "_{$categoria}" : '') . '.xlsx';
+    header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
