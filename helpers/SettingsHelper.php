@@ -33,6 +33,25 @@ class SettingsHelper
                             self::textField('companywebsite', 'Sitio web'),
                         ],
                     ],
+                    [
+                        'id' => 'data_retention',
+                        'title' => 'Retención y limpieza de archivos',
+                        'description' => 'Define cuánto tiempo conservar archivos subidos y si la purga será automática.',
+                        'fields' => [
+                            self::numberField(
+                                'general_file_retention_days',
+                                'Días para conservar adjuntos',
+                                365,
+                                'Usa 0 para conservar indefinidamente. Aplica a documentos clínicos y administrativos.'
+                            ),
+                            self::checkboxField(
+                                'general_file_auto_purge',
+                                'Purgar adjuntos automáticamente',
+                                false,
+                                'Si está activo, se eliminarán archivos vencidos según la política de días definida.'
+                            ),
+                        ],
+                    ],
                 ],
             ],
             'branding' => [
@@ -95,6 +114,18 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'smtp_advanced',
+                        'title' => 'SMTP avanzado',
+                        'description' => 'Ajustes de compatibilidad y respuesta para servidores exigentes.',
+                        'fields' => [
+                            self::numberField('smtp_timeout_seconds', 'Timeout de conexión (segundos)', 15),
+                            self::checkboxField('smtp_debug_enabled', 'Registrar salida SMTP para administradores'),
+                            self::checkboxField('smtp_allow_self_signed', 'Permitir certificados autofirmados'),
+                            self::emailField('email_reply_to_address', 'Dirección Reply-To'),
+                            self::textField('email_reply_to_name', 'Nombre Reply-To'),
+                        ],
+                    ],
+                    [
                         'id' => 'email_format',
                         'title' => 'Formato de mensajes',
                         'description' => 'Personaliza encabezados, pie y firma enviados a tus clientes.',
@@ -104,6 +135,286 @@ class SettingsHelper
                             self::textareaField('email_signature', 'Firma de correo'),
                             self::textField('email_from_name', 'Nombre remitente'),
                             self::emailField('email_from_address', 'Correo remitente'),
+                            self::emailField('email_from_address_notifications', 'Remitente para notificaciones'),
+                            self::emailField('email_from_address_billing', 'Remitente para facturación'),
+                        ],
+                    ],
+                    [
+                        'id' => 'email_policy',
+                        'title' => 'Políticas y auditoría',
+                        'description' => 'Define controles de seguridad, retención y copia oculta.',
+                        'fields' => [
+                            self::emailField('email_bcc_audit_address', 'Copia oculta para auditoría'),
+                            self::checkboxField('email_store_sent_log', 'Almacenar log de correos enviados', true),
+                            self::numberField('email_sent_log_ttl_days', 'Retención de log (días)', 180),
+                            self::numberField('email_rate_limit_per_minute', 'Límite por minuto', 60),
+                            self::numberField('email_max_attempts', 'Reintentos máximos', 5),
+                            self::numberField('email_retry_backoff_seconds', 'Espera entre reintentos (segundos)', 60),
+                            self::checkboxField('email_circuit_breaker_enabled', 'Circuit breaker SMTP habilitado', false),
+                            self::numberField('email_circuit_breaker_failures', 'Fallas para abrir circuito', 10),
+                            self::numberField('email_circuit_breaker_cooldown_minutes', 'Cooldown del circuito (minutos)', 15),
+                            self::checkboxField('email_bcc_audit_enabled', 'Forzar copia oculta a auditoría'),
+                            self::textareaField('email_blocklist_domains', 'Dominios bloqueados', 'Uno por línea.'),
+                        ],
+                    ],
+                    [
+                        'id' => 'email_templates',
+                        'title' => 'Plantillas editables',
+                        'description' => 'Personaliza los textos utilizados en el NotificationMailer.',
+                        'fields' => [
+                            array_merge(
+                                self::textField('email_template_patient_update_subject', 'Asunto de actualización al paciente'),
+                                ['default' => 'Actualización de {{tipo}} #{{id}} · {{descripcion}}']
+                            ),
+                            self::textareaField(
+                                'email_template_patient_update_body',
+                                'Cuerpo HTML de actualización',
+                                'Soporta variables: {{tipo}}, {{id}}, {{descripcion}}, {{enlace}}.',
+                                '<p>Hemos actualizado {{tipo}} #{{id}}.</p><p>{{descripcion}}</p>'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'mailbox_guardrails',
+                        'title' => 'Notificaciones desde Mailbox',
+                        'description' => 'Evita envíos accidentales y define orígenes permitidos.',
+                        'fields' => [
+                            self::checkboxField('mailbox_notify_patient_enabled', 'Permitir notificar paciente', true),
+                            self::checkboxField('mailbox_notify_patient_require_tag', 'Requerir tag [PACIENTE] u origen explícito', true),
+                            self::textareaField('mailbox_notify_patient_allowed_sources', 'Orígenes permitidos', 'Una fuente por línea. Ej: solicitud, examen'),
+                            self::checkboxField('mailbox_notify_patient_default', 'Notificar paciente por defecto'),
+                        ],
+                    ],
+                ],
+            ],
+            'system_observability' => [
+                'title' => 'Observabilidad',
+                'icon' => 'fa-solid fa-magnifying-glass-chart',
+                'description' => 'Controles para logging, trazas HTTP y monitoreo APM.',
+                'groups' => [
+                    [
+                        'id' => 'logging',
+                        'title' => 'Logs y rastreo',
+                        'description' => 'Define el nivel de detalle y los canales disponibles.',
+                        'fields' => [
+                            self::selectField('observability_log_level', 'Nivel de log', [
+                                'debug' => 'Debug',
+                                'info' => 'Info',
+                                'warn' => 'Warn',
+                                'error' => 'Error',
+                            ], 'info'),
+                            self::selectField('observability_log_channel', 'Canal de logs', [
+                                'file' => 'Archivo',
+                                'db' => 'Base de datos',
+                                'syslog' => 'Syslog',
+                            ], 'file'),
+                            self::checkboxField('observability_http_trace_enabled', 'Registrar trazas de HTTP saliente'),
+                            self::selectField('observability_apm_provider', 'Proveedor APM', [
+                                '' => 'Desactivado',
+                                'sentry' => 'Sentry',
+                                'newrelic' => 'New Relic / genérico',
+                            ]),
+                            self::textField('observability_apm_dsn', 'DSN o endpoint APM'),
+                            self::checkboxField('observability_notify_on_critical_errors', 'Enviar alerta en errores críticos', true),
+                            self::textareaField('observability_critical_recipients', 'Destinatarios críticos', 'Correos separados por coma.'),
+                        ],
+                    ],
+                ],
+            ],
+            'security_access' => [
+                'title' => 'Seguridad y acceso',
+                'icon' => 'fa-solid fa-shield-halved',
+                'description' => 'Controla sesiones, MFA y límites de acceso.',
+                'groups' => [
+                    [
+                        'id' => 'sessions',
+                        'title' => 'Sesiones',
+                        'description' => 'Tiempo máximo de inactividad y expiración absoluta.',
+                        'fields' => [
+                            self::numberField('session_idle_timeout_minutes', 'Timeout por inactividad (minutos)', 30),
+                            self::numberField('session_absolute_timeout_hours', 'Timeout absoluto (horas)', 24),
+                            self::checkboxField('csrf_strict_mode', 'CSRF en modo estricto'),
+                        ],
+                    ],
+                    [
+                        'id' => 'auth_controls',
+                        'title' => 'Autenticación y red',
+                        'description' => 'Refuerza el acceso con MFA, IPs permitidas y rate limits.',
+                        'fields' => [
+                            self::textareaField('mfa_enabled_roles', 'Roles con MFA requerido', 'Una lista de roles separados por coma o línea.'),
+                            self::textareaField('admin_ip_whitelist', 'Whitelist de IP/CIDR', 'Una por línea, formato CIDR admitido.'),
+                            self::numberField('login_max_attempts', 'Intentos máximos de login', 5),
+                            self::numberField('login_lockout_minutes', 'Bloqueo tras exceder intentos (minutos)', 15),
+                        ],
+                    ],
+                ],
+            ],
+            'audit' => [
+                'title' => 'Auditoría',
+                'icon' => 'fa-solid fa-clipboard-check',
+                'description' => 'Registro de cambios y políticas de retención.',
+                'groups' => [
+                    [
+                        'id' => 'audit_controls',
+                        'title' => 'Parámetros de auditoría',
+                        'description' => 'Activa el tracking y selecciona módulos cubiertos.',
+                        'fields' => [
+                            self::checkboxField('audit_enabled', 'Habilitar auditoría'),
+                            self::numberField('audit_ttl_days', 'Retención de auditoría (días)', 365),
+                            self::textareaField('audit_modules', 'Módulos auditados', 'billing, identidad, crm, whatsapp, mailbox'),
+                            self::checkboxField('audit_mask_pii', 'Enmascarar PII en logs y exportes', true),
+                        ],
+                    ],
+                ],
+            ],
+            'scheduler' => [
+                'title' => 'Scheduler',
+                'icon' => 'fa-solid fa-clock-rotate-left',
+                'description' => 'Configura la ejecución programada y sus jobs dependientes.',
+                'groups' => [
+                    [
+                        'id' => 'core',
+                        'title' => 'Núcleo del scheduler',
+                        'description' => 'Frecuencias base y protección contra ejecuciones dobles.',
+                        'fields' => [
+                            self::checkboxField('scheduler_enabled', 'Habilitar scheduler interno', true),
+                            self::selectField('scheduler_timezone', 'Zona horaria', $timezones, 'America/Guayaquil'),
+                            self::numberField('scheduler_tick_minutes', 'Tick del dispatcher (minutos)', 5),
+                            self::numberField('scheduler_max_runtime_seconds', 'Tiempo máximo por ciclo (segundos)', 55),
+                            self::numberField('scheduler_lock_ttl_seconds', 'TTL del lock (segundos)', 120),
+                            self::passwordField('scheduler_endpoint_secret', 'Secreto del endpoint de cron'),
+                            self::selectField('scheduler_overlap_policy', 'Política de solapamiento', [
+                                'skip' => 'Saltar si hay una ejecución activa',
+                                'queue' => 'Encolar hasta finalizar la ejecución previa',
+                            ], 'skip'),
+                            self::checkboxField('scheduler_run_missed_jobs', 'Reintentar jobs omitidos', true),
+                        ],
+                    ],
+                    [
+                        'id' => 'jobs',
+                        'title' => 'Jobs programados',
+                        'description' => 'Activa cada job y define su frecuencia.',
+                        'fields' => [
+                            self::checkboxField('job_mail_queue_enabled', 'Procesar cola de correo', true),
+                            self::numberField('job_mail_queue_every_minutes', 'Frecuencia cola de correo (minutos)', 1),
+                            self::checkboxField('job_whatsapp_queue_enabled', 'Procesar cola de WhatsApp', true),
+                            self::numberField('job_whatsapp_queue_every_minutes', 'Frecuencia cola WhatsApp (minutos)', 1),
+                            self::checkboxField('job_file_purge_enabled', 'Purgar archivos vencidos', true),
+                            self::numberField('job_file_purge_every_hours', 'Frecuencia purga de archivos (horas)', 24),
+                            self::checkboxField('job_mailbox_autoarchive_enabled', 'Auto-archivar mailbox', true),
+                            self::numberField('job_mailbox_autoarchive_every_hours', 'Frecuencia auto-archivo (horas)', 24),
+                            self::checkboxField('job_crm_sla_alerts_enabled', 'Alertas SLA CRM', true),
+                            self::numberField('job_crm_sla_alerts_every_minutes', 'Frecuencia SLA (minutos)', 10),
+                            self::checkboxField('job_healthchecks_enabled', 'Healthchecks automáticos', true),
+                            self::numberField('job_healthchecks_every_minutes', 'Frecuencia healthchecks (minutos)', 30),
+                            self::checkboxField('job_backups_enabled', 'Respaldos programados'),
+                            self::textField('job_backups_cron', 'Cron de respaldos (formato crontab)'),
+                        ],
+                    ],
+                    [
+                        'id' => 'failure_policies',
+                        'title' => 'Manejo de fallas',
+                        'description' => 'Cómo reaccionar ante errores recurrentes en jobs.',
+                        'fields' => [
+                            self::checkboxField('scheduler_failure_alert_enabled', 'Alertar fallas de scheduler'),
+                            self::textareaField('scheduler_failure_alert_recipients', 'Destinatarios de alertas', 'Correos separados por coma.'),
+                            self::numberField('scheduler_failure_backoff_minutes', 'Backoff ante fallas (minutos)', 10),
+                            self::numberField('scheduler_max_failures_before_disable', 'Máx. fallas antes de pausar', 20),
+                            self::numberField('scheduler_failure_notify_threshold', 'Alertar tras N fallas consecutivas', 3),
+                            self::numberField('scheduler_log_retention_days', 'Retención de logs de scheduler (días)', 30),
+                        ],
+                    ],
+                ],
+            ],
+            'delivery_queue' => [
+                'title' => 'Cola de envíos',
+                'icon' => 'fa-solid fa-paper-plane',
+                'description' => 'Controla el batching y la concurrencia para correos y WhatsApp.',
+                'groups' => [
+                    [
+                        'id' => 'queue_core',
+                        'title' => 'Parámetros generales',
+                        'description' => 'Ajusta los umbrales para el motor de colas.',
+                        'fields' => [
+                            self::checkboxField('queue_enabled', 'Habilitar motor de colas', true),
+                            self::numberField('queue_batch_size', 'Tamaño de lote', 20),
+                            self::numberField('queue_interval_seconds', 'Intervalo entre lotes (segundos)', 30),
+                            self::numberField('queue_max_concurrency', 'Máxima concurrencia', 5),
+                            self::numberField('queue_fail_after_attempts', 'Fallas antes de marcar DLQ', 5),
+                            self::checkboxField('queue_dlq_enabled', 'Habilitar Dead Letter Queue', true),
+                            self::numberField('queue_alert_on_backlog', 'Umbral de alerta por backlog', 200),
+                        ],
+                    ],
+                ],
+            ],
+            'locations' => [
+                'title' => 'Sedes y multi-tenant',
+                'icon' => 'fa-solid fa-building',
+                'description' => 'Administra sedes y parámetros específicos por ubicación.',
+                'groups' => [
+                    [
+                        'id' => 'locations_core',
+                        'title' => 'Listado de sedes',
+                        'description' => 'Define sedes y el comportamiento por defecto.',
+                        'fields' => [
+                            self::checkboxField('locations_enabled', 'Habilitar multi-sede'),
+                            self::textareaField('locations_list', 'Sedes', 'Formato JSON o id|nombre|color|logo|timezone por línea.'),
+                            self::textField('default_location_id', 'Sede predeterminada'),
+                            self::checkboxField('location_scoped_settings', 'Aislar settings por sede'),
+                        ],
+                    ],
+                ],
+            ],
+            'privacy_exports' => [
+                'title' => 'Privacidad y exportes',
+                'icon' => 'fa-solid fa-user-shield',
+                'description' => 'Reducción de exposición de datos en exportaciones y staging.',
+                'groups' => [
+                    [
+                        'id' => 'exports',
+                        'title' => 'Políticas de exportación',
+                        'description' => 'Controla marcas de agua y anonimización.',
+                        'fields' => [
+                            self::checkboxField('export_watermark_enabled', 'Agregar watermark en exportes'),
+                            self::checkboxField('export_mask_sensitive_fields', 'Enmascarar campos sensibles'),
+                            self::checkboxField('anonymization_mode_enabled', 'Modo anonimizado para staging'),
+                            self::checkboxField('attachments_public_access_enabled', 'Permitir acceso público a adjuntos'),
+                        ],
+                    ],
+                ],
+            ],
+            'webhooks' => [
+                'title' => 'Webhooks',
+                'icon' => 'fa-solid fa-plug',
+                'description' => 'Eventos generales para integrarse con sistemas externos.',
+                'groups' => [
+                    [
+                        'id' => 'webhooks_core',
+                        'title' => 'Configuración general',
+                        'description' => 'Firma compartida y listado de eventos.',
+                        'fields' => [
+                            self::checkboxField('webhooks_enabled', 'Habilitar webhooks'),
+                            self::passwordField('webhooks_secret', 'Secreto para firma'),
+                            self::textareaField('webhooks_events', 'Eventos y URLs', 'Formato: event|url|retries por línea.'),
+                            self::numberField('webhooks_default_retries', 'Reintentos por defecto', 3),
+                        ],
+                    ],
+                ],
+            ],
+            'feature_flags' => [
+                'title' => 'Feature flags',
+                'icon' => 'fa-solid fa-toggle-on',
+                'description' => 'Toggles por módulo para despliegues seguros.',
+                'groups' => [
+                    [
+                        'id' => 'toggles',
+                        'title' => 'Bandera de funcionalidades',
+                        'description' => 'Enciende o apaga módulos sin redeploy.',
+                        'fields' => [
+                            self::checkboxField('enable_mailbox_notify_patient', 'Habilitar notificación desde mailbox', true),
+                            self::checkboxField('enable_crm_sla', 'Habilitar alertas SLA en CRM', true),
+                            self::checkboxField('enable_ai_traceability', 'Activar trazabilidad de IA', true),
+                            self::textareaField('flags_by_role', 'Flags por rol', 'Formato: rol|flag1,flag2'),
                         ],
                     ],
                 ],
@@ -146,6 +457,12 @@ class SettingsHelper
                                 'Límite de tarjetas por columna',
                                 0,
                                 '0 desactiva el límite por columna.'
+                            ),
+                            self::textareaField(
+                                'crm_pipeline_sla_rules',
+                                'SLA por etapa',
+                                'Define una regla por línea con el formato: Etapa | minutos | alerta (email/sms). Ej: Seguimiento | 1440 | email',
+                                'Se utiliza para disparar avisos cuando una tarjeta supere el tiempo configurado en la columna.'
                             ),
                         ],
                     ],
@@ -223,6 +540,39 @@ class SettingsHelper
                             self::checkboxField('notifications_daily_summary', 'Enviar resumen diario a administradores'),
                         ],
                     ],
+                    [
+                        'id' => 'quiet_hours',
+                        'title' => 'Ventanas de silencio y alertas críticas',
+                        'description' => 'Establece horarios sin notificaciones y los destinatarios de alertas críticas.',
+                        'fields' => [
+                            self::checkboxField(
+                                'notifications_quiet_hours_enabled',
+                                'Activar ventana de silencio global'
+                            ),
+                            self::textField(
+                                'notifications_quiet_hours_start',
+                                'Inicio silencio (HH:MM)',
+                                false,
+                                'Formato 24h. Ej: 22:00'
+                            ),
+                            self::textField(
+                                'notifications_quiet_hours_end',
+                                'Fin silencio (HH:MM)',
+                                false,
+                                'Formato 24h. Ej: 06:00'
+                            ),
+                            self::textareaField(
+                                'notifications_quiet_hours_exceptions',
+                                'Fechas excepcionales',
+                                'Una fecha por línea en formato YYYY-MM-DD para desactivar el silencio.'
+                            ),
+                            self::textareaField(
+                                'notifications_critical_recipients',
+                                'Destinatarios de alertas críticas',
+                                'Correos separados por coma que recibirán incidencias graves incluso en silencio.'
+                            ),
+                        ],
+                    ],
                 ],
             ],
             'turnero' => [
@@ -240,6 +590,18 @@ class SettingsHelper
                                 'Intentar iniciar en pantalla completa',
                                 false,
                                 'El navegador puede impedir la pantalla completa sin interacción previa. Siempre habrá un botón para activarla.'
+                            ),
+                            self::numberField(
+                                'turnero_refresh_interval_seconds',
+                                'Frecuencia de refresco (segundos)',
+                                30,
+                                'Controla cada cuánto se sincroniza la lista de turnos. Valores menores aumentan el tráfico.'
+                            ),
+                            self::textareaField(
+                                'turnero_profiles_by_location',
+                                'Perfiles por sede',
+                                'Una línea por sede en formato: Sede | logo.png | #color_principal | layout',
+                                'Permite personalizar logo, colores y layout según la ubicación.'
                             ),
                         ],
                     ],
@@ -412,6 +774,18 @@ class SettingsHelper
                                 ],
                                 'recent'
                             ),
+                            self::textareaField(
+                                'mailbox_default_filters',
+                                'Filtros predefinidos',
+                                'Una regla por línea en formato: fuente | estado | etiqueta',
+                                'Se aplican al cargar el buzón para destacar las fuentes más relevantes.'
+                            ),
+                            self::textareaField(
+                                'mailbox_autoarchive_rules',
+                                'Reglas automáticas de archivado',
+                                'Una regla por línea en formato: fuente | condición | días_para_archivar',
+                                'Ejemplo: whatsapp | sin respuesta | 30. Las reglas se aplican en tareas programadas.'
+                            ),
                         ],
                     ],
                 ],
@@ -441,6 +815,17 @@ class SettingsHelper
                             array_merge(self::textField('billing_informes_iess_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Ver todas las atenciones por cobrar']),
                             array_merge(self::textField('billing_informes_iess_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes IESS']),
                             self::checkboxField('billing_informes_iess_apellido_filter', 'Habilitar filtro por apellido'),
+                            self::textareaField(
+                                'billing_informes_code_mapping',
+                                'Tabla de mapeo códigos internos → externos',
+                                'Una línea por regla: codigo_interno | codigo_aseguradora | descripción'
+                            ),
+                            self::numberField(
+                                'billing_informes_rounding_tolerance',
+                                'Tolerancia de redondeo en exportes',
+                                0,
+                                'Cantidad máxima permitida para ajustar decimales en conciliaciones.'
+                            ),
                         ],
                     ],
                     [
@@ -608,6 +993,37 @@ class SettingsHelper
                                     'Debe coincidir con el token configurado en Meta para validar la suscripción.'
                                 ),
                                 ['default' => 'medforge-whatsapp']
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'delivery_controls',
+                        'title' => 'Control de envío y límites',
+                        'description' => 'Configura protección de reputación y rendimiento en el envío de mensajes.',
+                        'fields' => [
+                            self::numberField(
+                                'whatsapp_hourly_limit',
+                                'Límite de mensajes por hora',
+                                200,
+                                '0 desactiva el límite y delega el control al proveedor.'
+                            ),
+                            self::numberField(
+                                'whatsapp_attachment_max_mb',
+                                'Tamaño máximo de adjuntos (MB)',
+                                15,
+                                'Bloquea envíos que superen este tamaño para prevenir rechazos.'
+                            ),
+                            self::numberField(
+                                'whatsapp_retry_attempts',
+                                'Reintentos ante fallo',
+                                3,
+                                'Cantidad de reintentos antes de marcar el mensaje como fallido.'
+                            ),
+                            self::numberField(
+                                'whatsapp_retry_backoff_seconds',
+                                'Intervalo entre reintentos (segundos)',
+                                30,
+                                'Define el tiempo de espera entre cada reintento.'
                             ),
                         ],
                     ],
@@ -867,6 +1283,37 @@ class SettingsHelper
                             ),
                         ],
                     ],
+                    [
+                        'id' => 'governance',
+                        'title' => 'Gobernanza y límites de uso',
+                        'description' => 'Controla trazabilidad, retención y cuotas de llamadas a IA por rol o usuario.',
+                        'fields' => [
+                            self::checkboxField(
+                                'ai_traceability_enabled',
+                                'Guardar prompts y respuestas para auditoría',
+                                false,
+                                'Si está activo, se registran las interacciones en una tabla de auditoría.'
+                            ),
+                            self::numberField(
+                                'ai_audit_ttl_days',
+                                'Días para conservar trazas de IA',
+                                90,
+                                'Usa 0 para conservar indefinidamente.'
+                            ),
+                            self::numberField(
+                                'ai_daily_limit_per_user',
+                                'Límite diario por usuario',
+                                50,
+                                '0 desactiva el límite diario individual.'
+                            ),
+                            self::numberField(
+                                'ai_daily_limit_per_role',
+                                'Límite diario por rol',
+                                0,
+                                'Introduce un número mayor a 0 para aplicar cuotas compartidas por rol.'
+                            ),
+                        ],
+                    ],
                 ],
             ],
             'localization' => [
@@ -913,6 +1360,12 @@ class SettingsHelper
                             self::numberField('identity_verification_signature_reject_threshold', 'Puntaje mínimo firma (rechazo)', 40),
                             self::numberField('identity_verification_single_approve_threshold', 'Puntaje mínimo biometría única (aprobación)', 85),
                             self::numberField('identity_verification_single_reject_threshold', 'Puntaje mínimo biometría única (rechazo)', 40),
+                            self::numberField(
+                                'identity_verification_revalidation_days',
+                                'Días para revalidación temprana',
+                                300,
+                                'Genera una nueva verificación antes de que expire la vigencia principal.'
+                            ),
                         ],
                     ],
                     [
@@ -949,6 +1402,23 @@ class SettingsHelper
                             self::textField('identity_verification_pdf_signature_image', 'Imagen de la firma digital (ruta)'),
                         ],
                     ],
+                    [
+                        'id' => 'webhooks',
+                        'title' => 'Webhooks de eventos',
+                        'description' => 'Notifica a sistemas externos cuando se crea, renueva o expira una certificación.',
+                        'fields' => [
+                            self::textField(
+                                'identity_verification_webhook_url',
+                                'URL del webhook',
+                                false,
+                                'Se enviarán eventos de creación, revalidación y expiración con firma compartida.'
+                            ),
+                            self::passwordField(
+                                'identity_verification_webhook_secret',
+                                'Secreto para firma HMAC'
+                            ),
+                        ],
+                    ],
                 ],
             ],
             'cive_extension' => [
@@ -956,6 +1426,22 @@ class SettingsHelper
                 'icon' => 'fa-solid fa-puzzle-piece',
                 'description' => 'Controla desde MedForge las operaciones de la extensión clínica y sus integraciones.',
                 'groups' => [
+                    [
+                        'id' => 'environment',
+                        'title' => 'Entorno',
+                        'description' => 'Selecciona el entorno activo para las peticiones de la extensión.',
+                        'fields' => [
+                            self::selectField(
+                                'cive_extension_environment',
+                                'Entorno activo',
+                                [
+                                    'production' => 'Producción',
+                                    'sandbox' => 'Sandbox / staging',
+                                ],
+                                'production'
+                            ),
+                        ],
+                    ],
                     [
                         'id' => 'api_client',
                         'title' => 'Cliente API',
@@ -973,6 +1459,19 @@ class SettingsHelper
                             self::numberField('cive_extension_retry_delay_ms', 'Tiempo entre reintentos (ms)', 600),
                             self::numberField('cive_extension_procedures_cache_ttl_ms', 'TTL caché de procedimientos (ms)', 300000),
                             self::numberField('cive_extension_refresh_interval_ms', 'Intervalo de sincronización del service worker (ms)', 900000),
+                        ],
+                    ],
+                    [
+                        'id' => 'headers',
+                        'title' => 'Encabezados personalizados',
+                        'description' => 'Define headers adicionales por tenant o cliente para enriquecer las peticiones.',
+                        'fields' => [
+                            self::textareaField(
+                                'cive_extension_custom_headers',
+                                'Headers por tenant',
+                                'Formato JSON: {"tenantA":{"X-Tenant":"A"},"tenantB":{"X-Tenant":"B","X-Region":"EU"}}',
+                                'Se aplican en cada solicitud saliente desde la extensión.'
+                            ),
                         ],
                     ],
                     [
