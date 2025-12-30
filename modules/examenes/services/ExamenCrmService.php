@@ -186,6 +186,26 @@ class ExamenCrmService
         );
     }
 
+    /**
+     * @return array{name?:string,email?:string,hc_number?:string,descripcion?:string}|null
+     */
+    public function obtenerContactoPaciente(int $examenId): ?array
+    {
+        $detalle = $this->safeObtenerDetalleExamen($examenId);
+        if ($detalle === null) {
+            return null;
+        }
+
+        $context = array_filter([
+            'name' => $this->normalizarTexto($detalle['paciente_nombre'] ?? null),
+            'email' => $this->normalizarTexto($detalle['crm_contacto_email'] ?? null),
+            'hc_number' => $this->normalizarTexto($detalle['hc_number'] ?? null),
+            'descripcion' => $this->normalizarTexto($detalle['examen_nombre'] ?? null),
+        ], static fn($value) => $value !== null && $value !== '');
+
+        return $context !== [] ? $context : null;
+    }
+
     public function registrarTarea(int $examenId, array $data, ?int $autorId): void
     {
         $titulo = trim((string) ($data['titulo'] ?? ''));

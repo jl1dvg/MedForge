@@ -5,6 +5,7 @@ namespace Modules\Mail\Controllers;
 use Core\BaseController;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Mail\Services\MailboxService;
+use Modules\Mail\Services\NotificationMailer;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
 use RuntimeException;
@@ -15,6 +16,7 @@ class MailboxController extends BaseController
     private MailboxService $mailbox;
     private SolicitudCrmService $solicitudCrm;
     private ExamenCrmService $examenCrm;
+    private NotificationMailer $mailer;
     /** @var array<string, mixed> */
     private array $mailboxConfig = [];
     private ?array $bodyCache = null;
@@ -25,6 +27,7 @@ class MailboxController extends BaseController
         $this->mailbox = new MailboxService($pdo);
         $this->solicitudCrm = new SolicitudCrmService($pdo);
         $this->examenCrm = new ExamenCrmService($pdo);
+        $this->mailer = new NotificationMailer($pdo);
         $this->mailboxConfig = $this->mailbox->getConfig();
     }
 
@@ -135,14 +138,18 @@ class MailboxController extends BaseController
 
         try {
             $link = null;
+            $emailContext = null;
+            $shouldNotify = $this->shouldNotifyPatient($payload, $message);
             switch ($targetType) {
                 case 'solicitud':
                     $this->solicitudCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
                     $link = '/solicitudes/' . $targetId . '/crm';
+                    $emailContext = $this->solicitudCrm->obtenerContactoPaciente($targetId);
                     break;
                 case 'examen':
                     $this->examenCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
                     $link = '/examenes/' . $targetId . '/crm';
+                    $emailContext = $this->examenCrm->obtenerContactoPaciente($targetId);
                     break;
                 case 'ticket':
                     $this->createTicketMessage($targetId, $message);
@@ -150,6 +157,10 @@ class MailboxController extends BaseController
                     break;
                 default:
                     throw new RuntimeException('El destino seleccionado no está soportado.');
+            }
+
+            if ($emailContext !== null && $shouldNotify) {
+                $this->notifyPatient($emailContext, $targetType, $targetId, $message);
             }
 
             $this->respondComposeSuccess('Mensaje registrado correctamente.', $link);
@@ -184,6 +195,60 @@ class MailboxController extends BaseController
         $_SESSION['flash_mailbox'] = $message;
         header('Location: /mailbox');
         exit;
+    }
+
+    /**
+     * @param array{name?:string,email?:string,hc_number?:string,descripcion?:string}|null $context
+     */
+    private function notifyPatient(?array $context, string $targetType, int $targetId, string $body): void
+    {
+        $email = trim((string) ($context['email'] ?? ''));
+        if ($email === '') {
+            return;
+        }
+
+        $cleanBody = $this->stripPatientPrefix($body);
+
+        $subjectParts = ['Actualización de ' . ucfirst($targetType) . ' #' . $targetId];
+        if (!empty($context['descripcion'])) {
+            $subjectParts[] = (string) $context['descripcion'];
+        }
+
+        $subject = implode(' · ', $subjectParts);
+
+        $greeting = !empty($context['name'])
+            ? 'Hola ' . $context['name'] . ','
+            : 'Hola,';
+
+        $messageLines = [$greeting, 'Tenemos una nueva actualización sobre tu caso:', '', $cleanBody];
+
+        if (!empty($context['hc_number'])) {
+            $messageLines[] = 'Historia clínica: ' . $context['hc_number'];
+        }
+
+        try {
+            $this->mailer->sendPatientUpdate($email, $subject, implode("\n", $messageLines));
+        } catch (Throwable $exception) {
+            error_log('No se pudo notificar al paciente (' . $targetType . ' #' . $targetId . ' a ' . $email . '): ' . $exception->getMessage());
+        }
+    }
+
+    private function shouldNotifyPatient(array $payload, string $message): bool
+    {
+        if (array_key_exists('notify_patient', $payload)) {
+            return filter_var($payload['notify_patient'], FILTER_VALIDATE_BOOLEAN) === true;
+        }
+
+        $normalized = ltrim($message);
+
+        return preg_match('/^\[?paciente\]?:?/i', $normalized) === 1;
+    }
+
+    private function stripPatientPrefix(string $message): string
+    {
+        $stripped = preg_replace('/^\s*\[?paciente\]?:?\s*/i', '', $message, 1);
+
+        return $stripped !== null ? $stripped : $message;
     }
 
     private function respondComposeError(string $message, int $status): void

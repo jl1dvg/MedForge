@@ -207,6 +207,26 @@ class SolicitudCrmService
         );
     }
 
+    /**
+     * @return array{name?:string,email?:string,hc_number?:string,descripcion?:string}|null
+     */
+    public function obtenerContactoPaciente(int $solicitudId): ?array
+    {
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId);
+        if ($detalle === null) {
+            return null;
+        }
+
+        $context = array_filter([
+            'name' => $this->normalizarTexto($detalle['paciente_nombre'] ?? null),
+            'email' => $this->normalizarTexto($detalle['crm_contacto_email'] ?? null),
+            'hc_number' => $this->normalizarTexto($detalle['hc_number'] ?? null),
+            'descripcion' => $this->normalizarTexto($detalle['procedimiento'] ?? null),
+        ], static fn($value) => $value !== null && $value !== '');
+
+        return $context !== [] ? $context : null;
+    }
+
     public function registrarTarea(int $solicitudId, array $data, ?int $autorId): void
     {
         $titulo = trim((string) ($data['titulo'] ?? ''));
