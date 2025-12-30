@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use PDO;
+use Modules\Derivaciones\Services\DerivacionesSyncService;
 
 class DerivacionController
 {
@@ -26,34 +27,22 @@ class DerivacionController
         $archivoPath = null
     )
     {
-        $stmt = $this->db->prepare("
-        INSERT INTO derivaciones_form_id (
-            cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico, sede, parentesco, archivo_derivacion_path
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            fecha_registro = VALUES(fecha_registro),
-            fecha_vigencia = VALUES(fecha_vigencia),
-            cod_derivacion = VALUES(cod_derivacion),
-            referido = VALUES(referido),
-            diagnostico = VALUES(diagnostico),
-            sede = VALUES(sede),
-            parentesco = VALUES(parentesco),
-            archivo_derivacion_path = VALUES(archivo_derivacion_path)
-    ");
+        $service = new DerivacionesSyncService($this->db);
 
-        return $stmt->execute([
-            $codDerivacion,
-            $formId,
-            $hcNumber,
-            $fechaRegistro,
-            $fechaVigencia,
-            $referido,
-            $diagnostico,
-            $sede,
-            $parentesco,
-            $archivoPath
+        $pivotId = $service->upsertDerivation([
+            'cod_derivacion' => $codDerivacion,
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'fecha_registro' => $fechaRegistro,
+            'fecha_vigencia' => $fechaVigencia,
+            'referido' => $referido,
+            'diagnostico' => $diagnostico,
+            'sede' => $sede,
+            'parentesco' => $parentesco,
+            'archivo_derivacion_path' => $archivoPath,
         ]);
+
+        return $pivotId !== null ? $pivotId : false;
     }
 
     public function verificarFormIds(array $form_ids): array
@@ -173,32 +162,36 @@ class DerivacionController
             $form_id = (string)$item['form_id'];
             $billing_id = $existentesAssoc[$form_id] ?? null;
 
-            if (!$billing_id) {
-                try {
-                    $stmtInsert = $db->prepare("INSERT INTO billing_main (form_id, hc_number) VALUES (?, ?)");
-                    $stmtInsert->execute([$form_id, $item['hc_number']]);
-                    $billing_id = $db->lastInsertId();
-                    $nuevos[] = $form_id;
+                    if (!$billing_id) {
+                        try {
+                            $stmtInsert = $db->prepare("INSERT INTO billing_main (form_id, hc_number) VALUES (?, ?)");
+                            $stmtInsert->execute([$form_id, $item['hc_number']]);
+                            $billing_id = $db->lastInsertId();
+                            $nuevos[] = $form_id;
 
-                    // Verificar si ya existe una derivación para este form_id
-                    $stmtCheckDeriv = $db->prepare("SELECT COUNT(*) FROM derivaciones_form_id WHERE form_id = ?");
-                    $stmtCheckDeriv->execute([$form_id]);
-                    $existeDerivacion = $stmtCheckDeriv->fetchColumn();
+                            $syncService = new DerivacionesSyncService($db);
+                            $codDerivacion = $item['codigo_derivacion'] ?? null;
+                            if (!empty($codDerivacion)) {
+                                $pivotId = $syncService->upsertDerivation([
+                                    'cod_derivacion' => $codDerivacion,
+                                    'form_id' => $form_id,
+                                    'hc_number' => $item['hc_number'],
+                                    'fecha_vigencia' => $item['fecha_vigencia'] ?? date('Y-m-d H:i:s'),
+                                    'fecha_registro' => $item['fecha_registro'] ?? date('Y-m-d H:i:s'),
+                                    'referido' => $item['referido'] ?? null,
+                                    'diagnostico' => $item['diagnostico'] ?? null,
+                                    'afiliacion' => $item['afiliacion'] ?? null,
+                                ]);
 
-                    if (!$existeDerivacion) {
-                        $stmtInsertDeriv = $db->prepare("INSERT INTO derivaciones_form_id (cod_derivacion, form_id, hc_number, fecha_vigencia, fecha_registro, referido, diagnostico) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                        $codigoDerivacion = $item['codigo_derivacion'] ?? null;
-                        $fecha_registro = $item['fecha_registro'] ?? date('Y-m-d H:i:s');
-                        $fecha_vigencia = $item['fecha_vigencia'] ?? date('Y-m-d H:i:s');
-                        $referido = $item['referido'] ?? null;
-                        $diagnostico = $item['diagnostico'] ?? null;
-                        $stmtInsertDeriv->execute([$codigoDerivacion, $form_id, $item['hc_number'], $fecha_vigencia, $fecha_registro, $referido, $diagnostico]);
+                                if ($pivotId === null) {
+                                    $errores[] = "No se pudo registrar la derivación para el form_id $form_id";
+                                }
+                            }
+                        } catch (\PDOException $e) {
+                            $errores[] = "Error insertando billing_main $form_id: " . $e->getMessage();
+                            continue;
+                        }
                     }
-                } catch (\PDOException $e) {
-                    $errores[] = "Error insertando billing_main $form_id: " . $e->getMessage();
-                    continue;
-                }
-            }
 
             if (!empty($item['codigo']) && !empty($item['detalle']) && $billing_id) {
                 try {

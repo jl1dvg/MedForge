@@ -3,7 +3,9 @@
 namespace Controllers;
 
 use Models\IplPlanificadorModel;
+use Modules\Derivaciones\Services\DerivacionesSyncService;
 use PDO;
+use PDOException;
 
 class IplPlanificadorController
 {
@@ -59,9 +61,17 @@ class IplPlanificadorController
 
     public function guardarDerivacionManual($form_id, $hc_number, $cod_derivacion, $fecha_registro, $fecha_vigencia, $diagnostico)
     {
-        $stmt = $this->db->prepare("INSERT INTO derivaciones_form_id (form_id, hc_number, cod_derivacion, fecha_registro, fecha_vigencia, diagnostico) VALUES (?, ?, ?, ?, ?, ?)");
         try {
-            $stmt->execute([$form_id, $hc_number, $cod_derivacion, $fecha_registro, $fecha_vigencia, $diagnostico]);
+            $service = new DerivacionesSyncService($this->db);
+            $service->upsertDerivation([
+                'form_id' => $form_id,
+                'hc_number' => $hc_number,
+                'cod_derivacion' => $cod_derivacion,
+                'fecha_registro' => $fecha_registro,
+                'fecha_vigencia' => $fecha_vigencia,
+                'diagnostico' => $diagnostico,
+            ]);
+
             return ['success' => true];
         } catch (PDOException $e) {
             return ['success' => false, 'message' => $e->getMessage()];

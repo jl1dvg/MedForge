@@ -14,10 +14,10 @@ class DerivacionesService
     }
 
     /**
-    * Retorna derivaciones paginadas para DataTable.
-    *
-    * @return array{total:int, filtrados:int, datos:array<int, array<string, mixed>>}
-    */
+     * Retorna derivaciones paginadas para DataTable.
+     *
+     * @return array{total:int, filtrados:int, datos:array<int, array<string, mixed>>}
+     */
     public function obtenerPaginadas(
         int $start,
         int $length,
@@ -31,34 +31,34 @@ class DerivacionesService
         $length = max(1, $length);
 
         $columnMap = [
-            'fecha_creacion' => 'd.fecha_creacion',
-            'cod_derivacion' => 'd.cod_derivacion',
-            'form_id' => 'd.form_id',
-            'hc_number' => 'd.hc_number',
-            'paciente_nombre' => 'paciente_nombre',
-            'referido' => 'd.referido',
-            'fecha_registro' => 'd.fecha_registro',
-            'fecha_vigencia' => 'd.fecha_vigencia',
-            'archivo' => 'd.archivo_derivacion_path',
-            'diagnostico' => 'd.diagnostico',
-            'sede' => 'd.sede',
-            'parentesco' => 'd.parentesco',
+            'fecha_creacion' => 'COALESCE(f.fecha_creacion, f.created_at)',
+            'cod_derivacion' => 'r.referral_code',
+            'form_id' => 'f.iess_form_id',
+            'hc_number' => 'f.hc_number',
+            'paciente_nombre' => "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.lname2)), ''), 'Paciente sin nombre')",
+            'referido' => 'f.referido',
+            'fecha_registro' => 'f.fecha_registro',
+            'fecha_vigencia' => 'COALESCE(r.valid_until, f.fecha_vigencia)',
+            'archivo' => 'f.archivo_derivacion_path',
+            'diagnostico' => 'f.diagnostico',
+            'sede' => 'f.sede',
+            'parentesco' => 'f.parentesco',
         ];
-        $orderColumn = $columnMap[$orderColumn] ?? 'd.fecha_creacion';
+        $orderColumn = $columnMap[$orderColumn] ?? $columnMap['fecha_creacion'];
 
         $where = '';
         $params = [];
 
         if ($search !== '') {
             $where = "WHERE (
-                d.cod_derivacion LIKE :q1 OR
-                d.form_id LIKE :q2 OR
-                d.hc_number LIKE :q3 OR
+                r.referral_code LIKE :q1 OR
+                f.iess_form_id LIKE :q2 OR
+                f.hc_number LIKE :q3 OR
                 COALESCE(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.lname2), '') LIKE :q4 OR
-                d.referido LIKE :q5 OR
-                d.diagnostico LIKE :q6 OR
-                d.sede LIKE :q7 OR
-                d.parentesco LIKE :q8
+                f.referido LIKE :q5 OR
+                f.diagnostico LIKE :q6 OR
+                f.sede LIKE :q7 OR
+                f.parentesco LIKE :q8
             )";
             $like = '%' . $search . '%';
             $params = [
@@ -73,11 +73,14 @@ class DerivacionesService
             ];
         }
 
-        $total = (int) $this->db->query('SELECT COUNT(*) FROM derivaciones_form_id')->fetchColumn();
+        $total = (int) $this->db->query('SELECT COUNT(*) FROM derivaciones_referral_forms')->fetchColumn();
 
         $stmtCount = $this->db->prepare(
-            "SELECT COUNT(*) FROM derivaciones_form_id d
-             LEFT JOIN patient_data p ON p.hc_number = d.hc_number
+            "SELECT COUNT(*)
+             FROM derivaciones_referral_forms df
+             JOIN derivaciones_referrals r ON r.id = df.referral_id
+             JOIN derivaciones_forms f ON f.id = df.form_id
+             LEFT JOIN patient_data p ON p.hc_number = f.hc_number
              $where"
         );
         $stmtCount->execute($params);
@@ -85,30 +88,34 @@ class DerivacionesService
 
         $sql = "
             SELECT
-                d.id,
-                d.cod_derivacion,
-                d.form_id,
-                d.hc_number,
-                d.fecha_creacion,
-                d.fecha_registro,
-                d.fecha_vigencia,
-                d.referido,
-                d.diagnostico,
-                d.sede,
-                d.parentesco,
-                d.archivo_derivacion_path,
+                df.id,
+                r.referral_code AS cod_derivacion,
+                f.iess_form_id AS form_id,
+                f.hc_number,
+                COALESCE(f.fecha_creacion, f.created_at) AS fecha_creacion,
+                f.fecha_registro,
+                COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                f.referido,
+                f.diagnostico,
+                f.sede,
+                f.parentesco,
+                f.archivo_derivacion_path,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.lname2)), ''), 'Paciente sin nombre') AS paciente_nombre
-            FROM derivaciones_form_id d
-            LEFT JOIN patient_data p ON p.hc_number = d.hc_number
+            FROM derivaciones_referral_forms df
+            JOIN derivaciones_referrals r ON r.id = df.referral_id
+            JOIN derivaciones_forms f ON f.id = df.form_id
+            LEFT JOIN patient_data p ON p.hc_number = f.hc_number
             $where
             ORDER BY $orderColumn $orderDir
-            LIMIT $start, $length
+            LIMIT :start, :length
         ";
 
         $stmt = $this->db->prepare($sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
+        $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+        $stmt->bindValue(':length', $length, PDO::PARAM_INT);
         $stmt->execute();
 
         $datos = [];
@@ -126,7 +133,23 @@ class DerivacionesService
     public function buscarPorId(int $id): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT * FROM derivaciones_form_id WHERE id = :id LIMIT 1"
+            "SELECT df.id,
+                    r.referral_code AS cod_derivacion,
+                    f.iess_form_id AS form_id,
+                    f.hc_number,
+                    f.fecha_creacion,
+                    f.fecha_registro,
+                    COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                    f.referido,
+                    f.diagnostico,
+                    f.sede,
+                    f.parentesco,
+                    f.archivo_derivacion_path
+             FROM derivaciones_referral_forms df
+             JOIN derivaciones_referrals r ON r.id = df.referral_id
+             JOIN derivaciones_forms f ON f.id = df.form_id
+             WHERE df.id = :id
+             LIMIT 1"
         );
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);

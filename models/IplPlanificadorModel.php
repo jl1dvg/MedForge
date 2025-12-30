@@ -3,6 +3,7 @@
 namespace Models;
 
 use PDO;
+use Modules\Derivaciones\Services\DerivacionesSyncService;
 
 class IplPlanificadorModel
 {
@@ -100,23 +101,19 @@ class IplPlanificadorModel
 
     public static function verificarOInsertarDerivacion(PDO $db, string $form_id, string $hc_number, array $scraperResponse): void
     {
-        $stmtCheck = $db->prepare("SELECT COUNT(*) FROM derivaciones_form_id WHERE form_id = ? AND cod_derivacion = ?");
-        $stmtCheck->execute([trim($form_id, "'"), $scraperResponse['cod_derivacion'] ?? '']);
-        $existe = $stmtCheck->fetchColumn();
-
-        if ($existe == 0 && !empty($scraperResponse['cod_derivacion'])) {
-            $stmtInsert = $db->prepare("
-                INSERT INTO derivaciones_form_id (cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, diagnostico)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-            $stmtInsert->execute([
-                $scraperResponse['cod_derivacion'],
-                trim($form_id, "'"),
-                trim($hc_number, "'"),
-                $scraperResponse['fecha_registro'] ?? null,
-                $scraperResponse['fecha_vigencia'] ?? null,
-                $scraperResponse['diagnostico'] ?? null
-            ]);
+        $codigo = $scraperResponse['cod_derivacion'] ?? '';
+        if (trim((string) $codigo) === '') {
+            return;
         }
+
+        $service = new DerivacionesSyncService($db);
+        $service->upsertDerivation([
+            'cod_derivacion' => $codigo,
+            'form_id' => trim($form_id, "'"),
+            'hc_number' => trim($hc_number, "'"),
+            'fecha_registro' => $scraperResponse['fecha_registro'] ?? null,
+            'fecha_vigencia' => $scraperResponse['fecha_vigencia'] ?? null,
+            'diagnostico' => $scraperResponse['diagnostico'] ?? null,
+        ]);
     }
 }

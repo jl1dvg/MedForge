@@ -10,6 +10,7 @@ use DatePeriod;
 use Models\BillingMainModel;
 use Modules\CronManager\Repositories\CronTaskRepository;
 use Modules\CiveExtension\Services\HealthCheckService;
+use Modules\Derivaciones\Services\DerivacionesSyncService;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
@@ -96,6 +97,18 @@ class CronRunner
             ];
         }
 
+        $lockKey = $this->buildLockKey($definition['slug']);
+        if (!$this->acquireLock($lockKey)) {
+            return [
+                'slug' => $definition['slug'],
+                'name' => $definition['name'],
+                'status' => 'skipped',
+                'message' => 'La tarea ya se está ejecutando en otro proceso.',
+                'details' => null,
+                'ran' => false,
+            ];
+        }
+
         $logId = $this->repository->startLog((int) $task['id'], $now);
         $startedAt = microtime(true);
 
@@ -143,6 +156,8 @@ class CronRunner
                 'details' => $details,
                 'ran' => true,
             ];
+        } finally {
+            $this->releaseLock($lockKey);
         }
     }
 
@@ -236,6 +251,36 @@ class CronRunner
                 'interval' => 86400,
                 'callback' => function (): array {
                     return $this->runIdentityVerificationExpirationTask();
+                },
+            ],
+            [
+                'slug' => 'iess-derivaciones-sync',
+                'name' => 'Sincronización de derivaciones IESS',
+                'description' => 'Obtiene códigos de derivación y vincula formID en el esquema normalizado.',
+                'interval' => 900,
+                'callback' => function (): array {
+                    $service = new DerivacionesSyncService($this->pdo);
+                    return $service->syncFromLegacyDerivaciones();
+                },
+            ],
+            [
+                'slug' => 'iess-derivaciones-scrape-missing',
+                'name' => 'Scraping de derivaciones faltantes',
+                'description' => 'Ejecuta el scraper para formularios sin código de derivación en billing_main.',
+                'interval' => 900,
+                'callback' => function (): array {
+                    $service = new DerivacionesSyncService($this->pdo);
+                    return $service->scrapeMissingDerivations();
+                },
+            ],
+            [
+                'slug' => 'iess-billing-sync',
+                'name' => 'Sincronización de facturas IESS',
+                'description' => 'Replica facturación asociada a derivaciones hacia la tabla derivaciones_invoices.',
+                'interval' => 900,
+                'callback' => function (): array {
+                    $service = new DerivacionesSyncService($this->pdo);
+                    return $service->syncInvoicesFromBilling();
                 },
             ],
         ];
@@ -566,6 +611,34 @@ class CronRunner
             'message' => sprintf('Se marcaron %d certificaciones como vencidas.', (int) $result['expired']),
             'details' => ['expired' => (int) $result['expired']],
         ];
+    }
+
+    private function buildLockKey(string $slug): string
+    {
+        return 'medforge:cron:' . $slug;
+    }
+
+    private function acquireLock(string $lockKey): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare('SELECT GET_LOCK(:key, 0)');
+            $stmt->execute([':key' => $lockKey]);
+            $result = $stmt->fetchColumn();
+
+            return (int) $result === 1;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function releaseLock(string $lockKey): void
+    {
+        try {
+            $stmt = $this->pdo->prepare('SELECT RELEASE_LOCK(:key)');
+            $stmt->execute([':key' => $lockKey]);
+        } catch (Throwable) {
+            // No need to bubble up release errors
+        }
     }
 
     private function calculateDuration(float $startedAt): int
