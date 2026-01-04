@@ -12,6 +12,7 @@ use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\CRM\Services\PerfexEstimatesParser;
+use Modules\Mail\Services\NotificationMailer;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -24,6 +25,7 @@ class CRMController extends BaseController
     private TicketModel $tickets;
     private ProposalModel $proposals;
     private LeadConfigurationService $leadConfig;
+    private NotificationMailer $mailer;
     private ?array $bodyCache = null;
 
     public function __construct(PDO $pdo)
@@ -35,6 +37,7 @@ class CRMController extends BaseController
         $this->tickets = new TicketModel($pdo);
         $this->proposals = new ProposalModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
+        $this->mailer = new NotificationMailer($pdo);
     }
 
     public function index(): void
@@ -170,6 +173,196 @@ class CRMController extends BaseController
             $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo actualizar el lead'], 500);
+        }
+    }
+
+    public function updateLeadRecordById(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
+
+        $existing = $this->leads->findById($leadId);
+        if (!$existing) {
+            $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+            return;
+        }
+
+        try {
+            $payload = $this->getBody();
+            $updated = $this->leads->updateById($leadId, $payload);
+            if (!$updated) {
+                $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_lead_updated', ['id' => $leadId]);
+            $this->json(['ok' => true, 'data' => $updated]);
+        } catch (InvalidArgumentException|RuntimeException $exception) {
+            $this->json(['ok' => false, 'error' => $exception->getMessage(), 'error_code' => 'validation_failed'], 422);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_update_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el lead', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function showLead(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $lead = $this->leads->findById($leadId);
+            if (!$lead) {
+                $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+                return;
+            }
+
+            $this->json(['ok' => true, 'data' => $lead]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_load_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar el lead', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function updateLeadStatus(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
+
+        $payload = $this->getBody();
+        $status = isset($payload['status']) ? trim((string) $payload['status']) : '';
+        if ($status === '') {
+            $this->json(['ok' => false, 'error' => 'El estado es requerido', 'error_code' => 'status_required'], 422);
+            return;
+        }
+
+        try {
+            $updated = $this->leads->updateStatusById($leadId, $status);
+            if (!$updated) {
+                $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_lead_status_updated', [
+                'lead_id' => $leadId,
+                'status' => $status,
+            ]);
+
+            $this->json(['ok' => true, 'data' => $updated]);
+        } catch (InvalidArgumentException|RuntimeException $exception) {
+            $this->json(['ok' => false, 'error' => $exception->getMessage(), 'error_code' => 'validation_failed'], 422);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_status_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el estado', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function leadMeta(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $this->json([
+                'ok' => true,
+                'data' => [
+                    'statuses' => $this->leads->getStatuses(),
+                    'sources' => $this->leads->getSources(),
+                    'assignable' => $this->getAssignableUsers(),
+                    'lost_stage' => $this->leadConfig->getLostStage(),
+                    'won_stage' => $this->leadConfig->getWonStage(),
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_meta_failed', ['message' => $exception->getMessage()]);
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar la configuración de leads', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function leadMetrics(): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        try {
+            $metrics = $this->leads->getMetrics();
+            $this->auditCrm('crm_leads_metrics');
+            $this->json(['ok' => true, 'data' => $metrics]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_metrics_failed', ['message' => $exception->getMessage()]);
+            $this->json(['ok' => false, 'error' => 'No se pudieron obtener las métricas', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function composeLeadMail(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
+
+        try {
+            $lead = $this->leads->findById($leadId);
+            if (!$lead) {
+                $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+                return;
+            }
+
+            $draft = $this->buildLeadMailDraft($lead, $this->getQuery('status') ?: null);
+            if ($draft['to'] === '') {
+                $this->json(['ok' => false, 'error' => 'El lead no tiene correo electrónico', 'error_code' => 'email_required'], 422);
+                return;
+            }
+
+            $this->auditCrm('crm_lead_mail_compose', ['lead_id' => $leadId]);
+            $this->json(['ok' => true, 'data' => $draft]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_mail_compose_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'error' => 'No se pudo preparar el correo', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function sendLeadMailTemplate(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.leads.manage');
+
+        try {
+            $payload = $this->getBody();
+            $status = isset($payload['status']) ? (string) $payload['status'] : ($payload['template_key'] ?? null);
+
+            $lead = $this->leads->findById($leadId);
+            if (!$lead) {
+                $this->json(['ok' => false, 'error' => 'Lead no encontrado', 'error_code' => 'lead_not_found'], 404);
+                return;
+            }
+
+            $draft = $this->buildLeadMailDraft($lead, $status);
+            if ($draft['to'] === '') {
+                $this->json(['ok' => false, 'error' => 'El lead no tiene correo electrónico', 'error_code' => 'email_required'], 422);
+                return;
+            }
+
+            $this->mailer->sendPatientUpdate($draft['to'], $draft['subject'], $draft['body']);
+            $this->auditCrm('crm_lead_mail_sent', ['lead_id' => $leadId, 'status' => $status]);
+
+            $this->json(['ok' => true, 'data' => ['sent' => true]]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_mail_send_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'error' => 'No se pudo enviar el correo', 'error_code' => 'server_error'], 500);
         }
     }
 
@@ -668,6 +861,53 @@ class CRMController extends BaseController
         $this->bodyCache = is_array($decoded) ? $decoded : [];
 
         return $this->bodyCache;
+    }
+
+    /**
+     * @param array<string, mixed> $lead
+     */
+    private function buildLeadMailDraft(array $lead, ?string $statusOverride = null): array
+    {
+        $name = trim((string) ($lead['name'] ?? ''));
+        $greeting = $name !== '' ? 'Hola ' . $name : 'Hola';
+
+        $status = $statusOverride !== null && $statusOverride !== ''
+            ? $this->leadConfig->normalizeStage($statusOverride, false)
+            : ($lead['status'] ?? null);
+
+        $subjectParts = ['Actualización de tu caso'];
+        if (is_string($status) && $status !== '') {
+            $subjectParts[] = $status;
+        }
+
+        $body = [
+            $greeting . ' 👋',
+            'Te escribimos para actualizar el estado de tu solicitud en MedForge.',
+        ];
+
+        if (is_string($status) && $status !== '') {
+            $body[] = 'Estado: ' . $status;
+        }
+
+        if (!empty($lead['hc_number'])) {
+            $body[] = 'Referencia: ' . $lead['hc_number'];
+        }
+
+        if (!empty($lead['assigned_name'])) {
+            $body[] = 'Asesor asignado: ' . $lead['assigned_name'];
+        }
+
+        $body[] = 'Si tienes dudas, responde a este correo y con gusto te ayudamos.';
+
+        return [
+            'to' => trim((string) ($lead['email'] ?? '')),
+            'subject' => implode(' | ', array_filter($subjectParts)),
+            'body' => implode("\n\n", array_filter($body)),
+            'context' => [
+                'lead_id' => $lead['id'] ?? null,
+                'status' => $status,
+            ],
+        ];
     }
 
     private function getCurrentUserId(): ?int
