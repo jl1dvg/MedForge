@@ -32,9 +32,10 @@ $facturas = $billingController->obtenerFacturasDisponibles();
 
 $pacientesCache = [];
 $datosCache = [];
+$cacheDerivaciones = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], $categoria);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], $categoria, $cacheDerivaciones);
 
 $formIdsConsolidado = [];
 foreach ($consolidado as $pacientesDelMes) {

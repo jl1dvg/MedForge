@@ -132,6 +132,56 @@ class BillingController
 
     public function obtenerDerivacionPorFormId($formId)
     {
+        // Nueva estructura normalizada (derivaciones_forms + derivaciones_referrals)
+        // Nota: rf.form_id referencia al ID interno de derivaciones_forms (no al iess_form_id)
+        $stmt = $this->db->prepare(
+            "SELECT
+                df.iess_form_id   AS form_id,
+                df.hc_number      AS hc_number,
+                df.fecha_creacion AS fecha_creacion,
+                COALESCE(df.fecha_registro, dr.issued_at) AS fecha_registro,
+                COALESCE(df.fecha_vigencia, dr.valid_until) AS fecha_vigencia,
+                df.referido,
+                df.diagnostico,
+                df.sede,
+                df.parentesco,
+                df.archivo_derivacion_path,
+                df.payer,
+                df.afiliacion_raw,
+                dr.referral_code  AS cod_derivacion,
+                dr.referral_code  AS codigo_derivacion,
+                dr.status         AS estado_derivacion,
+                dr.issued_at      AS issued_at,
+                dr.valid_until    AS valid_until,
+                dr.source         AS source,
+                dr.priority       AS priority,
+                dr.service_type   AS service_type,
+                rf.status         AS link_status,
+                rf.linked_at      AS linked_at,
+                rf.form_id        AS derivacion_form_id
+            FROM derivaciones_forms df
+            LEFT JOIN derivaciones_referral_forms rf ON rf.form_id = df.id
+            LEFT JOIN derivaciones_referrals dr ON dr.id = rf.referral_id
+            WHERE df.iess_form_id = ?
+            ORDER BY COALESCE(rf.linked_at, df.updated_at) DESC, df.id DESC
+            LIMIT 1"
+        );
+        $stmt->execute([$formId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row !== false) {
+            // Asegurar compatibilidad con claves legacy usadas en las vistas
+            if (empty($row['fecha_registro']) && !empty($row['issued_at'])) {
+                $row['fecha_registro'] = $row['issued_at'];
+            }
+            if (empty($row['fecha_vigencia']) && !empty($row['valid_until'])) {
+                $row['fecha_vigencia'] = $row['valid_until'];
+            }
+
+            return $row;
+        }
+
+        // Fallback a tabla legacy para instalaciones antiguas
         $stmt = $this->db->prepare("SELECT * FROM derivaciones_form_id WHERE form_id = ?");
         $stmt->execute([$formId]);
         return $stmt->fetch(PDO::FETCH_ASSOC); // Devuelve un array con todas las columnas

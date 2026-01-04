@@ -19,9 +19,10 @@ $facturas = $billingController->obtenerFacturasDisponibles();
 
 $pacientesCache = [];
 $datosCache = [];
+$cacheDerivaciones = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], null, $cacheDerivaciones);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();

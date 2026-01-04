@@ -188,7 +188,8 @@ class InformesHelper
         BillingController $billingController,
         PacienteService   $pacienteService,
         array             $afiliacionesPermitidas = [],
-        ?string           $categoriaFiltro = null
+        ?string           $categoriaFiltro = null,
+        array             &$cacheDerivaciones = []
     ): array
     {
         $categoriaFiltro = $categoriaFiltro ? strtolower(trim($categoriaFiltro)) : null;
@@ -196,6 +197,9 @@ class InformesHelper
         if ($categoriaFiltro && !in_array($categoriaFiltro, $categoriasValidas, true)) {
             $categoriaFiltro = null;
         }
+
+        $hcFiltro = trim((string)($filtros['hc_number'] ?? ''));
+        $derivacionFiltro = $filtros['derivacion'] ?? '';
 
         $consolidado = [];
 
@@ -206,6 +210,22 @@ class InformesHelper
             }
             $afiliacion = self::normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
             if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas, true)) continue;
+
+            if ($hcFiltro !== '') {
+                $cedulaPaciente = (string)($pacienteInfo['cedula'] ?? $pacienteInfo['ci'] ?? $pacienteInfo['identificacion'] ?? '');
+                $esCedulaCompleta = ctype_digit($hcFiltro) && strlen($hcFiltro) === 10;
+
+                $coincideHC = $esCedulaCompleta && $cedulaPaciente !== ''
+                    ? $cedulaPaciente === $hcFiltro
+                    : (
+                        stripos((string)$factura['hc_number'], $hcFiltro) !== false
+                        || ($cedulaPaciente !== '' && stripos($cedulaPaciente, $hcFiltro) !== false)
+                    );
+
+                if (!$coincideHC) {
+                    continue;
+                }
+            }
 
             $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
             if (!$datosPaciente) continue;
@@ -225,6 +245,18 @@ class InformesHelper
                 continue;
             }
 
+            if (!isset($cacheDerivaciones[$factura['form_id']])) {
+                $cacheDerivaciones[$factura['form_id']] = $billingController->obtenerDerivacionPorFormId($factura['form_id']);
+            }
+            $derivacion = $cacheDerivaciones[$factura['form_id']];
+            $tieneDerivacion = !empty($derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null);
+            if ($derivacionFiltro === 'con' && !$tieneDerivacion) {
+                continue;
+            }
+            if ($derivacionFiltro === 'sin' && $tieneDerivacion) {
+                continue;
+            }
+
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
                 'hc_number' => $factura['hc_number'],
@@ -233,10 +265,90 @@ class InformesHelper
                 'total' => $total,
                 'id' => $factura['id'],
                 'categoria' => $categoria,
+                'derivacion' => $derivacion,
             ];
         }
 
         return $consolidado;
+    }
+
+    public static function agruparConsolidadoPorPaciente(
+        array $consolidadoPorCategoria,
+        array &$pacientesCache,
+        array &$datosCache,
+        array &$cacheDerivaciones,
+        PacienteService $pacienteService,
+        BillingController $billingController
+    ): array {
+        $agrupadoPorCategoria = [];
+
+        foreach ($consolidadoPorCategoria as $categoria => $pacientesPorMes) {
+            foreach ($pacientesPorMes as $mes => $grupoPacientes) {
+                foreach ($grupoPacientes as $p) {
+                    if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
+                        $p['fecha_ordenada'] = $p['fecha'];
+                    }
+                    $fechaOrdenada = $p['fecha_ordenada'] ?? '';
+                    if (empty($fechaOrdenada)) {
+                        continue;
+                    }
+                    $hc = $p['hc_number'];
+                    $mesKey = $mes ?: date('Y-m', strtotime($fechaOrdenada));
+                    if (!isset($agrupadoPorCategoria[$categoria][$mesKey][$hc])) {
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc] = [
+                            'paciente' => $p,
+                            'form_ids' => [],
+                            'fecha_ingreso' => $fechaOrdenada,
+                            'fecha_egreso' => $fechaOrdenada,
+                            'total' => 0,
+                            'procedimientos' => [],
+                            'cie10' => [],
+                            'cod_derivacion' => [],
+                            'afiliacion' => '',
+                            'facturas' => 0,
+                            'derivacion' => $p['derivacion'] ?? null,
+                        ];
+                    }
+
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['facturas']++;
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['form_ids'][] = $p['form_id'];
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_ingreso'] = $agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_ingreso']
+                        ? min($agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_ingreso'], $fechaOrdenada)
+                        : $fechaOrdenada;
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_egreso'] = $agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_egreso']
+                        ? max($agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_egreso'], $fechaOrdenada)
+                        : $fechaOrdenada;
+
+                    if (!isset($datosCache[$p['form_id']])) {
+                        $datosCache[$p['form_id']] = $billingController->obtenerDatos($p['form_id']);
+                    }
+                    $datosPaciente = $datosCache[$p['form_id']];
+                    if ($datosPaciente) {
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
+                    }
+
+                    if (!isset($cacheDerivaciones[$p['form_id']])) {
+                        $cacheDerivaciones[$p['form_id']] = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                    }
+                    $derivacion = $p['derivacion'] ?? $cacheDerivaciones[$p['form_id']];
+                    if (!empty($derivacion['diagnostico'])) {
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
+                    }
+                    $codigoDerivacion = $derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null;
+                    if (!empty($codigoDerivacion)) {
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cod_derivacion'][] = $codigoDerivacion;
+                    }
+
+                    if (!isset($pacientesCache[$hc])) {
+                        $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
+                    }
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
+                }
+            }
+        }
+
+        return $agrupadoPorCategoria;
     }
 
     public static function normalizarAfiliacion($str)
