@@ -291,26 +291,12 @@ class LeadModel
             return null;
         }
 
-        $targetHc = $lead['hc_number'];
-        if (array_key_exists('hc_number', $data)) {
-            $candidate = $this->identityService->normalizeHcNumber((string) $data['hc_number']);
-            if ($candidate === '') {
-                throw new InvalidArgumentException('El campo hc_number es obligatorio.');
-            }
-
-            $this->assertHcNumberAvailable($candidate, $lead['hc_number']);
-            $targetHc = $candidate;
-        }
+        // Mantener hc_number inmutable y evitar side-effects inesperados.
+        unset($data['hc_number']);
 
         $fields = [];
         $params = [':current_hc' => $lead['hc_number']];
         $types = [':current_hc' => PDO::PARAM_STR];
-
-        if ($targetHc !== $lead['hc_number']) {
-            $fields[] = 'hc_number = :hc_number';
-            $params[':hc_number'] = $targetHc;
-            $types[':hc_number'] = PDO::PARAM_STR;
-        }
 
         $providedName = array_key_exists('name', $data) ? trim((string) $data['name']) : null;
         $providedFirst = array_key_exists('first_name', $data) ? trim((string) $data['first_name']) : null;
@@ -423,9 +409,9 @@ class LeadModel
 
         $stmt->execute();
 
-        $actualizado = $this->findByHcNumber($targetHc);
+        $actualizado = $this->findByHcNumber($lead['hc_number']);
         if ($actualizado) {
-            $identity = $this->identityService->ensureIdentity($targetHc, [
+            $identity = $this->identityService->ensureIdentity($actualizado['hc_number'], [
                 'customer' => [
                     'name' => $actualizado['name'] ?? '',
                     'email' => $actualizado['email'] ?? null,
@@ -452,6 +438,18 @@ class LeadModel
         return $actualizado;
     }
 
+    public function updateById(int $leadId, array $data): ?array
+    {
+        $lead = $this->findById($leadId);
+        if (!$lead || empty($lead['hc_number'])) {
+            return null;
+        }
+
+        unset($data['hc_number']);
+
+        return $this->update((string) $lead['hc_number'], $data);
+    }
+
     public function updateStatus(string $hcNumber, string $status): ?array
     {
         $normalized = $this->identityService->normalizeHcNumber($hcNumber);
@@ -472,6 +470,89 @@ class LeadModel
         }
 
         return $actualizado;
+    }
+
+    public function updateStatusById(int $leadId, string $status): ?array
+    {
+        $lead = $this->findById($leadId);
+        if (!$lead || empty($lead['hc_number'])) {
+            return null;
+        }
+
+        return $this->updateStatus((string) $lead['hc_number'], $status);
+    }
+
+    /**
+     * @return array{total:int, by_status: array<string,int>, lost: array{count:int, percentage:float}}
+     */
+    public function getMetrics(): array
+    {
+        $stmt = $this->pdo->query('SELECT status, COUNT(*) as total FROM crm_leads GROUP BY status');
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $pipeline = $this->getStatuses();
+        $counts = [];
+        $normalizedMap = [];
+        $total = 0;
+
+        foreach ($pipeline as $stage) {
+            $counts[$stage] = 0;
+            $normalized = $this->configService->normalizeStage($stage, false);
+            if ($normalized !== '') {
+                $normalizedMap[$normalized] = $stage;
+            }
+        }
+
+        $unknown = [];
+        $withoutStatus = 0;
+
+        foreach ($rows as $row) {
+            $status = $row['status'] ?? null;
+            $count = (int) ($row['total'] ?? 0);
+            $total += $count;
+
+            if ($status === null || $status === '') {
+                $withoutStatus += $count;
+                continue;
+            }
+
+            $normalized = $this->configService->normalizeStage($status, false);
+            if ($normalized !== '' && isset($normalizedMap[$normalized])) {
+                $counts[$normalizedMap[$normalized]] = ($counts[$normalizedMap[$normalized]] ?? 0) + $count;
+                continue;
+            }
+
+            $unknown[$status] = ($unknown[$status] ?? 0) + $count;
+        }
+
+        $byStatus = $counts;
+        if ($withoutStatus > 0) {
+            $byStatus['Sin estado'] = $withoutStatus;
+        }
+
+        foreach ($unknown as $label => $count) {
+            $byStatus[$label] = $count;
+        }
+
+        $lostStage = $this->configService->normalizeStage($this->configService->getLostStage() ?? '', false);
+        $lostCount = 0;
+        foreach ($byStatus as $status => $count) {
+            $normalizedStatus = $this->configService->normalizeStage((string) $status, false);
+            if ($lostStage !== '' && $normalizedStatus === $lostStage) {
+                $lostCount += $count;
+            }
+        }
+
+        $lostPercentage = $total > 0 ? round(($lostCount / $total) * 100, 2) : 0.0;
+
+        return [
+            'total' => $total,
+            'by_status' => $byStatus,
+            'lost' => [
+                'count' => $lostCount,
+                'percentage' => $lostPercentage,
+            ],
+        ];
     }
 
     public function attachCustomer(string $hcNumber, int $customerId): void

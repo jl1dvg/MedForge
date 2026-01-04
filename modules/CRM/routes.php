@@ -16,12 +16,40 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
         (new CRMController($pdo))->listLeads();
     });
 
+    $router->get('/crm/leads/meta', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->leadMeta();
+    });
+
+    $router->get('/crm/leads/metrics', static function (\PDO $pdo): void {
+        (new CRMController($pdo))->leadMetrics();
+    });
+
     $router->post('/crm/leads', static function (\PDO $pdo): void {
         (new CRMController($pdo))->createLead();
     });
 
     $router->post('/crm/leads/update', static function (\PDO $pdo): void {
         (new CRMController($pdo))->updateLead();
+    });
+
+    $router->match(['PUT'], '/crm/leads/{id}', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->updateLeadRecordById((int) $id);
+    });
+
+    $router->get('/crm/leads/{id}', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->showLead((int) $id);
+    });
+
+    $router->match(['PATCH'], '/crm/leads/{id}/status', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->updateLeadStatus((int) $id);
+    });
+
+    $router->get('/crm/leads/{id}/mail/compose', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->composeLeadMail((int) $id);
+    });
+
+    $router->post('/crm/leads/{id}/mail/send-template', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->sendLeadMailTemplate((int) $id);
     });
 
     $router->post('/crm/leads/convert', static function (\PDO $pdo): void {
@@ -62,18 +90,6 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
 
     $router->post('/crm/tickets/reply', static function (\PDO $pdo): void {
         (new CRMController($pdo))->replyTicket();
-    });
-
-    $router->get('/crm/proposals/{id}', static function (\PDO $pdo, string $id): void {
-        (new CRMController($pdo))->showProposal((int) $id);
-    });
-
-    $router->get('/crm/proposals/{id}', static function (\PDO $pdo, string $id): void {
-        (new CRMController($pdo))->getProposal((int) $id);
-    });
-
-    $router->get('/crm/proposals/{id}', static function (\PDO $pdo, string $id): void {
-        (new CRMController($pdo))->showProposal((int) $id);
     });
 
     $router->get('/crm/proposals/{id}', static function (\PDO $pdo, string $id): void {
