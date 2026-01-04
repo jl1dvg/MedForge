@@ -623,12 +623,15 @@ $formulario = $datos['formulario'] ?? [];
                                     // $filtros ya está definido arriba
                                     $pacientesCache = $cachePorMes[$mesSeleccionado]['pacientes'] ?? [];
                                     $datosCache = $cachePorMes[$mesSeleccionado]['datos'] ?? [];
+                                    $cacheDerivaciones = [];
                                     $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
                                         $facturas,
                                         $filtros,
                                         $billingController,
                                         $pacienteService,
-                                        $afiliacionesISSFA
+                                        $afiliacionesISSFA,
+                                        null,
+                                        $cacheDerivaciones
                                     );
                                     foreach ($consolidado as $mes => $pacientes) {
                                         // Aplicar filtros de apellido usando helper

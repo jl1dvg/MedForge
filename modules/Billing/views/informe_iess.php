@@ -22,6 +22,19 @@ $excelButtons = $grupoConfig['excelButtons'] ?? [];
 $scrapeButtonLabel = $grupoConfig['scrapeButtonLabel'] ?? '📋 Ver todas las atenciones por cobrar';
 $consolidadoTitulo = $grupoConfig['consolidadoTitulo'] ?? 'Consolidado mensual de pacientes';
 $enableApellidoFilter = !empty($grupoConfig['enableApellidoFilter']);
+$tableOptions = $grupoConfig['tableOptions'] ?? [];
+$pageLength = isset($tableOptions['pageLength']) ? (int)$tableOptions['pageLength'] : 25;
+$defaultOrder = $tableOptions['defaultOrder'] ?? 'fecha_ingreso_desc';
+$orderMap = [
+    'fecha_ingreso_desc' => ['column' => 5, 'dir' => 'desc'],
+    'fecha_ingreso_asc' => ['column' => 5, 'dir' => 'asc'],
+    'nombre_asc' => ['column' => 4, 'dir' => 'asc'],
+    'nombre_desc' => ['column' => 4, 'dir' => 'desc'],
+    'monto_desc' => ['column' => 11, 'dir' => 'desc'],
+    'monto_asc' => ['column' => 11, 'dir' => 'asc'],
+];
+$defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 5;
+$defaultOrderDir = $orderMap[$defaultOrder]['dir'] ?? 'desc';
 $afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
 if (empty($afiliacionesPermitidas)) {
     $afiliacionesPermitidas = [
@@ -130,6 +143,31 @@ $afiliacionesPermitidas = array_map(
                                 </div>
                             <?php endif; ?>
 
+                            <div class="col-md-4">
+                                <label for="hc_number" class="form-label fw-bold">
+                                    <i class="mdi mdi-card-account-details"></i> Filtrar por cédula/HC:
+                                </label>
+                                <input
+                                        type="text"
+                                        id="hc_number"
+                                        name="hc_number"
+                                        class="form-control"
+                                        value="<?= htmlspecialchars($filtros['hc_number'] ?? '') ?>"
+                                        placeholder="Ej: 0102345678"
+                                >
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="derivacion" class="form-label fw-bold">
+                                    <i class="mdi mdi-map-marker-check"></i> Derivación:
+                                </label>
+                                <select name="derivacion" id="derivacion" class="form-select">
+                                    <option value="">Todas</option>
+                                    <option value="con" <?= ($filtros['derivacion'] ?? '') === 'con' ? 'selected' : '' ?>>Solo con código</option>
+                                    <option value="sin" <?= ($filtros['derivacion'] ?? '') === 'sin' ? 'selected' : '' ?>>Solo sin código</option>
+                                </select>
+                            </div>
+
                             <div class="col-md-4 d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="mdi mdi-magnify"></i> Buscar
@@ -231,7 +269,9 @@ $afiliacionesPermitidas = array_map(
                             $filtros,
                             $billingController,
                             $pacienteService,
-                            $afiliacionesPermitidas
+                            $afiliacionesPermitidas,
+                            null,
+                            $cacheDerivaciones
                         );
 
                         $categoriasIess = [
@@ -255,71 +295,14 @@ $afiliacionesPermitidas = array_map(
                             }
                         }
 
-                        $consolidadoAgrupadoPorCategoria = [];
-                        $buildConsolidadoAgrupado = function (array $pacientesPorMes) use (&$pacientesCache, &$datosCache, $pacienteService, $billingController, &$cacheDerivaciones) {
-                            $agrupado = [];
-                            foreach ($pacientesPorMes as $mes => $grupoPacientes) {
-                                foreach ($grupoPacientes as $p) {
-                                    if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
-                                        $p['fecha_ordenada'] = $p['fecha'];
-                                    }
-                                    $fechaOrdenada = $p['fecha_ordenada'] ?? '';
-                                    if (empty($fechaOrdenada)) {
-                                        continue;
-                                    }
-                                    $hc = $p['hc_number'];
-                                    $mesKey = $mes ?: date('Y-m', strtotime($fechaOrdenada));
-                                    if (!isset($agrupado[$mesKey][$hc])) {
-                                        $agrupado[$mesKey][$hc] = [
-                                            'paciente' => $p,
-                                            'form_ids' => [],
-                                            'fecha_ingreso' => $fechaOrdenada,
-                                            'fecha_egreso' => $fechaOrdenada,
-                                            'total' => 0,
-                                            'procedimientos' => [],
-                                            'cie10' => [],
-                                            'cod_derivacion' => [],
-                                            'afiliacion' => '',
-                                        ];
-                                    }
-                                    $agrupado[$mesKey][$hc]['form_ids'][] = $p['form_id'];
-                                    $agrupado[$mesKey][$hc]['fecha_ingreso'] = $agrupado[$mesKey][$hc]['fecha_ingreso'] ? min($agrupado[$mesKey][$hc]['fecha_ingreso'], $fechaOrdenada) : $fechaOrdenada;
-                                    $agrupado[$mesKey][$hc]['fecha_egreso'] = $agrupado[$mesKey][$hc]['fecha_egreso'] ? max($agrupado[$mesKey][$hc]['fecha_egreso'], $fechaOrdenada) : $fechaOrdenada;
-
-                                    if (!isset($datosCache[$p['form_id']])) {
-                                        $datosCache[$p['form_id']] = $billingController->obtenerDatos($p['form_id']);
-                                    }
-                                    $datosPaciente = $datosCache[$p['form_id']];
-                                    if ($datosPaciente) {
-                                        $agrupado[$mesKey][$hc]['total'] += InformesHelper::calcularTotalFactura($datosPaciente, $billingController);
-                                        $agrupado[$mesKey][$hc]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
-                                    }
-
-                                    $formIdLoop = $p['form_id'];
-                                    if (!isset($cacheDerivaciones[$formIdLoop])) {
-                                        $cacheDerivaciones[$formIdLoop] = $billingController->obtenerDerivacionPorFormId($formIdLoop);
-                                    }
-                                    $derivacion = $cacheDerivaciones[$formIdLoop];
-                                    if (!empty($derivacion['diagnostico'])) {
-                                        $agrupado[$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
-                                    }
-                                    if (!empty($derivacion['cod_derivacion'])) {
-                                        $agrupado[$mesKey][$hc]['cod_derivacion'][] = $derivacion['cod_derivacion'];
-                                    }
-
-                                    if (!isset($pacientesCache[$hc])) {
-                                        $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
-                                    }
-                                    $agrupado[$mesKey][$hc]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
-                                }
-                            }
-
-                            return $agrupado;
-                        };
-
-                        foreach ($consolidadoPorCategoria as $categoria => $pacientesPorMes) {
-                            $consolidadoAgrupadoPorCategoria[$categoria] = $buildConsolidadoAgrupado($pacientesPorMes);
-                        }
+                        $consolidadoAgrupadoPorCategoria = InformesHelper::agruparConsolidadoPorPaciente(
+                            $consolidadoPorCategoria,
+                            $pacientesCache,
+                            $datosCache,
+                            $cacheDerivaciones,
+                            $pacienteService,
+                            $billingController
+                        );
                         ?>
                         <ul class="nav nav-tabs" role="tablist">
                             <?php foreach ($categoriasIess as $slug => $label): ?>
@@ -357,16 +340,38 @@ $afiliacionesPermitidas = array_map(
                                             $listaPacientes = array_values($pacientesAgrupados);
                                             $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
                                             $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                            $facturasMes = array_sum(array_map(static fn($info) => (int) ($info['facturas'] ?? count($info['form_ids'] ?? [])), $pacientesAgrupados));
                                             ?>
                                             <div class="d-flex justify-content-between align-items-center mt-4">
                                                 <h5>Mes: <?= $mesFormateado ?></h5>
-                                                <div>🧮 Total pacientes: <?= count($pacientesAgrupados) ?> &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?></div>
+                                                <div>
+                                                    🧮 Pacientes únicos: <?= count($pacientesAgrupados) ?>
+                                                    &nbsp;&nbsp; 📄 Facturas: <?= $facturasMes ?>
+                                                    &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                                                <div class="text-muted small">Selecciona filas sin código de derivación para lanzar el scraping en lote.</div>
+                                                <form method="post" action="<?= htmlspecialchars($basePath) ?>" class="d-flex gap-2 align-items-center bulk-derivaciones-form">
+                                                    <input type="hidden" name="scrape_derivacion" value="1">
+                                                    <div class="bulk-derivaciones-fields"></div>
+                                                    <button type="submit" class="btn btn-warning btn-sm bulk-derivaciones-submit" disabled>
+                                                        <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
+                                                    </button>
+                                                </form>
                                             </div>
 
                                             <div class="table-responsive" style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                                <table class="table table-striped table-hover table-sm invoice-archive sticky-header">
+                                                <table
+                                                        class="table table-striped table-hover table-sm invoice-archive sticky-header consolidado-table"
+                                                        data-page-length="<?= $pageLength ?>"
+                                                        data-order-column="<?= $defaultOrderColumn ?>"
+                                                        data-order-dir="<?= htmlspecialchars($defaultOrderDir) ?>"
+                                                >
                                                     <thead class="bg-success-light">
                                                     <tr>
+                                                        <th class="text-center"><input type="checkbox" class="form-check-input select-all-derivaciones" title="Seleccionar visibles (filas sin código)"></th>
                                                         <th>#</th>
                                                         <th>🏛️</th>
                                                         <th>🪪 Cédula</th>
@@ -392,8 +397,18 @@ $afiliacionesPermitidas = array_map(
                                                         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
                                                         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
                                                         $formIdsPaciente = implode(', ', $info['form_ids']);
+                                                        $puedeSeleccionar = empty($codigoDerivacion);
                                                         ?>
                                                         <tr style='font-size: 12.5px;'>
+                                                            <td class="text-center">
+                                                                <input
+                                                                        type="checkbox"
+                                                                        class="form-check-input select-derivacion"
+                                                                        data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
+                                                                        data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
+                                                                        <?= $puedeSeleccionar ? '' : 'disabled' ?>
+                                                                >
+                                                            </td>
                                                             <td class="text-center"><?= $n ?></td>
                                                             <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
                                                             <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
@@ -482,3 +497,93 @@ $afiliacionesPermitidas = array_map(
         </div>
     </div>
 </section>
+
+<script>
+    $(function () {
+        const attachBulkSelection = function ($table, dataTableInstance) {
+            if ($table.data('bulk-init')) {
+                return;
+            }
+            $table.data('bulk-init', true);
+            const $bulkForm = $table.closest('.tab-pane').find('.bulk-derivaciones-form');
+            const $fieldsContainer = $bulkForm.find('.bulk-derivaciones-fields');
+            const $submitBtn = $bulkForm.find('.bulk-derivaciones-submit');
+
+            const getRows = function () {
+                if (dataTableInstance && dataTableInstance.rows) {
+                    return dataTableInstance.rows({search: 'applied', page: 'all'}).nodes();
+                }
+                return $table.find('tbody tr');
+            };
+
+            const syncSelection = function () {
+                $fieldsContainer.empty();
+                let seleccionadas = 0;
+                const $rows = getRows();
+
+                $($rows).find('.select-derivacion:checked').each(function () {
+                    const formIds = String($(this).data('form-ids') || '').split(',').map(v => v.trim()).filter(Boolean);
+                    const hc = $(this).data('hc');
+                    formIds.forEach(function (fid) {
+                        $fieldsContainer.append('<input type="hidden" name="form_id_scrape[]" value="' + fid + '">');
+                        $fieldsContainer.append('<input type="hidden" name="hc_number_scrape[]" value="' + hc + '">');
+                        seleccionadas++;
+                    });
+                });
+
+                $submitBtn.prop('disabled', seleccionadas === 0);
+            };
+
+            $table.off('change.bulkSelectDerivacion').on('change.bulkSelectDerivacion', '.select-derivacion', syncSelection);
+            $table.off('change.bulkSelectAllDerivacion').on('change.bulkSelectAllDerivacion', '.select-all-derivaciones', function () {
+                const checked = $(this).is(':checked');
+                const nodes = getRows();
+                $(nodes).find('.select-derivacion:enabled').prop('checked', checked);
+                syncSelection();
+            });
+
+            syncSelection();
+        };
+
+        const initConsolidadoTables = function () {
+            $('.consolidado-table').each(function () {
+                const $table = $(this);
+                const pageLength = parseInt($table.data('page-length'), 10) || 25;
+                const orderColumn = parseInt($table.data('order-column'), 10);
+                const orderDir = ($table.data('order-dir') || 'desc').toLowerCase();
+
+                const options = {
+                    paging: true,
+                    lengthChange: true,
+                    searching: true,
+                    ordering: true,
+                    info: true,
+                    autoWidth: false,
+                    pageLength: pageLength,
+                };
+
+                if (!Number.isNaN(orderColumn)) {
+                    options.order = [[orderColumn, orderDir]];
+                }
+
+                let dataTableInstance = null;
+                if ($.fn.dataTable && $.fn.dataTable.isDataTable($table)) {
+                    dataTableInstance = $table.DataTable();
+                } else if ($.fn.DataTable) {
+                    dataTableInstance = $table.DataTable(options);
+                }
+
+                attachBulkSelection($table, dataTableInstance);
+            });
+        };
+
+        const waitForDataTables = window.dataTablesReadyPromise;
+        if (waitForDataTables && typeof waitForDataTables.then === 'function') {
+            waitForDataTables.then(initConsolidadoTables).catch(initConsolidadoTables);
+        } else if ($.fn && $.fn.DataTable) {
+            initConsolidadoTables();
+        } else {
+            setTimeout(initConsolidadoTables, 600);
+        }
+    });
+</script>

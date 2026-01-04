@@ -815,6 +815,20 @@ class SettingsHelper
                             array_merge(self::textField('billing_informes_iess_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Ver todas las atenciones por cobrar']),
                             array_merge(self::textField('billing_informes_iess_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes IESS']),
                             self::checkboxField('billing_informes_iess_apellido_filter', 'Habilitar filtro por apellido'),
+                            self::numberField('billing_informes_iess_table_page_length', 'Pacientes por página', 25, 'Cantidad de filas visibles por defecto en el consolidado.'),
+                            self::selectField(
+                                'billing_informes_iess_table_order',
+                                'Orden predeterminado de la tabla',
+                                [
+                                    'fecha_ingreso_desc' => 'Fecha de ingreso (más recientes primero)',
+                                    'fecha_ingreso_asc' => 'Fecha de ingreso (más antiguos primero)',
+                                    'nombre_asc' => 'Nombre (A-Z)',
+                                    'nombre_desc' => 'Nombre (Z-A)',
+                                    'monto_desc' => 'Monto (mayor a menor)',
+                                    'monto_asc' => 'Monto (menor a mayor)',
+                                ],
+                                'fecha_ingreso_desc'
+                            ),
                             self::textareaField(
                                 'billing_informes_code_mapping',
                                 'Tabla de mapeo códigos internos → externos',
@@ -846,6 +860,20 @@ class SettingsHelper
                             array_merge(self::textField('billing_informes_isspol_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Obtener código de derivación']),
                             array_merge(self::textField('billing_informes_isspol_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes ISSPOL']),
                             self::checkboxField('billing_informes_isspol_apellido_filter', 'Habilitar filtro por apellido', true),
+                            self::numberField('billing_informes_isspol_table_page_length', 'Pacientes por página', 25, 'Cantidad de filas visibles por defecto en el consolidado.'),
+                            self::selectField(
+                                'billing_informes_isspol_table_order',
+                                'Orden predeterminado de la tabla',
+                                [
+                                    'fecha_ingreso_desc' => 'Fecha de ingreso (más recientes primero)',
+                                    'fecha_ingreso_asc' => 'Fecha de ingreso (más antiguos primero)',
+                                    'nombre_asc' => 'Nombre (A-Z)',
+                                    'nombre_desc' => 'Nombre (Z-A)',
+                                    'monto_desc' => 'Monto (mayor a menor)',
+                                    'monto_asc' => 'Monto (menor a mayor)',
+                                ],
+                                'fecha_ingreso_desc'
+                            ),
                         ],
                     ],
                     [
@@ -866,6 +894,54 @@ class SettingsHelper
                             array_merge(self::textField('billing_informes_issfa_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Obtener código de derivación']),
                             array_merge(self::textField('billing_informes_issfa_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes ISSFA']),
                             self::checkboxField('billing_informes_issfa_apellido_filter', 'Habilitar filtro por apellido', true),
+                            self::numberField('billing_informes_issfa_table_page_length', 'Pacientes por página', 25, 'Cantidad de filas visibles por defecto en el consolidado.'),
+                            self::selectField(
+                                'billing_informes_issfa_table_order',
+                                'Orden predeterminado de la tabla',
+                                [
+                                    'fecha_ingreso_desc' => 'Fecha de ingreso (más recientes primero)',
+                                    'fecha_ingreso_asc' => 'Fecha de ingreso (más antiguos primero)',
+                                    'nombre_asc' => 'Nombre (A-Z)',
+                                    'nombre_desc' => 'Nombre (Z-A)',
+                                    'monto_desc' => 'Monto (mayor a menor)',
+                                    'monto_asc' => 'Monto (menor a mayor)',
+                                ],
+                                'fecha_ingreso_desc'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'msp',
+                        'title' => 'MSP',
+                        'description' => 'Configura la vista de /informes/msp.',
+                        'fields' => [
+                            array_merge(self::textField('billing_informes_msp_title', 'Título del informe'), ['default' => 'Informe MSP']),
+                            array_merge(self::textField('billing_informes_msp_base_path', 'Ruta base'), ['default' => '/informes/msp']),
+                            array_merge(self::textareaField('billing_informes_msp_afiliaciones', 'Afiliaciones permitidas', 'Una afiliación por línea.'), ['default' => 'msp']),
+                            array_merge(self::textareaField(
+                                'billing_informes_msp_excel_buttons',
+                                'Botones de descarga',
+                                'Una línea por botón usando el formato GRUPO|Etiqueta|Clase CSS|Icono opcional.'
+                            ), [
+                                'default' => 'MSP|Descargar Excel|btn btn-success btn-lg me-2|fa fa-file-excel-o',
+                            ]),
+                            array_merge(self::textField('billing_informes_msp_scrape_label', 'Etiqueta del botón de scraping'), ['default' => '📋 Obtener código de derivación']),
+                            array_merge(self::textField('billing_informes_msp_consolidado_title', 'Título del consolidado'), ['default' => 'Consolidado mensual de pacientes MSP']),
+                            self::checkboxField('billing_informes_msp_apellido_filter', 'Habilitar filtro por apellido', true),
+                            self::numberField('billing_informes_msp_table_page_length', 'Pacientes por página', 25, 'Cantidad de filas visibles por defecto en el consolidado.'),
+                            self::selectField(
+                                'billing_informes_msp_table_order',
+                                'Orden predeterminado de la tabla',
+                                [
+                                    'fecha_ingreso_desc' => 'Fecha de ingreso (más recientes primero)',
+                                    'fecha_ingreso_asc' => 'Fecha de ingreso (más antiguos primero)',
+                                    'nombre_asc' => 'Nombre (A-Z)',
+                                    'nombre_desc' => 'Nombre (Z-A)',
+                                    'monto_desc' => 'Monto (mayor a menor)',
+                                    'monto_asc' => 'Monto (menor a mayor)',
+                                ],
+                                'fecha_ingreso_desc'
+                            ),
                         ],
                     ],
                     [

@@ -33,6 +33,10 @@ class InformesController extends BaseController
                 'slug' => 'iess',
                 'titulo' => 'Informe IESS',
                 'basePath' => '/informes/iess',
+                'tableOptions' => [
+                    'pageLength' => 25,
+                    'defaultOrder' => 'fecha_ingreso_desc',
+                ],
                 'afiliaciones' => [
                     'contribuyente voluntario',
                     'conyuge',
@@ -66,6 +70,10 @@ class InformesController extends BaseController
                 'slug' => 'isspol',
                 'titulo' => 'Informe ISSPOL',
                 'basePath' => '/informes/isspol',
+                'tableOptions' => [
+                    'pageLength' => 25,
+                    'defaultOrder' => 'fecha_ingreso_desc',
+                ],
                 'afiliaciones' => ['isspol'],
                 'excelButtons' => [
                     [
@@ -83,6 +91,10 @@ class InformesController extends BaseController
                 'slug' => 'issfa',
                 'titulo' => 'Informe ISSFA',
                 'basePath' => '/informes/issfa',
+                'tableOptions' => [
+                    'pageLength' => 25,
+                    'defaultOrder' => 'fecha_ingreso_desc',
+                ],
                 'afiliaciones' => ['issfa'],
                 'excelButtons' => [
                     [
@@ -94,6 +106,27 @@ class InformesController extends BaseController
                 ],
                 'scrapeButtonLabel' => '📋 Obtener código de derivación',
                 'consolidadoTitulo' => 'Consolidado mensual de pacientes ISSFA',
+                'enableApellidoFilter' => true,
+            ],
+            'msp' => [
+                'slug' => 'msp',
+                'titulo' => 'Informe MSP',
+                'basePath' => '/informes/msp',
+                'tableOptions' => [
+                    'pageLength' => 25,
+                    'defaultOrder' => 'fecha_ingreso_desc',
+                ],
+                'afiliaciones' => ['msp'],
+                'excelButtons' => [
+                    [
+                        'grupo' => 'MSP',
+                        'label' => 'Descargar Excel',
+                        'class' => 'btn btn-success btn-lg me-2',
+                        'icon' => 'fa fa-file-excel-o',
+                    ],
+                ],
+                'scrapeButtonLabel' => '📋 Obtener código de derivación',
+                'consolidadoTitulo' => 'Consolidado mensual de pacientes MSP',
                 'enableApellidoFilter' => true,
             ],
         ];
@@ -114,6 +147,11 @@ class InformesController extends BaseController
     public function informeIssfa(): void
     {
         $this->renderInformeGrupo('issfa');
+    }
+
+    public function informeMsp(): void
+    {
+        $this->renderInformeGrupo('msp');
     }
 
     public function informeParticulares(): void
@@ -199,6 +237,9 @@ class InformesController extends BaseController
         $this->requireAuth();
 
         $config = $this->grupoConfigs[$grupo];
+        $scrapingOutput = null;
+        $scrapingLimitMessage = '';
+
         $formIdScrapeRaw = $_POST['form_id_scrape'] ?? $_GET['form_id'] ?? null;
         $formIdsScrape = array_values(array_filter(array_map(
             'trim',
@@ -206,14 +247,34 @@ class InformesController extends BaseController
                 ? $formIdScrapeRaw
                 : preg_split('/\s*,\s*/', (string) $formIdScrapeRaw)
         )));
-        $hcNumberScrape = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
-        $scrapingOutput = null;
+        $maxScrapeBatch = 20;
+        if (count($formIdsScrape) > $maxScrapeBatch) {
+            $scrapingLimitMessage = "⚠️ Se limitaron las selecciones a los primeros {$maxScrapeBatch} registros para evitar saturar el servidor.";
+            $formIdsScrape = array_slice($formIdsScrape, 0, $maxScrapeBatch);
+        }
+        $hcNumberScrapeRaw = $_POST['hc_number_scrape'] ?? $_GET['hc_number'] ?? null;
+        $hcNumbersScrape = [];
+        if (is_array($hcNumberScrapeRaw)) {
+            $hcNumbersScrape = array_values(array_filter(array_map('trim', $hcNumberScrapeRaw)));
+        } elseif (!empty($hcNumberScrapeRaw)) {
+            $hcNumbersScrape = array_fill(0, max(count($formIdsScrape), 1), (string) $hcNumberScrapeRaw);
+        }
 
-        if (isset($_POST['scrape_derivacion']) && $formIdsScrape && $hcNumberScrape) {
+        if (isset($_POST['scrape_derivacion']) && $formIdsScrape && $hcNumbersScrape) {
             $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
             $outputs = [];
 
-            foreach ($formIdsScrape as $formIdScrape) {
+            // Alinear hc_numbers con form_ids en caso de envío por lotes
+            if (count($hcNumbersScrape) === 1 && count($formIdsScrape) > 1) {
+                $hcNumbersScrape = array_fill(0, count($formIdsScrape), $hcNumbersScrape[0]);
+            }
+
+            foreach ($formIdsScrape as $index => $formIdScrape) {
+                $hcNumberScrape = $hcNumbersScrape[$index] ?? $hcNumbersScrape[0] ?? null;
+                if (!$hcNumberScrape) {
+                    continue;
+                }
+
                 $command = sprintf(
                     '/usr/bin/python3 %s %s %s',
                     escapeshellarg($script),
@@ -239,6 +300,14 @@ class InformesController extends BaseController
                     ? "📋 Procedimientos proyectados:\n" . implode("\n", $procedimientos)
                     : implode("\n\n", $outputs);
             }
+
+            if ($scrapingLimitMessage !== '') {
+                $scrapingOutput = ($scrapingOutput !== null && $scrapingOutput !== '')
+                    ? $scrapingLimitMessage . "\n" . $scrapingOutput
+                    : $scrapingLimitMessage;
+            }
+        } elseif ($scrapingLimitMessage !== '') {
+            $scrapingOutput = $scrapingLimitMessage;
         }
 
         $filtros = [
@@ -246,6 +315,8 @@ class InformesController extends BaseController
             'billing_id' => $_GET['billing_id'] ?? null,
             'mes' => $_GET['mes'] ?? '',
             'apellido' => $_GET['apellido'] ?? '',
+            'hc_number' => $_GET['hc_number'] ?? '',
+            'derivacion' => $_GET['derivacion'] ?? '',
         ];
 
         $mesSeleccionado = $filtros['mes'];
@@ -397,6 +468,10 @@ class InformesController extends BaseController
                     'excelButtons' => [],
                     'scrapeButtonLabel' => '📋 Ver atenciones pendientes',
                     'consolidadoTitulo' => 'Consolidado mensual de pacientes',
+                    'tableOptions' => [
+                        'pageLength' => 25,
+                        'defaultOrder' => 'fecha_ingreso_desc',
+                    ],
                 ],
                 $customConfig
             );
@@ -415,6 +490,8 @@ class InformesController extends BaseController
             $prefix . 'apellido_filter',
             $prefix . 'afiliaciones',
             $prefix . 'excel_buttons',
+            $prefix . 'table_page_length',
+            $prefix . 'table_order',
         ];
     }
 
@@ -443,6 +520,27 @@ class InformesController extends BaseController
         if (!empty($options[$prefix . 'excel_buttons'])) {
             $config['excelButtons'] = $this->parseExcelButtons($options[$prefix . 'excel_buttons'], $config['excelButtons']);
         }
+        if (!empty($options[$prefix . 'table_page_length'])) {
+            $pageLength = max(5, (int) $options[$prefix . 'table_page_length']);
+            $config['tableOptions']['pageLength'] = $pageLength;
+        }
+        if (!empty($options[$prefix . 'table_order'])) {
+            $config['tableOptions']['defaultOrder'] = $this->sanitizeOrder($options[$prefix . 'table_order']);
+        }
+    }
+
+    private function sanitizeOrder(string $order): string
+    {
+        $allowed = [
+            'fecha_ingreso_desc',
+            'fecha_ingreso_asc',
+            'nombre_asc',
+            'nombre_desc',
+            'monto_desc',
+            'monto_asc',
+        ];
+
+        return in_array($order, $allowed, true) ? $order : 'fecha_ingreso_desc';
     }
 
     private function castBooleanOption($value): bool

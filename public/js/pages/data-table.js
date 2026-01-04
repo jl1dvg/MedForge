@@ -6,45 +6,84 @@
 $(function () {
   "use strict";
 
+  var dataTablesLoadPromise = null;
+
+  var ensureDataTablesCss = function () {
+    var hasCss = $("link[rel='stylesheet']").filter(function () {
+      var href = $(this).attr("href") || "";
+      return href.indexOf("datatables") !== -1;
+    }).length;
+
+    if (!hasCss) {
+      $("<link>", {
+        rel: "stylesheet",
+        href: "/public/assets/vendor_components/datatable/datatables.min.css",
+      }).appendTo("head");
+    }
+  };
+
   var ensureDataTables = function () {
+    if (dataTablesLoadPromise) {
+      return dataTablesLoadPromise;
+    }
+
     var deferred = $.Deferred();
 
     if ($.fn && typeof $.fn.DataTable === "function") {
-      deferred.resolve();
-      return deferred.promise();
+      ensureDataTablesCss();
+      dataTablesLoadPromise = deferred.resolve().promise();
+      return dataTablesLoadPromise;
     }
 
-    var cdnUrl = "https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js";
-    console.warn(
-      "DataTables plugin was not found. Attempting to load fallback from",
-      cdnUrl
-    );
+    var sources = [
+      "/public/assets/vendor_components/datatable/datatables.min.js",
+      "https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js",
+    ];
 
-    $.getScript(cdnUrl)
-      .done(function () {
-        if ($.fn && typeof $.fn.DataTable === "function") {
-          console.info("DataTables fallback from CDN loaded successfully.");
-          deferred.resolve();
-        } else {
-          deferred.reject(
-            new Error(
-              "DataTables fallback loaded but plugin is still unavailable."
-            )
-          );
-        }
-      })
-      .fail(function (jqXHR, textStatus, errorThrown) {
+    var tryLoad = function (index) {
+      if (index >= sources.length) {
         deferred.reject(
-          new Error(
-            "Failed to load DataTables fallback (" +
-              textStatus +
-              ") " +
-              errorThrown
-          )
+          new Error("Failed to load DataTables plugin from all sources.")
         );
-      });
+        return;
+      }
 
-    return deferred.promise();
+      var source = sources[index];
+      var isCdn = source.indexOf("http") === 0;
+      if (isCdn) {
+        console.warn(
+          "DataTables plugin was not found. Attempting to load fallback from",
+          source
+        );
+      }
+
+      $.getScript(source)
+        .done(function () {
+          if ($.fn && typeof $.fn.DataTable === "function") {
+            if (isCdn) {
+              console.info(
+                "DataTables fallback from CDN loaded successfully."
+              );
+            }
+            ensureDataTablesCss();
+            deferred.resolve();
+          } else {
+            tryLoad(index + 1);
+          }
+        })
+        .fail(function () {
+          tryLoad(index + 1);
+        });
+    };
+
+    tryLoad(0);
+    dataTablesLoadPromise = deferred.promise();
+    // Expose a shared promise so inline scripts can reliably wait for DataTables
+    // before attempting to initialize their tables.
+    if (typeof window !== "undefined") {
+      window.dataTablesReadyPromise = dataTablesLoadPromise;
+    }
+    return dataTablesLoadPromise;
   };
 
   ensureDataTables().fail(function (error) {
