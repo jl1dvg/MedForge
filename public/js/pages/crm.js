@@ -146,6 +146,9 @@
         proposalDetailStatusSelect: document.getElementById('proposal-detail-status-select'),
         proposalDetailNotes: document.getElementById('proposal-detail-notes'),
         proposalDetailTerms: document.getElementById('proposal-detail-terms'),
+        leadDetailModal: document.getElementById('lead-detail-modal'),
+        leadDetailBody: document.getElementById('lead-detail-body'),
+        leadFormHelper: root.querySelector('#lead-form-helper'),
     };
 
     const proposalBuilder = {
@@ -161,6 +164,20 @@
 
     const proposalDetailState = {
         current: null,
+    };
+
+    const leadModals = {
+        convert: (window.bootstrap && document.getElementById('lead-convert-modal'))
+            ? new window.bootstrap.Modal(document.getElementById('lead-convert-modal'))
+            : null,
+        detail: (window.bootstrap && elements.leadDetailModal)
+            ? new window.bootstrap.Modal(elements.leadDetailModal)
+            : null,
+    };
+
+    const leadFormState = {
+        mode: 'create',
+        currentHc: null,
     };
 
     const leadFilters = {
@@ -788,12 +805,36 @@
                 const actionsCell = document.createElement('td');
                 actionsCell.className = 'text-end';
                 if (canManageLeads) {
+                    const group = document.createElement('div');
+                    group.className = 'btn-group';
+
+                    const viewButton = document.createElement('button');
+                    viewButton.type = 'button';
+                    viewButton.className = 'btn btn-sm btn-outline-secondary js-view-lead';
+                    viewButton.dataset.leadId = lead.id;
+                    viewButton.innerHTML = '<i class="mdi mdi-eye-outline"></i>';
+                    group.appendChild(viewButton);
+
+                    const editButton = document.createElement('button');
+                    editButton.type = 'button';
+                    editButton.className = 'btn btn-sm btn-outline-primary js-edit-lead';
+                    editButton.dataset.leadId = lead.id;
+                    editButton.innerHTML = '<i class="mdi mdi-square-edit-outline"></i>';
+                    group.appendChild(editButton);
+
                     const convertButton = document.createElement('button');
                     convertButton.type = 'button';
                     convertButton.className = 'btn btn-sm btn-success js-select-lead';
                     convertButton.dataset.leadHc = normalizedHc;
-                    convertButton.innerHTML = '<i class="mdi mdi-account-check-outline me-1"></i>Convertir';
-                    actionsCell.appendChild(convertButton);
+                    const canConvert = Boolean(normalizedHc);
+                    convertButton.disabled = !canConvert;
+                    convertButton.title = canConvert
+                        ? 'Convertir a paciente'
+                        : 'Agrega una historia clínica para poder convertir';
+                    convertButton.innerHTML = '<i class="mdi mdi-account-check-outline"></i>';
+                    group.appendChild(convertButton);
+
+                    actionsCell.appendChild(group);
                 } else {
                     actionsCell.innerHTML = '<span class="text-muted">Sin acciones</span>';
                 }
@@ -1111,6 +1152,89 @@
         });
     }
 
+    function resetLeadForm() {
+        if (!elements.leadForm) {
+            return;
+        }
+        elements.leadForm.reset();
+        elements.leadForm.dataset.mode = 'create';
+        elements.leadForm.dataset.hcNumber = '';
+        leadFormState.mode = 'create';
+        leadFormState.currentHc = null;
+        const hcInput = elements.leadForm.querySelector('#lead-hc-number');
+        if (hcInput) {
+            hcInput.disabled = false;
+        }
+        if (elements.leadFormHelper) {
+            elements.leadFormHelper.textContent = 'Completa los campos y guarda.';
+        }
+    }
+
+    function applyLeadToForm(lead) {
+        if (!elements.leadForm || !lead) {
+            return;
+        }
+        const normalizedHc = normalizeHcNumber(lead.hc_number);
+        elements.leadForm.dataset.mode = 'edit';
+        elements.leadForm.dataset.hcNumber = normalizedHc;
+        leadFormState.mode = 'edit';
+        leadFormState.currentHc = normalizedHc;
+
+        const hcInput = elements.leadForm.querySelector('#lead-hc-number');
+        if (hcInput) {
+            hcInput.disabled = true;
+        }
+
+        const map = {
+            name: lead.name || '',
+            hc_number: normalizedHc,
+            email: lead.email || '',
+            phone: lead.phone || '',
+            status: lead.status || '',
+            source: lead.source || '',
+            notes: lead.notes || '',
+            assigned_to: lead.assigned_to || '',
+        };
+
+        Object.keys(map).forEach((field) => {
+            const input = elements.leadForm.querySelector(`[name="${field}"]`);
+            if (input) {
+                input.value = map[field];
+            }
+        });
+
+        if (elements.leadFormHelper) {
+            elements.leadFormHelper.textContent = 'Editando lead existente. Guarda para aplicar los cambios.';
+        }
+    }
+
+    function showLeadDetail(lead) {
+        if (!elements.leadDetailBody || !lead) {
+            return;
+        }
+        const normalizedHc = normalizeHcNumber(lead.hc_number);
+        elements.leadDetailBody.innerHTML = `
+            <div class="row g-2">
+                <div class="col-md-6"><strong>Nombre:</strong> ${escapeHtml(lead.name || 'Sin nombre')}</div>
+                <div class="col-md-6"><strong>HC:</strong> ${escapeHtml(normalizedHc || 'Sin HC')}</div>
+                <div class="col-md-6"><strong>Correo:</strong> ${escapeHtml(lead.email || '-')}</div>
+                <div class="col-md-6"><strong>Teléfono:</strong> ${escapeHtml(lead.phone || '-')}</div>
+                <div class="col-md-6"><strong>Estado:</strong> ${escapeHtml(titleize(lead.status || 'sin estado'))}</div>
+                <div class="col-md-6"><strong>Origen:</strong> ${escapeHtml(titleize(lead.source || '-'))}</div>
+                <div class="col-md-6"><strong>Asignado:</strong> ${escapeHtml(lead.assigned_name || 'Sin asignar')}</div>
+                <div class="col-md-6"><strong>Actualizado:</strong> ${escapeHtml(formatDate(lead.updated_at, true) || '-')}</div>
+            </div>
+            <div class="mt-2">
+                <strong>Notas:</strong>
+                <p class="mb-0">${escapeHtml(lead.notes || 'Sin notas')}</p>
+            </div>
+        `;
+
+        if (leadModals.detail) {
+            leadModals.detail.show();
+        }
+    }
+
     function fillConvertForm(lead, resetFields) {
         if (!elements.convertForm) {
             return;
@@ -1121,6 +1245,11 @@
         const normalizedHc = normalizeHcNumber(lead.hc_number);
         const label = lead.name ? `${lead.name} · ${normalizedHc || 'HC sin registrar'}` : (normalizedHc ? `HC ${normalizedHc}` : 'Lead sin nombre');
         elements.convertSelected.textContent = label;
+        if (!normalizedHc) {
+            elements.convertHelper.textContent = 'El lead no tiene historia clínica registrada. Actualiza el lead antes de convertir.';
+            elements.convertSubmit.disabled = true;
+            return;
+        }
         elements.convertHelper.textContent = 'Completa los datos y confirma la conversión.';
         elements.convertSubmit.disabled = false;
         if (resetFields !== false) {
@@ -1277,12 +1406,22 @@
         );
     }
 
+    function findLeadById(id) {
+        if (!id) {
+            return null;
+        }
+        return state.leads.find((lead) => String(lead.id) === String(id)) || null;
+    }
+
     function normalizeLead(lead) {
         if (!lead || typeof lead !== 'object') {
             return {};
         }
         const normalized = { ...lead };
         normalized.hc_number = normalizeHcNumber(lead.hc_number ?? lead.hcNumber ?? '');
+        if (!normalized.name && (normalized.first_name || normalized.last_name)) {
+            normalized.name = `${normalized.first_name || ''} ${normalized.last_name || ''}`.trim();
+        }
         return normalized;
     }
 
@@ -1998,12 +2137,16 @@
                 showToast('error', 'El nombre es obligatorio');
                 return;
             }
-            const hcNumber = normalizeHcNumber(formData.get('hc_number'));
+            const isEdit = elements.leadForm.dataset.mode === 'edit' && leadFormState.currentHc;
+            const hcFromInput = normalizeHcNumber(formData.get('hc_number'));
+            const hcNumber = isEdit ? (leadFormState.currentHc || hcFromInput) : hcFromInput;
             if (!hcNumber) {
                 showToast('error', 'La historia clínica es obligatoria');
                 return;
             }
-            payload.hc_number = hcNumber;
+            if (!isEdit) {
+                payload.hc_number = hcNumber;
+            }
             const email = String(formData.get('email') || '').trim();
             if (email) {
                 payload.email = email;
@@ -2029,15 +2172,19 @@
                 payload.assigned_to = assignedTo;
             }
 
-            request('/crm/leads', { method: 'POST', body: payload })
+            const endpoint = isEdit ? '/crm/leads/update' : '/crm/leads';
+            const successMessage = isEdit ? 'Lead actualizado correctamente' : 'Lead creado correctamente';
+            const body = isEdit ? { ...payload, hc_number: leadFormState.currentHc || hcNumber } : payload;
+
+            request(endpoint, { method: 'POST', body })
                 .then(() => {
-                    showToast('success', 'Lead creado correctamente');
-                    elements.leadForm.reset();
+                    showToast('success', successMessage);
+                    resetLeadForm();
                     return loadLeads();
                 })
                 .catch((error) => {
-                    console.error('No se pudo crear el lead', error);
-                    showToast('error', error.message || 'No se pudo crear el lead');
+                    console.error('No se pudo guardar el lead', error);
+                    showToast('error', error.message || 'No se pudo guardar el lead');
                 });
         });
     }
@@ -2663,11 +2810,49 @@
 
     if (canManageLeads || canManageTickets) {
         root.addEventListener('click', (event) => {
+            const toolbarAction = event.target.closest('.js-toolbar-action');
+            if (toolbarAction) {
+                event.preventDefault();
+                const targetSelector = toolbarAction.dataset.target;
+                if (targetSelector) {
+                    const mirroredButton = root.querySelector(targetSelector);
+                    if (mirroredButton) {
+                        mirroredButton.click();
+                    }
+                }
+                return;
+            }
+
             if (canManageLeads) {
+                const viewButton = event.target.closest('.js-view-lead');
+                if (viewButton) {
+                    const leadId = viewButton.dataset.leadId;
+                    const lead = findLeadById(leadId);
+                    if (!lead) {
+                        showToast('error', 'No pudimos cargar el lead seleccionado');
+                        return;
+                    }
+                    showLeadDetail(lead);
+                    return;
+                }
+
+                const editButton = event.target.closest('.js-edit-lead');
+                if (editButton) {
+                    const leadId = editButton.dataset.leadId;
+                    const lead = findLeadById(leadId);
+                    if (!lead) {
+                        showToast('error', 'No pudimos cargar el lead seleccionado');
+                        return;
+                    }
+                    applyLeadToForm(lead);
+                    return;
+                }
+
                 const leadButton = event.target.closest('.js-select-lead');
                 if (leadButton) {
                     const hcNumber = normalizeHcNumber(leadButton.dataset.leadHc);
                     if (!hcNumber) {
+                        showToast('warning', 'El lead no tiene historia clínica para convertir');
                         return;
                     }
                     const lead = findLeadByHcNumber(hcNumber);
@@ -2676,6 +2861,9 @@
                         return;
                     }
                     fillConvertForm(lead, true);
+                    if (leadModals.convert) {
+                        leadModals.convert.show();
+                    }
                     return;
                 }
             }
@@ -2698,6 +2886,7 @@
         });
     }
 
+    resetLeadForm();
     disableConvertForm();
     disableTicketReplyForm();
     renderLeads();

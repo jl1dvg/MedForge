@@ -19,6 +19,7 @@ class LeadModel
     private PatientIdentityService $identityService;
     private ?bool $crmCustomerHasHcNumber = null;
     private SchemaInspector $schemaInspector;
+    private ?bool $hasLeadNameColumns = null;
     /**
      * @var array<string, string>
      */
@@ -208,6 +209,7 @@ class LeadModel
         $customerId = !empty($data['customer_id']) ? (int) $data['customer_id'] : null;
 
         $name = trim((string) ($data['name'] ?? ''));
+        [$firstName, $lastName] = $this->splitNameParts($name);
         $email = $this->nullableString($data['email'] ?? null);
         $phone = $this->nullableString($data['phone'] ?? null);
         $source = $this->nullableString($data['source'] ?? null);
@@ -230,15 +232,37 @@ class LeadModel
             $customerId = (int) $identity['customer_id'];
         }
 
-        $stmt = $this->pdo->prepare("
-            INSERT INTO crm_leads
-                (hc_number, name, email, phone, status, source, notes, assigned_to, customer_id, created_by)
-            VALUES
-                (:hc_number, :name, :email, :phone, :status, :source, :notes, :assigned_to, :customer_id, :created_by)
-        ");
+        $hasSplitNames = $this->hasLeadNameColumns();
+
+        $columns = ['hc_number', 'name'];
+        $placeholders = [':hc_number', ':name'];
+
+        if ($hasSplitNames) {
+            $columns[] = 'first_name';
+            $columns[] = 'last_name';
+            $placeholders[] = ':first_name';
+            $placeholders[] = ':last_name';
+        }
+
+        $columns = array_merge($columns, ['email', 'phone', 'status', 'source', 'notes', 'assigned_to', 'customer_id', 'created_by']);
+        $placeholders = array_merge($placeholders, [':email', ':phone', ':status', ':source', ':notes', ':assigned_to', ':customer_id', ':created_by']);
+
+        $sql = sprintf(
+            'INSERT INTO crm_leads (%s) VALUES (%s)',
+            implode(', ', $columns),
+            implode(', ', $placeholders)
+        );
+
+        $stmt = $this->pdo->prepare($sql);
 
         $stmt->bindValue(':hc_number', $hcNumber);
         $stmt->bindValue(':name', $name);
+
+        if ($hasSplitNames) {
+            $stmt->bindValue(':first_name', $firstName !== '' ? $firstName : null, $firstName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':last_name', $lastName !== '' ? $lastName : null, $lastName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        }
+
         $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':status', $status);
@@ -288,10 +312,52 @@ class LeadModel
             $types[':hc_number'] = PDO::PARAM_STR;
         }
 
-        if (array_key_exists('name', $data)) {
+        $providedName = array_key_exists('name', $data) ? trim((string) $data['name']) : null;
+        $providedFirst = array_key_exists('first_name', $data) ? trim((string) $data['first_name']) : null;
+        $providedLast = array_key_exists('last_name', $data) ? trim((string) $data['last_name']) : null;
+        $hasSplitNames = $this->hasLeadNameColumns();
+
+        if ($providedName !== null) {
+            if ($providedName === '') {
+                $providedName = (string) ($lead['name'] ?? '');
+            }
+            [$derivedFirst, $derivedLast] = $this->splitNameParts($providedName);
+            $firstValue = $providedFirst !== null ? $providedFirst : $derivedFirst;
+            $lastValue = $providedLast !== null ? $providedLast : $derivedLast;
+
             $fields[] = 'name = :name';
-            $params[':name'] = trim((string) $data['name']);
+            $params[':name'] = $providedName;
             $types[':name'] = PDO::PARAM_STR;
+
+            if ($hasSplitNames) {
+                $fields[] = 'first_name = :first_name';
+                $params[':first_name'] = $firstValue !== '' ? $firstValue : null;
+                $types[':first_name'] = $firstValue !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL;
+
+                $fields[] = 'last_name = :last_name';
+                $params[':last_name'] = $lastValue !== '' ? $lastValue : null;
+                $types[':last_name'] = $lastValue !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL;
+            }
+        } elseif ($providedFirst !== null || $providedLast !== null) {
+            $firstValue = $providedFirst !== null ? $providedFirst : trim((string) ($lead['first_name'] ?? ''));
+            $lastValue = $providedLast !== null ? $providedLast : trim((string) ($lead['last_name'] ?? ''));
+            $composedName = trim(($firstValue ? $firstValue . ' ' : '') . $lastValue);
+
+            if ($composedName !== '') {
+                $fields[] = 'name = :name';
+                $params[':name'] = $composedName;
+                $types[':name'] = PDO::PARAM_STR;
+            }
+
+            if ($hasSplitNames) {
+                $fields[] = 'first_name = :first_name';
+                $params[':first_name'] = $firstValue !== '' ? $firstValue : null;
+                $types[':first_name'] = $firstValue !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL;
+
+                $fields[] = 'last_name = :last_name';
+                $params[':last_name'] = $lastValue !== '' ? $lastValue : null;
+                $types[':last_name'] = $lastValue !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL;
+            }
         }
 
         if (array_key_exists('email', $data)) {
@@ -817,6 +883,16 @@ class LeadModel
         return (time() - $timestamp) < $cooldownSeconds;
     }
 
+    private function hasLeadNameColumns(): bool
+    {
+        if ($this->hasLeadNameColumns === null) {
+            $this->hasLeadNameColumns = $this->schemaInspector->tableHasColumn('crm_leads', 'first_name')
+                && $this->schemaInspector->tableHasColumn('crm_leads', 'last_name');
+        }
+
+        return $this->hasLeadNameColumns;
+    }
+
     private function hasLeadNotificationColumns(): bool
     {
         return $this->schemaInspector->tableHasColumn('crm_leads', 'last_stage_notified')
@@ -949,6 +1025,23 @@ class LeadModel
         $this->crmCustomerHasHcNumber = $this->schemaInspector->tableHasColumn('crm_customers', 'hc_number');
 
         return $this->crmCustomerHasHcNumber;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function splitNameParts(string $name): array
+    {
+        $trimmed = trim($name);
+        if ($trimmed === '') {
+            return ['', ''];
+        }
+
+        $parts = preg_split('/\s+/', $trimmed, 2) ?: [];
+        $first = $parts[0] ?? '';
+        $last = $parts[1] ?? '';
+
+        return [trim($first), trim($last)];
     }
 
     private function nullableString($value): ?string

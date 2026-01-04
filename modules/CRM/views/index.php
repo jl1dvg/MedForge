@@ -75,25 +75,25 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                 <div class="box-body">
                     <ul class="nav nav-tabs mb-3" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link active" data-bs-toggle="tab" href="#crm-tab-leads" role="tab">Leads</a>
+                            <a class="nav-link active" id="crm-tab-leads-link" data-bs-toggle="tab" href="#crm-tab-leads" role="tab" aria-controls="crm-tab-leads" aria-selected="true">Leads</a>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-projects" role="tab">Proyectos</a>
+                            <a class="nav-link" id="crm-tab-projects-link" data-bs-toggle="tab" href="#crm-tab-projects" role="tab" aria-controls="crm-tab-projects" aria-selected="false">Proyectos</a>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-tasks" role="tab">Tareas</a>
+                            <a class="nav-link" id="crm-tab-tasks-link" data-bs-toggle="tab" href="#crm-tab-tasks" role="tab" aria-controls="crm-tab-tasks" aria-selected="false">Tareas</a>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-tickets" role="tab">Tickets</a>
+                            <a class="nav-link" id="crm-tab-tickets-link" data-bs-toggle="tab" href="#crm-tab-tickets" role="tab" aria-controls="crm-tab-tickets" aria-selected="false">Tickets</a>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link" data-bs-toggle="tab" href="#crm-tab-proposals" role="tab">Propuestas</a>
+                            <a class="nav-link" id="crm-tab-proposals-link" data-bs-toggle="tab" href="#crm-tab-proposals" role="tab" aria-controls="crm-tab-proposals" aria-selected="false">Propuestas</a>
                         </li>
                     </ul>
 
                     <div class="tab-content">
-                        <div class="tab-pane fade show active" id="crm-tab-leads" role="tabpanel">
-                            <div class="card mb-3 shadow-sm border-0 bg-light">
+                        <div class="tab-pane fade show active" id="crm-tab-leads" role="tabpanel" aria-labelledby="crm-tab-leads-link">
+                            <div class="card mb-3 shadow-sm border-0 bg-light crm-sticky-toolbar">
                                 <div class="card-body">
                                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                         <div>
@@ -140,9 +140,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                             <label for="lead-filter-assigned" class="form-label mb-1">Asignado</label>
                                             <select id="lead-filter-assigned" class="form-select form-select-sm">
                                                 <option value="">Todos</option>
-                                                <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                    <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                <?php endforeach; ?>
+                                                <?php include __DIR__ . '/partials/user_options.php'; ?>
                                             </select>
                                         </div>
                                         <div class="col-md-12 d-flex flex-wrap gap-2 mt-2">
@@ -156,9 +154,9 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                             </div>
 
                             <div class="row g-3">
-                                <div class="col-xl-7">
+                                <div class="col-12 col-xl-8">
                                     <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 gap-2">
-                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <div class="d-none d-lg-flex align-items-center gap-2 flex-wrap">
                                             <div class="input-group input-group-sm" style="width: 160px;">
                                                 <span class="input-group-text"><i class="mdi mdi-format-list-numbered"></i></span>
                                                 <select id="lead-page-size" class="form-select">
@@ -177,6 +175,16 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                             <button class="btn btn-sm btn-outline-secondary" type="button" id="lead-reload-table">
                                                 <i class="mdi mdi-refresh"></i>
                                             </button>
+                                        </div>
+                                        <div class="dropdown d-lg-none crm-toolbar-dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                Acciones
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end">
+                                                <li><button class="dropdown-item js-toolbar-action" type="button" data-target="#lead-export-btn">Exportar</button></li>
+                                                <li><button class="dropdown-item js-toolbar-action" type="button" data-target="#lead-bulk-actions-btn">Acciones masivas</button></li>
+                                                <li><button class="dropdown-item js-toolbar-action" type="button" data-target="#lead-reload-table">Recargar</button></li>
+                                            </ul>
                                         </div>
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
                                             <div class="input-group input-group-sm" style="width: 220px;">
@@ -211,13 +219,14 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                         <ul class="pagination pagination-sm mb-0" id="lead-pagination"></ul>
                                     </div>
                                 </div>
-                                <div class="col-xl-5">
+                                <div class="col-12 col-xl-4">
                                     <?php if ($permissions['manageLeads']): ?>
                                         <div class="box mb-3">
                                             <div class="box-header with-border">
                                                 <h5 class="box-title mb-0">Nuevo lead</h5>
                                             </div>
                                             <div class="box-body">
+                                                <p class="text-muted small mb-2" id="lead-form-helper">Completa los campos y guarda.</p>
                                                 <form id="lead-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="lead-name" class="form-label">Nombre del contacto *</label>
@@ -260,9 +269,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <label for="lead-assigned" class="form-label">Asignado a</label>
                                                     <select class="form-select" id="lead-assigned" name="assigned_to">
                                                         <option value="">Sin asignar</option>
-                                                        <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                            <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                        <?php endforeach; ?>
+                                                        <?php include __DIR__ . '/partials/user_options.php'; ?>
                                                     </select>
                                                 </div>
                                                 <div class="mb-3">
@@ -376,9 +383,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <label for="lead-bulk-assigned" class="form-label">Asignar a</label>
                                                     <select id="lead-bulk-assigned" class="form-select">
                                                         <option value="">Sin cambio</option>
-                                                        <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                            <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                        <?php endforeach; ?>
+                                                        <?php include __DIR__ . '/partials/user_options.php'; ?>
                                                     </select>
                                                 </div>
                                             </div>
@@ -393,7 +398,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                             </div>
                         </div>
 
-                        <div class="tab-pane fade" id="crm-tab-projects" role="tabpanel">
+                        <div class="tab-pane fade" id="crm-tab-projects" role="tabpanel" aria-labelledby="crm-tab-projects-link">
                             <div class="row g-3">
                                 <div class="col-xl-7">
                                     <div class="table-responsive rounded card-table shadow-sm">
@@ -439,14 +444,12 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                         </select>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <label for="project-owner" class="form-label">Responsable</label>
-                                                        <select class="form-select" id="project-owner" name="owner_id">
-                                                            <option value="">Sin asignar</option>
-                                                            <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                                <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                    </div>
+                                                    <label for="project-owner" class="form-label">Responsable</label>
+                                                    <select class="form-select" id="project-owner" name="owner_id">
+                                                        <option value="">Sin asignar</option>
+                                                        <?php include __DIR__ . '/partials/user_options.php'; ?>
+                                                    </select>
+                                                </div>
                                                 </div>
                                                 <div class="row g-2">
                                                     <div class="col-md-6">
@@ -483,7 +486,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                             </div>
                         </div>
 
-                        <div class="tab-pane fade" id="crm-tab-tasks" role="tabpanel">
+                        <div class="tab-pane fade" id="crm-tab-tasks" role="tabpanel" aria-labelledby="crm-tab-tasks-link">
                             <div class="row g-3">
                                 <div class="col-xl-7">
                                     <div class="table-responsive rounded card-table shadow-sm">
@@ -535,14 +538,12 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                         </select>
                                                     </div>
                                                     <div class="col-md-6">
-                                                        <label for="task-assigned" class="form-label">Asignado a</label>
-                                                        <select class="form-select" id="task-assigned" name="assigned_to">
-                                                            <option value="">Sin asignar</option>
-                                                            <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                                <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                    </div>
+                                                    <label for="task-assigned" class="form-label">Asignado a</label>
+                                                    <select class="form-select" id="task-assigned" name="assigned_to">
+                                                        <option value="">Sin asignar</option>
+                                                        <?php include __DIR__ . '/partials/user_options.php'; ?>
+                                                    </select>
+                                                </div>
                                                 </div>
                                                 <div class="row g-2">
                                                     <div class="col-md-6">
@@ -574,7 +575,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                             </div>
                         </div>
 
-                        <div class="tab-pane fade" id="crm-tab-tickets" role="tabpanel">
+                        <div class="tab-pane fade" id="crm-tab-tickets" role="tabpanel" aria-labelledby="crm-tab-tickets-link">
                             <div class="row g-3">
                                 <div class="col-xl-7">
                                     <div class="table-responsive rounded card-table shadow-sm">
@@ -633,9 +634,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                     <label for="ticket-assigned" class="form-label">Asignado a</label>
                                                     <select class="form-select" id="ticket-assigned" name="assigned_to">
                                                         <option value="">Sin asignar</option>
-                                                        <?php foreach (($assignableUsers ?? []) as $user): ?>
-                                                            <option value="<?= (int) ($user['id'] ?? 0) ?>"><?= htmlspecialchars($user['nombre'] ?? '', ENT_QUOTES, 'UTF-8') ?></option>
-                                                        <?php endforeach; ?>
+                                                        <?php include __DIR__ . '/partials/user_options.php'; ?>
                                                     </select>
                                                 </div>
                                                 <div class="row g-2">
@@ -690,7 +689,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                 </div>
                             </div>
                         </div>
-                        <div class="tab-pane fade" id="crm-tab-proposals" role="tabpanel">
+                        <div class="tab-pane fade" id="crm-tab-proposals" role="tabpanel" aria-labelledby="crm-tab-proposals-link">
                             <div class="card mb-3">
                                 <div class="card-header d-flex flex-wrap align-items-center gap-2">
                                     <div>
@@ -1056,3 +1055,17 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
         </div>
     </div>
 </section>
+<!-- Lead detail modal appended -->
+<div class="modal fade" id="lead-detail-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="mdi mdi-account-box-outline me-1"></i> Detalle del lead</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body" id="lead-detail-body">
+                <div class="text-muted">Selecciona un lead para ver el detalle.</div>
+            </div>
+        </div>
+    </div>
+</div>
