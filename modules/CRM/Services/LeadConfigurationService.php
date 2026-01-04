@@ -295,9 +295,14 @@ class LeadConfigurationService
             return;
         }
 
-        if (!in_array($candidate, $sources, true)) {
-            $sources[] = $candidate;
+        $normalized = mb_strtolower($candidate, 'UTF-8');
+        foreach ($sources as $existing) {
+            if (mb_strtolower((string) $existing, 'UTF-8') === $normalized) {
+                return;
+            }
         }
+
+        $sources[] = mb_convert_case($candidate, MB_CASE_TITLE, 'UTF-8');
     }
 
     /**

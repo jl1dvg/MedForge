@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
     id INT NOT NULL AUTO_INCREMENT,
     customer_id INT DEFAULT NULL,
     name VARCHAR(255) NOT NULL,
+    first_name VARCHAR(150) DEFAULT NULL,
+    last_name VARCHAR(150) DEFAULT NULL,
     email VARCHAR(255) DEFAULT NULL,
     phone VARCHAR(30) DEFAULT NULL,
     status ENUM('nuevo','en_proceso','convertido','perdido') NOT NULL DEFAULT 'nuevo',
