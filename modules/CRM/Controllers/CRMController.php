@@ -72,7 +72,8 @@ class CRMController extends BaseController
                 'initialProposals' => $this->proposals->list(['limit' => 25]),
                 'proposalStatuses' => $this->proposals->getStatuses(),
                 'permissions' => $permissions,
-                'scripts' => ['js/pages/crm.js'],
+                'styles' => ['css/pages/crm/leads.css'],
+                'scripts' => ['js/pages/crm.js', 'js/pages/crm/leads.js'],
             ]
         );
     }
@@ -340,6 +341,9 @@ class CRMController extends BaseController
         try {
             $payload = $this->getBody();
             $status = isset($payload['status']) ? (string) $payload['status'] : ($payload['template_key'] ?? null);
+            $to = isset($payload['to']) ? trim((string) $payload['to']) : '';
+            $subject = isset($payload['subject']) ? trim((string) $payload['subject']) : '';
+            $body = isset($payload['body']) ? trim((string) $payload['body']) : '';
 
             $lead = $this->leads->findById($leadId);
             if (!$lead) {
@@ -348,12 +352,16 @@ class CRMController extends BaseController
             }
 
             $draft = $this->buildLeadMailDraft($lead, $status);
-            if ($draft['to'] === '') {
+            $to = $to !== '' ? $to : $draft['to'];
+            $subject = $subject !== '' ? $subject : $draft['subject'];
+            $body = $body !== '' ? $body : $draft['body'];
+
+            if ($to === '') {
                 $this->json(['ok' => false, 'error' => 'El lead no tiene correo electrónico', 'error_code' => 'email_required'], 422);
                 return;
             }
 
-            $this->mailer->sendPatientUpdate($draft['to'], $draft['subject'], $draft['body']);
+            $this->mailer->sendPatientUpdate($to, $subject, $body);
             $this->auditCrm('crm_lead_mail_sent', ['lead_id' => $leadId, 'status' => $status]);
 
             $this->json(['ok' => true, 'data' => ['sent' => true]]);
