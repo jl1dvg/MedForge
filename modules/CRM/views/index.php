@@ -752,15 +752,339 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
     </div>
 </section>
 <!-- Lead detail modal appended -->
-<div class="modal fade" id="lead-detail-modal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
+<div class="modal fade" id="lead-detail-modal" tabindex="-1" aria-labelledby="lead-detail-label" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content data">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="mdi mdi-account-box-outline me-1"></i> Detalle del lead</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <h4 class="modal-title d-flex align-items-center" id="lead-detail-label">
+                        <span id="lead-detail-title">#— - Lead</span>
+                    </h4>
+                    <a href="#" class="lead-print-btn text-muted d-flex align-items-center" role="button">
+                        <i class="fa-solid fa-print me-2"></i>
+                        <span>Print</span>
+                    </a>
+                </div>
             </div>
             <div class="modal-body" id="lead-detail-body">
-                <div class="text-muted">Selecciona un lead para ver el detalle.</div>
+                <input type="hidden" id="lead-detail-id" value="">
+                <div class="top-lead-menu">
+                    <div class="horizontal-scrollable-tabs mb-3">
+                        <div class="horizontal-tabs">
+                            <ul class="nav nav-tabs nav-tabs-horizontal nav-tabs-segmented" role="tablist">
+                                <li role="presentation" class="active">
+                                    <a href="#tab_lead_profile" aria-controls="tab_lead_profile" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-regular fa-user menu-icon"></i>
+                                        Profile
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#tab_proposals_leads" aria-controls="tab_proposals_leads" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-regular fa-file-lines menu-icon"></i>
+                                        Proposals
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#tab_tasks_leads" aria-controls="tab_tasks_leads" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-regular fa-circle-check menu-icon"></i>
+                                        Tasks
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#attachments" aria-controls="attachments" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-solid fa-paperclip menu-icon"></i>
+                                        Attachments
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#lead_reminders" aria-controls="lead_reminders" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-regular fa-bell menu-icon"></i>
+                                        Reminders
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#lead_notes" aria-controls="lead_notes" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-regular fa-note-sticky menu-icon"></i>
+                                        Notes <span class="badge" id="lead-notes-count">0</span>
+                                    </a>
+                                </li>
+                                <li role="presentation">
+                                    <a href="#lead_activity" aria-controls="lead_activity" role="tab" data-bs-toggle="tab">
+                                        <i class="fa-solid fa-grip-lines-vertical menu-icon"></i>
+                                        Activity Log
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-content">
+                    <div role="tabpanel" class="tab-pane active" id="tab_lead_profile">
+                        <div class="lead-wrapper">
+                            <div class="d-flex align-items-center justify-content-end gap-2 mb-2">
+                                <div class="lead-edit d-none" id="lead-detail-edit-actions">
+                                    <button type="button" class="btn btn-primary lead-top-btn" id="lead-detail-save">Save</button>
+                                </div>
+                                <a href="#" class="btn btn-primary lead-top-btn lead-view" id="lead-detail-convert">
+                                    <i class="fa-regular fa-user"></i>
+                                    Convert to customer
+                                </a>
+                                <button type="button" class="btn btn-default lead-top-btn lead-view" id="lead-detail-edit">
+                                    <i class="fa-regular fa-pen-to-square"></i>
+                                </button>
+                                <div class="btn-group lead-view" id="lead-more-btn">
+                                    <button type="button" class="btn btn-default dropdown-toggle lead-top-btn" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        More
+                                        <span class="caret"></span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" id="lead-more-dropdown">
+                                        <li><a href="#" class="dropdown-item">Mark as lost</a></li>
+                                        <li><a href="#" class="dropdown-item">Mark as junk</a></li>
+                                        <li><a href="#" class="dropdown-item text-danger">Delete lead</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <hr class="my-2">
+                            <div class="lead-view" id="lead-view-section">
+                                <div class="row">
+                                    <div class="col-md-4 col-xs-12 lead-information-col">
+                                        <div class="lead-info-heading"><h4>Lead Information</h4></div>
+                                        <dl>
+                                            <dt class="text-muted">Name</dt>
+                                            <dd class="fw-semibold" id="lead-view-name">—</dd>
+                                            <dt class="text-muted">Position</dt>
+                                            <dd id="lead-view-position">—</dd>
+                                            <dt class="text-muted">Email</dt>
+                                            <dd id="lead-view-email">—</dd>
+                                            <dt class="text-muted">Website</dt>
+                                            <dd id="lead-view-website">—</dd>
+                                            <dt class="text-muted">Phone</dt>
+                                            <dd id="lead-view-phone">—</dd>
+                                            <dt class="text-muted">Lead value</dt>
+                                            <dd id="lead-view-value">—</dd>
+                                            <dt class="text-muted">Company</dt>
+                                            <dd id="lead-view-company">—</dd>
+                                            <dt class="text-muted">Address</dt>
+                                            <dd id="lead-view-address">—</dd>
+                                            <dt class="text-muted">City</dt>
+                                            <dd id="lead-view-city">—</dd>
+                                            <dt class="text-muted">State</dt>
+                                            <dd id="lead-view-state">—</dd>
+                                            <dt class="text-muted">Country</dt>
+                                            <dd id="lead-view-country">—</dd>
+                                            <dt class="text-muted">Zip Code</dt>
+                                            <dd id="lead-view-zip">—</dd>
+                                        </dl>
+                                    </div>
+                                    <div class="col-md-4 col-xs-12 lead-information-col">
+                                        <div class="lead-info-heading"><h4>General Information</h4></div>
+                                        <dl>
+                                            <dt class="text-muted">Status</dt>
+                                            <dd id="lead-view-status" class="mb-2">—</dd>
+                                            <dt class="text-muted">Source</dt>
+                                            <dd id="lead-view-source">—</dd>
+                                            <dt class="text-muted">Default language</dt>
+                                            <dd id="lead-view-language">—</dd>
+                                            <dt class="text-muted">Assigned</dt>
+                                            <dd id="lead-view-assigned">—</dd>
+                                            <dt class="text-muted">Tags</dt>
+                                            <dd id="lead-view-tags">—</dd>
+                                            <dt class="text-muted">Created</dt>
+                                            <dd id="lead-view-created">—</dd>
+                                            <dt class="text-muted">Last Contact</dt>
+                                            <dd id="lead-view-last-contact">—</dd>
+                                            <dt class="text-muted">Public</dt>
+                                            <dd id="lead-view-public">—</dd>
+                                        </dl>
+                                    </div>
+                                    <div class="col-md-4 col-xs-12 lead-information-col">
+                                        <div class="lead-info-heading"><h4>Extra</h4></div>
+                                    </div>
+                                    <div class="clearfix"></div>
+                                    <div class="col-md-12">
+                                        <dl>
+                                            <dt class="text-muted">Description</dt>
+                                            <dd id="lead-view-description">—</dd>
+                                        </dl>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="lead-edit d-none" id="lead-edit-section">
+                                <form id="lead-detail-edit-form" class="row g-2">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="lead-detail-status" class="control-label">Status</label>
+                                            <select id="lead-detail-status" name="status" class="form-select">
+                                                <option value="">Seleccionar</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="lead-detail-source" class="control-label">Source</label>
+                                            <input type="text" class="form-control" id="lead-detail-source" name="source">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label for="lead-detail-assigned" class="control-label">Assigned</label>
+                                            <select id="lead-detail-assigned" name="assigned_to" class="form-select">
+                                                <option value="">Sin asignar</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="lead-detail-name" class="control-label">Name</label>
+                                            <input type="text" class="form-control" id="lead-detail-name" name="name">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-email" class="control-label">Email</label>
+                                            <input type="email" class="form-control" id="lead-detail-email" name="email">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-phone" class="control-label">Phone</label>
+                                            <input type="text" class="form-control" id="lead-detail-phone" name="phone">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-company" class="control-label">Company</label>
+                                            <input type="text" class="form-control" id="lead-detail-company" name="company">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label for="lead-detail-address" class="control-label">Address</label>
+                                            <textarea id="lead-detail-address" name="address" class="form-control" rows="2"></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-city" class="control-label">City</label>
+                                            <input type="text" class="form-control" id="lead-detail-city" name="city">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-state" class="control-label">State</label>
+                                            <input type="text" class="form-control" id="lead-detail-state" name="state">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="lead-detail-zip" class="control-label">Zip</label>
+                                            <input type="text" class="form-control" id="lead-detail-zip" name="zip">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label for="lead-detail-description" class="control-label">Description</label>
+                                            <textarea id="lead-detail-description" name="description" class="form-control" rows="3"></textarea>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="lead-latest-activity mb-3 lead-view">
+                                <div class="lead-info-heading"><h4>Latest Activity</h4></div>
+                                <div id="lead-latest-activity">En desarrollo</div>
+                            </div>
+                            <div class="lead-edit d-none" id="lead-edit-footer">
+                                <hr>
+                                <button type="button" class="btn btn-primary pull-right" id="lead-detail-save-footer">Save</button>
+                                <button type="button" class="btn btn-default pull-right me-2" id="lead-detail-cancel">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="tab_proposals_leads">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="tab_tasks_leads">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="attachments">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="lead_reminders">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="lead_notes">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="lead_activity">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="lead-convert-modal" tabindex="-1" aria-labelledby="lead-convert-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content data">
+            <div class="modal-header">
+                <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <h4 class="modal-title" id="lead-convert-label">Convertir lead a cliente</h4>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="horizontal-scrollable-tabs mb-3">
+                    <div class="horizontal-tabs">
+                        <ul class="nav nav-tabs nav-tabs-horizontal nav-tabs-segmented" role="tablist">
+                            <li role="presentation" class="active">
+                                <a href="#tab_convert_profile" aria-controls="tab_convert_profile" role="tab" data-bs-toggle="tab">Datos</a>
+                            </li>
+                            <li role="presentation">
+                                <a href="#tab_convert_summary" aria-controls="tab_convert_summary" role="tab" data-bs-toggle="tab">Resumen</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="tab-content">
+                    <div role="tabpanel" class="tab-pane active" id="tab_convert_profile">
+                        <form id="lead-convert-form" class="space-y-2">
+                            <input type="hidden" id="convert-lead-hc" name="hc_number" value="">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <div class="text-muted small">Lead seleccionado:</div>
+                                <span id="convert-lead-selected" class="badge bg-secondary">Sin selección</span>
+                            </div>
+                            <div class="alert alert-info mb-3" id="convert-helper">Selecciona un lead en la tabla para precargar los datos.</div>
+                            <div class="mb-2">
+                                <label for="convert-name" class="form-label">Nombre completo</label>
+                                <input type="text" class="form-control" id="convert-name" name="customer_name" placeholder="Nombre del paciente">
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label for="convert-email" class="form-label">Correo</label>
+                                    <input type="email" class="form-control" id="convert-email" name="customer_email">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="convert-phone" class="form-label">Teléfono</label>
+                                    <input type="text" class="form-control" id="convert-phone" name="customer_phone">
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label for="convert-document" class="form-label">Documento</label>
+                                    <input type="text" class="form-control" id="convert-document" name="customer_document">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="convert-external" class="form-label">Referencia externa</label>
+                                    <input type="text" class="form-control" id="convert-external" name="customer_external_ref">
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <label for="convert-affiliation" class="form-label">Afiliación</label>
+                                <input type="text" class="form-control" id="convert-affiliation" name="customer_affiliation">
+                            </div>
+                            <div class="mb-3">
+                                <label for="convert-address" class="form-label">Dirección</label>
+                                <input type="text" class="form-control" id="convert-address" name="customer_address">
+                            </div>
+                            <div class="text-end">
+                                <button type="submit" class="btn btn-success" disabled>Convertir lead</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div role="tabpanel" class="tab-pane" id="tab_convert_summary">
+                        <p class="text-muted">En desarrollo</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

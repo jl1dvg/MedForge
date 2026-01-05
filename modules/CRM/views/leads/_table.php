@@ -73,53 +73,8 @@ $assignableUsers = $leadViewData['assignableUsers'] ?? [];
     </div>
     <div class="col-12 col-xl-4">
         <?php if ($canManageLeads): ?>
-            <div class="box mb-3">
-                <div class="box-header with-border">
-                    <h5 class="box-title mb-0">Convertir a paciente / cliente</h5>
-                </div>
-                <div class="box-body">
-                    <form id="lead-convert-form" class="space-y-2">
-                    <input type="hidden" id="convert-lead-hc" name="hc_number" value="">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="text-muted small">Lead seleccionado:</div>
-                        <span id="convert-lead-selected" class="badge bg-secondary">Sin selección</span>
-                    </div>
-                    <div class="alert alert-info mb-3" id="convert-helper">Selecciona un lead en la tabla para precargar los datos.</div>
-                    <div class="mb-2">
-                        <label for="convert-name" class="form-label">Nombre completo</label>
-                        <input type="text" class="form-control" id="convert-name" name="customer_name" placeholder="Nombre del paciente">
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-md-6">
-                            <label for="convert-email" class="form-label">Correo</label>
-                            <input type="email" class="form-control" id="convert-email" name="customer_email">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="convert-phone" class="form-label">Teléfono</label>
-                            <input type="text" class="form-control" id="convert-phone" name="customer_phone">
-                        </div>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-md-6">
-                            <label for="convert-document" class="form-label">Documento</label>
-                            <input type="text" class="form-control" id="convert-document" name="customer_document">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="convert-external" class="form-label">Referencia externa</label>
-                            <input type="text" class="form-control" id="convert-external" name="customer_external_ref">
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <label for="convert-affiliation" class="form-label">Afiliación</label>
-                        <input type="text" class="form-control" id="convert-affiliation" name="customer_affiliation">
-                    </div>
-                    <div class="mb-3">
-                        <label for="convert-address" class="form-label">Dirección</label>
-                        <input type="text" class="form-control" id="convert-address" name="customer_address">
-                    </div>
-                        <button type="submit" class="btn btn-success w-100" disabled>Convertir lead</button>
-                    </form>
-                </div>
+            <div class="alert alert-info mb-0">
+                El panel lateral de conversión ahora se encuentra en el modal detallado del lead. Usa el botón «Convert to customer» dentro del modal para iniciar el proceso.
             </div>
         <?php else: ?>
             <div class="alert alert-info">

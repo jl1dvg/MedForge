@@ -52,11 +52,11 @@
         taskTableBody: root.querySelector('#crm-tasks-table tbody'),
         ticketTableBody: root.querySelector('#crm-tickets-table tbody'),
         leadForm: root.querySelector('#lead-form'),
-        convertForm: root.querySelector('#lead-convert-form'),
-        convertLeadHc: root.querySelector('#convert-lead-hc'),
-        convertHelper: root.querySelector('#convert-helper'),
-        convertSelected: root.querySelector('#convert-lead-selected'),
-        convertSubmit: root.querySelector('#lead-convert-form button[type="submit"]'),
+        convertForm: document.getElementById('lead-convert-form'),
+        convertLeadHc: document.getElementById('convert-lead-hc'),
+        convertHelper: document.getElementById('convert-helper'),
+        convertSelected: document.getElementById('convert-lead-selected'),
+        convertSubmit: document.querySelector('#lead-convert-form button[type="submit"]'),
         leadStatusSummary: root.querySelector('#lead-status-summary'),
         leadSearchInput: root.querySelector('#lead-search'),
         leadFilterStatus: root.querySelector('#lead-filter-status'),
@@ -152,6 +152,18 @@
         proposalDetailTerms: document.getElementById('proposal-detail-terms'),
         leadDetailModal: document.getElementById('lead-detail-modal'),
         leadDetailBody: document.getElementById('lead-detail-body'),
+        leadDetailTitle: document.getElementById('lead-detail-title'),
+        leadDetailId: document.getElementById('lead-detail-id'),
+        leadDetailConvert: document.getElementById('lead-detail-convert'),
+        leadDetailEdit: document.getElementById('lead-detail-edit'),
+        leadDetailSave: document.getElementById('lead-detail-save'),
+        leadDetailSaveFooter: document.getElementById('lead-detail-save-footer'),
+        leadDetailCancel: document.getElementById('lead-detail-cancel'),
+        leadDetailEditActions: document.getElementById('lead-detail-edit-actions'),
+        leadDetailEditFooter: document.getElementById('lead-edit-footer'),
+        leadDetailEditSection: document.getElementById('lead-edit-section'),
+        leadDetailViewSection: document.getElementById('lead-view-section'),
+        leadDetailNotesCount: document.getElementById('lead-notes-count'),
         leadFormHelper: root.querySelector('#lead-form-helper'),
     };
 
@@ -167,6 +179,10 @@
     };
 
     const proposalDetailState = {
+        current: null,
+    };
+
+    const leadDetailState = {
         current: null,
     };
 
@@ -223,6 +239,13 @@
             return '';
         }
         return String(value).replace(/[&<>"']/g, (match) => htmlEscapeMap[match]);
+    }
+
+    function setTextContent(element, value) {
+        if (!element) {
+            return;
+        }
+        element.textContent = value || '—';
     }
 
     function titleize(value) {
@@ -1184,9 +1207,15 @@
         if (elements.convertLeadHc) {
             elements.convertLeadHc.value = '';
         }
-        elements.convertSelected.textContent = 'Sin selección';
-        elements.convertHelper.textContent = 'Selecciona un lead en la tabla para precargar los datos.';
-        elements.convertSubmit.disabled = true;
+        if (elements.convertSelected) {
+            elements.convertSelected.textContent = 'Sin selección';
+        }
+        if (elements.convertHelper) {
+            elements.convertHelper.textContent = 'Selecciona un lead en la tabla para precargar los datos.';
+        }
+        if (elements.convertSubmit) {
+            elements.convertSubmit.disabled = true;
+        }
         ['customer_name', 'customer_email', 'customer_phone', 'customer_document', 'customer_external_ref', 'customer_affiliation', 'customer_address'].forEach((field) => {
             const input = elements.convertForm.querySelector(`[name="${field}"]`);
             if (input) {
@@ -1276,27 +1305,136 @@
         }
     }
 
+    function toggleLeadEditMode(showEdit) {
+        const editElements = [
+            elements.leadDetailEditActions,
+            elements.leadDetailEditFooter,
+            elements.leadDetailEditSection,
+        ];
+        const viewElements = [
+            elements.leadDetailViewSection,
+        ];
+        editElements.forEach((item) => {
+            if (item) {
+                item.classList.toggle('d-none', !showEdit);
+            }
+        });
+        viewElements.forEach((item) => {
+            if (item) {
+                item.classList.toggle('d-none', showEdit);
+            }
+        });
+    }
+
+    function populateLeadDetailSelects(lead) {
+        const statusSelect = document.getElementById('lead-detail-status');
+        if (statusSelect) {
+            statusSelect.innerHTML = '<option value="">Seleccionar</option>';
+            state.leadStatuses.forEach((status) => {
+                const option = document.createElement('option');
+                option.value = status;
+                option.textContent = titleize(status);
+                statusSelect.appendChild(option);
+            });
+            statusSelect.value = lead.status || '';
+        }
+
+        const assignSelect = document.getElementById('lead-detail-assigned');
+        if (assignSelect) {
+            assignSelect.innerHTML = '<option value="">Sin asignar</option>';
+            state.assignableUsers.forEach((user) => {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.nombre || user.name || user.email || `ID ${user.id}`;
+                assignSelect.appendChild(option);
+            });
+            assignSelect.value = lead.assigned_to || '';
+        }
+    }
+
     function showLeadDetail(lead) {
         if (!elements.leadDetailBody || !lead) {
             return;
         }
         const normalizedHc = normalizeHcNumber(lead.hc_number);
-        elements.leadDetailBody.innerHTML = `
-            <div class="row g-2">
-                <div class="col-md-6"><strong>Nombre:</strong> ${escapeHtml(lead.name || 'Sin nombre')}</div>
-                <div class="col-md-6"><strong>HC:</strong> ${escapeHtml(normalizedHc || 'Sin HC')}</div>
-                <div class="col-md-6"><strong>Correo:</strong> ${escapeHtml(lead.email || '-')}</div>
-                <div class="col-md-6"><strong>Teléfono:</strong> ${escapeHtml(lead.phone || '-')}</div>
-                <div class="col-md-6"><strong>Estado:</strong> ${escapeHtml(titleize(lead.status || 'sin estado'))}</div>
-                <div class="col-md-6"><strong>Origen:</strong> ${escapeHtml(titleize(lead.source || '-'))}</div>
-                <div class="col-md-6"><strong>Asignado:</strong> ${escapeHtml(lead.assigned_name || 'Sin asignar')}</div>
-                <div class="col-md-6"><strong>Actualizado:</strong> ${escapeHtml(formatDate(lead.updated_at, true) || '-')}</div>
-            </div>
-            <div class="mt-2">
-                <strong>Notas:</strong>
-                <p class="mb-0">${escapeHtml(lead.notes || 'Sin notas')}</p>
-            </div>
-        `;
+        leadDetailState.current = lead;
+
+        if (elements.leadDetailId) {
+            elements.leadDetailId.value = lead.id || '';
+        }
+        if (elements.leadDetailTitle) {
+            const idLabel = lead.id || normalizedHc || '—';
+            const nameLabel = lead.name || 'Lead';
+            elements.leadDetailTitle.textContent = `#${idLabel} - ${nameLabel}`;
+        }
+
+        const isPublic = lead.is_public === true || lead.is_public === 1 || lead.is_public === '1';
+        const viewMap = {
+            'lead-view-name': lead.name || 'Sin nombre',
+            'lead-view-position': lead.title || lead.position || '—',
+            'lead-view-email': lead.email || '-',
+            'lead-view-website': lead.website || '-',
+            'lead-view-phone': lead.phone || '-',
+            'lead-view-value': lead.lead_value || '-',
+            'lead-view-company': lead.company || '-',
+            'lead-view-address': lead.address || '-',
+            'lead-view-city': lead.city || '-',
+            'lead-view-state': lead.state || '-',
+            'lead-view-country': lead.country || '-',
+            'lead-view-zip': lead.zip || '-',
+            'lead-view-source': titleize(lead.source || '-'),
+            'lead-view-language': lead.default_language || 'System Default',
+            'lead-view-assigned': lead.assigned_name || 'Sin asignar',
+            'lead-view-tags': Array.isArray(lead.tags) ? lead.tags.join(', ') : (lead.tags || '-'),
+            'lead-view-created': formatDate(lead.created_at, true) || '-',
+            'lead-view-last-contact': formatDate(lead.last_contact, true) || '-',
+            'lead-view-public': isPublic ? 'Yes' : 'No',
+            'lead-view-description': lead.notes || '-',
+        };
+
+        Object.keys(viewMap).forEach((id) => {
+            setTextContent(document.getElementById(id), viewMap[id]);
+        });
+
+        const statusElement = document.getElementById('lead-view-status');
+        if (statusElement) {
+            const statusLabel = titleize(lead.status || 'Sin estado');
+            statusElement.innerHTML = lead.status
+                ? `<span class="label label-default">${escapeHtml(statusLabel)}</span>`
+                : '—';
+        }
+
+        if (elements.leadDetailNotesCount) {
+            const noteCount = Number(lead.notes_count || 0);
+            elements.leadDetailNotesCount.textContent = noteCount;
+        }
+
+        populateLeadDetailSelects(lead);
+        const editMap = {
+            'lead-detail-name': lead.name || '',
+            'lead-detail-email': lead.email || '',
+            'lead-detail-phone': lead.phone || '',
+            'lead-detail-company': lead.company || '',
+            'lead-detail-source': lead.source || '',
+            'lead-detail-address': lead.address || '',
+            'lead-detail-city': lead.city || '',
+            'lead-detail-state': lead.state || '',
+            'lead-detail-zip': lead.zip || '',
+            'lead-detail-description': lead.notes || '',
+        };
+        Object.keys(editMap).forEach((id) => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.value = editMap[id];
+            }
+        });
+
+        if (elements.leadDetailConvert) {
+            elements.leadDetailConvert.dataset.leadHc = normalizedHc || '';
+            elements.leadDetailConvert.disabled = !normalizedHc;
+        }
+
+        toggleLeadEditMode(false);
 
         if (leadModals.detail) {
             leadModals.detail.show();
@@ -1348,14 +1486,24 @@
         }
         const normalizedHc = normalizeHcNumber(lead.hc_number);
         const label = lead.name ? `${lead.name} · ${normalizedHc || 'HC sin registrar'}` : (normalizedHc ? `HC ${normalizedHc}` : 'Lead sin nombre');
-        elements.convertSelected.textContent = label;
+        if (elements.convertSelected) {
+            elements.convertSelected.textContent = label;
+        }
         if (!normalizedHc) {
-            elements.convertHelper.textContent = 'El lead no tiene historia clínica registrada. Actualiza el lead antes de convertir.';
-            elements.convertSubmit.disabled = true;
+            if (elements.convertHelper) {
+                elements.convertHelper.textContent = 'El lead no tiene historia clínica registrada. Actualiza el lead antes de convertir.';
+            }
+            if (elements.convertSubmit) {
+                elements.convertSubmit.disabled = true;
+            }
             return;
         }
-        elements.convertHelper.textContent = 'Completa los datos y confirma la conversión.';
-        elements.convertSubmit.disabled = false;
+        if (elements.convertHelper) {
+            elements.convertHelper.textContent = 'Completa los datos y confirma la conversión.';
+        }
+        if (elements.convertSubmit) {
+            elements.convertSubmit.disabled = false;
+        }
         if (resetFields !== false) {
             const defaults = {
                 customer_name: lead.name || '',
@@ -2448,6 +2596,40 @@
         });
     }
 
+    if (elements.leadDetailEdit) {
+        elements.leadDetailEdit.addEventListener('click', () => toggleLeadEditMode(true));
+    }
+
+    if (elements.leadDetailCancel) {
+        elements.leadDetailCancel.addEventListener('click', () => toggleLeadEditMode(false));
+    }
+
+    function notifyEditPlaceholder() {
+        showToast('info', 'Edición del lead en desarrollo.');
+    }
+
+    if (elements.leadDetailSave) {
+        elements.leadDetailSave.addEventListener('click', notifyEditPlaceholder);
+    }
+
+    if (elements.leadDetailSaveFooter) {
+        elements.leadDetailSaveFooter.addEventListener('click', notifyEditPlaceholder);
+    }
+
+    if (elements.leadDetailConvert) {
+        elements.leadDetailConvert.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (!leadDetailState.current) {
+                showToast('warning', 'Selecciona un lead para convertir');
+                return;
+            }
+            fillConvertForm(leadDetailState.current, true);
+            if (leadModals.convert) {
+                leadModals.convert.show();
+            }
+        });
+    }
+
     if (elements.leadExportBtn) {
         elements.leadExportBtn.addEventListener('click', () => {
             const data = getFilteredLeads();
@@ -2540,7 +2722,7 @@
     if (elements.convertForm && canManageLeads) {
         elements.convertForm.addEventListener('submit', (event) => {
             event.preventDefault();
-            const hcNumber = normalizeHcNumber(elements.convertLeadHc.value);
+            const hcNumber = elements.convertLeadHc ? normalizeHcNumber(elements.convertLeadHc.value) : '';
             if (!hcNumber) {
                 showToast('error', 'Selecciona un lead antes de convertir');
                 return;

@@ -3,6 +3,7 @@
 namespace Modules\CRM\Models;
 
 use PDO;
+use PDOException;
 use InvalidArgumentException;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Shared\Services\PatientIdentityService;
@@ -88,7 +89,7 @@ class LeadModel
 
         if (!empty($filters['assigned_to'])) {
             $sql .= " AND l.assigned_to = :assigned_to";
-            $params[':assigned_to'] = (int) $filters['assigned_to'];
+            $params[':assigned_to'] = (int)$filters['assigned_to'];
         }
 
         if (!empty($filters['search'])) {
@@ -103,17 +104,25 @@ class LeadModel
 
         $sql .= " ORDER BY l.updated_at DESC";
 
-        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 100;
+        $limit = isset($filters['limit']) ? max(1, (int)$filters['limit']) : 100;
         $sql .= " LIMIT :limit";
 
-        $stmt = $this->pdo->prepare($sql);
+        $debugParams = $params;
+        $debugParams[':limit'] = $limit;
 
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
+        try {
+            $stmt = $this->pdo->prepare($sql);
+
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            $this->logSqlException($e, $sql ?? null, $debugParams ?? []);
+            throw $e;
         }
-
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -197,7 +206,7 @@ class LeadModel
 
     public function create(array $data, int $userId): array
     {
-        $hcNumber = $this->identityService->normalizeHcNumber((string) ($data['hc_number'] ?? ''));
+        $hcNumber = $this->identityService->normalizeHcNumber((string)($data['hc_number'] ?? ''));
         if ($hcNumber === '') {
             throw new InvalidArgumentException('El campo hc_number es obligatorio.');
         }
@@ -205,10 +214,10 @@ class LeadModel
         $this->assertHcNumberAvailable($hcNumber);
 
         $status = $this->sanitizeStatus($data['status'] ?? null);
-        $assignedTo = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
-        $customerId = !empty($data['customer_id']) ? (int) $data['customer_id'] : null;
+        $assignedTo = !empty($data['assigned_to']) ? (int)$data['assigned_to'] : null;
+        $customerId = !empty($data['customer_id']) ? (int)$data['customer_id'] : null;
 
-        $name = trim((string) ($data['name'] ?? ''));
+        $name = trim((string)($data['name'] ?? ''));
         [$firstName, $lastName] = $this->splitNameParts($name);
         $email = $this->nullableString($data['email'] ?? null);
         $phone = $this->nullableString($data['phone'] ?? null);
@@ -229,7 +238,7 @@ class LeadModel
         ]);
 
         if (!$customerId && !empty($identity['customer_id'])) {
-            $customerId = (int) $identity['customer_id'];
+            $customerId = (int)$identity['customer_id'];
         }
 
         $hasSplitNames = $this->hasLeadNameColumns();
@@ -253,25 +262,49 @@ class LeadModel
             implode(', ', $placeholders)
         );
 
-        $stmt = $this->pdo->prepare($sql);
-
-        $stmt->bindValue(':hc_number', $hcNumber);
-        $stmt->bindValue(':name', $name);
+        $debugParams = [
+            ':hc_number' => $hcNumber,
+            ':name' => $name,
+            ':email' => $email,
+            ':phone' => $phone,
+            ':status' => $status,
+            ':source' => $source,
+            ':notes' => $notes,
+            ':assigned_to' => $assignedTo,
+            ':customer_id' => $customerId,
+            ':created_by' => $userId ?: null,
+        ];
 
         if ($hasSplitNames) {
-            $stmt->bindValue(':first_name', $firstName !== '' ? $firstName : null, $firstName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            $stmt->bindValue(':last_name', $lastName !== '' ? $lastName : null, $lastName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $debugParams[':first_name'] = $firstName !== '' ? $firstName : null;
+            $debugParams[':last_name'] = $lastName !== '' ? $lastName : null;
         }
 
-        $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':status', $status);
-        $stmt->bindValue(':source', $source, $source !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':notes', $notes, $notes !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':assigned_to', $assignedTo, $assignedTo ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->bindValue(':customer_id', $customerId, $customerId ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->execute();
+        try {
+            $stmt = $this->pdo->prepare($sql);
+
+            $stmt->bindValue(':hc_number', $hcNumber);
+            $stmt->bindValue(':name', $name);
+
+            if ($hasSplitNames) {
+                $stmt->bindValue(':first_name', $firstName !== '' ? $firstName : null, $firstName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+                $stmt->bindValue(':last_name', $lastName !== '' ? $lastName : null, $lastName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            }
+
+            $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':status', $status);
+            $stmt->bindValue(':source', $source, $source !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':notes', $notes, $notes !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':assigned_to', $assignedTo, $assignedTo ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmt->bindValue(':customer_id', $customerId, $customerId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+
+            $stmt->execute();
+        } catch (PDOException $e) {
+            $this->logSqlException($e, $sql ?? null, $debugParams ?? []);
+            throw $e;
+        }
 
         $lead = $this->findByHcNumber($hcNumber);
         if ($lead) {
@@ -298,14 +331,14 @@ class LeadModel
         $params = [':current_hc' => $lead['hc_number']];
         $types = [':current_hc' => PDO::PARAM_STR];
 
-        $providedName = array_key_exists('name', $data) ? trim((string) $data['name']) : null;
-        $providedFirst = array_key_exists('first_name', $data) ? trim((string) $data['first_name']) : null;
-        $providedLast = array_key_exists('last_name', $data) ? trim((string) $data['last_name']) : null;
+        $providedName = array_key_exists('name', $data) ? trim((string)$data['name']) : null;
+        $providedFirst = array_key_exists('first_name', $data) ? trim((string)$data['first_name']) : null;
+        $providedLast = array_key_exists('last_name', $data) ? trim((string)$data['last_name']) : null;
         $hasSplitNames = $this->hasLeadNameColumns();
 
         if ($providedName !== null) {
             if ($providedName === '') {
-                $providedName = (string) ($lead['name'] ?? '');
+                $providedName = (string)($lead['name'] ?? '');
             }
             [$derivedFirst, $derivedLast] = $this->splitNameParts($providedName);
             $firstValue = $providedFirst !== null ? $providedFirst : $derivedFirst;
@@ -325,8 +358,8 @@ class LeadModel
                 $types[':last_name'] = $lastValue !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL;
             }
         } elseif ($providedFirst !== null || $providedLast !== null) {
-            $firstValue = $providedFirst !== null ? $providedFirst : trim((string) ($lead['first_name'] ?? ''));
-            $lastValue = $providedLast !== null ? $providedLast : trim((string) ($lead['last_name'] ?? ''));
+            $firstValue = $providedFirst !== null ? $providedFirst : trim((string)($lead['first_name'] ?? ''));
+            $lastValue = $providedLast !== null ? $providedLast : trim((string)($lead['last_name'] ?? ''));
             $composedName = trim(($firstValue ? $firstValue . ' ' : '') . $lastValue);
 
             if ($composedName !== '') {
@@ -376,14 +409,14 @@ class LeadModel
 
         if (array_key_exists('assigned_to', $data)) {
             $fields[] = 'assigned_to = :assigned_to';
-            $assignedTo = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
+            $assignedTo = !empty($data['assigned_to']) ? (int)$data['assigned_to'] : null;
             $params[':assigned_to'] = $assignedTo;
             $types[':assigned_to'] = $assignedTo !== null ? PDO::PARAM_INT : PDO::PARAM_NULL;
         }
 
         if (array_key_exists('customer_id', $data)) {
             $fields[] = 'customer_id = :customer_id';
-            $customerId = !empty($data['customer_id']) ? (int) $data['customer_id'] : null;
+            $customerId = !empty($data['customer_id']) ? (int)$data['customer_id'] : null;
             $params[':customer_id'] = $customerId;
             $types[':customer_id'] = $customerId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL;
         }
@@ -400,14 +433,20 @@ class LeadModel
         }
 
         $sql = 'UPDATE crm_leads SET ' . implode(', ', $fields) . ' WHERE hc_number = :current_hc';
-        $stmt = $this->pdo->prepare($sql);
 
-        foreach ($params as $key => $value) {
-            $type = $types[$key] ?? PDO::PARAM_STR;
-            $stmt->bindValue($key, $value, $type);
+        try {
+            $stmt = $this->pdo->prepare($sql);
+
+            foreach ($params as $key => $value) {
+                $type = $types[$key] ?? PDO::PARAM_STR;
+                $stmt->bindValue($key, $value, $type);
+            }
+
+            $stmt->execute();
+        } catch (PDOException $e) {
+            $this->logSqlException($e, $sql ?? null, $params ?? []);
+            throw $e;
         }
-
-        $stmt->execute();
 
         $actualizado = $this->findByHcNumber($lead['hc_number']);
         if ($actualizado) {
@@ -424,8 +463,8 @@ class LeadModel
                 ],
             ]);
 
-            if (!empty($identity['customer_id']) && (int) ($actualizado['customer_id'] ?? 0) !== (int) $identity['customer_id']) {
-                $this->attachCustomer($actualizado['hc_number'], (int) $identity['customer_id']);
+            if (!empty($identity['customer_id']) && (int)($actualizado['customer_id'] ?? 0) !== (int)$identity['customer_id']) {
+                $this->attachCustomer($actualizado['hc_number'], (int)$identity['customer_id']);
                 $actualizado = $this->findByHcNumber($actualizado['hc_number']);
             }
 
@@ -447,7 +486,7 @@ class LeadModel
 
         unset($data['hc_number']);
 
-        return $this->update((string) $lead['hc_number'], $data);
+        return $this->update((string)$lead['hc_number'], $data);
     }
 
     public function updateStatus(string $hcNumber, string $status): ?array
@@ -479,7 +518,7 @@ class LeadModel
             return null;
         }
 
-        return $this->updateStatus((string) $lead['hc_number'], $status);
+        return $this->updateStatus((string)$lead['hc_number'], $status);
     }
 
     /**
@@ -508,7 +547,7 @@ class LeadModel
 
         foreach ($rows as $row) {
             $status = $row['status'] ?? null;
-            $count = (int) ($row['total'] ?? 0);
+            $count = (int)($row['total'] ?? 0);
             $total += $count;
 
             if ($status === null || $status === '') {
@@ -537,7 +576,7 @@ class LeadModel
         $lostStage = $this->configService->normalizeStage($this->configService->getLostStage() ?? '', false);
         $lostCount = 0;
         foreach ($byStatus as $status => $count) {
-            $normalizedStatus = $this->configService->normalizeStage((string) $status, false);
+            $normalizedStatus = $this->configService->normalizeStage((string)$status, false);
             if ($lostStage !== '' && $normalizedStatus === $lostStage) {
                 $lostCount += $count;
             }
@@ -592,7 +631,7 @@ class LeadModel
             ],
         ]);
 
-        $customerId = $lead['customer_id'] ? (int) $lead['customer_id'] : (int) ($identity['customer_id'] ?? 0);
+        $customerId = $lead['customer_id'] ? (int)$lead['customer_id'] : (int)($identity['customer_id'] ?? 0);
         if ($customerId <= 0) {
             $customerId = $this->upsertCustomer($lead, $customerPayload);
         }
@@ -627,7 +666,7 @@ class LeadModel
         $templatePayload = $this->resolveStageTemplatePayload($event, $lead, $context);
         if ($templatePayload !== null && $this->whatsapp->sendTemplateMessage($phones, $templatePayload)) {
             if (isset($templatePayload['_stage'])) {
-                $this->markStageNotified((string) ($lead['hc_number'] ?? ''), (string) $templatePayload['_stage']);
+                $this->markStageNotified((string)($lead['hc_number'] ?? ''), (string)$templatePayload['_stage']);
             }
 
             return;
@@ -653,12 +692,12 @@ class LeadModel
 
         foreach (['phone', 'contact_phone', 'customer_phone'] as $key) {
             if (!empty($lead[$key])) {
-                $phones[] = (string) $lead[$key];
+                $phones[] = (string)$lead[$key];
             }
         }
 
         if (!empty($context['phone'])) {
-            $phones[] = (string) $context['phone'];
+            $phones[] = (string)$context['phone'];
         }
 
         return array_values(array_unique(array_filter($phones)));
@@ -743,7 +782,7 @@ class LeadModel
 
     private function buildLeadGreeting(array $lead): string
     {
-        $name = trim((string) ($lead['name'] ?? ''));
+        $name = trim((string)($lead['name'] ?? ''));
 
         if ($name === '') {
             return 'Hola 👋';
@@ -843,14 +882,14 @@ class LeadModel
     private function buildPlaceholderMap(array $lead, array $context = []): array
     {
         $brand = $this->whatsapp->getBrandName();
-        $status = (string) ($lead['status'] ?? '');
-        $source = (string) ($lead['source'] ?? '');
-        $assigned = (string) ($lead['assigned_name'] ?? '');
-        $hcNumber = (string) ($lead['hc_number'] ?? '');
+        $status = (string)($lead['status'] ?? '');
+        $source = (string)($lead['source'] ?? '');
+        $assigned = (string)($lead['assigned_name'] ?? '');
+        $hcNumber = (string)($lead['hc_number'] ?? '');
 
         return array_filter([
-            '{{nombre}}' => (string) ($lead['name'] ?? ''),
-            '{{paciente}}' => (string) ($lead['name'] ?? ''),
+            '{{nombre}}' => (string)($lead['name'] ?? ''),
+            '{{paciente}}' => (string)($lead['name'] ?? ''),
             '{{estado}}' => $status,
             '{{origen}}' => $source,
             '{{asesor}}' => $assigned,
@@ -859,8 +898,8 @@ class LeadModel
             '{{brand}}' => $brand,
             '{{marca}}' => $brand,
             '{{fuente}}' => $source,
-            '{{telefono}}' => (string) ($lead['phone'] ?? ($context['phone'] ?? '')),
-        ], static fn($value) => (string) $value !== '');
+            '{{telefono}}' => (string)($lead['phone'] ?? ($context['phone'] ?? '')),
+        ], static fn($value) => (string)$value !== '');
     }
 
     /**
@@ -896,7 +935,7 @@ class LeadModel
             return null;
         }
 
-        $text = trim((string) $value);
+        $text = trim((string)$value);
         if ($text === '') {
             return null;
         }
@@ -906,7 +945,7 @@ class LeadModel
 
     private function shouldSendTemplateForStage(array $lead, string $stage): bool
     {
-        $hcNumber = (string) ($lead['hc_number'] ?? '');
+        $hcNumber = (string)($lead['hc_number'] ?? '');
         if ($hcNumber === '') {
             return true;
         }
@@ -917,7 +956,7 @@ class LeadModel
             return false;
         }
 
-        $lastNotifiedStage = mb_strtolower(trim((string) ($lead['last_stage_notified'] ?? '')));
+        $lastNotifiedStage = mb_strtolower(trim((string)($lead['last_stage_notified'] ?? '')));
         $lastNotifiedAt = $lead['last_stage_notified_at'] ?? null;
 
         if ($lastNotifiedStage === $normalizedStage && $this->isWithinCooldown($lastNotifiedAt)) {
@@ -954,7 +993,7 @@ class LeadModel
             return false;
         }
 
-        $timestamp = strtotime((string) $lastNotifiedAt);
+        $timestamp = strtotime((string)$lastNotifiedAt);
         if ($timestamp === false) {
             return false;
         }
@@ -982,7 +1021,7 @@ class LeadModel
 
     private function upsertCustomer(array $lead, array $payload): int
     {
-        $hcNumber = $this->identityService->normalizeHcNumber((string) ($lead['hc_number'] ?? ($payload['hc_number'] ?? '')));
+        $hcNumber = $this->identityService->normalizeHcNumber((string)($lead['hc_number'] ?? ($payload['hc_number'] ?? '')));
         if ($hcNumber !== '') {
             $existingByHc = $this->findCustomerBy('hc_number', $hcNumber);
             if ($existingByHc) {
@@ -993,10 +1032,10 @@ class LeadModel
         }
 
         if (!empty($payload['customer_id'])) {
-            return (int) $payload['customer_id'];
+            return (int)$payload['customer_id'];
         }
 
-        $email = trim((string) ($payload['email'] ?? $lead['email'] ?? ''));
+        $email = trim((string)($payload['email'] ?? $lead['email'] ?? ''));
         if ($email !== '') {
             $existing = $this->findCustomerBy('email', $email);
             if ($existing) {
@@ -1004,7 +1043,7 @@ class LeadModel
             }
         }
 
-        $phone = trim((string) ($payload['phone'] ?? $lead['phone'] ?? ''));
+        $phone = trim((string)($payload['phone'] ?? $lead['phone'] ?? ''));
         if ($phone !== '' && $phone !== null) {
             $existing = $this->findCustomerBy('phone', $phone);
             if ($existing) {
@@ -1012,7 +1051,7 @@ class LeadModel
             }
         }
 
-        $externalRef = trim((string) ($payload['external_ref'] ?? 'lead-' . $lead['id']));
+        $externalRef = trim((string)($payload['external_ref'] ?? 'lead-' . $lead['id']));
         if ($externalRef !== '') {
             $existing = $this->findCustomerBy('external_ref', $externalRef);
             if ($existing) {
@@ -1020,17 +1059,17 @@ class LeadModel
             }
         }
 
-        $stmt = $this->pdo->prepare("
+        $sql = "
             INSERT INTO crm_customers
                 (hc_number, type, name, email, phone, document, gender, birthdate, city, address, marital_status, affiliation, nationality, workplace, source, external_ref)
             VALUES
                 (:hc_number, :type, :name, :email, :phone, :document, :gender, :birthdate, :city, :address, :marital_status, :affiliation, :nationality, :workplace, :source, :external_ref)
-        ");
+        ";
 
-        $stmt->execute([
+        $params = [
             ':hc_number' => $hcNumber,
             ':type' => $payload['type'] ?? 'person',
-            ':name' => trim((string) ($payload['name'] ?? $lead['name'] ?? 'Lead sin nombre')),
+            ':name' => trim((string)($payload['name'] ?? $lead['name'] ?? 'Lead sin nombre')),
             ':email' => $email !== '' ? $email : null,
             ':phone' => $phone !== '' ? $phone : null,
             ':document' => $this->nullableString($payload['document'] ?? null),
@@ -1044,9 +1083,17 @@ class LeadModel
             ':workplace' => $this->nullableString($payload['workplace'] ?? null),
             ':source' => $payload['source'] ?? ($lead['source'] ?? 'lead'),
             ':external_ref' => $externalRef !== '' ? $externalRef : null,
-        ]);
+        ];
 
-        return (int) $this->pdo->lastInsertId();
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+        } catch (PDOException $e) {
+            $this->logSqlException($e, $sql ?? null, $params ?? []);
+            throw $e;
+        }
+
+        return (int)$this->pdo->lastInsertId();
     }
 
     private function findCustomerBy(string $column, string $value): ?int
@@ -1064,7 +1111,7 @@ class LeadModel
         $stmt->execute([':value' => $value]);
         $id = $stmt->fetchColumn();
 
-        return $id ? (int) $id : null;
+        return $id ? (int)$id : null;
     }
 
     private function assertHcNumberAvailable(string $hcNumber, ?string $current = null): void
@@ -1131,8 +1178,35 @@ class LeadModel
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
 
         return $value === '' ? null : $value;
     }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function logSqlException(PDOException $e, ?string $sql = null, array $params = []): void
+    {
+        $dbName = null;
+        try {
+            $dbName = $this->pdo->query('SELECT DATABASE()')->fetchColumn();
+        } catch (\Throwable $t) {
+            // ignore
+        }
+
+        error_log('SQL DB: ' . ($dbName ?: 'unknown'));
+        error_log('SQL ERROR: ' . $e->getMessage());
+        error_log('SQL QUERY: ' . ($sql ?? 'no-sql-var'));
+        error_log('SQL PARAMS: ' . json_encode($params ?? []));
+
+        // Extra debug: verify the column exists in the actual connected DB at failure time.
+        try {
+            $cols = $this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'first_name'")->fetchAll(PDO::FETCH_ASSOC);
+            error_log('SQL DEBUG crm_leads.first_name: ' . json_encode($cols));
+        } catch (\Throwable $t) {
+            // ignore
+        }
+    }
 }
+
