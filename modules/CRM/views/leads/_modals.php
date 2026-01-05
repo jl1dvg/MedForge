@@ -83,9 +83,20 @@ $canManageLeads = (bool)($permissions['manageLeads'] ?? false);
             <div class="modal-body">
                 <p class="text-muted small mb-3" id="lead-form-helper">Completa los campos y guarda.</p>
                 <form id="lead-form" class="space-y-2">
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label for="lead-first-name" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="lead-first-name" name="first_name" placeholder="Ej. Juan">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="lead-last-name" class="form-label">Apellido</label>
+                        <input type="text" class="form-control" id="lead-last-name" name="last_name" placeholder="Ej. Pérez">
+                    </div>
+                </div>
                 <div class="mb-2">
-                    <label for="lead-name" class="form-label">Nombre del contacto *</label>
+                    <label for="lead-name" class="form-label">Nombre completo *</label>
                     <input type="text" class="form-control" id="lead-name" name="name" required>
+                    <div class="form-text">Se completará automáticamente con el nombre y apellido si dejas este campo vacío.</div>
                 </div>
                 <div class="mb-2">
                     <label for="lead-hc-number" class="form-label">Historia clínica *</label>
