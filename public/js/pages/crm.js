@@ -82,6 +82,10 @@
         ticketReplyMessage: root.querySelector('#ticket-reply-message'),
         ticketReplyStatus: root.querySelector('#ticket-reply-status'),
         ticketReplySubmit: root.querySelector('#ticket-reply-form button[type="submit"]'),
+        leadEmailForm: document.getElementById('lead-email-form'),
+        leadEmailTo: document.getElementById('lead-email-to'),
+        leadEmailSubject: document.getElementById('lead-email-subject'),
+        leadEmailBody: document.getElementById('lead-email-body'),
         leadSelectForProject: root.querySelector('#project-lead'),
         leadSelectForTicket: root.querySelector('#ticket-lead'),
         projectSelectForTask: root.querySelector('#task-project'),
@@ -172,6 +176,9 @@
             : null,
         detail: (window.bootstrap && elements.leadDetailModal)
             ? new window.bootstrap.Modal(elements.leadDetailModal)
+            : null,
+        email: (window.bootstrap && document.getElementById('lead-email-modal'))
+            ? new window.bootstrap.Modal(document.getElementById('lead-email-modal'))
             : null,
     };
 
@@ -795,7 +802,31 @@
                 row.appendChild(tagsCell);
 
                 const assignedCell = document.createElement('td');
-                assignedCell.textContent = lead.assigned_name || 'Sin asignar';
+                if (canManageLeads) {
+                    const assignSelect = document.createElement('select');
+                    assignSelect.className = 'form-select form-select-sm js-lead-assigned';
+                    assignSelect.dataset.leadId = lead.id;
+
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = 'Sin asignar';
+                    assignSelect.appendChild(emptyOption);
+
+                    state.assignableUsers.forEach((user) => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = user.nombre || user.name || user.email || `ID ${user.id}`;
+                        assignSelect.appendChild(option);
+                    });
+
+                    if (lead.assigned_to) {
+                        assignSelect.value = lead.assigned_to;
+                    }
+
+                    assignedCell.appendChild(assignSelect);
+                } else {
+                    assignedCell.textContent = lead.assigned_name || 'Sin asignar';
+                }
                 row.appendChild(assignedCell);
 
                 const updatedCell = document.createElement('td');
@@ -821,6 +852,15 @@
                     editButton.dataset.leadId = lead.id;
                     editButton.innerHTML = '<i class="mdi mdi-square-edit-outline"></i>';
                     group.appendChild(editButton);
+
+                    const emailButton = document.createElement('button');
+                    emailButton.type = 'button';
+                    emailButton.className = 'btn btn-sm btn-outline-info js-lead-email';
+                    emailButton.dataset.leadId = lead.id;
+                    emailButton.title = lead.email ? 'Enviar correo' : 'Sin correo disponible';
+                    emailButton.disabled = !lead.email;
+                    emailButton.innerHTML = '<i class="mdi mdi-email-send-outline"></i>';
+                    group.appendChild(emailButton);
 
                     const convertButton = document.createElement('button');
                     convertButton.type = 'button';
@@ -1233,6 +1273,42 @@
         if (leadModals.detail) {
             leadModals.detail.show();
         }
+    }
+
+    function fillLeadEmailForm(draft, leadId) {
+        if (!elements.leadEmailForm) {
+            return;
+        }
+        elements.leadEmailForm.dataset.leadId = leadId ? String(leadId) : '';
+        elements.leadEmailForm.dataset.status = draft && draft.context ? (draft.context.status || '') : '';
+
+        if (elements.leadEmailTo) {
+            elements.leadEmailTo.value = (draft && draft.to) || '';
+        }
+        if (elements.leadEmailSubject) {
+            elements.leadEmailSubject.value = (draft && draft.subject) || '';
+        }
+        if (elements.leadEmailBody) {
+            elements.leadEmailBody.value = (draft && draft.body) || '';
+        }
+    }
+
+    function openLeadEmail(leadId) {
+        if (!leadId) {
+            return;
+        }
+        request(`/crm/leads/${leadId}/mail/compose`)
+            .then((data) => {
+                const draft = data.data || {};
+                fillLeadEmailForm(draft, leadId);
+                if (leadModals.email) {
+                    leadModals.email.show();
+                }
+            })
+            .catch((error) => {
+                console.error('No se pudo preparar el correo', error);
+                showToast('error', error.message || 'No se pudo preparar el correo');
+            });
     }
 
     function fillConvertForm(lead, resetFields) {
@@ -2189,6 +2265,38 @@
         });
     }
 
+    if (elements.leadEmailForm && canManageLeads) {
+        elements.leadEmailForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const leadId = serializeNumber(elements.leadEmailForm.dataset.leadId);
+            const status = elements.leadEmailForm.dataset.status || '';
+            const to = (elements.leadEmailTo && elements.leadEmailTo.value) ? elements.leadEmailTo.value.trim() : '';
+            const subject = (elements.leadEmailSubject && elements.leadEmailSubject.value)
+                ? elements.leadEmailSubject.value.trim()
+                : '';
+            const body = (elements.leadEmailBody && elements.leadEmailBody.value) ? elements.leadEmailBody.value.trim() : '';
+            if (!leadId) {
+                showToast('error', 'Selecciona un lead antes de enviar');
+                return;
+            }
+            if (!to || !subject || !body) {
+                showToast('error', 'Completa para, asunto y mensaje');
+                return;
+            }
+            request(`/crm/leads/${leadId}/mail/send-template`, { method: 'POST', body: { status, to, subject, body } })
+                .then(() => {
+                    showToast('success', 'Correo enviado');
+                    if (leadModals.email) {
+                        leadModals.email.hide();
+                    }
+                })
+                .catch((error) => {
+                    console.error('No se pudo enviar el correo', error);
+                    showToast('error', error.message || 'No se pudo enviar el correo');
+                });
+        });
+    }
+
     if (elements.leadStatusSummary) {
         elements.leadStatusSummary.addEventListener('click', (event) => {
             const button = event.target.closest('button[data-status-filter]');
@@ -2745,6 +2853,22 @@
                         showToast('error', error.message || 'No se pudo actualizar el lead');
                         loadLeads();
                     });
+                return;
+            }
+            if (canManageLeads && target.classList.contains('js-lead-assigned')) {
+                const leadId = serializeNumber(target.dataset.leadId);
+                const assignedTo = target.value;
+                if (!leadId) {
+                    return;
+                }
+                request(`/crm/leads/${leadId}`, { method: 'PUT', body: { assigned_to: assignedTo || null } })
+                    .then(() => loadLeads())
+                    .catch((error) => {
+                        console.error('Error asignando lead', error);
+                        showToast('error', error.message || 'No se pudo asignar el lead');
+                        loadLeads();
+                    });
+                return;
             }
             if (canManageProjects && target.classList.contains('js-project-status')) {
                 const projectId = serializeNumber(target.dataset.projectId);
@@ -2845,6 +2969,16 @@
                         return;
                     }
                     applyLeadToForm(lead);
+                    return;
+                }
+
+                const emailButton = event.target.closest('.js-lead-email');
+                if (emailButton) {
+                    const leadId = serializeNumber(emailButton.dataset.leadId);
+                    if (!leadId) {
+                        return;
+                    }
+                    openLeadEmail(leadId);
                     return;
                 }
 
