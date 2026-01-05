@@ -227,7 +227,11 @@ class MailboxController extends BaseController
         }
 
         try {
-            $this->mailer->sendPatientUpdate($email, $subject, implode("\n", $messageLines));
+            $result = $this->mailer->sendPatientUpdate($email, $subject, implode("\n", $messageLines));
+            if (!$result['success']) {
+                $message = $result['error'] ?? 'No se pudo enviar el correo de notificación';
+                throw new RuntimeException($message);
+            }
         } catch (Throwable $exception) {
             error_log('No se pudo notificar al paciente (' . $targetType . ' #' . $targetId . ' a ' . $email . '): ' . $exception->getMessage());
         }

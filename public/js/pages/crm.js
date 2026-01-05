@@ -850,7 +850,7 @@
                     editButton.type = 'button';
                     editButton.className = 'btn btn-sm btn-outline-primary js-edit-lead';
                     editButton.dataset.leadId = lead.id;
-                    editButton.innerHTML = '<i class="mdi mdi-square-edit-outline"></i>';
+                    editButton.innerHTML = '<i class="mdi mdi-tooltip-edit"></i>';
                     group.appendChild(editButton);
 
                     const emailButton = document.createElement('button');
@@ -859,7 +859,7 @@
                     emailButton.dataset.leadId = lead.id;
                     emailButton.title = lead.email ? 'Enviar correo' : 'Sin correo disponible';
                     emailButton.disabled = !lead.email;
-                    emailButton.innerHTML = '<i class="mdi mdi-email-send-outline"></i>';
+                    emailButton.innerHTML = '<i class="mdi mdi-email-outline"></i>';
                     group.appendChild(emailButton);
 
                     const convertButton = document.createElement('button');
@@ -871,7 +871,7 @@
                     convertButton.title = canConvert
                         ? 'Convertir a paciente'
                         : 'Agrega una historia clínica para poder convertir';
-                    convertButton.innerHTML = '<i class="mdi mdi-account-check-outline"></i>';
+                    convertButton.innerHTML = '<i class="mdi mdi-checkbox-marked-circle-outline"></i>';
                     group.appendChild(convertButton);
 
                     actionsCell.appendChild(group);
