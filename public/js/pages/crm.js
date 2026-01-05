@@ -180,6 +180,9 @@
         email: (window.bootstrap && document.getElementById('lead-email-modal'))
             ? new window.bootstrap.Modal(document.getElementById('lead-email-modal'))
             : null,
+        form: (window.bootstrap && document.getElementById('lead-modal'))
+            ? new window.bootstrap.Modal(document.getElementById('lead-modal'))
+            : null,
     };
 
     const leadFormState = {
@@ -1225,8 +1228,19 @@
             hcInput.disabled = true;
         }
 
+        let firstName = lead.first_name || '';
+        let lastName = lead.last_name || '';
+
+        if (!firstName && lead.name) {
+            const parts = lead.name.trim().split(/\s+/);
+            firstName = parts.shift() || '';
+            lastName = parts.join(' ');
+        }
+
         const map = {
-            name: lead.name || '',
+            name: lead.name || `${firstName} ${lastName}`.trim(),
+            first_name: firstName,
+            last_name: lastName,
             hc_number: normalizedHc,
             email: lead.email || '',
             phone: lead.phone || '',
@@ -1245,6 +1259,20 @@
 
         if (elements.leadFormHelper) {
             elements.leadFormHelper.textContent = 'Editando lead existente. Guarda para aplicar los cambios.';
+        }
+    }
+
+    function openLeadEdit(leadId) {
+        const lead = findLeadById(leadId);
+        if (!lead) {
+            showToast('error', 'No pudimos cargar el lead seleccionado');
+            return;
+        }
+        leadFormState.mode = 'edit';
+        leadFormState.currentHc = normalizeHcNumber(lead.hc_number || '');
+        applyLeadToForm(lead);
+        if (leadModals.form) {
+            leadModals.form.show();
         }
     }
 
@@ -2208,10 +2236,22 @@
         elements.leadForm.addEventListener('submit', (event) => {
             event.preventDefault();
             const formData = new FormData(elements.leadForm);
-            const payload = { name: String(formData.get('name') || '').trim() };
+            const firstName = String(formData.get('first_name') || '').trim();
+            const lastName = String(formData.get('last_name') || '').trim();
+            const fullNameInput = String(formData.get('name') || '').trim();
+            const composedName = fullNameInput || `${firstName} ${lastName}`.trim();
+
+            const payload = { name: composedName };
             if (!payload.name) {
                 showToast('error', 'El nombre es obligatorio');
                 return;
+            }
+
+            if (firstName) {
+                payload.first_name = firstName;
+            }
+            if (lastName) {
+                payload.last_name = lastName;
             }
             const isEdit = elements.leadForm.dataset.mode === 'edit' && leadFormState.currentHc;
             const hcFromInput = normalizeHcNumber(formData.get('hc_number'));
@@ -2963,12 +3003,7 @@
                 const editButton = event.target.closest('.js-edit-lead');
                 if (editButton) {
                     const leadId = editButton.dataset.leadId;
-                    const lead = findLeadById(leadId);
-                    if (!lead) {
-                        showToast('error', 'No pudimos cargar el lead seleccionado');
-                        return;
-                    }
-                    applyLeadToForm(lead);
+                    openLeadEdit(leadId);
                     return;
                 }
 
