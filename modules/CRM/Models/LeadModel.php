@@ -280,30 +280,68 @@ class LeadModel
             $debugParams[':last_name'] = $lastName !== '' ? $lastName : null;
         }
 
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->bindValue(':hc_number', $hcNumber);
+        $stmt->bindValue(':name', $name);
+
+        if ($hasSplitNames) {
+            $stmt->bindValue(':first_name', $firstName !== '' ? $firstName : null, $firstName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':last_name', $lastName !== '' ? $lastName : null, $lastName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        }
+
+        $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':status', $status);
+        $stmt->bindValue(':source', $source, $source !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':notes', $notes, $notes !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':assigned_to', $assignedTo, $assignedTo ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':customer_id', $customerId, $customerId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+
         try {
-            $stmt = $this->pdo->prepare($sql);
-
-            $stmt->bindValue(':hc_number', $hcNumber);
-            $stmt->bindValue(':name', $name);
-
-            if ($hasSplitNames) {
-                $stmt->bindValue(':first_name', $firstName !== '' ? $firstName : null, $firstName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-                $stmt->bindValue(':last_name', $lastName !== '' ? $lastName : null, $lastName !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            }
-
-            $stmt->bindValue(':email', $email, $email !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            $stmt->bindValue(':phone', $phone, $phone !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            $stmt->bindValue(':status', $status);
-            $stmt->bindValue(':source', $source, $source !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            $stmt->bindValue(':notes', $notes, $notes !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-            $stmt->bindValue(':assigned_to', $assignedTo, $assignedTo ? PDO::PARAM_INT : PDO::PARAM_NULL);
-            $stmt->bindValue(':customer_id', $customerId, $customerId ? PDO::PARAM_INT : PDO::PARAM_NULL);
-            $stmt->bindValue(':created_by', $userId ?: null, $userId ? PDO::PARAM_INT : PDO::PARAM_NULL);
-
             $stmt->execute();
         } catch (PDOException $e) {
             $this->logSqlException($e, $sql ?? null, $debugParams ?? []);
-            throw $e;
+
+            if ($this->isUnknownNameColumn($e)) {
+                $retrySql = 'INSERT INTO crm_leads (hc_number, name, email, phone, status, source, notes, assigned_to, customer_id, created_by) '
+                    . 'VALUES (:hc_number, :name, :email, :phone, :status, :source, :notes, :assigned_to, :customer_id, :created_by)';
+
+                $retryParams = [
+                    ':hc_number' => $hcNumber,
+                    ':name' => $name,
+                    ':email' => $email,
+                    ':phone' => $phone,
+                    ':status' => $status,
+                    ':source' => $source,
+                    ':notes' => $notes,
+                    ':assigned_to' => $assignedTo,
+                    ':customer_id' => $customerId,
+                    ':created_by' => $userId ?: null,
+                ];
+
+                $retryStmt = $this->pdo->prepare($retrySql);
+                foreach ($retryParams as $key => $value) {
+                    $paramType = PDO::PARAM_STR;
+                    if (in_array($key, [':assigned_to', ':customer_id', ':created_by'], true)) {
+                        $paramType = $value !== null ? PDO::PARAM_INT : PDO::PARAM_NULL;
+                    } elseif (in_array($key, [':email', ':phone', ':source', ':notes'], true)) {
+                        $paramType = $value !== null ? PDO::PARAM_STR : PDO::PARAM_NULL;
+                    }
+
+                    $retryStmt->bindValue($key, $value, $paramType);
+                }
+
+                try {
+                    $retryStmt->execute();
+                } catch (PDOException $retryException) {
+                    $this->logSqlException($retryException, $retrySql, $retryParams);
+                    throw $retryException;
+                }
+            } else {
+                throw $e;
+            }
         }
 
         $lead = $this->findByHcNumber($hcNumber);
@@ -434,18 +472,47 @@ class LeadModel
 
         $sql = 'UPDATE crm_leads SET ' . implode(', ', $fields) . ' WHERE hc_number = :current_hc';
 
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            $type = $types[$key] ?? PDO::PARAM_STR;
+            $stmt->bindValue($key, $value, $type);
+        }
+
         try {
-            $stmt = $this->pdo->prepare($sql);
-
-            foreach ($params as $key => $value) {
-                $type = $types[$key] ?? PDO::PARAM_STR;
-                $stmt->bindValue($key, $value, $type);
-            }
-
             $stmt->execute();
         } catch (PDOException $e) {
             $this->logSqlException($e, $sql ?? null, $params ?? []);
-            throw $e;
+
+            if ($this->isUnknownNameColumn($e)) {
+                $fallbackFields = array_values(array_filter($fields, static function (string $field): bool {
+                    return $field !== 'first_name = :first_name' && $field !== 'last_name = :last_name';
+                }));
+
+                $fallbackParams = $params;
+                unset($fallbackParams[':first_name'], $fallbackParams[':last_name']);
+
+                $fallbackTypes = $types;
+                unset($fallbackTypes[':first_name'], $fallbackTypes[':last_name']);
+
+                if ($fallbackFields) {
+                    $retrySql = 'UPDATE crm_leads SET ' . implode(', ', $fallbackFields) . ' WHERE hc_number = :current_hc';
+                    $retryStmt = $this->pdo->prepare($retrySql);
+
+                    foreach ($fallbackParams as $key => $value) {
+                        $retryStmt->bindValue($key, $value, $fallbackTypes[$key] ?? PDO::PARAM_STR);
+                    }
+
+                    try {
+                        $retryStmt->execute();
+                    } catch (PDOException $retryException) {
+                        $this->logSqlException($retryException, $retrySql, $fallbackParams);
+                        throw $retryException;
+                    }
+                }
+            } else {
+                throw $e;
+            }
         }
 
         $actualizado = $this->findByHcNumber($lead['hc_number']);
@@ -1005,12 +1072,26 @@ class LeadModel
 
     private function hasLeadNameColumns(): bool
     {
-        if ($this->hasLeadNameColumns === null) {
-            $this->hasLeadNameColumns = $this->schemaInspector->tableHasColumn('crm_leads', 'first_name')
-                && $this->schemaInspector->tableHasColumn('crm_leads', 'last_name');
+        if ($this->hasLeadNameColumns !== null) {
+            return $this->hasLeadNameColumns;
+        }
+
+        try {
+            $firstExists = (bool)$this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'first_name'")->fetchColumn();
+            $lastExists = (bool)$this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'last_name'")->fetchColumn();
+            $this->hasLeadNameColumns = $firstExists && $lastExists;
+        } catch (\Throwable $t) {
+            $this->hasLeadNameColumns = false;
         }
 
         return $this->hasLeadNameColumns;
+    }
+
+    private function isUnknownNameColumn(PDOException $e): bool
+    {
+        $message = $e->getMessage();
+        return stripos($message, "Unknown column 'first_name'") !== false
+            || stripos($message, "Unknown column 'last_name'") !== false;
     }
 
     private function hasLeadNotificationColumns(): bool
@@ -1195,15 +1276,15 @@ class LeadModel
             // ignore
         }
 
-        error_log('SQL DB: ' . ($dbName ?: 'unknown'));
         error_log('SQL ERROR: ' . $e->getMessage());
+        error_log('SQL DB: ' . ($dbName ?: 'unknown'));
         error_log('SQL QUERY: ' . ($sql ?? 'no-sql-var'));
         error_log('SQL PARAMS: ' . json_encode($params ?? []));
 
         // Extra debug: verify the column exists in the actual connected DB at failure time.
         try {
-            $cols = $this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'first_name'")->fetchAll(PDO::FETCH_ASSOC);
-            error_log('SQL DEBUG crm_leads.first_name: ' . json_encode($cols));
+            $cols = $this->pdo->query('SHOW COLUMNS FROM crm_leads')->fetchAll(PDO::FETCH_COLUMN);
+            error_log('crm_leads columns: ' . implode(',', $cols));
         } catch (\Throwable $t) {
             // ignore
         }

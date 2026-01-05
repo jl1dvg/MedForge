@@ -6,7 +6,7 @@ $leadSources = $leadViewData['leadSources'] ?? [];
 $assignableUsers = $leadViewData['assignableUsers'] ?? [];
 ?>
 <div class="row g-3" id="lead-table-section">
-    <div class="col-12 col-xl-8">
+    <div class="col-12 col-xl-12">
         <div class="d-flex flex-wrap align-items-center justify-content-between mb-2 gap-2">
             <div class="d-none d-lg-flex align-items-center gap-2 flex-wrap">
                 <div class="input-group input-group-sm" style="width: 160px;">
@@ -70,16 +70,5 @@ $assignableUsers = $leadViewData['assignableUsers'] ?? [];
             <div class="text-muted small" id="lead-table-info">Mostrando 0 de 0</div>
             <ul class="pagination pagination-sm mb-0" id="lead-pagination"></ul>
         </div>
-    </div>
-    <div class="col-12 col-xl-4">
-        <?php if ($canManageLeads): ?>
-            <div class="alert alert-info mb-0">
-                El panel lateral de conversión ahora se encuentra en el modal detallado del lead. Usa el botón «Convert to customer» dentro del modal para iniciar el proceso.
-            </div>
-        <?php else: ?>
-            <div class="alert alert-info">
-                No tienes permisos para crear o convertir leads en el CRM.
-            </div>
-        <?php endif; ?>
     </div>
 </div>
