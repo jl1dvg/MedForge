@@ -361,7 +361,12 @@ class CRMController extends BaseController
                 return;
             }
 
-            $this->mailer->sendPatientUpdate($to, $subject, $body);
+            $result = $this->mailer->sendPatientUpdate($to, $subject, $body);
+            if (!$result['success']) {
+                $message = $result['error'] ?? 'No se pudo enviar el correo de notificación';
+                throw new RuntimeException($message);
+            }
+
             $this->auditCrm('crm_lead_mail_sent', ['lead_id' => $leadId, 'status' => $status]);
 
             $this->json(['ok' => true, 'data' => ['sent' => true]]);
@@ -370,7 +375,13 @@ class CRMController extends BaseController
                 'lead_id' => $leadId,
                 'message' => $exception->getMessage(),
             ]);
-            $this->json(['ok' => false, 'error' => 'No se pudo enviar el correo', 'error_code' => 'server_error'], 500);
+
+            $errorMessage = 'No se pudo enviar el correo';
+            if ($exception->getMessage() !== '') {
+                $errorMessage .= ': ' . $exception->getMessage();
+            }
+
+            $this->json(['ok' => false, 'error' => $errorMessage, 'error_code' => 'server_error'], 500);
         }
     }
 
