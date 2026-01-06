@@ -837,7 +837,7 @@ class SolicitudCrmService
         ];
 
         if ($leadId) {
-            $actualizado = $this->leadModel->update($leadId, $leadData);
+            $actualizado = $this->leadModel->updateById($leadId, $leadData);
             if ($actualizado) {
                 return (int) $actualizado['id'];
             }

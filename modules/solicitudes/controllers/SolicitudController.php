@@ -400,7 +400,27 @@ class SolicitudController extends BaseController
 
             $this->json(['success' => true, 'data' => $resumen]);
         } catch (\Throwable $e) {
-            $this->json(['success' => false, 'error' => 'No se pudieron guardar los cambios'], 500);
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'crm',
+                'No se pudieron guardar los cambios del CRM',
+                $e,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'usuario_id' => $this->getCurrentUserId(),
+                    'payload' => $payload,
+                    'trace' => $e->getTraceAsString(),
+                    'error_id' => $errorId,
+                ]
+            );
+
+            $this->json([
+                'success' => false,
+                'error' => sprintf(
+                    'No se pudieron guardar los cambios del CRM (ref: %s)',
+                    $errorId
+                ),
+            ], 500);
         }
     }
 
