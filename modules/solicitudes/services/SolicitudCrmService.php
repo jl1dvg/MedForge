@@ -111,19 +111,24 @@ class SolicitudCrmService
         $contactoTelefono = $this->normalizarTexto($data['contacto_telefono'] ?? null);
         $seguidores = $this->normalizarSeguidores($data['seguidores'] ?? []);
 
-        $crmLeadId = $this->sincronizarLead(
-            $solicitudId,
-            $detalleActual,
-            [
-                'crm_lead_id' => $data['crm_lead_id'] ?? null,
-                'responsable_id' => $responsableId,
-                'fuente' => $fuente,
-                'contacto_email' => $contactoEmail,
-                'contacto_telefono' => $contactoTelefono,
-                'etapa' => $etapa,
-            ],
-            $usuarioId
-        );
+        $crmLeadId = $detalleActual['crm_lead_id'] ?? null;
+        try {
+            $crmLeadId = $this->sincronizarLead(
+                $solicitudId,
+                $detalleActual,
+                [
+                    'crm_lead_id' => $data['crm_lead_id'] ?? null,
+                    'responsable_id' => $responsableId,
+                    'fuente' => $fuente,
+                    'contacto_email' => $contactoEmail,
+                    'contacto_telefono' => $contactoTelefono,
+                    'etapa' => $etapa,
+                ],
+                $usuarioId
+            );
+        } catch (Throwable $exception) {
+            error_log('CRM ▶ No se pudo sincronizar el lead: ' . ($exception->getMessage() ?: get_class($exception)));
+        }
 
         $jsonSeguidores = !empty($seguidores) ? json_encode($seguidores, JSON_UNESCAPED_UNICODE) : null;
 
