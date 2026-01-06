@@ -14,8 +14,10 @@ class SchemaInspector
 {
     private PDO $pdo;
 
+    private const CACHE_TTL_SECONDS = 60;
+
     /**
-     * @var array<string, bool>
+     * @var array<string, array{value: bool, expires_at: int}>
      */
     private static array $columnCache = [];
 
@@ -29,7 +31,10 @@ class SchemaInspector
         $cacheKey = strtolower($table) . '.' . strtolower($column);
 
         if (array_key_exists($cacheKey, self::$columnCache)) {
-            return self::$columnCache[$cacheKey];
+            $cached = self::$columnCache[$cacheKey];
+            if ($cached['expires_at'] > time()) {
+                return $cached['value'];
+            }
         }
 
         $exists = false;
@@ -47,7 +52,10 @@ class SchemaInspector
             $exists = $this->fallbackHasColumn($table, $column);
         }
 
-        self::$columnCache[$cacheKey] = $exists;
+        self::$columnCache[$cacheKey] = [
+            'value' => $exists,
+            'expires_at' => time() + self::CACHE_TTL_SECONDS,
+        ];
 
         return $exists;
     }

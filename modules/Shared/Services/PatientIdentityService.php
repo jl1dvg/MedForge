@@ -15,6 +15,8 @@ class PatientIdentityService
     private PDO $pdo;
     private ?bool $crmCustomerHasHcNumber = null;
     private SchemaInspector $schemaInspector;
+    private ?bool $patientHasSplitNames = null;
+    private ?bool $patientHasFullName = null;
 
     public function __construct(PDO $pdo)
     {
@@ -105,56 +107,36 @@ class PatientIdentityService
         $stmt->execute([':hc' => $normalized]);
         $existing = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
-        $fields = $this->extractPatientFields($data);
-        if ($existing) {
-            if ($fields) {
-                $sets = [];
-                $params = [':hc' => $normalized];
-                foreach ($fields as $column => $value) {
-                    $sets[] = sprintf('%s = :%s', $column, $column);
-                    $params[':' . $column] = $value;
-                }
+        $fields = $this->buildPatientFields($data);
 
-                if ($sets) {
-                    $sql = 'UPDATE patient_data SET ' . implode(', ', $sets) . ' WHERE hc_number = :hc';
-                    $update = $this->pdo->prepare($sql);
-                    $update->execute($params);
-                }
+        try {
+            if ($existing) {
+                $this->updatePatient($normalized, $fields);
+
+                return $this->findPatient($normalized);
             }
 
+            if (empty($fields)) {
+                return null;
+            }
+
+            $this->insertPatient($normalized, $fields);
+
             return $this->findPatient($normalized);
+        } catch (PDOException $exception) {
+            if ($this->isUnknownFirstOrLastNameColumn($exception)) {
+                $safeFields = $this->buildPatientFields($data, false);
+                if ($existing) {
+                    $this->updatePatient($normalized, $safeFields);
+                } else {
+                    $this->insertPatient($normalized, $safeFields);
+                }
+
+                return $this->findPatient($normalized);
+            }
+
+            throw $exception;
         }
-
-        if (empty($fields)) {
-            return null;
-        }
-
-        $columns = ['hc_number'];
-        $placeholders = [':hc_number'];
-        $params = [':hc_number' => $normalized];
-
-        // Garantizar columnas básicas para evitar restricciones NOT NULL
-        $fields['fname'] = $fields['fname'] ?? '';
-        $fields['lname'] = $fields['lname'] ?? 'SIN APELLIDO';
-        $fields['mname'] = $fields['mname'] ?? '';
-        $fields['lname2'] = $fields['lname2'] ?? '';
-
-        foreach ($fields as $column => $value) {
-            $columns[] = $column;
-            $placeholders[] = ':' . $column;
-            $params[':' . $column] = $value;
-        }
-
-        $sql = sprintf(
-            'INSERT INTO patient_data (%s) VALUES (%s)',
-            implode(', ', $columns),
-            implode(', ', $placeholders)
-        );
-
-        $insert = $this->pdo->prepare($sql);
-        $insert->execute($params);
-
-        return $this->findPatient($normalized);
     }
 
     private function crmCustomersHasHcNumber(): bool
@@ -310,6 +292,9 @@ class PatientIdentityService
             'sexo',
             'celular',
             'ciudad',
+            'name',
+            'first_name',
+            'last_name',
         ];
 
         $filtered = [];
@@ -328,6 +313,128 @@ class PatientIdentityService
         }
 
         return $filtered;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param bool $allowSplitNames whether to include first_name/last_name when available
+     *
+     * @return array<string, mixed>
+     */
+    private function buildPatientFields(array $data, bool $allowSplitNames = true): array
+    {
+        $fields = $this->extractPatientFields($data);
+
+        $hasSplitNames = $allowSplitNames && $this->patientHasSplitNameColumns();
+        $hasFullName = $this->patientHasFullNameColumn();
+
+        $name = trim((string) ($fields['name'] ?? ($data['name'] ?? '')));
+        if ($name === '' && !empty($fields['fname'])) {
+            $name = trim(sprintf('%s %s %s %s', $fields['fname'], $fields['mname'] ?? '', $fields['lname'] ?? '', $fields['lname2'] ?? ''));
+        }
+
+        // Evitar fugas de columnas inexistentes
+        unset($fields['name'], $fields['first_name'], $fields['last_name']);
+
+        if ($hasSplitNames) {
+            $parts = $this->splitName($name);
+            $fields['first_name'] = $parts['fname'];
+            $fields['last_name'] = trim($parts['lname'] . ' ' . $parts['lname2']);
+        } elseif ($hasFullName) {
+            $fields['name'] = $name !== '' ? $name : null;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function insertPatient(string $hcNumber, array $fields): void
+    {
+        $columns = ['hc_number'];
+        $placeholders = [':hc_number'];
+        $params = [':hc_number' => $hcNumber];
+
+        // Garantizar columnas básicas para evitar restricciones NOT NULL
+        $fields['fname'] = $fields['fname'] ?? '';
+        $fields['lname'] = $fields['lname'] ?? ($fields['last_name'] ?? 'SIN APELLIDO');
+        $fields['mname'] = $fields['mname'] ?? '';
+        $fields['lname2'] = $fields['lname2'] ?? '';
+
+        foreach ($fields as $column => $value) {
+            $columns[] = $column;
+            $placeholders[] = ':' . $column;
+            $params[':' . $column] = $value;
+        }
+
+        $sql = sprintf(
+            'INSERT INTO patient_data (%s) VALUES (%s)',
+            implode(', ', $columns),
+            implode(', ', $placeholders)
+        );
+
+        $insert = $this->pdo->prepare($sql);
+        $insert->execute($params);
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function updatePatient(string $hcNumber, array $fields): void
+    {
+        if (empty($fields)) {
+            return;
+        }
+
+        $sets = [];
+        $params = [':hc' => $hcNumber];
+        foreach ($fields as $column => $value) {
+            $sets[] = sprintf('%s = :%s', $column, $column);
+            $params[':' . $column] = $value;
+        }
+
+        if ($sets) {
+            $sql = 'UPDATE patient_data SET ' . implode(', ', $sets) . ' WHERE hc_number = :hc';
+            $update = $this->pdo->prepare($sql);
+            $update->execute($params);
+        }
+    }
+
+    private function patientHasSplitNameColumns(): bool
+    {
+        if ($this->patientHasSplitNames !== null) {
+            return $this->patientHasSplitNames;
+        }
+
+        $first = $this->schemaInspector->tableHasColumn('patient_data', 'first_name');
+        $last = $this->schemaInspector->tableHasColumn('patient_data', 'last_name');
+        $this->patientHasSplitNames = $first && $last;
+
+        return $this->patientHasSplitNames;
+    }
+
+    private function patientHasFullNameColumn(): bool
+    {
+        if ($this->patientHasFullName !== null) {
+            return $this->patientHasFullName;
+        }
+
+        $this->patientHasFullName = $this->schemaInspector->tableHasColumn('patient_data', 'name');
+
+        return $this->patientHasFullName;
+    }
+
+    private function isUnknownFirstOrLastNameColumn(PDOException $exception): bool
+    {
+        if ($exception->getCode() !== '42S22') {
+            return false;
+        }
+
+        $message = $exception->getMessage();
+
+        return stripos($message, "Unknown column 'first_name'") !== false
+            || stripos($message, "Unknown column 'last_name'") !== false;
     }
 
     /**
