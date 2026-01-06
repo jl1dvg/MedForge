@@ -5,6 +5,7 @@ namespace Modules\Examenes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\CRM\Services\LeadResolverService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use PDO;
@@ -19,6 +20,7 @@ class ExamenCrmService
     private PDO $pdo;
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
+    private LeadResolverService $leadResolver;
     private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
@@ -26,6 +28,7 @@ class ExamenCrmService
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
+        $this->leadResolver = new LeadResolverService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
@@ -798,26 +801,34 @@ class ExamenCrmService
             $nombre = 'Examen #' . $examenId;
         }
 
-        $leadData = [
+        $hcNumber = $this->normalizarTexto($detalle['hc_number'] ?? null);
+        $status = $this->mapearEtapaALeadStatus($payload['etapa'] ?? ($detalle['crm_pipeline_stage'] ?? null));
+
+        $contactData = [
             'name' => $nombre,
             'email' => $payload['contacto_email'] ?? ($detalle['crm_contacto_email'] ?? null),
             'phone' => $payload['contacto_telefono'] ?? ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? null),
             'source' => $payload['fuente'] ?? ($detalle['crm_fuente'] ?? null),
             'assigned_to' => $payload['responsable_id'] ?? ($detalle['crm_responsable_id'] ?? null),
-            'status' => $this->mapearEtapaALeadStatus($payload['etapa'] ?? ($detalle['crm_pipeline_stage'] ?? null)),
+            'status' => $status,
             'notes' => $detalle['observacion'] ?? null,
         ];
 
         if ($leadId) {
-            $actualizado = $this->leadModel->update($leadId, $leadData);
-            if ($actualizado) {
-                return (int) $actualizado['id'];
-            }
-            $leadId = null;
+            $this->leadModel->update($leadId, $contactData);
+
+            return $leadId;
         }
 
-        $creado = $this->leadModel->create($leadData, (int) ($usuarioId ?? 0));
-        return $creado ? (int) $creado['id'] : null;
+        // Sin HC no podemos crear ni resolver un lead; devolvemos null para no impedir el guardado del resto de campos.
+        if ($hcNumber === null) {
+            return null;
+        }
+
+        return $this->leadResolver->getOrCreateLeadId(
+            array_merge(['hc_number' => $hcNumber], $contactData),
+            $usuarioId
+        );
     }
 
     private function buildLeadUrl(int $leadId): string

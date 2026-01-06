@@ -61,7 +61,7 @@ class SolicitudCrmService
 
             $lead = null;
             if (!empty($detalle['crm_lead_id'])) {
-                $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
+                $lead = $this->leadModel->findById((int) $detalle['crm_lead_id']);
                 if ($lead) {
                     $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
                 }
@@ -811,14 +811,38 @@ class SolicitudCrmService
         return function_exists('asset') ? asset($path) : $path;
     }
 
-    private function sincronizarLead(int $solicitudId, array $detalle, array $payload, ?int $usuarioId): ?int
+    private function sincronizarLead(int $solicitudId, array $detalle, array $payload, ?int $usuarioId): int
     {
         $leadId = null;
+        $hcNumber = $this->normalizarTexto($payload['hc_number'] ?? ($detalle['hc_number'] ?? null));
 
         if (!empty($payload['crm_lead_id'])) {
             $leadId = (int) $payload['crm_lead_id'];
         } elseif (!empty($detalle['crm_lead_id'])) {
             $leadId = (int) $detalle['crm_lead_id'];
+        }
+
+        if ($leadId) {
+            $existente = $this->leadModel->findById($leadId);
+            if (!$existente) {
+                $leadId = null;
+            } elseif (!$hcNumber && !empty($existente['hc_number'])) {
+                $hcNumber = (string) $existente['hc_number'];
+            }
+        }
+
+        if (!$leadId && $hcNumber) {
+            $existente = $this->leadModel->findByHcNumber($hcNumber);
+            if ($existente) {
+                $leadId = (int) $existente['id'];
+            }
+        }
+
+        if (!$hcNumber) {
+            throw new RuntimeException(
+                'No se pudo asociar la solicitud con el CRM: falta el número de historia clínica del paciente.',
+                422
+            );
         }
 
         $nombre = trim((string) ($detalle['paciente_nombre'] ?? ''));
@@ -827,6 +851,7 @@ class SolicitudCrmService
         }
 
         $leadData = [
+            'hc_number' => $hcNumber,
             'name' => $nombre,
             'email' => $payload['contacto_email'] ?? ($detalle['crm_contacto_email'] ?? null),
             'phone' => $payload['contacto_telefono'] ?? ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? null),
@@ -845,7 +870,11 @@ class SolicitudCrmService
         }
 
         $creado = $this->leadModel->create($leadData, (int) ($usuarioId ?? 0));
-        return $creado ? (int) $creado['id'] : null;
+        if ($creado) {
+            return (int) $creado['id'];
+        }
+
+        throw new RuntimeException('No se pudo sincronizar el lead CRM para la solicitud.', 422);
     }
 
     private function buildLeadUrl(int $leadId): string

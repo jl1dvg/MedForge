@@ -400,6 +400,15 @@ class SolicitudController extends BaseController
 
             $this->json(['success' => true, 'data' => $resumen]);
         } catch (\Throwable $e) {
+            $status = (int) ($e->getCode() ?: 0);
+            if ($status >= 400 && $status < 500) {
+                $this->json([
+                    'success' => false,
+                    'error' => $e->getMessage() ?: 'No se pudieron guardar los cambios del CRM',
+                ], $status);
+                return;
+            }
+
             $errorId = bin2hex(random_bytes(6));
             JsonLogger::log(
                 'crm',
