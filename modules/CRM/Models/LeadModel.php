@@ -104,7 +104,7 @@ class LeadModel
 
         $sql .= " ORDER BY l.updated_at DESC";
 
-        $limit = isset($filters['limit']) ? max(1, (int)$filters['limit']) : 100;
+        $limit = isset($filters['limit']) ? max(1, (int)$filters['limit']) : 500;
         $sql .= " LIMIT :limit";
 
         $debugParams = $params;
@@ -161,6 +161,11 @@ class LeadModel
         $lead = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return $lead ?: null;
+    }
+
+    public function find(int $id): ?array
+    {
+        return $this->findById($id);
     }
 
     public function findByHcNumber(string $hcNumber): ?array
