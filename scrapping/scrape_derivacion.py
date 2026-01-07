@@ -4,21 +4,13 @@ import sys
 import json
 import re
 import os
-import base64
 
 # Limitar hilos de OpenBLAS/Numpy para no chocar con RLIMIT_NPROC del hosting
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-# OCR dependencies (optional)
-try:
-    from pdf2image import convert_from_path
-    import pytesseract
-except ImportError:
-    convert_from_path = None
-    pytesseract = None
-
 modo_quieto = "--quiet" in sys.argv
+ocr_habilitado = "--ocr" in sys.argv
 
 USERNAME = "jdevera"
 PASSWORD = "0925619736"
@@ -58,7 +50,10 @@ def ocr_pdf_to_text(pdf_path, lang="spa"):
     Requiere tener instalados Tesseract y los módulos pdf2image y pytesseract.
     Si no están disponibles, devuelve cadena vacía y muestra un aviso.
     """
-    if convert_from_path is None or pytesseract is None:
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+    except ImportError:
         if not modo_quieto:
             print("⚠️ OCR no disponible (faltan pdf2image/pytesseract).")
         return ""
@@ -77,6 +72,72 @@ def ocr_pdf_to_text(pdf_path, lang="spa"):
         if not modo_quieto:
             print(f"❌ Error realizando OCR en {pdf_path}: {e}")
         return ""
+
+
+def construir_nombre_pdf(hc_number, codigo_derivacion, form_id):
+    codigo_limpio = ""
+    if codigo_derivacion:
+        codigo_limpio = codigo_derivacion.strip().split('SECUENCIAL')[0].strip()
+    codigo_limpio = re.sub(r"[^A-Za-z0-9_-]+", "_", codigo_limpio) or "SIN_CODIGO"
+
+    hc_safe = re.sub(r"[^A-Za-z0-9_-]+", "_", hc_number) if hc_number else "SIN_HC"
+    form_safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form_id)) if form_id else "SIN_FORM"
+
+    return f"{hc_safe}_{codigo_limpio}_{form_safe}.pdf"
+
+
+def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_derivacion):
+    # Guardar en storage/derivaciones/{hc}/{form}/ (como antes)
+    safe_hc = re.sub(r"[^A-Za-z0-9_-]+", "_", str(hc_number or "SIN_HC"))
+
+    # limpiar código derivación (quitar espacios, símbolos raros, etc.)
+    safe_codigo = re.sub(
+        r"[^A-Za-z0-9_-]+",
+        "_",
+        (codigo_derivacion or "SIN_CODIGO").strip()
+    )
+
+    safe_form = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form_id or "SIN_FORM"))
+
+    output_dir = os.path.join("..", "storage", "derivaciones", safe_hc, safe_form)
+    os.makedirs(output_dir, exist_ok=True)
+
+    pdf_url = (
+        "https://cive.ddns.net:8085/documentacion/doc-multiple-documentos/imprimir-totalizado"
+        f"?id={paciente_id}&idSolicitud={form_id}&check=18"
+    )
+
+    if not modo_quieto:
+        print(f"⬇️ Descargando PDF totalizado: {pdf_url}")
+
+    resp_pdf = session.get(pdf_url, headers=headers)
+    if resp_pdf.status_code != 200:
+        if not modo_quieto:
+            print(f"⚠️ Respuesta no exitosa al descargar PDF totalizado: {resp_pdf.status_code}")
+        return None
+
+    if not resp_pdf.content.startswith(b"%PDF"):
+        if not modo_quieto:
+            print("⚠️ La respuesta no parece PDF (%PDF). Probable HTML/login.")
+        return None
+
+    # 👉 NOMBRE FINAL DEL ARCHIVO
+    filename = f"derivacion_{safe_hc}_{safe_codigo}.pdf"
+    filepath = os.path.join(output_dir, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(resp_pdf.content)
+
+    # esto es lo que se manda a la API (ruta relativa para guardar en DB)
+    archivo_path = f"storage/derivaciones/{safe_hc}/{safe_form}/{filename}"
+
+    if ocr_habilitado:
+        ocr_text = ocr_pdf_to_text(filepath)
+        if ocr_text and not modo_quieto:
+            print("🔍 OCR (fragmento):")
+            print("   " + ocr_text.replace("\n", " ")[:300] + ("..." if len(ocr_text) > 300 else ""))
+
+    return archivo_path
 
 
 def iniciar_sesion_y_extraer_log():
@@ -173,7 +234,8 @@ def iniciar_sesion_y_extraer_log():
         if fila_encontrada and len(fila_encontrada) >= 13:
             fecha_ejecucion = fila_encontrada[9].get_text(strip=True)
             doctor = fila_encontrada[10].get_text(strip=True)
-            estado_alta = "✅ Dado de Alta" if "YA FUE DADO DE ALTA" in fila_encontrada[12].decode_contents() else "❌ No dado de alta"
+            estado_alta = "✅ Dado de Alta" if "YA FUE DADO DE ALTA" in fila_encontrada[
+                12].decode_contents() else "❌ No dado de alta"
 
             proc["procedimiento_proyectado"]["fecha_ejecucion"] = fecha_ejecucion
             proc["procedimiento_proyectado"]["doctor"] = doctor
@@ -199,142 +261,13 @@ def iniciar_sesion_y_extraer_log():
     )
     diagnosticos = [opt.get_text(strip=True) for opt in diagnostico_options] if diagnostico_options else []
 
-    # =========================
-    # C) MODAL upload-doc-afiliacion -> DOCUMENTOS
-    # =========================
-    pattern = rf"/documentacion/doc-documento/upload-doc-afiliacion\?docSolPro={form_id}"
-    link_upload = soup_view.find("a", href=re.compile(pattern))
-    if not link_upload:
-        print("❌ No se encontró el enlace de upload-doc-afiliacion para este form_id.")
-        return
-
-    href = link_upload["href"]
-    target_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
-    print(f"🔗 URL upload-doc-afiliacion: {target_url}")
-
-    r_upload = session.get(target_url, headers=headers)
-    if not modo_quieto:
-        html_preview = r_upload.text[:2000]
-        print("===== PREVIEW HTML MODAL upload-doc-afiliacion =====")
-        print(html_preview)
-        print("===== FIN PREVIEW HTML MODAL =====")
-    soup_upload = BeautifulSoup(r_upload.text, "html.parser")
-
-    # Documentos por afiliación desde el modal
-    documentos_afiliacion = []
-    for li in soup_upload.select("div.doc-documento-upfile ul.nav li"):
-        a_tag = li.find("a")
-        if not a_tag:
-            continue
-        href_file = a_tag.get("href", "").strip()
-        title_file = a_tag.get("title", "").strip()
-        button = a_tag.find("button")
-        label_btn = button.get_text(strip=True) if button else ""
-
-        try:
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(href_file)
-            qs = parse_qs(parsed.query)
-            doc_id = qs.get("id", [None])[0]
-            id_pro = qs.get("idPro", [None])[0]
-        except Exception:
-            doc_id = None
-            id_pro = None
-
-        documentos_afiliacion.append({
-            "id": doc_id,
-            "idPro": id_pro,
-            "title": title_file,
-            "label": label_btn,
-            "href": href_file
-        })
-
-    # Para cada documento de afiliación, seguir el enlace file-afiliacion y extraer detalles del archivo
-    for doc in documentos_afiliacion:
-        href_rel = doc.get("href", "")
-        if not href_rel:
-            continue
-        try:
-            file_url = "https://cive.ddns.net:8085" + href_rel.replace("&amp;", "&")
-
-            ajax_headers = headers.copy()
-            ajax_headers["X-Requested-With"] = "XMLHttpRequest"
-            ajax_headers["Referer"] = target_url
-
-            r_file = session.get(file_url, headers=ajax_headers)
-
-            if not modo_quieto:
-                print("===== DEBUG file-afiliacion =====")
-                print("URL:", file_url)
-                print("status_code:", r_file.status_code)
-                print(r_file.text[:500])
-                print("===== FIN DEBUG file-afiliacion =====")
-
-            html_modal = r_file.text
-            try:
-                data_json = r_file.json()
-                if isinstance(data_json, dict) and "content" in data_json:
-                    html_modal = data_json.get("content", "")
-            except ValueError:
-                pass
-
-            soup_file = BeautifulSoup(html_modal, "html.parser")
-
-            h4 = soup_file.select_one("div.doc-documento-proc-form h4.box-title")
-            caption_modal = h4.get_text(strip=True) if h4 else ""
-
-            obj = soup_file.select_one("object.kv-preview-data")
-            file_data_path = obj.get("data", "").strip() if obj and obj.has_attr("data") else ""
-
-            if not file_data_path:
-                html_modal_text = soup_file.decode()
-                m = re.search(r'"initialPreview"\s*:\s*\[\s*"([^"]+)"', html_modal_text)
-                if m:
-                    file_data_path = m.group(1).replace("\\/", "/").strip()
-
-            if not modo_quieto:
-                print("DEBUG object.kv-preview-data ->", "ENCONTRADO" if obj else "NO ENCONTRADO")
-                print("DEBUG file_data_path ->", repr(file_data_path))
-
-            doc["caption_modal"] = caption_modal
-            doc["file_data_path"] = file_data_path
-
-            if file_data_path:
-                pdf_url = "https://cive.ddns.net:8085" + file_data_path
-                doc["file_url"] = pdf_url
-
-                try:
-                    resp_pdf = session.get(pdf_url, headers=headers)
-                    if resp_pdf.status_code == 200:
-                        output_dir = "afiliacion_pdfs"
-                        os.makedirs(output_dir, exist_ok=True)
-                        doc_id = doc.get("id") or "unknown"
-
-                        # Nombre: HC + código derivación limpio + id doc
-                        codigo_file = codigo_derivacion_raw.strip().split('SECUENCIAL')[0] if codigo_derivacion_raw else ""
-                        codigo_file = re.sub(r"[^A-Za-z0-9_-]+", "_", codigo_file) or "SIN_COD"
-                        hc_safe = re.sub(r"[^A-Za-z0-9_-]+", "_", hc_number) if hc_number else "SIN_HC"
-
-                        filename = f"{hc_safe}_{codigo_file}_{doc_id}.pdf"
-                        filepath = os.path.join(output_dir, filename)
-                        with open(filepath, "wb") as f:
-                            f.write(resp_pdf.content)
-                        doc["saved_path"] = filepath
-
-                        doc["file_base64"] = base64.b64encode(resp_pdf.content).decode("utf-8")
-
-                        # Intentar OCR sobre el PDF guardado
-                        ocr_text = ocr_pdf_to_text(filepath)
-                        if ocr_text:
-                            # Guardamos el texto completo por si se quiere procesar más adelante
-                            doc["ocr_text"] = ocr_text
-                            # Además, un pequeño fragmento para depuración rápida
-                            doc["ocr_excerpt"] = ocr_text[:500]
-                except Exception:
-                    pass
-
-        except Exception:
-            continue
+    archivo_path = descargar_pdf_totalizado(
+        session,
+        paciente_id,
+        form_id,
+        hc_number,
+        codigo_derivacion_raw
+    )
 
     # Devolvemos TODO: datos clínicos + documentos
     return [{
@@ -347,8 +280,9 @@ def iniciar_sesion_y_extraer_log():
         "sede": sede_text,
         "parentesco": parentesco_text,
         "procedimientos": procedimientos,
-        "documentos_afiliacion": documentos_afiliacion
+        "archivo_path": archivo_path
     }]
+
 
 def enviar_a_api(data):
     url_api = "https://asistentecive.consulmed.me/api/prefactura/guardar_codigo_derivacion.php"
@@ -378,7 +312,7 @@ if __name__ == "__main__":
             diagnostico = r.get("diagnostico", "").strip()
             form_id = sys.argv[1] if len(sys.argv) > 1 else None
             hc_number = r.get("identificacion", "DESCONOCIDO")
-            primer_doc = next((d for d in r.get("documentos_afiliacion", []) if d.get("file_base64")), None)
+            archivo_path = r.get("archivo_path")
 
             data = {
                 "form_id": form_id,
@@ -390,11 +324,9 @@ if __name__ == "__main__":
                 "diagnostico": diagnostico,
                 "sede": r.get("sede", ""),
                 "parentesco": r.get("parentesco", ""),
-                "procedimientos": r.get("procedimientos", [])
+                "procedimientos": r.get("procedimientos", []),
+                "archivo_path": archivo_path
             }
-            if primer_doc:
-                data["archivo_nombre"] = f"{hc_number}_{form_id}.pdf"
-                data["archivo_base64"] = primer_doc.get("file_base64")
 
             if modo_quieto:
                 print(json.dumps(data))
@@ -407,25 +339,10 @@ if __name__ == "__main__":
                 print(f"Fecha de registro: {registro or '(vacía)'}")
                 print(f"Fecha de Vigencia: {vigencia or '(vacía)'}")
                 print("📦 Datos para API:", json.dumps(data, ensure_ascii=False, indent=2))
-                # Mostrar documentos por afiliación obtenidos del modal, si existen
-                docs = r.get("documentos_afiliacion", [])
-                if docs:
-                    print("📎 Documentos por afiliación (modal upload-doc-afiliacion):")
-                    for d in docs:
-                        print(f"- [{d.get('id')}] {d.get('label')} ({d.get('title')}) -> {d.get('href')}")
-                        # Si ya se pudo abrir el modal de file-afiliacion, mostrar detalles del archivo
-                        if d.get("file_data_path") or d.get("caption_modal"):
-                            print(f"    · Caption modal: {d.get('caption_modal') or '(sin caption)'}")
-                            print(f"    · Ruta interna: {d.get('file_data_path') or '(sin ruta)'}")
-                        if d.get("file_url"):
-                            print(f"    · URL archivo: {d.get('file_url')}")
-                        if d.get("saved_path"):
-                            print(f"    · Guardado en: {d.get('saved_path')}")
-                        if d.get("ocr_excerpt"):
-                            print("    · OCR (fragmento):")
-                            print("      " + d.get("ocr_excerpt").replace("\n", " ")[:300] + ("..." if len(d.get("ocr_excerpt")) > 300 else ""))
+                if archivo_path:
+                    print(f"📄 PDF totalizado guardado en: {archivo_path}")
                 else:
-                    print("📎 Documentos por afiliación: (ninguno encontrado en el modal)")
+                    print("⚠️ No se guardó PDF totalizado.")
                 if codigo:
                     enviar_a_api(data)
                 else:

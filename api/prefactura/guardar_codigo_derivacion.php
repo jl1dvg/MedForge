@@ -14,7 +14,7 @@ $sedeNombre = $data['sede'] ?? null;
 $parentescoNombre = $data['parentesco'] ?? null;
 $archivoBase64 = $data['archivo_base64'] ?? null;
 $archivoNombre = $data['archivo_nombre'] ?? null;
-$archivoPath = null;
+$archivoPath = $data['archivo_path'] ?? null;
 
 /**
  * Guarda un PDF de derivación en storage/derivaciones/{hc}/{form}/
@@ -52,8 +52,10 @@ function guardarArchivoDerivacion(?string $base64, ?string $nombre, ?string $hcN
     return "storage/derivaciones/{$safeHc}/{$safeForm}/{$safeName}";
 }
 
-// Si viene base64, guardamos el archivo y obtenemos ruta.
-$archivoPath = guardarArchivoDerivacion($archivoBase64, $archivoNombre, $hcNumber, $formId);
+// Si no viene archivo_path, intentamos guardar base64.
+if (!$archivoPath) {
+    $archivoPath = guardarArchivoDerivacion($archivoBase64, $archivoNombre, $hcNumber, $formId);
+}
 
 if ($formId && $codigo) {
     $controller = new DerivacionController($pdo);
@@ -70,12 +72,25 @@ if ($formId && $codigo) {
         $archivoPath
     );
     if ($resultado) {
+        error_log("✅ Derivación guardada form_id={$formId} hc={$hcNumber} archivo_path={$archivoPath}");
         echo json_encode([
             "success" => true,
-            "archivo_path" => $archivoPath
+            "archivo_path" => $archivoPath,
+            "form_id" => $formId,
+            "hc_number" => $hcNumber,
+            "derivacion_id" => $resultado
         ]);
     } else {
         error_log("❌ Falló el guardado de derivación: $codigo - $formId");
         echo json_encode(["success" => false]);
     }
+} else {
+    error_log("❌ Datos incompletos para guardar derivación. form_id={$formId} codigo={$codigo} hc={$hcNumber}");
+    echo json_encode([
+        "success" => false,
+        "message" => "Datos incompletos",
+        "form_id" => $formId,
+        "hc_number" => $hcNumber,
+        "archivo_path" => $archivoPath
+    ]);
 }
