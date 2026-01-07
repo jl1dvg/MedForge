@@ -40,6 +40,10 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
         (new CRMController($pdo))->showLead((int) $id);
     });
 
+    $router->get('/crm/leads/{id}/profile', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->leadProfile((int) $id);
+    });
+
     $router->match(['PATCH'], '/crm/leads/{id}/status', static function (\PDO $pdo, string $id): void {
         (new CRMController($pdo))->updateLeadStatus((int) $id);
     });

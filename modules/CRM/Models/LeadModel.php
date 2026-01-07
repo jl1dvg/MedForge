@@ -168,6 +168,27 @@ class LeadModel
         return $this->findById($id);
     }
 
+    /**
+     * @return array{lead: array<string, mixed>, patient: array<string, mixed>|null}|null
+     */
+    public function fetchProfileById(int $id): ?array
+    {
+        $lead = $this->findById($id);
+        if (!$lead) {
+            return null;
+        }
+
+        $patient = null;
+        if (!empty($lead['hc_number'])) {
+            $patient = $this->identityService->findPatient((string) $lead['hc_number']);
+        }
+
+        return [
+            'lead' => $lead,
+            'patient' => $patient,
+        ];
+    }
+
     public function findByHcNumber(string $hcNumber): ?array
     {
         $normalized = $this->identityService->normalizeHcNumber($hcNumber);
@@ -1295,4 +1316,3 @@ class LeadModel
         }
     }
 }
-

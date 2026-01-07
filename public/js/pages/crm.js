@@ -284,6 +284,46 @@
         }
     }
 
+    function pickValue(...values) {
+        for (const value of values) {
+            if (value === null || value === undefined) {
+                continue;
+            }
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (trimmed !== '') {
+                    return trimmed;
+                }
+                continue;
+            }
+            if (value !== '') {
+                return value;
+            }
+        }
+        return '';
+    }
+
+    function buildPatientName(patient) {
+        if (!patient) {
+            return '';
+        }
+        const direct = pickValue(patient.name, patient.full_name);
+        if (direct) {
+            return direct;
+        }
+        const parts = [
+            patient.first_name,
+            patient.last_name,
+            patient.fname,
+            patient.mname,
+            patient.lname,
+            patient.lname2,
+        ]
+            .map((part) => (typeof part === 'string' ? part.trim() : part))
+            .filter((part) => part);
+        return parts.length ? parts.join(' ').replace(/\s+/g, ' ').trim() : '';
+    }
+
     function limitText(value, maxLength) {
         if (!value) {
             return '';
@@ -1352,10 +1392,13 @@
         }
     }
 
-    function showLeadDetail(lead) {
-        if (!elements.leadDetailBody || !lead) {
+    function showLeadDetail(profile) {
+        if (!elements.leadDetailBody || !profile) {
             return;
         }
+        const lead = profile.lead ? profile.lead : profile;
+        const patient = profile.patient || {};
+        const computed = profile.computed || {};
         const normalizedHc = normalizeHcNumber(lead.hc_number);
         leadDetailState.current = lead;
 
@@ -1364,32 +1407,39 @@
         }
         if (elements.leadDetailTitle) {
             const idLabel = lead.id || normalizedHc || '—';
-            const nameLabel = lead.name || 'Lead';
+            const nameLabel = lead.name || buildPatientName(patient) || 'Lead';
             elements.leadDetailTitle.textContent = `#${idLabel} - ${nameLabel}`;
         }
 
         const isPublic = lead.is_public === true || lead.is_public === 1 || lead.is_public === '1';
+        const patientName = buildPatientName(patient);
+        const patientAddress = pickValue(patient.address, patient.direccion, patient.domicilio);
+        const patientCity = pickValue(patient.ciudad, patient.city);
+        const patientState = pickValue(patient.state, patient.provincia, patient.region);
+        const patientCountry = pickValue(patient.country, patient.pais);
+        const patientZip = pickValue(patient.zip, patient.codigo_postal, patient.postal_code);
+        const displayAddress = pickValue(computed.display_address, patientAddress);
         const viewMap = {
-            'lead-view-name': lead.name || 'Sin nombre',
+            'lead-view-name': lead.name || patientName || 'Sin nombre',
             'lead-view-position': lead.title || lead.position || '—',
-            'lead-view-email': lead.email || '-',
-            'lead-view-website': lead.website || '-',
-            'lead-view-phone': lead.phone || '-',
-            'lead-view-value': lead.lead_value || '-',
-            'lead-view-company': lead.company || '-',
-            'lead-view-address': lead.address || '-',
-            'lead-view-city': lead.city || '-',
-            'lead-view-state': lead.state || '-',
-            'lead-view-country': lead.country || '-',
-            'lead-view-zip': lead.zip || '-',
-            'lead-view-source': titleize(lead.source || '-'),
+            'lead-view-email': lead.email || '—',
+            'lead-view-website': lead.website || '—',
+            'lead-view-phone': lead.phone || '—',
+            'lead-view-value': lead.lead_value || '—',
+            'lead-view-company': lead.company || '—',
+            'lead-view-address': displayAddress || '—',
+            'lead-view-city': patientCity || '—',
+            'lead-view-state': patientState || '—',
+            'lead-view-country': patientCountry || '—',
+            'lead-view-zip': patientZip || '—',
+            'lead-view-source': lead.source ? titleize(lead.source) : '—',
             'lead-view-language': lead.default_language || 'System Default',
             'lead-view-assigned': lead.assigned_name || 'Sin asignar',
-            'lead-view-tags': Array.isArray(lead.tags) ? lead.tags.join(', ') : (lead.tags || '-'),
-            'lead-view-created': formatDate(lead.created_at, true) || '-',
-            'lead-view-last-contact': formatDate(lead.last_contact, true) || '-',
+            'lead-view-tags': Array.isArray(lead.tags) ? lead.tags.join(', ') : (lead.tags || '—'),
+            'lead-view-created': formatDate(lead.created_at, true) || '—',
+            'lead-view-last-contact': formatDate(lead.last_contact, true) || '—',
             'lead-view-public': isPublic ? 'Yes' : 'No',
-            'lead-view-description': lead.notes || '-',
+            'lead-view-description': lead.notes || '—',
         };
 
         Object.keys(viewMap).forEach((id) => {
@@ -1411,15 +1461,15 @@
 
         populateLeadDetailSelects(lead);
         const editMap = {
-            'lead-detail-name': lead.name || '',
+            'lead-detail-name': lead.name || patientName || '',
             'lead-detail-email': lead.email || '',
             'lead-detail-phone': lead.phone || '',
-            'lead-detail-company': lead.company || '',
+            'lead-detail-company': pickValue(patient.company, patient.workplace, lead.company) || '',
             'lead-detail-source': lead.source || '',
-            'lead-detail-address': lead.address || '',
-            'lead-detail-city': lead.city || '',
-            'lead-detail-state': lead.state || '',
-            'lead-detail-zip': lead.zip || '',
+            'lead-detail-address': patientAddress || '',
+            'lead-detail-city': patientCity || '',
+            'lead-detail-state': patientState || '',
+            'lead-detail-zip': patientZip || '',
             'lead-detail-description': lead.notes || '',
         };
         Object.keys(editMap).forEach((id) => {
@@ -1438,6 +1488,23 @@
 
         if (leadModals.detail) {
             leadModals.detail.show();
+        }
+    }
+
+    async function openLeadProfile(leadId) {
+        if (!leadId) {
+            return;
+        }
+        const fallbackLead = findLeadById(leadId);
+        try {
+            const payload = await request(`/crm/leads/${leadId}/profile`);
+            showLeadDetail(payload.data || fallbackLead);
+        } catch (error) {
+            console.error('No se pudo cargar el perfil del lead', error);
+            if (fallbackLead) {
+                showLeadDetail(fallbackLead);
+            }
+            showToast('error', error.message || 'No se pudo cargar el perfil del lead');
         }
     }
 
@@ -3173,12 +3240,11 @@
                 const viewButton = event.target.closest('.js-view-lead');
                 if (viewButton) {
                     const leadId = viewButton.dataset.leadId;
-                    const lead = findLeadById(leadId);
-                    if (!lead) {
+                    if (!leadId) {
                         showToast('error', 'No pudimos cargar el lead seleccionado');
                         return;
                     }
-                    showLeadDetail(lead);
+                    openLeadProfile(leadId);
                     return;
                 }
 
