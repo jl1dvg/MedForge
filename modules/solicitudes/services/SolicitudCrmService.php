@@ -5,6 +5,7 @@ namespace Modules\Solicitudes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
+use Modules\CRM\Services\LeadCrmCoreService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use Modules\Solicitudes\Services\CalendarBlockService;
@@ -20,6 +21,7 @@ class SolicitudCrmService
     private PDO $pdo;
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
+    private LeadCrmCoreService $crmCore;
     private WhatsAppMessenger $whatsapp;
     private CalendarBlockService $calendarBlocks;
 
@@ -28,6 +30,7 @@ class SolicitudCrmService
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
+        $this->crmCore = new LeadCrmCoreService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
         $this->calendarBlocks = new CalendarBlockService($pdo);
     }
@@ -60,10 +63,12 @@ class SolicitudCrmService
             }
 
             $lead = null;
+            $crmResumen = null;
             if (!empty($detalle['crm_lead_id'])) {
                 $lead = $this->leadModel->findById((int) $detalle['crm_lead_id']);
                 if ($lead) {
                     $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
+                    $crmResumen = $this->crmCore->getResumen((int) $lead['id'], LeadCrmCoreService::CONTEXT_SOLICITUD, $solicitudId);
                 }
             }
 
@@ -74,6 +79,7 @@ class SolicitudCrmService
                 'tareas' => $this->obtenerTareas($solicitudId),
                 'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
                 'lead' => $lead,
+                'crm_resumen' => $crmResumen,
                 'bloqueos_agenda' => $this->calendarBlocks->listarPorSolicitud($solicitudId),
             ];
         } catch (Throwable $exception) {
@@ -831,13 +837,6 @@ class SolicitudCrmService
             }
         }
 
-        if (!$leadId && $hcNumber) {
-            $existente = $this->leadModel->findByHcNumber($hcNumber);
-            if ($existente) {
-                $leadId = (int) $existente['id'];
-            }
-        }
-
         if (!$hcNumber) {
             throw new RuntimeException(
                 'No se pudo asociar la solicitud con el CRM: falta el número de historia clínica del paciente.',
@@ -851,7 +850,6 @@ class SolicitudCrmService
         }
 
         $leadData = [
-            'hc_number' => $hcNumber,
             'name' => $nombre,
             'email' => $payload['contacto_email'] ?? ($detalle['crm_contacto_email'] ?? null),
             'phone' => $payload['contacto_telefono'] ?? ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? null),
@@ -861,20 +859,15 @@ class SolicitudCrmService
             'notes' => $detalle['observacion'] ?? null,
         ];
 
-        if ($leadId) {
-            $actualizado = $this->leadModel->updateById($leadId, $leadData);
-            if ($actualizado) {
-                return (int) $actualizado['id'];
-            }
-            $leadId = null;
-        }
+        $lead = $this->crmCore->saveLeadFromContext(
+            LeadCrmCoreService::CONTEXT_SOLICITUD,
+            $solicitudId,
+            $hcNumber,
+            $leadData,
+            $usuarioId
+        );
 
-        $creado = $this->leadModel->create($leadData, (int) ($usuarioId ?? 0));
-        if ($creado) {
-            return (int) $creado['id'];
-        }
-
-        throw new RuntimeException('No se pudo sincronizar el lead CRM para la solicitud.', 422);
+        return (int) ($lead['id'] ?? 0);
     }
 
     private function buildLeadUrl(int $leadId): string
