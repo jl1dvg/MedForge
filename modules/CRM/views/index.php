@@ -912,6 +912,9 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                             </div>
                             <div class="lead-edit d-none" id="lead-edit-section">
                                 <form id="lead-detail-edit-form" class="row g-2">
+                                    <div class="col-12">
+                                        <p class="text-muted small mb-2">Datos demográficos provienen de Historia Clínica.</p>
+                                    </div>
                                     <div class="col-md-4">
                                         <div class="form-group">
                                             <label for="lead-detail-status" class="control-label">Status</label>
@@ -949,25 +952,25 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                         </div>
                                         <div class="form-group">
                                             <label for="lead-detail-company" class="control-label">Company</label>
-                                            <input type="text" class="form-control" id="lead-detail-company" name="company">
+                                            <input type="text" class="form-control bg-light" id="lead-detail-company" name="company" readonly>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-group">
                                             <label for="lead-detail-address" class="control-label">Address</label>
-                                            <textarea id="lead-detail-address" name="address" class="form-control" rows="2"></textarea>
+                                            <textarea id="lead-detail-address" name="address" class="form-control bg-light" rows="2" readonly></textarea>
                                         </div>
                                         <div class="form-group">
                                             <label for="lead-detail-city" class="control-label">City</label>
-                                            <input type="text" class="form-control" id="lead-detail-city" name="city">
+                                            <input type="text" class="form-control bg-light" id="lead-detail-city" name="city" readonly>
                                         </div>
                                         <div class="form-group">
                                             <label for="lead-detail-state" class="control-label">State</label>
-                                            <input type="text" class="form-control" id="lead-detail-state" name="state">
+                                            <input type="text" class="form-control bg-light" id="lead-detail-state" name="state" readonly>
                                         </div>
                                         <div class="form-group">
                                             <label for="lead-detail-zip" class="control-label">Zip</label>
-                                            <input type="text" class="form-control" id="lead-detail-zip" name="zip">
+                                            <input type="text" class="form-control bg-light" id="lead-detail-zip" name="zip" readonly>
                                         </div>
                                     </div>
                                     <div class="col-md-12">

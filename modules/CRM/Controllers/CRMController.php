@@ -4,6 +4,7 @@ namespace Modules\CRM\Controllers;
 
 use Core\BaseController;
 use Helpers\SecurityAuditLogger;
+use DateTimeImmutable;
 use InvalidArgumentException;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Models\ProjectModel;
@@ -228,6 +229,44 @@ class CRMController extends BaseController
                 'message' => $exception->getMessage(),
             ]);
             $this->json(['ok' => false, 'error' => 'No se pudo cargar el lead', 'error_code' => 'server_error'], 500);
+        }
+    }
+
+    public function leadProfile(int $leadId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        if ($leadId <= 0) {
+            $this->json(['ok' => false, 'success' => false, 'error' => 'leadId inválido'], 422);
+            return;
+        }
+
+        try {
+            $profile = $this->leads->fetchProfileById($leadId);
+            if (!$profile) {
+                $this->json(['ok' => false, 'success' => false, 'error' => 'Lead no encontrado'], 404);
+                return;
+            }
+
+            $patient = $profile['patient'] ?? null;
+            $computed = $this->buildLeadComputedProfile(is_array($patient) ? $patient : null);
+
+            $this->json([
+                'ok' => true,
+                'success' => true,
+                'data' => [
+                    'lead' => $profile['lead'],
+                    'patient' => $patient,
+                    'computed' => $computed,
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            SecurityAuditLogger::log('crm_lead_profile_failed', [
+                'lead_id' => $leadId,
+                'message' => $exception->getMessage(),
+            ]);
+            $this->json(['ok' => false, 'success' => false, 'error' => 'No se pudo cargar el perfil'], 500);
         }
     }
 
@@ -926,6 +965,63 @@ class CRMController extends BaseController
                 'lead_id' => $lead['id'] ?? null,
                 'status' => $status,
             ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $patient
+     *
+     * @return array<string, mixed>
+     */
+    private function buildLeadComputedProfile(?array $patient): array
+    {
+        if (!$patient) {
+            return [];
+        }
+
+        $birthdate = '';
+        if (!empty($patient['fecha_nacimiento'])) {
+            $birthdate = (string) $patient['fecha_nacimiento'];
+        } elseif (!empty($patient['birthdate'])) {
+            $birthdate = (string) $patient['birthdate'];
+        }
+
+        $age = null;
+        if ($birthdate !== '') {
+            try {
+                $date = new DateTimeImmutable($birthdate);
+                $now = new DateTimeImmutable('today');
+                $age = $date->diff($now)->y;
+            } catch (Throwable $exception) {
+                $age = null;
+            }
+        }
+
+        $address = trim((string) ($patient['address'] ?? $patient['direccion'] ?? $patient['domicilio'] ?? ''));
+        $city = trim((string) ($patient['city'] ?? $patient['ciudad'] ?? ''));
+        $state = trim((string) ($patient['state'] ?? $patient['provincia'] ?? $patient['region'] ?? ''));
+        $zip = trim((string) ($patient['zip'] ?? $patient['codigo_postal'] ?? $patient['postal_code'] ?? ''));
+        $country = trim((string) ($patient['country'] ?? $patient['pais'] ?? ''));
+
+        $displayParts = [];
+        if ($address !== '') {
+            $displayParts[] = $address;
+        }
+
+        $cityStateZip = trim(implode(' ', array_filter([$city, $state, $zip])));
+        if ($cityStateZip !== '') {
+            $displayParts[] = $cityStateZip;
+        }
+
+        if ($country !== '') {
+            $displayParts[] = $country;
+        }
+
+        $displayAddress = $displayParts ? implode(', ', $displayParts) : null;
+
+        return [
+            'edad' => $age,
+            'display_address' => $displayAddress,
         ];
     }
 
