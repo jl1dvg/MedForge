@@ -60,7 +60,7 @@ class ExamenesCrmService
 
         $lead = null;
         if (!empty($detalle['crm_lead_id'])) {
-            $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
+            $lead = $this->leadModel->findById((int) $detalle['crm_lead_id']);
             if ($lead) {
                 $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
             }

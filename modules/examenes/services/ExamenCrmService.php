@@ -5,7 +5,7 @@ namespace Modules\Examenes\Services;
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
 use Modules\CRM\Services\LeadConfigurationService;
-use Modules\CRM\Services\LeadResolverService;
+use Modules\CRM\Services\LeadCrmCoreService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use PDO;
@@ -20,7 +20,7 @@ class ExamenCrmService
     private PDO $pdo;
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
-    private LeadResolverService $leadResolver;
+    private LeadCrmCoreService $crmCore;
     private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
@@ -28,7 +28,7 @@ class ExamenCrmService
         $this->pdo = $pdo;
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
-        $this->leadResolver = new LeadResolverService($pdo);
+        $this->crmCore = new LeadCrmCoreService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
@@ -59,10 +59,12 @@ class ExamenCrmService
         }
 
         $lead = null;
+        $crmResumen = null;
         if (!empty($detalle['crm_lead_id'])) {
-            $lead = $this->leadModel->find((int) $detalle['crm_lead_id']);
+            $lead = $this->leadModel->findById((int) $detalle['crm_lead_id']);
             if ($lead) {
                 $lead['url'] = $this->buildLeadUrl((int) $lead['id']);
+                $crmResumen = $this->crmCore->getResumen((int) $lead['id'], LeadCrmCoreService::CONTEXT_EXAMEN, $examenId);
             }
         }
 
@@ -73,6 +75,7 @@ class ExamenCrmService
             'tareas' => $this->obtenerTareas($examenId),
             'campos_personalizados' => $this->obtenerCamposPersonalizados($examenId),
             'lead' => $lead,
+            'crm_resumen' => $crmResumen,
         ];
     }
 
@@ -801,10 +804,24 @@ class ExamenCrmService
             $nombre = 'Examen #' . $examenId;
         }
 
-        $hcNumber = $this->normalizarTexto($detalle['hc_number'] ?? null);
+        $hcNumber = $this->normalizarTexto($payload['hc_number'] ?? ($detalle['hc_number'] ?? null));
         $status = $this->mapearEtapaALeadStatus($payload['etapa'] ?? ($detalle['crm_pipeline_stage'] ?? null));
 
-        $contactData = [
+        if ($leadId) {
+            $existente = $this->leadModel->findById($leadId);
+            if (!$existente) {
+                $leadId = null;
+            } elseif ($hcNumber === null && !empty($existente['hc_number'])) {
+                $hcNumber = (string) $existente['hc_number'];
+            }
+        }
+
+        // Sin HC no podemos crear ni resolver un lead; devolvemos null para no impedir el guardado del resto de campos.
+        if ($hcNumber === null) {
+            return null;
+        }
+
+        $leadData = [
             'name' => $nombre,
             'email' => $payload['contacto_email'] ?? ($detalle['crm_contacto_email'] ?? null),
             'phone' => $payload['contacto_telefono'] ?? ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? null),
@@ -814,21 +831,15 @@ class ExamenCrmService
             'notes' => $detalle['observacion'] ?? null,
         ];
 
-        if ($leadId) {
-            $this->leadModel->update($leadId, $contactData);
-
-            return $leadId;
-        }
-
-        // Sin HC no podemos crear ni resolver un lead; devolvemos null para no impedir el guardado del resto de campos.
-        if ($hcNumber === null) {
-            return null;
-        }
-
-        return $this->leadResolver->getOrCreateLeadId(
-            array_merge(['hc_number' => $hcNumber], $contactData),
+        $lead = $this->crmCore->saveLeadFromContext(
+            LeadCrmCoreService::CONTEXT_EXAMEN,
+            $examenId,
+            $hcNumber,
+            $leadData,
             $usuarioId
         );
+
+        return (int) ($lead['id'] ?? 0);
     }
 
     private function buildLeadUrl(int $leadId): string
