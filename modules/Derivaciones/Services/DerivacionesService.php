@@ -154,7 +154,31 @@ class DerivacionesService
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return $row ?: null;
+        if ($row) {
+            return $row;
+        }
+
+        $legacyStmt = $this->db->prepare(
+            "SELECT id,
+                    cod_derivacion,
+                    form_id,
+                    hc_number,
+                    fecha_creacion,
+                    fecha_registro,
+                    fecha_vigencia,
+                    referido,
+                    diagnostico,
+                    sede,
+                    parentesco,
+                    archivo_derivacion_path
+             FROM derivaciones_form_id
+             WHERE id = :id
+             LIMIT 1"
+        );
+        $legacyStmt->execute([':id' => $id]);
+        $legacyRow = $legacyStmt->fetch(PDO::FETCH_ASSOC);
+
+        return $legacyRow ?: null;
     }
 
     /**
