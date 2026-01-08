@@ -329,6 +329,16 @@ $canManageLeads = (bool)($permissions['manageLeads'] ?? false);
                                     </div>
                                 </div>
                             </div>
+                            <div class="lead-projects mb-3 lead-view" id="lead-projects-section">
+                                <div class="lead-info-heading d-flex align-items-center justify-content-between">
+                                    <h4 class="mb-0">Proyectos</h4>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="lead-project-create">
+                                        Crear caso
+                                    </button>
+                                </div>
+                                <div class="text-muted small mb-2" id="lead-projects-empty">Sin proyectos asociados.</div>
+                                <div class="list-group" id="lead-projects-list"></div>
+                            </div>
                             <div class="lead-edit d-none" id="lead-edit-section">
                                 <form id="lead-detail-edit-form" class="row g-2">
                                     <div class="col-12">

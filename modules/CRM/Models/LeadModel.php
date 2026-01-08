@@ -730,6 +730,7 @@ class LeadModel
         }
 
         $this->attachCustomer($lead['hc_number'], $customerId);
+        $this->attachCustomerToProjects($lead, $customerId);
         $actualizado = $this->updateStatus($lead['hc_number'], $this->configService->getWonStage());
 
         if ($actualizado) {
@@ -739,6 +740,36 @@ class LeadModel
         }
 
         return $actualizado;
+    }
+
+    private function attachCustomerToProjects(array $lead, int $customerId): void
+    {
+        if ($customerId <= 0) {
+            return;
+        }
+
+        $leadId = (int) ($lead['id'] ?? 0);
+        $hcNumber = (string) ($lead['hc_number'] ?? '');
+
+        if ($leadId <= 0 && $hcNumber === '') {
+            return;
+        }
+
+        $sql = '
+            UPDATE crm_projects
+            SET customer_id = :customer_id
+            WHERE customer_id IS NULL
+              AND (
+                lead_id = :lead_id
+                OR hc_number = :hc_number
+              )
+        ';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':customer_id' => $customerId,
+            ':lead_id' => $leadId,
+            ':hc_number' => $hcNumber,
+        ]);
     }
 
     /**

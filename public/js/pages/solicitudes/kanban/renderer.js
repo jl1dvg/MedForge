@@ -161,6 +161,102 @@ function applyTurnoButtonState(button, shouldRecall) {
     button.dataset.hasTurno = shouldRecall ? "1" : "0";
 }
 
+const request = window.request || (async function request(url, options = {}) {
+    const config = {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {},
+        ...options,
+    };
+
+    if (config.body && !(config.body instanceof FormData)) {
+        config.headers = {
+            "Content-Type": "application/json",
+            ...config.headers,
+        };
+        config.body = JSON.stringify(config.body);
+    }
+
+    const response = await fetch(url, config);
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data.ok === false) {
+        throw new Error(data.error || "No se pudo completar la solicitud");
+    }
+
+    return data;
+}); // shared helper
+
+function normalizeEyeValue(value) {
+    if (!value) {
+        return null;
+    }
+    const normalized = value.toString().toLowerCase();
+    if (normalized.includes('ao') || normalized.includes('ambos')) {
+        return 'AO';
+    }
+    if (normalized.includes('od') || normalized.includes('derecho')) {
+        return 'OD';
+    }
+    if (normalized.includes('oi') || normalized.includes('izquierdo')) {
+        return 'OI';
+    }
+    return null;
+}
+
+async function openProjectForSolicitud(solicitud, button) {
+    const formId = solicitud?.form_id ?? null;
+    const hcNumber = solicitud?.hc_number ?? null;
+    const procedimiento = solicitud?.procedimiento ?? 'Caso';
+    const eye = normalizeEyeValue(solicitud?.ojo ?? solicitud?.lateralidad ?? null);
+
+    if (!formId && !hcNumber) {
+        showToast('No hay información suficiente para crear el caso', false);
+        return;
+    }
+
+    const titleParts = [
+        formId ? `Solicitud ${formId}` : 'Solicitud',
+        hcNumber ? `HC ${hcNumber}` : null,
+        procedimiento ? procedimiento : null,
+    ].filter(Boolean);
+
+    const payload = {
+        title: titleParts.join(' - '),
+        hc_number: hcNumber,
+        form_id: formId,
+        source_module: 'solicitudes',
+        source_ref_id: solicitud?.id ? String(solicitud.id) : (formId ? String(formId) : null),
+        episode_type: 'cirugia',
+        eye: eye,
+    };
+
+    if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
+
+    try {
+        const data = await request('/projects/create', {
+            method: 'POST',
+            body: payload,
+        });
+        const projectId = data?.data?.id;
+        showToast(data.linked ? 'Caso vinculado' : 'Caso creado', true);
+        if (projectId) {
+            window.open(`/crm?tab=projects&project_id=${projectId}`, '_blank', 'noopener');
+        }
+    } catch (error) {
+        console.error('Error creando caso', error);
+        showToast(error.message || 'No se pudo crear el caso', false);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
+    }
+}
+
 const SLA_META = {
     en_rango: {
         label: "En rango",
@@ -715,6 +811,17 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
       acciones.appendChild(botonLlamar);
     }
+
+    const openProjectButton = document.createElement("button");
+    openProjectButton.type = "button";
+    openProjectButton.className = "btn btn-sm btn-outline-success";
+    openProjectButton.textContent = "Abrir caso";
+    openProjectButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openProjectForSolicitud(solicitud, openProjectButton);
+    });
+    acciones.appendChild(openProjectButton);
 
     const nextStageSlug = solicitud.checklist_progress?.next_slug;
     const nextStageLabel = solicitud.checklist_progress?.next_label || nextStageSlug;

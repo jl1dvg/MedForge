@@ -55,6 +55,13 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
 </div>
 
 <section class="content">
+    <style>
+        .crm-project-focus {
+            outline: 2px solid rgba(14, 165, 233, 0.8);
+            outline-offset: -2px;
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+        }
+    </style>
     <div class="row">
         <div class="col-12">
             <div class="box" id="crm-root" data-bootstrap="<?= $bootstrapJson ?>">
