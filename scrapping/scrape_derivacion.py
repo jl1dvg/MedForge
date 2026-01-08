@@ -74,32 +74,24 @@ def ocr_pdf_to_text(pdf_path, lang="spa"):
         return ""
 
 
-def construir_nombre_pdf(hc_number, codigo_derivacion, form_id):
+def normalizar_codigo(codigo_derivacion):
     codigo_limpio = ""
     if codigo_derivacion:
         codigo_limpio = codigo_derivacion.strip().split('SECUENCIAL')[0].strip()
-    codigo_limpio = re.sub(r"[^A-Za-z0-9_-]+", "_", codigo_limpio) or "SIN_CODIGO"
+    codigo_limpio = re.sub(r"[^A-Za-z0-9_-]+", "_", codigo_limpio)
+    return codigo_limpio or "SIN_CODIGO"
 
-    hc_safe = re.sub(r"[^A-Za-z0-9_-]+", "_", hc_number) if hc_number else "SIN_HC"
-    form_safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form_id)) if form_id else "SIN_FORM"
 
-    return f"{hc_safe}_{codigo_limpio}_{form_safe}.pdf"
+def normalizar_hc(hc_number):
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", hc_number) if hc_number else "SIN_HC"
 
 
 def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_derivacion):
-    # Guardar en storage/derivaciones/{hc}/{form}/ (como antes)
-    safe_hc = re.sub(r"[^A-Za-z0-9_-]+", "_", str(hc_number or "SIN_HC"))
+    # Guardar en storage/derivaciones/{hc}/{codigo}/
+    safe_hc = normalizar_hc(str(hc_number or "SIN_HC"))
+    safe_codigo = normalizar_codigo(codigo_derivacion or "SIN_CODIGO")
 
-    # limpiar código derivación (quitar espacios, símbolos raros, etc.)
-    safe_codigo = re.sub(
-        r"[^A-Za-z0-9_-]+",
-        "_",
-        (codigo_derivacion or "SIN_CODIGO").strip()
-    )
-
-    safe_form = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form_id or "SIN_FORM"))
-
-    output_dir = os.path.join("..", "storage", "derivaciones", safe_hc, safe_form)
+    output_dir = os.path.join("..", "storage", "derivaciones", safe_hc, safe_codigo)
     os.makedirs(output_dir, exist_ok=True)
 
     pdf_url = (
@@ -125,11 +117,16 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
     filename = f"derivacion_{safe_hc}_{safe_codigo}.pdf"
     filepath = os.path.join(output_dir, filename)
 
+    if os.path.isfile(filepath):
+        if not modo_quieto:
+            print(f"♻️ PDF ya existe, se reutiliza: {filepath}")
+        return f"storage/derivaciones/{safe_hc}/{safe_codigo}/{filename}"
+
     with open(filepath, "wb") as f:
         f.write(resp_pdf.content)
 
     # esto es lo que se manda a la API (ruta relativa para guardar en DB)
-    archivo_path = f"storage/derivaciones/{safe_hc}/{safe_form}/{filename}"
+    archivo_path = f"storage/derivaciones/{safe_hc}/{safe_codigo}/{filename}"
 
     if ocr_habilitado:
         ocr_text = ocr_pdf_to_text(filepath)

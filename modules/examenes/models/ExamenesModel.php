@@ -200,10 +200,38 @@ class ExamenesModel
 
     public function obtenerDerivacionPorFormId($form_id)
     {
-        $sql = "SELECT * FROM derivaciones_form_id WHERE form_id = ? ";
-        $stmt = $this->db->prepare($sql);
+        $stmt = $this->db->prepare(
+            "SELECT
+                rf.id AS derivacion_id,
+                r.referral_code AS cod_derivacion,
+                r.referral_code AS codigo_derivacion,
+                f.iess_form_id AS form_id,
+                f.hc_number,
+                f.fecha_creacion,
+                f.fecha_registro,
+                COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                f.referido,
+                f.diagnostico,
+                f.sede,
+                f.parentesco,
+                f.archivo_derivacion_path
+             FROM derivaciones_forms f
+             LEFT JOIN derivaciones_referral_forms rf ON rf.form_id = f.id
+             LEFT JOIN derivaciones_referrals r ON r.id = rf.referral_id
+             WHERE f.iess_form_id = ?
+             ORDER BY COALESCE(rf.linked_at, f.updated_at) DESC, f.id DESC
+             LIMIT 1"
+        );
         $stmt->execute([$form_id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row !== false) {
+            $row['id'] = $row['derivacion_id'] ?? null;
+            return $row;
+        }
+
+        $stmtLegacy = $this->db->prepare("SELECT * FROM derivaciones_form_id WHERE form_id = ?");
+        $stmtLegacy->execute([$form_id]);
+        return $stmtLegacy->fetch(PDO::FETCH_ASSOC);
     }
 
     public function obtenerFechaCreacionSolicitud($form_id, $hc)

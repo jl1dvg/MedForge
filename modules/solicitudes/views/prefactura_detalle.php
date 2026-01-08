@@ -85,7 +85,7 @@ if (!empty($derivacion['fecha_vigencia'])) {
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
-<?php if (!empty($derivacion['archivo_derivacion_path']) || !empty($derivacion['id'])): ?>
+<?php if (!empty($derivacion['archivo_derivacion_path']) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
     <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
         <div>
             <strong>📎 Derivación:</strong>
@@ -93,8 +93,9 @@ if (!empty($derivacion['fecha_vigencia'])) {
         </div>
         <?php
         $archivoHref = null;
-        if (!empty($derivacion['id'])) {
-            $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacion['id']);
+        $derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
+        if (!empty($derivacionId)) {
+            $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
         } elseif (!empty($derivacion['archivo_derivacion_path'])) {
             $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
         }
