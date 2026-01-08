@@ -68,7 +68,12 @@ class CRMController extends BaseController
                 'assignableUsers' => $this->getAssignableUsers(),
                 'initialLeads' => $this->leads->list(['limit' => 50]),
                 'initialProjects' => $this->projects->list(['limit' => 50]),
-                'initialTasks' => $this->tasks->list(['limit' => 50]),
+                'initialTasks' => $this->tasks->list([
+                    'limit' => 50,
+                    'company_id' => $this->currentCompanyId(),
+                    'viewer_id' => $this->currentUserId(),
+                    'is_admin' => $this->isAdminUser(),
+                ]),
                 'initialTickets' => $this->tickets->list(['limit' => 50]),
                 'initialProposals' => $this->proposals->list(['limit' => 25]),
                 'proposalStatuses' => $this->proposals->getStatuses(),
@@ -573,6 +578,10 @@ class CRMController extends BaseController
                 $filters['limit'] = $limit;
             }
 
+            $filters['company_id'] = $this->currentCompanyId();
+            $filters['viewer_id'] = $this->currentUserId();
+            $filters['is_admin'] = $this->isAdminUser();
+
             $tasks = $this->tasks->list($filters);
             $this->auditCrm('crm_tasks_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $tasks]);
@@ -603,12 +612,14 @@ class CRMController extends BaseController
         try {
             $task = $this->tasks->create(
                 [
+                    'company_id' => $this->currentCompanyId(),
                     'project_id' => $projectId,
                     'title' => $title,
                     'description' => $payload['description'] ?? null,
                     'status' => $payload['status'] ?? null,
                     'assigned_to' => $payload['assigned_to'] ?? null,
                     'due_date' => $payload['due_date'] ?? null,
+                    'due_at' => $payload['due_at'] ?? null,
                     'remind_at' => $payload['remind_at'] ?? null,
                     'remind_channel' => $payload['remind_channel'] ?? null,
                 ],
@@ -640,7 +651,23 @@ class CRMController extends BaseController
         }
 
         try {
-            $task = $this->tasks->updateStatus($taskId, $status, $this->getCurrentUserId());
+            $task = $this->tasks->find($taskId, $this->currentCompanyId());
+            if (!$task) {
+                $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
+                return;
+            }
+
+            if (!$this->isAdminUser()) {
+                $userId = $this->getCurrentUserId();
+                $assigned = isset($task['assigned_to']) ? (int) $task['assigned_to'] : 0;
+                $created = isset($task['created_by']) ? (int) $task['created_by'] : 0;
+                if ($assigned !== $userId && $created !== $userId) {
+                    $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
+                    return;
+                }
+            }
+
+            $task = $this->tasks->updateStatus($taskId, $this->currentCompanyId(), $status, $this->getCurrentUserId());
             if (!$task) {
                 $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
                 return;

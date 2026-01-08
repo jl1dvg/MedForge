@@ -224,7 +224,12 @@ class ProjectController extends BaseController
     {
         $this->requireAuth();
 
-        $tasks = $this->tasks->list(['project_id' => $projectId]);
+        $tasks = $this->tasks->list([
+            'project_id' => $projectId,
+            'company_id' => $this->currentCompanyId(),
+            'viewer_id' => $this->currentUserId(),
+            'is_admin' => $this->isAdminUser(),
+        ]);
         $this->json(['ok' => true, 'data' => $tasks]);
     }
 
@@ -241,12 +246,14 @@ class ProjectController extends BaseController
 
         try {
             $task = $this->tasks->create([
+                'company_id' => $this->currentCompanyId(),
                 'project_id' => $projectId,
                 'title' => $title,
                 'description' => $payload['description'] ?? null,
                 'status' => $payload['status'] ?? null,
                 'assigned_to' => $payload['assigned_to'] ?? null,
                 'due_date' => $payload['due_date'] ?? null,
+                'due_at' => $payload['due_at'] ?? null,
                 'remind_at' => $payload['remind_at'] ?? null,
                 'remind_channel' => $payload['remind_channel'] ?? null,
             ],
@@ -313,11 +320,6 @@ class ProjectController extends BaseController
         }
 
         return trim(implode(' - ', $parts));
-    }
-
-    private function currentUserId(): int
-    {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
     }
 
     private function nullableString($value): ?string
