@@ -70,6 +70,21 @@ class BaseController
         return Permissions::contains($current, $permissions);
     }
 
+    protected function currentUserId(): int
+    {
+        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+    }
+
+    protected function currentCompanyId(): int
+    {
+        return isset($_SESSION['company_id']) ? (int) $_SESSION['company_id'] : 1;
+    }
+
+    protected function isAdminUser(): bool
+    {
+        return $this->hasPermission(['administrativo', 'admin.usuarios.manage', 'admin.roles.manage', 'admin.usuarios', 'admin.roles']);
+    }
+
     protected function requirePermission(string|array $permissions): void
     {
         if ($this->hasPermission($permissions)) {
