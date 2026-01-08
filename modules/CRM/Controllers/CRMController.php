@@ -11,6 +11,8 @@ use Modules\CRM\Models\ProjectModel;
 use Modules\CRM\Models\ProposalModel;
 use Modules\CRM\Models\TaskModel;
 use Modules\CRM\Models\TicketModel;
+use Modules\CRM\Services\CrmProjectService;
+use Modules\CRM\Services\CrmTaskService;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\CRM\Services\PerfexEstimatesParser;
 use Modules\Mail\Services\NotificationMailer;
@@ -25,6 +27,8 @@ class CRMController extends BaseController
     private TaskModel $tasks;
     private TicketModel $tickets;
     private ProposalModel $proposals;
+    private CrmProjectService $projectService;
+    private CrmTaskService $taskService;
     private LeadConfigurationService $leadConfig;
     private NotificationMailer $mailer;
     private ?array $bodyCache = null;
@@ -37,6 +41,8 @@ class CRMController extends BaseController
         $this->tasks = new TaskModel($pdo);
         $this->tickets = new TicketModel($pdo);
         $this->proposals = new ProposalModel($pdo);
+        $this->projectService = new CrmProjectService($pdo);
+        $this->taskService = new CrmTaskService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->mailer = new NotificationMailer($pdo);
     }
@@ -256,14 +262,38 @@ class CRMController extends BaseController
 
             $patient = $profile['patient'] ?? null;
             $computed = $this->buildLeadComputedProfile(is_array($patient) ? $patient : null);
+            $lead = $profile['lead'] ?? [];
+            $hcNumber = is_array($lead) && !empty($lead['hc_number']) ? (string) $lead['hc_number'] : null;
+
+            $projects = [];
+            if ($leadId > 0) {
+                $projects = $this->projectService->list(['lead_id' => $leadId, 'limit' => 50]);
+            }
+            if ($hcNumber) {
+                $byHc = $this->projectService->list(['hc_number' => $hcNumber, 'limit' => 50]);
+                $projects = $this->uniqueProjects(array_merge($projects, $byHc));
+            }
+
+            $tasks = $this->taskService->list(
+                array_filter([
+                    'lead_id' => $leadId,
+                    'hc_number' => $hcNumber,
+                    'limit' => 200,
+                ]),
+                $this->currentCompanyId(),
+                $this->currentUserId(),
+                $this->isAdminUser()
+            );
 
             $this->json([
                 'ok' => true,
                 'success' => true,
                 'data' => [
-                    'lead' => $profile['lead'],
+                    'lead' => $lead,
                     'patient' => $patient,
                     'computed' => $computed,
+                    'projects' => $projects,
+                    'tasks' => $tasks,
                 ],
             ]);
         } catch (Throwable $exception) {
@@ -468,6 +498,12 @@ class CRMController extends BaseController
             if (($status = $this->getQuery('status')) !== null) {
                 $filters['status'] = $status;
             }
+            if (($sourceModule = $this->getQuery('source_module')) !== null) {
+                $filters['source_module'] = $sourceModule;
+            }
+            if (($sourceRef = $this->getQuery('source_ref_id')) !== null) {
+                $filters['source_ref_id'] = $sourceRef;
+            }
             if (($owner = $this->getQueryInt('owner_id')) !== null) {
                 $filters['owner_id'] = $owner;
             }
@@ -477,15 +513,58 @@ class CRMController extends BaseController
             if (($customer = $this->getQueryInt('customer_id')) !== null) {
                 $filters['customer_id'] = $customer;
             }
+            $hcNumber = $this->getQuery('hc_number');
+            if ($hcNumber === null) {
+                $hcNumber = $this->getQuery('hc');
+            }
+            if ($hcNumber !== null) {
+                $filters['hc_number'] = $hcNumber;
+            }
             if (($limit = $this->getQueryInt('limit')) !== null) {
                 $filters['limit'] = $limit;
             }
 
-            $projects = $this->projects->list($filters);
+            $projects = $this->projectService->list($filters);
             $this->auditCrm('crm_projects_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $projects]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los proyectos'], 500);
+        }
+    }
+
+    public function showProject(int $projectId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.view');
+
+        if ($projectId <= 0) {
+            $this->json(['ok' => false, 'error' => 'ID inválido'], 422);
+            return;
+        }
+
+        try {
+            $project = $this->projectService->show($projectId);
+            if (!$project) {
+                $this->json(['ok' => false, 'error' => 'Proyecto no encontrado'], 404);
+                return;
+            }
+
+            $tasks = $this->taskService->list(
+                ['project_id' => $projectId, 'limit' => 200],
+                $this->currentCompanyId(),
+                $this->currentUserId(),
+                $this->isAdminUser()
+            );
+
+            $this->json([
+                'ok' => true,
+                'data' => [
+                    'project' => $project,
+                    'tasks' => $tasks,
+                ],
+            ]);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'error' => 'No se pudo cargar el proyecto'], 500);
         }
     }
 
@@ -511,6 +590,12 @@ class CRMController extends BaseController
                     'owner_id' => $payload['owner_id'] ?? null,
                     'lead_id' => $payload['lead_id'] ?? null,
                     'customer_id' => $payload['customer_id'] ?? null,
+                    'hc_number' => $payload['hc_number'] ?? null,
+                    'form_id' => $payload['form_id'] ?? null,
+                    'source_module' => $payload['source_module'] ?? null,
+                    'source_ref_id' => $payload['source_ref_id'] ?? null,
+                    'episode_type' => $payload['episode_type'] ?? null,
+                    'eye' => $payload['eye'] ?? null,
                     'start_date' => $payload['start_date'] ?? null,
                     'due_date' => $payload['due_date'] ?? null,
                 ],
@@ -568,21 +653,41 @@ class CRMController extends BaseController
             if (($project = $this->getQueryInt('project_id')) !== null) {
                 $filters['project_id'] = $project;
             }
+            if (($entityType = $this->getQuery('entity_type')) !== null) {
+                $filters['entity_type'] = $entityType;
+            }
+            if (($entityId = $this->getQuery('entity_id')) !== null) {
+                $filters['entity_id'] = $entityId;
+            }
             if (($assigned = $this->getQueryInt('assigned_to')) !== null) {
                 $filters['assigned_to'] = $assigned;
             }
+            if (($leadId = $this->getQueryInt('lead_id')) !== null) {
+                $filters['lead_id'] = $leadId;
+            }
+            $hcNumber = $this->getQuery('hc_number');
+            if ($hcNumber === null) {
+                $hcNumber = $this->getQuery('hc');
+            }
+            if ($hcNumber !== null) {
+                $filters['hc_number'] = $hcNumber;
+            }
             if (($status = $this->getQuery('status')) !== null) {
                 $filters['status'] = $status;
+            }
+            if (($due = $this->getQuery('due')) !== null) {
+                $filters['due'] = $due;
             }
             if (($limit = $this->getQueryInt('limit')) !== null) {
                 $filters['limit'] = $limit;
             }
 
-            $filters['company_id'] = $this->currentCompanyId();
-            $filters['viewer_id'] = $this->currentUserId();
-            $filters['is_admin'] = $this->isAdminUser();
-
-            $tasks = $this->tasks->list($filters);
+            $tasks = $this->taskService->list(
+                $filters,
+                $this->currentCompanyId(),
+                $this->currentUserId(),
+                $this->isAdminUser()
+            );
             $this->auditCrm('crm_tasks_list', ['filters' => $filters]);
             $this->json(['ok' => true, 'data' => $tasks]);
         } catch (Throwable $e) {
@@ -597,32 +702,51 @@ class CRMController extends BaseController
 
         $payload = $this->getBody();
         $title = trim((string) ($payload['title'] ?? ''));
-        $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
 
         if ($title === '') {
             $this->json(['ok' => false, 'error' => 'El título de la tarea es requerido'], 422);
             return;
         }
 
-        if ($projectId <= 0) {
-            $this->json(['ok' => false, 'error' => 'project_id es requerido'], 422);
+        $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
+        $leadId = isset($payload['lead_id']) ? (int) $payload['lead_id'] : 0;
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $entityType = trim((string) ($payload['entity_type'] ?? ''));
+        $entityId = trim((string) ($payload['entity_id'] ?? ''));
+        if ($projectId <= 0 && $leadId <= 0 && $hcNumber === '' && ($entityType === '' || $entityId === '')) {
+            $this->json(['ok' => false, 'error' => 'Debes asociar la tarea a un proyecto, lead o paciente'], 422);
             return;
         }
 
         try {
-            $task = $this->tasks->create(
+            if ($entityType === '' && $entityId === '' && $leadId > 0) {
+                $entityType = 'lead';
+                $entityId = (string) $leadId;
+            } elseif ($entityType === '' && $entityId === '' && $projectId > 0) {
+                $entityType = 'project';
+                $entityId = (string) $projectId;
+            }
+
+            $task = $this->taskService->create(
                 [
-                    'company_id' => $this->currentCompanyId(),
-                    'project_id' => $projectId,
+                    'project_id' => $projectId > 0 ? $projectId : null,
+                    'entity_type' => $entityType !== '' ? $entityType : null,
+                    'entity_id' => $entityId !== '' ? $entityId : null,
+                    'lead_id' => $leadId > 0 ? $leadId : null,
+                    'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                    'patient_id' => $payload['patient_id'] ?? null,
                     'title' => $title,
                     'description' => $payload['description'] ?? null,
                     'status' => $payload['status'] ?? null,
+                    'priority' => $payload['priority'] ?? null,
                     'assigned_to' => $payload['assigned_to'] ?? null,
                     'due_date' => $payload['due_date'] ?? null,
                     'due_at' => $payload['due_at'] ?? null,
                     'remind_at' => $payload['remind_at'] ?? null,
                     'remind_channel' => $payload['remind_channel'] ?? null,
+                    'metadata' => $payload['metadata'] ?? null,
                 ],
+                $this->currentCompanyId(),
                 $this->getCurrentUserId()
             );
 
@@ -633,6 +757,51 @@ class CRMController extends BaseController
             $this->json(['ok' => true, 'data' => $task], 201);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudo crear la tarea'], 500);
+        }
+    }
+
+    public function updateTask(int $taskId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.tasks.manage');
+
+        if ($taskId <= 0) {
+            $this->json(['ok' => false, 'error' => 'ID inválido'], 422);
+            return;
+        }
+
+        $payload = $this->getBody();
+
+        try {
+            $task = $this->tasks->find($taskId, $this->currentCompanyId());
+            if (!$task) {
+                $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
+                return;
+            }
+
+            if (!$this->isAdminUser()) {
+                $userId = $this->getCurrentUserId();
+                $assigned = isset($task['assigned_to']) ? (int) $task['assigned_to'] : 0;
+                $created = isset($task['created_by']) ? (int) $task['created_by'] : 0;
+                if ($assigned !== $userId && $created !== $userId) {
+                    $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
+                    return;
+                }
+            }
+
+            $updated = $this->taskService->update($taskId, $this->currentCompanyId(), $payload, $this->getCurrentUserId());
+            if (!$updated) {
+                $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_task_updated', [
+                'task_id' => $taskId,
+                'fields' => array_keys($payload),
+            ]);
+            $this->json(['ok' => true, 'data' => $updated]);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar la tarea'], 500);
         }
     }
 
@@ -920,6 +1089,27 @@ class CRMController extends BaseController
     private function auditCrm(string $action, array $context = []): void
     {
         SecurityAuditLogger::log($action, ['module' => 'crm'] + $context);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $projects
+     * @return array<int, array<string, mixed>>
+     */
+    private function uniqueProjects(array $projects): array
+    {
+        $seen = [];
+        $unique = [];
+
+        foreach ($projects as $project) {
+            $id = $project['id'] ?? null;
+            if ($id === null || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $unique[] = $project;
+        }
+
+        return $unique;
     }
 
     private function getBody(): array
