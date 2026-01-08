@@ -36,6 +36,7 @@
         tickets: Array.isArray(bootstrapData.initialTickets) ? bootstrapData.initialTickets : [],
         proposalStatuses: Array.isArray(bootstrapData.proposalStatuses) ? bootstrapData.proposalStatuses : [],
         proposals: Array.isArray(bootstrapData.initialProposals) ? bootstrapData.initialProposals : [],
+        focusProjectId: null,
     };
 
     const elements = {
@@ -164,6 +165,9 @@
         leadDetailEditSection: document.getElementById('lead-edit-section'),
         leadDetailViewSection: document.getElementById('lead-view-section'),
         leadDetailNotesCount: document.getElementById('lead-notes-count'),
+        leadProjectsList: document.getElementById('lead-projects-list'),
+        leadProjectsEmpty: document.getElementById('lead-projects-empty'),
+        leadProjectsCreate: document.getElementById('lead-project-create'),
         leadFormHelper: root.querySelector('#lead-form-helper'),
     };
 
@@ -239,6 +243,42 @@
             return '';
         }
         return String(value).replace(/[&<>"']/g, (match) => htmlEscapeMap[match]);
+    }
+
+    function activateTab(tabId) {
+        const tabLink = document.getElementById(tabId);
+        if (!tabLink) {
+            return;
+        }
+
+        if (window.bootstrap && window.bootstrap.Tab) {
+            const tab = new window.bootstrap.Tab(tabLink);
+            tab.show();
+            return;
+        }
+
+        tabLink.classList.add('active');
+        const targetSelector = tabLink.getAttribute('href') || '';
+        if (targetSelector) {
+            const target = document.querySelector(targetSelector);
+            if (target) {
+                target.classList.add('active', 'show');
+            }
+        }
+    }
+
+    function applyUrlDeepLink() {
+        const params = new URLSearchParams(window.location.search || '');
+        const tab = params.get('tab');
+        if (tab === 'projects') {
+            activateTab('crm-tab-projects-link');
+        }
+
+        const rawProjectId = params.get('project_id');
+        const projectId = rawProjectId ? Number.parseInt(rawProjectId, 10) : null;
+        if (projectId && Number.isFinite(projectId)) {
+            state.focusProjectId = projectId;
+        }
     }
 
     function setTextContent(element, value) {
@@ -343,8 +383,17 @@
         }
     }
 
-    function showToast(type, message) {
-        const text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
+    function showToast(message, status) {
+        let type = 'error';
+        let text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
+
+        if (typeof status === 'boolean') {
+            type = status ? 'success' : 'error';
+        } else if (typeof message === 'string' && typeof status === 'string') {
+            type = message;
+            text = status;
+        }
+
         const method = type === 'success'
             ? 'success'
             : type === 'warning'
@@ -997,6 +1046,7 @@
         } else {
             state.projects.forEach((project) => {
                 const row = document.createElement('tr');
+                row.dataset.projectId = project.id;
 
                 const titleCell = document.createElement('td');
                 const strong = document.createElement('strong');
@@ -1044,6 +1094,22 @@
 
                 elements.projectTableBody.appendChild(row);
             });
+
+            if (state.focusProjectId) {
+                elements.projectTableBody
+                    .querySelectorAll('.crm-project-focus')
+                    .forEach((row) => row.classList.remove('crm-project-focus', 'table-active'));
+                const focusedRow = elements.projectTableBody.querySelector(
+                    `[data-project-id="${state.focusProjectId}"]`
+                );
+                if (focusedRow) {
+                    focusedRow.classList.add('crm-project-focus', 'table-active');
+                    requestAnimationFrame(() => {
+                        focusedRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    });
+                }
+                state.focusProjectId = null;
+            }
         }
 
         populateProjectSelects();
@@ -1334,7 +1400,7 @@
     function openLeadEdit(leadId) {
         const lead = findLeadById(leadId);
         if (!lead) {
-            showToast('error', 'No pudimos cargar el lead seleccionado');
+            showToast('No pudimos cargar el lead seleccionado', false);
             return;
         }
         leadFormState.mode = 'edit';
@@ -1489,6 +1555,117 @@
         if (leadModals.detail) {
             leadModals.detail.show();
         }
+
+        loadLeadProjects(lead);
+    }
+
+    function renderLeadProjects(projects) {
+        if (!elements.leadProjectsList) {
+            return;
+        }
+
+        elements.leadProjectsList.innerHTML = '';
+
+        if (!Array.isArray(projects) || projects.length === 0) {
+            if (elements.leadProjectsEmpty) {
+                elements.leadProjectsEmpty.classList.remove('d-none');
+            }
+            return;
+        }
+
+        if (elements.leadProjectsEmpty) {
+            elements.leadProjectsEmpty.classList.add('d-none');
+        }
+
+        projects.forEach((project) => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-start gap-2 flex-wrap';
+
+            const title = project.title || `Proyecto #${project.id}`;
+            const status = project.status ? titleize(project.status) : 'Sin estado';
+            const metaParts = [];
+            if (project.hc_number) {
+                metaParts.push(`HC ${project.hc_number}`);
+            }
+            if (project.form_id) {
+                metaParts.push(`Form ${project.form_id}`);
+            }
+
+            item.innerHTML = `
+                <div>
+                    <div class="fw-semibold">${escapeHtml(title)}</div>
+                    <div class="small text-muted">${escapeHtml(status)}${metaParts.length ? ` · ${escapeHtml(metaParts.join(' · '))}` : ''}</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-sm btn-outline-secondary" href="/crm?tab=projects&project_id=${encodeURIComponent(project.id)}" target="_blank" rel="noopener">
+                        Abrir
+                    </a>
+                </div>
+            `;
+
+            elements.leadProjectsList.appendChild(item);
+        });
+    }
+
+    function loadLeadProjects(lead) {
+        if (!lead || !elements.leadProjectsList) {
+            return Promise.resolve();
+        }
+
+        const params = new URLSearchParams();
+        if (lead.id) {
+            params.set('lead_id', lead.id);
+        }
+        const normalizedHc = normalizeHcNumber(lead.hc_number || '');
+        if (normalizedHc) {
+            params.set('hc', normalizedHc);
+        }
+
+        if ([...params.keys()].length === 0) {
+            renderLeadProjects([]);
+            return Promise.resolve();
+        }
+
+        return request(`/projects?${params.toString()}`)
+            .then((data) => {
+                renderLeadProjects(Array.isArray(data.data) ? data.data : []);
+            })
+            .catch((error) => {
+                console.error('No se pudieron cargar los proyectos del lead', error);
+                renderLeadProjects([]);
+            });
+    }
+
+    function createLeadProject(lead) {
+        if (!lead) {
+            return;
+        }
+
+        const hcNumber = normalizeHcNumber(lead.hc_number || '');
+        const title = lead.name ? `Caso ${lead.name}` : (hcNumber ? `Caso HC ${hcNumber}` : 'Nuevo caso');
+
+        request('/projects/create', {
+            method: 'POST',
+            body: {
+                title,
+                lead_id: lead.id,
+                hc_number: hcNumber || null,
+                source_module: 'crm',
+                source_ref_id: lead.id ? String(lead.id) : null,
+            },
+        })
+            .then((data) => {
+                const project = data.data || {};
+                showToast(data.linked ? 'Caso vinculado' : 'Caso creado', true);
+                loadLeadProjects(lead);
+                if (project.id) {
+                    window.open(`/crm?tab=projects&project_id=${project.id}`, '_blank', 'noopener');
+                }
+            })
+            .catch((error) => {
+                console.error('No se pudo crear el caso del lead', error);
+                showToast(error.message || 'No se pudo crear el caso', false);
+            });
     }
 
     async function openLeadProfile(leadId) {
@@ -1504,7 +1681,7 @@
             if (fallbackLead) {
                 showLeadDetail(fallbackLead);
             }
-            showToast('error', error.message || 'No se pudo cargar el perfil del lead');
+            showToast(error.message || 'No se pudo cargar el perfil del lead', false);
         }
     }
 
@@ -1540,7 +1717,7 @@
             })
             .catch((error) => {
                 console.error('No se pudo preparar el correo', error);
-                showToast('error', error.message || 'No se pudo preparar el correo');
+                showToast(error.message || 'No se pudo preparar el correo', false);
             });
     }
 
@@ -1660,19 +1837,19 @@
             })
             .catch((error) => {
                 console.error('Error cargando leads', error);
-                showToast('error', error.message || 'No se pudieron cargar los leads');
+                showToast(error.message || 'No se pudieron cargar los leads', false);
             });
     }
 
     function loadProjects() {
-        return request('/crm/projects')
+        return request('/projects')
             .then((data) => {
                 state.projects = Array.isArray(data.data) ? data.data : [];
                 renderProjects();
             })
             .catch((error) => {
                 console.error('Error cargando proyectos', error);
-                showToast('error', error.message || 'No se pudieron cargar los proyectos');
+                showToast(error.message || 'No se pudieron cargar los proyectos', false);
             });
     }
 
@@ -1684,7 +1861,7 @@
             })
             .catch((error) => {
                 console.error('Error cargando tareas', error);
-                showToast('error', error.message || 'No se pudieron cargar las tareas');
+                showToast(error.message || 'No se pudieron cargar las tareas', false);
             });
     }
 
@@ -1696,7 +1873,7 @@
             })
             .catch((error) => {
                 console.error('Error cargando tickets', error);
-                showToast('error', error.message || 'No se pudieron cargar los tickets');
+                showToast(error.message || 'No se pudieron cargar los tickets', false);
             });
     }
 
@@ -1904,7 +2081,7 @@
             })
             .catch((error) => {
                 console.error('Error cargando propuestas', error);
-                showToast('error', error.message || 'No se pudieron cargar las propuestas');
+                showToast(error.message || 'No se pudieron cargar las propuestas', false);
             });
     }
 
@@ -1926,11 +2103,11 @@
                 if (typeof onSuccess === 'function') {
                     onSuccess(updated);
                 }
-                showToast('success', 'Estado actualizado');
+                showToast('Estado actualizado', true);
             })
             .catch((error) => {
                 console.error('Error actualizando estado de propuesta', error);
-                showToast('error', error.message || 'No se pudo actualizar el estado');
+                showToast(error.message || 'No se pudo actualizar el estado', false);
                 loadProposals();
             });
     }
@@ -2087,7 +2264,7 @@
 
     function openProposalDetail(proposalId) {
         if (!proposalId) {
-            showToast('error', 'No encontramos la propuesta seleccionada');
+            showToast('No encontramos la propuesta seleccionada', false);
             return;
         }
         setSelectedProposal(proposalId);
@@ -2105,7 +2282,7 @@
             })
             .catch((error) => {
                 console.error('No se pudo cargar la propuesta', error);
-                showToast('error', error.message || 'No se pudo cargar la propuesta');
+                showToast(error.message || 'No se pudo cargar la propuesta', false);
                 setProposalDetailLoading(false);
             });
     }
@@ -2248,21 +2425,21 @@
     function saveProposal() {
         const payload = collectProposalPayload();
         if (!payload.lead_id) {
-            showToast('error', 'Selecciona un lead');
+            showToast('Selecciona un lead', false);
             return;
         }
         if (!payload.title) {
-            showToast('error', 'Asigna un título a la propuesta');
+            showToast('Asigna un título a la propuesta', false);
             return;
         }
         if (!payload.items.length) {
-            showToast('error', 'Agrega al menos un ítem');
+            showToast('Agrega al menos un ítem', false);
             return;
         }
 
         request('/crm/proposals', { method: 'POST', body: payload })
             .then((response) => {
-                showToast('success', 'Propuesta creada');
+                showToast('Propuesta creada', true);
                 resetProposalBuilder();
                 const created = response.data;
                 state.proposals.unshift(created);
@@ -2271,7 +2448,7 @@
             })
             .catch((error) => {
                 console.error('No se pudo crear la propuesta', error);
-                showToast('error', error.message || 'No se pudo crear la propuesta');
+                showToast(error.message || 'No se pudo crear la propuesta', false);
             });
     }
 
@@ -2289,7 +2466,7 @@
             })
             .catch((error) => {
                 console.error('No se pudieron obtener los paquetes', error);
-                showToast('error', error.message || 'No se pudieron cargar los paquetes');
+                showToast(error.message || 'No se pudieron cargar los paquetes', false);
             });
     }
 
@@ -2419,7 +2596,7 @@
         }
         const query = elements.proposalCodeSearchInput.value.trim();
         if (!query) {
-            showToast('error', 'Ingresa un término de búsqueda');
+            showToast('Ingresa un término de búsqueda', false);
             return;
         }
         const url = `/codes/api/search?q=${encodeURIComponent(query)}`;
@@ -2430,7 +2607,7 @@
             })
             .catch((error) => {
                 console.error('No se pudieron buscar los códigos', error);
-                showToast('error', error.message || 'No se pudo buscar');
+                showToast(error.message || 'No se pudo buscar', false);
             });
     }
 
@@ -2458,7 +2635,7 @@
 
             const payload = { name: composedName };
             if (!payload.name) {
-                showToast('error', 'El nombre es obligatorio');
+                showToast('El nombre es obligatorio', false);
                 return;
             }
 
@@ -2472,7 +2649,7 @@
             const hcFromInput = normalizeHcNumber(formData.get('hc_number'));
             const hcNumber = isEdit ? (leadFormState.currentHc || hcFromInput) : hcFromInput;
             if (!hcNumber) {
-                showToast('error', 'La historia clínica es obligatoria');
+                showToast('La historia clínica es obligatoria', false);
                 return;
             }
             if (!isEdit) {
@@ -2509,13 +2686,13 @@
 
             request(endpoint, { method: 'POST', body })
                 .then(() => {
-                    showToast('success', successMessage);
+                    showToast(successMessage, true);
                     resetLeadForm();
                     return loadLeads();
                 })
                 .catch((error) => {
                     console.error('No se pudo guardar el lead', error);
-                    showToast('error', error.message || 'No se pudo guardar el lead');
+                    showToast(error.message || 'No se pudo guardar el lead', false);
                 });
         });
     }
@@ -2531,23 +2708,23 @@
                 : '';
             const body = (elements.leadEmailBody && elements.leadEmailBody.value) ? elements.leadEmailBody.value.trim() : '';
             if (!leadId) {
-                showToast('error', 'Selecciona un lead antes de enviar');
+                showToast('Selecciona un lead antes de enviar', false);
                 return;
             }
             if (!to || !subject || !body) {
-                showToast('error', 'Completa para, asunto y mensaje');
+                showToast('Completa para, asunto y mensaje', false);
                 return;
             }
             request(`/crm/leads/${leadId}/mail/send-template`, { method: 'POST', body: { status, to, subject, body } })
                 .then(() => {
-                    showToast('success', 'Correo enviado');
+                    showToast('Correo enviado', true);
                     if (leadModals.email) {
                         leadModals.email.hide();
                     }
                 })
                 .catch((error) => {
                     console.error('No se pudo enviar el correo', error);
-                    showToast('error', error.message || 'No se pudo enviar el correo');
+                    showToast(error.message || 'No se pudo enviar el correo', false);
                 });
         });
     }
@@ -2687,13 +2864,24 @@
         elements.leadDetailConvert.addEventListener('click', (event) => {
             event.preventDefault();
             if (!leadDetailState.current) {
-                showToast('warning', 'Selecciona un lead para convertir');
+                showToast('Selecciona un lead para convertir', false);
                 return;
             }
             fillConvertForm(leadDetailState.current, true);
             if (leadModals.convert) {
                 leadModals.convert.show();
             }
+        });
+    }
+
+    if (elements.leadProjectsCreate) {
+        elements.leadProjectsCreate.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (!leadDetailState.current) {
+                showToast('Selecciona un lead para crear un caso', false);
+                return;
+            }
+            createLeadProject(leadDetailState.current);
         });
     }
 
@@ -2721,13 +2909,13 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            showToast('success', 'Exportación generada');
+            showToast('Exportación generada', true);
         });
     }
 
     function applyBulkChanges() {
         if (!selectedLeads.size) {
-            showToast('warning', 'Selecciona al menos un lead');
+            showToast('Selecciona al menos un lead', false);
             return;
         }
 
@@ -2777,7 +2965,7 @@
         if (elements.leadBulkAssigned) elements.leadBulkAssigned.value = '';
 
         renderLeads();
-        showToast('success', 'Acciones masivas aplicadas');
+        showToast('Acciones masivas aplicadas', true);
     }
 
     if (elements.leadBulkApply) {
@@ -2791,7 +2979,7 @@
             event.preventDefault();
             const hcNumber = elements.convertLeadHc ? normalizeHcNumber(elements.convertLeadHc.value) : '';
             if (!hcNumber) {
-                showToast('error', 'Selecciona un lead antes de convertir');
+                showToast('Selecciona un lead antes de convertir', false);
                 return;
             }
             const formData = new FormData(elements.convertForm);
@@ -2814,13 +3002,13 @@
 
             request('/crm/leads/convert', { method: 'POST', body: { hc_number: hcNumber, customer } })
                 .then(() => {
-                    showToast('success', 'Lead convertido correctamente');
+                    showToast('Lead convertido correctamente', true);
                     disableConvertForm();
                     return loadLeads();
                 })
                 .catch((error) => {
                     console.error('No se pudo convertir el lead', error);
-                    showToast('error', error.message || 'No se pudo convertir el lead');
+                    showToast(error.message || 'No se pudo convertir el lead', false);
                 });
         });
     }
@@ -2831,7 +3019,7 @@
             const formData = new FormData(elements.projectForm);
             const title = String(formData.get('title') || '').trim();
             if (!title) {
-                showToast('error', 'El nombre del proyecto es obligatorio');
+                showToast('El nombre del proyecto es obligatorio', false);
                 return;
             }
             const payload = { title };
@@ -2864,15 +3052,15 @@
                 payload.due_date = dueDate;
             }
 
-            request('/crm/projects', { method: 'POST', body: payload })
+            request('/projects/create', { method: 'POST', body: payload })
                 .then(() => {
-                    showToast('success', 'Proyecto registrado');
+                    showToast('Proyecto registrado', true);
                     elements.projectForm.reset();
                     return loadProjects();
                 })
                 .catch((error) => {
                     console.error('No se pudo crear el proyecto', error);
-                    showToast('error', error.message || 'No se pudo crear el proyecto');
+                    showToast(error.message || 'No se pudo crear el proyecto', false);
                 });
         });
     }
@@ -2883,12 +3071,12 @@
             const formData = new FormData(elements.taskForm);
             const projectId = serializeNumber(formData.get('project_id'));
             if (!projectId) {
-                showToast('error', 'Selecciona un proyecto para la tarea');
+                showToast('Selecciona un proyecto para la tarea', false);
                 return;
             }
             const title = String(formData.get('title') || '').trim();
             if (!title) {
-                showToast('error', 'El título de la tarea es obligatorio');
+                showToast('El título de la tarea es obligatorio', false);
                 return;
             }
             const payload = { project_id: projectId, title };
@@ -2919,13 +3107,13 @@
 
             request('/crm/tasks', { method: 'POST', body: payload })
                 .then(() => {
-                    showToast('success', 'Tarea creada');
+                    showToast('Tarea creada', true);
                     elements.taskForm.reset();
                     return loadTasks();
                 })
                 .catch((error) => {
                     console.error('No se pudo crear la tarea', error);
-                    showToast('error', error.message || 'No se pudo crear la tarea');
+                    showToast(error.message || 'No se pudo crear la tarea', false);
                 });
         });
     }
@@ -2937,7 +3125,7 @@
             const subject = String(formData.get('subject') || '').trim();
             const message = String(formData.get('message') || '').trim();
             if (!subject || !message) {
-                showToast('error', 'Asunto y mensaje son obligatorios');
+                showToast('Asunto y mensaje son obligatorios', false);
                 return;
             }
             const payload = { subject, message };
@@ -2964,13 +3152,13 @@
 
             request('/crm/tickets', { method: 'POST', body: payload })
                 .then(() => {
-                    showToast('success', 'Ticket creado');
+                    showToast('Ticket creado', true);
                     elements.ticketForm.reset();
                     return loadTickets();
                 })
                 .catch((error) => {
                     console.error('No se pudo crear el ticket', error);
-                    showToast('error', error.message || 'No se pudo crear el ticket');
+                    showToast(error.message || 'No se pudo crear el ticket', false);
                 });
         });
     }
@@ -2981,7 +3169,7 @@
             const ticketId = serializeNumber(elements.ticketReplyId.value);
             const message = String(elements.ticketReplyMessage.value || '').trim();
             if (!ticketId || !message) {
-                showToast('error', 'Selecciona un ticket y escribe un mensaje');
+                showToast('Selecciona un ticket y escribe un mensaje', false);
                 return;
             }
             const payload = { ticket_id: ticketId, message };
@@ -2992,13 +3180,13 @@
 
             request('/crm/tickets/reply', { method: 'POST', body: payload })
                 .then(() => {
-                    showToast('success', 'Respuesta registrada');
+                    showToast('Respuesta registrada', true);
                     disableTicketReplyForm();
                     return loadTickets();
                 })
                 .catch((error) => {
                     console.error('No se pudo responder el ticket', error);
-                    showToast('error', error.message || 'No se pudo responder el ticket');
+                    showToast(error.message || 'No se pudo responder el ticket', false);
                 });
         });
     }
@@ -3139,7 +3327,7 @@
                     .then(() => loadLeads())
                     .catch((error) => {
                         console.error('Error actualizando lead', error);
-                        showToast('error', error.message || 'No se pudo actualizar el lead');
+                        showToast(error.message || 'No se pudo actualizar el lead', false);
                         loadLeads();
                     });
                 return;
@@ -3154,7 +3342,7 @@
                     .then(() => loadLeads())
                     .catch((error) => {
                         console.error('Error asignando lead', error);
-                        showToast('error', error.message || 'No se pudo asignar el lead');
+                        showToast(error.message || 'No se pudo asignar el lead', false);
                         loadLeads();
                     });
                 return;
@@ -3165,11 +3353,11 @@
                 if (!projectId || !status) {
                     return;
                 }
-                request('/crm/projects/status', { method: 'POST', body: { project_id: projectId, status } })
+                request('/projects/status', { method: 'POST', body: { project_id: projectId, status } })
                     .then(() => loadProjects())
                     .catch((error) => {
                         console.error('Error actualizando proyecto', error);
-                        showToast('error', error.message || 'No se pudo actualizar el proyecto');
+                        showToast(error.message || 'No se pudo actualizar el proyecto', false);
                         loadProjects();
                     });
             }
@@ -3183,7 +3371,7 @@
                     .then(() => loadTasks())
                     .catch((error) => {
                         console.error('Error actualizando tarea', error);
-                        showToast('error', error.message || 'No se pudo actualizar la tarea');
+                        showToast(error.message || 'No se pudo actualizar la tarea', false);
                         loadTasks();
                     });
             }
@@ -3241,7 +3429,7 @@
                 if (viewButton) {
                     const leadId = viewButton.dataset.leadId;
                     if (!leadId) {
-                        showToast('error', 'No pudimos cargar el lead seleccionado');
+                        showToast('No pudimos cargar el lead seleccionado', false);
                         return;
                     }
                     openLeadProfile(leadId);
@@ -3269,12 +3457,12 @@
                 if (leadButton) {
                     const hcNumber = normalizeHcNumber(leadButton.dataset.leadHc);
                     if (!hcNumber) {
-                        showToast('warning', 'El lead no tiene historia clínica para convertir');
+                        showToast('El lead no tiene historia clínica para convertir', false);
                         return;
                     }
                     const lead = findLeadByHcNumber(hcNumber);
                     if (!lead) {
-                        showToast('error', 'No pudimos cargar el lead seleccionado');
+                        showToast('No pudimos cargar el lead seleccionado', false);
                         return;
                     }
                     fillConvertForm(lead, true);
@@ -3294,7 +3482,7 @@
                     }
                     const ticket = findTicketById(ticketId);
                     if (!ticket) {
-                        showToast('error', 'No encontramos el ticket seleccionado');
+                        showToast('No encontramos el ticket seleccionado', false);
                         return;
                     }
                     applyTicketReply(ticket, true);
@@ -3303,6 +3491,7 @@
         });
     }
 
+    applyUrlDeepLink();
     resetLeadForm();
     disableConvertForm();
     disableTicketReplyForm();
