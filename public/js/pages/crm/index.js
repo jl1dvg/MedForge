@@ -1,317 +1,63 @@
 
+import { request } from './api.js';
+import { elements, initDom, leadModals, projectModals, proposalModals, root } from './dom.js';
+import {
+    canManageLeads,
+    canManageProjects,
+    canManageTasks,
+    canManageTickets,
+    initState,
+    leadDetailState,
+    leadFilters,
+    leadFormState,
+    leadTableState,
+    mapLeads,
+    mapProposals,
+    projectDetailState,
+    proposalBuilder,
+    proposalDetailState,
+    proposalFilters,
+    proposalUIState,
+    selectedLeads,
+    state,
+    taskPriorityOptions,
+} from './state.js';
+import {
+    appendLine,
+    buildPatientName,
+    clearContainer,
+    createStatusSelect,
+    escapeHtml,
+    formatCurrency,
+    formatDate,
+    formatDateInput,
+    limitText,
+    normalizeHcNumber,
+    pickValue,
+    serializeNumber,
+    setPlaceholderOptions,
+    setTextContent,
+    showToast,
+    titleize,
+} from './utils.js';
+
 (function () {
     'use strict';
 
-    const root = document.getElementById('crm-root');
-    if (!root) {
+    const rootElement = document.getElementById('crm-root');
+    if (!rootElement) {
         return;
     }
 
     let bootstrapData = {};
     try {
-        bootstrapData = JSON.parse(root.getAttribute('data-bootstrap') || '{}');
+        bootstrapData = JSON.parse(rootElement.getAttribute('data-bootstrap') || '{}');
     } catch (error) {
         console.warn('No se pudo interpretar los datos iniciales del CRM', error);
     }
 
-    const permissions = (bootstrapData && typeof bootstrapData.permissions === 'object' && bootstrapData.permissions !== null)
-        ? bootstrapData.permissions
-        : {};
-    const canManageLeads = Boolean(permissions.manageLeads);
-    const canManageProjects = Boolean(permissions.manageProjects);
-    const canManageTasks = Boolean(permissions.manageTasks);
-    const canManageTickets = Boolean(permissions.manageTickets);
-
-    const state = {
-        leadStatuses: Array.isArray(bootstrapData.leadStatuses) ? bootstrapData.leadStatuses : [],
-        leadSources: Array.isArray(bootstrapData.leadSources) ? bootstrapData.leadSources : [],
-        projectStatuses: Array.isArray(bootstrapData.projectStatuses) ? bootstrapData.projectStatuses : [],
-        taskStatuses: Array.isArray(bootstrapData.taskStatuses) ? bootstrapData.taskStatuses : [],
-        ticketStatuses: Array.isArray(bootstrapData.ticketStatuses) ? bootstrapData.ticketStatuses : [],
-        ticketPriorities: Array.isArray(bootstrapData.ticketPriorities) ? bootstrapData.ticketPriorities : [],
-        assignableUsers: Array.isArray(bootstrapData.assignableUsers) ? bootstrapData.assignableUsers : [],
-        leads: Array.isArray(bootstrapData.initialLeads) ? bootstrapData.initialLeads : [],
-        projects: Array.isArray(bootstrapData.initialProjects) ? bootstrapData.initialProjects : [],
-        tasks: Array.isArray(bootstrapData.initialTasks) ? bootstrapData.initialTasks : [],
-        tickets: Array.isArray(bootstrapData.initialTickets) ? bootstrapData.initialTickets : [],
-        proposalStatuses: Array.isArray(bootstrapData.proposalStatuses) ? bootstrapData.proposalStatuses : [],
-        proposals: Array.isArray(bootstrapData.initialProposals) ? bootstrapData.initialProposals : [],
-        focusProjectId: null,
-        taskFilters: {},
-    };
-
-    const elements = {
-        leadTableBody: root.querySelector('#crm-leads-table tbody'),
-        leadTableInfo: root.querySelector('#lead-table-info'),
-        leadPagination: root.querySelector('#lead-pagination'),
-        leadPageSize: root.querySelector('#lead-page-size'),
-        leadTableSearch: root.querySelector('#lead-table-search'),
-        leadSelectAll: root.querySelector('#lead-select-all'),
-        leadExportBtn: root.querySelector('#lead-export-btn'),
-        leadBulkActionsBtn: root.querySelector('#lead-bulk-actions-btn'),
-        leadReloadTable: root.querySelector('#lead-reload-table'),
-        projectTableBody: root.querySelector('#crm-projects-table tbody'),
-        taskTableBody: root.querySelector('#crm-tasks-table tbody'),
-        ticketTableBody: root.querySelector('#crm-tickets-table tbody'),
-        leadForm: root.querySelector('#lead-form'),
-        convertForm: document.getElementById('lead-convert-form'),
-        convertLeadHc: document.getElementById('convert-lead-hc'),
-        convertHelper: document.getElementById('convert-helper'),
-        convertSelected: document.getElementById('convert-lead-selected'),
-        convertSubmit: document.querySelector('#lead-convert-form button[type="submit"]'),
-        leadStatusSummary: root.querySelector('#lead-status-summary'),
-        leadSearchInput: root.querySelector('#lead-search'),
-        leadFilterStatus: root.querySelector('#lead-filter-status'),
-        leadFilterSource: root.querySelector('#lead-filter-source'),
-        leadFilterAssigned: root.querySelector('#lead-filter-assigned'),
-        leadClearFilters: root.querySelector('#lead-clear-filters'),
-        leadRefreshBtn: root.querySelector('#lead-refresh-btn'),
-        leadBulkStatus: root.querySelector('#lead-bulk-status'),
-        leadBulkSource: root.querySelector('#lead-bulk-source'),
-        leadBulkAssigned: root.querySelector('#lead-bulk-assigned'),
-        leadBulkDelete: root.querySelector('#lead-bulk-delete'),
-        leadBulkLost: root.querySelector('#lead-bulk-lost'),
-        leadBulkPublic: root.querySelector('#lead-bulk-public'),
-        leadBulkApply: root.querySelector('#lead-bulk-apply'),
-        leadBulkHelper: root.querySelector('#lead-bulk-helper'),
-        projectForm: root.querySelector('#project-form'),
-        projectCreateBtn: root.querySelector('#project-create-btn'),
-        projectCreateModal: document.getElementById('projectCreateModal'),
-        projectDetailModal: document.getElementById('projectDetailModal'),
-        projectDetailTitle: document.getElementById('project-detail-title'),
-        projectDetailSubtitle: document.getElementById('project-detail-subtitle'),
-        projectDetailStatus: document.getElementById('project-detail-status'),
-        projectDetailStatusText: document.getElementById('project-detail-status-text'),
-        projectDetailLead: document.getElementById('project-detail-lead'),
-        projectDetailOwner: document.getElementById('project-detail-owner'),
-        projectDetailStart: document.getElementById('project-detail-start'),
-        projectDetailDue: document.getElementById('project-detail-due'),
-        projectDetailDescription: document.getElementById('project-detail-description'),
-        projectDetailUpdated: document.getElementById('project-detail-updated'),
-        projectDetailOpen: document.getElementById('project-detail-open'),
-        projectDetailOverviewTab: document.getElementById('project-detail-overview-tab'),
-        projectDetailTasksTab: document.getElementById('project-detail-tasks-tab'),
-        projectDetailProjectId: document.getElementById('project-detail-project-id'),
-        projectDetailRequest: document.getElementById('project-detail-request'),
-        projectDetailActionBar: document.getElementById('project-detail-action-bar'),
-        projectDetailEditBtn: document.getElementById('project-detail-edit-btn'),
-        projectDetailSaveBtn: document.getElementById('project-detail-save-btn'),
-        projectDetailCancelBtn: document.getElementById('project-detail-cancel-btn'),
-        projectDetailStatusSelect: document.getElementById('project-detail-status-select'),
-        projectDetailOwnerSelect: document.getElementById('project-detail-owner-select'),
-        projectDetailStartInput: document.getElementById('project-detail-start-input'),
-        projectDetailDueInput: document.getElementById('project-detail-due-input'),
-        projectDetailDescriptionInput: document.getElementById('project-detail-description-input'),
-        projectDetailTasksSummary: document.getElementById('project-detail-tasks-summary'),
-        projectDetailTasksCount: document.getElementById('project-detail-tasks-count'),
-        projectDetailTasksProgress: document.getElementById('project-detail-tasks-progress'),
-        projectDetailDaysLabel: document.getElementById('project-detail-days-label'),
-        projectDetailDaysRemaining: document.getElementById('project-detail-days-remaining'),
-        projectDetailDaysProgress: document.getElementById('project-detail-days-progress'),
-        projectTasksTable: document.getElementById('project-tasks-table'),
-        projectTasksBody: document.getElementById('project-tasks-body'),
-        projectTasksReload: document.getElementById('project-tasks-reload'),
-        projectTasksExport: document.getElementById('project-tasks-export'),
-        projectTasksFilters: document.getElementById('project-tasks-filters'),
-        projectTasksLoading: document.getElementById('project-tasks-loading'),
-        projectTasksEmpty: document.getElementById('project-tasks-empty'),
-        taskForm: root.querySelector('#task-form'),
-        taskModal: document.getElementById('taskModal'),
-        ticketForm: root.querySelector('#ticket-form'),
-        ticketReplyForm: root.querySelector('#ticket-reply-form'),
-        ticketReplyId: root.querySelector('#ticket-reply-id'),
-        ticketReplyHelper: root.querySelector('#ticket-reply-helper'),
-        ticketReplySelected: root.querySelector('#ticket-reply-selected'),
-        ticketReplyMessage: root.querySelector('#ticket-reply-message'),
-        ticketReplyStatus: root.querySelector('#ticket-reply-status'),
-        ticketReplySubmit: root.querySelector('#ticket-reply-form button[type="submit"]'),
-        leadEmailForm: document.getElementById('lead-email-form'),
-        leadEmailTo: document.getElementById('lead-email-to'),
-        leadEmailSubject: document.getElementById('lead-email-subject'),
-        leadEmailBody: document.getElementById('lead-email-body'),
-        leadSelectForProject: root.querySelector('#project-lead'),
-        leadSelectForTicket: root.querySelector('#ticket-lead'),
-        projectSelectForTask: root.querySelector('#task-project'),
-        projectSelectForTicket: root.querySelector('#ticket-project'),
-        leadsCount: root.querySelector('#crm-leads-count'),
-        projectsCount: root.querySelector('#crm-projects-count'),
-        tasksCount: root.querySelector('#crm-tasks-count'),
-        ticketsCount: root.querySelector('#crm-tickets-count'),
-        proposalTableBody: root.querySelector('#crm-proposals-table tbody'),
-        proposalStatusFilter: root.querySelector('#proposal-status-filter'),
-        proposalRefreshBtn: root.querySelector('#proposal-refresh-btn'),
-        proposalLeadSelect: root.querySelector('#proposal-lead'),
-        proposalTitle: root.querySelector('#proposal-title'),
-        proposalValidUntil: root.querySelector('#proposal-valid-until'),
-        proposalTaxRate: root.querySelector('#proposal-tax-rate'),
-        proposalNotes: root.querySelector('#proposal-notes'),
-        proposalItemsBody: root.querySelector('#proposal-items-body'),
-        proposalSubtotal: root.querySelector('#proposal-subtotal'),
-        proposalTax: root.querySelector('#proposal-tax'),
-        proposalTotal: root.querySelector('#proposal-total'),
-        proposalSaveBtn: root.querySelector('#proposal-save-btn'),
-        proposalAddPackageBtn: root.querySelector('#proposal-add-package-btn'),
-        proposalAddCodeBtn: root.querySelector('#proposal-add-code-btn'),
-        proposalAddCustomBtn: root.querySelector('#proposal-add-custom-btn'),
-        proposalPackageModal: document.getElementById('proposal-package-modal'),
-        proposalPackageSearch: document.getElementById('proposal-package-search'),
-        proposalPackageList: document.getElementById('proposal-package-list'),
-        proposalCodeModal: document.getElementById('proposal-code-modal'),
-        proposalCodeSearchInput: document.getElementById('proposal-code-search-input'),
-        proposalCodeSearchBtn: document.getElementById('proposal-code-search-btn'),
-        proposalCodeResults: document.getElementById('proposal-code-results'),
-        proposalSearchInput: document.getElementById('proposal-search'),
-        proposalPreviewTitle: document.getElementById('proposal-preview-title'),
-        proposalPreviewStatus: document.getElementById('proposal-preview-status'),
-        proposalPreviewNumber: document.getElementById('proposal-preview-number'),
-        proposalPreviewTo: document.getElementById('proposal-preview-to'),
-        proposalPreviewValid: document.getElementById('proposal-preview-valid'),
-        proposalPreviewTotal: document.getElementById('proposal-preview-total'),
-        proposalPreviewOpen: document.getElementById('proposal-preview-open'),
-        proposalPreviewRefresh: document.getElementById('proposal-preview-refresh'),
-        proposalNewBtn: document.getElementById('proposal-new-btn'),
-        proposalPipelineBtn: document.getElementById('proposal-pipeline-btn'),
-        proposalExportBtn: document.getElementById('proposal-export-btn'),
-        proposalDetailModal: document.getElementById('proposal-detail-modal'),
-        proposalDetailTitle: document.getElementById('proposal-detail-title'),
-        proposalDetailStatus: document.getElementById('proposal-detail-status'),
-        proposalDetailSubtitle: document.getElementById('proposal-detail-subtitle'),
-        proposalDetailContent: document.getElementById('proposal-detail-content'),
-        proposalDetailEmpty: document.getElementById('proposal-detail-empty'),
-        proposalDetailLoading: document.getElementById('proposal-detail-loading'),
-        proposalDetailItemsBody: document.getElementById('proposal-detail-items-body'),
-        proposalDetailItemsCount: document.getElementById('proposal-detail-items-count'),
-        proposalDetailLead: document.getElementById('proposal-detail-lead'),
-        proposalDetailValidUntil: document.getElementById('proposal-detail-valid-until'),
-        proposalDetailCreated: document.getElementById('proposal-detail-created'),
-        proposalDetailTaxRate: document.getElementById('proposal-detail-tax-rate'),
-        proposalDetailSubtotal: document.getElementById('proposal-detail-subtotal'),
-        proposalDetailDiscount: document.getElementById('proposal-detail-discount'),
-        proposalDetailTax: document.getElementById('proposal-detail-tax'),
-        proposalDetailTotal: document.getElementById('proposal-detail-total'),
-        proposalDetailTimeline: document.getElementById('proposal-detail-timeline'),
-        proposalDetailStatusSelect: document.getElementById('proposal-detail-status-select'),
-        proposalDetailNotes: document.getElementById('proposal-detail-notes'),
-        proposalDetailTerms: document.getElementById('proposal-detail-terms'),
-        leadDetailModal: document.getElementById('lead-detail-modal'),
-        leadDetailBody: document.getElementById('lead-detail-body'),
-        leadDetailTitle: document.getElementById('lead-detail-title'),
-        leadDetailId: document.getElementById('lead-detail-id'),
-        leadDetailConvert: document.getElementById('lead-detail-convert'),
-        leadDetailEdit: document.getElementById('lead-detail-edit'),
-        leadDetailSave: document.getElementById('lead-detail-save'),
-        leadDetailSaveFooter: document.getElementById('lead-detail-save-footer'),
-        leadDetailCancel: document.getElementById('lead-detail-cancel'),
-        leadDetailEditActions: document.getElementById('lead-detail-edit-actions'),
-        leadDetailEditFooter: document.getElementById('lead-edit-footer'),
-        leadDetailEditSection: document.getElementById('lead-edit-section'),
-        leadDetailViewSection: document.getElementById('lead-view-section'),
-        leadDetailNotesCount: document.getElementById('lead-notes-count'),
-        leadProjectsList: document.getElementById('lead-projects-list'),
-        leadProjectsEmpty: document.getElementById('lead-projects-empty'),
-        leadProjectsCreate: document.getElementById('lead-project-create'),
-        leadTasksList: document.getElementById('lead-tasks-list'),
-        leadTasksEmpty: document.getElementById('lead-tasks-empty'),
-        leadTasksRefresh: document.getElementById('lead-tasks-refresh'),
-        leadFormHelper: root.querySelector('#lead-form-helper'),
-        tabContent: root.querySelector('.tab-content'),
-        tasksSummary: document.getElementById('crm-tasks-summary'),
-    };
-
-    const proposalBuilder = {
-        items: [],
-        packages: [],
-    };
-
-    const proposalModals = {
-        package: (window.bootstrap && elements.proposalPackageModal) ? new window.bootstrap.Modal(elements.proposalPackageModal) : null,
-        code: (window.bootstrap && elements.proposalCodeModal) ? new window.bootstrap.Modal(elements.proposalCodeModal) : null,
-        detail: (window.bootstrap && elements.proposalDetailModal) ? new window.bootstrap.Modal(elements.proposalDetailModal) : null,
-    };
-
-    const proposalDetailState = {
-        current: null,
-    };
-
-    const leadDetailState = {
-        current: null,
-    };
-
-    const leadModals = {
-        convert: (window.bootstrap && document.getElementById('lead-convert-modal'))
-            ? new window.bootstrap.Modal(document.getElementById('lead-convert-modal'))
-            : null,
-        detail: (window.bootstrap && elements.leadDetailModal)
-            ? new window.bootstrap.Modal(elements.leadDetailModal)
-            : null,
-        email: (window.bootstrap && document.getElementById('lead-email-modal'))
-            ? new window.bootstrap.Modal(document.getElementById('lead-email-modal'))
-            : null,
-        form: (window.bootstrap && document.getElementById('lead-modal'))
-            ? new window.bootstrap.Modal(document.getElementById('lead-modal'))
-            : null,
-    };
-
-    const projectModals = {
-        create: (window.bootstrap && elements.projectCreateModal)
-            ? new window.bootstrap.Modal(elements.projectCreateModal)
-            : null,
-        detail: (window.bootstrap && elements.projectDetailModal)
-            ? new window.bootstrap.Modal(elements.projectDetailModal)
-            : null,
-    };
-
-    const leadFormState = {
-        mode: 'create',
-        currentHc: null,
-    };
-
-    const projectDetailState = {
-        currentId: null,
-        tasksLoaded: false,
-        tasks: [],
-        tasksTable: null,
-        loadingTasks: false,
-        editing: false,
-        taskStatusFilter: 'all',
-    };
-
-    const taskPriorityOptions = ['baja', 'media', 'alta', 'urgente'];
-
-    const leadFilters = {
-        search: '',
-        status: '',
-        source: '',
-        assigned: '',
-    };
-
-    const leadTableState = {
-        page: 1,
-        pageSize: 10,
-    };
-
-    const proposalFilters = {
-        status: '',
-        search: '',
-    };
-
-    const proposalUIState = {
-        selectedId: null,
-    };
-
-    const selectedLeads = new Set();
-
-    state.leads = mapLeads(state.leads);
-    state.proposals = mapProposals(state.proposals);
-
-    const htmlEscapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-
-    function escapeHtml(value) {
-        if (value === null || value === undefined) {
-            return '';
-        }
-        return String(value).replace(/[&<>"']/g, (match) => htmlEscapeMap[match]);
-    }
+    initDom(rootElement);
+    initState(bootstrapData);
 
     function activateTab(tabId) {
         const tabLink = document.getElementById(tabId);
@@ -380,182 +126,6 @@
         }
     }
 
-    function setTextContent(element, value) {
-        if (!element) {
-            return;
-        }
-        element.textContent = value || '—';
-    }
-
-    function titleize(value) {
-        if (!value) {
-            return '';
-        }
-        return value
-            .toString()
-            .replace(/_/g, ' ')
-            .split(/\s+/)
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-    }
-
-    function parseDate(value) {
-        if (!value) {
-            return null;
-        }
-        const normalized = value.includes('T') ? value : value.replace(' ', 'T');
-        const date = new Date(normalized);
-        return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    function formatDate(value, withTime) {
-        const date = parseDate(value);
-        if (!date) {
-            return '-';
-        }
-        try {
-            if (withTime) {
-                return new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-            }
-            return new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium' }).format(date);
-        } catch (error) {
-            return date.toLocaleString();
-        }
-    }
-
-    function formatDateInput(value) {
-        const date = parseDate(value);
-        if (!date) {
-            return '';
-        }
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${date.getFullYear()}-${month}-${day}`;
-    }
-
-    function pickValue(...values) {
-        for (const value of values) {
-            if (value === null || value === undefined) {
-                continue;
-            }
-            if (typeof value === 'string') {
-                const trimmed = value.trim();
-                if (trimmed !== '') {
-                    return trimmed;
-                }
-                continue;
-            }
-            if (value !== '') {
-                return value;
-            }
-        }
-        return '';
-    }
-
-    function buildPatientName(patient) {
-        if (!patient) {
-            return '';
-        }
-        const direct = pickValue(patient.name, patient.full_name);
-        if (direct) {
-            return direct;
-        }
-        const parts = [
-            patient.first_name,
-            patient.last_name,
-            patient.fname,
-            patient.mname,
-            patient.lname,
-            patient.lname2,
-        ]
-            .map((part) => (typeof part === 'string' ? part.trim() : part))
-            .filter((part) => part);
-        return parts.length ? parts.join(' ').replace(/\s+/g, ' ').trim() : '';
-    }
-
-    function limitText(value, maxLength) {
-        if (!value) {
-            return '';
-        }
-        if (value.length <= maxLength) {
-            return value;
-        }
-        return `${value.slice(0, maxLength - 1)}…`;
-    }
-
-    function formatCurrency(value) {
-        const amount = Number.isFinite(value) ? value : 0;
-        try {
-            return new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(amount);
-        } catch (error) {
-            return `$${amount.toFixed(2)}`;
-        }
-    }
-
-    function showToast(message, status) {
-        let type = 'error';
-        let text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
-
-        if (typeof status === 'boolean') {
-            type = status ? 'success' : 'error';
-        } else if (typeof message === 'string' && typeof status === 'string') {
-            type = message;
-            text = status;
-        }
-
-        const method = type === 'success'
-            ? 'success'
-            : type === 'warning'
-                ? 'warning'
-                : type === 'info'
-                    ? 'info'
-                    : 'error';
-        if (window.toastr && typeof window.toastr[method] === 'function') {
-            window.toastr[method](text);
-        } else if (window.Swal && window.Swal.fire) {
-            window.Swal.fire(method === 'success' ? 'Éxito' : 'Aviso', text, method);
-        } else {
-            // eslint-disable-next-line no-alert
-            alert(`${method === 'success' ? '✔' : method === 'warning' ? '⚠️' : '✖'} ${text}`);
-        }
-    }
-
-    async function request(url, options) {
-        const fetchOptions = Object.assign(
-            {
-                headers: { Accept: 'application/json' },
-                credentials: 'same-origin',
-            },
-            options || {}
-        );
-
-        if (fetchOptions.body && typeof fetchOptions.body !== 'string') {
-            fetchOptions.headers['Content-Type'] = 'application/json';
-            fetchOptions.body = JSON.stringify(fetchOptions.body);
-        }
-
-        const response = await fetch(url, fetchOptions);
-        let payload;
-        try {
-            payload = await response.json();
-        } catch (error) {
-            payload = null;
-        }
-
-        const success = response.ok && payload && payload.ok !== false;
-        if (!success) {
-            const message = payload && (payload.error || payload.message)
-                ? payload.error || payload.message
-                : `Error ${response.status || ''}`.trim();
-            const error = new Error(message);
-            error.response = response;
-            error.payload = payload;
-            throw error;
-        }
-
-        return payload;
-    }
-
     function updateCounters(visibleLeadsCount) {
         if (elements.leadsCount) {
             const visible = typeof visibleLeadsCount === 'number' ? visibleLeadsCount : state.leads.length;
@@ -571,20 +141,6 @@
         if (elements.ticketsCount) {
             elements.ticketsCount.textContent = `Tickets: ${state.tickets.length}`;
         }
-    }
-
-    function clearContainer(container) {
-        while (container && container.firstChild) {
-            container.removeChild(container.firstChild);
-        }
-    }
-
-    function setTextContent(element, value, fallback = '—') {
-        if (!element) {
-            return;
-        }
-        const display = value === null || value === undefined || value === '' ? fallback : value;
-        element.textContent = display;
     }
 
     function syncPreviewStatusPill(element, status) {
@@ -643,49 +199,6 @@
                 }
             });
         }
-    }
-
-    function createStatusSelect(options, value) {
-        const select = document.createElement('select');
-        select.className = 'form-select form-select-sm';
-        const validOptions = Array.isArray(options) && options.length ? options : [];
-        validOptions.forEach((optionValue) => {
-            const option = document.createElement('option');
-            option.value = optionValue;
-            option.textContent = titleize(optionValue);
-            select.appendChild(option);
-        });
-        if (value && validOptions.includes(value)) {
-            select.value = value;
-        }
-        return select;
-    }
-
-    function appendLine(container, text, iconClass) {
-        if (!text) {
-            return;
-        }
-        const span = document.createElement('span');
-        span.className = 'd-block small text-muted';
-        if (iconClass) {
-            const icon = document.createElement('i');
-            icon.className = `${iconClass} me-1`;
-            span.appendChild(icon);
-        }
-        span.appendChild(document.createTextNode(text));
-        container.appendChild(span);
-    }
-
-    function setPlaceholderOptions(select) {
-        if (!select) {
-            return;
-        }
-        const currentPlaceholder = select.getAttribute('data-placeholder') || (select.options[0] ? select.options[0].textContent : 'Selecciona');
-        clearContainer(select);
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = currentPlaceholder;
-        select.appendChild(option);
     }
 
     function populateLeadSelects() {
@@ -3084,19 +2597,6 @@
             });
     }
 
-    function serializeNumber(value) {
-        const trimmed = String(value || '').trim();
-        if (!trimmed) {
-            return null;
-        }
-        const parsed = Number(trimmed);
-        return Number.isNaN(parsed) ? null : parsed;
-    }
-
-    function normalizeHcNumber(value) {
-        return String(value || '').trim().toUpperCase();
-    }
-
     function findLeadByHcNumber(hcNumber) {
         const normalized = normalizeHcNumber(hcNumber);
         if (!normalized) {
@@ -3114,43 +2614,6 @@
             return null;
         }
         return state.leads.find((lead) => String(lead.id) === String(id)) || null;
-    }
-
-    function normalizeLead(lead) {
-        if (!lead || typeof lead !== 'object') {
-            return {};
-        }
-        const normalized = { ...lead };
-        normalized.hc_number = normalizeHcNumber(lead.hc_number ?? lead.hcNumber ?? '');
-        if (!normalized.name && (normalized.first_name || normalized.last_name)) {
-            normalized.name = `${normalized.first_name || ''} ${normalized.last_name || ''}`.trim();
-        }
-        return normalized;
-    }
-
-    function mapLeads(leads) {
-        return Array.isArray(leads) ? leads.map((lead) => normalizeLead(lead)) : [];
-    }
-
-    function mapProposals(proposals) {
-        if (!Array.isArray(proposals)) {
-            return [];
-        }
-
-        return proposals.map((proposal) => {
-            const clone = { ...proposal };
-            clone.total = Number(clone.total || 0);
-            clone.subtotal = Number(clone.subtotal || 0);
-            clone.tax_total = Number(clone.tax_total || 0);
-            clone.discount_total = Number(clone.discount_total || 0);
-            clone.tax_rate = Number(clone.tax_rate || 0);
-            clone.status = clone.status || 'draft';
-            clone.currency = clone.currency || 'USD';
-            clone.items = Array.isArray(clone.items) ? clone.items : [];
-            const parsedItemsCount = Number(clone.items_count);
-            clone.items_count = Number.isFinite(parsedItemsCount) ? parsedItemsCount : clone.items.length;
-            return clone;
-        });
     }
 
     function getFilteredProposals() {

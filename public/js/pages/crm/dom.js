@@ -1,220 +1,233 @@
-const htmlEscapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+'use strict';
 
-export function escapeHtml(value) {
-    if (value === null || value === undefined) {
-        return '';
-    }
-    return String(value).replace(/[&<>"']/g, (match) => htmlEscapeMap[match]);
-}
+export let root = null;
+export let elements = {};
 
-export function titleize(value) {
-    if (!value) {
-        return '';
-    }
-    return value
-        .toString()
-        .replace(/_/g, ' ')
-        .split(/\s+/)
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
+export const proposalModals = {
+    package: null,
+    code: null,
+    detail: null,
+};
 
-export function parseDate(value) {
-    if (!value) {
-        return null;
-    }
-    const normalized = value.includes('T') ? value : value.replace(' ', 'T');
-    const date = new Date(normalized);
-    return Number.isNaN(date.getTime()) ? null : date;
-}
+export const leadModals = {
+    convert: null,
+    detail: null,
+    email: null,
+    form: null,
+};
 
-export function formatDate(value, withTime) {
-    const date = parseDate(value);
-    if (!date) {
-        return '-';
-    }
-    try {
-        if (withTime) {
-            return new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-        }
-        return new Intl.DateTimeFormat('es-EC', { dateStyle: 'medium' }).format(date);
-    } catch (error) {
-        return date.toLocaleString();
-    }
-}
+export const projectModals = {
+    create: null,
+    detail: null,
+};
 
-export function formatDateInput(value) {
-    const date = parseDate(value);
-    if (!date) {
-        return '';
-    }
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${date.getFullYear()}-${month}-${day}`;
-}
-
-export function pickValue(...values) {
-    for (const value of values) {
-        if (value === null || value === undefined) {
-            continue;
-        }
-        if (typeof value === 'string') {
-            const trimmed = value.trim();
-            if (trimmed !== '') {
-                return trimmed;
-            }
-            continue;
-        }
-        if (value !== '') {
-            return value;
-        }
-    }
-    return '';
-}
-
-export function buildPatientName(patient) {
-    if (!patient) {
-        return '';
-    }
-    const direct = pickValue(patient.name, patient.full_name);
-    if (direct) {
-        return direct;
-    }
-    const parts = [
-        patient.first_name,
-        patient.last_name,
-        patient.fname,
-        patient.mname,
-        patient.lname,
-        patient.lname2,
-    ]
-        .map((part) => (typeof part === 'string' ? part.trim() : part))
-        .filter((part) => part);
-    return parts.length ? parts.join(' ').replace(/\s+/g, ' ').trim() : '';
-}
-
-export function limitText(value, maxLength) {
-    if (!value) {
-        return '';
-    }
-    if (value.length <= maxLength) {
-        return value;
-    }
-    return `${value.slice(0, maxLength - 1)}…`;
-}
-
-export function formatCurrency(value) {
-    const amount = Number.isFinite(value) ? value : 0;
-    try {
-        return new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' }).format(amount);
-    } catch (error) {
-        return `$${amount.toFixed(2)}`;
-    }
-}
-
-export function showToast(message, status) {
-    let type = 'error';
-    let text = typeof message === 'string' ? message : 'Ocurrió un error inesperado';
-
-    if (typeof status === 'boolean') {
-        type = status ? 'success' : 'error';
-    } else if (typeof message === 'string' && typeof status === 'string') {
-        type = message;
-        text = status;
-    }
-
-    const method = type === 'success'
-        ? 'success'
-        : type === 'warning'
-            ? 'warning'
-            : type === 'info'
-                ? 'info'
-                : 'error';
-    if (window.toastr && typeof window.toastr[method] === 'function') {
-        window.toastr[method](text);
-    } else if (window.Swal && window.Swal.fire) {
-        window.Swal.fire(method === 'success' ? 'Éxito' : 'Aviso', text, method);
-    } else {
-        // eslint-disable-next-line no-alert
-        alert(`${method === 'success' ? '✔' : method === 'warning' ? '⚠️' : '✖'} ${text}`);
-    }
-}
-
-export function clearContainer(container) {
-    while (container && container.firstChild) {
-        container.removeChild(container.firstChild);
-    }
-}
-
-export function appendLine(container, text, iconClass) {
-    if (!text) {
-        return;
-    }
-    const span = document.createElement('span');
-    span.className = 'd-block small text-muted';
-    if (iconClass) {
-        const icon = document.createElement('i');
-        icon.className = `${iconClass} me-1`;
-        span.appendChild(icon);
-    }
-    span.appendChild(document.createTextNode(text));
-    container.appendChild(span);
-}
-
-export function autoSizeTextarea(textarea) {
-    if (!textarea) {
-        return;
-    }
-    textarea.style.height = 'auto';
-    textarea.style.height = `${textarea.scrollHeight}px`;
-}
-
-export function setTextContent(element, value, fallback = '—') {
-    if (!element) {
-        return;
-    }
-    const display = value === null || value === undefined || value === '' ? fallback : value;
-    element.textContent = display;
-}
-
-export function createStatusSelect(options, value) {
-    const select = document.createElement('select');
-    select.className = 'form-select form-select-sm';
-    const validOptions = Array.isArray(options) && options.length ? options : [];
-    validOptions.forEach((optionValue) => {
-        const option = document.createElement('option');
-        option.value = optionValue;
-        option.textContent = titleize(optionValue);
-        select.appendChild(option);
-    });
-    if (value && validOptions.includes(value)) {
-        select.value = value;
-    }
-    return select;
-}
-
-export function createStatusBadge(status, map) {
-    const span = document.createElement('span');
-    const normalized = status ? status.toLowerCase() : '';
-    const className = (map && map[normalized]) || 'badge bg-light text-muted';
-    span.className = `${className} text-uppercase fw-600`;
-    span.textContent = titleize(status) || '—';
-    return span;
-}
-
-export function proposalStatusBadge(status) {
-    const map = {
-        draft: 'bg-secondary',
-        open: 'bg-primary',
-        sent: 'bg-info',
-        revised: 'bg-warning text-dark',
-        accepted: 'bg-success',
-        declined: 'bg-danger',
-        expired: 'bg-dark',
+export function initDom(rootElement) {
+    root = rootElement;
+    elements = {
+        leadTableBody: root.querySelector('#crm-leads-table tbody'),
+        leadTableInfo: root.querySelector('#lead-table-info'),
+        leadPagination: root.querySelector('#lead-pagination'),
+        leadPageSize: root.querySelector('#lead-page-size'),
+        leadTableSearch: root.querySelector('#lead-table-search'),
+        leadSelectAll: root.querySelector('#lead-select-all'),
+        leadExportBtn: root.querySelector('#lead-export-btn'),
+        leadBulkActionsBtn: root.querySelector('#lead-bulk-actions-btn'),
+        leadReloadTable: root.querySelector('#lead-reload-table'),
+        projectTableBody: root.querySelector('#crm-projects-table tbody'),
+        taskTableBody: root.querySelector('#crm-tasks-table tbody'),
+        ticketTableBody: root.querySelector('#crm-tickets-table tbody'),
+        leadForm: root.querySelector('#lead-form'),
+        convertForm: document.getElementById('lead-convert-form'),
+        convertLeadHc: document.getElementById('convert-lead-hc'),
+        convertHelper: document.getElementById('convert-helper'),
+        convertSelected: document.getElementById('convert-lead-selected'),
+        convertSubmit: document.querySelector('#lead-convert-form button[type="submit"]'),
+        leadStatusSummary: root.querySelector('#lead-status-summary'),
+        leadSearchInput: root.querySelector('#lead-search'),
+        leadFilterStatus: root.querySelector('#lead-filter-status'),
+        leadFilterSource: root.querySelector('#lead-filter-source'),
+        leadFilterAssigned: root.querySelector('#lead-filter-assigned'),
+        leadClearFilters: root.querySelector('#lead-clear-filters'),
+        leadRefreshBtn: root.querySelector('#lead-refresh-btn'),
+        leadBulkStatus: root.querySelector('#lead-bulk-status'),
+        leadBulkSource: root.querySelector('#lead-bulk-source'),
+        leadBulkAssigned: root.querySelector('#lead-bulk-assigned'),
+        leadBulkDelete: root.querySelector('#lead-bulk-delete'),
+        leadBulkLost: root.querySelector('#lead-bulk-lost'),
+        leadBulkPublic: root.querySelector('#lead-bulk-public'),
+        leadBulkApply: root.querySelector('#lead-bulk-apply'),
+        leadBulkHelper: root.querySelector('#lead-bulk-helper'),
+        projectForm: root.querySelector('#project-form'),
+        projectCreateBtn: root.querySelector('#project-create-btn'),
+        projectCreateModal: document.getElementById('projectCreateModal'),
+        projectDetailModal: document.getElementById('projectDetailModal'),
+        projectDetailTitle: document.getElementById('project-detail-title'),
+        projectDetailSubtitle: document.getElementById('project-detail-subtitle'),
+        projectDetailStatus: document.getElementById('project-detail-status'),
+        projectDetailStatusText: document.getElementById('project-detail-status-text'),
+        projectDetailLead: document.getElementById('project-detail-lead'),
+        projectDetailOwner: document.getElementById('project-detail-owner'),
+        projectDetailStart: document.getElementById('project-detail-start'),
+        projectDetailDue: document.getElementById('project-detail-due'),
+        projectDetailDescription: document.getElementById('project-detail-description'),
+        projectDetailUpdated: document.getElementById('project-detail-updated'),
+        projectDetailOpen: document.getElementById('project-detail-open'),
+        projectDetailOverviewTab: document.getElementById('project-detail-overview-tab'),
+        projectDetailTasksTab: document.getElementById('project-detail-tasks-tab'),
+        projectDetailProjectId: document.getElementById('project-detail-project-id'),
+        projectDetailRequest: document.getElementById('project-detail-request'),
+        projectDetailActionBar: document.getElementById('project-detail-action-bar'),
+        projectDetailEditBtn: document.getElementById('project-detail-edit-btn'),
+        projectDetailSaveBtn: document.getElementById('project-detail-save-btn'),
+        projectDetailCancelBtn: document.getElementById('project-detail-cancel-btn'),
+        projectDetailStatusSelect: document.getElementById('project-detail-status-select'),
+        projectDetailOwnerSelect: document.getElementById('project-detail-owner-select'),
+        projectDetailStartInput: document.getElementById('project-detail-start-input'),
+        projectDetailDueInput: document.getElementById('project-detail-due-input'),
+        projectDetailDescriptionInput: document.getElementById('project-detail-description-input'),
+        projectDetailTasksSummary: document.getElementById('project-detail-tasks-summary'),
+        projectDetailTasksCount: document.getElementById('project-detail-tasks-count'),
+        projectDetailTasksProgress: document.getElementById('project-detail-tasks-progress'),
+        projectDetailDaysLabel: document.getElementById('project-detail-days-label'),
+        projectDetailDaysRemaining: document.getElementById('project-detail-days-remaining'),
+        projectDetailDaysProgress: document.getElementById('project-detail-days-progress'),
+        projectTasksTable: document.getElementById('project-tasks-table'),
+        projectTasksBody: document.getElementById('project-tasks-body'),
+        projectTasksReload: document.getElementById('project-tasks-reload'),
+        projectTasksExport: document.getElementById('project-tasks-export'),
+        projectTasksFilters: document.getElementById('project-tasks-filters'),
+        projectTasksLoading: document.getElementById('project-tasks-loading'),
+        projectTasksEmpty: document.getElementById('project-tasks-empty'),
+        taskForm: root.querySelector('#task-form'),
+        taskModal: document.getElementById('taskModal'),
+        ticketForm: root.querySelector('#ticket-form'),
+        ticketReplyForm: root.querySelector('#ticket-reply-form'),
+        ticketReplyId: root.querySelector('#ticket-reply-id'),
+        ticketReplyHelper: root.querySelector('#ticket-reply-helper'),
+        ticketReplySelected: root.querySelector('#ticket-reply-selected'),
+        ticketReplyMessage: root.querySelector('#ticket-reply-message'),
+        ticketReplyStatus: root.querySelector('#ticket-reply-status'),
+        ticketReplySubmit: root.querySelector('#ticket-reply-form button[type="submit"]'),
+        leadEmailForm: document.getElementById('lead-email-form'),
+        leadEmailTo: document.getElementById('lead-email-to'),
+        leadEmailSubject: document.getElementById('lead-email-subject'),
+        leadEmailBody: document.getElementById('lead-email-body'),
+        leadSelectForProject: root.querySelector('#project-lead'),
+        leadSelectForTicket: root.querySelector('#ticket-lead'),
+        projectSelectForTask: root.querySelector('#task-project'),
+        projectSelectForTicket: root.querySelector('#ticket-project'),
+        leadsCount: root.querySelector('#crm-leads-count'),
+        projectsCount: root.querySelector('#crm-projects-count'),
+        tasksCount: root.querySelector('#crm-tasks-count'),
+        ticketsCount: root.querySelector('#crm-tickets-count'),
+        proposalTableBody: root.querySelector('#crm-proposals-table tbody'),
+        proposalStatusFilter: root.querySelector('#proposal-status-filter'),
+        proposalRefreshBtn: root.querySelector('#proposal-refresh-btn'),
+        proposalLeadSelect: root.querySelector('#proposal-lead'),
+        proposalTitle: root.querySelector('#proposal-title'),
+        proposalValidUntil: root.querySelector('#proposal-valid-until'),
+        proposalTaxRate: root.querySelector('#proposal-tax-rate'),
+        proposalNotes: root.querySelector('#proposal-notes'),
+        proposalItemsBody: root.querySelector('#proposal-items-body'),
+        proposalSubtotal: root.querySelector('#proposal-subtotal'),
+        proposalTax: root.querySelector('#proposal-tax'),
+        proposalTotal: root.querySelector('#proposal-total'),
+        proposalSaveBtn: root.querySelector('#proposal-save-btn'),
+        proposalAddPackageBtn: root.querySelector('#proposal-add-package-btn'),
+        proposalAddCodeBtn: root.querySelector('#proposal-add-code-btn'),
+        proposalAddCustomBtn: root.querySelector('#proposal-add-custom-btn'),
+        proposalPackageModal: document.getElementById('proposal-package-modal'),
+        proposalPackageSearch: document.getElementById('proposal-package-search'),
+        proposalPackageList: document.getElementById('proposal-package-list'),
+        proposalCodeModal: document.getElementById('proposal-code-modal'),
+        proposalCodeSearchInput: document.getElementById('proposal-code-search-input'),
+        proposalCodeSearchBtn: document.getElementById('proposal-code-search-btn'),
+        proposalCodeResults: document.getElementById('proposal-code-results'),
+        proposalSearchInput: document.getElementById('proposal-search'),
+        proposalPreviewTitle: document.getElementById('proposal-preview-title'),
+        proposalPreviewStatus: document.getElementById('proposal-preview-status'),
+        proposalPreviewNumber: document.getElementById('proposal-preview-number'),
+        proposalPreviewTo: document.getElementById('proposal-preview-to'),
+        proposalPreviewValid: document.getElementById('proposal-preview-valid'),
+        proposalPreviewTotal: document.getElementById('proposal-preview-total'),
+        proposalPreviewOpen: document.getElementById('proposal-preview-open'),
+        proposalPreviewRefresh: document.getElementById('proposal-preview-refresh'),
+        proposalNewBtn: document.getElementById('proposal-new-btn'),
+        proposalPipelineBtn: document.getElementById('proposal-pipeline-btn'),
+        proposalExportBtn: document.getElementById('proposal-export-btn'),
+        proposalDetailModal: document.getElementById('proposal-detail-modal'),
+        proposalDetailTitle: document.getElementById('proposal-detail-title'),
+        proposalDetailStatus: document.getElementById('proposal-detail-status'),
+        proposalDetailSubtitle: document.getElementById('proposal-detail-subtitle'),
+        proposalDetailContent: document.getElementById('proposal-detail-content'),
+        proposalDetailEmpty: document.getElementById('proposal-detail-empty'),
+        proposalDetailLoading: document.getElementById('proposal-detail-loading'),
+        proposalDetailItemsBody: document.getElementById('proposal-detail-items-body'),
+        proposalDetailItemsCount: document.getElementById('proposal-detail-items-count'),
+        proposalDetailLead: document.getElementById('proposal-detail-lead'),
+        proposalDetailValidUntil: document.getElementById('proposal-detail-valid-until'),
+        proposalDetailCreated: document.getElementById('proposal-detail-created'),
+        proposalDetailTaxRate: document.getElementById('proposal-detail-tax-rate'),
+        proposalDetailSubtotal: document.getElementById('proposal-detail-subtotal'),
+        proposalDetailDiscount: document.getElementById('proposal-detail-discount'),
+        proposalDetailTax: document.getElementById('proposal-detail-tax'),
+        proposalDetailTotal: document.getElementById('proposal-detail-total'),
+        proposalDetailTimeline: document.getElementById('proposal-detail-timeline'),
+        proposalDetailStatusSelect: document.getElementById('proposal-detail-status-select'),
+        proposalDetailNotes: document.getElementById('proposal-detail-notes'),
+        proposalDetailTerms: document.getElementById('proposal-detail-terms'),
+        leadDetailModal: document.getElementById('lead-detail-modal'),
+        leadDetailBody: document.getElementById('lead-detail-body'),
+        leadDetailTitle: document.getElementById('lead-detail-title'),
+        leadDetailId: document.getElementById('lead-detail-id'),
+        leadDetailConvert: document.getElementById('lead-detail-convert'),
+        leadDetailEdit: document.getElementById('lead-detail-edit'),
+        leadDetailSave: document.getElementById('lead-detail-save'),
+        leadDetailSaveFooter: document.getElementById('lead-detail-save-footer'),
+        leadDetailCancel: document.getElementById('lead-detail-cancel'),
+        leadDetailEditActions: document.getElementById('lead-detail-edit-actions'),
+        leadDetailEditFooter: document.getElementById('lead-edit-footer'),
+        leadDetailEditSection: document.getElementById('lead-edit-section'),
+        leadDetailViewSection: document.getElementById('lead-view-section'),
+        leadDetailNotesCount: document.getElementById('lead-notes-count'),
+        leadProjectsList: document.getElementById('lead-projects-list'),
+        leadProjectsEmpty: document.getElementById('lead-projects-empty'),
+        leadProjectsCreate: document.getElementById('lead-project-create'),
+        leadTasksList: document.getElementById('lead-tasks-list'),
+        leadTasksEmpty: document.getElementById('lead-tasks-empty'),
+        leadTasksRefresh: document.getElementById('lead-tasks-refresh'),
+        leadFormHelper: root.querySelector('#lead-form-helper'),
+        tabContent: root.querySelector('.tab-content'),
+        tasksSummary: document.getElementById('crm-tasks-summary'),
     };
-    const className = map[status] || 'bg-secondary';
-    const badge = document.createElement('span');
-    badge.className = `badge ${className}`;
-    badge.textContent = titleize(status);
-    return badge;
+
+    proposalModals.package = (window.bootstrap && elements.proposalPackageModal)
+        ? new window.bootstrap.Modal(elements.proposalPackageModal)
+        : null;
+    proposalModals.code = (window.bootstrap && elements.proposalCodeModal)
+        ? new window.bootstrap.Modal(elements.proposalCodeModal)
+        : null;
+    proposalModals.detail = (window.bootstrap && elements.proposalDetailModal)
+        ? new window.bootstrap.Modal(elements.proposalDetailModal)
+        : null;
+
+    leadModals.convert = (window.bootstrap && document.getElementById('lead-convert-modal'))
+        ? new window.bootstrap.Modal(document.getElementById('lead-convert-modal'))
+        : null;
+    leadModals.detail = (window.bootstrap && elements.leadDetailModal)
+        ? new window.bootstrap.Modal(elements.leadDetailModal)
+        : null;
+    leadModals.email = (window.bootstrap && document.getElementById('lead-email-modal'))
+        ? new window.bootstrap.Modal(document.getElementById('lead-email-modal'))
+        : null;
+    leadModals.form = (window.bootstrap && document.getElementById('lead-modal'))
+        ? new window.bootstrap.Modal(document.getElementById('lead-modal'))
+        : null;
+
+    projectModals.create = (window.bootstrap && elements.projectCreateModal)
+        ? new window.bootstrap.Modal(elements.projectCreateModal)
+        : null;
+    projectModals.detail = (window.bootstrap && elements.projectDetailModal)
+        ? new window.bootstrap.Modal(elements.projectDetailModal)
+        : null;
 }

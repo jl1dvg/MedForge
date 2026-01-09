@@ -1,8 +1,85 @@
-export function normalizeHcNumber(value) {
-    return String(value || '').trim().toUpperCase();
-}
+'use strict';
 
-export function normalizeLead(lead) {
+import { normalizeHcNumber } from './utils.js';
+
+export let permissions = {};
+export let canManageLeads = false;
+export let canManageProjects = false;
+export let canManageTasks = false;
+export let canManageTickets = false;
+
+export let state = {
+    leadStatuses: [],
+    leadSources: [],
+    projectStatuses: [],
+    taskStatuses: [],
+    ticketStatuses: [],
+    ticketPriorities: [],
+    assignableUsers: [],
+    leads: [],
+    projects: [],
+    tasks: [],
+    tickets: [],
+    proposalStatuses: [],
+    proposals: [],
+    focusProjectId: null,
+    taskFilters: {},
+};
+
+export const proposalBuilder = {
+    items: [],
+    packages: [],
+};
+
+export const proposalDetailState = {
+    current: null,
+};
+
+export const leadDetailState = {
+    current: null,
+};
+
+export const leadFormState = {
+    mode: 'create',
+    currentHc: null,
+};
+
+export const projectDetailState = {
+    currentId: null,
+    tasksLoaded: false,
+    tasks: [],
+    tasksTable: null,
+    loadingTasks: false,
+    editing: false,
+    taskStatusFilter: 'all',
+};
+
+export const taskPriorityOptions = ['baja', 'media', 'alta', 'urgente'];
+
+export const leadFilters = {
+    search: '',
+    status: '',
+    source: '',
+    assigned: '',
+};
+
+export const leadTableState = {
+    page: 1,
+    pageSize: 10,
+};
+
+export const proposalFilters = {
+    status: '',
+    search: '',
+};
+
+export const proposalUIState = {
+    selectedId: null,
+};
+
+export const selectedLeads = new Set();
+
+function normalizeLead(lead) {
     if (!lead || typeof lead !== 'object') {
         return {};
     }
@@ -39,8 +116,16 @@ export function mapProposals(proposals) {
     });
 }
 
-export function createState(bootstrapData) {
-    return {
+export function initState(bootstrapData) {
+    permissions = (bootstrapData && typeof bootstrapData.permissions === 'object' && bootstrapData.permissions !== null)
+        ? bootstrapData.permissions
+        : {};
+    canManageLeads = Boolean(permissions.manageLeads);
+    canManageProjects = Boolean(permissions.manageProjects);
+    canManageTasks = Boolean(permissions.manageTasks);
+    canManageTickets = Boolean(permissions.manageTickets);
+
+    state = {
         leadStatuses: Array.isArray(bootstrapData.leadStatuses) ? bootstrapData.leadStatuses : [],
         leadSources: Array.isArray(bootstrapData.leadSources) ? bootstrapData.leadSources : [],
         projectStatuses: Array.isArray(bootstrapData.projectStatuses) ? bootstrapData.projectStatuses : [],
@@ -48,70 +133,16 @@ export function createState(bootstrapData) {
         ticketStatuses: Array.isArray(bootstrapData.ticketStatuses) ? bootstrapData.ticketStatuses : [],
         ticketPriorities: Array.isArray(bootstrapData.ticketPriorities) ? bootstrapData.ticketPriorities : [],
         assignableUsers: Array.isArray(bootstrapData.assignableUsers) ? bootstrapData.assignableUsers : [],
-        leads: mapLeads(bootstrapData.initialLeads),
+        leads: Array.isArray(bootstrapData.initialLeads) ? bootstrapData.initialLeads : [],
         projects: Array.isArray(bootstrapData.initialProjects) ? bootstrapData.initialProjects : [],
         tasks: Array.isArray(bootstrapData.initialTasks) ? bootstrapData.initialTasks : [],
         tickets: Array.isArray(bootstrapData.initialTickets) ? bootstrapData.initialTickets : [],
         proposalStatuses: Array.isArray(bootstrapData.proposalStatuses) ? bootstrapData.proposalStatuses : [],
-        proposals: mapProposals(bootstrapData.initialProposals),
+        proposals: Array.isArray(bootstrapData.initialProposals) ? bootstrapData.initialProposals : [],
         focusProjectId: null,
         taskFilters: {},
-        leadFilters: {
-            search: '',
-            status: '',
-            source: '',
-            assigned: '',
-        },
-        leadTableState: {
-            page: 1,
-            pageSize: 10,
-        },
-        proposalFilters: {
-            status: '',
-            search: '',
-        },
-        proposalUIState: {
-            selectedId: null,
-        },
-        selectedLeads: new Set(),
-        leadFormState: {
-            mode: 'create',
-            currentHc: null,
-        },
-        projectDetailState: {
-            currentId: null,
-            tasksLoaded: false,
-            tasks: [],
-            tasksTable: null,
-            loadingTasks: false,
-            editing: false,
-            taskStatusFilter: 'all',
-        },
-        proposalDetailState: {
-            current: null,
-        },
-        leadDetailState: {
-            current: null,
-        },
-        proposalBuilder: {
-            items: [],
-            packages: [],
-        },
     };
-}
 
-export function updateTaskInCrmState(state, taskId, updates) {
-    const index = state.tasks.findIndex((task) => String(task.id) === String(taskId));
-    if (index === -1) {
-        return;
-    }
-    state.tasks[index] = { ...state.tasks[index], ...updates };
-}
-
-export function updateProjectInState(state, projectId, updates) {
-    const index = state.projects.findIndex((project) => String(project.id) === String(projectId));
-    if (index === -1) {
-        return;
-    }
-    state.projects[index] = { ...state.projects[index], ...updates };
+    state.leads = mapLeads(state.leads);
+    state.proposals = mapProposals(state.proposals);
 }
