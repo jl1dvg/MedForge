@@ -20,7 +20,7 @@ function resolveBasePath() {
 
 function notify(message, ok = true) {
     if (typeof panelConfig.showToast === 'function') {
-        panelConfig.notify(message, ok);
+        panelConfig.showToast(message, ok);
     }
 }
 
