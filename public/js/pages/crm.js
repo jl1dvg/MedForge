@@ -75,6 +75,27 @@
         leadBulkApply: root.querySelector('#lead-bulk-apply'),
         leadBulkHelper: root.querySelector('#lead-bulk-helper'),
         projectForm: root.querySelector('#project-form'),
+        projectCreateBtn: root.querySelector('#project-create-btn'),
+        projectCreateModal: document.getElementById('projectCreateModal'),
+        projectDetailModal: document.getElementById('projectDetailModal'),
+        projectDetailTitle: document.getElementById('project-detail-title'),
+        projectDetailSubtitle: document.getElementById('project-detail-subtitle'),
+        projectDetailStatus: document.getElementById('project-detail-status'),
+        projectDetailStatusText: document.getElementById('project-detail-status-text'),
+        projectDetailLead: document.getElementById('project-detail-lead'),
+        projectDetailOwner: document.getElementById('project-detail-owner'),
+        projectDetailStart: document.getElementById('project-detail-start'),
+        projectDetailDue: document.getElementById('project-detail-due'),
+        projectDetailDescription: document.getElementById('project-detail-description'),
+        projectDetailUpdated: document.getElementById('project-detail-updated'),
+        projectDetailOpen: document.getElementById('project-detail-open'),
+        projectDetailOverviewTab: document.getElementById('project-detail-overview-tab'),
+        projectDetailTasksTab: document.getElementById('project-detail-tasks-tab'),
+        projectTasksTable: document.getElementById('project-tasks-table'),
+        projectTasksBody: document.getElementById('project-tasks-body'),
+        projectTasksReload: document.getElementById('project-tasks-reload'),
+        projectTasksLoading: document.getElementById('project-tasks-loading'),
+        projectTasksEmpty: document.getElementById('project-tasks-empty'),
         taskForm: root.querySelector('#task-form'),
         ticketForm: root.querySelector('#ticket-form'),
         ticketReplyForm: root.querySelector('#ticket-reply-form'),
@@ -209,9 +230,26 @@
             : null,
     };
 
+    const projectModals = {
+        create: (window.bootstrap && elements.projectCreateModal)
+            ? new window.bootstrap.Modal(elements.projectCreateModal)
+            : null,
+        detail: (window.bootstrap && elements.projectDetailModal)
+            ? new window.bootstrap.Modal(elements.projectDetailModal)
+            : null,
+    };
+
     const leadFormState = {
         mode: 'create',
         currentHc: null,
+    };
+
+    const projectDetailState = {
+        currentId: null,
+        tasksLoaded: false,
+        tasks: [],
+        tasksTable: null,
+        loadingTasks: false,
     };
 
     const leadFilters = {
@@ -256,13 +294,31 @@
         }
 
         if (window.bootstrap && window.bootstrap.Tab) {
-            const tab = new window.bootstrap.Tab(tabLink);
-            tab.show();
+            if (typeof window.bootstrap.Tab.getOrCreateInstance === 'function') {
+                window.bootstrap.Tab.getOrCreateInstance(tabLink).show();
+                return;
+            }
+            if (typeof window.bootstrap.Tab.getInstance === 'function') {
+                const instance = window.bootstrap.Tab.getInstance(tabLink);
+                if (instance) {
+                    instance.show();
+                    return;
+                }
+            }
+            new window.bootstrap.Tab(tabLink).show();
+            return;
+        }
+
+        if (window.jQuery && typeof window.jQuery(tabLink).tab === 'function') {
+            window.jQuery(tabLink).tab('show');
             return;
         }
 
         tabLink.classList.add('active');
-        const targetSelector = tabLink.getAttribute('href') || '';
+        const targetSelector = tabLink.getAttribute('data-bs-target')
+            || tabLink.getAttribute('data-target')
+            || tabLink.getAttribute('href')
+            || '';
         if (targetSelector) {
             const target = document.querySelector(targetSelector);
             if (target) {
@@ -1064,6 +1120,13 @@
             state.projects.forEach((project) => {
                 const row = document.createElement('tr');
                 row.dataset.projectId = project.id;
+                row.classList.add('crm-project-row');
+                row.addEventListener('click', (event) => {
+                    if (event.target.closest('select') || event.target.closest('a') || event.target.closest('button')) {
+                        return;
+                    }
+                    openProjectModal(project.id);
+                });
 
                 const titleCell = document.createElement('td');
                 const strong = document.createElement('strong');
@@ -1079,6 +1142,9 @@
                     const statusSelect = createStatusSelect(state.projectStatuses, project.status);
                     statusSelect.classList.add('js-project-status');
                     statusSelect.dataset.projectId = project.id;
+                    statusSelect.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                    });
                     statusCell.appendChild(statusSelect);
                 } else {
                     statusCell.textContent = project.status ? titleize(project.status) : 'Sin estado';
@@ -1103,13 +1169,6 @@
 
                 const actionsCell = document.createElement('td');
                 actionsCell.className = 'text-end';
-                const openLink = document.createElement('a');
-                openLink.className = 'btn btn-sm btn-outline-secondary me-2';
-                openLink.href = `/crm?tab=tasks&project_id=${encodeURIComponent(project.id)}`;
-                openLink.target = '_blank';
-                openLink.rel = 'noopener';
-                openLink.textContent = 'Tareas';
-                actionsCell.appendChild(openLink);
                 const updatedBadge = document.createElement('span');
                 updatedBadge.className = 'badge bg-light text-muted';
                 updatedBadge.textContent = `Actualizado ${formatDate(project.updated_at, true)}`;
@@ -1139,6 +1198,294 @@
         populateProjectSelects();
         updateCounters();
     }
+
+    function getProjectById(projectId) {
+        if (!projectId) {
+            return null;
+        }
+        return state.projects.find((project) => String(project.id) === String(projectId)) || null;
+    }
+
+    function resetProjectDetail() {
+        projectDetailState.currentId = null;
+        projectDetailState.tasksLoaded = false;
+        projectDetailState.tasks = [];
+        projectDetailState.loadingTasks = false;
+
+        if (elements.projectDetailTitle) {
+            elements.projectDetailTitle.textContent = '—';
+        }
+        if (elements.projectDetailSubtitle) {
+            elements.projectDetailSubtitle.textContent = 'Selecciona un proyecto para ver el detalle.';
+        }
+        if (elements.projectDetailStatus) {
+            elements.projectDetailStatus.textContent = '—';
+            elements.projectDetailStatus.className = 'badge bg-secondary';
+        }
+        if (elements.projectDetailStatusText) {
+            elements.projectDetailStatusText.textContent = '—';
+        }
+        if (elements.projectDetailLead) {
+            elements.projectDetailLead.textContent = '—';
+        }
+        if (elements.projectDetailOwner) {
+            elements.projectDetailOwner.textContent = '—';
+        }
+        if (elements.projectDetailStart) {
+            elements.projectDetailStart.textContent = '—';
+        }
+        if (elements.projectDetailDue) {
+            elements.projectDetailDue.textContent = '—';
+        }
+        if (elements.projectDetailDescription) {
+            elements.projectDetailDescription.textContent = '—';
+        }
+        if (elements.projectDetailUpdated) {
+            elements.projectDetailUpdated.textContent = '—';
+        }
+        if (elements.projectDetailOpen) {
+            elements.projectDetailOpen.href = '#';
+        }
+        clearProjectTasksTable();
+    }
+
+    function clearProjectTasksTable() {
+        if (projectDetailState.tasksTable) {
+            projectDetailState.tasksTable.clear().draw();
+        }
+        if (elements.projectTasksBody) {
+            elements.projectTasksBody.innerHTML = `
+                <tr class="text-center text-muted" data-empty-row>
+                    <td colspan="8">Sin tareas registradas.</td>
+                </tr>
+            `;
+        }
+        if (elements.projectTasksEmpty) {
+            elements.projectTasksEmpty.classList.add('d-none');
+        }
+        if (elements.projectTasksLoading) {
+            elements.projectTasksLoading.classList.add('d-none');
+        }
+    }
+
+    function setProjectDetail(project) {
+        if (!project) {
+            return;
+        }
+        const title = project.title || `Proyecto #${project.id}`;
+        const status = project.status ? titleize(project.status) : 'Sin estado';
+        const leadLabel = project.lead_name || (project.lead_id ? `Lead #${project.lead_id}` : 'Sin lead');
+        const ownerLabel = project.owner_name || 'Sin asignar';
+
+        if (elements.projectDetailTitle) {
+            elements.projectDetailTitle.textContent = title;
+        }
+        if (elements.projectDetailSubtitle) {
+            elements.projectDetailSubtitle.textContent = `ID ${project.id}`;
+        }
+        if (elements.projectDetailStatus) {
+            elements.projectDetailStatus.textContent = status;
+            elements.projectDetailStatus.className = `badge ${project.status ? 'bg-success' : 'bg-secondary'}`;
+        }
+        if (elements.projectDetailStatusText) {
+            elements.projectDetailStatusText.textContent = status;
+        }
+        if (elements.projectDetailLead) {
+            elements.projectDetailLead.textContent = leadLabel;
+        }
+        if (elements.projectDetailOwner) {
+            elements.projectDetailOwner.textContent = ownerLabel;
+        }
+        if (elements.projectDetailStart) {
+            elements.projectDetailStart.textContent = formatDate(project.start_date, false);
+        }
+        if (elements.projectDetailDue) {
+            elements.projectDetailDue.textContent = formatDate(project.due_date, false);
+        }
+        if (elements.projectDetailDescription) {
+            elements.projectDetailDescription.textContent = project.description || 'Sin descripción registrada.';
+        }
+        if (elements.projectDetailUpdated) {
+            elements.projectDetailUpdated.textContent = formatDate(project.updated_at, true);
+        }
+        if (elements.projectDetailOpen) {
+            elements.projectDetailOpen.href = `/crm?tab=tasks&project_id=${encodeURIComponent(project.id)}`;
+        }
+    }
+
+    function formatTaskTags(tags) {
+        if (!tags) {
+            return '—';
+        }
+        if (Array.isArray(tags)) {
+            return tags.join(', ');
+        }
+        if (typeof tags === 'string') {
+            const trimmed = tags.trim();
+            if (!trimmed) {
+                return '—';
+            }
+            try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) {
+                    return parsed.join(', ');
+                }
+            } catch (error) {
+                // ignore parse errors and fall back to raw value
+            }
+            return trimmed;
+        }
+        return String(tags);
+    }
+
+    function buildProjectTaskRows(tasks) {
+        return tasks.map((task, index) => {
+            const title = task.title || `Tarea #${task.id}`;
+            const status = task.status ? titleize(task.status) : 'Sin estado';
+            const assigned = task.assigned_name || 'Sin asignar';
+            const priority = task.priority ? titleize(task.priority) : 'Sin prioridad';
+            const tags = formatTaskTags(task.tags);
+            return [
+                index + 1,
+                escapeHtml(title),
+                escapeHtml(status),
+                escapeHtml(formatDate(task.created_at, false)),
+                escapeHtml(formatDate(task.due_date, false)),
+                escapeHtml(assigned),
+                escapeHtml(priority),
+                escapeHtml(tags),
+            ];
+        });
+    }
+
+    function renderProjectTasks(tasks) {
+        if (!elements.projectTasksTable || !elements.projectTasksBody) {
+            return;
+        }
+
+        const rows = buildProjectTaskRows(tasks);
+        if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.DataTable === 'function') {
+            if (!projectDetailState.tasksTable) {
+                elements.projectTasksBody.innerHTML = '';
+                projectDetailState.tasksTable = window.jQuery(elements.projectTasksTable).DataTable({
+                    data: rows,
+                    columns: [
+                        { title: '#', className: 'text-center', width: '40px' },
+                        { title: 'Nombre' },
+                        { title: 'Estado' },
+                        { title: 'Inicio' },
+                        { title: 'Entrega' },
+                        { title: 'Asignado' },
+                        { title: 'Prioridad' },
+                        { title: 'Tags' },
+                    ],
+                    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+                    pageLength: 10,
+                    lengthMenu: [10, 25, 50],
+                    autoWidth: false,
+                    responsive: true,
+                    searching: true,
+                    ordering: false,
+                    dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-2"f>t<"d-flex flex-wrap justify-content-between align-items-center mt-2"ip>',
+                });
+            } else {
+                projectDetailState.tasksTable.clear();
+                projectDetailState.tasksTable.rows.add(rows);
+                projectDetailState.tasksTable.draw();
+            }
+        } else {
+            elements.projectTasksBody.innerHTML = '';
+            if (!tasks.length) {
+                elements.projectTasksBody.innerHTML = `
+                    <tr class="text-center text-muted">
+                        <td colspan="8">Sin tareas registradas.</td>
+                    </tr>
+                `;
+            } else {
+                tasks.forEach((task, index) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="text-center">${index + 1}</td>
+                        <td>${escapeHtml(task.title || `Tarea #${task.id}`)}</td>
+                        <td>${escapeHtml(task.status ? titleize(task.status) : 'Sin estado')}</td>
+                        <td>${escapeHtml(formatDate(task.created_at, false))}</td>
+                        <td>${escapeHtml(formatDate(task.due_date, false))}</td>
+                        <td>${escapeHtml(task.assigned_name || 'Sin asignar')}</td>
+                        <td>${escapeHtml(task.priority ? titleize(task.priority) : 'Sin prioridad')}</td>
+                        <td>${escapeHtml(formatTaskTags(task.tags))}</td>
+                    `;
+                    elements.projectTasksBody.appendChild(row);
+                });
+            }
+        }
+
+        if (elements.projectTasksEmpty) {
+            elements.projectTasksEmpty.classList.toggle('d-none', tasks.length > 0);
+        }
+        if (elements.projectTasksLoading) {
+            elements.projectTasksLoading.classList.add('d-none');
+        }
+    }
+
+    function loadProjectTasks(forceReload) {
+        if (!projectDetailState.currentId || projectDetailState.loadingTasks) {
+            return;
+        }
+        if (projectDetailState.tasksLoaded && !forceReload) {
+            return;
+        }
+
+        projectDetailState.loadingTasks = true;
+        if (elements.projectTasksLoading) {
+            elements.projectTasksLoading.classList.remove('d-none');
+        }
+        if (elements.projectTasksEmpty) {
+            elements.projectTasksEmpty.classList.add('d-none');
+        }
+
+        request(`/crm/tasks?project_id=${encodeURIComponent(projectDetailState.currentId)}`)
+            .then((data) => {
+                const tasks = Array.isArray(data.data) ? data.data : [];
+                projectDetailState.tasks = tasks;
+                projectDetailState.tasksLoaded = true;
+                renderProjectTasks(tasks);
+            })
+            .catch((error) => {
+                console.error('No se pudieron cargar las tareas del proyecto', error);
+                showToast(error.message || 'No se pudieron cargar las tareas', false);
+                renderProjectTasks([]);
+            })
+            .finally(() => {
+                projectDetailState.loadingTasks = false;
+                if (elements.projectTasksLoading) {
+                    elements.projectTasksLoading.classList.add('d-none');
+                }
+            });
+    }
+
+    function openProjectModal(projectId) {
+        if (!projectId) {
+            return;
+        }
+        const project = getProjectById(projectId);
+        if (!project) {
+            showToast('No se encontró el proyecto seleccionado', false);
+            return;
+        }
+        projectDetailState.currentId = project.id;
+        projectDetailState.tasksLoaded = false;
+        projectDetailState.tasks = [];
+        clearProjectTasksTable();
+        setProjectDetail(project);
+
+        activateTab('project-detail-overview-tab');
+
+        if (projectModals.detail) {
+            projectModals.detail.show();
+        }
+    }
+
+    window.openProjectModal = openProjectModal;
 
     function renderTasks() {
         if (!elements.taskTableBody) {
@@ -3251,12 +3598,47 @@
                 .then(() => {
                     showToast('Proyecto registrado', true);
                     elements.projectForm.reset();
+                    if (projectModals.create) {
+                        projectModals.create.hide();
+                    }
                     return loadProjects();
                 })
                 .catch((error) => {
                     console.error('No se pudo crear el proyecto', error);
                     showToast(error.message || 'No se pudo crear el proyecto', false);
                 });
+        });
+    }
+
+    if (elements.projectCreateBtn && canManageProjects) {
+        elements.projectCreateBtn.addEventListener('click', () => {
+            if (elements.projectForm) {
+                elements.projectForm.reset();
+            }
+            if (projectModals.create) {
+                projectModals.create.show();
+            }
+        });
+    }
+
+    if (elements.projectDetailTasksTab) {
+        elements.projectDetailTasksTab.addEventListener('shown.bs.tab', () => {
+            loadProjectTasks();
+            if (projectDetailState.tasksTable) {
+                projectDetailState.tasksTable.columns.adjust();
+            }
+        });
+    }
+
+    if (elements.projectTasksReload) {
+        elements.projectTasksReload.addEventListener('click', () => {
+            loadProjectTasks(true);
+        });
+    }
+
+    if (elements.projectDetailModal) {
+        elements.projectDetailModal.addEventListener('hidden.bs.modal', () => {
+            resetProjectDetail();
         });
     }
 
@@ -3554,6 +3936,7 @@
                 return;
             }
             if (canManageProjects && target.classList.contains('js-project-status')) {
+                event.stopPropagation();
                 const projectId = serializeNumber(target.dataset.projectId);
                 const status = target.value;
                 if (!projectId || !status) {
@@ -3629,6 +4012,12 @@
     }
 
     root.addEventListener('click', (event) => {
+        const projectRow = event.target.closest('#crm-projects-table tbody tr');
+        if (projectRow && !event.target.closest('select') && !event.target.closest('a') && !event.target.closest('button')) {
+            const projectId = serializeNumber(projectRow.dataset.projectId);
+            openProjectModal(projectId);
+            return;
+        }
         const proposalRow = event.target.closest('.proposal-row');
         if (proposalRow && !event.target.closest('select')) {
             const proposalId = serializeNumber(proposalRow.dataset.proposalId);
