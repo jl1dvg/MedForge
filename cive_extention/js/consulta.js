@@ -8,13 +8,13 @@
     const OPHTH_DEFAULTS = {
         antseg: {
             fields: {
-                conj: "Conjuntiva bulbar y tarsal clara, sin hiperemia ni secreción.",
-                sclera: "Esclera blanca, sin ictericia ni inyección.",
+                conj: "Bulbar y tarsal clara",
+                sclera: "Blanca",
                 cornea: "Transparente, sin opacidades.",
-                ac: "Cámara anterior profunda y formada, transparente.",
+                ac: "Profunda, transparente",
                 iris: "Color y patrón normales, sin sinequias.",
-                pupil: "Isocórica, redonda, reactiva a la luz y acomodación.",
-                lens: "Cristalino transparente.",
+                pupil: "Isocórica, redonda, reactiva a la luz",
+                lens: "Transparente.",
             },
             comments: "",
         },
