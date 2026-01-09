@@ -1,3 +1,5 @@
+'use strict';
+
 export async function request(url, options) {
     const fetchOptions = Object.assign(
         {
@@ -32,13 +34,4 @@ export async function request(url, options) {
     }
 
     return payload;
-}
-
-export function serializeNumber(value) {
-    const trimmed = String(value || '').trim();
-    if (!trimmed) {
-        return null;
-    }
-    const parsed = Number(trimmed);
-    return Number.isNaN(parsed) ? null : parsed;
 }
