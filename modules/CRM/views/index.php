@@ -151,7 +151,24 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
 
                         <div class="tab-pane fade" id="crm-tab-tasks" role="tabpanel" aria-labelledby="crm-tab-tasks-link">
                             <div class="row g-3">
-                                <div class="col-xl-7">
+                                <div class="col-12">
+                                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                                        <div>
+                                            <h5 class="mb-1">Listado de tareas</h5>
+                                            <p class="text-muted small mb-0">Gestiona las tareas del CRM y sus recordatorios.</p>
+                                        </div>
+                                        <?php if ($permissions['manageTasks']): ?>
+                                            <button type="button" class="btn btn-warning text-white" data-bs-toggle="modal" data-bs-target="#taskModal">
+                                                <i class="mdi mdi-plus"></i> Nueva tarea
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!$permissions['manageTasks']): ?>
+                                        <div class="alert alert-info mb-3">
+                                            No puedes crear tareas en el CRM con el rol asignado.
+                                        </div>
+                                    <?php endif; ?>
+                                    <div id="crm-tasks-summary" class="row g-2 mb-3"></div>
                                     <div class="table-responsive rounded card-table shadow-sm">
                                         <table class="table table-striped table-sm align-middle" id="crm-tasks-table">
                                             <thead class="bg-warning text-white">
@@ -169,13 +186,17 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                         </table>
                                     </div>
                                 </div>
-                                <div class="col-xl-5">
-                                    <?php if ($permissions['manageTasks']): ?>
-                                        <div class="box">
-                                            <div class="box-header with-border">
-                                                <h5 class="box-title mb-0">Nueva tarea</h5>
+                            </div>
+
+                            <?php if ($permissions['manageTasks']): ?>
+                                <div class="modal fade" id="taskModal" tabindex="-1" aria-labelledby="taskModalLabel" aria-hidden="true">
+                                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="taskModalLabel">Nueva tarea</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                                             </div>
-                                            <div class="box-body">
+                                            <div class="modal-body">
                                                 <form id="task-form" class="space-y-2">
                                                 <div class="mb-2">
                                                     <label for="task-project" class="form-label">Proyecto</label>
@@ -239,13 +260,9 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                                 </form>
                                             </div>
                                         </div>
-                                    <?php else: ?>
-                                        <div class="alert alert-info">
-                                            No puedes crear tareas en el CRM con el rol asignado.
-                                        </div>
-                                    <?php endif; ?>
+                                    </div>
                                 </div>
-                            </div>
+                            <?php endif; ?>
                         </div>
 
                         <div class="tab-pane fade" id="crm-tab-tickets" role="tabpanel" aria-labelledby="crm-tab-tickets-link">

@@ -116,6 +116,7 @@
         projectTasksLoading: document.getElementById('project-tasks-loading'),
         projectTasksEmpty: document.getElementById('project-tasks-empty'),
         taskForm: root.querySelector('#task-form'),
+        taskModal: document.getElementById('taskModal'),
         ticketForm: root.querySelector('#ticket-form'),
         ticketReplyForm: root.querySelector('#ticket-reply-form'),
         ticketReplyId: root.querySelector('#ticket-reply-id'),
@@ -213,6 +214,8 @@
         leadTasksEmpty: document.getElementById('lead-tasks-empty'),
         leadTasksRefresh: document.getElementById('lead-tasks-refresh'),
         leadFormHelper: root.querySelector('#lead-form-helper'),
+        tabContent: root.querySelector('.tab-content'),
+        tasksSummary: document.getElementById('crm-tasks-summary'),
     };
 
     const proposalBuilder = {
@@ -1225,6 +1228,72 @@
         updateCounters();
     }
 
+    function renderTaskSummary() {
+        if (!elements.tasksSummary) {
+            return;
+        }
+        clearContainer(elements.tasksSummary);
+        const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+        const totalCount = tasks.length;
+        const statusList = state.taskStatuses.length ? state.taskStatuses : [];
+        const normalizedCounts = statusList.reduce((acc, status) => {
+            acc[status.toLowerCase()] = 0;
+            return acc;
+        }, {});
+        tasks.forEach((task) => {
+            const key = String(task.status || '').toLowerCase();
+            if (key && Object.prototype.hasOwnProperty.call(normalizedCounts, key)) {
+                normalizedCounts[key] += 1;
+            }
+        });
+        const cards = [
+            { label: 'Todas', count: totalCount, color: 'text-dark' },
+            ...statusList.map((status) => {
+                const normalized = String(status || '').toLowerCase();
+                return {
+                    label: titleize(status),
+                    count: normalizedCounts[normalized] || 0,
+                    color: getTaskStatusColor(normalized),
+                };
+            }),
+        ];
+
+        cards.forEach((card) => {
+            const col = document.createElement('div');
+            col.className = 'col-6 col-md-4 col-lg-2';
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-light border w-100 text-start h-100';
+            const count = document.createElement('div');
+            count.className = 'fw-semibold';
+            count.textContent = card.count;
+            const label = document.createElement('div');
+            label.className = `small ${card.color}`;
+            label.textContent = card.label;
+            button.appendChild(count);
+            button.appendChild(label);
+            col.appendChild(button);
+            elements.tasksSummary.appendChild(col);
+        });
+    }
+
+    function getTaskStatusColor(status) {
+        const map = {
+            pendiente: 'text-secondary',
+            sin_estado: 'text-secondary',
+            not_started: 'text-secondary',
+            en_progreso: 'text-primary',
+            in_progress: 'text-primary',
+            testing: 'text-info',
+            pruebas: 'text-info',
+            esperando_feedback: 'text-warning',
+            awaiting_feedback: 'text-warning',
+            completada: 'text-success',
+            complete: 'text-success',
+        };
+        return map[status] || 'text-muted';
+    }
+
     function getProjectById(projectId) {
         if (!projectId) {
             return null;
@@ -2004,6 +2073,7 @@
         } else {
             state.tasks.forEach((task) => {
                 const row = document.createElement('tr');
+                row.dataset.taskId = task.id;
 
                 const titleCell = document.createElement('td');
                 const strong = document.createElement('strong');
@@ -2024,6 +2094,7 @@
                     const assignSelect = document.createElement('select');
                     assignSelect.className = 'form-select form-select-sm js-task-assigned';
                     assignSelect.dataset.taskId = task.id;
+                    assignSelect.disabled = true;
 
                     const emptyOption = document.createElement('option');
                     emptyOption.value = '';
@@ -2052,6 +2123,7 @@
                     const statusSelect = createStatusSelect(state.taskStatuses, task.status);
                     statusSelect.classList.add('js-task-status');
                     statusSelect.dataset.taskId = task.id;
+                    statusSelect.disabled = true;
                     statusCell.appendChild(statusSelect);
                 } else {
                     statusCell.textContent = task.status ? titleize(task.status) : 'Sin estado';
@@ -2062,8 +2134,9 @@
                 if (canManageTasks) {
                     const dueInput = document.createElement('input');
                     dueInput.type = 'date';
-                    dueInput.className = 'form-control form-control-sm js-task-due';
+                    dueInput.className = 'form-control form-control-sm js-task-due js-task-due-date';
                     dueInput.dataset.taskId = task.id;
+                    dueInput.disabled = true;
                     if (task.due_date) {
                         dueInput.value = task.due_date;
                     }
@@ -2088,14 +2161,117 @@
                 const updatedBadge = document.createElement('span');
                 updatedBadge.className = 'badge bg-light text-muted';
                 updatedBadge.textContent = `Actualizado ${formatDate(task.updated_at, true)}`;
-                actionsCell.appendChild(updatedBadge);
+                if (canManageTasks) {
+                    const actionsWrapper = document.createElement('div');
+                    actionsWrapper.className = 'd-flex flex-wrap justify-content-end gap-1';
+                    const editButton = document.createElement('button');
+                    editButton.type = 'button';
+                    editButton.className = 'btn btn-xs btn-outline-primary js-task-edit';
+                    editButton.dataset.taskId = task.id;
+                    editButton.textContent = 'Editar';
+                    actionsWrapper.appendChild(editButton);
+                    const saveButton = document.createElement('button');
+                    saveButton.type = 'button';
+                    saveButton.className = 'btn btn-xs btn-success js-task-save d-none';
+                    saveButton.dataset.taskId = task.id;
+                    saveButton.textContent = 'Guardar';
+                    actionsWrapper.appendChild(saveButton);
+                    const deleteButton = document.createElement('button');
+                    deleteButton.type = 'button';
+                    deleteButton.className = 'btn btn-xs btn-outline-danger js-task-delete';
+                    deleteButton.dataset.taskId = task.id;
+                    deleteButton.textContent = 'Eliminar';
+                    actionsWrapper.appendChild(deleteButton);
+                    actionsWrapper.appendChild(updatedBadge);
+                    actionsCell.appendChild(actionsWrapper);
+                } else {
+                    actionsCell.appendChild(updatedBadge);
+                }
                 row.appendChild(actionsCell);
 
                 elements.taskTableBody.appendChild(row);
             });
         }
 
+        renderTaskSummary();
         updateCounters();
+    }
+
+    function getTaskRow(taskId) {
+        if (!taskId) {
+            return null;
+        }
+        const container = elements.tabContent || root;
+        if (!container) {
+            return null;
+        }
+        const row = container.querySelector(`#crm-tasks-table tr[data-task-id="${taskId}"]`);
+        if (row) {
+            return row;
+        }
+        const anchor = container.querySelector(`[data-task-id="${taskId}"]`);
+        return anchor ? anchor.closest('tr') : null;
+    }
+
+    function toggleTaskRowEdit(taskId, isEditing) {
+        const row = getTaskRow(taskId);
+        if (!row) {
+            return;
+        }
+        row.dataset.editing = isEditing ? 'true' : 'false';
+        const inputs = row.querySelectorAll('input[data-task-id], select[data-task-id], textarea[data-task-id]');
+        inputs.forEach((input) => {
+            input.disabled = !isEditing;
+        });
+        const editButton = row.querySelector(`.js-task-edit[data-task-id="${taskId}"]`);
+        const saveButton = row.querySelector(`.js-task-save[data-task-id="${taskId}"]`);
+        if (editButton) {
+            editButton.classList.toggle('d-none', isEditing);
+        }
+        if (saveButton) {
+            saveButton.classList.toggle('d-none', !isEditing);
+        }
+    }
+
+    function collectTaskRowPayload(taskId) {
+        const row = getTaskRow(taskId);
+        if (!row) {
+            return {};
+        }
+        const payload = {};
+        const statusSelect = row.querySelector('.js-task-status');
+        if (statusSelect) {
+            payload.status = statusSelect.value;
+        }
+        const assignedSelect = row.querySelector('.js-task-assigned');
+        if (assignedSelect) {
+            payload.assigned_to = assignedSelect.value || null;
+        }
+        const dueInput = row.querySelector('.js-task-due, .js-task-due-date');
+        if (dueInput) {
+            payload.due_date = dueInput.value || null;
+        }
+        return payload;
+    }
+
+    function setTaskRowLoading(taskId, isLoading) {
+        const row = getTaskRow(taskId);
+        if (!row) {
+            return;
+        }
+        row.classList.toggle('opacity-50', isLoading);
+        const controls = row.querySelectorAll('button, input, select, textarea');
+        controls.forEach((control) => {
+            control.disabled = isLoading || (control.dataset.taskId && row.dataset.editing !== 'true' && (control.tagName === 'INPUT' || control.tagName === 'SELECT' || control.tagName === 'TEXTAREA'));
+        });
+    }
+
+    function updateTaskInCrmState(taskId, updates) {
+        const index = state.tasks.findIndex((task) => String(task.id) === String(taskId));
+        if (index === -1) {
+            return;
+        }
+        state.tasks[index] = { ...state.tasks[index], ...updates };
     }
 
     function createStatusBadge(status, map) {
@@ -4220,6 +4396,15 @@
         });
     }
 
+    if (elements.taskModal) {
+        elements.taskModal.addEventListener('shown.bs.modal', () => {
+            const titleInput = elements.taskForm ? elements.taskForm.querySelector('#task-title') : null;
+            if (titleInput) {
+                titleInput.focus();
+            }
+        });
+    }
+
     if (elements.taskForm && canManageTasks) {
         elements.taskForm.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -4275,6 +4460,14 @@
                 .then(() => {
                     showToast('Tarea creada', true);
                     elements.taskForm.reset();
+                    if (elements.taskModal) {
+                        const modal = window.bootstrap
+                            ? window.bootstrap.Modal.getInstance(elements.taskModal) || new window.bootstrap.Modal(elements.taskModal)
+                            : null;
+                        if (modal) {
+                            modal.hide();
+                        }
+                    }
                     return loadTasks();
                 })
                 .catch((error) => {
@@ -4528,48 +4721,6 @@
                         loadProjects();
                     });
             }
-            if (canManageTasks && target.classList.contains('js-task-status')) {
-                const taskId = serializeNumber(target.dataset.taskId);
-                const status = target.value;
-                if (!taskId || !status) {
-                    return;
-                }
-                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { status } })
-                    .then(() => loadTasks())
-                    .catch((error) => {
-                        console.error('Error actualizando tarea', error);
-                        showToast(error.message || 'No se pudo actualizar la tarea', false);
-                        loadTasks();
-                    });
-            }
-            if (canManageTasks && target.classList.contains('js-task-assigned')) {
-                const taskId = serializeNumber(target.dataset.taskId);
-                if (!taskId) {
-                    return;
-                }
-                const assignedTo = target.value || null;
-                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { assigned_to: assignedTo } })
-                    .then(() => loadTasks())
-                    .catch((error) => {
-                        console.error('Error asignando tarea', error);
-                        showToast(error.message || 'No se pudo asignar la tarea', false);
-                        loadTasks();
-                    });
-            }
-            if (canManageTasks && target.classList.contains('js-task-due')) {
-                const taskId = serializeNumber(target.dataset.taskId);
-                if (!taskId) {
-                    return;
-                }
-                const dueDate = target.value || null;
-                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { due_date: dueDate } })
-                    .then(() => loadTasks())
-                    .catch((error) => {
-                        console.error('Error reprogramando tarea', error);
-                        showToast(error.message || 'No se pudo reprogramar la tarea', false);
-                        loadTasks();
-                    });
-            }
             if (target.classList.contains('proposal-status-select')) {
                 const proposalId = serializeNumber(target.dataset.proposalId);
                 const status = target.value;
@@ -4587,6 +4738,67 @@
                 updateProposalStatus(proposalId, status, () => openProposalDetail(proposalId));
             }
         });
+    }
+
+    function handleTaskInlineChange(event) {
+        const target = event.target;
+        if (!canManageTasks) {
+            return;
+        }
+        if (target.classList.contains('js-task-status')) {
+            const taskId = serializeNumber(target.dataset.taskId);
+            const status = target.value;
+            if (!taskId || !status) {
+                return;
+            }
+            const row = getTaskRow(taskId);
+            if (row && row.dataset.editing === 'true') {
+                return;
+            }
+            request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { status } })
+                .then(() => loadTasks())
+                .catch((error) => {
+                    console.error('Error actualizando tarea', error);
+                    showToast(error.message || 'No se pudo actualizar la tarea', false);
+                    loadTasks();
+                });
+        }
+        if (target.classList.contains('js-task-assigned')) {
+            const taskId = serializeNumber(target.dataset.taskId);
+            if (!taskId) {
+                return;
+            }
+            const row = getTaskRow(taskId);
+            if (row && row.dataset.editing === 'true') {
+                return;
+            }
+            const assignedTo = target.value || null;
+            request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { assigned_to: assignedTo } })
+                .then(() => loadTasks())
+                .catch((error) => {
+                    console.error('Error asignando tarea', error);
+                    showToast(error.message || 'No se pudo asignar la tarea', false);
+                    loadTasks();
+                });
+        }
+        if (target.classList.contains('js-task-due') || target.classList.contains('js-task-due-date')) {
+            const taskId = serializeNumber(target.dataset.taskId);
+            if (!taskId) {
+                return;
+            }
+            const row = getTaskRow(taskId);
+            if (row && row.dataset.editing === 'true') {
+                return;
+            }
+            const dueDate = target.value || null;
+            request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { due_date: dueDate } })
+                .then(() => loadTasks())
+                .catch((error) => {
+                    console.error('Error reprogramando tarea', error);
+                    showToast(error.message || 'No se pudo reprogramar la tarea', false);
+                    loadTasks();
+                });
+        }
     }
 
     function handleProjectTaskActionClick(event) {
@@ -4641,6 +4853,86 @@
         }
     }
 
+    function handleTaskActionClick(event) {
+        const taskEdit = event.target.closest('.js-task-edit');
+        if (taskEdit) {
+            const taskId = serializeNumber(taskEdit.dataset.taskId);
+            if (!taskId) {
+                return;
+            }
+            toggleTaskRowEdit(taskId, true);
+            return;
+        }
+        const taskSave = event.target.closest('.js-task-save');
+        if (taskSave) {
+            const taskId = serializeNumber(taskSave.dataset.taskId);
+            if (!taskId) {
+                return;
+            }
+            const payload = collectTaskRowPayload(taskId);
+            setTaskRowLoading(taskId, true);
+            request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: payload })
+                .then((data) => {
+                    const updated = data.data || {};
+                    updateTaskInCrmState(taskId, {
+                        status: payload.status || updated.status,
+                        assigned_to: payload.assigned_to ?? updated.assigned_to,
+                        assigned_name: updated.assigned_name,
+                        due_date: payload.due_date || updated.due_date,
+                        updated_at: updated.updated_at,
+                    });
+                    const row = getTaskRow(taskId);
+                    if (row && updated.updated_at) {
+                        const badge = row.querySelector('.badge');
+                        if (badge) {
+                            badge.textContent = `Actualizado ${formatDate(updated.updated_at, true)}`;
+                        }
+                    }
+                    toggleTaskRowEdit(taskId, false);
+                    showToast('Tarea actualizada', true);
+                })
+                .catch((error) => {
+                    console.error('No se pudo actualizar la tarea', error);
+                    showToast(error.message || 'No se pudo actualizar la tarea', false);
+                })
+                .finally(() => {
+                    setTaskRowLoading(taskId, false);
+                });
+            return;
+        }
+        const taskDelete = event.target.closest('.js-task-delete');
+        if (taskDelete) {
+            const taskId = serializeNumber(taskDelete.dataset.taskId);
+            if (!taskId) {
+                return;
+            }
+            const confirmed = window.confirm('¿Quieres eliminar esta tarea?');
+            if (!confirmed) {
+                return;
+            }
+            setTaskRowLoading(taskId, true);
+            request(`/crm/tasks/${taskId}`, { method: 'DELETE' })
+                .then(() => {
+                    const row = getTaskRow(taskId);
+                    if (row) {
+                        row.remove();
+                    }
+                    state.tasks = state.tasks.filter((task) => String(task.id) !== String(taskId));
+                    if (!state.tasks.length) {
+                        renderTasks();
+                    } else {
+                        updateCounters();
+                    }
+                    showToast('Tarea eliminada', true);
+                })
+                .catch((error) => {
+                    console.error('No se pudo eliminar la tarea', error);
+                    showToast(error.message || 'No se pudo eliminar la tarea', false);
+                    setTaskRowLoading(taskId, false);
+                });
+        }
+    }
+
     root.addEventListener('click', (event) => {
         const projectRow = event.target.closest('#crm-projects-table tbody tr');
         if (projectRow && !event.target.closest('select') && !event.target.closest('a') && !event.target.closest('button')) {
@@ -4666,6 +4958,16 @@
     if (elements.projectDetailModal) {
         elements.projectDetailModal.addEventListener('click', (event) => {
             handleProjectTaskActionClick(event);
+        });
+    }
+
+    if (canManageTasks && (elements.tabContent || document)) {
+        const taskEventRoot = elements.tabContent || document;
+        taskEventRoot.addEventListener('click', (event) => {
+            handleTaskActionClick(event);
+        });
+        taskEventRoot.addEventListener('change', (event) => {
+            handleTaskInlineChange(event);
         });
     }
 
