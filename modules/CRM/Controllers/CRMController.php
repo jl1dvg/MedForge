@@ -127,8 +127,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
-        $name = trim((string) ($payload['name'] ?? ''));
-        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
+        $name = trim((string)($payload['name'] ?? ''));
+        $hcNumber = isset($payload['hc_number']) ? trim((string)$payload['hc_number']) : '';
 
         if ($name === '' || $hcNumber === '') {
             $this->json(['ok' => false, 'error' => 'Los campos name y hc_number son requeridos'], 422);
@@ -166,7 +166,7 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
-        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
+        $hcNumber = isset($payload['hc_number']) ? trim((string)$payload['hc_number']) : '';
 
         if ($hcNumber === '') {
             $this->json(['ok' => false, 'error' => 'hc_number es requerido'], 422);
@@ -263,7 +263,7 @@ class CRMController extends BaseController
             $patient = $profile['patient'] ?? null;
             $computed = $this->buildLeadComputedProfile(is_array($patient) ? $patient : null);
             $lead = $profile['lead'] ?? [];
-            $hcNumber = is_array($lead) && !empty($lead['hc_number']) ? (string) $lead['hc_number'] : null;
+            $hcNumber = is_array($lead) && !empty($lead['hc_number']) ? (string)$lead['hc_number'] : null;
 
             $projects = [];
             if ($leadId > 0) {
@@ -311,7 +311,7 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
-        $status = isset($payload['status']) ? trim((string) $payload['status']) : '';
+        $status = isset($payload['status']) ? trim((string)$payload['status']) : '';
         if ($status === '') {
             $this->json(['ok' => false, 'error' => 'El estado es requerido', 'error_code' => 'status_required'], 422);
             return;
@@ -414,10 +414,10 @@ class CRMController extends BaseController
 
         try {
             $payload = $this->getBody();
-            $status = isset($payload['status']) ? (string) $payload['status'] : ($payload['template_key'] ?? null);
-            $to = isset($payload['to']) ? trim((string) $payload['to']) : '';
-            $subject = isset($payload['subject']) ? trim((string) $payload['subject']) : '';
-            $body = isset($payload['body']) ? trim((string) $payload['body']) : '';
+            $status = isset($payload['status']) ? (string)$payload['status'] : ($payload['template_key'] ?? null);
+            $to = isset($payload['to']) ? trim((string)$payload['to']) : '';
+            $subject = isset($payload['subject']) ? trim((string)$payload['subject']) : '';
+            $body = isset($payload['body']) ? trim((string)$payload['body']) : '';
 
             $lead = $this->leads->findById($leadId);
             if (!$lead) {
@@ -465,7 +465,7 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.leads.manage');
 
         $payload = $this->getBody();
-        $hcNumber = isset($payload['hc_number']) ? trim((string) $payload['hc_number']) : '';
+        $hcNumber = isset($payload['hc_number']) ? trim((string)$payload['hc_number']) : '';
 
         if ($hcNumber === '') {
             $this->json(['ok' => false, 'error' => 'hc_number es requerido'], 422);
@@ -574,7 +574,7 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
-        $title = trim((string) ($payload['title'] ?? ''));
+        $title = trim((string)($payload['title'] ?? ''));
 
         if ($title === '') {
             $this->json(['ok' => false, 'error' => 'El título es requerido'], 422);
@@ -618,8 +618,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
-        $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
-        $status = isset($payload['status']) ? (string) $payload['status'] : '';
+        $projectId = isset($payload['project_id']) ? (int)$payload['project_id'] : 0;
+        $status = isset($payload['status']) ? (string)$payload['status'] : '';
 
         if ($projectId <= 0 || $status === '') {
             $this->json(['ok' => false, 'error' => 'project_id y status son requeridos'], 422);
@@ -636,6 +636,43 @@ class CRMController extends BaseController
             $this->auditCrm('crm_project_status_updated', [
                 'project_id' => $projectId,
                 'status' => $status,
+            ]);
+            $this->json(['ok' => true, 'data' => $project]);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el proyecto'], 500);
+        }
+    }
+
+    public function updateProject(int $projectId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
+
+        if ($projectId <= 0) {
+            $this->json(['ok' => false, 'error' => 'ID inválido'], 422);
+            return;
+        }
+
+        $payload = $this->getBody();
+        $payload = array_intersect_key($payload, array_flip([
+            'status',
+            'owner_id',
+            'start_date',
+            'due_date',
+            'description',
+            'allow_clear',
+        ]));
+
+        try {
+            $project = $this->projects->update($projectId, $payload);
+            if (!$project) {
+                $this->json(['ok' => false, 'error' => 'Proyecto no encontrado'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_project_updated', [
+                'project_id' => $projectId,
+                'fields' => array_keys($payload),
             ]);
             $this->json(['ok' => true, 'data' => $project]);
         } catch (Throwable $e) {
@@ -701,18 +738,18 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.tasks.manage');
 
         $payload = $this->getBody();
-        $title = trim((string) ($payload['title'] ?? ''));
+        $title = trim((string)($payload['title'] ?? ''));
 
         if ($title === '') {
             $this->json(['ok' => false, 'error' => 'El título de la tarea es requerido'], 422);
             return;
         }
 
-        $projectId = isset($payload['project_id']) ? (int) $payload['project_id'] : 0;
-        $leadId = isset($payload['lead_id']) ? (int) $payload['lead_id'] : 0;
-        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
-        $entityType = trim((string) ($payload['entity_type'] ?? ''));
-        $entityId = trim((string) ($payload['entity_id'] ?? ''));
+        $projectId = isset($payload['project_id']) ? (int)$payload['project_id'] : 0;
+        $leadId = isset($payload['lead_id']) ? (int)$payload['lead_id'] : 0;
+        $hcNumber = trim((string)($payload['hc_number'] ?? ''));
+        $entityType = trim((string)($payload['entity_type'] ?? ''));
+        $entityId = trim((string)($payload['entity_id'] ?? ''));
         if ($projectId <= 0 && $leadId <= 0 && $hcNumber === '' && ($entityType === '' || $entityId === '')) {
             $this->json(['ok' => false, 'error' => 'Debes asociar la tarea a un proyecto, lead o paciente'], 422);
             return;
@@ -721,10 +758,10 @@ class CRMController extends BaseController
         try {
             if ($entityType === '' && $entityId === '' && $leadId > 0) {
                 $entityType = 'lead';
-                $entityId = (string) $leadId;
+                $entityId = (string)$leadId;
             } elseif ($entityType === '' && $entityId === '' && $projectId > 0) {
                 $entityType = 'project';
-                $entityId = (string) $projectId;
+                $entityId = (string)$projectId;
             }
 
             $task = $this->taskService->create(
@@ -781,8 +818,8 @@ class CRMController extends BaseController
 
             if (!$this->isAdminUser()) {
                 $userId = $this->getCurrentUserId();
-                $assigned = isset($task['assigned_to']) ? (int) $task['assigned_to'] : 0;
-                $created = isset($task['created_by']) ? (int) $task['created_by'] : 0;
+                $assigned = isset($task['assigned_to']) ? (int)$task['assigned_to'] : 0;
+                $created = isset($task['created_by']) ? (int)$task['created_by'] : 0;
                 if ($assigned !== $userId && $created !== $userId) {
                     $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
                     return;
@@ -811,8 +848,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.tasks.manage');
 
         $payload = $this->getBody();
-        $taskId = isset($payload['task_id']) ? (int) $payload['task_id'] : 0;
-        $status = isset($payload['status']) ? (string) $payload['status'] : '';
+        $taskId = isset($payload['task_id']) ? (int)$payload['task_id'] : 0;
+        $status = isset($payload['status']) ? (string)$payload['status'] : '';
 
         if ($taskId <= 0 || $status === '') {
             $this->json(['ok' => false, 'error' => 'task_id y status son requeridos'], 422);
@@ -828,8 +865,8 @@ class CRMController extends BaseController
 
             if (!$this->isAdminUser()) {
                 $userId = $this->getCurrentUserId();
-                $assigned = isset($task['assigned_to']) ? (int) $task['assigned_to'] : 0;
-                $created = isset($task['created_by']) ? (int) $task['created_by'] : 0;
+                $assigned = isset($task['assigned_to']) ? (int)$task['assigned_to'] : 0;
+                $created = isset($task['created_by']) ? (int)$task['created_by'] : 0;
                 if ($assigned !== $userId && $created !== $userId) {
                     $this->json(['ok' => false, 'error' => 'Tarea no encontrada'], 404);
                     return;
@@ -886,8 +923,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.tickets.manage');
 
         $payload = $this->getBody();
-        $subject = trim((string) ($payload['subject'] ?? ''));
-        $message = trim((string) ($payload['message'] ?? ''));
+        $subject = trim((string)($payload['subject'] ?? ''));
+        $message = trim((string)($payload['message'] ?? ''));
 
         if ($subject === '' || $message === '') {
             $this->json(['ok' => false, 'error' => 'subject y message son requeridos'], 422);
@@ -925,8 +962,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.tickets.manage');
 
         $payload = $this->getBody();
-        $ticketId = isset($payload['ticket_id']) ? (int) $payload['ticket_id'] : 0;
-        $message = trim((string) ($payload['message'] ?? ''));
+        $ticketId = isset($payload['ticket_id']) ? (int)$payload['ticket_id'] : 0;
+        $message = trim((string)($payload['message'] ?? ''));
 
         if ($ticketId <= 0 || $message === '') {
             $this->json(['ok' => false, 'error' => 'ticket_id y message son requeridos'], 422);
@@ -943,7 +980,7 @@ class CRMController extends BaseController
             $this->tickets->addMessage($ticketId, $this->getCurrentUserId(), $message);
 
             if (!empty($payload['status'])) {
-                $this->tickets->updateStatus($ticketId, (string) $payload['status']);
+                $this->tickets->updateStatus($ticketId, (string)$payload['status']);
             }
 
             $updated = $this->tickets->find($ticketId);
@@ -1015,7 +1052,7 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
-        $html = (string) ($payload['html'] ?? '');
+        $html = (string)($payload['html'] ?? '');
 
         if (trim($html) === '') {
             $this->json(['ok' => false, 'error' => 'El cuerpo HTML es requerido'], 422);
@@ -1059,8 +1096,8 @@ class CRMController extends BaseController
         $this->requireCrmPermission('crm.projects.manage');
 
         $payload = $this->getBody();
-        $proposalId = isset($payload['proposal_id']) ? (int) $payload['proposal_id'] : 0;
-        $status = (string) ($payload['status'] ?? '');
+        $proposalId = isset($payload['proposal_id']) ? (int)$payload['proposal_id'] : 0;
+        $status = (string)($payload['status'] ?? '');
 
         if ($proposalId <= 0 || $status === '') {
             $this->json(['ok' => false, 'error' => 'Datos incompletos'], 422);
@@ -1143,7 +1180,7 @@ class CRMController extends BaseController
      */
     private function buildLeadMailDraft(array $lead, ?string $statusOverride = null): array
     {
-        $name = trim((string) ($lead['name'] ?? ''));
+        $name = trim((string)($lead['name'] ?? ''));
         $greeting = $name !== '' ? 'Hola ' . $name : 'Hola';
 
         $status = $statusOverride !== null && $statusOverride !== ''
@@ -1175,7 +1212,7 @@ class CRMController extends BaseController
         $body[] = 'Si tienes dudas, responde a este correo y con gusto te ayudamos.';
 
         return [
-            'to' => trim((string) ($lead['email'] ?? '')),
+            'to' => trim((string)($lead['email'] ?? '')),
             'subject' => implode(' | ', array_filter($subjectParts)),
             'body' => implode("\n\n", array_filter($body)),
             'context' => [
@@ -1198,9 +1235,9 @@ class CRMController extends BaseController
 
         $birthdate = '';
         if (!empty($patient['fecha_nacimiento'])) {
-            $birthdate = (string) $patient['fecha_nacimiento'];
+            $birthdate = (string)$patient['fecha_nacimiento'];
         } elseif (!empty($patient['birthdate'])) {
-            $birthdate = (string) $patient['birthdate'];
+            $birthdate = (string)$patient['birthdate'];
         }
 
         $age = null;
@@ -1214,11 +1251,11 @@ class CRMController extends BaseController
             }
         }
 
-        $address = trim((string) ($patient['address'] ?? $patient['direccion'] ?? $patient['domicilio'] ?? ''));
-        $city = trim((string) ($patient['city'] ?? $patient['ciudad'] ?? ''));
-        $state = trim((string) ($patient['state'] ?? $patient['provincia'] ?? $patient['region'] ?? ''));
-        $zip = trim((string) ($patient['zip'] ?? $patient['codigo_postal'] ?? $patient['postal_code'] ?? ''));
-        $country = trim((string) ($patient['country'] ?? $patient['pais'] ?? ''));
+        $address = trim((string)($patient['address'] ?? $patient['direccion'] ?? $patient['domicilio'] ?? ''));
+        $city = trim((string)($patient['city'] ?? $patient['ciudad'] ?? ''));
+        $state = trim((string)($patient['state'] ?? $patient['provincia'] ?? $patient['region'] ?? ''));
+        $zip = trim((string)($patient['zip'] ?? $patient['codigo_postal'] ?? $patient['postal_code'] ?? ''));
+        $country = trim((string)($patient['country'] ?? $patient['pais'] ?? ''));
 
         $displayParts = [];
         if ($address !== '') {
@@ -1244,7 +1281,7 @@ class CRMController extends BaseController
 
     private function getCurrentUserId(): ?int
     {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
     }
 
     private function getAssignableUsers(): array
@@ -1270,7 +1307,7 @@ class CRMController extends BaseController
             return null;
         }
 
-        $value = trim((string) $_GET[$key]);
+        $value = trim((string)$_GET[$key]);
 
         return $value === '' ? null : $value;
     }
@@ -1285,6 +1322,6 @@ class CRMController extends BaseController
             return null;
         }
 
-        return (int) $_GET[$key];
+        return (int)$_GET[$key];
     }
 }

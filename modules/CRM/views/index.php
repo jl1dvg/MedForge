@@ -1183,45 +1183,96 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                 </ul>
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="project-detail-overview" role="tabpanel" aria-labelledby="project-detail-overview-tab">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                            <div>
+                                <h6 class="text-uppercase text-muted small mb-1">Overview</h6>
+                                <div class="fw-semibold" id="project-detail-title">—</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 align-items-center" id="project-detail-action-bar">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="project-detail-edit-btn">
+                                    <i class="mdi mdi-pencil-outline"></i> Editar
+                                </button>
+                                <select class="form-select form-select-sm" id="project-detail-status-select" style="min-width: 160px;" disabled>
+                                    <option value="">Cambiar estado</option>
+                                </select>
+                                <select class="form-select form-select-sm" id="project-detail-owner-select" style="min-width: 180px;" disabled>
+                                    <option value="">Asignar responsable</option>
+                                </select>
+                                <button type="button" class="btn btn-success btn-sm d-none" id="project-detail-save-btn">
+                                    <i class="mdi mdi-content-save-outline"></i> Guardar
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="project-detail-cancel-btn">
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
                         <div class="row g-3">
-                            <div class="col-lg-8">
+                            <div class="col-lg-7">
                                 <div class="card border h-100">
-                                    <div class="card-header">
-                                        <strong id="project-detail-title">—</strong>
-                                    </div>
                                     <div class="card-body">
+                                        <dl class="row mb-0">
+                                            <dt class="col-sm-5 text-muted">Proyecto / ID</dt>
+                                            <dd class="col-sm-7 fw-semibold" id="project-detail-project-id">—</dd>
+                                            <dt class="col-sm-5 text-muted">Solicitud #</dt>
+                                            <dd class="col-sm-7" id="project-detail-request">—</dd>
+                                            <dt class="col-sm-5 text-muted">Paciente / Lead</dt>
+                                            <dd class="col-sm-7" id="project-detail-lead">—</dd>
+                                            <dt class="col-sm-5 text-muted">Estado</dt>
+                                            <dd class="col-sm-7">
+                                                <span id="project-detail-status-text">—</span>
+                                            </dd>
+                                            <dt class="col-sm-5 text-muted">Responsable</dt>
+                                            <dd class="col-sm-7">
+                                                <span id="project-detail-owner">—</span>
+                                            </dd>
+                                            <dt class="col-sm-5 text-muted">Inicio</dt>
+                                            <dd class="col-sm-7">
+                                                <span id="project-detail-start">—</span>
+                                                <input type="date" class="form-control form-control-sm d-none mt-1" id="project-detail-start-input">
+                                            </dd>
+                                            <dt class="col-sm-5 text-muted">Entrega</dt>
+                                            <dd class="col-sm-7">
+                                                <span id="project-detail-due">—</span>
+                                                <input type="date" class="form-control form-control-sm d-none mt-1" id="project-detail-due-input">
+                                            </dd>
+                                            <dt class="col-sm-5 text-muted">Actualizado</dt>
+                                            <dd class="col-sm-7" id="project-detail-updated">—</dd>
+                                        </dl>
+                                        <hr class="my-3">
                                         <h6 class="text-muted text-uppercase small mb-2">Descripción</h6>
                                         <p class="mb-0" id="project-detail-description">—</p>
+                                        <textarea class="form-control form-control-sm d-none mt-2" id="project-detail-description-input" rows="3"></textarea>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-lg-4">
-                                <div class="card border h-100">
-                                    <div class="card-header"><strong>Resumen</strong></div>
-                                    <div class="card-body small">
-                                        <div class="mb-2">
-                                            <div class="text-muted text-uppercase small">Estado</div>
-                                            <div id="project-detail-status-text" class="fw-semibold">—</div>
+                            <div class="col-lg-5">
+                                <div class="card border mb-3">
+                                    <div class="card-header d-flex align-items-center justify-content-between">
+                                        <strong>Tareas</strong>
+                                        <span class="badge bg-light text-muted" id="project-detail-tasks-summary">—</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-muted small">Abiertas / Total</span>
+                                            <span class="fw-semibold" id="project-detail-tasks-count">0 / 0</span>
                                         </div>
-                                        <div class="mb-2">
-                                            <div class="text-muted text-uppercase small">Lead</div>
-                                            <div id="project-detail-lead" class="fw-semibold">—</div>
+                                        <div class="progress mt-2" style="height: 6px;">
+                                            <div class="progress-bar bg-success" role="progressbar" style="width: 0%;" id="project-detail-tasks-progress"></div>
                                         </div>
-                                        <div class="mb-2">
-                                            <div class="text-muted text-uppercase small">Responsable</div>
-                                            <div id="project-detail-owner" class="fw-semibold">—</div>
+                                    </div>
+                                </div>
+                                <div class="card border">
+                                    <div class="card-header d-flex align-items-center justify-content-between">
+                                        <strong>Días restantes</strong>
+                                        <span class="badge bg-light text-muted" id="project-detail-days-label">—</span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-muted small">Hasta entrega</span>
+                                            <span class="fw-semibold" id="project-detail-days-remaining">—</span>
                                         </div>
-                                        <div class="mb-2">
-                                            <div class="text-muted text-uppercase small">Inicio</div>
-                                            <div id="project-detail-start" class="fw-semibold">—</div>
-                                        </div>
-                                        <div class="mb-2">
-                                            <div class="text-muted text-uppercase small">Entrega</div>
-                                            <div id="project-detail-due" class="fw-semibold">—</div>
-                                        </div>
-                                        <div>
-                                            <div class="text-muted text-uppercase small">Actualizado</div>
-                                            <div id="project-detail-updated" class="fw-semibold">—</div>
+                                        <div class="progress mt-2" style="height: 6px;">
+                                            <div class="progress-bar bg-info" role="progressbar" style="width: 0%;" id="project-detail-days-progress"></div>
                                         </div>
                                     </div>
                                 </div>
@@ -1230,10 +1281,20 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                     </div>
                     <div class="tab-pane fade" id="project-detail-tasks" role="tabpanel" aria-labelledby="project-detail-tasks-tab">
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                            <div class="text-muted small">Tareas vinculadas al proyecto.</div>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="project-tasks-reload">
-                                <i class="mdi mdi-refresh"></i> Recargar
-                            </button>
+                            <div class="d-flex flex-wrap gap-2 align-items-center" id="project-tasks-filters">
+                                <button type="button" class="btn btn-outline-secondary btn-sm active" data-status-filter="all">Todas <span class="badge bg-light text-muted ms-1" data-count="all">0</span></button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-status-filter="pendiente">Pendiente <span class="badge bg-light text-muted ms-1" data-count="pendiente">0</span></button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-status-filter="en_progreso">En progreso <span class="badge bg-light text-muted ms-1" data-count="en_progreso">0</span></button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-status-filter="completada">Completada <span class="badge bg-light text-muted ms-1" data-count="completada">0</span></button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="project-tasks-export">
+                                    <i class="mdi mdi-file-export-outline"></i> Exportar CSV
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="project-tasks-reload">
+                                    <i class="mdi mdi-refresh"></i> Recargar
+                                </button>
+                            </div>
                         </div>
                         <div id="project-tasks-loading" class="text-muted small mb-2 d-none">
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -1251,11 +1312,12 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                         <th>Asignado</th>
                                         <th>Prioridad</th>
                                         <th>Tags</th>
+                                        <th class="text-end">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="project-tasks-body">
                                     <tr class="text-center text-muted" data-empty-row>
-                                        <td colspan="8">Sin tareas registradas.</td>
+                                        <td colspan="9">Sin tareas registradas.</td>
                                     </tr>
                                 </tbody>
                             </table>
