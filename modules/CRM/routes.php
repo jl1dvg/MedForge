@@ -76,6 +76,10 @@ return static function (Router $router, ?\PDO $unusedPdo = null): void {
         (new CRMController($pdo))->updateProjectStatus();
     });
 
+    $router->match(['PATCH'], '/crm/projects/{id}', static function (\PDO $pdo, string $id): void {
+        (new CRMController($pdo))->updateProject((int) $id);
+    });
+
     $router->get('/crm/tasks', static function (\PDO $pdo): void {
         (new CRMController($pdo))->listTasks();
     });

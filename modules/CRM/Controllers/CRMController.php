@@ -643,6 +643,43 @@ class CRMController extends BaseController
         }
     }
 
+    public function updateProject(int $projectId): void
+    {
+        $this->requireAuth();
+        $this->requireCrmPermission('crm.projects.manage');
+
+        if ($projectId <= 0) {
+            $this->json(['ok' => false, 'error' => 'ID inválido'], 422);
+            return;
+        }
+
+        $payload = $this->getBody();
+        $payload = array_intersect_key($payload, array_flip([
+            'status',
+            'owner_id',
+            'start_date',
+            'due_date',
+            'description',
+            'allow_clear',
+        ]));
+
+        try {
+            $project = $this->projects->update($projectId, $payload);
+            if (!$project) {
+                $this->json(['ok' => false, 'error' => 'Proyecto no encontrado'], 404);
+                return;
+            }
+
+            $this->auditCrm('crm_project_updated', [
+                'project_id' => $projectId,
+                'fields' => array_keys($payload),
+            ]);
+            $this->json(['ok' => true, 'data' => $project]);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el proyecto'], 500);
+        }
+    }
+
     public function listTasks(): void
     {
         $this->requireAuth();

@@ -406,6 +406,84 @@ class ProjectModel
         return $this->find($id);
     }
 
+    public function update(int $id, array $data): ?array
+    {
+        $project = $this->find($id);
+        if (!$project) {
+            return null;
+        }
+
+        $allowClear = !empty($data['allow_clear']);
+        $fields = [];
+        $params = [':id' => $id];
+        $types = [];
+
+        $updates = [
+            'status' => [
+                'present' => array_key_exists('status', $data),
+                'value' => $this->sanitizeStatus($data['status'] ?? null),
+            ],
+            'owner_id' => [
+                'present' => array_key_exists('owner_id', $data),
+                'value' => !empty($data['owner_id']) ? (int) $data['owner_id'] : null,
+            ],
+            'start_date' => [
+                'present' => array_key_exists('start_date', $data),
+                'value' => $this->nullableString($data['start_date'] ?? null),
+            ],
+            'due_date' => [
+                'present' => array_key_exists('due_date', $data),
+                'value' => $this->nullableString($data['due_date'] ?? null),
+            ],
+            'description' => [
+                'present' => array_key_exists('description', $data),
+                'value' => $this->nullableString($data['description'] ?? null),
+            ],
+        ];
+        $typeMap = [
+            'status' => PDO::PARAM_STR,
+            'owner_id' => PDO::PARAM_INT,
+            'start_date' => PDO::PARAM_STR,
+            'due_date' => PDO::PARAM_STR,
+            'description' => PDO::PARAM_STR,
+        ];
+
+        foreach ($updates as $column => $entry) {
+            if (empty($entry['present'])) {
+                continue;
+            }
+
+            $value = $entry['value'] ?? null;
+            $current = $project[$column] ?? null;
+
+            if ($allowClear && ($value === null || $value === '')) {
+                $value = null;
+            } elseif ($current !== null && $current !== '' && $current === $value) {
+                continue;
+            }
+
+            $fields[] = $column . ' = :' . $column;
+            $params[':' . $column] = $value;
+            $types[':' . $column] = $value === null ? PDO::PARAM_NULL : ($typeMap[$column] ?? PDO::PARAM_STR);
+        }
+
+        if (!$fields) {
+            return $project;
+        }
+
+        $sql = 'UPDATE crm_projects SET ' . implode(', ', $fields) . ' WHERE id = :id';
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            $type = $types[$key] ?? (is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+            $stmt->bindValue($key, $value, $type);
+        }
+
+        $stmt->execute();
+
+        return $this->find($id);
+    }
+
     private function sanitizeStatus(?string $status): string
     {
         if (!$status) {
