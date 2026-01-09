@@ -38,9 +38,12 @@ class TaskModel
                 t.id,
                 t.company_id,
                 t.project_id,
+                t.entity_type,
+                t.entity_id,
                 t.lead_id,
                 t.customer_id,
                 t.hc_number,
+                t.patient_id,
                 t.form_id,
                 t.source_module,
                 t.source_ref_id,
@@ -82,6 +85,16 @@ class TaskModel
             $params[':project'] = (int) $filters['project_id'];
         }
 
+        if (!empty($filters['entity_type'])) {
+            $sql .= ' AND t.entity_type = :entity_type';
+            $params[':entity_type'] = (string) $filters['entity_type'];
+        }
+
+        if (!empty($filters['entity_id'])) {
+            $sql .= ' AND t.entity_id = :entity_id';
+            $params[':entity_id'] = (string) $filters['entity_id'];
+        }
+
         if (!empty($filters['assigned_to'])) {
             $sql .= ' AND t.assigned_to = :assigned';
             $params[':assigned'] = (int) $filters['assigned_to'];
@@ -100,6 +113,11 @@ class TaskModel
         if (!empty($filters['hc_number'])) {
             $sql .= ' AND t.hc_number = :hc_number';
             $params[':hc_number'] = (string) $filters['hc_number'];
+        }
+
+        if (!empty($filters['patient_id'])) {
+            $sql .= ' AND t.patient_id = :patient_id';
+            $params[':patient_id'] = (string) $filters['patient_id'];
         }
 
         if (!empty($filters['form_id'])) {
@@ -195,9 +213,12 @@ class TaskModel
                 t.id,
                 t.company_id,
                 t.project_id,
+                t.entity_type,
+                t.entity_id,
                 t.lead_id,
                 t.customer_id,
                 t.hc_number,
+                t.patient_id,
                 t.form_id,
                 t.source_module,
                 t.source_ref_id,
@@ -260,6 +281,8 @@ class TaskModel
         $priority = $this->sanitizePriority($data['priority'] ?? null);
         $assignedTo = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
         $project = !empty($data['project_id']) ? (int) $data['project_id'] : null;
+        $entityType = $this->nullableString($data['entity_type'] ?? null);
+        $entityId = $this->nullableString($data['entity_id'] ?? null);
         $leadId = !empty($data['lead_id']) ? (int) $data['lead_id'] : null;
         $customerId = !empty($data['customer_id']) ? (int) $data['customer_id'] : null;
 
@@ -283,9 +306,12 @@ class TaskModel
                 (
                     company_id,
                     project_id,
+                    entity_type,
+                    entity_id,
                     lead_id,
                     customer_id,
                     hc_number,
+                    patient_id,
                     form_id,
                     source_module,
                     source_ref_id,
@@ -309,9 +335,12 @@ class TaskModel
                 (
                     :company_id,
                     :project_id,
+                    :entity_type,
+                    :entity_id,
                     :lead_id,
                     :customer_id,
                     :hc_number,
+                    :patient_id,
                     :form_id,
                     :source_module,
                     :source_ref_id,
@@ -335,9 +364,12 @@ class TaskModel
 
         $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
         $stmt->bindValue(':project_id', $project, $project ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':entity_type', $entityType, $entityType !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':entity_id', $entityId, $entityId !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':lead_id', $leadId, $leadId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':customer_id', $customerId, $customerId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $hcNumber = $this->nullableString($data['hc_number'] ?? null);
+        $patientId = $this->nullableString($data['patient_id'] ?? null);
         $sourceModule = $this->nullableString($data['source_module'] ?? null);
         $sourceRef = $this->nullableString($data['source_ref_id'] ?? null);
         $episodeType = $this->nullableString($data['episode_type'] ?? null);
@@ -345,6 +377,7 @@ class TaskModel
         $formId = !empty($data['form_id']) ? (int) $data['form_id'] : null;
 
         $stmt->bindValue(':hc_number', $hcNumber, $hcNumber !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':patient_id', $patientId, $patientId !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':form_id', $formId, $formId ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':source_module', $sourceModule, $sourceModule !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
         $stmt->bindValue(':source_ref_id', $sourceRef, $sourceRef !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
@@ -831,6 +864,11 @@ class TaskModel
         if (!$dueAt && $dueDate) {
             $dueAt = $dueDate . ' 23:59:59';
             $task['due_at'] = $dueAt;
+        }
+
+        if (!$dueDate && $dueAt) {
+            $task['due_date'] = substr((string) $dueAt, 0, 10);
+            $dueDate = $task['due_date'];
         }
 
         if (!$dueAt) {

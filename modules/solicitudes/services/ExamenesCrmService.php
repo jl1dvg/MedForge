@@ -4,6 +4,9 @@ namespace Modules\Solicitudes\Services;
 
 use DateTimeImmutable;
 use Modules\CRM\Models\LeadModel;
+use Modules\CRM\Models\TaskModel;
+use Modules\CRM\Services\CrmProjectService;
+use Modules\CRM\Services\CrmTaskService;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\CRM\Services\LeadResolverService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
@@ -21,6 +24,9 @@ class ExamenesCrmService
     private LeadModel $leadModel;
     private LeadConfigurationService $leadConfig;
     private LeadResolverService $leadResolver;
+    private TaskModel $taskModel;
+    private CrmTaskService $taskService;
+    private CrmProjectService $projectService;
     private WhatsAppMessenger $whatsapp;
 
     public function __construct(PDO $pdo)
@@ -29,6 +35,9 @@ class ExamenesCrmService
         $this->leadModel = new LeadModel($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->leadResolver = new LeadResolverService($pdo);
+        $this->taskModel = new TaskModel($pdo);
+        $this->taskService = new CrmTaskService($pdo);
+        $this->projectService = new CrmProjectService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
     }
 
@@ -66,6 +75,13 @@ class ExamenesCrmService
             }
         }
 
+        $project = $this->ensureCrmProject(
+            $solicitudId,
+            $detalle,
+            !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null,
+            null
+        );
+
         return [
             'detalle' => $detalle,
             'notas' => $this->obtenerNotas($solicitudId),
@@ -73,6 +89,7 @@ class ExamenesCrmService
             'tareas' => $this->obtenerTareas($solicitudId),
             'campos_personalizados' => $this->obtenerCamposPersonalizados($solicitudId),
             'lead' => $lead,
+            'project' => $project,
         ];
     }
 
@@ -201,31 +218,42 @@ class ExamenesCrmService
         $assignedTo = isset($data['assigned_to']) && $data['assigned_to'] !== '' ? (int) $data['assigned_to'] : null;
         $dueDate = $this->normalizarFecha($data['due_date'] ?? null);
         $remindAt = $this->normalizarFechaHora($data['remind_at'] ?? null);
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];
+        $leadId = !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null;
+        $hcNumber = $this->normalizarTexto($detalle['hc_number'] ?? null);
+        $project = $this->ensureCrmProject($solicitudId, $detalle, $leadId, $autorId);
 
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO solicitud_crm_tareas (solicitud_id, titulo, descripcion, estado, assigned_to, created_by, due_date, remind_at)
-             VALUES (:solicitud_id, :titulo, :descripcion, :estado, :assigned_to, :created_by, :due_date, :remind_at)'
+        $tarea = $this->taskService->create(
+            [
+                'project_id' => $project['id'] ?? null,
+                'entity_type' => 'solicitud',
+                'entity_id' => (string) $solicitudId,
+                'lead_id' => $leadId,
+                'hc_number' => $hcNumber,
+                'patient_id' => $hcNumber,
+                'source_module' => 'solicitudes',
+                'source_ref_id' => (string) $solicitudId,
+                'title' => $titulo,
+                'description' => $descripcion,
+                'status' => $estado,
+                'assigned_to' => $assignedTo,
+                'due_date' => $dueDate,
+                'remind_at' => $remindAt,
+                'remind_channel' => $data['remind_channel'] ?? null,
+            ],
+            $this->resolveCompanyId(),
+            $autorId ?? 0
         );
 
-        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
-        $stmt->bindValue(':titulo', $titulo, PDO::PARAM_STR);
-        $stmt->bindValue(':descripcion', $descripcion, $descripcion !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':estado', $estado, PDO::PARAM_STR);
-        $stmt->bindValue(':assigned_to', $assignedTo, $assignedTo ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->bindValue(':created_by', $autorId, $autorId ? PDO::PARAM_INT : PDO::PARAM_NULL);
-        $stmt->bindValue(':due_date', $dueDate, $dueDate !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->bindValue(':remind_at', $remindAt, $remindAt !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
-        $stmt->execute();
-
         $tareaContexto = [
-            'id' => (int) $this->pdo->lastInsertId(),
-            'titulo' => $titulo,
-            'descripcion' => $descripcion,
-            'estado' => $estado,
+            'id' => (int) ($tarea['id'] ?? 0),
+            'titulo' => $tarea['title'] ?? $titulo,
+            'descripcion' => $tarea['description'] ?? $descripcion,
+            'estado' => $tarea['status'] ?? $estado,
             'assigned_to' => $assignedTo,
-            'assigned_to_nombre' => $this->obtenerNombreUsuario($assignedTo),
-            'due_date' => $dueDate,
-            'remind_at' => $remindAt,
+            'assigned_to_nombre' => $tarea['assigned_name'] ?? $this->obtenerNombreUsuario($assignedTo),
+            'due_date' => $tarea['due_date'] ?? $dueDate,
+            'remind_at' => $tarea['remind_at'] ?? $remindAt,
         ];
 
         $this->notifyWhatsAppEvent(
@@ -242,17 +270,13 @@ class ExamenesCrmService
     public function actualizarEstadoTarea(int $solicitudId, int $tareaId, string $estado): void
     {
         $estadoNormalizado = $this->normalizarEstadoTarea($estado);
+        $companyId = $this->resolveCompanyId();
+        $task = $this->taskModel->find($tareaId, $companyId);
+        if (!$task || ($task['source_module'] ?? null) !== 'solicitudes' || (string) ($task['source_ref_id'] ?? '') !== (string) $solicitudId) {
+            return;
+        }
 
-        $stmt = $this->pdo->prepare(
-            'UPDATE solicitud_crm_tareas
-             SET estado = :estado, completed_at = CASE WHEN :estado = "completada" THEN CURRENT_TIMESTAMP ELSE completed_at END
-             WHERE id = :id AND solicitud_id = :solicitud_id'
-        );
-
-        $stmt->bindValue(':estado', $estadoNormalizado, PDO::PARAM_STR);
-        $stmt->bindValue(':id', $tareaId, PDO::PARAM_INT);
-        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
-        $stmt->execute();
+        $this->taskService->update($tareaId, $companyId, ['status' => $estadoNormalizado]);
 
         $tarea = $this->obtenerTareaPorId($solicitudId, $tareaId);
         if ($tarea !== null) {
@@ -629,17 +653,23 @@ class ExamenesCrmService
 
     private function obtenerTareaPorId(int $solicitudId, int $tareaId): ?array
     {
+        $companyId = $this->resolveCompanyId();
         $stmt = $this->pdo->prepare(
-            'SELECT id, titulo, descripcion, estado, assigned_to, due_date, remind_at, completed_at'
-            . ' FROM solicitud_crm_tareas WHERE id = :id AND solicitud_id = :solicitud_id LIMIT 1'
+            'SELECT id, title AS titulo, description AS descripcion, status AS estado, assigned_to, due_date, due_at, remind_at, completed_at'
+            . ' FROM crm_tasks WHERE id = :id AND company_id = :company_id AND source_module = "solicitudes" AND source_ref_id = :source_ref_id LIMIT 1'
         );
         $stmt->bindValue(':id', $tareaId, PDO::PARAM_INT);
-        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
         $stmt->execute();
 
         $tarea = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$tarea) {
             return null;
+        }
+
+        if (empty($tarea['due_date']) && !empty($tarea['due_at'])) {
+            $tarea['due_date'] = substr((string) $tarea['due_at'], 0, 10);
         }
 
         $tarea['assigned_to_nombre'] = $this->obtenerNombreUsuario(isset($tarea['assigned_to']) ? (int) $tarea['assigned_to'] : null);
@@ -719,19 +749,24 @@ class ExamenesCrmService
                 GROUP BY solicitud_id
             ) adjuntos ON adjuntos.solicitud_id = sp.id
             LEFT JOIN (
-                SELECT solicitud_id,
+                SELECT source_ref_id,
                        COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN estado IN ('pendiente','en_progreso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN estado IN ('pendiente','en_progreso') THEN due_date END) AS proximo_vencimiento
-                FROM solicitud_crm_tareas
-                GROUP BY solicitud_id
-            ) tareas ON tareas.solicitud_id = sp.id
+                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
+                FROM crm_tasks
+                WHERE source_module = 'solicitudes'
+                  AND company_id = :company_id
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = sp.id
             WHERE sp.id = :solicitud_id
             LIMIT 1
         SQL;
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([':solicitud_id' => $solicitudId]);
+        $stmt->execute([
+            ':solicitud_id' => $solicitudId,
+            ':company_id' => $this->resolveCompanyId(),
+        ]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) {
@@ -877,20 +912,27 @@ class ExamenesCrmService
 
     private function obtenerTareas(int $solicitudId): array
     {
+        $companyId = $this->resolveCompanyId();
         $stmt = $this->pdo->prepare(
-            'SELECT t.id, t.titulo, t.descripcion, t.estado, t.assigned_to, t.created_by, t.due_date, t.remind_at, t.created_at, t.completed_at,
+            'SELECT t.id, t.title AS titulo, t.description AS descripcion, t.status AS estado, t.assigned_to, t.created_by,
+                    COALESCE(t.due_date, DATE(t.due_at)) AS due_date, t.remind_at, t.created_at, t.completed_at,
                     asignado.nombre AS assigned_name, creador.nombre AS created_name
-             FROM solicitud_crm_tareas t
+             FROM crm_tasks t
              LEFT JOIN users asignado ON t.assigned_to = asignado.id
              LEFT JOIN users creador ON t.created_by = creador.id
-             WHERE t.solicitud_id = :solicitud_id
+             WHERE t.company_id = :company_id
+               AND t.source_module = "solicitudes"
+               AND t.source_ref_id = :source_ref_id
              ORDER BY
-                CASE WHEN t.estado IN ("pendiente", "en_progreso") THEN 0 ELSE 1 END,
-                t.due_date IS NULL,
-                t.due_date ASC,
+                CASE WHEN t.status IN ("pendiente", "en_progreso", "en_proceso") THEN 0 ELSE 1 END,
+                COALESCE(t.due_date, DATE(t.due_at)) IS NULL,
+                COALESCE(t.due_date, DATE(t.due_at)) ASC,
                 t.created_at DESC'
         );
-        $stmt->execute([':solicitud_id' => $solicitudId]);
+        $stmt->execute([
+            ':company_id' => $companyId,
+            ':source_ref_id' => (string) $solicitudId,
+        ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
@@ -1100,5 +1142,40 @@ class ExamenesCrmService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $detalle
+     * @return array<string, mixed>|null
+     */
+    private function ensureCrmProject(int $solicitudId, array $detalle, ?int $leadId, ?int $userId): ?array
+    {
+        try {
+            $paciente = trim((string) ($detalle['paciente_nombre'] ?? ''));
+            $titulo = 'Solicitud #' . $solicitudId;
+            if ($paciente !== '') {
+                $titulo .= ' · ' . $paciente;
+            }
+
+            $payload = [
+                'title' => $titulo,
+                'description' => $detalle['procedimiento'] ?? null,
+                'owner_id' => !empty($detalle['crm_responsable_id']) ? (int) $detalle['crm_responsable_id'] : null,
+                'lead_id' => $leadId,
+                'hc_number' => $detalle['hc_number'] ?? null,
+                'form_id' => $detalle['form_id'] ?? null,
+                'source_module' => 'solicitudes',
+                'source_ref_id' => (string) $solicitudId,
+            ];
+
+            return $this->projectService->linkFromSource($payload, $userId ?? 0);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function resolveCompanyId(): int
+    {
+        return 1;
     }
 }

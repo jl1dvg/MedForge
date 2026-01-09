@@ -37,6 +37,7 @@
         proposalStatuses: Array.isArray(bootstrapData.proposalStatuses) ? bootstrapData.proposalStatuses : [],
         proposals: Array.isArray(bootstrapData.initialProposals) ? bootstrapData.initialProposals : [],
         focusProjectId: null,
+        taskFilters: {},
     };
 
     const elements = {
@@ -168,6 +169,9 @@
         leadProjectsList: document.getElementById('lead-projects-list'),
         leadProjectsEmpty: document.getElementById('lead-projects-empty'),
         leadProjectsCreate: document.getElementById('lead-project-create'),
+        leadTasksList: document.getElementById('lead-tasks-list'),
+        leadTasksEmpty: document.getElementById('lead-tasks-empty'),
+        leadTasksRefresh: document.getElementById('lead-tasks-refresh'),
         leadFormHelper: root.querySelector('#lead-form-helper'),
     };
 
@@ -272,12 +276,25 @@
         const tab = params.get('tab');
         if (tab === 'projects') {
             activateTab('crm-tab-projects-link');
+        } else if (tab === 'tasks') {
+            activateTab('crm-tab-tasks-link');
         }
 
         const rawProjectId = params.get('project_id');
         const projectId = rawProjectId ? Number.parseInt(rawProjectId, 10) : null;
         if (projectId && Number.isFinite(projectId)) {
             state.focusProjectId = projectId;
+            state.taskFilters.project_id = projectId;
+        }
+
+        const rawLeadId = params.get('lead_id');
+        if (rawLeadId) {
+            state.taskFilters.lead_id = rawLeadId;
+        }
+
+        const hcNumber = params.get('hc_number');
+        if (hcNumber) {
+            state.taskFilters.hc_number = hcNumber;
         }
     }
 
@@ -1086,6 +1103,13 @@
 
                 const actionsCell = document.createElement('td');
                 actionsCell.className = 'text-end';
+                const openLink = document.createElement('a');
+                openLink.className = 'btn btn-sm btn-outline-secondary me-2';
+                openLink.href = `/crm?tab=tasks&project_id=${encodeURIComponent(project.id)}`;
+                openLink.target = '_blank';
+                openLink.rel = 'noopener';
+                openLink.textContent = 'Tareas';
+                actionsCell.appendChild(openLink);
                 const updatedBadge = document.createElement('span');
                 updatedBadge.className = 'badge bg-light text-muted';
                 updatedBadge.textContent = `Actualizado ${formatDate(project.updated_at, true)}`;
@@ -1145,11 +1169,35 @@
                 row.appendChild(titleCell);
 
                 const projectCell = document.createElement('td');
-                projectCell.textContent = task.project_title || (task.project_id ? `Proyecto #${task.project_id}` : '-');
+                projectCell.textContent = formatTaskEntity(task);
                 row.appendChild(projectCell);
 
                 const assignedCell = document.createElement('td');
-                assignedCell.textContent = task.assigned_name || 'Sin asignar';
+                if (canManageTasks) {
+                    const assignSelect = document.createElement('select');
+                    assignSelect.className = 'form-select form-select-sm js-task-assigned';
+                    assignSelect.dataset.taskId = task.id;
+
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = 'Sin asignar';
+                    assignSelect.appendChild(emptyOption);
+
+                    state.assignableUsers.forEach((user) => {
+                        const option = document.createElement('option');
+                        option.value = user.id;
+                        option.textContent = user.nombre || user.name || user.email || `ID ${user.id}`;
+                        assignSelect.appendChild(option);
+                    });
+
+                    if (task.assigned_to) {
+                        assignSelect.value = task.assigned_to;
+                    }
+
+                    assignedCell.appendChild(assignSelect);
+                } else {
+                    assignedCell.textContent = task.assigned_name || 'Sin asignar';
+                }
                 row.appendChild(assignedCell);
 
                 const statusCell = document.createElement('td');
@@ -1164,7 +1212,18 @@
                 row.appendChild(statusCell);
 
                 const dueCell = document.createElement('td');
-                dueCell.textContent = task.due_date ? formatDate(task.due_date, false) : '-';
+                if (canManageTasks) {
+                    const dueInput = document.createElement('input');
+                    dueInput.type = 'date';
+                    dueInput.className = 'form-control form-control-sm js-task-due';
+                    dueInput.dataset.taskId = task.id;
+                    if (task.due_date) {
+                        dueInput.value = task.due_date;
+                    }
+                    dueCell.appendChild(dueInput);
+                } else {
+                    dueCell.textContent = task.due_date ? formatDate(task.due_date, false) : '-';
+                }
                 row.appendChild(dueCell);
 
                 const reminderCell = document.createElement('td');
@@ -1199,6 +1258,27 @@
         span.className = `${className} text-uppercase fw-600`;
         span.textContent = titleize(status) || '—';
         return span;
+    }
+
+    function formatTaskEntity(task) {
+        if (task.project_title) {
+            return task.project_title;
+        }
+        if (task.project_id) {
+            return `Proyecto #${task.project_id}`;
+        }
+        const type = (task.entity_type || '').toLowerCase();
+        if (type && task.entity_id) {
+            const label = titleize(type);
+            return `${label} #${task.entity_id}`;
+        }
+        if (task.lead_id) {
+            return `Lead #${task.lead_id}`;
+        }
+        if (task.hc_number) {
+            return `HC ${task.hc_number}`;
+        }
+        return '-';
     }
 
     function renderTickets() {
@@ -1556,7 +1636,17 @@
             leadModals.detail.show();
         }
 
-        loadLeadProjects(lead);
+        if (Array.isArray(profile.projects)) {
+            renderLeadProjects(profile.projects);
+        } else {
+            loadLeadProjects(lead);
+        }
+
+        if (Array.isArray(profile.tasks)) {
+            renderLeadTasks(profile.tasks);
+        } else {
+            loadLeadTasks(lead);
+        }
     }
 
     function renderLeadProjects(projects) {
@@ -1607,6 +1697,64 @@
         });
     }
 
+    function renderLeadTasks(tasks) {
+        if (!elements.leadTasksList) {
+            return;
+        }
+
+        elements.leadTasksList.innerHTML = '';
+
+        if (!Array.isArray(tasks) || tasks.length === 0) {
+            if (elements.leadTasksEmpty) {
+                elements.leadTasksEmpty.classList.remove('d-none');
+            }
+            return;
+        }
+
+        if (elements.leadTasksEmpty) {
+            elements.leadTasksEmpty.classList.add('d-none');
+        }
+
+        tasks.forEach((task) => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-start gap-2 flex-wrap';
+
+            const title = task.title || `Tarea #${task.id}`;
+            const status = task.status ? titleize(task.status) : 'Sin estado';
+            const meta = [];
+            if (task.assigned_name) {
+                meta.push(`Responsable: ${task.assigned_name}`);
+            }
+            if (task.due_date) {
+                meta.push(`Vence: ${formatDate(task.due_date, false)}`);
+            }
+
+            const params = new URLSearchParams({ tab: 'tasks' });
+            if (task.project_id) {
+                params.set('project_id', task.project_id);
+            } else if (task.lead_id) {
+                params.set('lead_id', task.lead_id);
+            }
+            if (task.hc_number) {
+                params.set('hc_number', task.hc_number);
+            }
+
+            item.innerHTML = `
+                <div>
+                    <div class="fw-semibold">${escapeHtml(title)}</div>
+                    <div class="small text-muted">${escapeHtml(status)}${meta.length ? ` · ${escapeHtml(meta.join(' · '))}` : ''}</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-sm btn-outline-secondary" href="/crm?${params.toString()}" target="_blank" rel="noopener">
+                        Abrir
+                    </a>
+                </div>
+            `;
+
+            elements.leadTasksList.appendChild(item);
+        });
+    }
+
     function loadLeadProjects(lead) {
         if (!lead || !elements.leadProjectsList) {
             return Promise.resolve();
@@ -1618,7 +1766,7 @@
         }
         const normalizedHc = normalizeHcNumber(lead.hc_number || '');
         if (normalizedHc) {
-            params.set('hc', normalizedHc);
+            params.set('hc_number', normalizedHc);
         }
 
         if ([...params.keys()].length === 0) {
@@ -1626,13 +1774,42 @@
             return Promise.resolve();
         }
 
-        return request(`/projects?${params.toString()}`)
+        return request(`/crm/projects?${params.toString()}`)
             .then((data) => {
                 renderLeadProjects(Array.isArray(data.data) ? data.data : []);
             })
             .catch((error) => {
                 console.error('No se pudieron cargar los proyectos del lead', error);
                 renderLeadProjects([]);
+            });
+    }
+
+    function loadLeadTasks(lead) {
+        if (!lead || !elements.leadTasksList) {
+            return Promise.resolve();
+        }
+
+        const params = new URLSearchParams();
+        if (lead.id) {
+            params.set('lead_id', lead.id);
+        }
+        const normalizedHc = normalizeHcNumber(lead.hc_number || '');
+        if (normalizedHc) {
+            params.set('hc_number', normalizedHc);
+        }
+
+        if ([...params.keys()].length === 0) {
+            renderLeadTasks([]);
+            return Promise.resolve();
+        }
+
+        return request(`/crm/tasks?${params.toString()}`)
+            .then((data) => {
+                renderLeadTasks(Array.isArray(data.data) ? data.data : []);
+            })
+            .catch((error) => {
+                console.error('No se pudieron cargar las tareas del lead', error);
+                renderLeadTasks([]);
             });
     }
 
@@ -1644,7 +1821,7 @@
         const hcNumber = normalizeHcNumber(lead.hc_number || '');
         const title = lead.name ? `Caso ${lead.name}` : (hcNumber ? `Caso HC ${hcNumber}` : 'Nuevo caso');
 
-        request('/projects/create', {
+        request('/crm/projects', {
             method: 'POST',
             body: {
                 title,
@@ -1842,7 +2019,7 @@
     }
 
     function loadProjects() {
-        return request('/projects')
+        return request('/crm/projects')
             .then((data) => {
                 state.projects = Array.isArray(data.data) ? data.data : [];
                 renderProjects();
@@ -1854,7 +2031,14 @@
     }
 
     function loadTasks() {
-        return request('/crm/tasks')
+        const params = new URLSearchParams();
+        Object.entries(state.taskFilters || {}).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+                params.set(key, value);
+            }
+        });
+        const url = params.toString() ? `/crm/tasks?${params.toString()}` : '/crm/tasks';
+        return request(url)
             .then((data) => {
                 state.tasks = Array.isArray(data.data) ? data.data : [];
                 renderTasks();
@@ -2885,6 +3069,17 @@
         });
     }
 
+    if (elements.leadTasksRefresh) {
+        elements.leadTasksRefresh.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (!leadDetailState.current) {
+                showToast('Selecciona un lead para refrescar tareas', false);
+                return;
+            }
+            loadLeadTasks(leadDetailState.current);
+        });
+    }
+
     if (elements.leadExportBtn) {
         elements.leadExportBtn.addEventListener('click', () => {
             const data = getFilteredLeads();
@@ -3052,7 +3247,7 @@
                 payload.due_date = dueDate;
             }
 
-            request('/projects/create', { method: 'POST', body: payload })
+            request('/crm/projects', { method: 'POST', body: payload })
                 .then(() => {
                     showToast('Proyecto registrado', true);
                     elements.projectForm.reset();
@@ -3070,8 +3265,10 @@
             event.preventDefault();
             const formData = new FormData(elements.taskForm);
             const projectId = serializeNumber(formData.get('project_id'));
-            if (!projectId) {
-                showToast('Selecciona un proyecto para la tarea', false);
+            const leadId = serializeNumber(formData.get('lead_id'));
+            const hcNumber = String(formData.get('hc_number') || '').trim();
+            if (!projectId && !leadId && !hcNumber) {
+                showToast('Selecciona un proyecto, lead o HC para la tarea', false);
                 return;
             }
             const title = String(formData.get('title') || '').trim();
@@ -3079,7 +3276,16 @@
                 showToast('El título de la tarea es obligatorio', false);
                 return;
             }
-            const payload = { project_id: projectId, title };
+            const payload = { title };
+            if (projectId) {
+                payload.project_id = projectId;
+            }
+            if (leadId) {
+                payload.lead_id = leadId;
+            }
+            if (hcNumber) {
+                payload.hc_number = hcNumber;
+            }
             const description = String(formData.get('description') || '').trim();
             if (description) {
                 payload.description = description;
@@ -3353,7 +3559,7 @@
                 if (!projectId || !status) {
                     return;
                 }
-                request('/projects/status', { method: 'POST', body: { project_id: projectId, status } })
+                request('/crm/projects/status', { method: 'POST', body: { project_id: projectId, status } })
                     .then(() => loadProjects())
                     .catch((error) => {
                         console.error('Error actualizando proyecto', error);
@@ -3367,11 +3573,39 @@
                 if (!taskId || !status) {
                     return;
                 }
-                request('/crm/tasks/status', { method: 'POST', body: { task_id: taskId, status } })
+                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { status } })
                     .then(() => loadTasks())
                     .catch((error) => {
                         console.error('Error actualizando tarea', error);
                         showToast(error.message || 'No se pudo actualizar la tarea', false);
+                        loadTasks();
+                    });
+            }
+            if (canManageTasks && target.classList.contains('js-task-assigned')) {
+                const taskId = serializeNumber(target.dataset.taskId);
+                if (!taskId) {
+                    return;
+                }
+                const assignedTo = target.value || null;
+                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { assigned_to: assignedTo } })
+                    .then(() => loadTasks())
+                    .catch((error) => {
+                        console.error('Error asignando tarea', error);
+                        showToast(error.message || 'No se pudo asignar la tarea', false);
+                        loadTasks();
+                    });
+            }
+            if (canManageTasks && target.classList.contains('js-task-due')) {
+                const taskId = serializeNumber(target.dataset.taskId);
+                if (!taskId) {
+                    return;
+                }
+                const dueDate = target.value || null;
+                request(`/crm/tasks/${taskId}`, { method: 'PATCH', body: { due_date: dueDate } })
+                    .then(() => loadTasks())
+                    .catch((error) => {
+                        console.error('Error reprogramando tarea', error);
+                        showToast(error.message || 'No se pudo reprogramar la tarea', false);
                         loadTasks();
                     });
             }

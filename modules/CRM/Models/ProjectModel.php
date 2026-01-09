@@ -246,6 +246,24 @@ class ProjectModel
         return $projectId ? $this->find((int) $projectId) : null;
     }
 
+    public function findBySource(string $sourceModule, string $sourceRefId): ?array
+    {
+        $sourceModule = trim($sourceModule);
+        $sourceRefId = trim($sourceRefId);
+        if ($sourceModule === '' || $sourceRefId === '') {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare('SELECT id FROM crm_projects WHERE source_module = :source_module AND source_ref_id = :source_ref_id LIMIT 1');
+        $stmt->execute([
+            ':source_module' => $sourceModule,
+            ':source_ref_id' => $sourceRefId,
+        ]);
+        $projectId = $stmt->fetchColumn();
+
+        return $projectId ? $this->find((int) $projectId) : null;
+    }
+
     public function findOpenByLeadId(int $leadId): ?array
     {
         $stmt = $this->pdo->prepare('

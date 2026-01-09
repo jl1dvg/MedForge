@@ -218,10 +218,20 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                             <div class="box-body">
                                                 <form id="task-form" class="space-y-2">
                                                 <div class="mb-2">
-                                                    <label for="task-project" class="form-label">Proyecto *</label>
-                                                    <select class="form-select" id="task-project" name="project_id" required data-placeholder="Selecciona un proyecto">
-                                                        <option value="">Selecciona un proyecto</option>
+                                                    <label for="task-project" class="form-label">Proyecto</label>
+                                                    <select class="form-select" id="task-project" name="project_id" data-placeholder="Selecciona un proyecto">
+                                                        <option value="">Sin proyecto</option>
                                                     </select>
+                                                </div>
+                                                <div class="row g-2">
+                                                    <div class="col-md-6">
+                                                        <label for="task-lead" class="form-label">Lead (ID)</label>
+                                                        <input type="number" class="form-control" id="task-lead" name="lead_id" placeholder="Opcional">
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label for="task-hc" class="form-label">HC</label>
+                                                        <input type="text" class="form-control" id="task-hc" name="hc_number" placeholder="Historia clínica">
+                                                    </div>
                                                 </div>
                                                 <div class="mb-2">
                                                     <label for="task-title" class="form-label">Título de la tarea *</label>
@@ -1003,7 +1013,26 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                         <p class="text-muted">En desarrollo</p>
                     </div>
                     <div role="tabpanel" class="tab-pane" id="tab_tasks_leads">
-                        <p class="text-muted">En desarrollo</p>
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="mb-0">Casos / Proyectos vinculados</h5>
+                                    <?php if ($permissions['manageProjects']): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="lead-project-create">Crear caso</button>
+                                    <?php endif; ?>
+                                </div>
+                                <div id="lead-projects-empty" class="text-muted small">Sin proyectos vinculados.</div>
+                                <div class="list-group" id="lead-projects-list"></div>
+                            </div>
+                            <div class="col-lg-6">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="mb-0">Tareas del lead</h5>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="lead-tasks-refresh">Refrescar</button>
+                                </div>
+                                <div id="lead-tasks-empty" class="text-muted small">Sin tareas vinculadas.</div>
+                                <div class="list-group" id="lead-tasks-list"></div>
+                            </div>
+                        </div>
                     </div>
                     <div role="tabpanel" class="tab-pane" id="attachments">
                         <p class="text-muted">En desarrollo</p>
