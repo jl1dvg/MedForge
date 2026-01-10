@@ -294,7 +294,7 @@ array_push(
 
         #prefacturaTabs {
             position: sticky;
-            top: var(72px);
+            top: 72px;
             z-index: 5;
             background: rgba(255, 255, 255, 0.98);
             border-bottom: 1px solid rgba(148, 163, 184, 0.2);
@@ -358,6 +358,65 @@ array_push(
 
         .prefactura-patient-alert small {
             color: rgba(255, 255, 255, 0.85);
+        }
+
+        .prefactura-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .prefactura-line-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .prefactura-meta-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #64748b;
+            margin-bottom: 0.15rem;
+        }
+
+        .prefactura-meta-value {
+            font-weight: 600;
+            color: #0f172a;
+            line-height: 1.25;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .prefactura-tab-content .card-body > div {
+            min-width: 0;
+        }
+
+        .prefactura-card-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0;
+        }
+
+        .prefactura-card-header {
+            border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        }
+
+        .prefactura-badge {
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        .prefactura-proc-actions {
+            min-width: 74px;
+            text-align: right;
+        }
+
+        .prefactura-line-clamp {
+            line-height: 1.25;
         }
 
         @media (min-width: 992px) {
