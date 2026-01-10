@@ -384,6 +384,7 @@ array_push(
             font-weight: 600;
             color: #0f172a;
             line-height: 1.25;
+            min-width: 0;
             white-space: normal;
             overflow-wrap: anywhere;
             word-break: break-word;
