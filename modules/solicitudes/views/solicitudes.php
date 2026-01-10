@@ -344,20 +344,19 @@ array_push(
             min-height: 200px;
         }
 
-        .prefactura-patient-card .alert {
-            margin-bottom: 0;
+        .prefactura-patient-summary {
             border-radius: 14px;
-            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
-            border: 0;
         }
 
-        .prefactura-patient-alert {
-            background: linear-gradient(135deg, #2563eb, #0ea5e9);
-            color: #fff;
+        .prefactura-avatar {
+            width: 46px;
+            height: 46px;
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
-        .prefactura-patient-alert small {
-            color: rgba(255, 255, 255, 0.85);
+        .prefactura-patient-name {
+            font-size: 1.05rem;
         }
 
         .prefactura-icon {
