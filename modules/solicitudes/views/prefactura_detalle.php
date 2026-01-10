@@ -180,7 +180,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo"
-                aria-selected="false">Apto Quirúrgico
+                aria-selected="false">Checklist Preoperatorio
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -534,103 +534,189 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
     </div>
 
     <div class="tab-pane fade" id="prefactura-tab-oftalmo" role="tabpanel" aria-labelledby="prefactura-tab-oftalmo-tab">
-        <!-- TAB 4: Oftalmología -->
-        <div class="box box-outline-warning">
-            <div class="box-header">
-                <h5 class="box-title"><strong>👁️ Datos para Oftalmología</strong></h5>
-            </div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item"><strong>Lente /
-                        Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
-                <li class="list-group-item">
-                    <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision'] ?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-            </ul>
-            <div class="box-body">
-                <?php
-                $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
+        <!-- TAB 4: Checklist Preoperatorio -->
+        <?php
+        $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
 
-                // IMPORTANTE:
-                // - Estado "apto-anestesia" en el Kanban significa "PENDIENTE de confirmación por anestesia".
-                // - Solo debe verse como "success" cuando la solicitud YA PASÓ de esa estación,
-                //   por ejemplo: listo-para-agenda, programada, completado.
-                $esAptoAnestesia = in_array($estadoActual, ['listo-para-agenda', 'programada', 'completado'], true);
-                $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+        // IMPORTANTE:
+        // - Estado "apto-anestesia" en el Kanban significa "PENDIENTE de confirmación por anestesia".
+        // - Solo debe verse como "success" cuando la solicitud YA PASÓ de esa estación,
+        //   por ejemplo: listo-para-agenda, programada, completado.
+        $esAptoAnestesia = in_array($estadoActual, ['listo-para-agenda', 'programada', 'completado'], true);
 
-                // Apto oftalmólogo:
-                // Por ahora lo inferimos como "ya confirmado" si la solicitud está
-                // en una etapa igual o posterior a apto-anestesia en el Kanban.
-                // Idealmente esto se debería leer del checklist (etapa_slug = apto-oftalmologo).
-                $esAptoOftalmo = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'programada', 'completado'], true);
+        // Apto oftalmólogo:
+        // Por ahora lo inferimos como "ya confirmado" si la solicitud está
+        // en una etapa igual o posterior a apto-anestesia en el Kanban.
+        // Idealmente esto se debería leer del checklist (etapa_slug = apto-oftalmologo).
+        $esAptoOftalmo = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'programada', 'completado'], true);
 
-                $badgeOftalmo = $esAptoOftalmo
-                        ? '<span class="badge bg-success">Oftalmólogo: Apto</span>'
-                        : '<span class="badge bg-warning text-dark">Oftalmólogo: Pendiente</span>';
+        $badgeOftalmo = $esAptoOftalmo
+                ? '<span class="badge bg-success d-inline-flex align-items-center gap-1"><i class="bi bi-check-circle-fill"></i>Apto</span>'
+                : '<span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1"><i class="bi bi-hourglass-split"></i>Pendiente</span>';
 
-                $badgeAnestesia = $esAptoAnestesia
-                        ? '<span class="badge bg-success">Anestesia: Apto</span>'
-                        : '<span class="badge bg-warning text-dark">Anestesia: Pendiente</span>';
+        $badgeAnestesia = $esAptoAnestesia
+                ? '<span class="badge bg-success d-inline-flex align-items-center gap-1"><i class="bi bi-check-circle-fill"></i>Apto</span>'
+                : '<span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1"><i class="bi bi-hourglass-split"></i>Pendiente</span>';
 
-                // IDs unificados para botones (kanban / modal)
-                $kanbanSolicitudId = isset($_GET['solicitud_id']) ? (int)$_GET['solicitud_id'] : null;
-                $solicitudIdRaw = (int)($solicitud['id'] ?? 0);
-                $formId = (int)($solicitud['form_id'] ?? 0);
+        $anestesiaResponsable = $solicitud['anestesia_responsable'] ?? ($solicitud['responsable_anestesia'] ?? null);
+        $anestesiaFecha = $solicitud['anestesia_fecha'] ?? ($solicitud['fecha_anestesia'] ?? null);
+        $oftalmoResponsable = $solicitud['oftalmo_responsable'] ?? ($solicitud['responsable_oftalmo'] ?? null);
+        $oftalmoFecha = $solicitud['oftalmo_fecha'] ?? ($solicitud['fecha_oftalmo'] ?? null);
 
-                // PRIORIDAD: usa SIEMPRE el id que viene del kanban si existe
-                $dataId = $kanbanSolicitudId ?: ($solicitudIdRaw ?: $formId);
-                $solicitudIdBtn = $dataId;
-                ?>
+        // IDs unificados para botones (kanban / modal)
+        $kanbanSolicitudId = isset($_GET['solicitud_id']) ? (int)$_GET['solicitud_id'] : null;
+        $solicitudIdRaw = (int)($solicitud['id'] ?? 0);
+        $formId = (int)($solicitud['form_id'] ?? 0);
 
-                <div class="d-flex flex-wrap gap-2 mb-2">
-                    <?= $badgeOftalmo ?>
-                    <?= $badgeAnestesia ?>
-                </div>
-                <div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
-                    <h5 class="d-flex align-items-center justify-content-between mb-2">
-                        <span><strong>🩺 Paso preanestesia</strong></span>
-                        <button type="button"
-                                class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
-                                data-context-action="confirmar-anestesia"
-                                data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+        // PRIORIDAD: usa SIEMPRE el id que viene del kanban si existe
+        $dataId = $kanbanSolicitudId ?: ($solicitudIdRaw ?: $formId);
+        $solicitudIdBtn = $dataId;
+        ?>
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white prefactura-card-header d-flex align-items-center gap-2">
+                        <i class="bi bi-clipboard2-pulse prefactura-icon text-primary"></i>
+                        <div>
+                            <h6 class="prefactura-card-title">Detalles quirúrgicos</h6>
+                            <div class="fw-semibold">Checklist preoperatorio</div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="prefactura-meta-label">LIO / Producto</div>
+                                <div class="prefactura-meta-value">
+                                    <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="prefactura-meta-label">Poder</div>
+                                <div class="prefactura-meta-value">
+                                    <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="prefactura-meta-label">Ojo</div>
+                                <div class="prefactura-meta-value">
+                                    <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="prefactura-meta-label">Incisión</div>
+                                <div class="prefactura-meta-value">
+                                    <?= htmlspecialchars($solicitud['incision'] ?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="prefactura-meta-label">Observaciones</div>
+                                <div class="prefactura-meta-value">
+                                    <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white border-0">
+                        <button class="btn btn-outline-primary" type="button" id="btnPrefacturaEditarLio"
+                                data-context-action="editar-lio"
+                                data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
                                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                <?= $esAptoAnestesia ? 'disabled' : '' ?>
-                                id="btnPrefacturaConfirmarAnestesia">
-                            <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
+                                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                            <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
                         </button>
-                    </h5>
-                    <div>
-                        <strong>Estado actual:</strong>
-                        <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
                 </div>
             </div>
-            <div class="box-footer">
-                <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
-                        data-context-action="editar-lio"
-                        data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
-                        data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                    <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
-                </button>
-                <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
-                        data-context-action="confirmar-oftalmo"
-                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
-                        data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
-                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                        <?= $esAptoOftalmo ? 'disabled' : '' ?>>
-                    <i class="mdi mdi-check-circle-outline"></i>
-                    <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Confirmar apto oftalmólogo' ?>
-                </button>
+            <div class="col-lg-4">
+                <div class="d-flex flex-column gap-3">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white prefactura-card-header d-flex align-items-start justify-content-between gap-2">
+                            <div>
+                                <h6 class="prefactura-card-title">Estados de aprobación</h6>
+                                <div class="fw-semibold">Anestesia</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button"
+                                        class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
+                                        data-context-action="confirmar-anestesia"
+                                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                        <?= $esAptoAnestesia ? 'disabled' : '' ?>
+                                        id="btnPrefacturaConfirmarAnestesia">
+                                    <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto' ?>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                <div class="prefactura-meta-label">Estado</div>
+                                <?= $badgeAnestesia ?>
+                            </div>
+                            <?php if (!empty($anestesiaResponsable)): ?>
+                                <div class="mb-2">
+                                    <div class="prefactura-meta-label">Responsable</div>
+                                    <div class="prefactura-meta-value"><?= htmlspecialchars((string)$anestesiaResponsable, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                            <?php endif; ?>
+                            <?php if (!empty($anestesiaFecha)): ?>
+                                <div class="mb-2">
+                                    <div class="prefactura-meta-label">Fecha</div>
+                                    <div class="prefactura-meta-value"><?= htmlspecialchars((string)$anestesiaFecha, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                            <?php endif; ?>
+                            <div class="card border-0 bg-light mt-3" id="prefacturaCalloutPreanestesia">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <i class="bi bi-clipboard-check text-success"></i>
+                                        <div class="fw-semibold">Preanestesia</div>
+                                    </div>
+                                    <div class="text-muted small">
+                                        Estado actual:
+                                        <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white prefactura-card-header d-flex align-items-start justify-content-between gap-2">
+                            <div>
+                                <h6 class="prefactura-card-title">Estados de aprobación</h6>
+                                <div class="fw-semibold">Oftalmólogo</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-sm <?= $esAptoOftalmo ? 'btn-success' : 'btn-outline-success' ?>" type="button"
+                                        id="btnPrefacturaConfirmarOftalmo"
+                                        data-context-action="confirmar-oftalmo"
+                                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                        <?= $esAptoOftalmo ? 'disabled' : '' ?>>
+                                    <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Marcar apto' ?>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                <div class="prefactura-meta-label">Estado</div>
+                                <?= $badgeOftalmo ?>
+                            </div>
+                            <?php if (!empty($oftalmoResponsable)): ?>
+                                <div class="mb-2">
+                                    <div class="prefactura-meta-label">Responsable</div>
+                                    <div class="prefactura-meta-value"><?= htmlspecialchars((string)$oftalmoResponsable, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                            <?php endif; ?>
+                            <?php if (!empty($oftalmoFecha)): ?>
+                                <div class="mb-2">
+                                    <div class="prefactura-meta-label">Fecha</div>
+                                    <div class="prefactura-meta-value"><?= htmlspecialchars((string)$oftalmoFecha, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
