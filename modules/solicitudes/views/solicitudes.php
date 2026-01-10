@@ -158,8 +158,8 @@ array_push(
         }
 
         .kanban-avatar {
-            width: 44px;
-            height: 44px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             overflow: hidden;
             position: relative;

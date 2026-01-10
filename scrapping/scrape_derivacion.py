@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup
 import sys
 import json
 import re
+import time
+from urllib.parse import urlparse
 import os
 
 # Limitar hilos de OpenBLAS/Numpy para no chocar con RLIMIT_NPROC del hosting
@@ -99,6 +101,42 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
         f"?id={paciente_id}&idSolicitud={form_id}&check=18"
     )
 
+    def extraer_pdf_candidates(html):
+        soup = BeautifulSoup(html, "html.parser")
+        candidates = []
+
+        iframe_pdf = soup.select_one("iframe#iframe-pdf")
+        if iframe_pdf:
+            src = iframe_pdf.get("src", "").strip() or iframe_pdf.get("data-src", "").strip()
+            if src:
+                src_path = urlparse(src).path.lower()
+                if src_path.endswith(".pdf"):
+                    candidates.append(src)
+
+        for embed in soup.select("embed[original-url]"):
+            original_url = embed.get("original-url", "").strip()
+            if original_url and ".pdf" in original_url.lower():
+                candidates.append(original_url)
+
+        normalized_html = html.replace("\\/", "/").replace("\\u002F", "/")
+        candidates.extend(
+            re.findall(r"/Imprimir_temporales/[^\"'>]+?\.pdf", normalized_html, flags=re.IGNORECASE)
+        )
+        candidates.extend(re.findall(r"https?://[^\"'>]+?\.pdf", normalized_html, flags=re.IGNORECASE))
+
+        seen = set()
+        ordered = []
+        for candidate in candidates:
+            if candidate not in seen:
+                seen.add(candidate)
+                ordered.append(candidate)
+        return ordered
+
+    def normalizar_pdf_url(candidate_url):
+        if candidate_url.startswith("/"):
+            candidate_url = f"https://cive.ddns.net:8085{candidate_url}"
+        return requests.utils.requote_uri(candidate_url)
+
     if not modo_quieto:
         print(f"⬇️ Descargando PDF totalizado: {pdf_url}")
 
@@ -108,9 +146,36 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
             print(f"⚠️ Respuesta no exitosa al descargar PDF totalizado: {resp_pdf.status_code}")
         return None
 
-    if not resp_pdf.content.startswith(b"%PDF"):
+    pdf_bytes = None
+    if resp_pdf.content.startswith(b"%PDF"):
+        pdf_bytes = resp_pdf.content
+    else:
+        candidates = extraer_pdf_candidates(resp_pdf.text)
+        if not candidates:
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline and not candidates:
+                time.sleep(1)
+                poll_resp = session.get(pdf_url, headers=headers)
+                if poll_resp.status_code != 200:
+                    continue
+                if poll_resp.content.startswith(b"%PDF"):
+                    pdf_bytes = poll_resp.content
+                    break
+                candidates = extraer_pdf_candidates(poll_resp.text)
+
+        if not pdf_bytes and candidates:
+            for candidate in candidates:
+                pdf_download_url = normalizar_pdf_url(candidate)
+                if not modo_quieto:
+                    print(f"⬇️ Descargando PDF detectado en HTML: {pdf_download_url}")
+                pdf_download_resp = session.get(pdf_download_url, headers=headers)
+                if pdf_download_resp.status_code == 200 and pdf_download_resp.content.startswith(b"%PDF"):
+                    pdf_bytes = pdf_download_resp.content
+                    break
+
+    if not pdf_bytes:
         if not modo_quieto:
-            print("⚠️ La respuesta no parece PDF (%PDF). Probable HTML/login.")
+            print("⚠️ No se encontró URL de PDF o la respuesta no es un PDF válido.")
         return None
 
     # 👉 NOMBRE FINAL DEL ARCHIVO
@@ -123,7 +188,7 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
         return f"storage/derivaciones/{safe_hc}/{safe_codigo}/{filename}"
 
     with open(filepath, "wb") as f:
-        f.write(resp_pdf.content)
+        f.write(pdf_bytes)
 
     # esto es lo que se manda a la API (ruta relativa para guardar en DB)
     archivo_path = f"storage/derivaciones/{safe_hc}/{safe_codigo}/{filename}"

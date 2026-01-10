@@ -1,7 +1,7 @@
 import {showToast} from "./toast.js";
 import {llamarTurnoSolicitud, formatTurno} from "./turnero.js";
 import {getDataStore} from "./config.js";
-import { actualizarEstadoSolicitud } from "./estado.js";
+import {actualizarEstadoSolicitud} from "./estado.js";
 
 const ESCAPE_MAP = {
     "&": "&amp;",
@@ -21,6 +21,44 @@ function escapeHtml(value) {
         /[&<>"'`]/g,
         (character) => ESCAPE_MAP[character]
     );
+}
+
+function truncateText(value, max = 90) {
+    const text = (value ?? "").toString().trim();
+    if (!text) {
+        return "";
+    }
+    if (text.length <= max) {
+        return text;
+    }
+    return text.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
+}
+
+function humanizeProcedureShort(value) {
+    const text = (value ?? "").toString().trim();
+    if (!text) {
+        return "";
+    }
+
+    // Prefer to keep code-like tokens (e.g. 66984) and the first meaningful phrase.
+    // Common format: "CIRUGIAS - 66984 - ..."
+    const parts = text.split("-").map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+        const codeCandidate = parts.find((p) => /^\d{4,6}$/.test(p)) || "";
+        const rest = parts.slice(parts.indexOf(codeCandidate) + 1).join(" - ").trim();
+        const shortRest = truncateText(rest, 70);
+        return [codeCandidate, shortRest].filter(Boolean).join(" · ");
+    }
+
+    return truncateText(text, 90);
+}
+
+function safeDomId(value) {
+    return (value ?? "")
+        .toString()
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 function getInitials(nombre) {
@@ -142,8 +180,14 @@ function formatBadge(label, value, icon) {
 }
 
 const TURNO_BUTTON_LABELS = {
-    recall: '<i class="mdi mdi-phone-incoming"></i> Volver a llamar',
-    generate: '<i class="mdi mdi-bell-ring-outline"></i> Generar turno',
+    recall: {
+        html: '<i class="mdi mdi-phone-incoming"></i>',
+        title: 'Volver a llamar',
+    },
+    generate: {
+        html: '<i class="mdi mdi-bell-ring-outline"></i>',
+        title: 'Generar turno',
+    },
 };
 
 function normalizarEstado(value) {
@@ -151,14 +195,26 @@ function normalizarEstado(value) {
 }
 
 function applyTurnoButtonState(button, shouldRecall) {
-    if (!button) {
-        return;
-    }
+    if (!button) return;
 
-    button.innerHTML = shouldRecall
+    const cfg = shouldRecall
         ? TURNO_BUTTON_LABELS.recall
         : TURNO_BUTTON_LABELS.generate;
+
+    // Icon-only label + accessibility
+    button.innerHTML = cfg.html;
+    button.title = cfg.title;
+    button.setAttribute('aria-label', cfg.title);
+
+    // Encode state for other logic
     button.dataset.hasTurno = shouldRecall ? "1" : "0";
+
+    // Visual state by color (turno already assigned / recall)
+    button.classList.remove('btn-outline-primary', 'btn-outline-warning', 'btn-outline-secondary');
+    button.classList.add(shouldRecall ? 'btn-outline-warning' : 'btn-outline-primary');
+
+    // Keep compact icon-button styling
+    button.classList.add('btn-icon');
 }
 
 const request = window.request || (async function request(url, options = {}) {
@@ -259,32 +315,32 @@ async function openProjectForSolicitud(solicitud, button) {
 
 const SLA_META = {
     en_rango: {
-        label: "En rango",
+        label: "OK",
         badgeClass: "badge-sla badge bg-success text-white",
         icon: "mdi-check-circle-outline",
     },
     advertencia: {
-        label: "Seguimiento 72h",
+        label: "72h",
         badgeClass: "badge-sla badge bg-warning text-dark",
         icon: "mdi-timer-sand",
     },
     critico: {
-        label: "Crítico 24h",
+        label: "24h",
         badgeClass: "badge-sla badge bg-danger",
         icon: "mdi-alert-octagon",
     },
     vencido: {
-        label: "SLA vencido",
+        label: "Venc",
         badgeClass: "badge-sla badge bg-dark",
         icon: "mdi-alert",
     },
     sin_fecha: {
-        label: "Sin programación",
+        label: "S/F",
         badgeClass: "badge-sla badge bg-secondary",
         icon: "mdi-calendar-question",
     },
     cerrado: {
-        label: "Cerrado",
+        label: "Cerr",
         badgeClass: "badge-sla badge bg-secondary",
         icon: "mdi-lock-outline",
     },
@@ -398,8 +454,25 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
     data.forEach((solicitud) => {
         const tarjeta = document.createElement("div");
+
+        const isCriticalAlert =
+            Boolean(solicitud.alert_reprogramacion) ||
+            String(solicitud.sla_status ?? "").trim() === "vencido";
+
+        const isWarningAlert =
+            !isCriticalAlert &&
+            (Boolean(solicitud.alert_documentos_faltantes) ||
+                Boolean(solicitud.alert_autorizacion_pendiente) ||
+                Boolean(solicitud.alert_pendiente_consentimiento));
+
+        const accentClass = isCriticalAlert
+            ? " border-start border-3 border-danger"
+            : isWarningAlert
+                ? " border-start border-3 border-warning"
+                : "";
+
         tarjeta.className =
-            "kanban-card border p-2 mb-2 rounded bg-light view-details";
+            `kanban-card border p-2 mb-2 rounded bg-light view-details${accentClass}`;
         tarjeta.setAttribute("draggable", "true");
         const estadoSlug =
             slugifyEstado(solicitud.kanban_estado ?? solicitud.estado) || "";
@@ -521,17 +594,26 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const ojo = solicitud.ojo || "—";
         const observacionRaw = (solicitud.observacion ?? "").toString().trim();
         const hasObservacion = observacionRaw !== "";
-        const observacion = observacionRaw;        const alerts = getAlertBadges(solicitud);
-        const alertsHtml = alerts.length
-            ? `<div class="kanban-alerts mt-2">${alerts
-                .map(
-                    (alert) =>
-                        `<span class="${escapeHtml(
-                            alert.className
-                        )}"><i class="mdi ${escapeHtml(
-                            alert.icon
-                        )} me-1"></i>${escapeHtml(alert.label)}</span>`
-                )
+        const observacion = observacionRaw;
+        const alerts = getAlertBadges(solicitud);
+        const alertsCompactHtml = alerts.length
+            ? `<div class="kanban-alerts d-flex align-items-center gap-2">${alerts
+                .slice(0, 4)
+                .map((alert) => {
+                    const title = escapeHtml(alert.label);
+                    const icon = escapeHtml(alert.icon);
+                    // Keep color hint but without text.
+                    const toneClass = (alert.className || "").includes("bg-danger")
+                        ? "text-danger"
+                        : (alert.className || "").includes("bg-warning")
+                            ? "text-warning"
+                            : (alert.className || "").includes("bg-info")
+                                ? "text-info"
+                                : "text-muted";
+                    return `<span class="${toneClass}" title="${title}" aria-label="${title}">
+                        <i class="mdi ${icon}"></i>
+                    </span>`;
+                })
                 .join(" ")}</div>`
             : "";
 
@@ -560,20 +642,20 @@ export function renderKanban(data, callbackEstadoActualizado) {
             .filter(Boolean)
             .join("");
 
-    const estadoSlugCard = slugifyEstado(
-      solicitud.kanban_estado ?? solicitud.estado
-    );
-    const checklist = Array.isArray(solicitud.checklist)
-      ? solicitud.checklist.map((item) => {
-          if (slugifyEstado(item.slug) === "recibida" && estadoSlugCard === "recibida") {
-            return { ...item, completed: true };
-          }
-          if (slugifyEstado(item.slug) === "llamado" && estadoSlugCard === "llamado") {
-            return { ...item, completed: true };
-          }
-          return item;
-        })
-      : [];
+        const estadoSlugCard = slugifyEstado(
+            solicitud.kanban_estado ?? solicitud.estado
+        );
+        const checklist = Array.isArray(solicitud.checklist)
+            ? solicitud.checklist.map((item) => {
+                if (slugifyEstado(item.slug) === "recibida" && estadoSlugCard === "recibida") {
+                    return {...item, completed: true};
+                }
+                if (slugifyEstado(item.slug) === "llamado" && estadoSlugCard === "llamado") {
+                    return {...item, completed: true};
+                }
+                return item;
+            })
+            : [];
         const checklistProgress = solicitud.checklist_progress || {};
         const pasosTotales =
             checklistProgress.total ??
@@ -584,17 +666,20 @@ export function renderKanban(data, callbackEstadoActualizado) {
             checklistProgress.percent ??
             (pasosTotales ? Math.round((pasosCompletos / pasosTotales) * 100) : 0);
         const proximoPaso = checklistProgress.next_label || "Completado";
+        // Make nextStageSlug/Label available for checklist summary rendering
+        const nextStageSlug = checklistProgress.next_slug || solicitud.checklist_progress?.next_slug;
+        const nextStageLabel = checklistProgress.next_label || solicitud.checklist_progress?.next_label || nextStageSlug;
         const pendientesCriticos = [
             "revision-codigos",
             "espera-documentos",
             "apto-oftalmologo",
             "apto-anestesia",
         ];
-    const checklistPreview = checklist
-      .map((item) => {
-        const slug = slugifyEstado(item.slug);
-        const isCriticalPending =
-          !item.completed && pendientesCriticos.includes(slug);
+        const checklistPreview = checklist
+            .map((item) => {
+                const slug = slugifyEstado(item.slug);
+                const isCriticalPending =
+                    !item.completed && pendientesCriticos.includes(slug);
 
                 if (item.completed) {
                     return `<label class="form-check small mb-1">
@@ -621,79 +706,177 @@ export function renderKanban(data, callbackEstadoActualizado) {
           </label>`;
             })
             .join("");
-        const checklistHtml =
-            checklist.length > 0
+        const detailsId = `kanban-details-${safeDomId(String(solicitud.id ?? solicitud.form_id ?? solicitud.hc_number ?? ""))}`;
+
+        const checklistSummaryHtml =
+            pasosTotales > 0
                 ? `<div class="kanban-checklist mt-2">
-            <div class="d-flex justify-content-end align-items-center gap-2">
-              <span class="badge bg-light text-dark">${escapeHtml(
-                    `${porcentaje}%`
-                )}</span>
+            <div class="d-flex align-items-center justify-content-between">
+              <span class="badge bg-light text-dark">${escapeHtml(`${porcentaje}%`)}</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small">→ ${escapeHtml(proximoPaso)}</span>
+                ${nextStageSlug ? `<button type="button" class="btn btn-sm btn-outline-success py-0 px-2" data-next-stage="${escapeHtml(nextStageSlug)}" title="Marcar: ${escapeHtml(nextStageLabel || proximoPaso)}" aria-label="Marcar: ${escapeHtml(nextStageLabel || proximoPaso)}">
+                    <i class="mdi mdi-check"></i>
+                  </button>` : ""}
+                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none kanban-details-toggle" data-bs-toggle="collapse" data-bs-target="#${detailsId}" aria-expanded="false" aria-controls="${detailsId}" title="Ver detalles">
+                  <i class="mdi mdi-chevron-down" data-icon-collapsed></i>
+                  <i class="mdi mdi-chevron-up d-none" data-icon-expanded></i>
+                </button>
+              </div>
             </div>
             <div class="progress progress-thin my-1" style="height: 6px;">
               <div class="progress-bar bg-success" role="progressbar" style="width: ${porcentaje}%;"
                 aria-valuenow="${porcentaje}" aria-valuemin="0" aria-valuemax="100"></div>
             </div>
-            <div class="kanban-checklist-items">${checklistPreview}</div>
           </div>`
                 : "";
 
+        const checklistDetailsHtml =
+            checklist.length > 0
+                ? `<div class="kanban-checklist-items">${checklistPreview}</div>`
+                : "";
+        const procedimientoCompleto = (procedimiento ?? "").toString();
+        const procedimientoCorto = humanizeProcedureShort(procedimientoCompleto) || "Sin procedimiento";
+
+        const crmCountsInline = [
+            Number.isFinite(totalNotas) ? `📝 ${totalNotas}` : null,
+            Number.isFinite(totalAdjuntos) ? `📎 ${totalAdjuntos}` : null,
+            (Number.isFinite(tareasPendientes) && Number.isFinite(tareasTotal))
+                ? `✅ ${tareasPendientes}/${tareasTotal}`
+                : null,
+        ].filter(Boolean).join(" · ");
+
         tarjeta.innerHTML = `
             <div class="kanban-card-header">
-                <div class="kanban-card-body">
-                    <strong>${escapeHtml(pacienteNombre)}</strong>
-                    <small>🆔 ${escapeHtml(solicitud.hc_number ?? "—")}</small>
-                    <small>📅 ${escapeHtml(
-            fechaFormateada
-        )} ${slaBadgeHtml}</small>
-                    ${
-            slaSubtitle
-                ? `<small>⏱️ ${escapeHtml(slaSubtitle)}</small>`
-                : ""
-        }
-                    ${prioridadBlockHtml}
-                    <div class="d-flex align-items-center gap-1">
-                        ${renderAvatar(avatarNombre, avatarUrl)}
-                        <small>${escapeHtml(doctor)}</small>
+                <div class="kanban-card-body lh-sm">
+                    <div class="d-flex align-items-start justify-content-between gap-2">
+                      <div class="flex-grow-1">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                          <strong class="d-block">${escapeHtml(pacienteNombre)}</strong>
+                        </div>
+                        <span class="text-muted small"><i class="mdi mdi-card-account-details-outline me-1"></i>${escapeHtml(solicitud.hc_number ?? "—")}</span>
+                        <div class="d-flex align-items-center justify-content-between gap-2 mt-1">
+                          <small class="text-muted"><i class="mdi mdi-calendar me-1"></i>${escapeHtml(fechaFormateada)}</small>
+                          ${slaBadgeHtml}
+                        </div>
+                      </div>
                     </div>
-                    <small>🏥 ${escapeHtml(afiliacion)}</small>
-                    <small>🔍 <span class="text-primary fw-bold">${escapeHtml(
-            procedimiento
-        )}</span></small>
-                    <small>👁️ ${escapeHtml(ojo)}</small>
+
+                    <div class="d-flex align-items-center justify-content-between gap-2 mt-1">
+                      <div class="d-flex align-items-center gap-1">
+                        ${renderAvatar(avatarNombre, avatarUrl)}
+                        <small class="text-muted">${escapeHtml(doctor)}</small>
+                      </div>
+                    </div>
+
+                    <small class="text-muted d-block mt-1"><i class="mdi mdi-hospital-building me-1"></i>${escapeHtml(afiliacion)}</small>
+
+                    <small class="d-block mt-1" title="${escapeHtml(procedimientoCompleto)}">
+                      <i class="mdi mdi-magnify me-1 text-muted"></i><span class="text-primary fw-semibold">${escapeHtml(procedimientoCorto)}</span>
+                    </small>
+                    <small class="text-muted"><i class="mdi mdi-eye-outline me-1"></i>${escapeHtml(ojo)}</small>
+
+
                     ${hasObservacion ? `<div class="mt-1">
-                        <span class="badge bg-info text-dark fw-bold">💬 ${escapeHtml(observacion)}</span>
+                        <span class="badge bg-info text-dark fw-semibold">💬 ${escapeHtml(observacion)}</span>
                       </div>` : ""}
-                    ${alertsHtml}
-                    ${checklistHtml}
+
+                    <div class="kanban-card-crm mt-2">
+                        <div class="d-flex align-items-center justify-content-between">
+                          <span class="crm-pill"><i class="mdi mdi-progress-check"></i>${escapeHtml(pipelineStage)}</span>
+                          <small class="text-muted">${escapeHtml(crmCountsInline || "CRM")}</small>
+                        </div>
+                    <div class="mt-2 crm-actions d-flex gap-2" data-crm-actions></div>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mt-2">
+                      ${alertsCompactHtml || "<span></span>"}
+                    </div>
+
+                    ${checklistSummaryHtml}
+
+                    <div id="${detailsId}" class="collapse mt-2">
+                      <div class="border rounded bg-white p-2">
+                        <div class="mb-2">
+                          <div class="small text-muted mb-1">Checklist</div>
+                          ${checklistDetailsHtml || `<div class="small text-muted">Sin checklist</div>`}
+                        </div>
+
+                        <div class="mb-2">
+                          <div class="small text-muted mb-1">CRM</div>
+                          <div class="crm-meta small">
+                              <span><i class="mdi mdi-account-tie-outline"></i>${escapeHtml(responsable)}</span>
+                              <span class="ms-2"><i class="mdi mdi-phone"></i>${escapeHtml(contactoTelefono)}</span>
+                              <span class="ms-2"><i class="mdi mdi-email-outline"></i>${escapeHtml(contactoCorreo)}</span>
+                              ${fuente ? `<span class="ms-2"><i class="mdi mdi-source-branch"></i>${escapeHtml(fuente)}</span>` : ""}
+                          </div>
+                          <div class="crm-badges mt-2">${badges}</div>
+                        </div>
+
+                        <div>
+                          <div class="small text-muted mb-1">Procedimiento (completo)</div>
+                          <div class="small">${escapeHtml(procedimientoCompleto || "—")}</div>
+                        </div>
+                      </div>
+                    </div>
                 </div>
-            </div>
-            <div class="kanban-card-crm mt-2">
-                <span class="crm-pill"><i class="mdi mdi-progress-check"></i>${escapeHtml(
-            pipelineStage
-        )}</span>
-                <div class="crm-meta">
-                    <span><i class="mdi mdi-account-tie-outline"></i>${escapeHtml(
-            responsable
-        )}</span>
-                    <span><i class="mdi mdi-phone"></i>${escapeHtml(
-            contactoTelefono
-        )}</span>
-                    <span><i class="mdi mdi-email-outline"></i>${escapeHtml(
-            contactoCorreo
-        )}</span>
-                    ${
-            fuente
-                ? `<span><i class="mdi mdi-source-branch"></i>${escapeHtml(
-                    fuente
-                )}</span>`
-                : ""
-        }
-                </div>
-                <div class="crm-badges">${badges}</div>
             </div>
         `;
 
         hydrateAvatar(tarjeta);
+
+        // Prevent card click/drag handlers from triggering when toggling the collapse.
+        tarjeta.querySelectorAll('.kanban-details-toggle').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        });
+
+        // Toggle chevron icons on expand/collapse.
+        const collapseEl = tarjeta.querySelector(`#${detailsId}`);
+        if (collapseEl) {
+            const setIcons = (expanded) => {
+                const iconCollapsed = tarjeta.querySelector('[data-icon-collapsed]');
+                const iconExpanded = tarjeta.querySelector('[data-icon-expanded]');
+                if (iconCollapsed) {
+                    iconCollapsed.classList.toggle('d-none', expanded);
+                }
+                if (iconExpanded) {
+                    iconExpanded.classList.toggle('d-none', !expanded);
+                }
+            };
+
+            collapseEl.addEventListener('shown.bs.collapse', () => setIcons(true));
+            collapseEl.addEventListener('hidden.bs.collapse', () => setIcons(false));
+        }
+
+        // Compact "Marcar siguiente" CTA inside checklist summary.
+        tarjeta.querySelectorAll('[data-next-stage]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const slug = btn.dataset.nextStage || '';
+                if (!slug) {
+                    return;
+                }
+
+                btn.disabled = true;
+                const result = onEstadoChange(
+                    solicitud.id,
+                    solicitud.form_id,
+                    slug,
+                    {completado: true, force: true}
+                );
+
+                if (result && typeof result.then === 'function') {
+                    result.finally(() => {
+                        btn.disabled = false;
+                    });
+                } else {
+                    btn.disabled = false;
+                }
+            });
+        });
 
         const turnoAsignado = formatTurno(solicitud.turno);
         const estadoActualSlug = estadoSlug;
@@ -708,18 +891,18 @@ export function renderKanban(data, callbackEstadoActualizado) {
         acciones.className =
             "kanban-card-actions d-flex align-items-center justify-content-between gap-2 flex-wrap mt-2";
 
-        const resumenEstado = document.createElement("span");
-        resumenEstado.className = "badge badge-estado text-bg-light text-wrap";
-        resumenEstado.textContent =
-            estadoActualLabel !== "" ? estadoActualLabel : "Sin estado";
-        acciones.appendChild(resumenEstado);
+        if (allowTurnoActions) {
+            const badgeTurno = document.createElement("span");
+            badgeTurno.className = "badge badge-turno";
 
-    if (allowTurnoActions) {
-      const badgeTurno = document.createElement("span");
-      badgeTurno.className = "badge badge-turno";
-      badgeTurno.textContent = turnoAsignado
-        ? `Turno #${turnoAsignado}`
-                : "Sin turno asignado";
+            if (turnoAsignado) {
+                badgeTurno.textContent = `#${turnoAsignado}`;
+                badgeTurno.title = `Turno #${turnoAsignado}`;
+            } else {
+                badgeTurno.textContent = "—";
+                badgeTurno.title = "Sin turno asignado";
+                badgeTurno.classList.add('text-muted');
+            }
             acciones.appendChild(badgeTurno);
 
             const botonLlamar = document.createElement("button");
@@ -741,8 +924,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 const teniaTurnoAntes = botonLlamar.dataset.hasTurno === "1";
                 botonLlamar.disabled = true;
                 botonLlamar.setAttribute("aria-busy", "true");
+                botonLlamar.title = 'Procesando…';
+                botonLlamar.setAttribute('aria-label', 'Procesando…');
                 botonLlamar.innerHTML =
-                    '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando';
+                    '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
 
                 let exito = false;
 
@@ -753,15 +938,17 @@ export function renderKanban(data, callbackEstadoActualizado) {
                             data?.full_name ?? solicitud.full_name ?? "Paciente sin nombre";
 
                         if (turno) {
-                            badgeTurno.textContent = `Turno #${turno}`;
+                            badgeTurno.textContent = `#${turno}`;
+                            badgeTurno.title = `Turno #${turno}`;
+                            badgeTurno.classList.remove('text-muted');
                         } else {
-                            badgeTurno.textContent = "Sin turno asignado";
+                            badgeTurno.textContent = "—";
+                            badgeTurno.title = "Sin turno asignado";
+                            badgeTurno.classList.add('text-muted');
                         }
 
                         const estadoActualizado = (data?.estado ?? "").toString();
                         tarjeta.dataset.estado = estadoActualizado;
-                        resumenEstado.textContent =
-                            estadoActualizado !== "" ? estadoActualizado : "Sin estado";
 
                         applyTurnoButtonState(
                             botonLlamar,
@@ -792,13 +979,14 @@ export function renderKanban(data, callbackEstadoActualizado) {
                         console.error("❌ Error al llamar el turno:", error);
                         showToast(error?.message ?? "No se pudo asignar el turno", false);
                         actualizarEstadoSolicitud(
-                          solicitud.id,
-                          solicitud.form_id,
-                          "Llamado",
-                          getDataStore(),
-                          window.aplicarFiltros,
-                          { force: true }
-                        ).catch(() => {});
+                            solicitud.id,
+                            solicitud.form_id,
+                            "Llamado",
+                            getDataStore(),
+                            window.aplicarFiltros,
+                            {force: true}
+                        ).catch(() => {
+                        });
                     })
                     .finally(() => {
                         botonLlamar.disabled = false;
@@ -809,50 +997,12 @@ export function renderKanban(data, callbackEstadoActualizado) {
                     });
             });
 
-      acciones.appendChild(botonLlamar);
-    }
-
-    const openProjectButton = document.createElement("button");
-    openProjectButton.type = "button";
-    openProjectButton.className = "btn btn-sm btn-outline-success";
-    openProjectButton.textContent = "Abrir caso";
-    openProjectButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        openProjectForSolicitud(solicitud, openProjectButton);
-    });
-    acciones.appendChild(openProjectButton);
-
-    const nextStageSlug = solicitud.checklist_progress?.next_slug;
-    const nextStageLabel = solicitud.checklist_progress?.next_label || nextStageSlug;
-    if (nextStageSlug) {
-      const btnNext = document.createElement("button");
-      btnNext.type = "button";
-      btnNext.className = "btn btn-sm btn-outline-success ms-auto";
-      btnNext.textContent = `Marcar: ${nextStageLabel}`;
-      btnNext.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        btnNext.disabled = true;
-        const result = onEstadoChange(
-          solicitud.id,
-          solicitud.form_id,
-          nextStageSlug,
-          { completado: true, force: true }
-        );
-        if (result && typeof result.then === "function") {
-          result
-            .finally(() => {
-              btnNext.disabled = false;
-            });
-        } else {
-          btnNext.disabled = false;
+            acciones.appendChild(botonLlamar);
         }
-      });
-      acciones.appendChild(btnNext);
-    }
 
-    tarjeta.appendChild(acciones);
+        // The footer "Marcar: ..." button has been removed in favor of the compact checklist summary CTA.
+
+        tarjeta.appendChild(acciones);
 
         const crmButton = document.createElement("button");
         crmButton.type = "button";
@@ -862,7 +1012,29 @@ export function renderKanban(data, callbackEstadoActualizado) {
             '<i class="mdi mdi-account-box-outline"></i> CRM';
         crmButton.dataset.solicitudId = solicitud.id ?? "";
         crmButton.dataset.pacienteNombre = solicitud.full_name ?? "";
-        tarjeta.appendChild(crmButton);
+        const crmActionsSlot = tarjeta.querySelector('[data-crm-actions]');
+        if (crmActionsSlot) {
+            crmButton.className = "btn btn-sm btn-outline-secondary btn-open-crm";
+            crmActionsSlot.appendChild(crmButton);
+
+            const openProjectButton = document.createElement("button");
+            openProjectButton.type = "button";
+            openProjectButton.className = "btn btn-sm btn-outline-success btn-icon";
+            openProjectButton.innerHTML = '<i class="mdi mdi-open-in-new"></i>';
+            openProjectButton.title = "Abrir caso";
+            openProjectButton.setAttribute("aria-label", "Abrir caso");
+
+            openProjectButton.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openProjectForSolicitud(solicitud, openProjectButton);
+            });
+            crmActionsSlot.appendChild(openProjectButton);
+        } else {
+            // fallback: si no existe el slot, mantén CRM en tarjeta y Abrir caso en acciones (opcional)
+            tarjeta.appendChild(crmButton);
+            // acciones.appendChild(openProjectButton); // si quieres fallback, dímelo y te lo dejo completo
+        }
 
         tarjeta.querySelectorAll("[data-checklist-toggle]").forEach((input) => {
             input.addEventListener("click", (e) => {
@@ -941,7 +1113,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 const botonTurno = item.querySelector(".llamar-turno-btn");
                 const turnoTextoAnterior = badgeTurno
                     ? badgeTurno.textContent
-                    : "Sin turno asignado";
+                    : "—";
                 const botonTeniaTurnoAntes = botonTurno
                     ? botonTurno.dataset.hasTurno === "1"
                     : false;
@@ -1020,9 +1192,15 @@ export function renderKanban(data, callbackEstadoActualizado) {
 
                             if (badgeTurno) {
                                 const turnoActual = formatTurno(response?.turno);
-                                badgeTurno.textContent = turnoActual
-                                    ? `Turno #${turnoActual}`
-                                    : "Sin turno asignado";
+                                if (turnoActual) {
+                                    badgeTurno.textContent = `#${turnoActual}`;
+                                    badgeTurno.title = `Turno #${turnoActual}`;
+                                    badgeTurno.classList.remove('text-muted');
+                                } else {
+                                    badgeTurno.textContent = "—";
+                                    badgeTurno.title = "Sin turno asignado";
+                                    badgeTurno.classList.add('text-muted');
+                                }
                             }
 
                             if (botonTurno) {
