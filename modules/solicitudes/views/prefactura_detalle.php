@@ -180,7 +180,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo"
-                aria-selected="false">Checklist Preoperatorio
+                aria-selected="false">Apto Quirúrgico
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -362,60 +362,60 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                 </div>
             </div>
 
-<div class="col-lg-4">
-    <div class="card border-0 shadow-sm">
-        <div class="card-header">
-            <h6 class="card-title">
-                <i class="bi bi-person-vcard prefactura-icon me-2" aria-label="Datos del paciente"></i>
-                Datos del paciente
-            </h6>
-        </div>
-        <div class="card-body d-flex flex-column gap-3">
-            <?php // REVIEW: datos de paciente no están explicitados en las tabs solicitadas, se incluyen aquí. ?>
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header">
+                        <h6 class="card-title">
+                            <i class="bi bi-person-vcard prefactura-icon me-2" aria-label="Datos del paciente"></i>
+                            Datos del paciente
+                        </h6>
+                    </div>
+                    <div class="card-body d-flex flex-column gap-3">
+                        <?php // REVIEW: datos de paciente no están explicitados en las tabs solicitadas, se incluyen aquí. ?>
 
-            <div>
-                <div class="d-flex align-items-center mb-1">
-                    <i class="bi bi-gender-ambiguous prefactura-icon me-2" aria-label="Sexo"></i>
-                    <div class="prefactura-meta-label">Sexo</div>
-                </div>
-                <div class="prefactura-meta-value">
-                    <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                        <div>
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-gender-ambiguous prefactura-icon me-2" aria-label="Sexo"></i>
+                                <div class="prefactura-meta-label">Sexo</div>
+                            </div>
+                            <div class="prefactura-meta-value">
+                                <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-cake2 prefactura-icon me-2" aria-label="Fecha de nacimiento"></i>
+                                <div class="prefactura-meta-label">Fecha de nacimiento</div>
+                            </div>
+                            <div class="prefactura-meta-value">
+                                <?php
+                                if ($fechaNacimiento) {
+                                    try {
+                                        $fechaNacimientoDt = new DateTime($fechaNacimiento);
+                                        echo htmlspecialchars($fechaNacimientoDt->format('d-m-Y'), ENT_QUOTES, 'UTF-8');
+                                    } catch (Exception $e) {
+                                        echo 'No disponible';
+                                    }
+                                } else {
+                                    echo 'No disponible';
+                                }
+                                ?>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-phone prefactura-icon me-2" aria-label="Celular"></i>
+                                <div class="prefactura-meta-label">Celular</div>
+                            </div>
+                            <div class="prefactura-meta-value">
+                                <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div>
-                <div class="d-flex align-items-center mb-1">
-                    <i class="bi bi-cake2 prefactura-icon me-2" aria-label="Fecha de nacimiento"></i>
-                    <div class="prefactura-meta-label">Fecha de nacimiento</div>
-                </div>
-                <div class="prefactura-meta-value">
-                    <?php
-                    if ($fechaNacimiento) {
-                        try {
-                            $fechaNacimientoDt = new DateTime($fechaNacimiento);
-                            echo htmlspecialchars($fechaNacimientoDt->format('d-m-Y'), ENT_QUOTES, 'UTF-8');
-                        } catch (Exception $e) {
-                            echo 'No disponible';
-                        }
-                    } else {
-                        echo 'No disponible';
-                    }
-                    ?>
-                </div>
-            </div>
-
-            <div>
-                <div class="d-flex align-items-center mb-1">
-                    <i class="bi bi-phone prefactura-icon me-2" aria-label="Celular"></i>
-                    <div class="prefactura-meta-label">Celular</div>
-                </div>
-                <div class="prefactura-meta-value">
-                    <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
         </div>
 
         <div class="modal fade" id="prefacturaProcedimientoModal" tabindex="-1"
@@ -574,7 +574,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
         ?>
         <div class="row g-3">
             <div class="col-lg-8">
-                <div class="card border-0 shadow-sm h-100">
+                <div class="card border-0 shadow-sm">
                     <div class="card-header bg-white prefactura-card-header d-flex align-items-center gap-2">
                         <i class="bi bi-clipboard2-pulse prefactura-icon text-primary"></i>
                         <div>
@@ -644,7 +644,10 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                                         data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                         <?= $esAptoAnestesia ? 'disabled' : '' ?>
                                         id="btnPrefacturaConfirmarAnestesia">
-                                    <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto' ?>
+                                    <?= $esAptoAnestesia
+                                            ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por anestesia'
+                                            : 'Marcar apto'
+                                    ?>
                                 </button>
                             </div>
                         </div>
@@ -686,14 +689,16 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                                 <div class="fw-semibold">Oftalmólogo</div>
                             </div>
                             <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-sm <?= $esAptoOftalmo ? 'btn-success' : 'btn-outline-success' ?>" type="button"
+                                <button class="btn btn-sm <?= $esAptoOftalmo ? 'btn-success' : 'btn-outline-success' ?>"
+                                        type="button"
                                         id="btnPrefacturaConfirmarOftalmo"
                                         data-context-action="confirmar-oftalmo"
                                         data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
                                         data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
                                         data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                         <?= $esAptoOftalmo ? 'disabled' : '' ?>>
-                                    <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Marcar apto' ?>
+                                        <?= $esAptoOftalmo ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por oftalmólogo'
+                                            : 'Marcar apto' ?>
                                 </button>
                             </div>
                         </div>
