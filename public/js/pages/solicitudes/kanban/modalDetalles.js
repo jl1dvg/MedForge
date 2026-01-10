@@ -523,38 +523,61 @@ function renderPatientSummaryFallback(solicitudId) {
     }
 
     const turno = formatTurno(solicitud.turno);
-    const doctor =
-        solicitud.doctor || solicitud.crm_responsable_nombre || "Sin doctor";
+    const responsable =
+        solicitud.doctor || solicitud.crm_responsable_nombre || "Sin responsable";
     const procedimiento = solicitud.procedimiento || "Sin procedimiento";
-    const procedimientoLabel = (procedimiento || '').toString();
-    const procedimientoShort =
-        procedimientoLabel.length > 90
-            ? `${procedimientoLabel.slice(0, 90)}…`
-            : procedimientoLabel;
     const afiliacion =
         solicitud.afiliacion || solicitud.aseguradora || "Sin afiliación";
     const hcNumber = solicitud.hc_number || "—";
 
-    container.innerHTML = `
-        <div class="alert alert-primary text-center fw-bold mb-0 prefactura-patient-alert">
-            <div>🧑 Paciente: ${escapeHtml(
-        solicitud.full_name || "Sin nombre"
-    )}</div>
-            <small class="d-block text-uppercase mt-1">${escapeHtml(
-        `HC ${hcNumber}`
-    )}</small>
-            <small class="d-block">${escapeHtml(doctor)}</small>
-            <small class="d-block text-muted">${escapeHtml(
-        procedimientoShort
-    )}</small>
-            <small class="d-block text-muted">${escapeHtml(afiliacion)}</small>
-            ${
-        turno
-            ? `<span class="badge bg-light text-primary mt-2">Turno #${escapeHtml(
+    const badges = [
+        `<span class="badge bg-light text-dark border">HC ${escapeHtml(
+            hcNumber
+        )}</span>`,
+        `<span class="badge bg-light text-dark border">${escapeHtml(
+            afiliacion
+        )}</span>`,
+    ];
+
+    if (turno) {
+        badges.push(
+            `<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Turno ${escapeHtml(
                 turno
             )}</span>`
-            : ""
+        );
     }
+
+    container.innerHTML = `
+        <div class="card shadow-sm border-0 prefactura-patient-summary">
+            <div class="card-body p-3">
+                <div class="d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center">
+                    <div class="d-flex align-items-start gap-3 flex-grow-1">
+                        <div class="prefactura-avatar rounded-circle bg-light text-primary d-flex align-items-center justify-content-center">
+                            <i class="bi bi-person-fill"></i>
+                        </div>
+                        <div>
+                            <div class="prefactura-patient-name fw-bold">
+                                ${escapeHtml(solicitud.full_name || "Sin nombre")}
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                ${badges.join("")}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 text-md-end">
+                        <div>
+                            <p class="prefactura-meta-label mb-1">Responsable</p>
+                            <div class="fw-semibold">${escapeHtml(responsable)}</div>
+                        </div>
+                        <div class="mt-2">
+                            <p class="prefactura-meta-label mb-1">Procedimiento</p>
+                            <div class="prefactura-line-clamp">${escapeHtml(
+                                procedimiento
+                            )}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
     container.classList.remove("d-none");
@@ -574,17 +597,11 @@ function relocatePatientAlert(solicitudId) {
         PATIENT_ALERT_TEXT.test(element.textContent || "")
     );
 
-    if (!patientAlert) {
-        renderPatientSummaryFallback(solicitudId);
-        return;
+    if (patientAlert) {
+        patientAlert.remove();
     }
 
-    container.innerHTML = "";
-    patientAlert.classList.add("mb-0");
-    patientAlert.classList.add("prefactura-patient-alert");
-    container.appendChild(patientAlert);
-    container.classList.remove("d-none");
-    syncQuickColumnVisibility();
+    renderPatientSummaryFallback(solicitudId);
 }
 
 function cssEscape(value) {
