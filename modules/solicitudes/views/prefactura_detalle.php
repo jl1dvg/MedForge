@@ -697,7 +697,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                                         data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
                                         data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                         <?= $esAptoOftalmo ? 'disabled' : '' ?>>
-                                        <?= $esAptoOftalmo ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por oftalmólogo'
+                                    <?= $esAptoOftalmo ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por oftalmólogo'
                                             : 'Marcar apto' ?>
                                 </button>
                             </div>
@@ -727,46 +727,193 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
     </div>
 
     <div class="tab-pane fade" id="prefactura-tab-examen" role="tabpanel" aria-labelledby="prefactura-tab-examen-tab">
-        <!-- TAB 5: Examen & Plan -->
-        <div class="box box-outline-primary">
-            <div class="box-header with-border">
-                <h4 class="box-title">📝 Examen físico y plan</h4>
-                <h6 class="box-subtitle">Revisa la exploración y las indicaciones en pestañas verticales.</h6>
+        <!-- TAB 5: Nota clínica (Examen & Plan) -->
+        <?php
+        // Normaliza textos clínicos: elimina sangrías comunes, recorta espacios por línea y reduce saltos excesivos.
+        $normalizarTextoClinico = static function (?string $text): string {
+            $text = (string)($text ?? '');
+
+            // Normaliza saltos de línea
+            $text = str_replace(["\r\n", "\r"], "\n", $text);
+
+            // Trim general (sin perder estructura interna)
+            $text = trim($text);
+
+            if ($text === '') {
+                return '';
+            }
+
+            $lines = explode("\n", $text);
+
+            // Calcula la indentación mínima común (solo líneas no vacías)
+            $minIndent = null;
+            foreach ($lines as $line) {
+                if (trim($line) === '') {
+                    continue;
+                }
+                preg_match('/^[ \t]*/', $line, $m);
+                $indentLen = strlen($m[0]);
+                $minIndent = ($minIndent === null) ? $indentLen : min($minIndent, $indentLen);
+            }
+
+            if ($minIndent === null) {
+                $minIndent = 0;
+            }
+
+            // Aplica: quita indentación común y limpia espacios al final; mantiene tabulación interna
+            $out = [];
+            foreach ($lines as $line) {
+                if ($minIndent > 0) {
+                    $line = preg_replace('/^[ \t]{0,' . $minIndent . '}/', '', $line);
+                }
+                $out[] = rtrim($line);
+            }
+
+            $text = implode("\n", $out);
+
+            // Reduce múltiples líneas vacías (3+ -> 2)
+            $text = preg_replace("/\n{3,}/", "\n\n", $text);
+
+            return $text;
+        };
+
+        $examenFisicoTexto = $normalizarTextoClinico($consulta['examen_fisico'] ?? '');
+        $planTexto = $normalizarTextoClinico($consulta['plan'] ?? '');
+        ?>
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white prefactura-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-journal-medical prefactura-icon text-primary"></i>
+                    <div>
+                        <h6 class="prefactura-card-title mb-0">Nota clínica</h6>
+                        <div class="fw-semibold">Examen físico y plan</div>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyExamen">
+                        <i class="bi bi-clipboard"></i> Copiar examen
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyPlan">
+                        <i class="bi bi-clipboard"></i> Copiar plan
+                    </button>
+                </div>
             </div>
-            <div class="box-body">
-                <div class="vtabs">
-                    <ul class="nav nav-tabs tabs-vertical" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab"
-                               aria-selected="true">
-                                <span><i class="ion-eye me-2"></i>Examen físico</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" data-bs-toggle="tab" href="#tab-plan" role="tab" aria-selected="false">
-                                <span><i class="ion-document-text me-2"></i>Plan</span>
-                            </a>
-                        </li>
-                    </ul>
-                    <div class="tab-content">
-                        <div class="tab-pane active" id="tab-examen-fisico" role="tabpanel">
-                            <div class="p-15">
-                                <div style="white-space: pre-wrap;">
-                                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                                </div>
-                            </div>
+
+            <div class="card-body">
+                <ul class="nav nav-pills gap-2" id="prefacturaNotaClinicaTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="prefacturaNotaExamenTab" data-bs-toggle="tab"
+                                data-bs-target="#prefacturaNotaExamen" type="button" role="tab"
+                                aria-controls="prefacturaNotaExamen" aria-selected="true">
+                            <i class="bi bi-eye me-1"></i> Examen físico
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="prefacturaNotaPlanTab" data-bs-toggle="tab"
+                                data-bs-target="#prefacturaNotaPlan" type="button" role="tab"
+                                aria-controls="prefacturaNotaPlan" aria-selected="false">
+                            <i class="bi bi-clipboard2-check me-1"></i> Plan
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content mt-3" id="prefacturaNotaClinicaTabsContent">
+                    <div class="tab-pane fade show active" id="prefacturaNotaExamen" role="tabpanel"
+                         aria-labelledby="prefacturaNotaExamenTab" tabindex="0">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <div class="prefactura-meta-label">Examen físico</div>
+                            <span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-text-paragraph"></i>
+                                <span class="small">Texto libre</span>
+                            </span>
                         </div>
-                        <div class="tab-pane" id="tab-plan" role="tabpanel">
-                            <div class="p-15">
-                                <div style="white-space: pre-wrap;">
-                                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                                </div>
-                            </div>
+                        <div class="border rounded-3 bg-light p-3"
+                             style="white-space: pre-wrap; max-height: 380px; overflow:auto;">
+                            <?= htmlspecialchars($examenFisicoTexto !== '' ? $examenFisicoTexto : 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="prefacturaNotaPlan" role="tabpanel"
+                         aria-labelledby="prefacturaNotaPlanTab" tabindex="0">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <div class="prefactura-meta-label">Plan</div>
+                            <span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-list-check"></i>
+                                <span class="small">Indicaciones</span>
+                            </span>
+                        </div>
+                        <div class="border rounded-3 bg-light p-3"
+                             style="white-space: pre-wrap; max-height: 380px; overflow:auto;">
+                            <?= htmlspecialchars($planTexto !== '' ? $planTexto : 'No disponible', ENT_QUOTES, 'UTF-8') ?>
                         </div>
                     </div>
                 </div>
+
+                <small class="text-muted d-block mt-3">
+                    Sugerencia: usa “Copiar” para pegar rápidamente en evoluciones, consentimientos o notas internas.
+                </small>
             </div>
         </div>
+
+        <script>
+            (function () {
+                const copyText = async (text) => {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                    } catch (e) {
+                        // Fallback para navegadores sin permisos
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        const ok = document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        return ok;
+                    }
+                };
+
+                const btnExamen = document.getElementById('btnPrefacturaCopyExamen');
+                const btnPlan = document.getElementById('btnPrefacturaCopyPlan');
+
+                if (btnExamen) {
+                    btnExamen.addEventListener('click', async () => {
+                        const text = <?= json_encode((string)($examenFisicoTexto ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+                        const ok = await copyText(text || '');
+                        btnExamen.classList.toggle('btn-outline-secondary', !ok);
+                        btnExamen.classList.toggle('btn-success', ok);
+                        btnExamen.innerHTML = ok
+                            ? '<i class="bi bi-check2"></i> Copiado'
+                            : '<i class="bi bi-exclamation-triangle"></i> No se pudo copiar';
+                        setTimeout(() => {
+                            btnExamen.classList.remove('btn-success');
+                            btnExamen.classList.add('btn-outline-secondary');
+                            btnExamen.innerHTML = '<i class="bi bi-clipboard"></i> Copiar examen';
+                        }, 1200);
+                    });
+                }
+
+                if (btnPlan) {
+                    btnPlan.addEventListener('click', async () => {
+                        const text = <?= json_encode((string)($planTexto ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+                        const ok = await copyText(text || '');
+                        btnPlan.classList.toggle('btn-outline-secondary', !ok);
+                        btnPlan.classList.toggle('btn-success', ok);
+                        btnPlan.innerHTML = ok
+                            ? '<i class="bi bi-check2"></i> Copiado'
+                            : '<i class="bi bi-exclamation-triangle"></i> No se pudo copiar';
+                        setTimeout(() => {
+                            btnPlan.classList.remove('btn-success');
+                            btnPlan.classList.add('btn-outline-secondary');
+                            btnPlan.innerHTML = '<i class="bi bi-clipboard"></i> Copiar plan';
+                        }, 1200);
+                    });
+                }
+            })();
+        </script>
     </div>
 
     <div class="tab-pane fade" id="prefactura-tab-crm" role="tabpanel" aria-labelledby="prefactura-tab-crm-tab">
