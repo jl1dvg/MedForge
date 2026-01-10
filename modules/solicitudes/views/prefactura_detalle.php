@@ -180,7 +180,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo"
-                aria-selected="false">Apto Quirúrgico
+                aria-selected="false">Oftalmologia
         </button>
     </li>
     <li class="nav-item" role="presentation">
