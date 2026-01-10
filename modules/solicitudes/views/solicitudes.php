@@ -292,6 +292,58 @@ array_push(
             gap: 1rem;
         }
 
+        .prefactura-detail-header {
+            position: sticky;
+            top: 0;
+            z-index: 6;
+            background: rgba(255, 255, 255, 0.96);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+            backdrop-filter: blur(6px);
+        }
+
+        #prefacturaTabs {
+            position: sticky;
+            top: var(--prefactura-header-height, 72px);
+            z-index: 5;
+            background: rgba(255, 255, 255, 0.98);
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            overflow-x: auto;
+            overflow-y: hidden;
+            flex-wrap: nowrap;
+            gap: 0.35rem;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        #prefacturaTabs .nav-link {
+            white-space: nowrap;
+        }
+
+        .prefactura-tab-content {
+            padding-top: 0.75rem;
+        }
+
+        .prefactura-state-placeholder {
+            border: 1px dashed rgba(148, 163, 184, 0.5);
+            border-radius: 12px;
+            padding: 1rem;
+            background: rgba(148, 163, 184, 0.08);
+            color: #64748b;
+        }
+
+        .prefactura-crm-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .prefactura-crm-item {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            padding: 0.85rem;
+            background: #ffffff;
+        }
+
         .prefactura-quick-column {
             display: flex;
             flex-direction: column;
@@ -732,20 +784,11 @@ array_push(
     <div class="collapse show" id="solicitudesFilters">
         <div class="box mb-3">
             <div class="box-body">
-                <div class="row g-3 align-items-end">
+                <div class="row g-3 align-items-end flex-nowrap filters-row">
+
                     <div class="col-lg-3 col-md-6">
                         <label for="kanbanSearchFilter" class="form-label">Buscar</label>
                         <input type="search" id="kanbanSearchFilter" class="form-control" placeholder="Paciente, HC o procedimiento">
-                    </div>
-                    <div class="col-lg-3 col-md-6">
-                        <label for="kanbanDateFilter" class="form-label">Fecha</label>
-                        <input type="text" id="kanbanDateFilter" class="form-control" placeholder="Seleccione un rango">
-                    </div>
-                    <div class="col-lg-3 col-md-6">
-                        <label for="kanbanAfiliacionFilter" class="form-label">Afiliación</label>
-                        <select id="kanbanAfiliacionFilter" class="form-select">
-                            <option value="">Todas</option>
-                        </select>
                     </div>
                     <div class="col-lg-3 col-md-6">
                         <label for="kanbanDoctorFilter" class="form-label">Doctor</label>
@@ -753,13 +796,27 @@ array_push(
                             <option value="">Todos</option>
                         </select>
                     </div>
-                    <div class="col-lg-3 col-md-6">
+
+                    <div class="col-lg-2 col-md-6">
+                        <label for="kanbanDateFilter" class="form-label">Fecha</label>
+                        <input type="text" id="kanbanDateFilter" class="form-control"
+                               placeholder="Rango">
+                    </div>
+
+                    <div class="col-lg-2 col-md-6">
+                        <label for="kanbanAfiliacionFilter" class="form-label">Afiliación</label>
+                        <select id="kanbanAfiliacionFilter" class="form-select">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+
+                    <div class="col-lg-2 col-md-6">
                         <label for="kanbanSemaforoFilter" class="form-label">Prioridad</label>
                         <select id="kanbanSemaforoFilter" class="form-select">
                             <option value="">Todas</option>
-                            <option value="normal">🟢 Normal (≤ 3 días)</option>
-                            <option value="pendiente">🟡 Pendiente (4–7 días)</option>
-                            <option value="urgente">🔴 Urgente (&gt; 7 días)</option>
+                            <option value="normal">🟢 Normal</option>
+                            <option value="pendiente">🟡 Pendiente</option>
+                            <option value="urgente">🔴 Urgente</option>
                         </select>
                     </div>
                 </div>
@@ -1274,27 +1331,56 @@ array_push(
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body prefactura-modal-body">
-                <div id="prefacturaQuickColumn" class="prefactura-quick-column d-none">
-                    <div id="prefacturaPatientSummary" class="prefactura-patient-card d-none"></div>
-                    <div id="prefacturaState" class="prefactura-state-container d-none"></div>
-                </div>
                 <div class="prefactura-content-wrapper">
                     <div id="prefacturaContent">Cargando información...</div>
                 </div>
             </div>
             <div class="modal-footer d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno</button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">👥 En atención</button>
                 <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura" data-estado="Revisión Códigos" data-completado="0">📤 Solicitar Cobertura</button>
                 <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">✅ Cobertura exitosa</button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
             </div>
         </div>
     </div>
 </div>
 
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('prefacturaModal');
+        if (!modal || modal.dataset.crmProxyAttached === 'true') {
+            return;
+        }
+        modal.dataset.crmProxyAttached = 'true';
+
+        const escapeSelector = (value) => {
+            if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+                return CSS.escape(value);
+            }
+            return String(value).replace(/([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g, '\\\\$1');
+        };
+
+        modal.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-crm-proxy]');
+            if (!trigger) return;
+
+            const solicitudId = trigger.dataset.solicitudId || trigger.dataset.id;
+            if (!solicitudId) return;
+
+            const selector = `.btn-open-crm[data-solicitud-id="${escapeSelector(solicitudId)}"]`;
+            const crmButton = document.querySelector(selector);
+            if (crmButton) {
+                crmButton.click();
+            } else {
+                console.warn('No se encontró un botón CRM para la solicitud seleccionada.');
+            }
+        });
+    });
+</script>
 
 <script>
     window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;

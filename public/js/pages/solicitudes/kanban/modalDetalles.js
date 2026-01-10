@@ -258,7 +258,13 @@ function findSolicitudById(id) {
     if (!Array.isArray(store) || !store.length) {
         return null;
     }
-    return store.find((item) => String(item.id) === String(id)) || null;
+    return (
+        store.find(
+            (item) =>
+                String(item.id) === String(id) ||
+                String(item.form_id) === String(id)
+        ) || null
+    );
 }
 
 function normalizeEstado(value) {
@@ -387,6 +393,10 @@ function resetEstadoContext() {
     }
     container.classList.add("d-none");
     container.innerHTML = "";
+    const placeholder = document.getElementById("prefacturaStatePlaceholder");
+    if (placeholder) {
+        placeholder.classList.remove("d-none");
+    }
     syncQuickColumnVisibility();
 }
 
@@ -488,6 +498,10 @@ function renderEstadoContext(solicitudId) {
     `;
 
     container.classList.remove("d-none");
+    const placeholder = document.getElementById("prefacturaStatePlaceholder");
+    if (placeholder) {
+        placeholder.classList.add("d-none");
+    }
     syncQuickColumnVisibility();
 }
 
@@ -857,6 +871,21 @@ function abrirPrefactura({hc, formId, solicitudId}) {
             const contextual = buildContextualActionsHtml(solicitud || {});
             content.innerHTML = `${contextual}${html}`;
             relocatePatientAlert(solicitudId);
+            renderEstadoContext(solicitudId);
+            actualizarBotonesModal(solicitudId, solicitud);
+
+            const actionsContainer = document.getElementById("prefacturaContextualActions");
+            if (actionsContainer) {
+                const panels = content.querySelectorAll("#prefacturaAnestesiaPanel, #prefacturaAgendaPanel");
+                panels.forEach((panel) => actionsContainer.appendChild(panel));
+            }
+
+            const header = content.querySelector(".prefactura-detail-header");
+            const tabs = content.querySelector("#prefacturaTabs");
+            if (header && tabs) {
+                const headerHeight = Math.ceil(header.getBoundingClientRect().height);
+                tabs.style.setProperty("--prefactura-header-height", `${headerHeight}px`);
+            }
         })
         .catch((error) => {
             console.error("❌ Error cargando prefactura:", error);
@@ -881,8 +910,8 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     );
 }
 
-function actualizarBotonesModal(solicitudId) {
-    const solicitud = findSolicitudById(solicitudId);
+function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
+    const solicitud = findSolicitudById(solicitudId) || solicitudFallback;
     const normalize = (v) =>
         (v ?? "")
             .toString()
@@ -892,7 +921,9 @@ function actualizarBotonesModal(solicitudId) {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-");
 
-    const estado = normalize(solicitud?.estado || solicitud?.kanban_estado);
+    const estado = solicitud
+        ? normalize(solicitud.estado || solicitud.kanban_estado)
+        : "";
 
     const btnGenerarTurno = document.getElementById("btnGenerarTurnoModal");
     const btnEnAtencion = document.getElementById("btnMarcarAtencionModal");
@@ -905,17 +936,25 @@ function actualizarBotonesModal(solicitudId) {
         el.classList.toggle("d-none", !visible);
     };
 
-    show(btnGenerarTurno, estado === "recibida");
-    show(btnEnAtencion, estado === "llamado");
-    show(btnRevisar, estado === "revision-codigos");
+    const canShow = Boolean(estado);
+
+    show(btnGenerarTurno, canShow && estado === "recibida");
+    show(btnEnAtencion, canShow && estado === "llamado");
+    show(btnRevisar, canShow && estado === "revision-codigos");
     show(
         btnCobertura,
-        estado === "recibida" ||
-        estado === "en-atencion" ||
-        estado === "revision-codigos" ||
-        estado === "espera-documentos"
+        canShow &&
+            (estado === "recibida" ||
+                estado === "en-atencion" ||
+                estado === "revision-codigos" ||
+                estado === "espera-documentos")
     );
-    show(btnCoberturaExitosa, estado === "en-atencion" || estado === "revision-codigos");
+    show(
+        btnCoberturaExitosa,
+        canShow && (estado === "en-atencion" || estado === "revision-codigos")
+    );
+    console.log("[botones] estado raw:", solicitud?.estado || solicitud?.kanban_estado);
+    console.log("[botones] estado normalized:", estado);
 }
 
 function handlePrefacturaClick(event) {

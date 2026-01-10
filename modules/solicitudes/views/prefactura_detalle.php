@@ -82,80 +82,477 @@ if (!empty($derivacion['fecha_vigencia'])) {
         $vigenciaTexto = 'No disponible';
     }
 }
+
+$archivoHref = null;
+$derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
+if (!empty($derivacionId)) {
+    $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
+} elseif (!empty($derivacion['archivo_derivacion_path'])) {
+    $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
+}
+
+$slaStatus = strtolower(trim((string)($solicitud['sla_status'] ?? '')));
+$slaBadges = [
+    'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
+    'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
+    'critico' => ['color' => 'danger', 'label' => 'SLA crítico', 'icon' => 'mdi-alert-octagon'],
+    'vencido' => ['color' => 'dark', 'label' => 'SLA vencido', 'icon' => 'mdi-alert'],
+    'sin_fecha' => ['color' => 'secondary', 'label' => 'SLA sin fecha', 'icon' => 'mdi-calendar-remove'],
+    'cerrado' => ['color' => 'secondary', 'label' => 'SLA cerrado', 'icon' => 'mdi-lock-outline'],
+];
+$slaBadge = $slaBadges[$slaStatus] ?? null;
+
+$crmResponsable = $solicitud['crm_responsable_nombre'] ?? 'Sin responsable';
+$crmContactoTelefono = $solicitud['crm_contacto_telefono'] ?? $paciente['celular'] ?? 'Sin teléfono';
+$crmContactoCorreo = $solicitud['crm_contacto_email'] ?? 'Sin correo';
+$crmFuente = $solicitud['crm_fuente'] ?? ($solicitud['fuente'] ?? 'Sin fuente');
+$crmNotas = (int)($solicitud['crm_total_notas'] ?? 0);
+$crmAdjuntos = (int)($solicitud['crm_total_adjuntos'] ?? 0);
+$crmTareasPendientes = (int)($solicitud['crm_tareas_pendientes'] ?? 0);
+$crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
-<?php if (!empty($derivacion['archivo_derivacion_path']) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
-    <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
-        <div>
-            <strong>📎 Derivación:</strong>
-            <span class="text-muted ms-1">Documento adjunto disponible.</span>
+<div class="prefactura-detail-header rounded p-3 mb-0">
+    <!-- HEADER FIJO -->
+    <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
+        <div class="flex-grow-1">
+            <div id="prefacturaPatientSummary" class="prefactura-patient-card"></div>
         </div>
-        <?php
-        $archivoHref = null;
-        $derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
-        if (!empty($derivacionId)) {
-            $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
-        } elseif (!empty($derivacion['archivo_derivacion_path'])) {
-            $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
-        }
-        ?>
-        <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
-            <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
-        </a>
-    </div>
-<?php endif; ?>
-
-<ul class="list-group mb-3">
-    <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-md-center">
-        <div>
-            <strong>🕒 Fecha de solicitud:</strong><br>
-            <?php if ($fechaSolicitud): ?>
-                <?= htmlspecialchars($fechaSolicitud->format('d-m-Y')) ?>
-                <br>
-                <small class="text-muted">
-                    Hace <?= (int)$diasTranscurridos ?> día(s)
-                </small>
-            <?php else: ?>
-                <span class="text-muted">No disponible</span>
-            <?php endif; ?>
-        </div>
-        <div class="mt-2 mt-md-0 text-md-end">
-            <span class="badge bg-<?= htmlspecialchars($semaforo['color']) ?>">
-                <?= htmlspecialchars($semaforo['texto']) ?>
-        </span>
-            <?php if ($vigenciaBadge): ?>
-                <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color']) ?> ms-1">
-                    <?= htmlspecialchars($vigenciaBadge['texto']) ?>
+        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-xl-end">
+            <?php if ($slaBadge): ?>
+                <span class="badge bg-<?= htmlspecialchars($slaBadge['color'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($slaBadge['label'], ENT_QUOTES, 'UTF-8') ?>">
+                    <i class="mdi <?= htmlspecialchars($slaBadge['icon'], ENT_QUOTES, 'UTF-8') ?> me-1"></i>
+                    <?= htmlspecialchars($slaBadge['label'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
             <?php endif; ?>
+            <?php if (!empty($solicitud['alert_reprogramacion'])): ?>
+                <span class="badge bg-light text-danger border" title="Reprogramar" aria-label="Alerta de reprogramación">
+                    <i class="mdi mdi-calendar-alert"></i>
+                </span>
+            <?php endif; ?>
+            <?php if (!empty($solicitud['alert_pendiente_consentimiento'])): ?>
+                <span class="badge bg-light text-warning border" title="Consentimiento pendiente" aria-label="Consentimiento pendiente">
+                    <i class="mdi mdi-shield-alert"></i>
+                </span>
+            <?php endif; ?>
+            <?php if ($archivoHref): ?>
+                <a class="btn btn-sm btn-outline-primary" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
+                    <i class="bi bi-file-earmark-pdf"></i> Abrir PDF derivación
+                </a>
+            <?php endif; ?>
         </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mt-2" id="prefacturaTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="prefactura-tab-resumen-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-resumen" type="button" role="tab" aria-controls="prefactura-tab-resumen" aria-selected="true">Resumen</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prefactura-tab-solicitud-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-solicitud" type="button" role="tab" aria-controls="prefactura-tab-solicitud" aria-selected="false">Solicitud</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prefactura-tab-derivacion-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-derivacion" type="button" role="tab" aria-controls="prefactura-tab-derivacion" aria-selected="false">Derivación</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo" aria-selected="false">Oftalmología</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prefactura-tab-examen-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-examen" type="button" role="tab" aria-controls="prefactura-tab-examen" aria-selected="false">Examen & Plan</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="prefactura-tab-crm-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-crm" type="button" role="tab" aria-controls="prefactura-tab-crm" aria-selected="false">CRM</button>
     </li>
 </ul>
 
-<div class="box box-outline-success">
-    <div class="box-header">
-        <h5 class="box-title"><strong>📄 Datos del Paciente</strong></h5>
+<div class="tab-content prefactura-tab-content" id="prefacturaTabsContent">
+    <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel" aria-labelledby="prefactura-tab-resumen-tab">
+        <!-- TAB 1: Resumen -->
+        <div id="prefacturaContextualActions" class="d-flex flex-column gap-2 mb-3"></div>
+        <div id="prefacturaStatePlaceholder" class="prefactura-state-placeholder mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="spinner-border spinner-border-sm text-muted" role="status" aria-hidden="true"></span>
+                <span class="fw-semibold">Cargando estado…</span>
+            </div>
+            <small class="text-muted d-block mt-1">Resumen, SLA y alertas estarán disponibles en unos segundos.</small>
+        </div>
+        <div id="prefacturaState" class="prefactura-state-container d-none"></div>
+        <div class="mt-3">
+            <h6 class="text-muted text-uppercase">Acciones</h6>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">
+                    <i class="mdi mdi-phone me-1"></i> Generar turno
+                </button>
+                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">
+                    <i class="mdi mdi-account-clock-outline me-1"></i> En atención
+                </button>
+                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">
+                    <i class="mdi mdi-check-circle-outline me-1"></i> Cobertura exitosa
+                </button>
+                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">
+                    <i class="mdi mdi-clipboard-check-outline me-1"></i> Códigos Revisado
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="box-body">
-        <i class="bi bi-gender-ambiguous"></i>
-        <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-        <br>
-        <i class="bi bi-cake"></i> <strong>Fecha Nacimiento:</strong>
-        <?php
-        if ($fechaNacimiento) {
-            try {
-                $fechaNacimientoDt = new DateTime($fechaNacimiento);
-                echo htmlspecialchars($fechaNacimientoDt->format('d-m-Y'), ENT_QUOTES, 'UTF-8');
-            } catch (Exception $e) {
-                echo 'No disponible';
-            }
-        } else {
-            echo 'No disponible';
-        }
-        ?><br>
-        <i class="bi bi-phone"></i>
-        <strong>Celular:</strong> <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+
+    <div class="tab-pane fade" id="prefactura-tab-solicitud" role="tabpanel" aria-labelledby="prefactura-tab-solicitud-tab">
+        <!-- TAB 2: Solicitud -->
+        <ul class="list-group mb-3">
+            <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                <div>
+                    <strong>🕒 Fecha de solicitud:</strong><br>
+                    <?php if ($fechaSolicitud): ?>
+                        <?= htmlspecialchars($fechaSolicitud->format('d-m-Y')) ?>
+                        <br>
+                        <small class="text-muted">
+                            Hace <?= (int)$diasTranscurridos ?> día(s)
+                        </small>
+                    <?php else: ?>
+                        <span class="text-muted">No disponible</span>
+                    <?php endif; ?>
+                </div>
+                <div class="mt-2 mt-md-0 text-md-end">
+                    <span class="badge bg-<?= htmlspecialchars($semaforo['color']) ?>">
+                        <?= htmlspecialchars($semaforo['texto']) ?>
+                    </span>
+                    <?php if ($vigenciaBadge): ?>
+                        <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color']) ?> ms-1">
+                            <?= htmlspecialchars($vigenciaBadge['texto']) ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
+            </li>
+        </ul>
+
+        <div class="box box-outline-info mb-3">
+            <div class="box-header">
+                <h5 class="box-title"><strong>🗂️ Información de la Solicitud</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                    <strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Prioridad:</strong> <?= htmlspecialchars($solicitud['prioridad'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Estado:</strong> <?= htmlspecialchars($solicitud['estado'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <strong>Diagnósticos:</strong>
+                    <?php if ($diagnosticos): ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($diagnosticos as $dx): ?>
+                                <li>
+                                    <span class="text-primary"><?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
+                                    — <?= htmlspecialchars($dx['descripcion'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    (<?= htmlspecialchars($dx['lateralidad'] ?? '', ENT_QUOTES, 'UTF-8') ?>)
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <span class="text-muted">No disponibles</span>
+                    <?php endif; ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Observaciones:</strong>
+                    <?= htmlspecialchars($consulta['observacion'] ?? ($solicitud['observacion'] ?? 'Sin observaciones'), ENT_QUOTES, 'UTF-8') ?>
+                    <?php // REVIEW: no hay un campo explícito de observaciones de solicitud; se usa la observación disponible. ?>
+                </li>
+            </ul>
+            <div class="box-body"></div>
+        </div>
+
+        <div class="box box-outline-success">
+            <div class="box-header">
+                <h5 class="box-title"><strong>📄 Datos del Paciente</strong></h5>
+            </div>
+            <div class="box-body">
+                <?php // REVIEW: datos de paciente no están explicitados en las tabs solicitadas, se incluyen aquí. ?>
+                <i class="bi bi-gender-ambiguous"></i>
+                <strong>Sexo:</strong> <?= htmlspecialchars($paciente['sexo'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                <br>
+                <i class="bi bi-cake"></i> <strong>Fecha Nacimiento:</strong>
+                <?php
+                if ($fechaNacimiento) {
+                    try {
+                        $fechaNacimientoDt = new DateTime($fechaNacimiento);
+                        echo htmlspecialchars($fechaNacimientoDt->format('d-m-Y'), ENT_QUOTES, 'UTF-8');
+                    } catch (Exception $e) {
+                        echo 'No disponible';
+                    }
+                } else {
+                    echo 'No disponible';
+                }
+                ?><br>
+                <i class="bi bi-phone"></i>
+                <strong>Celular:</strong> <?= htmlspecialchars($paciente['celular'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
+        <!-- TAB 3: Derivación -->
+        <?php if (!empty($archivoHref) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
+            <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
+                <div>
+                    <strong>📎 Derivación:</strong>
+                    <span class="text-muted ms-1">Documento adjunto disponible.</span>
+                </div>
+                <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
+                    <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+                </a>
+            </div>
+        <?php endif; ?>
+
+        <div class="box box-outline-primary">
+            <div class="box-header">
+                <h5 class="box-title"><strong>📌 Información de la Derivación</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código
+                        Derivación:</strong> <?= htmlspecialchars($derivacion['cod_derivacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha
+                        Registro:</strong> <?= htmlspecialchars($derivacion['fecha_registro'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha
+                        Vigencia:</strong> <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
+                    <?php if ($vigenciaBadge): ?>
+                        <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
+                        <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <?php endif; ?>
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <strong>Diagnóstico:</strong>
+                    <?php if (!empty($derivacion['diagnosticos']) && is_array($derivacion['diagnosticos'])): ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($derivacion['diagnosticos'] as $dx): ?>
+                                <li>
+                                    <span class="text-primary">
+                                        <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                    — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if (!empty($dx['lateralidad'])): ?>
+                                        (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php elseif (!empty($derivacion['diagnostico'])): ?>
+                        <?php
+                        // Si viene como string tipo "Z010 - ...; H251 - ...; ..."
+                        $items = array_filter(array_map('trim', explode(';', $derivacion['diagnostico'])));
+                        ?>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($items as $item): ?>
+                                <li><?= htmlspecialchars($item, ENT_QUOTES, 'UTF-8') ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <span class="text-muted">No disponible</span>
+                    <?php endif; ?>
+                </li>
+            </ul>
+            <div class="box-body"></div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="prefactura-tab-oftalmo" role="tabpanel" aria-labelledby="prefactura-tab-oftalmo-tab">
+        <!-- TAB 4: Oftalmología -->
+        <div class="box box-outline-warning">
+            <div class="box-header">
+                <h5 class="box-title"><strong>👁️ Datos para Oftalmología</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><strong>Lente /
+                        Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
+                <li class="list-group-item">
+                    <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision'] ?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+                <li class="list-group-item">
+                    <strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
+                </li>
+            </ul>
+            <div class="box-body">
+                <?php
+                $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
+
+                // IMPORTANTE:
+                // - Estado "apto-anestesia" en el Kanban significa "PENDIENTE de confirmación por anestesia".
+                // - Solo debe verse como "success" cuando la solicitud YA PASÓ de esa estación,
+                //   por ejemplo: listo-para-agenda, programada, completado.
+                $esAptoAnestesia = in_array($estadoActual, ['listo-para-agenda', 'programada', 'completado'], true);
+                $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
+
+                // Apto oftalmólogo:
+                // Por ahora lo inferimos como "ya confirmado" si la solicitud está
+                // en una etapa igual o posterior a apto-anestesia en el Kanban.
+                // Idealmente esto se debería leer del checklist (etapa_slug = apto-oftalmologo).
+                $esAptoOftalmo = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'programada', 'completado'], true);
+
+                $badgeOftalmo = $esAptoOftalmo
+                        ? '<span class="badge bg-success">Oftalmólogo: Apto</span>'
+                        : '<span class="badge bg-warning text-dark">Oftalmólogo: Pendiente</span>';
+
+                $badgeAnestesia = $esAptoAnestesia
+                        ? '<span class="badge bg-success">Anestesia: Apto</span>'
+                        : '<span class="badge bg-warning text-dark">Anestesia: Pendiente</span>';
+
+                // IDs unificados para botones (kanban / modal)
+                $kanbanSolicitudId = isset($_GET['solicitud_id']) ? (int)$_GET['solicitud_id'] : null;
+                $solicitudIdRaw = (int)($solicitud['id'] ?? 0);
+                $formId = (int)($solicitud['form_id'] ?? 0);
+
+                // PRIORIDAD: usa SIEMPRE el id que viene del kanban si existe
+                $dataId = $kanbanSolicitudId ?: ($solicitudIdRaw ?: $formId);
+                $solicitudIdBtn = $dataId;
+                ?>
+
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <?= $badgeOftalmo ?>
+                    <?= $badgeAnestesia ?>
+                </div>
+                <div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
+                    <h5 class="d-flex align-items-center justify-content-between mb-2">
+                        <span><strong>🩺 Paso preanestesia</strong></span>
+                        <button type="button"
+                                class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
+                                data-context-action="confirmar-anestesia"
+                                data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                <?= $esAptoAnestesia ? 'disabled' : '' ?>
+                                id="btnPrefacturaConfirmarAnestesia">
+                            <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
+                        </button>
+                    </h5>
+                    <div>
+                        <strong>Estado actual:</strong>
+                        <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
+                    </div>
+                </div>
+            </div>
+            <div class="box-footer">
+                <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
+                        data-context-action="editar-lio"
+                        data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
+                        data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                    <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
+                </button>
+                <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
+                        data-context-action="confirmar-oftalmo"
+                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
+                        data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
+                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        <?= $esAptoOftalmo ? 'disabled' : '' ?>>
+                    <i class="mdi mdi-check-circle-outline"></i>
+                    <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Confirmar apto oftalmólogo' ?>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="prefactura-tab-examen" role="tabpanel" aria-labelledby="prefactura-tab-examen-tab">
+        <!-- TAB 5: Examen & Plan -->
+        <div class="box box-outline-primary">
+            <div class="box-header with-border">
+                <h4 class="box-title">📝 Examen físico y plan</h4>
+                <h6 class="box-subtitle">Revisa la exploración y las indicaciones en pestañas verticales.</h6>
+            </div>
+            <div class="box-body">
+                <div class="vtabs">
+                    <ul class="nav nav-tabs tabs-vertical" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab"
+                               aria-selected="true">
+                                <span><i class="ion-eye me-2"></i>Examen físico</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#tab-plan" role="tab" aria-selected="false">
+                                <span><i class="ion-document-text me-2"></i>Plan</span>
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane active" id="tab-examen-fisico" role="tabpanel">
+                            <div class="p-15">
+                                <div style="white-space: pre-wrap;">
+                                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane" id="tab-plan" role="tabpanel">
+                            <div class="p-15">
+                                <div style="white-space: pre-wrap;">
+                                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="prefactura-tab-crm" role="tabpanel" aria-labelledby="prefactura-tab-crm-tab">
+        <!-- TAB 6: CRM -->
+        <div class="box box-outline-secondary">
+            <div class="box-header">
+                <h5 class="box-title"><strong>📇 Resumen CRM</strong></h5>
+            </div>
+            <div class="box-body">
+                <div class="prefactura-crm-grid">
+                    <div class="prefactura-crm-item">
+                        <small class="text-muted d-block">Responsable</small>
+                        <strong><?= htmlspecialchars($crmResponsable, ENT_QUOTES, 'UTF-8') ?></strong>
+                    </div>
+                    <div class="prefactura-crm-item">
+                        <small class="text-muted d-block">Contacto</small>
+                        <strong><?= htmlspecialchars($crmContactoTelefono, ENT_QUOTES, 'UTF-8') ?></strong>
+                        <span class="text-muted d-block"><?= htmlspecialchars($crmContactoCorreo, ENT_QUOTES, 'UTF-8') ?></span>
+                    </div>
+                    <div class="prefactura-crm-item">
+                        <small class="text-muted d-block">Fuente</small>
+                        <strong><?= htmlspecialchars($crmFuente, ENT_QUOTES, 'UTF-8') ?></strong>
+                    </div>
+                    <div class="prefactura-crm-item">
+                        <small class="text-muted d-block">Notas / Adjuntos / Tareas</small>
+                        <strong>
+                            <?= htmlspecialchars((string)$crmNotas, ENT_QUOTES, 'UTF-8') ?> notas ·
+                            <?= htmlspecialchars((string)$crmAdjuntos, ENT_QUOTES, 'UTF-8') ?> adjuntos ·
+                            <?= htmlspecialchars((string)$crmTareasPendientes, ENT_QUOTES, 'UTF-8') ?>/<?= htmlspecialchars((string)$crmTareasTotal, ENT_QUOTES, 'UTF-8') ?> tareas
+                        </strong>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="button"
+                            class="btn btn-outline-primary"
+                            data-crm-proxy
+                            data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                            data-paciente-nombre="<?= htmlspecialchars($nombrePaciente ?: 'Solicitud', ENT_QUOTES, 'UTF-8') ?>"
+                            aria-label="Abrir CRM de la solicitud">
+                        <i class="mdi mdi-open-in-new"></i> Abrir CRM
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -294,243 +691,3 @@ if (!empty($derivacion['fecha_vigencia'])) {
         }
     });
 </script>
-
-<div class="row g-3">
-    <div class="col-12 col-md-6">
-        <div class="box box-outline-info">
-            <div class="box-header">
-                <h5 class="box-title"><strong>🗂️ Información de la Solicitud</strong></h5>
-            </div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item">
-                    <strong>Procedimiento:</strong> <?= htmlspecialchars($solicitud['procedimiento'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Prioridad:</strong> <?= htmlspecialchars($solicitud['prioridad'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <strong>Estado:</strong> <?= htmlspecialchars($solicitud['estado'] ?? '—', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <i class="bi bi-clipboard2-pulse"></i>
-                    <strong>Diagnósticos:</strong>
-                    <?php if ($diagnosticos): ?>
-                        <ul class="mb-0 mt-2">
-                            <?php foreach ($diagnosticos as $dx): ?>
-                                <li>
-                                    <span class="text-primary"><?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
-                                    — <?= htmlspecialchars($dx['descripcion'] ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                    (<?= htmlspecialchars($dx['lateralidad'] ?? '', ENT_QUOTES, 'UTF-8') ?>)
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <span class="text-muted">No disponibles</span>
-                    <?php endif; ?>
-                </li>
-            </ul>
-            <div class="box-body"></div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6">
-        <div class="box box-outline-primary">
-            <div class="box-header">
-                <h5 class="box-title"><strong>📌 Información de la Derivación</strong></h5>
-            </div>
-            <ul class="list-group list-group-flush">
-                <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código
-                        Derivación:</strong> <?= htmlspecialchars($derivacion['cod_derivacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha
-                        Registro:</strong> <?= htmlspecialchars($derivacion['fecha_registro'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha
-                        Vigencia:</strong> <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                </li>
-                <li class="list-group-item">
-                    <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
-                    <?php if ($vigenciaBadge): ?>
-                        <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
-                        <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
-                    </span>
-                    <?php endif; ?>
-                </li>
-                <li class="list-group-item">
-                    <i class="bi bi-clipboard2-pulse"></i>
-                    <strong>Diagnóstico:</strong>
-                    <?php if (!empty($derivacion['diagnosticos']) && is_array($derivacion['diagnosticos'])): ?>
-                        <ul class="mb-0 mt-2">
-                            <?php foreach ($derivacion['diagnosticos'] as $dx): ?>
-                                <li>
-                                    <span class="text-primary">
-                                        <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                    — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                                    <?php if (!empty($dx['lateralidad'])): ?>
-                                        (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
-                                    <?php endif; ?>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php elseif (!empty($derivacion['diagnostico'])): ?>
-                        <?php
-                        // Si viene como string tipo "Z010 - ...; H251 - ...; ..."
-                        $items = array_filter(array_map('trim', explode(';', $derivacion['diagnostico'])));
-                        ?>
-                        <ul class="mb-0 mt-2">
-                            <?php foreach ($items as $item): ?>
-                                <li><?= htmlspecialchars($item, ENT_QUOTES, 'UTF-8') ?></li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php else: ?>
-                        <span class="text-muted">No disponible</span>
-                    <?php endif; ?>
-                </li>
-            </ul>
-            <div class="box-body"></div>
-        </div>
-    </div>
-</div>
-
-<div class="box box-outline-warning">
-    <div class="box-header">
-        <h5 class="box-title"><strong>👁️ Datos para Oftalmología</strong></h5>
-    </div>
-    <ul class="list-group list-group-flush">
-        <li class="list-group-item"><strong>Lente /
-                Producto:</strong> <?= htmlspecialchars($solicitud['producto'] ?? ($solicitud['lente_nombre'] ?? 'No registrado'), ENT_QUOTES, 'UTF-8') ?>
-        </li>
-        <li class="list-group-item">
-            <strong>Poder:</strong> <?= htmlspecialchars($solicitud['lente_poder'] ?? ($solicitud['lente_power'] ?? ($solicitud['poder'] ?? 'No especificado')), ENT_QUOTES, 'UTF-8') ?>
-        </li>
-        <li class="list-group-item">
-            <strong>Ojo:</strong> <?= htmlspecialchars($solicitud['ojo'] ?? '—', ENT_QUOTES, 'UTF-8') ?></li>
-        <li class="list-group-item">
-            <strong>Incisión:</strong> <?= htmlspecialchars($solicitud['incision'] ?? 'Sin especificación', ENT_QUOTES, 'UTF-8') ?>
-        </li>
-        <li class="list-group-item">
-            <strong>Observaciones:</strong> <?= htmlspecialchars($solicitud['observacion'] ?? 'Sin observaciones', ENT_QUOTES, 'UTF-8') ?>
-        </li>
-    </ul>
-    <div class="box-body">
-        <?php
-        $estadoActual = strtolower(trim((string)($solicitud['estado'] ?? '')));
-
-        // IMPORTANTE:
-        // - Estado "apto-anestesia" en el Kanban significa "PENDIENTE de confirmación por anestesia".
-        // - Solo debe verse como "success" cuando la solicitud YA PASÓ de esa estación,
-        //   por ejemplo: listo-para-agenda, programada, completado.
-        $esAptoAnestesia = in_array($estadoActual, ['listo-para-agenda', 'programada', 'completado'], true);
-        $calloutClass = $esAptoAnestesia ? 'callout-success' : 'callout-warning';
-
-        // Apto oftalmólogo:
-        // Por ahora lo inferimos como "ya confirmado" si la solicitud está
-        // en una etapa igual o posterior a apto-anestesia en el Kanban.
-        // Idealmente esto se debería leer del checklist (etapa_slug = apto-oftalmologo).
-        $esAptoOftalmo = in_array($estadoActual, ['apto-anestesia', 'listo-para-agenda', 'programada', 'completado'], true);
-
-        $badgeOftalmo = $esAptoOftalmo
-                ? '<span class="badge bg-success">Oftalmólogo: Apto</span>'
-                : '<span class="badge bg-warning text-dark">Oftalmólogo: Pendiente</span>';
-
-        $badgeAnestesia = $esAptoAnestesia
-                ? '<span class="badge bg-success">Anestesia: Apto</span>'
-                : '<span class="badge bg-warning text-dark">Anestesia: Pendiente</span>';
-
-        // IDs unificados para botones (kanban / modal)
-        $kanbanSolicitudId = isset($_GET['solicitud_id']) ? (int)$_GET['solicitud_id'] : null;
-        $solicitudIdRaw = (int)($solicitud['id'] ?? 0);
-        $formId = (int)($solicitud['form_id'] ?? 0);
-
-        // PRIORIDAD: usa SIEMPRE el id que viene del kanban si existe
-        $dataId = $kanbanSolicitudId ?: ($solicitudIdRaw ?: $formId);
-        $solicitudIdBtn = $dataId;
-        ?>
-
-        <div class="d-flex flex-wrap gap-2 mb-2">
-            <?= $badgeOftalmo ?>
-            <?= $badgeAnestesia ?>
-        </div>
-        <div class="callout <?= $calloutClass ?> mb-3" role="alert" id="prefacturaCalloutPreanestesia">
-            <h5 class="d-flex align-items-center justify-content-between mb-2">
-                <span><strong>🩺 Paso preanestesia</strong></span>
-                <button type="button"
-                        class="btn btn-sm <?= $esAptoAnestesia ? 'btn-success' : 'btn-outline-success' ?>"
-                        data-context-action="confirmar-anestesia"
-                        data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
-                        data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                        data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                        <?= $esAptoAnestesia ? 'disabled' : '' ?>
-                        id="btnPrefacturaConfirmarAnestesia">
-                    <?= $esAptoAnestesia ? 'Apto por anestesia' : 'Marcar apto anestesia' ?>
-                </button>
-            </h5>
-            <div>
-                <strong>Estado actual:</strong>
-                <span id="prefacturaEstadoActual"><?= htmlspecialchars($solicitud['estado'] ?? 'No definido', ENT_QUOTES, 'UTF-8') ?></span>
-            </div>
-        </div>
-    </div>
-    <div class="box-footer">
-        <button class="btn btn-primary" type="button" id="btnPrefacturaEditarLio"
-                data-context-action="editar-lio"
-                data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
-                data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
-        </button>
-        <button class="btn btn-success" type="button" id="btnPrefacturaConfirmarOftalmo"
-                data-context-action="confirmar-oftalmo"
-                data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
-                data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
-                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                <?= $esAptoOftalmo ? 'disabled' : '' ?>>
-            <i class="mdi mdi-check-circle-outline"></i>
-            <?= $esAptoOftalmo ? 'Apto por oftalmólogo' : 'Confirmar apto oftalmólogo' ?>
-        </button>
-    </div>
-</div>
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="box box-outline-primary">
-            <div class="box-header with-border">
-                <h4 class="box-title">📝 Examen físico y plan</h4>
-                <h6 class="box-subtitle">Revisa la exploración y las indicaciones en pestañas verticales.</h6>
-            </div>
-            <div class="box-body">
-                <div class="vtabs">
-                    <ul class="nav nav-tabs tabs-vertical" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active" data-bs-toggle="tab" href="#tab-examen-fisico" role="tab"
-                               aria-selected="true">
-                                <span><i class="ion-eye me-2"></i>Examen físico</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" data-bs-toggle="tab" href="#tab-plan" role="tab" aria-selected="false">
-                                <span><i class="ion-document-text me-2"></i>Plan</span>
-                            </a>
-                        </li>
-                    </ul>
-                    <div class="tab-content">
-                        <div class="tab-pane active" id="tab-examen-fisico" role="tabpanel">
-                            <div class="p-15">
-                                <div style="white-space: pre-wrap;">
-                                    <?= htmlspecialchars($consulta['examen_fisico'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="tab-pane" id="tab-plan" role="tabpanel">
-                            <div class="p-15">
-                                <div style="white-space: pre-wrap;">
-                                    <?= htmlspecialchars($consulta['plan'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
