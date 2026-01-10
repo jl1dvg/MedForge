@@ -86,19 +86,19 @@ if (!empty($derivacion['fecha_vigencia'])) {
 $archivoHref = null;
 $derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
 if (!empty($derivacionId)) {
-    $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
+    $archivoHref = '/derivaciones/archivo/' . urlencode((string)$derivacionId);
 } elseif (!empty($derivacion['archivo_derivacion_path'])) {
     $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
 }
 
 $slaStatus = strtolower(trim((string)($solicitud['sla_status'] ?? '')));
 $slaBadges = [
-    'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
-    'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
-    'critico' => ['color' => 'danger', 'label' => 'SLA crítico', 'icon' => 'mdi-alert-octagon'],
-    'vencido' => ['color' => 'dark', 'label' => 'SLA vencido', 'icon' => 'mdi-alert'],
-    'sin_fecha' => ['color' => 'secondary', 'label' => 'SLA sin fecha', 'icon' => 'mdi-calendar-remove'],
-    'cerrado' => ['color' => 'secondary', 'label' => 'SLA cerrado', 'icon' => 'mdi-lock-outline'],
+        'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
+        'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
+        'critico' => ['color' => 'danger', 'label' => 'SLA crítico', 'icon' => 'mdi-alert-octagon'],
+        'vencido' => ['color' => 'dark', 'label' => 'SLA vencido', 'icon' => 'mdi-alert'],
+        'sin_fecha' => ['color' => 'secondary', 'label' => 'SLA sin fecha', 'icon' => 'mdi-calendar-remove'],
+        'cerrado' => ['color' => 'secondary', 'label' => 'SLA cerrado', 'icon' => 'mdi-lock-outline'],
 ];
 $slaBadge = $slaBadges[$slaStatus] ?? null;
 
@@ -113,61 +113,75 @@ $crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
-<div class="prefactura-detail-header rounded p-3 mb-0">
-    <!-- HEADER FIJO -->
-    <div class="d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
-        <div class="flex-grow-1">
-            <div id="prefacturaPatientSummary" class="prefactura-patient-card"></div>
-        </div>
-        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-xl-end">
-            <?php if ($slaBadge): ?>
-                <span class="badge bg-<?= htmlspecialchars($slaBadge['color'], ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($slaBadge['label'], ENT_QUOTES, 'UTF-8') ?>">
+<!-- HEADER FIJO -->
+<div class=" prefactura-detail-header d-flex flex-column flex-xl-row align-items-xl-center justify-content-between gap-3">
+    <div class="flex-grow-1">
+        <div id="prefacturaPatientSummary" class="prefactura-patient-card"></div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-xl-end">
+        <?php if ($slaBadge): ?>
+            <span class="badge bg-<?= htmlspecialchars($slaBadge['color'], ENT_QUOTES, 'UTF-8') ?>"
+                  title="<?= htmlspecialchars($slaBadge['label'], ENT_QUOTES, 'UTF-8') ?>">
                     <i class="mdi <?= htmlspecialchars($slaBadge['icon'], ENT_QUOTES, 'UTF-8') ?> me-1"></i>
                     <?= htmlspecialchars($slaBadge['label'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
-            <?php endif; ?>
-            <?php if (!empty($solicitud['alert_reprogramacion'])): ?>
-                <span class="badge bg-light text-danger border" title="Reprogramar" aria-label="Alerta de reprogramación">
+        <?php endif; ?>
+        <?php if (!empty($solicitud['alert_reprogramacion'])): ?>
+            <span class="badge bg-light text-danger border" title="Reprogramar" aria-label="Alerta de reprogramación">
                     <i class="mdi mdi-calendar-alert"></i>
                 </span>
-            <?php endif; ?>
-            <?php if (!empty($solicitud['alert_pendiente_consentimiento'])): ?>
-                <span class="badge bg-light text-warning border" title="Consentimiento pendiente" aria-label="Consentimiento pendiente">
+        <?php endif; ?>
+        <?php if (!empty($solicitud['alert_pendiente_consentimiento'])): ?>
+            <span class="badge bg-light text-warning border" title="Consentimiento pendiente"
+                  aria-label="Consentimiento pendiente">
                     <i class="mdi mdi-shield-alert"></i>
                 </span>
-            <?php endif; ?>
-            <?php if ($archivoHref): ?>
-                <a class="btn btn-sm btn-outline-primary" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
-                    <i class="bi bi-file-earmark-pdf"></i> Abrir PDF derivación
-                </a>
-            <?php endif; ?>
-        </div>
+        <?php endif; ?>
     </div>
 </div>
 
+
 <ul class="nav nav-tabs mt-2" id="prefacturaTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="prefactura-tab-resumen-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-resumen" type="button" role="tab" aria-controls="prefactura-tab-resumen" aria-selected="true">Resumen</button>
+        <button class="nav-link active" id="prefactura-tab-resumen-tab" data-bs-toggle="tab"
+                data-bs-target="#prefactura-tab-resumen" type="button" role="tab" aria-controls="prefactura-tab-resumen"
+                aria-selected="true">Resumen
+        </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="prefactura-tab-solicitud-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-solicitud" type="button" role="tab" aria-controls="prefactura-tab-solicitud" aria-selected="false">Solicitud</button>
+        <button class="nav-link" id="prefactura-tab-solicitud-tab" data-bs-toggle="tab"
+                data-bs-target="#prefactura-tab-solicitud" type="button" role="tab"
+                aria-controls="prefactura-tab-solicitud" aria-selected="false">Solicitud
+        </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="prefactura-tab-derivacion-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-derivacion" type="button" role="tab" aria-controls="prefactura-tab-derivacion" aria-selected="false">Derivación</button>
+        <button class="nav-link" id="prefactura-tab-derivacion-tab" data-bs-toggle="tab"
+                data-bs-target="#prefactura-tab-derivacion" type="button" role="tab"
+                aria-controls="prefactura-tab-derivacion" aria-selected="false">Derivación
+        </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo" aria-selected="false">Oftalmología</button>
+        <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab"
+                data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo"
+                aria-selected="false">Oftalmología
+        </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="prefactura-tab-examen-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-examen" type="button" role="tab" aria-controls="prefactura-tab-examen" aria-selected="false">Examen & Plan</button>
+        <button class="nav-link" id="prefactura-tab-examen-tab" data-bs-toggle="tab"
+                data-bs-target="#prefactura-tab-examen" type="button" role="tab" aria-controls="prefactura-tab-examen"
+                aria-selected="false">Examen & Plan
+        </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="prefactura-tab-crm-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-crm" type="button" role="tab" aria-controls="prefactura-tab-crm" aria-selected="false">CRM</button>
+        <button class="nav-link" id="prefactura-tab-crm-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-crm"
+                type="button" role="tab" aria-controls="prefactura-tab-crm" aria-selected="false">CRM
+        </button>
     </li>
 </ul>
 
 <div class="tab-content prefactura-tab-content" id="prefacturaTabsContent">
-    <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel" aria-labelledby="prefactura-tab-resumen-tab">
+    <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel"
+         aria-labelledby="prefactura-tab-resumen-tab">
         <!-- TAB 1: Resumen -->
         <div id="prefacturaContextualActions" class="d-flex flex-column gap-2 mb-3"></div>
         <div id="prefacturaStatePlaceholder" class="prefactura-state-placeholder mb-3">
@@ -184,20 +198,24 @@ $crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">
                     <i class="mdi mdi-phone me-1"></i> Generar turno
                 </button>
-                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">
+                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
+                        data-estado="En atención">
                     <i class="mdi mdi-account-clock-outline me-1"></i> En atención
                 </button>
-                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">
+                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa"
+                        data-estado="Revisión Códigos" data-completado="1">
                     <i class="mdi mdi-check-circle-outline me-1"></i> Cobertura exitosa
                 </button>
-                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">
+                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos"
+                        data-estado="Revisión Códigos">
                     <i class="mdi mdi-clipboard-check-outline me-1"></i> Códigos Revisado
                 </button>
             </div>
         </div>
     </div>
 
-    <div class="tab-pane fade" id="prefactura-tab-solicitud" role="tabpanel" aria-labelledby="prefactura-tab-solicitud-tab">
+    <div class="tab-pane fade" id="prefactura-tab-solicitud" role="tabpanel"
+         aria-labelledby="prefactura-tab-solicitud-tab">
         <!-- TAB 2: Solicitud -->
         <ul class="list-group mb-3">
             <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-md-center">
@@ -294,7 +312,8 @@ $crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
         </div>
     </div>
 
-    <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
+    <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel"
+         aria-labelledby="prefactura-tab-derivacion-tab">
         <!-- TAB 3: Derivación -->
         <?php if (!empty($archivoHref) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
             <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
@@ -302,7 +321,8 @@ $crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
                     <strong>📎 Derivación:</strong>
                     <span class="text-muted ms-1">Documento adjunto disponible.</span>
                 </div>
-                <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
+                <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
+                   href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
                     <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
                 </a>
             </div>
@@ -537,7 +557,8 @@ $crmTareasTotal = (int)($solicitud['crm_tareas_total'] ?? 0);
                         <strong>
                             <?= htmlspecialchars((string)$crmNotas, ENT_QUOTES, 'UTF-8') ?> notas ·
                             <?= htmlspecialchars((string)$crmAdjuntos, ENT_QUOTES, 'UTF-8') ?> adjuntos ·
-                            <?= htmlspecialchars((string)$crmTareasPendientes, ENT_QUOTES, 'UTF-8') ?>/<?= htmlspecialchars((string)$crmTareasTotal, ENT_QUOTES, 'UTF-8') ?> tareas
+                            <?= htmlspecialchars((string)$crmTareasPendientes, ENT_QUOTES, 'UTF-8') ?>
+                            /<?= htmlspecialchars((string)$crmTareasTotal, ENT_QUOTES, 'UTF-8') ?> tareas
                         </strong>
                     </div>
                 </div>

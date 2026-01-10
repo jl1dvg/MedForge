@@ -292,19 +292,9 @@ array_push(
             gap: 1rem;
         }
 
-        .prefactura-detail-header {
-            position: sticky;
-            top: 0;
-            z-index: 6;
-            background: rgba(255, 255, 255, 0.96);
-            border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-            backdrop-filter: blur(6px);
-        }
-
         #prefacturaTabs {
             position: sticky;
-            top: var(--prefactura-header-height, 72px);
+            top: var(72px);
             z-index: 5;
             background: rgba(255, 255, 255, 0.98);
             border-bottom: 1px solid rgba(148, 163, 184, 0.2);
