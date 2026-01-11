@@ -12,6 +12,7 @@ use Modules\CRM\Services\LeadCrmCoreService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Modules\Solicitudes\Services\SolicitudEstadoService;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -30,6 +31,7 @@ class SolicitudCrmService
     private CrmProjectService $projectService;
     private WhatsAppMessenger $whatsapp;
     private CalendarBlockService $calendarBlocks;
+    private SolicitudEstadoService $estadoService;
 
     public function __construct(PDO $pdo)
     {
@@ -42,6 +44,7 @@ class SolicitudCrmService
         $this->projectService = new CrmProjectService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
         $this->calendarBlocks = new CalendarBlockService($pdo);
+        $this->estadoService = new SolicitudEstadoService($pdo);
     }
 
     public function obtenerResponsables(): array
@@ -159,10 +162,11 @@ class SolicitudCrmService
 
         try {
             $stmt = $this->pdo->prepare(
-                'INSERT INTO solicitud_crm_detalles (solicitud_id, crm_lead_id, responsable_id, pipeline_stage, fuente, contacto_email, contacto_telefono, followers)
-                 VALUES (:solicitud_id, :crm_lead_id, :responsable_id, :pipeline_stage, :fuente, :contacto_email, :contacto_telefono, :followers)
+                'INSERT INTO solicitud_crm_detalles (solicitud_id, crm_lead_id, crm_project_id, responsable_id, pipeline_stage, fuente, contacto_email, contacto_telefono, followers)
+                 VALUES (:solicitud_id, :crm_lead_id, :crm_project_id, :responsable_id, :pipeline_stage, :fuente, :contacto_email, :contacto_telefono, :followers)
                  ON DUPLICATE KEY UPDATE
                     crm_lead_id = VALUES(crm_lead_id),
+                    crm_project_id = VALUES(crm_project_id),
                     responsable_id = VALUES(responsable_id),
                     pipeline_stage = VALUES(pipeline_stage),
                     fuente = VALUES(fuente),
@@ -173,6 +177,11 @@ class SolicitudCrmService
 
             $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
             $stmt->bindValue(':crm_lead_id', $crmLeadId, $crmLeadId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmt->bindValue(
+                ':crm_project_id',
+                !empty($detalleActual['crm_project_id']) ? (int) $detalleActual['crm_project_id'] : null,
+                !empty($detalleActual['crm_project_id']) ? PDO::PARAM_INT : PDO::PARAM_NULL
+            );
             $stmt->bindValue(':responsable_id', $responsableId, $responsableId ? PDO::PARAM_INT : PDO::PARAM_NULL);
             $stmt->bindValue(':pipeline_stage', $etapa);
             $stmt->bindValue(':fuente', $fuente, $fuente !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
@@ -755,6 +764,7 @@ class SolicitudCrmService
                 pd.celular AS paciente_celular,
                 CONCAT(TRIM(pd.fname), ' ', TRIM(pd.mname), ' ', TRIM(pd.lname), ' ', TRIM(pd.lname2)) AS paciente_nombre,
                 detalles.crm_lead_id AS crm_lead_id,
+                detalles.crm_project_id AS crm_project_id,
                 detalles.pipeline_stage AS crm_pipeline_stage,
                 detalles.fuente AS crm_fuente,
                 detalles.contacto_email AS crm_contacto_email,
@@ -837,6 +847,114 @@ class SolicitudCrmService
         $row['dias_en_estado'] = $this->calcularDiasEnEstado($row['created_at'] ?? null);
 
         return $row;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string> $userPermissions
+     * @return array<string, mixed>
+     */
+    public function bootstrapChecklist(int $solicitudId, array $payload, ?int $usuarioId, array $userPermissions = []): array
+    {
+        $detalle = $this->obtenerDetalleSolicitud($solicitudId);
+        if (!$detalle) {
+            throw new RuntimeException('Solicitud no encontrada', 404);
+        }
+
+        $hcNumber = $this->normalizarTexto($payload['hc_number'] ?? $detalle['hc_number'] ?? null);
+        if (!$hcNumber) {
+            throw new RuntimeException('Falta el número de historia clínica para sincronizar el CRM', 422);
+        }
+
+        $leadId = $this->sincronizarLead(
+            $solicitudId,
+            $detalle,
+            [
+                'hc_number' => $hcNumber,
+                'crm_lead_id' => $detalle['crm_lead_id'] ?? null,
+                'etapa' => $detalle['crm_pipeline_stage'] ?? null,
+            ],
+            $usuarioId
+        );
+
+        $project = $this->ensureCrmProject($solicitudId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+
+        $this->persistCrmMap($solicitudId, $leadId, $projectId);
+
+        $enriched = $this->estadoService->enrichSolicitudes(
+            [
+                [
+                    'id' => $solicitudId,
+                    'estado' => $detalle['estado'] ?? '',
+                ],
+            ],
+            $userPermissions
+        );
+        $checklist = $enriched[0]['checklist'] ?? [];
+        $progress = $enriched[0]['checklist_progress'] ?? [];
+
+        $tasks = $this->syncChecklistTasks($solicitudId, $detalle, $leadId, $projectId, $checklist, $usuarioId);
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($solicitudId, $companyId);
+        $checklist = $this->syncChecklistFromTasks($solicitudId, $checklist, $existingTasks, $usuarioId, $userPermissions);
+        $refreshed = $this->estadoService->enrichSolicitudes(
+            [
+                [
+                    'id' => $solicitudId,
+                    'estado' => $detalle['estado'] ?? '',
+                ],
+            ],
+            $userPermissions
+        );
+        $checklist = $refreshed[0]['checklist'] ?? $checklist;
+        $progress = $refreshed[0]['checklist_progress'] ?? $progress;
+
+        return [
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'tasks' => $tasks,
+            'checklist' => $checklist,
+            'checklist_progress' => $progress,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @return array<string, mixed>
+     */
+    public function syncChecklistStage(
+        int $solicitudId,
+        string $etapaSlug,
+        bool $completado,
+        ?int $usuarioId,
+        array $userPermissions = []
+    ): array {
+        $resultado = $this->estadoService->actualizarEtapa(
+            $solicitudId,
+            $etapaSlug,
+            $completado,
+            $usuarioId,
+            $userPermissions
+        );
+
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];
+        $leadId = !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null;
+        $project = $this->ensureCrmProject($solicitudId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+
+        if ($leadId || $projectId) {
+            $this->persistCrmMap($solicitudId, $leadId, $projectId);
+        }
+
+        $checklist = $resultado['checklist'] ?? [];
+        $tasks = $this->syncChecklistTasks($solicitudId, $detalle, $leadId, $projectId, $checklist, $usuarioId);
+
+        return $resultado + [
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'tasks' => $tasks,
+        ];
     }
 
     private function formatProfilePhoto(?string $path): ?string
@@ -1237,6 +1355,230 @@ class SolicitudCrmService
 
     private function resolveCompanyId(): int
     {
-        return 1;
+        return isset($_SESSION['company_id']) ? (int) $_SESSION['company_id'] : 1;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @param array<string, array<string, mixed>> $existingTasks
+     * @return array<int, array<string, mixed>>
+     */
+    private function syncChecklistFromTasks(
+        int $solicitudId,
+        array $checklist,
+        array $existingTasks,
+        ?int $usuarioId,
+        array $userPermissions
+    ): array {
+        $needsRefresh = false;
+
+        foreach ($checklist as $item) {
+            $slug = $item['slug'] ?? null;
+            if (!$slug) {
+                continue;
+            }
+
+            $key = $this->buildTaskKey($solicitudId, $slug);
+            $task = $existingTasks[$key] ?? null;
+            if (!$task) {
+                continue;
+            }
+
+            $taskCompleted = ($task['status'] ?? '') === 'completada';
+            if ($taskCompleted && empty($item['completed'])) {
+                $this->estadoService->actualizarEtapa(
+                    $solicitudId,
+                    $slug,
+                    true,
+                    $usuarioId,
+                    $userPermissions,
+                    true
+                );
+                $needsRefresh = true;
+            }
+        }
+
+        if (!$needsRefresh) {
+            return $checklist;
+        }
+
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];
+        $enriched = $this->estadoService->enrichSolicitudes(
+            [
+                [
+                    'id' => $solicitudId,
+                    'estado' => $detalle['estado'] ?? '',
+                ],
+            ],
+            $userPermissions
+        );
+
+        return $enriched[0]['checklist'] ?? $checklist;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @return array<int, array<string, mixed>>
+     */
+    private function syncChecklistTasks(
+        int $solicitudId,
+        array $detalle,
+        ?int $leadId,
+        ?int $projectId,
+        array $checklist,
+        ?int $usuarioId
+    ): array {
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($solicitudId, $companyId);
+        $tasks = [];
+
+        foreach ($checklist as $item) {
+            $slug = $item['slug'] ?? null;
+            if (!$slug) {
+                continue;
+            }
+
+            $taskKey = $this->buildTaskKey($solicitudId, $slug);
+            $desiredStatus = !empty($item['completed']) ? 'completada' : 'pendiente';
+            $task = $existingTasks[$taskKey] ?? null;
+
+            if (!$task) {
+                $task = $this->fetchChecklistTaskByKey($solicitudId, $companyId, $taskKey);
+            }
+
+            $payload = [
+                'project_id' => $projectId,
+                'entity_type' => 'solicitud',
+                'entity_id' => (string) $solicitudId,
+                'lead_id' => $leadId,
+                'hc_number' => $detalle['hc_number'] ?? null,
+                'patient_id' => $detalle['hc_number'] ?? null,
+                'form_id' => $detalle['form_id'] ?? null,
+                'source_module' => 'solicitudes',
+                'source_ref_id' => (string) $solicitudId,
+                'title' => $item['label'] ?? $slug,
+                'description' => 'Checklist de solicitud',
+                'status' => $desiredStatus,
+                'metadata' => [
+                    'task_key' => $taskKey,
+                    'checklist_slug' => $slug,
+                    'checklist_label' => $item['label'] ?? $slug,
+                ],
+            ];
+
+            if (!$task) {
+                $task = $this->taskService->create($payload, $companyId, $usuarioId ?? 0);
+            } else {
+                $updatePayload = [
+                    'status' => $desiredStatus,
+                    'title' => $payload['title'],
+                    'description' => $payload['description'],
+                    'project_id' => $projectId,
+                    'lead_id' => $leadId,
+                    'metadata' => $payload['metadata'],
+                ];
+
+                $task = $this->taskService->update(
+                    (int) $task['id'],
+                    $companyId,
+                    $updatePayload,
+                    $usuarioId
+                ) ?? $task;
+            }
+
+            if (!empty($task)) {
+                $tasks[] = $this->formatChecklistTask($task, $taskKey);
+            }
+        }
+
+        return $tasks;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function fetchChecklistTasks(int $solicitudId, int $companyId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, title, status, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+             FROM crm_tasks
+             WHERE company_id = :company_id AND source_module = 'solicitudes' AND source_ref_id = :source_ref_id"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $tasks = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = $row['task_key'] ?? null;
+            if (!$key && !empty($row['metadata'])) {
+                $meta = json_decode((string) $row['metadata'], true);
+                if (is_array($meta) && !empty($meta['task_key'])) {
+                    $key = (string) $meta['task_key'];
+                }
+            }
+
+            if (!$key) {
+                continue;
+            }
+
+            $tasks[$key] = $row;
+        }
+
+        return $tasks;
+    }
+
+    private function fetchChecklistTaskByKey(int $solicitudId, int $companyId, string $taskKey): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, title, status, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+             FROM crm_tasks
+             WHERE company_id = :company_id
+               AND source_module = 'solicitudes'
+               AND source_ref_id = :source_ref_id
+               AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) = :task_key
+             LIMIT 1"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
+        $stmt->bindValue(':task_key', $taskKey, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function buildTaskKey(int $solicitudId, string $slug): string
+    {
+        return 'solicitud:' . $solicitudId . ':kanban:' . $slug;
+    }
+
+    private function persistCrmMap(int $solicitudId, ?int $leadId, ?int $projectId): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO solicitud_crm_detalles (solicitud_id, crm_lead_id, crm_project_id)
+             VALUES (:solicitud_id, :crm_lead_id, :crm_project_id)
+             ON DUPLICATE KEY UPDATE
+                crm_lead_id = VALUES(crm_lead_id),
+                crm_project_id = VALUES(crm_project_id)'
+        );
+        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+        $stmt->bindValue(':crm_lead_id', $leadId, $leadId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':crm_project_id', $projectId, $projectId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->execute();
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function formatChecklistTask(array $task, string $taskKey): array
+    {
+        return [
+            'id' => (int) ($task['id'] ?? 0),
+            'title' => $task['title'] ?? '',
+            'status' => $task['status'] ?? '',
+            'task_key' => $taskKey,
+        ];
     }
 }
