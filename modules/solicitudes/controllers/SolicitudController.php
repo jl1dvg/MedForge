@@ -338,6 +338,78 @@ class SolicitudController extends BaseController
         }
     }
 
+    public function crmBootstrap(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+
+        try {
+            $resultado = $this->crmService->bootstrapChecklist(
+                $solicitudId,
+                $payload,
+                $this->getCurrentUserId(),
+                $this->currentPermissions()
+            );
+            $this->json(['success' => true] + $resultado);
+        } catch (RuntimeException $e) {
+            error_log('CRM ▶ Bootstrap checklist error: ' . ($e->getMessage() ?: get_class($e)));
+            $status = (int) ($e->getCode() ?: 422);
+            if ($status < 400 || $status >= 500) {
+                $status = 422;
+            }
+            $this->json(['success' => false, 'error' => $e->getMessage()], $status);
+        } catch (Throwable $e) {
+            error_log('CRM ▶ Bootstrap checklist exception: ' . ($e->getMessage() ?: get_class($e)));
+            $this->json(['success' => false, 'error' => 'No se pudo sincronizar el checklist con CRM'], 500);
+        }
+    }
+
+    public function crmActualizarChecklist(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $etapa = trim((string) ($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
+        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+
+        if ($etapa === '') {
+            $this->json(['success' => false, 'error' => 'Etapa requerida'], 422);
+            return;
+        }
+
+        try {
+            $resultado = $this->crmService->syncChecklistStage(
+                $solicitudId,
+                $etapa,
+                $completado,
+                $this->getCurrentUserId(),
+                $this->currentPermissions()
+            );
+
+            $this->json([
+                'success' => true,
+                'checklist' => $resultado['checklist'] ?? [],
+                'checklist_progress' => $resultado['checklist_progress'] ?? [],
+                'tasks' => $resultado['tasks'] ?? [],
+                'lead_id' => $resultado['lead_id'] ?? null,
+                'project_id' => $resultado['project_id'] ?? null,
+            ]);
+        } catch (RuntimeException $e) {
+            error_log('CRM ▶ Checklist sync error: ' . ($e->getMessage() ?: get_class($e)));
+            $this->json(['success' => false, 'error' => $e->getMessage()], 422);
+        } catch (Throwable $e) {
+            error_log('CRM ▶ Checklist sync exception: ' . ($e->getMessage() ?: get_class($e)));
+            $this->json(['success' => false, 'error' => 'No se pudo sincronizar el checklist con CRM'], 500);
+        }
+    }
+
     public function crmRegistrarBloqueo(int $solicitudId): void
     {
         if (!$this->isAuthenticated()) {
