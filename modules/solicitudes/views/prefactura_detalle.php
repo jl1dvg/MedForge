@@ -247,62 +247,11 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                    aria-label="Abrir proyecto CRM">
                     <i class="mdi mdi-open-in-new"></i> Abrir Proyecto CRM
                 </a>
-            </div>
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div class="text-muted small">Progreso</div>
-                    <div class="fw-semibold" id="prefacturaChecklistProgress">—</div>
-                </div>
-                <div class="progress mb-3" style="height: 6px;">
-                    <div class="progress-bar bg-primary" role="progressbar" id="prefacturaChecklistProgressBar"
-                         style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-                <div class="list-group list-group-flush" id="prefacturaChecklistList"></div>
-                <div class="text-muted small d-none" id="prefacturaChecklistEmpty">Sin checklist disponible.</div>
-            </div>
-        </div>
-
-        <div class="card border-0 shadow-sm mt-3" id="prefacturaChecklistCard"
-             data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-             data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-             data-hc-number="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <div class="card-header bg-white">
-                <h6 class="card-title mb-0">
-                    <i class="bi bi-check2-square prefactura-icon text-primary me-2"></i>
-                    Checklist / Tareas
-                </h6>
-            </div>
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                    <div class="text-muted small">Progreso</div>
-                    <div class="fw-semibold" id="prefacturaChecklistProgress">—</div>
-                </div>
-                <div class="progress mb-3" style="height: 6px;">
-                    <div class="progress-bar bg-primary" role="progressbar" id="prefacturaChecklistProgressBar"
-                         style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-                <div class="list-group list-group-flush" id="prefacturaChecklistList"></div>
-                <div class="text-muted small d-none" id="prefacturaChecklistEmpty">Sin checklist disponible.</div>
-            </div>
-        </div>
-
-        <div class="card border-0 shadow-sm mt-3" id="prefacturaChecklistCard"
-             data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-             data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-             data-hc-number="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-            <div class="card-header bg-white d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                <h6 class="card-title mb-0">
-                    <i class="bi bi-check2-square prefactura-icon text-primary me-2"></i>
-                    Checklist / Tareas
-                </h6>
-                <a id="prefacturaChecklistCrmProject"
-                   class="btn btn-outline-primary btn-sm d-none"
-                   href="#"
-                   target="_blank"
-                   rel="noopener"
-                   aria-label="Abrir proyecto CRM">
-                    <i class="mdi mdi-open-in-new"></i> Abrir Proyecto CRM
-                </a>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm d-none"
+                        id="prefacturaChecklistBootstrap">
+                    <i class="mdi mdi-playlist-plus me-1"></i> Crear tareas
+                </button>
             </div>
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -1055,11 +1004,6 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
         const card = document.getElementById('prefacturaChecklistCard');
         if (!card) return;
 
-        if (card.dataset.checklistInit === '1') {
-            return;
-        }
-        card.dataset.checklistInit = '1';
-
         const solicitudId = card.dataset.solicitudId;
         const formId = card.dataset.formId;
         const hcNumber = card.dataset.hcNumber;
@@ -1068,6 +1012,7 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
         const progressLabel = document.getElementById('prefacturaChecklistProgress');
         const progressBar = document.getElementById('prefacturaChecklistProgressBar');
         const crmProjectButton = document.getElementById('prefacturaChecklistCrmProject');
+        const bootstrapButton = document.getElementById('prefacturaChecklistBootstrap');
 
         const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
         const buildUrl = (suffix) => `${basePath.replace(/\\/+$/, '')}/${solicitudId}${suffix}`;
@@ -1100,312 +1045,61 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
             progressBar.setAttribute('aria-valuenow', percent.toString());
         };
 
-        const renderChecklist = (checklist = [], progress = {}) => {
-            list.innerHTML = '';
-            if (!Array.isArray(checklist) || checklist.length === 0) {
-                empty.classList.remove('d-none');
-                setProgress(progress);
-                return;
-            }
+        let tasksByKey = {};
+        let tasksBySlug = {};
 
-            empty.classList.add('d-none');
-            setProgress(progress);
-
-            checklist.forEach((item) => {
-                const row = document.createElement('div');
-                row.className = 'list-group-item d-flex align-items-center justify-content-between gap-2';
-                const disabled = item.can_toggle ? '' : 'disabled';
-                const checked = item.completed ? 'checked' : '';
-                const label = escapeHtml(item.label || item.slug || '');
-                const slug = escapeHtml(item.slug || '');
-                row.innerHTML = `
-                    <label class="d-flex align-items-center gap-2 mb-0">
-                        <input type="checkbox" class="form-check-input m-0" data-checklist-toggle
-                               data-etapa-slug="${slug}" ${checked} ${disabled}>
-                        <span>${label}</span>
-                    </label>
-                    <span class="badge ${item.completed ? 'bg-success' : 'bg-light text-dark border'}">
-                        ${item.completed ? 'Listo' : 'Pendiente'}
-                    </span>
-                `;
-                list.appendChild(row);
-            });
-
-            list.querySelectorAll('[data-checklist-toggle]').forEach((input) => {
-                input.addEventListener('change', async (event) => {
-                    const checkbox = event.currentTarget;
-                    const etapaSlug = checkbox.dataset.etapaSlug;
-                    checkbox.disabled = true;
-                    try {
-                        const res = await fetch(buildUrl('/crm/checklist'), {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json;charset=UTF-8'},
-                            body: JSON.stringify({
-                                etapa_slug: etapaSlug,
-                                completado: checkbox.checked,
-                            }),
-                            credentials: 'include',
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok || !data.success) {
-                            throw new Error(data?.error || 'No se pudo sincronizar la tarea');
-                        }
-
-                        renderChecklist(data.checklist || checklist, data.checklist_progress || progress);
-                        if (Object.prototype.hasOwnProperty.call(data, 'project_id')) {
-                            setCrmProjectButton(data.project_id);
-                        }
-
-                        const store = window.__solicitudesKanban;
-                        if (Array.isArray(store)) {
-                            const item = store.find(
-                                (s) => String(s.id) === String(solicitudId) || String(s.form_id) === String(formId)
-                            );
-                            if (item) {
-                                if (data.checklist) item.checklist = data.checklist;
-                                if (data.checklist_progress) item.checklist_progress = data.checklist_progress;
-                            }
-                        }
-
-                        if (typeof window.aplicarFiltros === 'function') {
-                            try {
-                                window.aplicarFiltros();
-                            } catch (e) {
-                            }
-                        }
-                    } catch (error) {
-                        console.error('No se pudo sincronizar checklist:', error);
-                        alert(error?.message || 'No se pudo sincronizar la tarea.');
-                        checkbox.checked = !checkbox.checked;
-                    } finally {
-                        checkbox.disabled = false;
-                    }
-                });
-            });
-        };
-
-        const bootstrapChecklist = async () => {
-            if (!solicitudId) return;
-            empty.textContent = 'Cargando checklist...';
-            empty.classList.remove('d-none');
-            try {
-                const res = await fetch(buildUrl('/crm/bootstrap'), {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json;charset=UTF-8'},
-                    body: JSON.stringify({
-                        form_id: formId,
-                        hc_number: hcNumber,
-                    }),
-                    credentials: 'include',
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.success) {
-                    throw new Error(data?.error || 'No se pudo cargar el checklist');
-                }
-                renderChecklist(data.checklist || [], data.checklist_progress || {});
-                setCrmProjectButton(data.project_id);
-            } catch (error) {
-                console.error('No se pudo bootstrap checklist:', error);
-                empty.textContent = error?.message || 'No se pudo cargar el checklist.';
-                empty.classList.remove('d-none');
-            }
-        };
-
-        bootstrapChecklist();
-    })();
-</script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const card = document.getElementById('prefacturaChecklistCard');
-        if (!card) return;
-
-        const solicitudId = card.dataset.solicitudId;
-        const formId = card.dataset.formId;
-        const hcNumber = card.dataset.hcNumber;
-        const list = document.getElementById('prefacturaChecklistList');
-        const empty = document.getElementById('prefacturaChecklistEmpty');
-        const progressLabel = document.getElementById('prefacturaChecklistProgress');
-        const progressBar = document.getElementById('prefacturaChecklistProgressBar');
-
-        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
-        const buildUrl = (suffix) => `${basePath.replace(/\\/+$/, '')}/${solicitudId}${suffix}`;
-
-        const escapeHtml = (value) => String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-
-        const setProgress = (progress = {}) => {
-            const total = Number(progress.total || 0);
-            const completed = Number(progress.completed || 0);
-            const percent = Number(progress.percent || (total ? Math.round((completed / total) * 100) : 0));
-            progressLabel.textContent = total ? `${completed}/${total} (${percent}%)` : '—';
-            progressBar.style.width = `${percent}%`;
-            progressBar.setAttribute('aria-valuenow', percent.toString());
-        };
-
-        const renderChecklist = (checklist = [], progress = {}) => {
-            list.innerHTML = '';
-            if (!Array.isArray(checklist) || checklist.length === 0) {
-                empty.classList.remove('d-none');
-                setProgress(progress);
-                return;
-            }
-
-            empty.classList.add('d-none');
-            setProgress(progress);
-
-            checklist.forEach((item) => {
-                const row = document.createElement('div');
-                row.className = 'list-group-item d-flex align-items-center justify-content-between gap-2';
-                const disabled = item.can_toggle ? '' : 'disabled';
-                const checked = item.completed ? 'checked' : '';
-                const label = escapeHtml(item.label || item.slug || '');
-                const slug = escapeHtml(item.slug || '');
-                row.innerHTML = `
-                    <label class="d-flex align-items-center gap-2 mb-0">
-                        <input type="checkbox" class="form-check-input m-0" data-checklist-toggle
-                               data-etapa-slug="${slug}" ${checked} ${disabled}>
-                        <span>${label}</span>
-                    </label>
-                    <span class="badge ${item.completed ? 'bg-success' : 'bg-light text-dark border'}">
-                        ${item.completed ? 'Listo' : 'Pendiente'}
-                    </span>
-                `;
-                list.appendChild(row);
-            });
-
-            list.querySelectorAll('[data-checklist-toggle]').forEach((input) => {
-                input.addEventListener('change', async (event) => {
-                    const checkbox = event.currentTarget;
-                    const etapaSlug = checkbox.dataset.etapaSlug;
-                    checkbox.disabled = true;
-                    try {
-                        const res = await fetch(buildUrl('/crm/checklist'), {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json;charset=UTF-8'},
-                            body: JSON.stringify({
-                                etapa_slug: etapaSlug,
-                                completado: checkbox.checked,
-                            }),
-                            credentials: 'include',
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok || !data.success) {
-                            throw new Error(data?.error || 'No se pudo sincronizar la tarea');
-                        }
-
-                        renderChecklist(data.checklist || checklist, data.checklist_progress || progress);
-
-                        const store = window.__solicitudesKanban;
-                        if (Array.isArray(store)) {
-                            const item = store.find(
-                                (s) => String(s.id) === String(solicitudId) || String(s.form_id) === String(formId)
-                            );
-                            if (item) {
-                                if (data.checklist) item.checklist = data.checklist;
-                                if (data.checklist_progress) item.checklist_progress = data.checklist_progress;
-                            }
-                        }
-
-                        if (typeof window.aplicarFiltros === 'function') {
-                            try {
-                                window.aplicarFiltros();
-                            } catch (e) {
-                            }
-                        }
-                    } catch (error) {
-                        console.error('No se pudo sincronizar checklist:', error);
-                        alert(error?.message || 'No se pudo sincronizar la tarea.');
-                        checkbox.checked = !checkbox.checked;
-                    } finally {
-                        checkbox.disabled = false;
-                    }
-                });
-            });
-        };
-
-        const bootstrapChecklist = async () => {
-            if (!solicitudId) return;
-            empty.textContent = 'Cargando checklist...';
-            empty.classList.remove('d-none');
-            try {
-                const res = await fetch(buildUrl('/crm/bootstrap'), {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json;charset=UTF-8'},
-                    body: JSON.stringify({
-                        form_id: formId,
-                        hc_number: hcNumber,
-                    }),
-                    credentials: 'include',
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.success) {
-                    throw new Error(data?.error || 'No se pudo cargar el checklist');
-                }
-                renderChecklist(data.checklist || [], data.checklist_progress || {});
-            } catch (error) {
-                console.error('No se pudo bootstrap checklist:', error);
-                empty.textContent = error?.message || 'No se pudo cargar el checklist.';
-                empty.classList.remove('d-none');
-            }
-        };
-
-        bootstrapChecklist();
-    });
-</script>
-
-<script>
-    (() => {
-        const card = document.getElementById('prefacturaChecklistCard');
-        if (!card) return;
-
-        if (card.dataset.checklistInit === '1') {
-            return;
-        }
-        card.dataset.checklistInit = '1';
-
-        const solicitudId = card.dataset.solicitudId;
-        const formId = card.dataset.formId;
-        const hcNumber = card.dataset.hcNumber;
-        const list = document.getElementById('prefacturaChecklistList');
-        const empty = document.getElementById('prefacturaChecklistEmpty');
-        const progressLabel = document.getElementById('prefacturaChecklistProgress');
-        const progressBar = document.getElementById('prefacturaChecklistProgressBar');
-        const crmProjectButton = document.getElementById('prefacturaChecklistCrmProject');
-
-        const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
-        const buildUrl = (suffix) => `${basePath.replace(/\\/+$/, '')}/${solicitudId}${suffix}`;
-
-        const escapeHtml = (value) => String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-
-        const setCrmProjectButton = (projectId) => {
-            if (!crmProjectButton) return;
-            const normalized = Number(projectId || 0);
-            if (normalized > 0) {
-                crmProjectButton.href = `/crm?tab=projects&project_id=${normalized}`;
-                crmProjectButton.classList.remove('d-none');
+        const setBootstrapButton = (checklist = []) => {
+            if (!bootstrapButton) return;
+            const tasksCount = Object.keys(tasksByKey).length;
+            if (tasksCount === 0 && Array.isArray(checklist) && checklist.length > 0) {
+                bootstrapButton.classList.remove('d-none');
             } else {
-                crmProjectButton.classList.add('d-none');
-                crmProjectButton.href = '#';
+                bootstrapButton.classList.add('d-none');
             }
         };
 
-        const setProgress = (progress = {}) => {
-            const total = Number(progress.total || 0);
-            const completed = Number(progress.completed || 0);
-            const percent = Number(progress.percent || (total ? Math.round((completed / total) * 100) : 0));
-            progressLabel.textContent = total ? `${completed}/${total} (${percent}%)` : '—';
-            progressBar.style.width = `${percent}%`;
-            progressBar.setAttribute('aria-valuenow', percent.toString());
+        const updateResumenFromChecklist = (data = {}) => {
+            const openEl = document.getElementById('prefacturaStateTasksOpen');
+            const totalEl = document.getElementById('prefacturaStateTasksTotal');
+            const dueEl = document.getElementById('prefacturaStateNextDue');
+            if (!openEl || !totalEl) return;
+
+            const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+            let total = Number(data?.checklist_progress?.total ?? data?.checklist?.length ?? 0);
+            let completed = Number(data?.checklist_progress?.completed ?? 0);
+            let open = Math.max(total - completed, 0);
+
+            if (tasks.length > 0) {
+                const openTasks = tasks.filter((task) => (task?.status ?? '') !== 'completada').length;
+                total = tasks.length;
+                open = openTasks;
+            }
+
+            if (dueEl) {
+                const openDueDates = tasks
+                    .filter((task) => (task?.status ?? '') !== 'completada')
+                    .map((task) => task?.due_at || task?.due_date)
+                    .filter((value) => value);
+                if (openDueDates.length > 0) {
+                    const sorted = openDueDates.slice().sort();
+                    dueEl.textContent = sorted[0];
+                } else {
+                    dueEl.textContent = 'Sin vencimiento';
+                }
+            }
+
+            openEl.textContent = String(open);
+            totalEl.textContent = String(total);
+        };
+
+        const normalizeTasks = (tasks = []) => {
+            const map = {};
+            if (!Array.isArray(tasks)) return map;
+            tasks.forEach((task) => {
+                if (!task || !task.task_key) return;
+                map[task.task_key] = task;
+            });
+            return map;
         };
 
         const renderChecklist = (checklist = [], progress = {}) => {
@@ -1413,11 +1107,13 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
             if (!Array.isArray(checklist) || checklist.length === 0) {
                 empty.classList.remove('d-none');
                 setProgress(progress);
+                setBootstrapButton(checklist);
                 return;
             }
 
             empty.classList.add('d-none');
             setProgress(progress);
+            setBootstrapButton(checklist);
 
             checklist.forEach((item) => {
                 const row = document.createElement('div');
@@ -1426,12 +1122,19 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                 const checked = item.completed ? 'checked' : '';
                 const label = escapeHtml(item.label || item.slug || '');
                 const slug = escapeHtml(item.slug || '');
+                const task = tasksBySlug[item.slug || ''];
+                const taskInfo = task
+                    ? `<small class="text-muted">CRM #${escapeHtml(task.id)} · ${escapeHtml(task.status || '')}</small>`
+                    : '';
                 row.innerHTML = `
-                    <label class="d-flex align-items-center gap-2 mb-0">
-                        <input type="checkbox" class="form-check-input m-0" data-checklist-toggle
-                               data-etapa-slug="${slug}" ${checked} ${disabled}>
-                        <span>${label}</span>
-                    </label>
+                    <div class="d-flex flex-column">
+                        <label class="d-flex align-items-center gap-2 mb-0">
+                            <input type="checkbox" class="form-check-input m-0" data-checklist-toggle
+                                   data-etapa-slug="${slug}" ${checked} ${disabled}>
+                            <span>${label}</span>
+                        </label>
+                        ${taskInfo}
+                    </div>
                     <span class="badge ${item.completed ? 'bg-success' : 'bg-light text-dark border'}">
                         ${item.completed ? 'Listo' : 'Pendiente'}
                     </span>
@@ -1459,10 +1162,22 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                             throw new Error(data?.error || 'No se pudo sincronizar la tarea');
                         }
 
+                        tasksByKey = normalizeTasks(data.tasks || []);
+                        tasksBySlug = {};
+                        if (Array.isArray(data.tasks)) {
+                            data.tasks.forEach((task) => {
+                                const slug = task?.checklist_slug;
+                                if (slug) {
+                                    tasksBySlug[slug] = task;
+                                }
+                            });
+                        }
                         renderChecklist(data.checklist || checklist, data.checklist_progress || progress);
+                        updateResumenFromChecklist(data);
                         if (Object.prototype.hasOwnProperty.call(data, 'project_id')) {
                             setCrmProjectButton(data.project_id);
                         }
+                        setBootstrapButton(data.checklist || checklist);
 
                         const store = window.__solicitudesKanban;
                         if (Array.isArray(store)) {
@@ -1492,10 +1207,44 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
             });
         };
 
-        const bootstrapChecklist = async () => {
+        const loadChecklistState = async () => {
             if (!solicitudId) return;
             empty.textContent = 'Cargando checklist...';
             empty.classList.remove('d-none');
+            try {
+                const res = await fetch(buildUrl('/crm/checklist-state'), {
+                    method: 'GET',
+                    credentials: 'include',
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success) {
+                    throw new Error(data?.error || 'No se pudo cargar el checklist');
+                }
+                tasksByKey = normalizeTasks(data.tasks || []);
+                tasksBySlug = {};
+                if (Array.isArray(data.tasks)) {
+                    data.tasks.forEach((task) => {
+                        const slug = task?.checklist_slug;
+                        if (slug) {
+                            tasksBySlug[slug] = task;
+                        }
+                    });
+                }
+                renderChecklist(data.checklist || [], data.checklist_progress || {});
+                updateResumenFromChecklist(data);
+                setCrmProjectButton(data.project_id);
+                setBootstrapButton(data.checklist || []);
+            } catch (error) {
+                console.error('No se pudo cargar checklist:', error);
+                empty.textContent = error?.message || 'No se pudo cargar el checklist.';
+                empty.classList.remove('d-none');
+            }
+        };
+
+        const bootstrapTasks = async () => {
+            if (!solicitudId) return;
+            if (!bootstrapButton) return;
+            bootstrapButton.disabled = true;
             try {
                 const res = await fetch(buildUrl('/crm/bootstrap'), {
                     method: 'POST',
@@ -1508,18 +1257,37 @@ $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.success) {
-                    throw new Error(data?.error || 'No se pudo cargar el checklist');
+                    throw new Error(data?.error || 'No se pudo crear las tareas');
+                }
+                tasksByKey = normalizeTasks(data.tasks || []);
+                tasksBySlug = {};
+                if (Array.isArray(data.tasks)) {
+                    data.tasks.forEach((task) => {
+                        const slug = task?.checklist_slug;
+                        if (slug) {
+                            tasksBySlug[slug] = task;
+                        }
+                    });
                 }
                 renderChecklist(data.checklist || [], data.checklist_progress || {});
+                updateResumenFromChecklist(data);
                 setCrmProjectButton(data.project_id);
+                setBootstrapButton(data.checklist || []);
             } catch (error) {
-                console.error('No se pudo bootstrap checklist:', error);
-                empty.textContent = error?.message || 'No se pudo cargar el checklist.';
-                empty.classList.remove('d-none');
+                console.error('No se pudo crear tareas:', error);
+                alert(error?.message || 'No se pudo crear las tareas.');
+            } finally {
+                bootstrapButton.disabled = false;
             }
         };
 
-        bootstrapChecklist();
+        if (bootstrapButton) {
+            bootstrapButton.addEventListener('click', () => {
+                bootstrapTasks();
+            });
+        }
+
+        loadChecklistState();
     })();
 </script>
 

@@ -368,6 +368,31 @@ class SolicitudController extends BaseController
         }
     }
 
+    public function crmChecklistState(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        try {
+            $resultado = $this->crmService->checklistState(
+                $solicitudId,
+                $this->currentPermissions()
+            );
+            $this->json(['success' => true] + $resultado);
+        } catch (RuntimeException $e) {
+            $status = (int) ($e->getCode() ?: 422);
+            if ($status < 400 || $status >= 500) {
+                $status = 422;
+            }
+            $this->json(['success' => false, 'error' => $e->getMessage()], $status);
+        } catch (Throwable $e) {
+            error_log('CRM ▶ Checklist state exception: ' . ($e->getMessage() ?: get_class($e)));
+            $this->json(['success' => false, 'error' => 'No se pudo cargar el checklist'], 500);
+        }
+    }
+
     public function crmActualizarChecklist(int $solicitudId): void
     {
         if (!$this->isAuthenticated()) {
