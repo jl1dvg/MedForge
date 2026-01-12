@@ -1,20 +1,20 @@
 <?php
 $panels = [
-    'examenes' => [
-        'title' => 'Exámenes',
-        'context' => 'Coordinación de Exámenes',
-        'endpoint' => '/examenes/turnero-data',
-        'empty' => 'No hay pacientes en cola para exámenes.',
-        'accent' => 'panel-examenes',
-        'estados' => ['Llamado'],
-    ],
-    'solicitudes' => [
-        'title' => 'Quirúrgicas',
-        'context' => 'Coordinación Quirúrgica',
-        'endpoint' => '/solicitudes/turnero-data',
-        'empty' => 'No hay pacientes en cola para coordinación quirúrgica.',
-        'accent' => 'panel-quirurgico',
-    ],
+        'examenes' => [
+                'title' => 'Exámenes',
+                'context' => 'Coordinación de Exámenes',
+                'endpoint' => '/examenes/turnero-data',
+                'empty' => 'No hay pacientes en cola para exámenes.',
+                'accent' => 'panel-examenes',
+                'estados' => ['Llamado'],
+        ],
+        'solicitudes' => [
+                'title' => 'Quirúrgicas',
+                'context' => 'Coordinación Quirúrgica',
+                'endpoint' => '/solicitudes/turnero-data',
+                'empty' => 'No hay pacientes en cola para coordinación quirúrgica.',
+                'accent' => 'panel-quirurgico',
+        ],
 ];
 
 $turneroSettings = $turneroSettings ?? [];
@@ -98,6 +98,18 @@ $turneroSettings = $turneroSettings ?? [];
             gap: 0.65rem;
         }
 
+        .turnero-actions .panel-actions {
+            display: flex;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.15rem;
+        }
+
+        .turnero-actions .chip-filter {
+            font-size: 0.85rem;
+        }
+
         .turnero-actions .btn {
             border-radius: 999px;
             padding: 0.55rem 1.4rem;
@@ -132,8 +144,13 @@ $turneroSettings = $turneroSettings ?? [];
             box-shadow: 0 18px 32px rgba(8, 12, 24, 0.35);
         }
 
-        .turnero-panel[data-key="examenes"] { grid-area: examenes; }
-        .turnero-panel[data-key="solicitudes"] { grid-area: quirurgico; }
+        .turnero-panel[data-key="examenes"] {
+            grid-area: examenes;
+        }
+
+        .turnero-panel[data-key="solicitudes"] {
+            grid-area: quirurgico;
+        }
 
         .panel-header {
             display: flex;
@@ -259,14 +276,24 @@ $turneroSettings = $turneroSettings ?? [];
         }
 
         @keyframes softFlash {
-            0%, 100% { box-shadow: 0 0 0 rgba(125, 211, 252, 0); }
-            50% { box-shadow: 0 0 22px rgba(125, 211, 252, 0.45); }
+            0%, 100% {
+                box-shadow: 0 0 0 rgba(125, 211, 252, 0);
+            }
+            50% {
+                box-shadow: 0 0 22px rgba(125, 211, 252, 0.45);
+            }
         }
 
         @keyframes pulseCall {
-            0% { box-shadow: 0 18px 32px rgba(250, 204, 21, 0.12); }
-            50% { box-shadow: 0 24px 44px rgba(250, 204, 21, 0.3); }
-            100% { box-shadow: 0 18px 32px rgba(250, 204, 21, 0.12); }
+            0% {
+                box-shadow: 0 18px 32px rgba(250, 204, 21, 0.12);
+            }
+            50% {
+                box-shadow: 0 24px 44px rgba(250, 204, 21, 0.3);
+            }
+            100% {
+                box-shadow: 0 18px 32px rgba(250, 204, 21, 0.12);
+            }
         }
 
         .turno-numero {
@@ -323,10 +350,25 @@ $turneroSettings = $turneroSettings ?? [];
             font-size: 0.85rem;
         }
 
-        .turno-estado.recibido { background: rgba(59, 130, 246, 0.25); color: #60a5fa; }
-        .turno-estado.llamado { background: rgba(245, 158, 11, 0.25); color: #fbbf24; }
-        .turno-estado.en-atencion { background: rgba(52, 211, 153, 0.25); color: #34d399; }
-        .turno-estado.atendido { background: rgba(148, 163, 184, 0.35); color: #cbd5f5; }
+        .turno-estado.recibido {
+            background: rgba(59, 130, 246, 0.25);
+            color: #60a5fa;
+        }
+
+        .turno-estado.llamado {
+            background: rgba(245, 158, 11, 0.25);
+            color: #fbbf24;
+        }
+
+        .turno-estado.en-atencion {
+            background: rgba(52, 211, 153, 0.25);
+            color: #34d399;
+        }
+
+        .turno-estado.atendido {
+            background: rgba(148, 163, 184, 0.35);
+            color: #cbd5f5;
+        }
 
         .turno-detalle {
             font-size: 0.95rem;
@@ -425,15 +467,25 @@ $turneroSettings = $turneroSettings ?? [];
             border-top: 3px solid #fb923c;
         }
 
-        .panel-examenes .panel-title { color: #fbbf24; }
-        .panel-examenes .panel-label { color: #fcd34d; }
+        .panel-examenes .panel-title {
+            color: #fbbf24;
+        }
+
+        .panel-examenes .panel-label {
+            color: #fcd34d;
+        }
 
         .panel-quirurgico {
             border-top: 3px solid #22d3ee;
         }
 
-        .panel-quirurgico .panel-title { color: #67e8f9; }
-        .panel-quirurgico .panel-label { color: #67e8f9; }
+        .panel-quirurgico .panel-title {
+            color: #67e8f9;
+        }
+
+        .panel-quirurgico .panel-label {
+            color: #67e8f9;
+        }
 
         .audio-feedback {
             display: inline-flex;
@@ -447,12 +499,19 @@ $turneroSettings = $turneroSettings ?? [];
         }
 
         @media (max-width: 1200px) {
-            .turnero-grid { grid-template-columns: repeat(2, minmax(300px, 1fr)); }
+            .turnero-grid {
+                grid-template-columns: repeat(2, minmax(300px, 1fr));
+            }
         }
 
         @media (max-width: 1024px) {
-            .turnero-header { grid-template-columns: 1fr; }
-            .turnero-actions { align-items: flex-start; }
+            .turnero-header {
+                grid-template-columns: 1fr;
+            }
+
+            .turnero-actions {
+                align-items: flex-start;
+            }
         }
 
         @media (max-width: 900px) {
@@ -462,17 +521,32 @@ $turneroSettings = $turneroSettings ?? [];
                     "examenes"
                     "quirurgico";
             }
-            .turno-card { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-            .turno-info { align-items: center; }
-            .turno-meta { justify-content: center; }
-            .turno-numero { min-width: 0; text-align: center; }
+
+            .turno-card {
+                grid-template-columns: 1fr;
+                justify-items: center;
+                text-align: center;
+            }
+
+            .turno-info {
+                align-items: center;
+            }
+
+            .turno-meta {
+                justify-content: center;
+            }
+
+            .turno-numero {
+                min-width: 0;
+                text-align: center;
+            }
         }
     </style>
 
     <div
-        class="turnero-wrapper"
-        id="turneroGrid"
-        data-panels='<?= htmlspecialchars(json_encode($panels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>'
+            class="turnero-wrapper"
+            id="turneroGrid"
+            data-panels='<?= htmlspecialchars(json_encode($panels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>'
     >
         <div class="turnero-header">
             <div class="turnero-heading">
@@ -491,7 +565,26 @@ $turneroSettings = $turneroSettings ?? [];
                     <i class="mdi mdi-refresh"></i>
                     <span class="ms-1">Actualizar</span>
                 </button>
+
+                <div class="panel-actions" role="group" aria-label="Filtros por estado">
+                    <?php foreach ([
+                                           'all' => 'Todos',
+                                           'en espera' => 'En espera',
+                                           'llamado' => 'Llamado',
+                                           'en atencion' => 'En atención',
+                                   ] as $filterValue => $label): ?>
+                        <button
+                                type="button"
+                                class="chip-filter"
+                                data-filter-state="<?= htmlspecialchars($filterValue, ENT_QUOTES, 'UTF-8') ?>"
+                                aria-pressed="<?= $filterValue === 'all' ? 'true' : 'false' ?>"
+                        >
+                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
             </div>
+
         </div>
 
         <p class="turnero-context" id="turneroLastUpdate" aria-live="polite">Última actualización: --</p>
@@ -499,61 +592,49 @@ $turneroSettings = $turneroSettings ?? [];
         <div class="turnero-grid">
             <?php foreach (['examenes', 'solicitudes'] as $key): $panel = $panels[$key]; ?>
                 <section
-                    class="turnero-panel <?= htmlspecialchars($panel['accent'], ENT_QUOTES, 'UTF-8') ?>"
-                    data-key="<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
+                        class="turnero-panel <?= htmlspecialchars($panel['accent'], ENT_QUOTES, 'UTF-8') ?>"
+                        data-key="<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
                 >
+
                     <div class="panel-header">
                         <div>
-                            <div class="panel-label">Turnero · <?= htmlspecialchars($panel['context'], ENT_QUOTES, 'UTF-8') ?></div>
-                            <h2 class="panel-title">Cola de <?= htmlspecialchars($panel['title'], ENT_QUOTES, 'UTF-8') ?></h2>
-                        </div>
-                        <div class="panel-actions" role="group" aria-label="Filtros por estado">
-                            <?php foreach ([
-                                'all' => 'Todos',
-                                'en espera' => 'En espera',
-                                'llamado' => 'Llamado',
-                                'en atencion' => 'En atención',
-                            ] as $filterValue => $label): ?>
-                                <button
-                                    type="button"
-                                    class="chip-filter"
-                                    data-filter-state="<?= htmlspecialchars($filterValue, ENT_QUOTES, 'UTF-8') ?>"
-                                    aria-pressed="<?= $filterValue === 'all' ? 'true' : 'false' ?>"
-                                >
-                                    <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
-                                </button>
-                            <?php endforeach; ?>
+                            <div class="panel-label">Turnero
+                                · <?= htmlspecialchars($panel['context'], ENT_QUOTES, 'UTF-8') ?></div>
+                            <h2 class="panel-title">Cola
+                                de <?= htmlspecialchars($panel['title'], ENT_QUOTES, 'UTF-8') ?></h2>
                         </div>
                     </div>
 
                     <div class="status-pills" aria-label="Contadores de estados">
                         <?php foreach ([
-                            'en espera' => 'En espera',
-                            'llamado' => 'Llamado',
-                            'en atencion' => 'En atención',
-                            'atendido' => 'Atendido',
-                        ] as $stateKey => $stateLabel): ?>
-                            <div class="status-pill" data-state="<?= htmlspecialchars($stateKey, ENT_QUOTES, 'UTF-8') ?>">
+                                               'en espera' => 'En espera',
+                                               'llamado' => 'Llamado',
+                                               'en atencion' => 'En atención',
+                                               'atendido' => 'Atendido',
+                                       ] as $stateKey => $stateLabel): ?>
+                            <div class="status-pill"
+                                 data-state="<?= htmlspecialchars($stateKey, ENT_QUOTES, 'UTF-8') ?>">
                                 <span><?= htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') ?></span>
-                                <span class="count" data-counter="<?= htmlspecialchars($key . '-' . $stateKey, ENT_QUOTES, 'UTF-8') ?>">0</span>
+                                <span class="count"
+                                      data-counter="<?= htmlspecialchars($key . '-' . $stateKey, ENT_QUOTES, 'UTF-8') ?>">0</span>
                             </div>
                         <?php endforeach; ?>
                     </div>
 
                     <div
-                        id="empty-<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
-                        class="turnero-empty"
-                        role="status"
-                        aria-hidden="true"
+                            id="empty-<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
+                            class="turnero-empty"
+                            role="status"
+                            aria-hidden="true"
                     >
                         <?= htmlspecialchars($panel['empty'], ENT_QUOTES, 'UTF-8') ?>
                     </div>
 
                     <div
-                        id="listado-<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
-                        class="turnero-list"
-                        aria-live="polite"
-                        role="list"
+                            id="listado-<?= htmlspecialchars($key, ENT_QUOTES, 'UTF-8') ?>"
+                            class="turnero-list"
+                            aria-live="polite"
+                            role="list"
                     ></div>
                 </section>
             <?php endforeach; ?>
@@ -565,6 +646,6 @@ $turneroSettings = $turneroSettings ?? [];
     window.TURNERO_UNIFICADO_PANELES = <?= json_encode($panels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <?php
-    $scripts = $scripts ?? [];
-    $scripts[] = 'js/pages/turneros/unificado.js';
+$scripts = $scripts ?? [];
+$scripts[] = 'js/pages/turneros/unificado.js';
 ?>
