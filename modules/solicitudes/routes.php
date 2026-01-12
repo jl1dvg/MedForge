@@ -58,6 +58,9 @@ return function (Router $router) {
     $router->post('/solicitudes/{id}/crm/bootstrap', function (\PDO $pdo, $solicitudId) {
         (new SolicitudController($pdo))->crmBootstrap((int) $solicitudId);
     });
+    $router->get('/solicitudes/{id}/crm/checklist-state', function (\PDO $pdo, $solicitudId) {
+        (new SolicitudController($pdo))->crmChecklistState((int) $solicitudId);
+    });
     $router->post('/solicitudes/{id}/crm/checklist', function (\PDO $pdo, $solicitudId) {
         (new SolicitudController($pdo))->crmActualizarChecklist((int) $solicitudId);
     });

@@ -171,44 +171,43 @@ function buildPrioridadInfo(solicitud = {}) {
 }
 
 function buildStatsHtml(solicitud = {}) {
-    const stats = [
-        {
-            label: "Notas",
-            value: Number.parseInt(solicitud.crm_total_notas ?? 0, 10),
-            icon: "mdi-note-text-outline",
-        },
-        {
-            label: "Adjuntos",
-            value: Number.parseInt(solicitud.crm_total_adjuntos ?? 0, 10),
-            icon: "mdi-paperclip",
-        },
-        {
-            label: "Tareas abiertas",
-            value: `${Number.parseInt(
-                solicitud.crm_tareas_pendientes ?? 0,
-                10
-            )}/${Number.parseInt(solicitud.crm_tareas_total ?? 0, 10)}`,
-            icon: "mdi-format-list-checks",
-        },
-    ];
+    const notas = Number.parseInt(solicitud.crm_total_notas ?? 0, 10);
+    const adjuntos = Number.parseInt(solicitud.crm_total_adjuntos ?? 0, 10);
+    const tareasPendientes = Number.parseInt(
+        solicitud.crm_tareas_pendientes ?? 0,
+        10
+    );
+    const tareasTotal = Number.parseInt(solicitud.crm_tareas_total ?? 0, 10);
 
-    return stats
-        .map(
-            (stat) => `
+    return `
         <div class="prefactura-state-stat">
-            <small class="text-muted d-block">${escapeHtml(stat.label)}</small>
+            <small class="text-muted d-block">Notas</small>
             <span class="fw-semibold">
-                ${
-                stat.icon
-                    ? `<i class="mdi ${escapeHtml(stat.icon)} me-1"></i>`
-                    : ""
-            }
-                ${escapeHtml(String(stat.value ?? "0"))}
+                <i class="mdi mdi-note-text-outline me-1"></i>${escapeHtml(
+        String(notas)
+    )}
             </span>
         </div>
-    `
-        )
-        .join("");
+        <div class="prefactura-state-stat">
+            <small class="text-muted d-block">Adjuntos</small>
+            <span class="fw-semibold">
+                <i class="mdi mdi-paperclip me-1"></i>${escapeHtml(
+        String(adjuntos)
+    )}
+            </span>
+        </div>
+        <div class="prefactura-state-stat">
+            <small class="text-muted d-block">Tareas abiertas</small>
+            <span class="fw-semibold">
+                <i class="mdi mdi-format-list-checks me-1"></i>
+                <span id="prefacturaStateTasksOpen">${escapeHtml(
+        String(tareasPendientes)
+    )}</span>/<span id="prefacturaStateTasksTotal">${escapeHtml(
+        String(tareasTotal)
+    )}</span>
+            </span>
+        </div>
+    `;
 }
 
 function buildAlertsHtml(solicitud = {}) {
@@ -231,7 +230,7 @@ function buildAlertsHtml(solicitud = {}) {
     return `<div class="prefactura-state-alerts">${alerts.join("")}</div>`;
 }
 
-function renderGridItem(label, value, helper = "", valueClass = "") {
+function renderGridItem(label, value, helper = "", valueClass = "", valueId = "") {
     if (!value) {
         value = "—";
     }
@@ -239,10 +238,11 @@ function renderGridItem(label, value, helper = "", valueClass = "") {
         ? `<span class="text-muted small d-block mt-1">${escapeHtml(helper)}</span>`
         : "";
     const className = valueClass ? ` ${valueClass}` : "";
+    const idAttr = valueId ? ` id="${escapeHtml(valueId)}"` : "";
     return `
         <div class="prefactura-state-grid-item">
             <small>${escapeHtml(label)}</small>
-            <strong class="prefactura-state-value${className}">${escapeHtml(
+            <strong class="prefactura-state-value${className}"${idAttr}>${escapeHtml(
         value
     )}</strong>
             ${helperHtml}
@@ -465,7 +465,13 @@ function renderEstadoContext(solicitudId) {
         renderGridItem("Responsable", responsable, `Etapa CRM: ${pipelineStage}`),
         renderGridItem("Contacto", contactoTelefono, contactoCorreo),
         renderGridItem("Fuente", fuente, afiliacion),
-        renderGridItem("Próximo vencimiento", proximoVencimiento, ""),
+        renderGridItem(
+            "Próximo vencimiento",
+            proximoVencimiento,
+            "",
+            "",
+            "prefacturaStateNextDue"
+        ),
     ].join("");
 
     const statsHtml = buildStatsHtml(solicitud);

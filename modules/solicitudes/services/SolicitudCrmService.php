@@ -810,8 +810,8 @@ class SolicitudCrmService
             LEFT JOIN (
                 SELECT source_ref_id,
                        COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
+                       SUM(CASE WHEN status <> 'completada' THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status <> 'completada' THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
                 FROM crm_tasks
                 WHERE source_module = 'solicitudes'
                   AND company_id = :company_id
@@ -913,6 +913,65 @@ class SolicitudCrmService
         return [
             'lead_id' => $leadId,
             'project_id' => $projectId,
+            'tasks' => $tasks,
+            'checklist' => $checklist,
+            'checklist_progress' => $progress,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $userPermissions
+     * @return array<string, mixed>
+     */
+    public function checklistState(int $solicitudId, array $userPermissions = []): array
+    {
+        $detalle = $this->obtenerDetalleSolicitud($solicitudId);
+        if (!$detalle) {
+            throw new RuntimeException('Solicitud no encontrada', 404);
+        }
+
+        $enriched = $this->estadoService->enrichSolicitudes(
+            [
+                [
+                    'id' => $solicitudId,
+                    'estado' => $detalle['estado'] ?? '',
+                ],
+            ],
+            $userPermissions
+        );
+        $checklist = $enriched[0]['checklist'] ?? [];
+        $progress = $enriched[0]['checklist_progress'] ?? [];
+
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($solicitudId, $companyId);
+        $tasks = [];
+        foreach ($existingTasks as $taskKey => $task) {
+            $tasks[] = $this->formatChecklistTask($task, (string) $taskKey);
+        }
+
+        foreach ($checklist as &$item) {
+            $slug = $item['slug'] ?? null;
+            if (!$slug) {
+                continue;
+            }
+
+            $taskKey = $this->buildTaskKey($solicitudId, $slug);
+            $task = $existingTasks[$taskKey] ?? null;
+            if (!$task) {
+                continue;
+            }
+
+            if (($task['status'] ?? '') === 'completada') {
+                $item['completed'] = true;
+            }
+        }
+        unset($item);
+
+        $progress = $this->computeChecklistProgress($checklist, $progress);
+
+        return [
+            'lead_id' => !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null,
+            'project_id' => !empty($detalle['crm_project_id']) ? (int) $detalle['crm_project_id'] : null,
             'tasks' => $tasks,
             'checklist' => $checklist,
             'checklist_progress' => $progress,
@@ -1418,6 +1477,50 @@ class SolicitudCrmService
 
     /**
      * @param array<int, array<string, mixed>> $checklist
+     * @param array<string, mixed> $fallback
+     * @return array<string, mixed>
+     */
+    private function computeChecklistProgress(array $checklist, array $fallback = []): array
+    {
+        if (empty($checklist)) {
+            return $fallback;
+        }
+
+        $total = count($checklist);
+        $completed = 0;
+        $next = null;
+
+        foreach ($checklist as $item) {
+            if (!empty($item['completed'])) {
+                $completed++;
+                continue;
+            }
+
+            if ($next === null) {
+                $next = $item;
+            }
+        }
+
+        $percent = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
+
+        if ($next === null && (!empty($fallback['next_slug']) || !empty($fallback['next_label']))) {
+            $next = [
+                'slug' => $fallback['next_slug'] ?? null,
+                'label' => $fallback['next_label'] ?? null,
+            ];
+        }
+
+        return [
+            'total' => $total,
+            'completed' => $completed,
+            'percent' => $percent,
+            'next_slug' => $next['slug'] ?? null,
+            'next_label' => $next['label'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
      * @return array<int, array<string, mixed>>
      */
     private function syncChecklistTasks(
@@ -1500,7 +1603,7 @@ class SolicitudCrmService
     private function fetchChecklistTasks(int $solicitudId, int $companyId): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT id, title, status, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+            "SELECT id, title, status, due_at, due_date, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
              FROM crm_tasks
              WHERE company_id = :company_id AND source_module = 'solicitudes' AND source_ref_id = :source_ref_id"
         );
@@ -1511,11 +1614,16 @@ class SolicitudCrmService
         $tasks = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $key = $row['task_key'] ?? null;
+            $meta = null;
             if (!$key && !empty($row['metadata'])) {
                 $meta = json_decode((string) $row['metadata'], true);
                 if (is_array($meta) && !empty($meta['task_key'])) {
                     $key = (string) $meta['task_key'];
                 }
+            }
+
+            if (!$key && is_array($meta) && !empty($meta['checklist_slug'])) {
+                $key = $this->buildTaskKey($solicitudId, (string) $meta['checklist_slug']);
             }
 
             if (!$key) {
@@ -1531,7 +1639,7 @@ class SolicitudCrmService
     private function fetchChecklistTaskByKey(int $solicitudId, int $companyId, string $taskKey): ?array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT id, title, status, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+            "SELECT id, title, status, due_at, due_date, metadata, JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
              FROM crm_tasks
              WHERE company_id = :company_id
                AND source_module = 'solicitudes'
@@ -1574,11 +1682,22 @@ class SolicitudCrmService
      */
     private function formatChecklistTask(array $task, string $taskKey): array
     {
+        $checklistSlug = null;
+        if (!empty($task['metadata'])) {
+            $meta = json_decode((string) $task['metadata'], true);
+            if (is_array($meta) && !empty($meta['checklist_slug'])) {
+                $checklistSlug = (string) $meta['checklist_slug'];
+            }
+        }
+
         return [
             'id' => (int) ($task['id'] ?? 0),
             'title' => $task['title'] ?? '',
             'status' => $task['status'] ?? '',
             'task_key' => $taskKey,
+            'checklist_slug' => $checklistSlug,
+            'due_at' => $task['due_at'] ?? null,
+            'due_date' => $task['due_date'] ?? null,
         ];
     }
 }
