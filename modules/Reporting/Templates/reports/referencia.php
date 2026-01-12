@@ -265,15 +265,29 @@ ob_start();
     <TR>
         <TD colspan="12" class="blanco_left">
             <?php
-            $examenFisico = $consulta['examen_fisico'];
+            $examenFisico = $consulta['examen_fisico'] ?? '';
             $examenAI = '';
             $examenAI_error = null;
+            $aiConfig = isset($ai_config) && is_array($ai_config) ? $ai_config : [];
+            error_log('AI DEBUG — Criterio Clínico (pre): ' . json_encode([
+                'has_ai' => isset($ai),
+                'strlen_examen_fisico' => strlen((string) $examenFisico),
+                'first_200_chars' => mb_substr((string) $examenFisico, 0, 200),
+                'settings_model' => $aiConfig['model'] ?? '',
+                'token_present' => (bool) ($aiConfig['token_present'] ?? false),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             if (isset($ai)) {
                 try {
                     $examenAI = $ai->generateEnfermedadProblemaActual($examenFisico ?? '');
+                    error_log('AI DEBUG — Criterio Clínico (response): ' . json_encode([
+                        'type' => gettype($examenAI),
+                        'length' => mb_strlen((string) $examenAI),
+                        'is_null' => $examenAI === null,
+                        'is_empty' => trim((string) $examenAI) === '',
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 } catch (\Throwable $e) {
                     $examenAI_error = $e->getMessage();
-                    error_log('OpenAI generateEnfermedadProblemaActual error: ' . $examenAI_error);
+                    error_log('OpenAI generateEnfermedadProblemaActual error: ' . $examenAI_error . ' trace: ' . $e->getTraceAsString());
                 }
             }
             if (trim($examenAI) !== '') {
@@ -328,6 +342,8 @@ ob_start();
             $promptPlan = $consulta['plan'] ?? '';
             $insurance = $paciente['afiliacion'] ?? '';
 
+            $planAI = '';
+            $planAI_error = null;
             try {
                 if (isset($ai)) {
                     $planAI = $ai->generatePlanTratamiento($promptPlan, $insurance, $procedimiento, $eye);
@@ -341,8 +357,8 @@ ob_start();
             }
 
             // Fallback: si por cualquier motivo no se obtuvo texto de la IA, usamos el plan crudo
-            if (trim($planAI) === '') {
-                $planAI = trim($promptPlan);
+            if (trim($planAI ?? '') === '') {
+                $planAI = trim($promptPlan ?? '');
             }
 
             echo wordwrap($planAI, 150, "</TD></TR><TR><TD colspan=12 class='blanco_left'>");
@@ -404,10 +420,10 @@ ob_start();
 </TABLE>
 <table>
     <TR>
-        <TD class="blanco" COLSPAN=4><?php echo strtoupper($solicitud['doctor']); ?></TD>
-        <TD class="blanco" COLSPAN=4><?php echo strtoupper($solicitud['cedula']); ?></TD>
+        <TD class="blanco" COLSPAN=4><?php echo strtoupper($solicitud['doctor'] ?? ''); ?></TD>
+        <TD class="blanco" COLSPAN=4><?php echo strtoupper($solicitud['cedula'] ?? ''); ?></TD>
         <TD class="blanco"
-            COLSPAN=4><?php echo "<img src='" . htmlspecialchars($solicitud['firma']) . "' alt='Imagen de la firma' style='max-height: 40px;'>";
+            COLSPAN=4><?php echo "<img src='" . htmlspecialchars($solicitud['firma'] ?? '') . "' alt='Imagen de la firma' style='max-height: 40px;'>";
             ?></TD>
     </TR>
     <TR>
