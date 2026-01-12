@@ -4,14 +4,17 @@ namespace Modules\Reporting\Services;
 
 use Controllers\ExamenesController;
 use Controllers\SolicitudController;
+use Helpers\OpenAIHelper;
 use Helpers\ProtocoloHelper;
 use Models\ProtocoloModel;
+use Modules\AI\Services\AIConfigService;
 use Modules\Reporting\Controllers\ReportController;
 use Modules\Reporting\Services\Definitions\SolicitudTemplateDefinitionInterface;
 use Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
 use Modules\Reporting\Support\SolicitudDataFormatter;
 use PDO;
 use RuntimeException;
+use Throwable;
 
 class ProtocolReportService
 {
@@ -327,7 +330,46 @@ class ProtocolReportService
     {
         $datos = $this->solicitudController->obtenerDatosParaVista($hcNumber, $formId);
 
-        return SolicitudDataFormatter::enrich($datos, $formId, $hcNumber);
+        $datos = SolicitudDataFormatter::enrich($datos, $formId, $hcNumber);
+
+        $datos['ai'] = null;
+        $datos['ai_config'] = [
+            'provider' => '',
+            'model' => '',
+            'endpoint' => '',
+            'token_present' => false,
+        ];
+
+        if (class_exists(AIConfigService::class) && class_exists(OpenAIHelper::class)) {
+            try {
+                $configService = new AIConfigService($this->db);
+                $provider = $configService->getActiveProvider();
+                $openaiConfig = $configService->getOpenAIConfig();
+                $tokenPresent = !empty($openaiConfig['api_key'] ?? '');
+
+                $datos['ai_config'] = [
+                    'provider' => $provider,
+                    'model' => (string) ($openaiConfig['model'] ?? ''),
+                    'endpoint' => (string) ($openaiConfig['endpoint'] ?? ''),
+                    'token_present' => $tokenPresent,
+                ];
+
+                if ($provider === AIConfigService::PROVIDER_OPENAI && $configService->isProviderConfigured(AIConfigService::PROVIDER_OPENAI)) {
+                    $datos['ai'] = new OpenAIHelper([
+                        'api_key' => (string) ($openaiConfig['api_key'] ?? ''),
+                        'endpoint' => (string) ($openaiConfig['endpoint'] ?? ''),
+                        'model' => (string) ($openaiConfig['model'] ?? ''),
+                        'max_output_tokens' => (int) ($openaiConfig['max_output_tokens'] ?? 400),
+                        'headers' => $openaiConfig['headers'] ?? [],
+                        'organization' => (string) ($openaiConfig['organization'] ?? ''),
+                    ]);
+                }
+            } catch (Throwable $exception) {
+                error_log('No fue posible inicializar OpenAIHelper para reportes: ' . $exception->getMessage());
+            }
+        }
+
+        return $datos;
     }
 
     /**
