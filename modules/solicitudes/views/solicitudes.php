@@ -49,7 +49,7 @@ array_push(
             </div>
         </div>
         <div class="ms-auto d-flex align-items-center gap-2">
-            <a class="btn btn-primary" href="/solicitudes/turnero" target="_blank" rel="noopener">
+            <a class="btn btn-primary" href="/turneros/unificado" target="_blank" rel="noopener">
                 <i class="mdi mdi-monitor"></i> Abrir turnero
             </a>
         </div>

@@ -218,9 +218,10 @@ const playPriorityTone = () => {
     setTimeout(() => playTone(1180, 180, 'triangle', 0.9), 120);
 };
 
-const playCallTone = () => {
+const playCallTone = (options = {}) => {
+    const {force = false} = options;
     const now = Date.now();
-    if (now - lastCallSoundAt < CALL_SOUND_COOLDOWN) return;
+    if (!force && now - lastCallSoundAt < CALL_SOUND_COOLDOWN) return;
     lastCallSoundAt = now;
     const style = allowedBellStyles.has(preferences.bellStyle) ? preferences.bellStyle : 'classic';
 
@@ -277,14 +278,15 @@ const getVoice = () => {
     return voices.find(v => v.lang.toLowerCase().startsWith('es')) || null;
 };
 
-const speakNameForItem = (item, reason) => {
+const speakNameForItem = (item, options = {}) => {
+    const {force = false, reason = 'call'} = options;
     if (!preferences.ttsEnabled || isQuietHoursActive()) return;
     if (!('speechSynthesis' in window)) return;
 
     const id = getItemId(item);
     const now = Date.now();
     const lastSpoken = spokenRegistry.get(id) || 0;
-    if (now - lastSpoken < SPEAK_COOLDOWN) return;
+    if (!force && now - lastSpoken < SPEAK_COOLDOWN) return;
     spokenRegistry.set(id, now);
     const firstSpokenAt = now;
 
@@ -315,6 +317,11 @@ const speakNameForItem = (item, reason) => {
         }, 2200);
     }
 };
+
+if (typeof window !== 'undefined') {
+    window.playCallTone = playCallTone;
+    window.speakNameForItem = speakNameForItem;
+}
 
 const buildCard = (item, columnKey, eventById) => {
     const card = document.createElement('article');
@@ -538,14 +545,14 @@ const triggerEvents = events => {
         if (event.type === 'new') {
             playCallTone();
             if (preferences.speakOnNew) {
-                speakNameForItem(event.item, 'new');
+                speakNameForItem(event.item, {reason: 'new'});
             }
         } else if (event.type === 'call') {
             playCallTone();
-            speakNameForItem(event.item, 'call');
+            speakNameForItem(event.item, {reason: 'call'});
         } else if (event.type === 'priority') {
             playPriorityTone();
-            setTimeout(() => speakNameForItem(event.item, 'priority'), PRIORITY_SPEAK_DELAY);
+            setTimeout(() => speakNameForItem(event.item, {reason: 'priority'}), PRIORITY_SPEAK_DELAY);
         }
     });
 };
