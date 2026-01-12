@@ -217,6 +217,18 @@ function applyTurnoButtonState(button, shouldRecall) {
     button.classList.add('btn-icon');
 }
 
+function announceTurno(nombre, { force = false } = {}) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+    if (typeof window.playCallTone === 'function') {
+        window.playCallTone({ force });
+    }
+    if (typeof window.speakNameForItem === 'function') {
+        window.speakNameForItem({ full_name: nombre }, { force, reason: 'call' });
+    }
+}
+
 const request = window.request || (async function request(url, options = {}) {
     const config = {
         method: "GET",
@@ -959,6 +971,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                         showToast(
                             `🔔 Turno asignado para ${nombre}${turno ? ` (#${turno})` : ""}`
                         );
+                        announceTurno(nombre, { force: teniaTurnoAntes });
 
                         const store = getDataStore();
                         if (Array.isArray(store) && store.length) {
