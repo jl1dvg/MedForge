@@ -26,6 +26,17 @@ ob_start();
 include __DIR__ . '/../partials/patient_header.php';
 $header = ob_get_clean();
 
+$doctorFirstName = trim((string)($solicitud['doctor_fname'] ?? ''));
+$doctorLastName = trim((string)($solicitud['doctor_lname'] ?? ''));
+$doctorSecondLastName = trim((string)($solicitud['doctor_lname2'] ?? ''));
+if ($doctorFirstName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
+    $doctorFullName = trim((string)($solicitud['doctor'] ?? ''));
+    $doctorParts = preg_split('/\s+/', $doctorFullName, -1, PREG_SPLIT_NO_EMPTY);
+    $doctorFirstName = $doctorParts[0] ?? '';
+    $doctorLastName = $doctorParts[1] ?? '';
+    $doctorSecondLastName = $doctorParts[2] ?? '';
+}
+
 ob_start();
 ?>
 <table>
@@ -37,7 +48,9 @@ ob_start();
     </tr>
     <tr>
         <td colspan="71" class="blanco_left"><?php
-            $reason = $consulta['motivo_consulta'] . ' ' . $consulta['enfermedad_actual'];
+            $motivoConsulta = $consulta['motivo_consulta'] ?? '';
+            $enfermedadActual = $consulta['enfermedad_actual'] ?? '';
+            $reason = trim($motivoConsulta . ' ' . $enfermedadActual);
             $reasonAI = '';
             $reasonAI_error = null;
             if (isset($ai)) {
@@ -78,7 +91,7 @@ ob_start();
     <tr>
         <td class="blanco_left">
             <?php
-            $examenFisico = $consulta['examen_fisico'];
+            $examenFisico = $consulta['examen_fisico'] ?? '';
             $examenAI = '';
             $examenAI_error = null;
             if (isset($ai)) {
@@ -360,9 +373,9 @@ echo "</table>";
             $hora = date('H:i', strtotime($fechaCompleta));
             echo $fecha ?></td>
         <td colspan="7" class="blanco"><?php echo $hora; ?></td>
-        <td colspan="21" class="blanco"><?php echo htmlspecialchars((string)($solicitud['doctor'] ?? '')); ?></td>
-        <td colspan="19" class="blanco"></td>
-        <td colspan="16" class="blanco"></td>
+        <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstName); ?></td>
+        <td colspan="19" class="blanco"><?php echo htmlspecialchars($doctorLastName); ?></td>
+        <td colspan="16" class="blanco"><?php echo htmlspecialchars($doctorSecondLastName); ?></td>
     </tr>
     <tr>
         <td colspan="15" class="verde">NÚMERO DE DOCUMENTO DE IDENTIFICACIÓN</td>
