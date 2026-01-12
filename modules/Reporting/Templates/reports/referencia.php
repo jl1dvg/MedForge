@@ -23,9 +23,9 @@ ob_start();
         <TD class="verde">H/M</TD>
     </TR>
     <TR>
-        <TD class="blanco" colspan="2"><?= htmlspecialchars($paciente['lname']) ?></TD>
-        <TD class="blanco" COLSPAN=2><?= htmlspecialchars($paciente['lname2']) ?></TD>
-        <TD class="blanco" colspan="3"><?= htmlspecialchars($paciente['fname'] . " " . $paciente['mname']) ?>
+        <TD class="blanco" colspan="2"><?= htmlspecialchars((string)($paciente['lname'] ?? '')) ?></TD>
+        <TD class="blanco" COLSPAN=2><?= htmlspecialchars((string)($paciente['lname2'] ?? '')) ?></TD>
+        <TD class="blanco" colspan="3"><?= htmlspecialchars(trim((string)($paciente['fname'] ?? '') . ' ' . (string)($paciente['mname'] ?? ''))) ?>
         </TD>
         <TD class="blanco"><?= date("d", strtotime($paciente['fecha_nacimiento'])); ?>
         </TD>
