@@ -3,6 +3,7 @@
 namespace Modules\Reporting\Services;
 
 use InvalidArgumentException;
+use Mpdf\Output\Destination;
 use Modules\Reporting\Services\Definitions\PdfTemplateDefinitionInterface;
 use Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
 use Modules\Reporting\Support\PdfDestinationNormalizer;
@@ -187,11 +188,32 @@ class ReportService
      */
     public function renderPdf(string $identifier, array $data = [], array $options = []): string
     {
-        $options['destination'] = PdfDestinationNormalizer::normalize($options['destination'] ?? 'S');
+        $slug = $this->normalizeIdentifier($identifier);
+        $definition = $this->pdfTemplateRegistry->get($slug);
+        $filename = $options['filename'] ?? ($slug !== '' ? $slug . '.pdf' : 'documento.pdf');
 
-        $document = $this->renderDocument($identifier, $data, $options);
+        if ($definition !== null) {
+            return $this->pdfTemplateRenderer->render($definition, $data, [
+                'filename' => $filename,
+                'destination' => Destination::STRING_RETURN,
+                'font_family' => $options['font_family'] ?? null,
+                'font_size' => $options['font_size'] ?? null,
+                'line_height' => $options['line_height'] ?? null,
+                'text_color' => $options['text_color'] ?? null,
+                'overrides' => $options['overrides'] ?? null,
+            ]);
+        }
 
-        return $document['content'];
+        $html = $this->render($identifier, $data);
+        $css = $options['css'] ?? null;
+        $mpdfOptions = isset($options['mpdf']) && is_array($options['mpdf']) ? $options['mpdf'] : [];
+
+        return $this->pdfRenderer->renderHtml($html, [
+            'css' => $css,
+            'mpdf' => $mpdfOptions,
+            'filename' => $filename,
+            'destination' => Destination::STRING_RETURN,
+        ]);
     }
 
     /**

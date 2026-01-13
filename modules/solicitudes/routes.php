@@ -20,6 +20,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->kanbanData();
     });
 
+    $router->post('/solicitudes/reportes/pdf', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->reportePdf();
+    });
+
     $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) {
         (new SolicitudController($pdo))->actualizarEstado();
     });

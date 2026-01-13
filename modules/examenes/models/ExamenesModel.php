@@ -269,7 +269,12 @@ class ExamenesModel
                 sp.id AS id,
                 u.id AS user_id,
                 u.nombre AS user_nombre,
-                u.email AS user_email
+                u.email AS user_email,
+                u.first_name AS doctor_first_name,
+                u.middle_name AS doctor_middle_name,
+                u.last_name AS doctor_last_name,
+                u.second_last_name AS doctor_second_last_name,
+                u.full_name AS doctor_full_name
             FROM solicitud_procedimiento sp
             LEFT JOIN users u 
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')

@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
+    const exportPdfButton = document.getElementById('solicitudesExportPdfButton');
     const dateFilter = document.getElementById('kanbanDateFilter');
 
     const VIEW_DEFAULT = 'kanban';
@@ -436,15 +437,19 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     };
 
-    const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle }) => {
+    const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle, metricKey }) => {
+        const metricAttr = metricKey ? ` data-metric-key="${escapeHtml(metricKey)}"` : '';
+        const actionClass = metricKey ? ' overview-card-actionable' : '';
+        const icon = metricKey ? '<span class="overview-card-action" aria-hidden="true"><i class="mdi mdi-file-pdf-box"></i></span>' : '';
         return `
-            <div class="overview-card">
+            <div class="overview-card${actionClass}"${metricAttr}>
                 <h6>${escapeHtml(title)}</h6>
                 <div class="d-flex justify-content-between align-items-end">
                     <span class="count">${escapeHtml(String(count))}</span>
                     ${badge ? `<span class="badge ${escapeHtml(badgeClass)}">${escapeHtml(badge)}</span>` : ''}
                 </div>
                 ${subtitle ? `<div class="meta">${escapeHtml(subtitle)}</div>` : ''}
+                ${icon}
             </div>
         `;
     };
@@ -497,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
             badge: total ? `${Math.round((vencidos / (total || 1)) * 100)}%` : null,
             badgeClass: vencidos ? 'text-bg-danger' : 'text-bg-success',
             subtitle: vencidos ? 'Atender inmediatamente' : 'Sin vencimientos activos',
+            metricKey: 'sla-vencido',
         }));
 
         cards.push(createOverviewCard({
@@ -552,12 +558,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (OVERVIEW_EXCLUDED_STATES.has(slug)) return;
             const count = counts[slug] || 0;
             const porcentaje = total ? Math.round((count / total) * 100) : 0;
+            const metricKeyBySlug = {
+                'apto-anestesia': 'anestesia',
+                'revision-codigos': 'cobertura',
+            };
+            const metricKey = metricKeyBySlug[slug];
             cards.push(createOverviewCard({
                 title: meta?.label ?? slug,
                 count,
                 badge: `${porcentaje}%`,
                 badgeClass: `text-bg-${escapeHtml(meta?.color || 'secondary')}`,
                 subtitle: count ? 'Solicitudes en esta etapa' : 'Sin tarjetas en la columna',
+                metricKey,
             }));
         });
 
@@ -745,6 +757,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    if (overviewContainer) {
+        overviewContainer.addEventListener('click', event => {
+            const target = event.target.closest('.overview-card-actionable[data-metric-key]');
+            if (!target || !overviewContainer.contains(target)) {
+                return;
+            }
+
+            const metricKey = target.dataset.metricKey || '';
+            const title = target.querySelector('h6')?.textContent?.trim() || 'Exportar reporte';
+            openExportModal({ quickMetric: metricKey, title: `Quick report: ${title}` });
+        });
+    }
+
+    if (exportPdfButton) {
+        exportPdfButton.addEventListener('click', () => {
+            openExportModal({ title: 'Exportar PDF de solicitudes' });
+        });
+    }
+
     switchView(currentView, false);
 
     let searchDebounce = null;
@@ -764,6 +795,145 @@ document.addEventListener('DOMContentLoaded', () => {
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
         search: searchInput?.value ?? '',
     });
+
+    const normalizeDatePart = (value) => {
+        if (!value) return '';
+        const trimmed = value.trim();
+        const match = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (match) {
+            return `${match[3]}-${match[2]}-${match[1]}`;
+        }
+        return trimmed;
+    };
+
+    const parseDateRange = (rangeText) => {
+        if (!rangeText || !rangeText.includes(' - ')) {
+            const single = normalizeDatePart(rangeText || '');
+            return { from: single || '', to: single || '' };
+        }
+        const [from, to] = rangeText.split(' - ');
+        return {
+            from: normalizeDatePart(from),
+            to: normalizeDatePart(to),
+        };
+    };
+
+    const buildReportPayload = ({ quickMetric = '' } = {}) => {
+        const filtros = obtenerFiltros();
+        const range = parseDateRange(filtros.fechaTexto);
+
+        return {
+            filters: {
+                search: filtros.search,
+                doctor: filtros.doctor,
+                afiliacion: filtros.afiliacion,
+                prioridad: filtros.prioridad,
+                date_from: range.from,
+                date_to: range.to,
+            },
+            quickMetric: quickMetric || null,
+            format: 'pdf',
+        };
+    };
+
+    const exportSolicitudesPdf = async ({ quickMetric = '' } = {}) => {
+        const payload = buildReportPayload({ quickMetric });
+        const response = await fetch('/solicitudes/reportes/pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!response.ok || !contentType.includes('application/pdf')) {
+            let mensaje = 'No se pudo generar el reporte.';
+            try {
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data?.error) {
+                        mensaje = data.error;
+                    }
+                } else {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                }
+            } catch (error) {
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                } catch (_) {
+                    mensaje = 'No se pudo generar el reporte.';
+                }
+            }
+            throw new Error(mensaje);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const opened = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = 'reporte_solicitudes.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    };
+
+    const openExportModal = ({ quickMetric = '', title = 'Exportar reporte' } = {}) => {
+        if (typeof Swal === 'undefined') {
+            if (window.confirm(`${title}\n¿Generar PDF con los filtros actuales?`)) {
+                exportSolicitudesPdf({ quickMetric })
+                    .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+            }
+            return;
+        }
+
+        Swal.fire({
+            title,
+            html: `
+                <div class="text-start">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="exportPdfFormat" value="pdf" checked>
+                        <label class="form-check-label" for="exportPdfFormat">PDF (tabla)</label>
+                    </div>
+                    <div class="form-check text-muted mb-2">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="exportExcelFormat" value="excel" disabled>
+                        <label class="form-check-label" for="exportExcelFormat">Excel (próximamente)</label>
+                    </div>
+                    <hr class="my-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="exportUseFilters" checked disabled>
+                        <label class="form-check-label" for="exportUseFilters">Usar filtros actuales</label>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Exportar',
+            cancelButtonText: 'Cancelar',
+            width: 420,
+            focusConfirm: false,
+            preConfirm: () => {
+                const selected = document.querySelector('input[name="exportFormat"]:checked');
+                return selected ? selected.value : 'pdf';
+            },
+        }).then(result => {
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            exportSolicitudesPdf({ quickMetric })
+                .then(() => showToast('Reporte PDF generado.', true))
+                .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+        });
+    };
 
     const setFilterValues = (f) => {
         if (!f) return;

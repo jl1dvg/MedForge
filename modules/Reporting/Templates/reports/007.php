@@ -26,16 +26,17 @@ ob_start();
 include __DIR__ . '/../partials/patient_header.php';
 $header = ob_get_clean();
 
-$doctorFirstName = trim((string)($solicitud['doctor_fname'] ?? ''));
-$doctorLastName = trim((string)($solicitud['doctor_lname'] ?? ''));
-$doctorSecondLastName = trim((string)($solicitud['doctor_lname2'] ?? ''));
-if ($doctorFirstName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
-    $doctorFullName = trim((string)($solicitud['doctor'] ?? ''));
-    $doctorParts = preg_split('/\s+/', $doctorFullName, -1, PREG_SPLIT_NO_EMPTY);
-    $doctorFirstName = $doctorParts[0] ?? '';
-    $doctorLastName = $doctorParts[1] ?? '';
-    $doctorSecondLastName = $doctorParts[2] ?? '';
+$doctorFirstName = trim((string)($solicitud['doctor_first_name'] ?? ''));
+$doctorMiddleName = trim((string)($solicitud['doctor_middle_name'] ?? ''));
+$doctorLastName = trim((string)($solicitud['doctor_last_name'] ?? ''));
+$doctorSecondLastName = trim((string)($solicitud['doctor_second_last_name'] ?? ''));
+
+if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
+    $doctorFullName = trim((string)($solicitud['doctor_full_name'] ?? $solicitud['doctor'] ?? ''));
+    $doctorFirstName = $doctorFullName;
 }
+
+$doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
 
 ob_start();
 ?>
@@ -373,7 +374,7 @@ echo "</table>";
             $hora = date('H:i', strtotime($fechaCompleta));
             echo $fecha ?></td>
         <td colspan="7" class="blanco"><?php echo $hora; ?></td>
-        <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstName); ?></td>
+        <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstNameDisplay); ?></td>
         <td colspan="19" class="blanco"><?php echo htmlspecialchars($doctorLastName); ?></td>
         <td colspan="16" class="blanco"><?php echo htmlspecialchars($doctorSecondLastName); ?></td>
     </tr>

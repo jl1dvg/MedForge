@@ -117,6 +117,34 @@ array_push(
             box-shadow: 0 12px 35px rgba(37, 99, 235, 0.12);
         }
 
+        .overview-card-actionable {
+            cursor: pointer;
+            position: relative;
+        }
+
+        .overview-card-actionable::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 14px;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .overview-card-actionable:hover::after {
+            opacity: 1;
+        }
+
+        .overview-card-action {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            color: #ef4444;
+            font-size: 1rem;
+        }
+
         .overview-card h6 {
             text-transform: uppercase;
             font-size: 0.78rem;
@@ -833,6 +861,9 @@ array_push(
             <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse"
                     data-bs-target="#solicitudesFilters" aria-expanded="false" aria-controls="solicitudesFilters">
                 <i class="mdi mdi-filter-variant"></i> Filtros
+            </button>
+            <button class="btn btn-outline-danger" type="button" id="solicitudesExportPdfButton">
+                <i class="mdi mdi-file-pdf-box"></i> Exportar PDF
             </button>
             <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
                 <i class="mdi mdi-bell-outline"></i> Avisos

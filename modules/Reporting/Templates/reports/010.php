@@ -79,16 +79,17 @@ ob_start();
         </tr>
     </TABLE>
     <?php
-    $doctorFirstName = trim((string)($solicitud['doctor_fname'] ?? ''));
-    $doctorLastName = trim((string)($solicitud['doctor_lname'] ?? ''));
-    $doctorSecondLastName = trim((string)($solicitud['doctor_lname2'] ?? ''));
-    if ($doctorFirstName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
-        $doctorFullName = trim((string)($solicitud['doctor'] ?? ''));
-        $doctorParts = preg_split('/\s+/', $doctorFullName, -1, PREG_SPLIT_NO_EMPTY);
-        $doctorFirstName = $doctorParts[0] ?? '';
-        $doctorLastName = $doctorParts[1] ?? '';
-        $doctorSecondLastName = $doctorParts[2] ?? '';
+    $doctorFirstName = trim((string)($solicitud['doctor_first_name'] ?? ''));
+    $doctorMiddleName = trim((string)($solicitud['doctor_middle_name'] ?? ''));
+    $doctorLastName = trim((string)($solicitud['doctor_last_name'] ?? ''));
+    $doctorSecondLastName = trim((string)($solicitud['doctor_second_last_name'] ?? ''));
+
+    if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
+        $doctorFullName = trim((string)($solicitud['doctor_full_name'] ?? $solicitud['doctor'] ?? ''));
+        $doctorFirstName = $doctorFullName;
     }
+
+    $doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
     ?>
     <table>
         <tr>
@@ -1280,7 +1281,7 @@ ob_start();
             }
             ?>
             <td colspan=11 class=blanco><?= htmlspecialchars($horaPedido) ?></td>
-            <td colspan=19 class=blanco><?= htmlspecialchars($doctorFirstName); ?></td>
+            <td colspan=19 class=blanco><?= htmlspecialchars($doctorFirstNameDisplay); ?></td>
             <td colspan=18 class=blanco><?= htmlspecialchars($doctorLastName); ?></td>
             <td colspan=20 class=blanco><?= htmlspecialchars($doctorSecondLastName); ?></td>
         </tr>
@@ -1681,7 +1682,7 @@ ob_start();
                 }
                 ?>
                 <td colspan=11 class=blanco><?= htmlspecialchars($horaPedido) ?></td>
-                <td colspan=19 class=blanco><?= htmlspecialchars($doctorFirstName); ?></td>
+                <td colspan=19 class=blanco><?= htmlspecialchars($doctorFirstNameDisplay); ?></td>
                 <td colspan=18 class=blanco><?= htmlspecialchars($doctorLastName); ?></td>
                 <td colspan=20 class=blanco><?= htmlspecialchars($doctorSecondLastName); ?></td>
             </tr>

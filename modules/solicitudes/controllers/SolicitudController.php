@@ -14,6 +14,7 @@ use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Modules\Reporting\Services\ReportService;
 use Models\SettingsModel;
 use PDO;
 use RuntimeException;
@@ -288,6 +289,115 @@ class SolicitudController extends BaseController
                     ],
                 ],
                 'error' => 'No se pudo cargar la información de solicitudes',
+            ], 500);
+        }
+    }
+
+    public function reportePdf(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        if (!$this->hasPermission(['reportes.export', 'reportes.view', 'solicitudes.view'])) {
+            $this->json(['error' => 'No tienes permisos para exportar reportes.'], 403);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
+        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
+        $format = strtolower(trim((string) ($payload['format'] ?? 'pdf')));
+
+        if ($format !== 'pdf') {
+            $this->json(['error' => 'Formato no soportado.'], 422);
+            return;
+        }
+
+        $filters = $this->sanitizeReportFilters($filtersInput);
+
+        try {
+            $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filters);
+            $solicitudes = $this->estadoService->enrichSolicitudes($solicitudes, $this->currentPermissions());
+            $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
+            $solicitudes = $this->applySearchFilter($solicitudes, $filters['search'] ?? '');
+
+            if (!empty($filters['estado'])) {
+                $estadoSlug = $this->estadoService->normalizeSlug($filters['estado']);
+                $solicitudes = array_values(array_filter(
+                    $solicitudes,
+                    static fn(array $row) => ($row['estado'] ?? '') === $estadoSlug
+                ));
+            }
+
+            $metricConfig = $this->getQuickMetricConfig($quickMetric);
+            $metricLabel = $metricConfig['label'] ?? null;
+            if (!empty($metricConfig)) {
+                $solicitudes = $this->applyQuickMetricFilter($solicitudes, $metricConfig);
+            }
+
+            $filtersSummary = $this->buildReportFiltersSummary($filters, $metricLabel);
+            $generatedAt = (new DateTimeImmutable('now'))->format('d-m-Y H:i');
+            $filename = 'solicitudes_' . date('Ymd_His') . '.pdf';
+
+            $reportService = new ReportService();
+            $pdf = $reportService->renderPdf('solicitudes_kanban', [
+                'titulo' => 'Reporte de solicitudes',
+                'generatedAt' => $generatedAt,
+                'filters' => $filtersSummary,
+                'total' => count($solicitudes),
+                'rows' => $solicitudes,
+                'metricLabel' => $metricLabel,
+            ], [
+                'destination' => 'S',
+                'filename' => $filename,
+                'mpdf' => [
+                    'orientation' => 'L',
+                    'margin_left' => 6,
+                    'margin_right' => 6,
+                    'margin_top' => 8,
+                    'margin_bottom' => 8,
+                ],
+            ]);
+
+            if (strncmp($pdf, '%PDF-', 5) !== 0) {
+                JsonLogger::log(
+                    'solicitudes_reportes',
+                    'Reporte PDF de solicitudes devolvió contenido no-PDF',
+                    null,
+                    [
+                        'user_id' => $this->getCurrentUserId(),
+                        'preview' => substr($pdf, 0, 200),
+                    ]
+                );
+                $this->json([
+                    'error' => 'No se pudo generar el PDF (contenido inválido).',
+                ], 500);
+                return;
+            }
+
+            if (!headers_sent()) {
+                header('Content-Length: ' . strlen($pdf));
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename="' . $filename . '"');
+            }
+
+            echo $pdf;
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_reportes',
+                'Reporte PDF de solicitudes falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $this->json([
+                'error' => 'No se pudo generar el reporte (ref: ' . $errorId . ')',
             ], 500);
         }
     }
@@ -764,6 +874,205 @@ class SolicitudController extends BaseController
         $this->bodyCache = is_array($decoded) ? $decoded : [];
 
         return $this->bodyCache;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<string, string|null>
+     */
+    private function sanitizeReportFilters(array $filters): array
+    {
+        $search = trim((string) ($filters['search'] ?? ''));
+        $doctor = trim((string) ($filters['doctor'] ?? ''));
+        $afiliacion = trim((string) ($filters['afiliacion'] ?? ''));
+        $prioridad = trim((string) ($filters['prioridad'] ?? ''));
+        $estado = trim((string) ($filters['estado'] ?? ''));
+
+        $allowedPriorities = ['normal', 'pendiente', 'urgente'];
+        if ($prioridad !== '' && !in_array(strtolower($prioridad), $allowedPriorities, true)) {
+            $prioridad = '';
+        }
+
+        $dateFrom = $this->normalizeDateInput($filters['date_from'] ?? null);
+        $dateTo = $this->normalizeDateInput($filters['date_to'] ?? null);
+
+        if (!$dateFrom && !$dateTo && !empty($filters['fechaTexto'])) {
+            [$dateFrom, $dateTo] = $this->parseDateRange((string) $filters['fechaTexto']);
+        }
+
+        return [
+            'search' => $search,
+            'doctor' => $doctor,
+            'afiliacion' => $afiliacion,
+            'prioridad' => $prioridad,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'estado' => $estado,
+        ];
+    }
+
+    private function normalizeDateInput(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $date = null;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        } elseif (preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) {
+            $date = DateTimeImmutable::createFromFormat('d-m-Y', $value);
+        } elseif (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $value)) {
+            $date = DateTimeImmutable::createFromFormat('d/m/Y', $value);
+        } else {
+            try {
+                $date = new DateTimeImmutable($value);
+            } catch (\Exception $e) {
+                $date = null;
+            }
+        }
+
+        return $date ? $date->format('Y-m-d') : null;
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null}
+     */
+    private function parseDateRange(string $value): array
+    {
+        if (!str_contains($value, ' - ')) {
+            $single = $this->normalizeDateInput($value);
+            return [$single, $single];
+        }
+
+        [$from, $to] = explode(' - ', $value, 2);
+        return [
+            $this->normalizeDateInput($from),
+            $this->normalizeDateInput($to),
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $solicitudes
+     * @return array<int, array<string, mixed>>
+     */
+    private function applySearchFilter(array $solicitudes, string $search): array
+    {
+        $term = mb_strtolower(trim($search));
+        if ($term === '') {
+            return $solicitudes;
+        }
+
+        $keys = [
+            'full_name',
+            'hc_number',
+            'procedimiento',
+            'doctor',
+            'afiliacion',
+            'estado',
+            'crm_pipeline_stage',
+        ];
+
+        return array_values(array_filter($solicitudes, static function (array $row) use ($term, $keys) {
+            foreach ($keys as $key) {
+                $value = $row[$key] ?? '';
+                if ($value !== '' && str_contains(mb_strtolower((string) $value), $term)) {
+                    return true;
+                }
+            }
+            return false;
+        }));
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    private function getQuickMetricConfig(string $quickMetric): array
+    {
+        $map = [
+            'anestesia' => [
+                'label' => 'Pendientes de apto de anestesia',
+                'estado' => 'apto-anestesia',
+            ],
+            'cobertura' => [
+                'label' => 'Pendientes de cobertura',
+                'estado' => 'revision-codigos',
+            ],
+            'sla-vencido' => [
+                'label' => 'SLA vencido',
+                'sla_status' => 'vencido',
+            ],
+        ];
+
+        return $map[$quickMetric] ?? [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $solicitudes
+     * @param array<string, string> $metricConfig
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyQuickMetricFilter(array $solicitudes, array $metricConfig): array
+    {
+        if (isset($metricConfig['estado'])) {
+            $estadoSlug = $this->estadoService->normalizeSlug($metricConfig['estado']);
+            return array_values(array_filter(
+                $solicitudes,
+                static fn(array $row) => ($row['estado'] ?? '') === $estadoSlug
+            ));
+        }
+
+        if (isset($metricConfig['sla_status'])) {
+            return array_values(array_filter(
+                $solicitudes,
+                static fn(array $row) => ($row['sla_status'] ?? '') === $metricConfig['sla_status']
+            ));
+        }
+
+        return $solicitudes;
+    }
+
+    /**
+     * @param array<string, string|null> $filters
+     * @return array<int, array<string, string>>
+     */
+    private function buildReportFiltersSummary(array $filters, ?string $metricLabel): array
+    {
+        $summary = [];
+
+        if (!empty($filters['search'])) {
+            $summary[] = ['label' => 'Buscar', 'value' => $filters['search']];
+        }
+        if (!empty($filters['doctor'])) {
+            $summary[] = ['label' => 'Doctor', 'value' => $filters['doctor']];
+        }
+        if (!empty($filters['afiliacion'])) {
+            $summary[] = ['label' => 'Afiliación', 'value' => $filters['afiliacion']];
+        }
+        if (!empty($filters['prioridad'])) {
+            $summary[] = ['label' => 'Prioridad', 'value' => $filters['prioridad']];
+        }
+
+        if (!empty($filters['date_from']) || !empty($filters['date_to'])) {
+            $from = $filters['date_from'] ?? '—';
+            $to = $filters['date_to'] ?? '—';
+            $summary[] = ['label' => 'Fecha', 'value' => sprintf('%s a %s', $from, $to)];
+        }
+
+        if (!empty($filters['estado'])) {
+            $summary[] = ['label' => 'Estado/Columna', 'value' => $filters['estado']];
+        }
+
+        if ($metricLabel) {
+            $summary[] = ['label' => 'Quick report', 'value' => $metricLabel];
+        }
+
+        return $summary;
     }
 
     private function getCurrentUserId(): ?int

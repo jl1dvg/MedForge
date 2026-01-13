@@ -227,37 +227,8 @@ class SolicitudModel
               AND sp.procedimiento != 'SELECCIONE' 
               AND sp.doctor != 'SELECCIONE'";
 
-
-        // 🧩 Filtros dinámicos
-        $params = [];
-
-        if (!empty($filtros['afiliacion'])) {
-            $sql .= " AND pd.afiliacion COLLATE utf8mb4_unicode_ci LIKE ?";
-            $params[] = '%' . trim($filtros['afiliacion']) . '%';
-        }
-
-        if (!empty($filtros['doctor'])) {
-            $sql .= " AND sp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
-            $params[] = '%' . trim($filtros['doctor']) . '%';
-        }
-
-        if (!empty($filtros['prioridad'])) {
-            // Ejemplo: prioridad puede ser 'normal', 'pendiente' o 'urgente'
-            $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
-            $params[] = trim($filtros['prioridad']);
-        }
-
-        if (!empty($filtros['fechaTexto']) && str_contains($filtros['fechaTexto'], ' - ')) {
-            [$inicio, $fin] = explode(' - ', $filtros['fechaTexto']);
-            $inicioDate = DateTime::createFromFormat('d-m-Y', trim($inicio));
-            $finDate = DateTime::createFromFormat('d-m-Y', trim($fin));
-
-            if ($inicioDate && $finDate) {
-                $sql .= " AND DATE(cd.fecha) BETWEEN ? AND ?";
-                $params[] = $inicioDate->format('Y-m-d');
-                $params[] = $finDate->format('Y-m-d');
-            }
-        }
+        [$filterSql, $params] = $this->buildSolicitudesFilterClause($filtros);
+        $sql .= $filterSql;
 
         $sql .= " ORDER BY COALESCE(cd.fecha, sp.fecha, sp.created_at) DESC";
 
@@ -265,6 +236,96 @@ class SolicitudModel
         $stmt->execute($params);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * @param array<string, mixed> $filtros
+     * @return array{0: string, 1: array<int, mixed>}
+     */
+    private function buildSolicitudesFilterClause(array $filtros): array
+    {
+        $sql = '';
+        $params = [];
+
+        if (!empty($filtros['afiliacion'])) {
+            $sql .= " AND pd.afiliacion COLLATE utf8mb4_unicode_ci LIKE ?";
+            $params[] = '%' . trim((string) $filtros['afiliacion']) . '%';
+        }
+
+        if (!empty($filtros['doctor'])) {
+            $sql .= " AND sp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
+            $params[] = '%' . trim((string) $filtros['doctor']) . '%';
+        }
+
+        if (!empty($filtros['prioridad'])) {
+            $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
+            $params[] = trim((string) $filtros['prioridad']);
+        }
+
+        $dateRange = $this->resolveDateRange($filtros);
+        if ($dateRange['from'] && $dateRange['to']) {
+            $sql .= " AND DATE(COALESCE(cd.fecha, sp.fecha, sp.created_at)) BETWEEN ? AND ?";
+            $params[] = $dateRange['from'];
+            $params[] = $dateRange['to'];
+        } elseif ($dateRange['from']) {
+            $sql .= " AND DATE(COALESCE(cd.fecha, sp.fecha, sp.created_at)) >= ?";
+            $params[] = $dateRange['from'];
+        } elseif ($dateRange['to']) {
+            $sql .= " AND DATE(COALESCE(cd.fecha, sp.fecha, sp.created_at)) <= ?";
+            $params[] = $dateRange['to'];
+        }
+
+        return [$sql, $params];
+    }
+
+    /**
+     * @param array<string, mixed> $filtros
+     * @return array{from: string|null, to: string|null}
+     */
+    private function resolveDateRange(array $filtros): array
+    {
+        $from = $this->normalizeDateValue($filtros['date_from'] ?? null);
+        $to = $this->normalizeDateValue($filtros['date_to'] ?? null);
+
+        if (!$from && !$to && !empty($filtros['fechaTexto']) && str_contains((string) $filtros['fechaTexto'], ' - ')) {
+            [$inicio, $fin] = explode(' - ', (string) $filtros['fechaTexto']);
+            $from = $this->normalizeDateValue($inicio);
+            $to = $this->normalizeDateValue($fin);
+        }
+
+        return [
+            'from' => $from,
+            'to' => $to,
+        ];
+    }
+
+    private function normalizeDateValue(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        $date = null;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            $date = DateTime::createFromFormat('Y-m-d', $value);
+        } elseif (preg_match('/^\d{2}-\d{2}-\d{4}$/', $value)) {
+            $date = DateTime::createFromFormat('d-m-Y', $value);
+        } elseif (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $value)) {
+            $date = DateTime::createFromFormat('d/m/Y', $value);
+        } else {
+            try {
+                $date = new DateTime($value);
+            } catch (\Exception $e) {
+                $date = null;
+            }
+        }
+
+        return $date ? $date->format('Y-m-d') : null;
     }
 
     public function fetchTurneroSolicitudes(array $estados = []): array
@@ -377,7 +438,12 @@ class SolicitudModel
                 sp.id AS id,
                 u.id AS user_id,
                 u.nombre AS user_nombre,
-                u.email AS user_email
+                u.email AS user_email,
+                u.first_name AS doctor_first_name,
+                u.middle_name AS doctor_middle_name,
+                u.last_name AS doctor_last_name,
+                u.second_last_name AS doctor_second_last_name,
+                u.full_name AS doctor_full_name
             FROM solicitud_procedimiento sp
             LEFT JOIN users u
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
