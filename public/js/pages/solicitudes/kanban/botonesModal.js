@@ -3,6 +3,10 @@ import { showToast } from './toast.js';
 import { getDataStore } from './config.js';
 import { llamarTurnoSolicitud } from './turnero.js';
 
+const PREQUIRURGICO_DEBOUNCE_MS = 900;
+let lastPrequirurgicoOpenAt = 0;
+let prequirurgicoOpening = false;
+
 function obtenerTarjetaActiva() {
     return document.querySelector('.kanban-card.view-details.active');
 }
@@ -37,6 +41,80 @@ function abrirEnNuevaPestana(url) {
     document.body.removeChild(anchor);
 
     return false;
+}
+
+function buildCoberturaUrl(formId, hcNumber, pages) {
+    if (!formId || !hcNumber) {
+        return '';
+    }
+
+    const params = new URLSearchParams({
+        form_id: formId,
+        hc_number: hcNumber,
+        variant: 'appendix',
+    });
+
+    if (pages) {
+        params.set('pages', pages);
+    }
+
+    return `/reports/cobertura/pdf?${params.toString()}`;
+}
+
+function imprimirExamenesPrequirurgicos(tarjeta) {
+    if (!tarjeta) {
+        showToast('Selecciona una solicitud antes de solicitar exámenes', false);
+        return false;
+    }
+
+    const now = Date.now();
+    if (prequirurgicoOpening || now - lastPrequirurgicoOpenAt < PREQUIRURGICO_DEBOUNCE_MS) {
+        return false;
+    }
+    prequirurgicoOpening = true;
+    lastPrequirurgicoOpenAt = now;
+    window.setTimeout(() => {
+        prequirurgicoOpening = false;
+    }, PREQUIRURGICO_DEBOUNCE_MS);
+
+    const formId = tarjeta.dataset.form;
+    const hcNumber = tarjeta.dataset.hc;
+    if (!formId || !hcNumber) {
+        showToast('No se encontró la información necesaria para imprimir los documentos.', false);
+        return false;
+    }
+
+    const url = buildCoberturaUrl(formId, hcNumber, '007,010');
+    const abierta = abrirEnNuevaPestana(url);
+
+    if (!abierta) {
+        showToast('Permite las ventanas emergentes para ver los documentos prequirúrgicos.', false);
+    }
+
+    return abierta;
+}
+
+function imprimirReferenciaCobertura(tarjeta) {
+    if (!tarjeta) {
+        showToast('Selecciona una solicitud antes de solicitar cobertura', false);
+        return false;
+    }
+
+    const formId = tarjeta.dataset.form;
+    const hcNumber = tarjeta.dataset.hc;
+    if (!formId || !hcNumber) {
+        showToast('No se encontró la información necesaria para imprimir los documentos.', false);
+        return false;
+    }
+
+    const url = buildCoberturaUrl(formId, hcNumber, 'referencia');
+    const abierta = abrirEnNuevaPestana(url);
+
+    if (!abierta) {
+        showToast('Permite las ventanas emergentes para ver el documento de cobertura.', false);
+    }
+
+    return abierta;
 }
 
 function actualizarDesdeBoton(nuevoEstado, options = {}) {
@@ -115,53 +193,25 @@ export function inicializarBotonesModal() {
         });
     }
 
+    const examenesBtn = document.getElementById('btnSolicitarExamenesPrequirurgicos');
+    if (examenesBtn && examenesBtn.dataset.listenerAttached !== 'true') {
+        examenesBtn.dataset.listenerAttached = 'true';
+        examenesBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            const tarjeta = obtenerTarjetaActiva();
+            imprimirExamenesPrequirurgicos(tarjeta);
+        });
+    }
+
     const coberturaBtn = document.getElementById('btnSolicitarCobertura');
     if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
         coberturaBtn.dataset.listenerAttached = 'true';
         coberturaBtn.addEventListener('click', () => {
             const tarjeta = obtenerTarjetaActiva();
-            if (!tarjeta) {
-                showToast('Selecciona una solicitud antes de solicitar cobertura', false);
-                return;
-            }
-
-            const formId = tarjeta.dataset.form;
-            const hcNumber = tarjeta.dataset.hc;
-
-            if (formId && hcNumber) {
-                const aseguradoraValores = [
-                    tarjeta.dataset.afiliacion,
-                    tarjeta.dataset.aseguradora,
-                    tarjeta.dataset.insurer,
-                    tarjeta.dataset.insurance,
-                ]
-                    .map(valor => (valor || '').toLowerCase())
-                    .filter(valor => valor !== '');
-                const aseguradorasConPlantilla = ['ecuasanitas'];
-                const params = `form_id=${encodeURIComponent(formId)}&hc_number=${encodeURIComponent(hcNumber)}`;
-
-                const usaPlantilla = aseguradorasConPlantilla.some(nombre =>
-                    aseguradoraValores.some(valor => valor.includes(nombre))
-                );
-
-                if (usaPlantilla) {
-                    const templateUrl = `/reports/cobertura/pdf-template?${params}`;
-                    const htmlUrl = `/reports/cobertura/pdf-html?${params}`;
-
-                    const templateAbierta = abrirEnNuevaPestana(templateUrl);
-                    const htmlAbierta = abrirEnNuevaPestana(htmlUrl);
-
-                    if (!templateAbierta || !htmlAbierta) {
-                        showToast('Permite las ventanas emergentes para ver ambos documentos de cobertura.', false);
-                    }
-                } else {
-                    const url = `/reports/cobertura/pdf?${params}`;
-                    const abierta = abrirEnNuevaPestana(url);
-                    if (!abierta) {
-                        showToast('Permite las ventanas emergentes para ver el documento de cobertura.', false);
-                    }
-                }
-            }
+            imprimirReferenciaCobertura(tarjeta);
 
             // Pasar a revisión de códigos (pendiente)
             const estado = coberturaBtn.dataset.estado || 'Revisión Códigos';

@@ -82,9 +82,10 @@ class PdfController
     public function generateCobertura(string $form_id, string $hc_number, ?string $variantOverride = null)
     {
         $documento = $this->protocolReportService->generateCoberturaDocument($form_id, $hc_number);
+        $variant = $this->resolveCoberturaVariant($variantOverride);
+        $segmentsOverride = $variant === 'appendix' ? $this->parseCoberturaSegments() : null;
 
         if (($documento['mode'] ?? null) === 'report') {
-            $variant = $this->resolveCoberturaVariant($variantOverride);
             $options = isset($documento['options']) && is_array($documento['options'])
                 ? $documento['options']
                 : [];
@@ -108,7 +109,8 @@ class PdfController
                 $documento,
                 $form_id,
                 $hc_number,
-                $data
+                $data,
+                $segmentsOverride
             );
 
             if ($variant === 'appendix') {
@@ -178,6 +180,19 @@ class PdfController
             );
 
             return;
+        }
+
+        if ($variant === 'appendix') {
+            $appendixDocument = $this->protocolReportService->generateCoberturaAppendixDocument(
+                $form_id,
+                $hc_number,
+                null,
+                $segmentsOverride
+            );
+
+            if (is_array($appendixDocument)) {
+                $documento = $appendixDocument;
+            }
         }
 
         $orientation = isset($documento['orientation']) ? (string) $documento['orientation'] : 'P';
@@ -294,15 +309,26 @@ class PdfController
         array $documento,
         string $formId,
         string $hcNumber,
-        array $data
+        array $data,
+        ?array $segmentsOverride = null
     ): ?array {
         if ($variant === 'template') {
             return null;
         }
 
-        $appendixSource = isset($documento['append']) && is_array($documento['append'])
-            ? $documento['append']
-            : null;
+        $appendixSource = null;
+        if (is_array($segmentsOverride) && $segmentsOverride !== []) {
+            $appendixSource = $this->protocolReportService->generateCoberturaAppendixDocument(
+                $formId,
+                $hcNumber,
+                $data,
+                $segmentsOverride
+            );
+        } else {
+            $appendixSource = isset($documento['append']) && is_array($documento['append'])
+                ? $documento['append']
+                : null;
+        }
 
         if (!is_array($appendixSource)
             || !isset($appendixSource['html'])
@@ -312,7 +338,8 @@ class PdfController
             $appendixSource = $this->protocolReportService->generateCoberturaAppendixDocument(
                 $formId,
                 $hcNumber,
-                $data
+                $data,
+                $segmentsOverride
             );
         }
 
@@ -338,6 +365,48 @@ class PdfController
                 ? $appendixSource['filename']
                 : $documento['filename'],
         ];
+    }
+
+    /**
+     * @return array<int, string>|null
+     */
+    private function parseCoberturaSegments(): ?array
+    {
+        $raw = $_GET['pages'] ?? $_GET['segments'] ?? $_GET['segment'] ?? $_GET['page'] ?? null;
+
+        if (is_array($raw)) {
+            $segments = array_values(array_filter(array_map(static function ($segment): string {
+                if (!is_string($segment)) {
+                    return '';
+                }
+                return trim($segment);
+            }, $raw), static fn (string $segment): bool => $segment !== ''));
+
+            return $segments !== [] ? $segments : null;
+        }
+
+        if (!is_string($raw)) {
+            return null;
+        }
+
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        $segments = preg_split('/[,\|]+/', $raw);
+        if (!is_array($segments)) {
+            return null;
+        }
+
+        $segments = array_values(array_filter(array_map(static function ($segment): string {
+            if (!is_string($segment)) {
+                return '';
+            }
+            return trim($segment);
+        }, $segments), static fn (string $segment): bool => $segment !== ''));
+
+        return $segments !== [] ? $segments : null;
     }
 
     private function resolveCoberturaVariant(?string $override = null): string
@@ -380,5 +449,3 @@ class PdfController
     }
 
 }
-
-

@@ -46,6 +46,8 @@ function abrirPrefactura({ hc, formId, examenId }) {
     const modal = new bootstrap.Modal(modalElement);
     const content = document.getElementById('prefacturaContent');
 
+    parkExamenesPrequirurgicosButton(modalElement);
+
     content.innerHTML = `
         <div class="d-flex align-items-center justify-content-center py-5">
             <div class="spinner-border text-primary me-2" role="status" aria-hidden="true"></div>
@@ -64,6 +66,7 @@ function abrirPrefactura({ hc, formId, examenId }) {
         })
         .then(html => {
             content.innerHTML = html;
+            relocateExamenesPrequirurgicosButton(content);
         })
         .catch(error => {
             console.error('❌ Error cargando prefactura:', error);
@@ -74,6 +77,27 @@ function abrirPrefactura({ hc, formId, examenId }) {
         document.querySelectorAll('.kanban-card').forEach(element => element.classList.remove('active'));
         document.querySelectorAll('#examenesTable tbody tr').forEach(row => row.classList.remove('table-active'));
     }, { once: true });
+}
+
+function relocateExamenesPrequirurgicosButton(content) {
+    const button = document.getElementById('btnSolicitarExamenesPrequirurgicos');
+    if (!button || !content) {
+        return;
+    }
+
+    button.classList.remove('d-none');
+    content.prepend(button);
+}
+
+function parkExamenesPrequirurgicosButton(modalElement) {
+    const button = document.getElementById('btnSolicitarExamenesPrequirurgicos');
+    const footer = modalElement?.querySelector('.modal-footer');
+    if (!button || !footer) {
+        return;
+    }
+
+    button.classList.add('d-none');
+    footer.appendChild(button);
 }
 
 function handlePrefacturaClick(event) {
