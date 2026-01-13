@@ -99,6 +99,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.__solicitudesMetrics = window.__solicitudesMetrics || null;
     // Estados que NO deben aparecer en el overview
     const OVERVIEW_EXCLUDED_STATES = new Set(['llamado', 'en-atencion']);
+    const DEFAULT_VISIBLE_KEYS = [
+        'total-de-solicitudes',
+        'sla-vencido',
+        'reprogramacion',
+        'consentimiento',
+        'equipo-con-mayor-carga',
+    ];
+    const OVERVIEW_STORAGE_KEY = 'solicitudes:overview:expanded';
+    const OVERVIEW_TOGGLE_ID = 'solicitudesOverviewToggle';
     const STORAGE_KEY_VIEW = config.storageKeyView;
     const viewAttr = resolveAttr('view');
     const viewButtons = Array.from(document.querySelectorAll(`[${viewAttr}]`));
@@ -139,6 +148,116 @@ document.addEventListener('DOMContentLoaded', () => {
             .trim()
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-');
+    };
+
+    const normalizeKey = (text) => {
+        return (text ?? '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+            .replace(/[^a-z0-9\s-]/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '-');
+    };
+
+    const getOverviewCards = () => {
+        if (!overviewContainer) {
+            return [];
+        }
+
+        return Array.from(overviewContainer.querySelectorAll('.overview-card'));
+    };
+
+    const readOverviewExpanded = () => {
+        try {
+            return sessionStorage.getItem(OVERVIEW_STORAGE_KEY) === '1';
+        } catch (error) {
+            return false;
+        }
+    };
+
+    const writeOverviewExpanded = (expanded) => {
+        try {
+            sessionStorage.setItem(OVERVIEW_STORAGE_KEY, expanded ? '1' : '0');
+        } catch (error) {
+            // Ignorar fallas de almacenamiento local
+        }
+    };
+
+    const updateOverviewToggleText = (button, expanded) => {
+        if (!button) {
+            return;
+        }
+
+        button.textContent = expanded ? 'Ocultar métricas detalladas' : 'Ver métricas detalladas';
+    };
+
+    const applyOverviewVisibility = (forceExpanded) => {
+        if (!overviewContainer) {
+            return;
+        }
+
+        const cards = getOverviewCards();
+        if (!cards.length) {
+            return;
+        }
+
+        const expanded = typeof forceExpanded === 'boolean' ? forceExpanded : readOverviewExpanded();
+
+        cards.forEach(card => {
+            const title = card.querySelector('h6')?.textContent || '';
+            const key = normalizeKey(title);
+
+            if (key) {
+                card.dataset.metricKey = key;
+            }
+
+            if (expanded || DEFAULT_VISIBLE_KEYS.includes(key)) {
+                card.classList.remove('d-none');
+            } else {
+                card.classList.add('d-none');
+            }
+        });
+
+        updateOverviewToggleText(document.getElementById(OVERVIEW_TOGGLE_ID), expanded);
+    };
+
+    const ensureOverviewToggle = () => {
+        if (!overviewContainer) {
+            return;
+        }
+
+        const cards = getOverviewCards();
+        if (!cards.length) {
+            return;
+        }
+
+        const existing = document.getElementById(OVERVIEW_TOGGLE_ID);
+        if (existing) {
+            updateOverviewToggleText(existing, readOverviewExpanded());
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'd-flex justify-content-end mb-2';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.id = OVERVIEW_TOGGLE_ID;
+        button.className = 'btn btn-outline-primary btn-sm';
+        updateOverviewToggleText(button, readOverviewExpanded());
+
+        button.addEventListener('click', () => {
+            const nextExpanded = !readOverviewExpanded();
+            writeOverviewExpanded(nextExpanded);
+            applyOverviewVisibility(nextExpanded);
+        });
+
+        wrapper.appendChild(button);
+        overviewContainer.parentNode?.insertBefore(wrapper, overviewContainer);
     };
 
     const formatDate = (date) => {
@@ -443,6 +562,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         overviewContainer.innerHTML = cards.join('');
+        ensureOverviewToggle();
+        applyOverviewVisibility();
     };
 
     const renderTable = (data) => {
