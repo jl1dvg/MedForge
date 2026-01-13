@@ -4,16 +4,16 @@
 /** @var array $realtime */
 
 $realtime = array_merge(
-    [
-        'enabled' => false,
-        'key' => '',
-        'cluster' => '',
-        'channel' => 'solicitudes-kanban',
-        'event' => 'nueva-solicitud',
-        'desktop_notifications' => false,
-        'auto_dismiss_seconds' => 0,
-    ],
-    $realtime ?? []
+        [
+                'enabled' => false,
+                'key' => '',
+                'cluster' => '',
+                'channel' => 'solicitudes-kanban',
+                'event' => 'nueva-solicitud',
+                'desktop_notifications' => false,
+                'auto_dismiss_seconds' => 0,
+        ],
+        $realtime ?? []
 );
 
 if (!isset($styles) || !is_array($styles)) {
@@ -28,11 +28,11 @@ if (!isset($scripts) || !is_array($scripts)) {
 }
 
 array_push(
-    $scripts,
-    'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
-    'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
+        $scripts,
+        'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
+        'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
 );
 ?>
 <div class="content-header">
@@ -48,11 +48,7 @@ array_push(
                 </nav>
             </div>
         </div>
-        <div class="ms-auto d-flex align-items-center gap-2">
-            <a class="btn btn-primary" href="/turneros/unificado" target="_blank" rel="noopener">
-                <i class="mdi mdi-monitor"></i> Abrir turnero
-            </a>
-        </div>
+
     </div>
 </div>
 
@@ -735,14 +731,17 @@ array_push(
             flex-direction: column;
             height: 100%;
         }
+
         .crm-fixed-top {
             flex: 0 0 auto; /* no grow */
         }
+
         .crm-scrollable {
             flex: 1 1 auto; /* take remaining height */
-            min-height: 0;  /* allow child overflow */
+            min-height: 0; /* allow child overflow */
             overflow: auto;
         }
+
         .accordion-button[data-preserve-disabled="true"] {
             pointer-events: auto !important;
         }
@@ -757,12 +756,14 @@ array_push(
             flex-direction: column;
             gap: 14px;
         }
+
         .cive-modal-section {
             border: 1px solid #e5e7eb;
             border-radius: 10px;
             padding: 12px;
             background: #fff;
         }
+
         .cive-modal-section h4 {
             font-size: 14px;
             font-weight: 700;
@@ -772,32 +773,39 @@ array_push(
             align-items: center;
             gap: 6px;
         }
+
         .cive-row {
             display: flex;
             flex-wrap: wrap;
             gap: 10px 12px;
         }
+
         .cive-col-6 {
             flex: 1 1 calc(50% - 12px);
             min-width: 200px;
         }
+
         .cive-col-full {
             flex: 1 1 100%;
         }
+
         .cive-form-group {
             display: flex;
             flex-direction: column;
             gap: 4px;
         }
+
         .cive-form-group label {
             font-size: 12px;
             color: #4b5563;
         }
+
         .cive-form-group input,
         .cive-form-group select,
         .cive-form-group textarea {
             box-sizing: border-box;
         }
+
         .swal2-popup.cive-modal-wide {
             width: 800px !important;
             max-width: 90vw;
@@ -819,7 +827,11 @@ array_push(
                     <i class="mdi mdi-table-large"></i> Tabla
                 </button>
             </div>
-            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#solicitudesFilters" aria-expanded="false" aria-controls="solicitudesFilters">
+            <a class="btn btn-outline-primary" href="/turneros/unificado" target="_blank" rel="noopener">
+                <i class="mdi mdi-monitor"></i> Turnero
+            </a>
+            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#solicitudesFilters" aria-expanded="false" aria-controls="solicitudesFilters">
                 <i class="mdi mdi-filter-variant"></i> Filtros
             </button>
             <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
@@ -837,7 +849,8 @@ array_push(
 
                     <div class="col-lg-3 col-md-6">
                         <label for="kanbanSearchFilter" class="form-label">Buscar</label>
-                        <input type="search" id="kanbanSearchFilter" class="form-control" placeholder="Paciente, HC o procedimiento">
+                        <input type="search" id="kanbanSearchFilter" class="form-control"
+                               placeholder="Paciente, HC o procedimiento">
                     </div>
                     <div class="col-lg-3 col-md-6">
                         <label for="kanbanDoctorFilter" class="form-label">Doctor</label>
@@ -886,17 +899,17 @@ array_push(
 
         $meta = $columnasConfig[$slugColumna] ?? [];
         $estadoColumnas[$slugColumna] = [
-            'label' => $meta['label'] ?? ucwords(str_replace('-', ' ', $slugColumna)),
-            'slug' => $slugColumna,
-            'color' => $meta['color'] ?? 'secondary',
+                'label' => $meta['label'] ?? ucwords(str_replace('-', ' ', $slugColumna)),
+                'slug' => $slugColumna,
+                'color' => $meta['color'] ?? 'secondary',
         ];
     }
 
     if (!isset($estadoColumnas['completado'])) {
         $estadoColumnas['completado'] = [
-            'label' => 'Completado',
-            'slug' => 'completado',
-            'color' => $columnasConfig['completado']['color'] ?? 'secondary',
+                'label' => 'Completado',
+                'slug' => 'completado',
+                'color' => $columnasConfig['completado']['color'] ?? 'secondary',
         ];
     }
     ?>
@@ -909,10 +922,14 @@ array_push(
                 <div class="kanban-column kanban-column-wrapper bg-white rounded shadow-sm p-2 flex-shrink-0">
                     <h5 class="text-center">
                         <?= htmlspecialchars($estadoMeta['label'] ?? $estadoId, ENT_QUOTES, 'UTF-8') ?>
-                        <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>" id="count-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>">0</span>
-                        <small class="text-muted" id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
+                        <span class="badge bg-<?= htmlspecialchars($color, ENT_QUOTES, 'UTF-8') ?>"
+                              id="count-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>">0</span>
+                        <small class="text-muted"
+                               id="percent-<?= htmlspecialchars($estadoId, ENT_QUOTES, 'UTF-8') ?>"></small>
                     </h5>
-                    <div class="kanban-items" id="kanban-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>" aria-live="polite"></div>
+                    <div class="kanban-items"
+                         id="kanban-<?= htmlspecialchars($estadoMeta['slug'], ENT_QUOTES, 'UTF-8') ?>"
+                         aria-live="polite"></div>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -922,17 +939,17 @@ array_push(
         <div class="table-responsive">
             <table class="table align-middle" id="solicitudesTable">
                 <thead>
-                    <tr>
-                        <th>Paciente</th>
-                        <th>Detalle</th>
-                        <th>Progreso</th>
-                        <th>Estado</th>
-                        <th>Pipeline CRM</th>
-                        <th>Responsable</th>
-                        <th>Prioridad</th>
-                        <th>Turno</th>
-                        <th>Acciones</th>
-                    </tr>
+                <tr>
+                    <th>Paciente</th>
+                    <th>Detalle</th>
+                    <th>Progreso</th>
+                    <th>Estado</th>
+                    <th>Pipeline CRM</th>
+                    <th>Responsable</th>
+                    <th>Prioridad</th>
+                    <th>Turno</th>
+                    <th>Acciones</th>
+                </tr>
                 </thead>
                 <tbody></tbody>
             </table>
@@ -964,15 +981,15 @@ array_push(
                 articleSingularShort: 'la',
             },
             realtime: <?= json_encode([
-                'enabled' => (bool)($realtime['enabled'] ?? false),
-                'key' => (string)($realtime['key'] ?? ''),
-                'cluster' => (string)($realtime['cluster'] ?? ''),
-                'channel' => (string)($realtime['channel'] ?? 'solicitudes-kanban'),
-                'event' => (string)($realtime['event'] ?? 'nueva-solicitud'),
-                'events' => $realtime['events'] ?? [],
-                'channels' => $realtime['channels'] ?? [],
-                'desktop_notifications' => (bool)($realtime['desktop_notifications'] ?? false),
-                'auto_dismiss_seconds' => $realtime['auto_dismiss_seconds'] ?? 0,
+                    'enabled' => (bool)($realtime['enabled'] ?? false),
+                    'key' => (string)($realtime['key'] ?? ''),
+                    'cluster' => (string)($realtime['cluster'] ?? ''),
+                    'channel' => (string)($realtime['channel'] ?? 'solicitudes-kanban'),
+                    'event' => (string)($realtime['event'] ?? 'nueva-solicitud'),
+                    'events' => $realtime['events'] ?? [],
+                    'channels' => $realtime['channels'] ?? [],
+                    'desktop_notifications' => (bool)($realtime['desktop_notifications'] ?? false),
+                    'auto_dismiss_seconds' => $realtime['auto_dismiss_seconds'] ?? 0,
             ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
         };
     </script>
@@ -988,7 +1005,8 @@ array_push(
                 <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
+                    data-preserve-disabled="true"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column gap-3">
             <div id="crmLoading" class="alert alert-info d-none crm-fixed-top" role="status">
@@ -1003,11 +1021,14 @@ array_push(
             <div class="accordion crm-fixed-top" id="crmAccordion">
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="acc-head-resumen">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-resumen" aria-expanded="false" aria-controls="acc-resumen" data-preserve-disabled="true">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#acc-resumen" aria-expanded="false" aria-controls="acc-resumen"
+                                data-preserve-disabled="true">
                             <i class="mdi mdi-information-outline me-2"></i> Resumen de la solicitud
                         </button>
                     </h2>
-                    <div id="acc-resumen" class="accordion-collapse collapse" aria-labelledby="acc-head-resumen" data-bs-parent="#crmAccordion">
+                    <div id="acc-resumen" class="accordion-collapse collapse" aria-labelledby="acc-head-resumen"
+                         data-bs-parent="#crmAccordion">
                         <div class="accordion-body">
                             <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
                         </div>
@@ -1016,11 +1037,14 @@ array_push(
 
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="acc-head-detalles">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#acc-detalles" aria-expanded="false" aria-controls="acc-detalles" data-preserve-disabled="true">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#acc-detalles" aria-expanded="false" aria-controls="acc-detalles"
+                                data-preserve-disabled="true">
                             <i class="mdi mdi-tune me-2"></i> Detalles CRM
                         </button>
                     </h2>
-                    <div id="acc-detalles" class="accordion-collapse collapse" aria-labelledby="acc-head-detalles" data-bs-parent="#crmAccordion">
+                    <div id="acc-detalles" class="accordion-collapse collapse" aria-labelledby="acc-head-detalles"
+                         data-bs-parent="#crmAccordion">
                         <div class="accordion-body">
                             <form id="crmDetalleForm" class="border rounded p-3">
                                 <div class="row g-3">
@@ -1038,27 +1062,33 @@ array_push(
                                     </div>
                                     <div class="col-md-6">
                                         <label for="crmFuente" class="form-label">Fuente / convenio</label>
-                                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
+                                        <input type="text" id="crmFuente" name="fuente" class="form-control"
+                                               list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
                                         <datalist id="crmFuenteOptions"></datalist>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="crmSeguidores" class="form-label">Seguidores</label>
-                                        <select id="crmSeguidores" name="seguidores[]" class="form-select" multiple></select>
-                                        <small class="text-muted">Usuarios que acompañan el caso y reciben alertas.</small>
+                                        <select id="crmSeguidores" name="seguidores[]" class="form-select"
+                                                multiple></select>
+                                        <small class="text-muted">Usuarios que acompañan el caso y reciben
+                                            alertas.</small>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
-                                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
+                                        <input type="email" id="crmContactoEmail" name="contacto_email"
+                                               class="form-control" placeholder="correo@ejemplo.com">
                                     </div>
                                     <div class="col-md-6">
                                         <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
-                                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
+                                        <input type="text" id="crmContactoTelefono" name="contacto_telefono"
+                                               class="form-control" placeholder="+593 ...">
                                     </div>
                                 </div>
                                 <div class="mt-3">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <label class="form-label mb-0">Campos personalizados</label>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo" data-preserve-disabled="true">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                id="crmAgregarCampo" data-preserve-disabled="true">
                                             <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
                                         </button>
                                     </div>
@@ -1083,7 +1113,8 @@ array_push(
                     <div id="crmNotasList" class="list-group mb-3"></div>
                     <form id="crmNotaForm">
                         <label for="crmNotaTexto" class="form-label">Agregar nota</label>
-                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3" placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
+                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3"
+                                  placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
                         <div class="d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
@@ -1104,7 +1135,8 @@ array_push(
                         </div>
                         <div class="col-sm-5">
                             <label for="crmAdjuntoDescripcion" class="form-label">Descripción</label>
-                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control" placeholder="Consentimiento, póliza, etc.">
+                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control"
+                                   placeholder="Consentimiento, póliza, etc.">
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-primary">
@@ -1122,7 +1154,8 @@ array_push(
                     <form id="crmTareaForm" class="row g-2">
                         <div class="col-md-6">
                             <label for="crmTareaTitulo" class="form-label">Título</label>
-                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente" required>
+                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente"
+                                   required>
                         </div>
                         <div class="col-md-6">
                             <label for="crmTareaAsignado" class="form-label">Responsable</label>
@@ -1140,7 +1173,8 @@ array_push(
                         </div>
                         <div class="col-12">
                             <label for="crmTareaDescripcion" class="form-label">Descripción</label>
-                            <textarea id="crmTareaDescripcion" class="form-control" rows="2" placeholder="Detalles de la tarea"></textarea>
+                            <textarea id="crmTareaDescripcion" class="form-control" rows="2"
+                                      placeholder="Detalles de la tarea"></textarea>
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-success">
@@ -1167,19 +1201,23 @@ array_push(
                         </div>
                         <div class="col-md-6">
                             <label for="crmBloqueoDuracion" class="form-label">Duración (min)</label>
-                            <input type="number" min="15" step="5" id="crmBloqueoDuracion" class="form-control" placeholder="60">
+                            <input type="number" min="15" step="5" id="crmBloqueoDuracion" class="form-control"
+                                   placeholder="60">
                         </div>
                         <div class="col-md-6">
                             <label for="crmBloqueoSala" class="form-label">Sala / quirófano</label>
-                            <input type="text" id="crmBloqueoSala" class="form-control" placeholder="Sala 1, Láser, etc.">
+                            <input type="text" id="crmBloqueoSala" class="form-control"
+                                   placeholder="Sala 1, Láser, etc.">
                         </div>
                         <div class="col-md-6">
                             <label for="crmBloqueoDoctor" class="form-label">Doctor</label>
-                            <input type="text" id="crmBloqueoDoctor" class="form-control" placeholder="Nombre del médico">
+                            <input type="text" id="crmBloqueoDoctor" class="form-control"
+                                   placeholder="Nombre del médico">
                         </div>
                         <div class="col-12">
                             <label for="crmBloqueoMotivo" class="form-label">Motivo</label>
-                            <input type="text" id="crmBloqueoMotivo" class="form-control" placeholder="Reserva de sala, valoración, etc.">
+                            <input type="text" id="crmBloqueoMotivo" class="form-control"
+                                   placeholder="Reserva de sala, valoración, etc.">
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-dark">
@@ -1198,7 +1236,8 @@ array_push(
                 <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
+                    data-preserve-disabled="true"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column gap-3">
             <div id="crmLoading" class="alert alert-info d-none" role="status">
@@ -1226,20 +1265,25 @@ array_push(
                     <div class="col-md-6">
                         <label for="crmLeadIdInput" class="form-label">Lead CRM vinculado</label>
                         <div class="input-group">
-                            <input type="number" min="1" id="crmLeadIdInput" class="form-control" placeholder="Se asigna automáticamente">
-                            <button type="button" class="btn btn-outline-secondary" id="crmLeadOpen" title="Abrir lead en CRM">
+                            <input type="number" min="1" id="crmLeadIdInput" class="form-control"
+                                   placeholder="Se asigna automáticamente">
+                            <button type="button" class="btn btn-outline-secondary" id="crmLeadOpen"
+                                    title="Abrir lead en CRM">
                                 <i class="mdi mdi-open-in-new"></i>
                             </button>
-                            <button type="button" class="btn btn-outline-danger" id="crmLeadUnlink" title="Desvincular lead">
+                            <button type="button" class="btn btn-outline-danger" id="crmLeadUnlink"
+                                    title="Desvincular lead">
                                 <i class="mdi mdi-link-off"></i>
                             </button>
                         </div>
                         <input type="hidden" id="crmLeadId" name="crm_lead_id">
-                        <small class="form-text text-muted" id="crmLeadHelp">Sin lead vinculado. Al guardar se creará automáticamente.</small>
+                        <small class="form-text text-muted" id="crmLeadHelp">Sin lead vinculado. Al guardar se creará
+                            automáticamente.</small>
                     </div>
                     <div class="col-md-6">
                         <label for="crmFuente" class="form-label">Fuente / convenio</label>
-                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
+                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions"
+                               placeholder="Ej. aseguradora, referido, campaña">
                         <datalist id="crmFuenteOptions"></datalist>
                     </div>
                     <div class="col-md-6">
@@ -1249,11 +1293,13 @@ array_push(
                     </div>
                     <div class="col-md-6">
                         <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
-                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
+                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control"
+                               placeholder="correo@ejemplo.com">
                     </div>
                     <div class="col-md-6">
                         <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
-                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
+                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control"
+                               placeholder="+593 ...">
                     </div>
                 </div>
                 <div class="mt-3">
@@ -1280,7 +1326,8 @@ array_push(
                     <div id="crmNotasList" class="list-group mb-3"></div>
                     <form id="crmNotaForm">
                         <label for="crmNotaTexto" class="form-label">Agregar nota</label>
-                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3" placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
+                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3"
+                                  placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
                         <div class="d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
@@ -1301,7 +1348,8 @@ array_push(
                         </div>
                         <div class="col-sm-5">
                             <label for="crmAdjuntoDescripcion" class="form-label">Descripción</label>
-                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control" placeholder="Consentimiento, póliza, etc.">
+                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control"
+                                   placeholder="Consentimiento, póliza, etc.">
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-primary">
@@ -1319,7 +1367,8 @@ array_push(
                     <form id="crmTareaForm" class="row g-2">
                         <div class="col-md-6">
                             <label for="crmTareaTitulo" class="form-label">Título</label>
-                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente" required>
+                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente"
+                                   required>
                         </div>
                         <div class="col-md-6">
                             <label for="crmTareaAsignado" class="form-label">Responsable</label>
@@ -1337,7 +1386,8 @@ array_push(
                         </div>
                         <div class="col-12">
                             <label for="crmTareaDescripcion" class="form-label">Descripción</label>
-                            <textarea id="crmTareaDescripcion" class="form-control" rows="2" placeholder="Detalles de la tarea"></textarea>
+                            <textarea id="crmTareaDescripcion" class="form-control" rows="2"
+                                      placeholder="Detalles de la tarea"></textarea>
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-success">
@@ -1362,7 +1412,8 @@ array_push(
                             <span class="title fw-500 fs-16 text-truncate">Exportar ZIP</span>
                             <small class="text-muted">Descarga el respaldo de documentos asociados</small>
                         </div>
-                        <a id="exportExcel" class="fs-18 text-gray hover-info" href="#" aria-label="Exportar solicitudes">
+                        <a id="exportExcel" class="fs-18 text-gray hover-info" href="#"
+                           aria-label="Exportar solicitudes">
                             <i class="fa fa-download"></i>
                         </a>
                     </div>
@@ -1385,11 +1436,24 @@ array_push(
                 </div>
             </div>
             <div class="modal-footer d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno</button>
-                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">👥 En atención</button>
-                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura" data-estado="Revisión Códigos" data-completado="0">📤 Solicitar Cobertura</button>
-                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">✅ Cobertura exitosa</button>
-                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
+                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
+                </button>
+                <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
+                        data-estado="En atención">👥 En atención
+                </button>
+                <button type="button" class="btn btn-outline-info" id="btnSolicitarExamenesPrequirurgicos">
+                    <i class="mdi mdi-file-document-multiple-outline me-1"></i> Solicitar exámenes prequirúrgicos
+                </button>
+                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
+                        data-estado="Revisión Códigos" data-completado="0">
+                    <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
+                </button>
+                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa"
+                        data-estado="Revisión Códigos" data-completado="1">✅ Cobertura exitosa
+                </button>
+                <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos"
+                        data-estado="Revisión Códigos">✅ Códigos Revisado
+                </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
             </div>
         </div>
@@ -1410,7 +1474,10 @@ array_push(
             if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
                 return CSS.escape(value);
             }
-            return String(value).replace(/([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g, '\\\\$1');
+            return String(value).replace(/([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/
+            g, '\\\\$1'
+        )
+            ;
         };
 
         modal.addEventListener('click', (event) => {
