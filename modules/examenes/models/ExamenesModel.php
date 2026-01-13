@@ -397,6 +397,13 @@ class ExamenesModel
             if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $v)) {
                 return $v;
             }
+            if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $v)) {
+                $format = strlen($v) === 19 ? 'Y-m-d\TH:i:s' : 'Y-m-d\TH:i';
+                $dt = \DateTime::createFromFormat($format, $v);
+                if ($dt instanceof \DateTime) {
+                    return $dt->format('Y-m-d H:i:s');
+                }
+            }
             $fmt = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
             foreach ($fmt as $f) {
                 $dt = \DateTime::createFromFormat($f, $v);
