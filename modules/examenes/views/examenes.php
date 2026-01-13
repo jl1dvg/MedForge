@@ -1062,8 +1062,13 @@ array_push(
             <div class="modal-body" id="prefacturaContent">Cargando información...</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-outline-info" id="btnSolicitarExamenesPrequirurgicos">
+                    <i class="mdi mdi-file-document-multiple-outline me-1"></i> Solicitar exámenes prequirúrgicos
+                </button>
                 <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
-                <button type="button" class="btn btn-warning" id="btnSolicitarCobertura" data-estado="Docs Completos">📤 Solicitar Cobertura</button>
+                <button type="button" class="btn btn-warning" id="btnSolicitarCobertura" data-estado="Docs Completos">
+                    <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
+                </button>
             </div>
         </div>
     </div>

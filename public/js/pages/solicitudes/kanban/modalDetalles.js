@@ -833,6 +833,10 @@ async function hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber}) {
         return base;
     }
 
+    if (base.detalle_hidratado) {
+        return base;
+    }
+
     try {
         const detalle = await fetchDetalleSolicitud({
             hcNumber: hcNumber || base.hc_number,
@@ -840,11 +844,11 @@ async function hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber}) {
             formId: formId || base.form_id,
         });
 
-        const merged = {...base, ...detalle};
+        const merged = {...base, ...detalle, detalle_hidratado: true};
         const store = getDataStore();
         const target = store.find((item) => String(item.id) === String(solicitudId));
         if (target && typeof target === "object") {
-            Object.assign(target, merged);
+            Object.assign(target, merged, {detalle_hidratado: true});
         }
         return merged;
     } catch (error) {
@@ -864,6 +868,8 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     const modalElement = document.getElementById("prefacturaModal");
     const modal = new bootstrap.Modal(modalElement);
     const content = document.getElementById("prefacturaContent");
+
+    parkExamenesPrequirurgicosButton(modalElement);
 
     content.innerHTML = `
         <div class="d-flex align-items-center justify-content-center py-5">
@@ -903,6 +909,8 @@ function abrirPrefactura({hc, formId, solicitudId}) {
                 panels.forEach((panel) => actionsContainer.appendChild(panel));
             }
 
+            relocateExamenesPrequirurgicosButton(content);
+
             const header = content.querySelector(".prefactura-detail-header");
             const tabs = content.querySelector("#prefacturaTabs");
             if (header && tabs) {
@@ -931,6 +939,38 @@ function abrirPrefactura({hc, formId, solicitudId}) {
         },
         {once: true}
     );
+}
+
+function relocateExamenesPrequirurgicosButton(content) {
+    const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
+    if (!button || !content) {
+        return;
+    }
+
+    const targetFooter = content.querySelector(
+        "#prefactura-tab-oftalmo .card:first-of-type .card-footer"
+    );
+
+    if (targetFooter) {
+        button.classList.add("ms-2");
+        button.classList.remove("d-none");
+        targetFooter.appendChild(button);
+        return;
+    }
+
+    button.classList.remove("d-none");
+    content.prepend(button);
+}
+
+function parkExamenesPrequirurgicosButton(modalElement) {
+    const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
+    const footer = modalElement?.querySelector(".modal-footer");
+    if (!button || !footer) {
+        return;
+    }
+
+    button.classList.add("d-none");
+    footer.appendChild(button);
 }
 
 function actualizarBotonesModal(solicitudId, solicitudFallback = null) {

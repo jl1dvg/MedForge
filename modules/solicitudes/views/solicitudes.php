@@ -1387,7 +1387,12 @@ array_push(
             <div class="modal-footer d-flex flex-wrap gap-2">
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno</button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">👥 En atención</button>
-                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura" data-estado="Revisión Códigos" data-completado="0">📤 Solicitar Cobertura</button>
+                <button type="button" class="btn btn-outline-info" id="btnSolicitarExamenesPrequirurgicos">
+                    <i class="mdi mdi-file-document-multiple-outline me-1"></i> Solicitar exámenes prequirúrgicos
+                </button>
+                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura" data-estado="Revisión Códigos" data-completado="0">
+                    <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
+                </button>
                 <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa" data-estado="Revisión Códigos" data-completado="1">✅ Cobertura exitosa</button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>

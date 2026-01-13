@@ -285,14 +285,31 @@ class ProtocolReportService
      * @param array<string, mixed>|null $datos
      * @return array<string, mixed>|null
      */
-    public function generateCoberturaAppendixDocument(string $formId, string $hcNumber, ?array $datos = null): ?array
+    public function generateCoberturaAppendixDocument(
+        string $formId,
+        string $hcNumber,
+        ?array $datos = null,
+        ?array $segmentsOverride = null
+    ): ?array
     {
         $datos = $datos ?? $this->buildCoberturaData($formId, $hcNumber);
         $definition = $this->resolveSolicitudTemplate($datos);
 
-        $segments = $definition->getAppendViews();
+        $segments = [];
+        if (is_array($segmentsOverride)) {
+            $segments = array_values(array_filter(array_map(static function ($segment): string {
+                if (!is_string($segment)) {
+                    return '';
+                }
+                return trim($segment);
+            }, $segmentsOverride), static fn (string $segment): bool => $segment !== ''));
+        }
+
         if ($segments === []) {
-            $segments = $definition->getPages();
+            $segments = $definition->getAppendViews();
+            if ($segments === []) {
+                $segments = $definition->getPages();
+            }
         }
 
         if ($segments === []) {
