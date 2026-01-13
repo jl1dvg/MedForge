@@ -144,7 +144,12 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
-                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name, 
+                TRIM(CONCAT_WS(' ',
+                  NULLIF(TRIM(pd.fname), ''),
+                  NULLIF(TRIM(pd.mname), ''),
+                  NULLIF(TRIM(pd.lname), ''),
+                  NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name, 
                 sp.tipo,
                 pd.afiliacion,
                 pd.celular AS paciente_celular,
@@ -265,7 +270,12 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                TRIM(CONCAT_WS(' ',
+                  NULLIF(TRIM(pd.fname), ''),
+                  NULLIF(TRIM(pd.mname), ''),
+                  NULLIF(TRIM(pd.lname), ''),
+                  NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name,
                 sp.estado,
                 sp.prioridad,
                 sp.procedimiento,
@@ -401,7 +411,12 @@ class SolicitudModel
                     sp.tipo,
                     sp.afiliacion,
                     COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
-                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                    TRIM(CONCAT_WS(' ',
+                      NULLIF(TRIM(pd.fname), ''),
+                      NULLIF(TRIM(pd.mname), ''),
+                      NULLIF(TRIM(pd.lname), ''),
+                      NULLIF(TRIM(pd.lname2), '')
+                    )) AS full_name
                 FROM solicitud_procedimiento sp
                 LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
                 LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
@@ -442,7 +457,12 @@ class SolicitudModel
                     sp.tipo,
                     sp.afiliacion,
                     COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
-                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                    TRIM(CONCAT_WS(' ',
+                      NULLIF(TRIM(pd.fname), ''),
+                      NULLIF(TRIM(pd.mname), ''),
+                      NULLIF(TRIM(pd.lname), ''),
+                      NULLIF(TRIM(pd.lname2), '')
+                    )) AS full_name
                 FROM solicitud_procedimiento sp
                 LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
                 LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
@@ -491,7 +511,12 @@ class SolicitudModel
                 sp.afiliacion,
                 sp.turno,
                 COALESCE(cd.fecha, sp.fecha) AS fecha_programada,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                TRIM(CONCAT_WS(' ',
+                  NULLIF(TRIM(pd.fname), ''),
+                  NULLIF(TRIM(pd.mname), ''),
+                  NULLIF(TRIM(pd.lname), ''),
+                  NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name
             FROM solicitud_procedimiento sp
             LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
             LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
@@ -538,7 +563,12 @@ class SolicitudModel
             $columnas[] = 'NULL AS quirofano';
         }
 
-        $columnas[] = "CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name";
+        $columnas[] = "TRIM(CONCAT_WS(' ',
+          NULLIF(TRIM(pd.fname), ''),
+          NULLIF(TRIM(pd.mname), ''),
+          NULLIF(TRIM(pd.lname), ''),
+          NULLIF(TRIM(pd.lname2), '')
+        )) AS full_name";
 
         $sql = sprintf(
             "SELECT\n                %s\n            FROM solicitud_procedimiento sp\n            INNER JOIN patient_data pd ON pd.hc_number = sp.hc_number\n            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id\n            WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :desde AND :hasta\n            ORDER BY COALESCE(cd.fecha, sp.fecha) ASC, sp.id ASC",
@@ -635,7 +665,12 @@ class SolicitudModel
                     sp.form_id,
                     sp.prioridad,
                     sp.created_at,
-                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                    TRIM(CONCAT_WS(' ',
+                      NULLIF(TRIM(pd.fname), ''),
+                      NULLIF(TRIM(pd.mname), ''),
+                      NULLIF(TRIM(pd.lname), ''),
+                      NULLIF(TRIM(pd.lname2), '')
+                    )) AS full_name
                 FROM solicitud_procedimiento sp
                 INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
                 WHERE sp.id = :id");

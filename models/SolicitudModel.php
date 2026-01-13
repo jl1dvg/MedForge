@@ -142,7 +142,12 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number, 
                 sp.form_id,
-                CONCAT(pd.fname, ' ', pd.mname, ' ', pd.lname, ' ', pd.lname2) AS full_name, 
+                TRIM(CONCAT_WS(' ',
+                  NULLIF(TRIM(pd.fname), ''),
+                  NULLIF(TRIM(pd.mname), ''),
+                  NULLIF(TRIM(pd.lname), ''),
+                  NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name, 
                 sp.tipo,
                 pd.afiliacion,
                 sp.procedimiento,
@@ -247,7 +252,12 @@ class SolicitudModel
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                TRIM(CONCAT_WS(' ',
+                  NULLIF(TRIM(pd.fname), ''),
+                  NULLIF(TRIM(pd.mname), ''),
+                  NULLIF(TRIM(pd.lname), ''),
+                  NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name,
                 sp.estado,
                 sp.prioridad,
                 sp.created_at,
@@ -409,7 +419,12 @@ class SolicitudModel
                     sp.form_id,
                     sp.prioridad,
                     sp.created_at,
-                    CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+                    TRIM(CONCAT_WS(' ',
+                      NULLIF(TRIM(pd.fname), ''),
+                      NULLIF(TRIM(pd.mname), ''),
+                      NULLIF(TRIM(pd.lname), ''),
+                      NULLIF(TRIM(pd.lname2), '')
+                    )) AS full_name
                 FROM solicitud_procedimiento sp
                 INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
                 WHERE sp.id = :id");
