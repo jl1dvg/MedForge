@@ -57,6 +57,9 @@ try {
     if ($method === 'POST') {
         $payload = array_merge($_POST, readJsonBody());
         $id = isset($payload['id']) ? (int)$payload['id'] : null;
+        if (!$id && isset($payload['solicitud_id'])) {
+            $id = (int)$payload['solicitud_id'];
+        }
         if (!$id) {
             http_response_code(400);
             echo json_encode([
@@ -65,6 +68,8 @@ try {
             ], JSON_UNESCAPED_UNICODE);
             exit;
         }
+
+        error_log('Solicitud update payload: ' . json_encode($payload, JSON_UNESCAPED_UNICODE));
 
         $campos = [
             'estado' => $payload['estado'] ?? null,
@@ -85,6 +90,7 @@ try {
         ];
 
         $resultado = $controller->actualizarSolicitudParcial($id, $campos);
+        error_log('Solicitud update resultado: ' . json_encode($resultado, JSON_UNESCAPED_UNICODE));
 
         if (!is_array($resultado) || ($resultado['success'] ?? false) === false) {
             http_response_code(422);

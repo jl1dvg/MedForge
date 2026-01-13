@@ -699,6 +699,9 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $id = isset($payload['id']) ? (int)$payload['id'] : null;
+        if (!$id && isset($payload['solicitud_id'])) {
+            $id = (int)$payload['solicitud_id'];
+        }
 
         if (!$id) {
             $this->json(
@@ -707,6 +710,8 @@ class SolicitudController extends BaseController
             );
             return;
         }
+
+        error_log('apiEstadoPost payload: ' . json_encode($payload, JSON_UNESCAPED_UNICODE));
 
         $campos = [
             'estado' => $payload['estado'] ?? null,
@@ -728,6 +733,7 @@ class SolicitudController extends BaseController
 
         try {
             $resultado = $this->actualizarSolicitudParcial($id, $campos);
+            error_log('apiEstadoPost resultado: ' . json_encode($resultado, JSON_UNESCAPED_UNICODE));
             $status = (!is_array($resultado) || ($resultado['success'] ?? false) === false) ? 422 : 200;
             $this->json(is_array($resultado) ? $resultado : ['success' => false], $status);
         } catch (\Throwable $e) {

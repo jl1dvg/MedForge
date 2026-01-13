@@ -688,6 +688,44 @@ function buildApiCandidates(pathname) {
     return Array.from(variants);
 }
 
+function resolveApiBasePath() {
+    const {apiBasePath} = getKanbanConfig();
+    const fallback = "/api";
+    if (!apiBasePath) {
+        return fallback;
+    }
+    const normalized = apiBasePath.replace(/\/+$/, "");
+    return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function buildEstadoApiCandidates() {
+    const {basePath} = getKanbanConfig();
+    const normalizedBase =
+        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
+    const apiBase = resolveApiBasePath();
+    const orderedCandidates = [
+        "/solicitudes/api/estado",
+        `${apiBase}/solicitudes/estado`,
+        "/api/solicitudes/estado",
+    ];
+    if (normalizedBase) {
+        orderedCandidates.push(`${normalizedBase}/api/estado`);
+    }
+
+    const expanded = [];
+    const seen = new Set();
+    orderedCandidates.forEach((candidate) => {
+        buildApiCandidates(candidate).forEach((url) => {
+            if (!seen.has(url)) {
+                seen.add(url);
+                expanded.push(url);
+            }
+        });
+    });
+
+    return expanded;
+}
+
 let __lentesCache = null;
 
 async function obtenerLentesCatalogo() {
@@ -773,7 +811,11 @@ async function fetchWithFallback(urls, options) {
     let lastError;
     for (const url of urls) {
         try {
-            const response = await fetch(url, options);
+            const safeOptions = {
+                credentials: options?.credentials ?? "same-origin",
+                ...options,
+            };
+            const response = await fetch(url, safeOptions);
             if (response.ok) {
                 return response;
             }
@@ -801,11 +843,9 @@ async function fetchDetalleSolicitud({hcNumber, solicitudId, formId}) {
         searchParams.set("form_id", formId);
     }
 
-    const {basePath} = getKanbanConfig();
-    const normalizedBase =
-        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
-    const apiPath = `${normalizedBase}/api/estado?${searchParams}`;
-    const urls = buildApiCandidates(apiPath);
+    const urls = buildEstadoApiCandidates().map(
+        (base) => `${base}?${searchParams}`
+    );
     const response = await fetchWithFallback(urls);
     if (!response.ok) {
         throw new Error("No se pudo obtener el detalle de la solicitud");
@@ -1142,7 +1182,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Estado</label>
-                      <input id="sol-estado" class="form-control" value="${escapeHtml(
+                    <input id="sol-estado" name="estado" class="form-control" value="${escapeHtml(
                     merged.estado || merged.kanban_estado || ""
                 )}" placeholder="Estado" readonly />
                     </div>
@@ -1150,7 +1190,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Doctor</label>
-                      <select id="sol-doctor" class="form-select">
+                      <select id="sol-doctor" name="doctor" class="form-select">
                         <option value="${escapeHtml(
                     merged.doctor || merged.crm_responsable_nombre || ""
                 )}">
@@ -1166,7 +1206,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Fecha</label>
-                      <input id="sol-fecha" type="datetime-local" class="form-control" value="${escapeHtml(
+                      <input id="sol-fecha" name="fecha" type="datetime-local" class="form-control" value="${escapeHtml(
                     toDatetimeLocal(merged.fecha || merged.fecha_programada)
                 )}" />
                     </div>
@@ -1174,7 +1214,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Prioridad</label>
-                      <input id="sol-prioridad" class="form-control" value="${escapeHtml(
+                      <input id="sol-prioridad" name="prioridad" class="form-control" value="${escapeHtml(
                     merged.prioridad || merged.prioridad_automatica || "Normal"
                 )}" placeholder="URGENTE / NORMAL" readonly />
                     </div>
@@ -1184,7 +1224,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Producto</label>
-                      <input id="sol-producto" class="form-control" value="${escapeHtml(
+                      <input id="sol-producto" name="producto" class="form-control" value="${escapeHtml(
                     baseProducto
                 )}" placeholder="Producto asociado" />
                     </div>
@@ -1192,7 +1232,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Ojo</label>
-                      <select id="sol-ojo" class="form-select">
+                      <select id="sol-ojo" name="ojo" class="form-select">
                         <option value="">Selecciona ojo</option>
                         <option value="DERECHO"${
                     (merged.ojo || "").toUpperCase() === "DERECHO" ? " selected" : ""
@@ -1211,7 +1251,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Afiliación</label>
-                      <input id="sol-afiliacion" class="form-control" value="${escapeHtml(
+                      <input id="sol-afiliacion" name="afiliacion" class="form-control" value="${escapeHtml(
                     merged.afiliacion || ""
                 )}" placeholder="Afiliación" readonly />
                     </div>
@@ -1219,7 +1259,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Duración</label>
-                      <input id="sol-duracion" class="form-control" value="${escapeHtml(
+                      <input id="sol-duracion" name="duracion" class="form-control" value="${escapeHtml(
                     merged.duracion || ""
                 )}" placeholder="Minutos" readonly />
                     </div>
@@ -1227,13 +1267,13 @@ function handleContextualAction(event) {
                 </div>
                 <div class="form-group">
                   <label class="form-label">Procedimiento</label>
-                  <textarea id="sol-procedimiento" class="form-control" rows="2" placeholder="Descripción">${escapeHtml(
+                  <textarea id="sol-procedimiento" name="procedimiento" class="form-control" rows="2" placeholder="Descripción">${escapeHtml(
                     merged.procedimiento || ""
                 )}</textarea>
                 </div>
                 <div class="form-group">
                   <label class="form-label">Observación</label>
-                  <textarea id="sol-observacion" class="form-control" rows="2" placeholder="Notas">${escapeHtml(
+                  <textarea id="sol-observacion" name="observacion" class="form-control" rows="2" placeholder="Notas">${escapeHtml(
                     merged.observacion || ""
                 )}</textarea>
                 </div>
@@ -1244,7 +1284,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Lente</label>
-                      <select id="sol-lente-id" class="form-select" data-value="${escapeHtml(
+                      <select id="sol-lente-id" name="lente_id" class="form-select" data-value="${escapeHtml(
                     lenteSeleccionada
                 )}">
                         <option value="">Cargando lentes...</option>
@@ -1254,7 +1294,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Nombre de lente</label>
-                      <input id="sol-lente-nombre" class="form-control" value="${escapeHtml(
+                      <input id="sol-lente-nombre" name="lente_nombre" class="form-control" value="${escapeHtml(
                     merged.lente_nombre || baseProducto
                 )}" placeholder="Nombre del lente" />
                     </div>
@@ -1264,7 +1304,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Poder del lente</label>
-                      <select id="sol-lente-poder" class="form-select" data-value="${escapeHtml(
+                      <select id="sol-lente-poder" name="lente_poder" class="form-select" data-value="${escapeHtml(
                     poderSeleccionado
                 )}">
                         <option value="">Selecciona poder</option>
@@ -1274,7 +1314,7 @@ function handleContextualAction(event) {
                   <div class="col-md-6">
                     <div class="form-group">
                       <label class="form-label">Incisión</label>
-                      <input id="sol-incision" class="form-control" value="${escapeHtml(
+                      <input id="sol-incision" name="incision" class="form-control" value="${escapeHtml(
                     merged.incision || ""
                 )}" placeholder="Ej: Clear cornea temporal" />
                     </div>
@@ -1282,7 +1322,7 @@ function handleContextualAction(event) {
                 </div>
                 <div class="form-group">
                   <label class="form-label">Observación de lente</label>
-                  <textarea id="sol-lente-obs" class="form-control" rows="2" placeholder="Notas de lente">${escapeHtml(
+                  <textarea id="sol-lente-obs" name="lente_observacion" class="form-control" rows="2" placeholder="Notas de lente">${escapeHtml(
                     baseObservacion
                 )}</textarea>
                 </div>
@@ -1300,6 +1340,8 @@ function handleContextualAction(event) {
                     cancelButtonText: "Cancelar",
                     showCancelButton: true,
                     focusConfirm: false,
+                    showLoaderOnConfirm: true,
+                    allowOutsideClick: () => !Swal.isLoading(),
                     didOpen: async () => {
                         const lenteSelect = document.getElementById("sol-lente-id");
                         const poderSelect = document.getElementById("sol-lente-poder");
@@ -1393,7 +1435,7 @@ function handleContextualAction(event) {
                             )}</option>`;
                         }
                     },
-                    preConfirm: () => {
+                    preConfirm: async () => {
                         const producto =
                             document.getElementById("sol-producto")?.value.trim() || "";
                         const poder =
@@ -1403,59 +1445,76 @@ function handleContextualAction(event) {
                         const ojo = document.getElementById("sol-ojo")?.value.trim() || "";
                         const incision =
                             document.getElementById("sol-incision")?.value.trim() || "";
-                        const observacion =
+                        const lenteObservacion =
                             document.getElementById("sol-lente-obs")?.value.trim() || "";
-                        const notas =
+                        const observacion =
                             document.getElementById("sol-observacion")?.value.trim() || "";
+                        const procedimiento =
+                            document.getElementById("sol-procedimiento")?.value.trim() || "";
+                        const fecha =
+                            document.getElementById("sol-fecha")?.value.trim() || "";
+                        const doctor =
+                            document.getElementById("sol-doctor")?.value.trim() || "";
 
-                        return {
+                        const payload = {
+                            id: solicitudId,
+                            solicitud_id: solicitudId,
                             producto,
+                            procedimiento,
+                            fecha,
+                            doctor,
                             lente_nombre:
                                 document.getElementById("sol-lente-nombre")?.value.trim() ||
                                 producto,
                             lente_id: lenteId,
                             lente_poder: poder,
-                            lente_observacion: observacion,
-                            observacion: notas || observacion,
+                            lente_observacion: lenteObservacion,
+                            observacion,
                             ojo,
                             incision,
                         };
+
+                        try {
+                            const postUrls = buildEstadoApiCandidates();
+                            const response = await fetchWithFallback(postUrls, {
+                                method: "POST",
+                                headers: {"Content-Type": "application/json"},
+                                body: JSON.stringify(payload),
+                            });
+                            const resp = await response.json();
+                            if (!resp?.success) {
+                                throw new Error(
+                                    resp?.message || "No se guardaron los cambios"
+                                );
+                            }
+                            return {payload, response: resp};
+                        } catch (error) {
+                            console.error("No se pudo guardar la solicitud", error);
+                            Swal.showValidationMessage(
+                                error?.message || "Error al guardar la solicitud"
+                            );
+                            return false;
+                        }
                     },
                 }).then((result) => {
                     if (!result.isConfirmed) return;
 
-                    const payload = {id: solicitudId, ...result.value};
-                    const {basePath} = getKanbanConfig();
-                    const normalizedBase =
-                        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
-                    const postUrls = buildApiCandidates(`${normalizedBase}/api/estado`);
-                    fetchWithFallback(postUrls, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify(payload),
-                    })
-                        .then((res) => res.json())
-                        .then((resp) => {
-                            if (!resp?.success) {
-                                throw new Error(resp?.message || "No se guardaron los cambios");
-                            }
-
-                            const store = getDataStore();
-                            const item = store.find(
-                                (entry) => String(entry.id) === String(solicitudId)
-                            );
-                            if (item) {
-                                Object.assign(item, result.value);
-                            }
-                            solicitudDetalleCache.delete(String(solicitudId));
-                            showToast("Datos de LIO actualizados", true);
-                            renderEstadoContext(solicitudId);
-                            abrirPrefactura({hc: hcNumber || solicitud.hc_number, formId, solicitudId});
-                        })
-                        .catch((err) => {
-                            console.error("No se pudo guardar LIO", err);
-                            showToast(err?.message || "Error al guardar", false);
-                        });
+                    const payload = result.value?.payload || {};
+                    const responseData = result.value?.response?.data || null;
+                    const store = getDataStore();
+                    const item = store.find(
+                        (entry) => String(entry.id) === String(solicitudId)
+                    );
+                    if (item) {
+                        Object.assign(item, payload, responseData || {});
+                    }
+                    solicitudDetalleCache.delete(String(solicitudId));
+                    showToast("Solicitud actualizada", true);
+                    renderEstadoContext(solicitudId);
+                    if (typeof window.aplicarFiltros === "function") {
+                        window.aplicarFiltros();
+                    }
+                    abrirPrefactura({hc: hcNumber || solicitud.hc_number, formId, solicitudId});
                 });
             })
             .catch((error) => {
