@@ -330,7 +330,7 @@ class SolicitudController extends BaseController
             );
 
             $message = 'No se pudo cargar el detalle CRM';
-            if (trim((string) $e->getMessage()) !== '') {
+            if (trim((string)$e->getMessage()) !== '') {
                 $message .= sprintf(' (ref: %s)', $errorId);
             }
 
@@ -357,7 +357,7 @@ class SolicitudController extends BaseController
             $this->json(['success' => true] + $resultado);
         } catch (RuntimeException $e) {
             error_log('CRM ▶ Bootstrap checklist error: ' . ($e->getMessage() ?: get_class($e)));
-            $status = (int) ($e->getCode() ?: 422);
+            $status = (int)($e->getCode() ?: 422);
             if ($status < 400 || $status >= 500) {
                 $status = 422;
             }
@@ -382,7 +382,7 @@ class SolicitudController extends BaseController
             );
             $this->json(['success' => true] + $resultado);
         } catch (RuntimeException $e) {
-            $status = (int) ($e->getCode() ?: 422);
+            $status = (int)($e->getCode() ?: 422);
             if ($status < 400 || $status >= 500) {
                 $status = 422;
             }
@@ -401,8 +401,8 @@ class SolicitudController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $etapa = trim((string) ($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
-        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+        $etapa = trim((string)($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
+        $completado = isset($payload['completado']) ? (bool)$payload['completado'] : true;
 
         if ($etapa === '') {
             $this->json(['success' => false, 'error' => 'Etapa requerida'], 422);
@@ -497,7 +497,7 @@ class SolicitudController extends BaseController
 
             $this->json(['success' => true, 'data' => $resumen]);
         } catch (\Throwable $e) {
-            $status = (int) ($e->getCode() ?: 0);
+            $status = (int)($e->getCode() ?: 0);
             if ($status >= 400 && $status < 500) {
                 $this->json([
                     'success' => false,
@@ -862,8 +862,8 @@ class SolicitudController extends BaseController
         $alertConsentimiento = !$isTerminal
             && ($fechaCaducidad === null || $fechaCaducidad <= $now);
 
-        $adjuntos = (int) ($row['crm_total_adjuntos'] ?? 0);
-        $tareasPendientes = (int) ($row['crm_tareas_pendientes'] ?? 0);
+        $adjuntos = (int)($row['crm_total_adjuntos'] ?? 0);
+        $tareasPendientes = (int)($row['crm_tareas_pendientes'] ?? 0);
         $alertDocumentos = !$isTerminal && $adjuntos === 0;
         $alertAutorizacion = !$isTerminal
             && !empty($row['afiliacion'])
