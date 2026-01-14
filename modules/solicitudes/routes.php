@@ -48,10 +48,6 @@ return function (Router $router) {
         (new SolicitudController($pdo))->prefactura();
     });
 
-    $router->post('/solicitudes/re-scrape-derivacion', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->rescrapeDerivacion();
-    });
-
     $router->get('/solicitudes/turnero-data', function (\PDO $pdo) {
         (new SolicitudController($pdo))->turneroData();
     });
@@ -61,39 +57,39 @@ return function (Router $router) {
     });
 
     $router->get('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmResumen((int)$solicitudId);
+        (new SolicitudController($pdo))->crmResumen((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmGuardarDetalles((int)$solicitudId);
+        (new SolicitudController($pdo))->crmGuardarDetalles((int) $solicitudId);
     });
     $router->post('/solicitudes/{id}/crm/bootstrap', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmBootstrap((int)$solicitudId);
+        (new SolicitudController($pdo))->crmBootstrap((int) $solicitudId);
     });
     $router->get('/solicitudes/{id}/crm/checklist-state', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmChecklistState((int)$solicitudId);
+        (new SolicitudController($pdo))->crmChecklistState((int) $solicitudId);
     });
     $router->post('/solicitudes/{id}/crm/checklist', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmActualizarChecklist((int)$solicitudId);
+        (new SolicitudController($pdo))->crmActualizarChecklist((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm/notas', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmAgregarNota((int)$solicitudId);
+        (new SolicitudController($pdo))->crmAgregarNota((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm/bloqueo', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmRegistrarBloqueo((int)$solicitudId);
+        (new SolicitudController($pdo))->crmRegistrarBloqueo((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm/tareas', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmGuardarTarea((int)$solicitudId);
+        (new SolicitudController($pdo))->crmGuardarTarea((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm/tareas/estado', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmActualizarTarea((int)$solicitudId);
+        (new SolicitudController($pdo))->crmActualizarTarea((int) $solicitudId);
     });
 
     $router->post('/solicitudes/{id}/crm/adjuntos', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmSubirAdjunto((int)$solicitudId);
+        (new SolicitudController($pdo))->crmSubirAdjunto((int) $solicitudId);
     });
 };
