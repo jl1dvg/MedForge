@@ -1,25 +1,83 @@
 <?php
 /**
- * Simple layout for lightweight PDF reports.
+ * Base-like layout for lightweight PDF reports.
  *
- * Expects:
+ * Expects the following variables to be defined by the including template:
  * - string|null $title
+ * - string|null $bodyClass
+ * - string|null $header
  * - string|null $content
+ * - array<int, string>|null $stylesheets Additional absolute paths to CSS files.
+ * - string|null $styles Inline CSS provided by the report template.
  */
 
+use Modules\Reporting\Support\RenderContext;
+
+$stylesheets = $stylesheets ?? [];
+$inlineStyles = [];
+
+if (!RenderContext::isFragment()) {
+    $baseCssPath = __DIR__ . '/../assets/pdf.css';
+    if (is_file($baseCssPath)) {
+        $baseCss = file_get_contents($baseCssPath);
+        if ($baseCss !== false && $baseCss !== '') {
+            $inlineStyles[] = $baseCss;
+        }
+    }
+
+    // Inline CSS string from the report (e.g. $styles heredoc)
+    if (isset($styles) && is_string($styles) && trim($styles) !== '') {
+        $inlineStyles[] = $styles;
+    }
+
+    foreach ($stylesheets as $stylesheet) {
+        if (!is_string($stylesheet) || $stylesheet === '') {
+            continue;
+        }
+
+        if (!is_file($stylesheet)) {
+            continue;
+        }
+
+        $cssContent = file_get_contents($stylesheet);
+        if ($cssContent === false || $cssContent === '') {
+            continue;
+        }
+
+        $inlineStyles[] = $cssContent;
+    }
+}
+
 $title = $title ?? 'Reporte PDF';
-$styles = $styles ?? '';
+$bodyClassAttribute = isset($bodyClass) && $bodyClass !== ''
+        ? ' class="' . htmlspecialchars((string)$bodyClass, ENT_QUOTES, 'UTF-8') . '"'
+        : '';
+
+if (RenderContext::isFragment()) {
+    if (!empty($header)) {
+        echo $header;
+    }
+
+    echo $content ?? '';
+
+    return;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title><?= htmlspecialchars((string) $title, ENT_QUOTES, 'UTF-8') ?></title>
-    <?php if (!empty($styles)): ?>
-        <style><?= $styles ?></style>
-    <?php endif; ?>
+    <title><?= htmlspecialchars((string)$title, ENT_QUOTES, 'UTF-8') ?></title>
+    <?php foreach ($inlineStyles as $style): ?>
+        <style type="text/css">
+            <?= $style ?>
+        </style>
+    <?php endforeach; ?>
 </head>
-<body>
+<body<?= $bodyClassAttribute ?>>
+<?php if (!empty($header)): ?>
+    <?= $header ?>
+<?php endif; ?>
 <?= $content ?? '' ?>
 </body>
 </html>

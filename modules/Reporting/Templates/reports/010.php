@@ -78,19 +78,19 @@ ob_start();
             </td>
         </tr>
     </TABLE>
-    <?php
-    $doctorFirstName = trim((string)($solicitud['doctor_first_name'] ?? ''));
-    $doctorMiddleName = trim((string)($solicitud['doctor_middle_name'] ?? ''));
-    $doctorLastName = trim((string)($solicitud['doctor_last_name'] ?? ''));
-    $doctorSecondLastName = trim((string)($solicitud['doctor_second_last_name'] ?? ''));
+<?php
+$doctorFirstName = trim((string)($solicitud['doctor_first_name'] ?? ''));
+$doctorMiddleName = trim((string)($solicitud['doctor_middle_name'] ?? ''));
+$doctorLastName = trim((string)($solicitud['doctor_last_name'] ?? ''));
+$doctorSecondLastName = trim((string)($solicitud['doctor_second_last_name'] ?? ''));
 
-    if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
-        $doctorFullName = trim((string)($solicitud['doctor_full_name'] ?? $solicitud['doctor'] ?? ''));
-        $doctorFirstName = $doctorFullName;
-    }
+if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
+    $doctorFullName = trim((string)($solicitud['doctor_full_name'] ?? $solicitud['doctor'] ?? ''));
+    $doctorFirstName = $doctorFullName;
+}
 
-    $doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
-    ?>
+$doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
+?>
     <table>
         <tr>
             <td colspan=22 class="morado">C. LISTADO DE EXÁMENES</td>
@@ -1291,7 +1291,8 @@ ob_start();
             <td colspan=34 class=verde_010>SELLO</td>
         </tr>
         <tr>
-            <td colspan=17 class=blanco><?php //echo htmlspecialchars($cirujano_data['cedula']); ?></td>
+            <td colspan=17
+                class=blanco><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? '')); ?></td>
             <td colspan=28
                 class=blanco><?php //echo "<img src='" . htmlspecialchars($cirujano_data['firma']) . "' alt='Imagen de la firma' style='max-height: 25px;'>";
                 ?></td>

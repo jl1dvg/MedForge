@@ -385,7 +385,7 @@ echo "</table>";
     </tr>
     <tr>
         <td colspan="15" class="blanco"
-            style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['cedula'] ?? '')); ?></td>
+            style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? '')); ?></td>
         <td colspan="26" class="blanco"><?php if (!empty($solicitud['firma'])): ?>
                 <div style="margin-bottom: -25px;">
                     <img src="<?= htmlspecialchars((string)$solicitud['firma']) ?>" alt="Firma del cirujano"
