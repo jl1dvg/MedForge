@@ -14,6 +14,7 @@ use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Reporting\Services\ReportService;
 use Models\SettingsModel;
 use PDO;
@@ -315,29 +316,11 @@ class SolicitudController extends BaseController
             return;
         }
 
-        $filters = $this->sanitizeReportFilters($filtersInput);
-
         try {
-            $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filters);
-            $solicitudes = $this->estadoService->enrichSolicitudes($solicitudes, $this->currentPermissions());
-            $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
-            $solicitudes = $this->applySearchFilter($solicitudes, $filters['search'] ?? '');
-
-            if (!empty($filters['estado'])) {
-                $estadoSlug = $this->estadoService->normalizeSlug($filters['estado']);
-                $solicitudes = array_values(array_filter(
-                    $solicitudes,
-                    static fn(array $row) => ($row['estado'] ?? '') === $estadoSlug
-                ));
-            }
-
-            $metricConfig = $this->getQuickMetricConfig($quickMetric);
-            $metricLabel = $metricConfig['label'] ?? null;
-            if (!empty($metricConfig)) {
-                $solicitudes = $this->applyQuickMetricFilter($solicitudes, $metricConfig);
-            }
-
-            $filtersSummary = $this->buildReportFiltersSummary($filters, $metricLabel);
+            $reportData = $this->buildReportData($filtersInput, $quickMetric);
+            $solicitudes = $reportData['rows'];
+            $filtersSummary = $reportData['filtersSummary'];
+            $metricLabel = $reportData['metricLabel'];
             $generatedAt = (new DateTimeImmutable('now'))->format('d-m-Y H:i');
             $filename = 'solicitudes_' . date('Ymd_His') . '.pdf';
 
@@ -389,6 +372,84 @@ class SolicitudController extends BaseController
             JsonLogger::log(
                 'solicitudes_reportes',
                 'Reporte PDF de solicitudes falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $this->json([
+                'error' => 'No se pudo generar el reporte (ref: ' . $errorId . ')',
+            ], 500);
+        }
+    }
+
+    public function reporteExcel(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        if (!$this->hasPermission(['reportes.export', 'reportes.view', 'solicitudes.view'])) {
+            $this->json(['error' => 'No tienes permisos para exportar reportes.'], 403);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
+        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
+        $format = strtolower(trim((string) ($payload['format'] ?? 'excel')));
+
+        if ($format !== 'excel') {
+            $this->json(['error' => 'Formato no soportado.'], 422);
+            return;
+        }
+
+        try {
+            $reportData = $this->buildReportData($filtersInput, $quickMetric);
+            $solicitudes = $reportData['rows'];
+            $filtersSummary = $reportData['filtersSummary'];
+            $metricLabel = $reportData['metricLabel'];
+            $generatedAt = (new DateTimeImmutable('now'))->format('d-m-Y H:i');
+            $filename = 'solicitudes_' . date('Ymd_His') . '.xlsx';
+
+            $excelService = new SolicitudReportExcelService();
+            $content = $excelService->render($solicitudes, $filtersSummary, [
+                'title' => 'Reporte de solicitudes',
+                'generated_at' => $generatedAt,
+                'metric_label' => $metricLabel,
+                'total' => count($solicitudes),
+            ]);
+
+            if ($content === '') {
+                JsonLogger::log(
+                    'solicitudes_reportes',
+                    'Reporte Excel de solicitudes devolvió contenido vacío',
+                    null,
+                    [
+                        'user_id' => $this->getCurrentUserId(),
+                    ]
+                );
+                $this->json([
+                    'error' => 'No se pudo generar el Excel (contenido vacío).',
+                ], 500);
+                return;
+            }
+
+            if (!headers_sent()) {
+                header('Content-Length: ' . strlen($content));
+                header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+            }
+
+            echo $content;
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_reportes',
+                'Reporte Excel de solicitudes falló',
                 $e,
                 [
                     'error_id' => $errorId,
@@ -1073,6 +1134,48 @@ class SolicitudController extends BaseController
         }
 
         return $summary;
+    }
+
+    /**
+     * @param array<string, mixed> $filtersInput
+     * @return array{
+     *     filters: array<string, string|null>,
+     *     rows: array<int, array<string, mixed>>,
+     *     filtersSummary: array<int, array<string, string>>,
+     *     metricLabel: string|null
+     * }
+     */
+    private function buildReportData(array $filtersInput, string $quickMetric): array
+    {
+        $filters = $this->sanitizeReportFilters($filtersInput);
+
+        $solicitudes = $this->solicitudModel->fetchSolicitudesConDetallesFiltrado($filters);
+        $solicitudes = $this->estadoService->enrichSolicitudes($solicitudes, $this->currentPermissions());
+        $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
+        $solicitudes = $this->applySearchFilter($solicitudes, $filters['search'] ?? '');
+
+        if (!empty($filters['estado'])) {
+            $estadoSlug = $this->estadoService->normalizeSlug($filters['estado']);
+            $solicitudes = array_values(array_filter(
+                $solicitudes,
+                static fn(array $row) => ($row['estado'] ?? '') === $estadoSlug
+            ));
+        }
+
+        $metricConfig = $this->getQuickMetricConfig($quickMetric);
+        $metricLabel = $metricConfig['label'] ?? null;
+        if (!empty($metricConfig)) {
+            $solicitudes = $this->applyQuickMetricFilter($solicitudes, $metricConfig);
+        }
+
+        $filtersSummary = $this->buildReportFiltersSummary($filters, $metricLabel);
+
+        return [
+            'filters' => $filters,
+            'rows' => $solicitudes,
+            'filtersSummary' => $filtersSummary,
+            'metricLabel' => $metricLabel,
+        ];
     }
 
     private function getCurrentUserId(): ?int
