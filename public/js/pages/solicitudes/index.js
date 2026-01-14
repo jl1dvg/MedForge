@@ -818,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    const buildReportPayload = ({ quickMetric = '' } = {}) => {
+    const buildReportPayload = ({ quickMetric = '', format = 'pdf' } = {}) => {
         const filtros = obtenerFiltros();
         const range = parseDateRange(filtros.fechaTexto);
 
@@ -832,12 +832,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 date_to: range.to,
             },
             quickMetric: quickMetric || null,
-            format: 'pdf',
+            format,
         };
     };
 
+    const extractFilename = (contentDisposition, fallbackName) => {
+        if (!contentDisposition) {
+            return fallbackName;
+        }
+        const match = contentDisposition.match(/filename="([^"]+)"/i);
+        return match?.[1] || fallbackName;
+    };
+
     const exportSolicitudesPdf = async ({ quickMetric = '' } = {}) => {
-        const payload = buildReportPayload({ quickMetric });
+        const payload = buildReportPayload({ quickMetric, format: 'pdf' });
         const response = await fetch('/solicitudes/reportes/pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -887,6 +895,59 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
     };
 
+    const exportSolicitudesExcel = async ({ quickMetric = '' } = {}) => {
+        const payload = buildReportPayload({ quickMetric, format: 'excel' });
+        const response = await fetch('/solicitudes/reportes/excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!response.ok || !contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+            let mensaje = 'No se pudo generar el reporte.';
+            try {
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data?.error) {
+                        mensaje = data.error;
+                    }
+                } else {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                }
+            } catch (error) {
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                } catch (_) {
+                    mensaje = 'No se pudo generar el reporte.';
+                }
+            }
+            throw new Error(mensaje);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const filename = extractFilename(
+            response.headers.get('content-disposition'),
+            'reporte_solicitudes.xlsx'
+        );
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    };
+
     const openExportModal = ({ quickMetric = '', title = 'Exportar reporte' } = {}) => {
         if (typeof Swal === 'undefined') {
             if (window.confirm(`${title}\n¿Generar PDF con los filtros actuales?`)) {
@@ -904,9 +965,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input class="form-check-input" type="radio" name="exportFormat" id="exportPdfFormat" value="pdf" checked>
                         <label class="form-check-label" for="exportPdfFormat">PDF (tabla)</label>
                     </div>
-                    <div class="form-check text-muted mb-2">
-                        <input class="form-check-input" type="radio" name="exportFormat" id="exportExcelFormat" value="excel" disabled>
-                        <label class="form-check-label" for="exportExcelFormat">Excel (próximamente)</label>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="exportExcelFormat" value="excel">
+                        <label class="form-check-label" for="exportExcelFormat">Excel (.xlsx)</label>
                     </div>
                     <hr class="my-2">
                     <div class="form-check">
@@ -926,6 +987,14 @@ document.addEventListener('DOMContentLoaded', () => {
             },
         }).then(result => {
             if (!result.isConfirmed) {
+                return;
+            }
+
+            const format = result.value || 'pdf';
+            if (format === 'excel') {
+                exportSolicitudesExcel({ quickMetric })
+                    .then(() => showToast('Reporte Excel generado.', true))
+                    .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
                 return;
             }
 

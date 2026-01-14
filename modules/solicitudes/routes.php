@@ -24,6 +24,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->reportePdf();
     });
 
+    $router->post('/solicitudes/reportes/excel', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->reporteExcel();
+    });
+
     $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) {
         (new SolicitudController($pdo))->actualizarEstado();
     });
