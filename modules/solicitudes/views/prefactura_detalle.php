@@ -93,7 +93,7 @@ if (!empty($derivacionId)) {
 }
 
 $slaStatus = strtolower(trim((string)($solicitud['sla_status'] ?? '')));
-$slaBadges = [
+$defaultSlaBadges = [
         'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
         'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
         'critico' => ['color' => 'danger', 'label' => 'SLA crítico', 'icon' => 'mdi-alert-octagon'],
@@ -101,6 +101,10 @@ $slaBadges = [
         'sin_fecha' => ['color' => 'secondary', 'label' => 'SLA sin fecha', 'icon' => 'mdi-calendar-remove'],
         'cerrado' => ['color' => 'secondary', 'label' => 'SLA cerrado', 'icon' => 'mdi-lock-outline'],
 ];
+$slaBadges = $defaultSlaBadges;
+if (isset($slaLabels) && is_array($slaLabels) && $slaLabels !== []) {
+    $slaBadges = array_replace($defaultSlaBadges, $slaLabels);
+}
 $slaBadge = $slaBadges[$slaStatus] ?? null;
 
 $crmResponsable = $solicitud['crm_responsable_nombre'] ?? 'Sin responsable';

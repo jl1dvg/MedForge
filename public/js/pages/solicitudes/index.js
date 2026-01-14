@@ -9,6 +9,7 @@ import {
     getDataStore,
     setDataStore,
     getEstadosMeta,
+    getReportingConfig,
     resolveAttr,
     resolveId,
     getTableBodySelector,
@@ -18,6 +19,7 @@ import {
 document.addEventListener('DOMContentLoaded', () => {
     const config = getKanbanConfig();
     const realtimeConfig = getRealtimeConfig();
+    const reportingConfig = getReportingConfig();
     const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
     const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
     const toastDurationMs = autoDismissSeconds === null
@@ -123,6 +125,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const VIEW_DEFAULT = 'kanban';
     let currentView = localStorage.getItem(STORAGE_KEY_VIEW) === 'table' ? 'table' : VIEW_DEFAULT;
+
+    const normalizeFormats = (formats) => {
+        if (!Array.isArray(formats)) {
+            return ['pdf', 'excel'];
+        }
+
+        const normalized = formats
+            .map(format => String(format).trim().toLowerCase())
+            .filter(format => ['pdf', 'excel'].includes(format));
+
+        return normalized.length ? Array.from(new Set(normalized)) : ['pdf', 'excel'];
+    };
+
+    const enabledFormats = normalizeFormats(reportingConfig?.formats);
+    const quickMetricsConfig = reportingConfig?.quickMetrics && typeof reportingConfig.quickMetrics === 'object'
+        ? reportingConfig.quickMetrics
+        : {};
+
+    const resolveQuickMetric = (metric) => {
+        if (!metric) {
+            return '';
+        }
+        if (Object.keys(quickMetricsConfig).length === 0) {
+            return metric;
+        }
+        return quickMetricsConfig[metric] ? metric : '';
+    };
 
     const ESCAPE_MAP = {
         '&': '&amp;',
@@ -561,15 +590,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
         }
 
+        const metricKeyBySlug = Object.entries(quickMetricsConfig).reduce((acc, [key, config]) => {
+            if (config?.estado) {
+                acc[normalizeEstado(config.estado)] = key;
+            }
+            return acc;
+        }, {});
+
         Object.entries(estadosMeta).forEach(([slug, meta]) => {
             // Omitir estados excluidos en el overview
             if (OVERVIEW_EXCLUDED_STATES.has(slug)) return;
             const count = counts[slug] || 0;
             const porcentaje = total ? Math.round((count / total) * 100) : 0;
-            const metricKeyBySlug = {
-                'apto-anestesia': 'anestesia',
-                'revision-codigos': 'cobertura',
-            };
             const metricKey = metricKeyBySlug[slug];
             cards.push(createOverviewCard({
                 title: meta?.label ?? slug,
@@ -957,26 +989,56 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openExportModal = ({ quickMetric = '', title = 'Exportar reporte' } = {}) => {
+        const resolvedQuickMetric = resolveQuickMetric(quickMetric);
+        const formats = enabledFormats;
+
         if (typeof Swal === 'undefined') {
-            if (window.confirm(`${title}\n¿Generar PDF con los filtros actuales?`)) {
-                exportSolicitudesPdf({ quickMetric })
-                    .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+            if (formats.length === 1) {
+                const format = formats[0];
+                if (window.confirm(`${title}\n¿Generar ${format.toUpperCase()} con los filtros actuales?`)) {
+                    if (format === 'excel') {
+                        exportSolicitudesExcel({ quickMetric: resolvedQuickMetric })
+                            .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
+                    } else {
+                        exportSolicitudesPdf({ quickMetric: resolvedQuickMetric })
+                            .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+                    }
+                }
+                return;
+            }
+
+            if (window.confirm(`${title}\n¿Generar reporte con los filtros actuales?`)) {
+                const chosen = window.prompt(`Formato (${formats.join('/')}):`, formats[0] || 'pdf');
+                const format = (chosen || '').toLowerCase();
+                if (!formats.includes(format)) {
+                    showToast('Formato no habilitado.', false);
+                    return;
+                }
+                if (format === 'excel') {
+                    exportSolicitudesExcel({ quickMetric: resolvedQuickMetric })
+                        .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
+                } else {
+                    exportSolicitudesPdf({ quickMetric: resolvedQuickMetric })
+                        .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+                }
             }
             return;
         }
+
+        const formatOptions = formats.map((format, index) => `
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormat-${format}" value="${format}" ${index === 0 ? 'checked' : ''}>
+                <label class="form-check-label" for="exportFormat-${format}">
+                    ${format === 'excel' ? 'Excel (.xlsx)' : 'PDF (tabla)'}
+                </label>
+            </div>
+        `).join('');
 
         Swal.fire({
             title,
             html: `
                 <div class="text-start">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="exportFormat" id="exportPdfFormat" value="pdf" checked>
-                        <label class="form-check-label" for="exportPdfFormat">PDF (tabla)</label>
-                    </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="radio" name="exportFormat" id="exportExcelFormat" value="excel">
-                        <label class="form-check-label" for="exportExcelFormat">Excel (.xlsx)</label>
-                    </div>
+                    ${formatOptions}
                     <hr class="my-2">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="exportUseFilters" checked disabled>
@@ -991,22 +1053,26 @@ document.addEventListener('DOMContentLoaded', () => {
             focusConfirm: false,
             preConfirm: () => {
                 const selected = document.querySelector('input[name="exportFormat"]:checked');
-                return selected ? selected.value : 'pdf';
+                return selected ? selected.value : (formats[0] || 'pdf');
             },
         }).then(result => {
             if (!result.isConfirmed) {
                 return;
             }
 
-            const format = result.value || 'pdf';
+            const format = result.value || (formats[0] || 'pdf');
+            if (!formats.includes(format)) {
+                showToast('Formato no habilitado.', false);
+                return;
+            }
             if (format === 'excel') {
-                exportSolicitudesExcel({ quickMetric })
+                exportSolicitudesExcel({ quickMetric: resolvedQuickMetric })
                     .then(() => showToast('Reporte Excel generado.', true))
                     .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
                 return;
             }
 
-            exportSolicitudesPdf({ quickMetric })
+            exportSolicitudesPdf({ quickMetric: resolvedQuickMetric })
                 .then(() => showToast('Reporte PDF generado.', true))
                 .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
         });

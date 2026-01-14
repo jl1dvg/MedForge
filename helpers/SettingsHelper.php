@@ -1497,6 +1497,89 @@ class SettingsHelper
                     ],
                 ],
             ],
+            'solicitudes' => [
+                'title' => 'Solicitudes',
+                'icon' => 'fa-solid fa-notes-medical',
+                'description' => 'Define los umbrales SLA, configuración del turnero y formatos de reportes.',
+                'groups' => [
+                    [
+                        'id' => 'sla',
+                        'title' => 'SLA y alertas',
+                        'description' => 'Controla los umbrales utilizados para advertencias y prioridades automáticas.',
+                        'fields' => [
+                            self::numberField('solicitudes.sla.warning_hours', 'SLA advertencia (horas)', 72),
+                            self::numberField('solicitudes.sla.critical_hours', 'SLA crítico (horas)', 24),
+                            self::textareaField(
+                                'solicitudes.sla.labels',
+                                'Etiquetas SLA (JSON)',
+                                'Opcional. Define labels/íconos por estado SLA.',
+                                json_encode([
+                                    'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
+                                    'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
+                                    'critico' => ['color' => 'danger', 'label' => 'SLA crítico', 'icon' => 'mdi-alert-octagon'],
+                                    'vencido' => ['color' => 'dark', 'label' => 'SLA vencido', 'icon' => 'mdi-alert'],
+                                    'sin_fecha' => ['color' => 'secondary', 'label' => 'SLA sin fecha', 'icon' => 'mdi-calendar-remove'],
+                                    'cerrado' => ['color' => 'secondary', 'label' => 'SLA cerrado', 'icon' => 'mdi-lock-outline'],
+                                ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'turnero',
+                        'title' => 'Turnero',
+                        'description' => 'Ajusta el estado por defecto y el intervalo de refresco.',
+                        'fields' => [
+                            self::textField(
+                                'solicitudes.turnero.default_state',
+                                'Estado por defecto',
+                                false,
+                                'Ej: Llamado.'
+                            ),
+                            self::numberField(
+                                'solicitudes.turnero.refresh_ms',
+                                'Refresco automático (ms)',
+                                30000,
+                                'Intervalo de actualización del turnero.'
+                            ),
+                        ],
+                    ],
+                    [
+                        'id' => 'reportes',
+                        'title' => 'Reportes',
+                        'description' => 'Habilita formatos disponibles y quick reports.',
+                        'fields' => [
+                            self::checkboxGroupField(
+                                'solicitudes.report.formats',
+                                'Formatos habilitados',
+                                [
+                                    'pdf' => 'PDF',
+                                    'excel' => 'Excel (.xlsx)',
+                                ],
+                                ['pdf', 'excel']
+                            ),
+                            self::textareaField(
+                                'solicitudes.report.quick_metrics',
+                                'Quick reports (JSON)',
+                                'Formato JSON con label y estado/sla_status por clave.',
+                                json_encode([
+                                    'anestesia' => [
+                                        'label' => 'Pendientes de apto de anestesia',
+                                        'estado' => 'apto-anestesia',
+                                    ],
+                                    'cobertura' => [
+                                        'label' => 'Pendientes de cobertura',
+                                        'estado' => 'revision-codigos',
+                                    ],
+                                    'sla-vencido' => [
+                                        'label' => 'SLA vencido',
+                                        'sla_status' => 'vencido',
+                                    ],
+                                ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+                            ),
+                        ],
+                    ],
+                ],
+            ],
             'cive_extension' => [
                 'title' => 'CIVE Extension',
                 'icon' => 'fa-solid fa-puzzle-piece',
@@ -1630,7 +1713,8 @@ class SettingsHelper
         foreach ($section['groups'] as $group) {
             foreach ($group['fields'] as $field) {
                 $key = $field['key'];
-                $raw = $input[$key] ?? null;
+                $altKey = str_replace('.', '_', $key);
+                $raw = $input[$key] ?? $input[$altKey] ?? null;
 
                 if (($field['sensitive'] ?? false) && ($raw === null || $raw === '')) {
                     continue;
@@ -1638,6 +1722,13 @@ class SettingsHelper
 
                 if ($field['type'] === 'checkbox') {
                     $value = $raw ? '1' : '0';
+                } elseif ($field['type'] === 'checkbox_group') {
+                    $values = is_array($raw) ? $raw : [];
+                    $values = array_values(array_filter(array_map(static function ($item) {
+                        $clean = trim((string) $item);
+                        return $clean === '' ? null : $clean;
+                    }, $values)));
+                    $value = json_encode($values, JSON_UNESCAPED_UNICODE);
                 } elseif (is_string($raw)) {
                     $value = trim($raw);
                 } else {
@@ -1744,6 +1835,23 @@ class SettingsHelper
             'key' => $key,
             'label' => $label,
             'default' => $default ? '1' : '0',
+            'help' => $help,
+        ];
+    }
+
+    private static function checkboxGroupField(
+        string $key,
+        string $label,
+        array $options,
+        array $default = [],
+        ?string $help = null
+    ): array {
+        return [
+            'type' => 'checkbox_group',
+            'key' => $key,
+            'label' => $label,
+            'options' => $options,
+            'default' => json_encode(array_values($default), JSON_UNESCAPED_UNICODE),
             'help' => $help,
         ];
     }
