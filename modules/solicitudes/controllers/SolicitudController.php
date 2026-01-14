@@ -361,12 +361,17 @@ class SolicitudController extends BaseController
             }
 
             if (!headers_sent()) {
+                if (ob_get_length()) {
+                    ob_clean();
+                }
                 header('Content-Length: ' . strlen($pdf));
                 header('Content-Type: application/pdf');
                 header('Content-Disposition: inline; filename="' . $filename . '"');
+                header('X-Content-Type-Options: nosniff');
             }
 
             echo $pdf;
+            return;
         } catch (Throwable $e) {
             $errorId = bin2hex(random_bytes(6));
             JsonLogger::log(
@@ -438,13 +443,34 @@ class SolicitudController extends BaseController
                 return;
             }
 
+            if (strncmp($content, 'PK', 2) !== 0) {
+                JsonLogger::log(
+                    'solicitudes_reportes',
+                    'Reporte Excel de solicitudes devolvió contenido no-ZIP',
+                    null,
+                    [
+                        'user_id' => $this->getCurrentUserId(),
+                        'preview' => substr($content, 0, 200),
+                    ]
+                );
+                $this->json([
+                    'error' => 'No se pudo generar el Excel (contenido inválido).',
+                ], 500);
+                return;
+            }
+
             if (!headers_sent()) {
+                if (ob_get_length()) {
+                    ob_clean();
+                }
                 header('Content-Length: ' . strlen($content));
                 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('X-Content-Type-Options: nosniff');
             }
 
             echo $content;
+            return;
         } catch (Throwable $e) {
             $errorId = bin2hex(random_bytes(6));
             JsonLogger::log(
@@ -1562,11 +1588,22 @@ class SolicitudController extends BaseController
                 $e->getMessage()
             ));
 
-            // ⚠️ Solo mientras depuras:
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_estado',
+                'Error al actualizar estado de solicitud',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'solicitud_id' => $id,
+                    'estado' => $estado,
+                    'usuario' => $this->getCurrentUserId(),
+                ]
+            );
+
             $this->json([
                 'success' => false,
-                'error' => $e->getMessage(),        // ← mensaje real
-                'trace' => $e->getTraceAsString(),  // opcional, para ti
+                'error' => 'Error interno (ref: ' . $errorId . ')',
             ], 500);
         }
     }
@@ -1649,6 +1686,24 @@ class SolicitudController extends BaseController
         $payload = json_decode(file_get_contents('php://input'), true);
         if (!is_array($payload)) {
             $payload = $_POST;
+        }
+
+        if (!$this->hasPermission(['solicitudes.turnero', 'solicitudes.update', 'solicitudes.view'])) {
+            JsonLogger::log(
+                'turnero_solicitudes',
+                'Intento sin permisos en turnero de solicitudes',
+                null,
+                [
+                    'user_id' => $this->getCurrentUserId(),
+                    'payload' => [
+                        'id' => isset($payload['id']) ? (int) $payload['id'] : null,
+                        'turno' => isset($payload['turno']) ? (int) $payload['turno'] : null,
+                    ],
+                    'timestamp' => (new DateTimeImmutable('now'))->format(DATE_ATOM),
+                ]
+            );
+            $this->json(['success' => false, 'error' => 'No autorizado'], 403);
+            return;
         }
 
         $id = isset($payload['id']) ? (int)$payload['id'] : null;

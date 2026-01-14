@@ -151,12 +151,20 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/[^a-z0-9]+/g, '-');
     };
 
+    const EMOJI_REGEX = (() => {
+        try {
+            return new RegExp('[\\u{1F300}-\\u{1FAFF}]', 'gu');
+        } catch (error) {
+            return null;
+        }
+    })();
+
     const normalizeKey = (text) => {
         return (text ?? '')
             .toString()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+            .replace(EMOJI_REGEX || /$^/, '')
             .replace(/[^a-z0-9\s-]/gi, '')
             .replace(/\s+/g, ' ')
             .trim()
