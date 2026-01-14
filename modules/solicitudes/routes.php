@@ -32,6 +32,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->actualizarEstado();
     });
 
+    $router->post('/solicitudes/re-scrape-derivacion', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->rescrapeDerivacion();
+    });
+
     $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
         (new SolicitudController($pdo))->enviarRecordatorios();
     });
