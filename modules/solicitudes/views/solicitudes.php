@@ -2,6 +2,7 @@
 /** @var string $username */
 /** @var string $pageTitle */
 /** @var array $realtime */
+/** @var array $reporting */
 
 $realtime = array_merge(
         [
@@ -33,6 +34,14 @@ array_push(
         'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
+);
+
+$reporting = array_merge(
+        [
+                'formats' => ['pdf', 'excel'],
+                'quickMetrics' => [],
+        ],
+        $reporting ?? []
 );
 ?>
 <div class="content-header">
@@ -1012,6 +1021,7 @@ array_push(
             storageKeyView: 'solicitudes:view-mode',
             dataKey: '__solicitudesKanban',
             estadosMetaKey: '__solicitudesEstadosMeta',
+            reporting: <?= json_encode($reporting, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
             selectors: {
                 prefix: 'solicitudes',
             },

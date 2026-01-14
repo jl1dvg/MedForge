@@ -385,6 +385,9 @@ JS;
                             case 'checkbox':
                                 $columnClass = 'col-md-6 col-sm-12';
                                 break;
+                            case 'checkbox_group':
+                                $columnClass = 'col-md-6 col-sm-12';
+                                break;
                             default:
                                 $columnClass = 'col-md-6 col-sm-12';
                                 break;
@@ -439,6 +442,36 @@ JS;
                                                                 <?php endif; ?>
                                                             </label>
                                                         </div>
+                                                    <?php elseif ($type === 'checkbox_group'): ?>
+                                                        <?php
+                                                        $selectedValues = [];
+                                                        if (is_string($displayValue) && trim($displayValue) !== '') {
+                                                            $decoded = json_decode($displayValue, true);
+                                                            if (is_array($decoded)) {
+                                                                $selectedValues = $decoded;
+                                                            }
+                                                        } elseif (is_array($displayValue)) {
+                                                            $selectedValues = $displayValue;
+                                                        }
+                                                        ?>
+                                                        <label class="form-label fw-500 d-block">
+                                                            <?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                                        </label>
+                                                        <?php foreach (($field['options'] ?? []) as $optionValue => $optionLabel): ?>
+                                                            <?php $isChecked = in_array((string) $optionValue, array_map('strval', $selectedValues), true); ?>
+                                                            <div class="form-check">
+                                                                <input
+                                                                    class="form-check-input"
+                                                                    type="checkbox"
+                                                                    name="<?= htmlspecialchars($field['key'], ENT_QUOTES, 'UTF-8'); ?>[]"
+                                                                    id="<?= htmlspecialchars($fieldId . '_' . $optionValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    value="<?= htmlspecialchars((string) $optionValue, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    <?= $isChecked ? 'checked' : ''; ?>>
+                                                                <label class="form-check-label" for="<?= htmlspecialchars($fieldId . '_' . $optionValue, ENT_QUOTES, 'UTF-8'); ?>">
+                                                                    <?= htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8'); ?>
+                                                                </label>
+                                                            </div>
+                                                        <?php endforeach; ?>
                                                     <?php elseif ($type === 'billing_rules'): ?>
                                                         <?php
                                                         $rulesValue = $displayValue;

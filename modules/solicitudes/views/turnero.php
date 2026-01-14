@@ -1,9 +1,11 @@
 <?php
 /** @var string|null $turneroContext */
 /** @var string|null $turneroEmptyMessage */
+/** @var int|null $turneroRefreshMs */
 
 $contextLabel = $turneroContext ?: 'Coordinación Quirúrgica';
 $emptyMessage = $turneroEmptyMessage ?: 'No hay pacientes en cola para coordinación quirúrgica.';
+$turneroRefreshMs = isset($turneroRefreshMs) ? (int) $turneroRefreshMs : 30000;
 $contextId = 'turneroContextLabel';
 $contextFor = 'turneroTitle';
 ?>
@@ -301,6 +303,9 @@ if (defined('BASE_URL')) {
     window.__KANBAN_MODULE__ = {
         key: 'solicitudes',
         basePath: <?= json_encode($basePath, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        turnero: {
+            refreshMs: <?= json_encode($turneroRefreshMs, JSON_UNESCAPED_UNICODE) ?>,
+        },
         selectors: {
             prefix: 'solicitudes',
         },

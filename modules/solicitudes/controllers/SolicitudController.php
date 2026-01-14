@@ -15,6 +15,7 @@ use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
 use Modules\Solicitudes\Services\SolicitudReportExcelService;
+use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Reporting\Services\ReportService;
 use Models\SettingsModel;
 use PDO;
@@ -30,9 +31,6 @@ class SolicitudController extends BaseController
         'facturada-cerrada', 'protocolo-completo', 'completado',
     ];
 
-    private const SLA_WARNING_HOURS = 72;
-    private const SLA_CRITICAL_HOURS = 24;
-
     private SolicitudModel $solicitudModel;
     private PacienteService $pacienteService;
     private SolicitudCrmService $crmService;
@@ -40,8 +38,10 @@ class SolicitudController extends BaseController
     private SolicitudEstadoService $estadoService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
+    private SolicitudSettingsService $settingsService;
     private ?SettingsModel $settings = null;
     private ?array $bodyCache = null;
+    private ?array $turneroStateMap = null;
 
     public function __construct(PDO $pdo)
     {
@@ -53,6 +53,7 @@ class SolicitudController extends BaseController
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
         $this->calendarBlocks = new CalendarBlockService($pdo);
+        $this->settingsService = new SolicitudSettingsService($pdo);
     }
 
     public function index(): void
@@ -66,6 +67,10 @@ class SolicitudController extends BaseController
                 'kanbanColumns' => $this->estadoService->getColumns(),
                 'kanbanStages' => $this->estadoService->getStages(),
                 'realtime' => $this->pusherConfig->getPublicConfig(),
+                'reporting' => [
+                    'formats' => $this->settingsService->getReportFormats(),
+                    'quickMetrics' => $this->settingsService->getQuickMetrics(),
+                ],
             ]
         );
     }
@@ -81,6 +86,7 @@ class SolicitudController extends BaseController
                 'turneroContext' => 'Coordinación Quirúrgica',
                 'turneroEmptyMessage' => 'No hay pacientes en cola para coordinación quirúrgica.',
                 'bodyClass' => 'turnero-body',
+                'turneroRefreshMs' => $this->settingsService->getTurneroRefreshMs(),
             ],
             'layout-turnero.php'
         );
@@ -310,9 +316,19 @@ class SolicitudController extends BaseController
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
         $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
         $format = strtolower(trim((string) ($payload['format'] ?? 'pdf')));
+        $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'pdf') {
             $this->json(['error' => 'Formato no soportado.'], 422);
+            return;
+        }
+        if (!in_array('pdf', $allowedFormats, true)) {
+            $this->json(['error' => 'El formato PDF está deshabilitado en configuración.'], 422);
+            return;
+        }
+
+        if ($quickMetric !== '' && !$this->isQuickMetricAllowed($quickMetric)) {
+            $this->json(['error' => 'Quick report no permitido en configuración.'], 422);
             return;
         }
 
@@ -406,9 +422,19 @@ class SolicitudController extends BaseController
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
         $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
         $format = strtolower(trim((string) ($payload['format'] ?? 'excel')));
+        $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'excel') {
             $this->json(['error' => 'Formato no soportado.'], 422);
+            return;
+        }
+        if (!in_array('excel', $allowedFormats, true)) {
+            $this->json(['error' => 'El formato Excel está deshabilitado en configuración.'], 422);
+            return;
+        }
+
+        if ($quickMetric !== '' && !$this->isQuickMetricAllowed($quickMetric)) {
+            $this->json(['error' => 'Quick report no permitido en configuración.'], 422);
             return;
         }
 
@@ -1081,20 +1107,7 @@ class SolicitudController extends BaseController
      */
     private function getQuickMetricConfig(string $quickMetric): array
     {
-        $map = [
-            'anestesia' => [
-                'label' => 'Pendientes de apto de anestesia',
-                'estado' => 'apto-anestesia',
-            ],
-            'cobertura' => [
-                'label' => 'Pendientes de cobertura',
-                'estado' => 'revision-codigos',
-            ],
-            'sla-vencido' => [
-                'label' => 'SLA vencido',
-                'sla_status' => 'vencido',
-            ],
-        ];
+        $map = $this->settingsService->getQuickMetrics();
 
         return $map[$quickMetric] ?? [];
     }
@@ -1253,6 +1266,8 @@ class SolicitudController extends BaseController
         $now = new DateTimeImmutable('now');
         $estado = strtolower(trim((string)($row['estado'] ?? '')));
         $isTerminal = $estado !== '' && in_array($estado, self::TERMINAL_STATES, true);
+        $slaWarningHours = $this->settingsService->getSlaWarningHours();
+        $slaCriticalHours = $this->settingsService->getSlaCriticalHours();
 
         $fechaProgramada = $this->parseDate($row['fecha_programada'] ?? ($row['fecha'] ?? null));
         $createdAt = $this->parseDate($row['created_at'] ?? null);
@@ -1268,16 +1283,16 @@ class SolicitudController extends BaseController
                 $slaStatus = 'cerrado';
             } elseif ($hoursRemaining < 0) {
                 $slaStatus = 'vencido';
-            } elseif ($hoursRemaining <= self::SLA_CRITICAL_HOURS) {
+            } elseif ($hoursRemaining <= $slaCriticalHours) {
                 $slaStatus = 'critico';
-            } elseif ($hoursRemaining <= self::SLA_WARNING_HOURS) {
+            } elseif ($hoursRemaining <= $slaWarningHours) {
                 $slaStatus = 'advertencia';
             } else {
                 $slaStatus = 'en_rango';
             }
         } elseif ($createdAt instanceof DateTimeImmutable) {
             $elapsed = ($now->getTimestamp() - $createdAt->getTimestamp()) / 3600;
-            if ($elapsed >= self::SLA_WARNING_HOURS) {
+            if ($elapsed >= $slaWarningHours) {
                 $slaStatus = 'advertencia';
             }
         }
@@ -1638,7 +1653,14 @@ class SolicitudController extends BaseController
 
         $estados = [];
         if (!empty($_GET['estado'])) {
-            $estados = array_values(array_filter(array_map('trim', explode(',', (string)$_GET['estado']))));
+            $requested = array_values(array_filter(array_map('trim', explode(',', (string)$_GET['estado']))));
+            foreach ($requested as $estado) {
+                $normalizado = $this->normalizarEstadoTurnero($estado);
+                if ($normalizado !== null) {
+                    $estados[] = $normalizado;
+                }
+            }
+            $estados = array_values(array_unique($estados));
         }
 
         try {
@@ -1708,7 +1730,9 @@ class SolicitudController extends BaseController
 
         $id = isset($payload['id']) ? (int)$payload['id'] : null;
         $turno = isset($payload['turno']) ? (int)$payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string)$payload['estado']) : 'Llamado';
+        $estadoSolicitado = isset($payload['estado'])
+            ? trim((string)$payload['estado'])
+            : $this->settingsService->getTurneroDefaultState();
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -1786,20 +1810,89 @@ class SolicitudController extends BaseController
 
     private function normalizarEstadoTurnero(string $estado): ?string
     {
-        $mapa = [
-            'recibido' => 'Recibido',
-            'llamado' => 'Llamado',
-            'en atencion' => 'En atención',
-            'en atención' => 'En atención',
-            'atendido' => 'Atendido',
-        ];
-
         $estadoLimpio = trim($estado);
-        $clave = function_exists('mb_strtolower')
-            ? mb_strtolower($estadoLimpio, 'UTF-8')
-            : strtolower($estadoLimpio);
+        if ($estadoLimpio === '') {
+            return null;
+        }
+
+        $clave = $this->normalizarTurneroClave($estadoLimpio);
+        $mapa = $this->getTurneroStateMap();
 
         return $mapa[$clave] ?? null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getTurneroStateMap(): array
+    {
+        if ($this->turneroStateMap !== null) {
+            return $this->turneroStateMap;
+        }
+
+        $map = [];
+        $allowedStates = $this->settingsService->getTurneroAllowedStates();
+        foreach ($allowedStates as $state) {
+            $label = trim((string)$state);
+            if ($label === '') {
+                continue;
+            }
+            $key = $this->normalizarTurneroClave($label);
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($map[$key])) {
+                $map[$key] = $label;
+            }
+        }
+
+        $this->turneroStateMap = $map;
+
+        return $this->turneroStateMap;
+    }
+
+    private function normalizarTurneroClave(string $estado): string
+    {
+        $value = trim($estado);
+        if ($value === '') {
+            return '';
+        }
+
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($value, \Normalizer::FORM_D);
+            if (is_string($normalized)) {
+                $value = preg_replace('/\p{Mn}/u', '', $normalized) ?? $value;
+            }
+        }
+
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'Á' => 'a',
+            'É' => 'e',
+            'Í' => 'i',
+            'Ó' => 'o',
+            'Ú' => 'u',
+            'ñ' => 'n',
+            'Ñ' => 'n',
+        ]);
+
+        $value = function_exists('mb_strtolower')
+            ? mb_strtolower($value, 'UTF-8')
+            : strtolower($value);
+        $value = preg_replace('/[^a-z0-9\s]/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function isQuickMetricAllowed(string $quickMetric): bool
+    {
+        $metrics = $this->settingsService->getQuickMetrics();
+        return array_key_exists($quickMetric, $metrics);
     }
 
     public function prefactura(): void
@@ -1824,6 +1917,7 @@ class SolicitudController extends BaseController
         }
 
         $viewData = $data;
+        $slaLabels = $this->settingsService->getSlaLabels();
         ob_start();
         include __DIR__ . '/../views/prefactura_detalle.php';
         echo ob_get_clean();
