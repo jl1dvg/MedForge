@@ -1924,6 +1924,62 @@ class SolicitudController extends BaseController
         echo ob_get_clean();
     }
 
+    public function derivacionDetalle(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
+        $formId = trim((string) ($_GET['form_id'] ?? ''));
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Faltan parámetros para consultar la derivación.',
+                ],
+                400
+            );
+            return;
+        }
+
+        try {
+            $derivacion = $this->ensureDerivacion($formId, $hcNumber);
+        } catch (\Throwable $e) {
+            $this->json(
+                [
+                    'success' => true,
+                    'has_derivacion' => false,
+                    'derivacion_status' => 'error',
+                    'message' => 'No se pudo consultar la derivación.',
+                    'derivacion' => null,
+                ]
+            );
+            return;
+        }
+
+        if (!$derivacion) {
+            $this->json(
+                [
+                    'success' => true,
+                    'has_derivacion' => false,
+                    'derivacion_status' => 'missing',
+                    'message' => 'No existe derivación para esta solicitud.',
+                    'derivacion' => null,
+                ]
+            );
+            return;
+        }
+
+        $this->json(
+            [
+                'success' => true,
+                'has_derivacion' => true,
+                'derivacion_status' => 'ok',
+                'derivacion' => $derivacion,
+            ]
+        );
+    }
+
     public function rescrapeDerivacion(): void
     {
         $this->requireAuth();
@@ -2056,6 +2112,9 @@ class SolicitudController extends BaseController
     private function ensureDerivacion(string $formId, string $hcNumber): ?array
     {
         $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+        if ($derivacion === false) {
+            $derivacion = null;
+        }
         if ($derivacion) {
             return $derivacion;
         }
@@ -2079,7 +2138,11 @@ class SolicitudController extends BaseController
             // silenciar para no romper flujo de prefactura
         }
 
-        return $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+        $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+        if ($derivacion === false) {
+            return null;
+        }
+        return $derivacion ?: null;
     }
 
     private function ordenarSolicitudes(array $solicitudes, string $criterio): array

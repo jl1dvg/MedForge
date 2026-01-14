@@ -52,6 +52,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->prefactura();
     });
 
+    $router->get('/solicitudes/derivacion', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->derivacionDetalle();
+    });
+
     $router->get('/solicitudes/turnero-data', function (\PDO $pdo) {
         (new SolicitudController($pdo))->turneroData();
     });

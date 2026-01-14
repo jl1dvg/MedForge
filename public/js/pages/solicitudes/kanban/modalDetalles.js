@@ -146,6 +146,38 @@ function formatIsoDate(iso, fallback = null, formatter = "DD-MM-YYYY HH:mm") {
     return date.toLocaleString();
 }
 
+function formatDerivacionVigencia(fechaVigencia) {
+    if (!fechaVigencia) {
+        return {texto: "No disponible", badge: null};
+    }
+    const vigenciaDate = new Date(fechaVigencia);
+    if (Number.isNaN(vigenciaDate.getTime())) {
+        return {texto: "No disponible", badge: null};
+    }
+
+    const hoy = new Date();
+    const diffMs = vigenciaDate.getTime() - hoy.getTime();
+    const diffDays = Math.trunc(diffMs / (1000 * 60 * 60 * 24));
+    let badge = null;
+
+    if (diffDays >= 60) {
+        badge = {color: "success", texto: "Vigente"};
+    } else if (diffDays >= 30) {
+        badge = {color: "info", texto: "Vigente"};
+    } else if (diffDays >= 15) {
+        badge = {color: "warning", texto: "Por vencer"};
+    } else if (diffDays >= 0) {
+        badge = {color: "danger", texto: "Urgente"};
+    } else {
+        badge = {color: "dark", texto: "Vencida"};
+    }
+
+    return {
+        texto: `<strong>Días para caducar:</strong> ${diffDays} días`,
+        badge,
+    };
+}
+
 function formatHoursRemaining(value) {
     if (typeof value !== "number" || Number.isNaN(value)) {
         return null;
@@ -182,6 +214,145 @@ function buildSlaInfo(solicitud = {}) {
         detail,
         icon: meta.icon,
     };
+}
+
+function buildDerivacionMissingHtml(message = "Seguro particular: requiere autorización.") {
+    return `
+        <div class="card border-0 shadow-sm">
+            <div class="card-body d-flex flex-column gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="badge bg-secondary">Sin derivación</span>
+                    <span class="text-muted">${escapeHtml(message)}</span>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
+                    Solicitar autorización
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function buildDerivacionDiagnosticoHtml(derivacion) {
+    const diagnosticos = Array.isArray(derivacion?.diagnosticos)
+        ? derivacion.diagnosticos
+        : [];
+    if (diagnosticos.length) {
+        const items = diagnosticos
+            .map((dx) => {
+                const code = escapeHtml(dx?.dx_code || "");
+                const descripcion = escapeHtml(
+                    dx?.descripcion || dx?.diagnostico || ""
+                );
+                const lateralidad = dx?.lateralidad
+                    ? ` (${escapeHtml(dx.lateralidad)})`
+                    : "";
+                return `<li><span class="text-primary">${code}</span> — ${descripcion}${lateralidad}</li>`;
+            })
+            .join("");
+        return `<ul class="mb-0 mt-2">${items}</ul>`;
+    }
+
+    if (derivacion?.diagnostico) {
+        const items = String(derivacion.diagnostico)
+            .split(";")
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .map((item) => `<li>${escapeHtml(item)}</li>`)
+            .join("");
+        if (items) {
+            return `<ul class="mb-0 mt-2">${items}</ul>`;
+        }
+    }
+
+    return '<span class="text-muted">No disponible</span>';
+}
+
+function buildDerivacionHtml(derivacion) {
+    if (!derivacion) {
+        return buildDerivacionMissingHtml();
+    }
+
+    const derivacionId = derivacion.derivacion_id || derivacion.id || null;
+    const archivoHref = derivacionId
+        ? `/derivaciones/archivo/${encodeURIComponent(String(derivacionId))}`
+        : derivacion.archivo_derivacion_path
+            ? `/${String(derivacion.archivo_derivacion_path).replace(/^\/+/, "")}`
+            : null;
+    const vigenciaInfo = formatDerivacionVigencia(derivacion.fecha_vigencia);
+    const badgeHtml = vigenciaInfo.badge
+        ? `<span class="badge bg-${escapeHtml(vigenciaInfo.badge.color)} ms-2">${escapeHtml(
+            vigenciaInfo.badge.texto
+        )}</span>`
+        : "";
+    const archivoHtml = archivoHref
+        ? `
+        <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
+            <div>
+                <strong>📎 Derivación:</strong>
+                <span class="text-muted ms-1">Documento adjunto disponible.</span>
+            </div>
+            <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="${escapeHtml(
+                archivoHref
+            )}" target="_blank" rel="noopener">
+                <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+            </a>
+        </div>
+        `
+        : "";
+
+    return `
+        ${archivoHtml}
+        <div class="box box-outline-primary">
+            <div class="box-header">
+                <h5 class="box-title"><strong>📌 Información de la Derivación</strong></h5>
+            </div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código Derivación:</strong>
+                    ${escapeHtml(derivacion.cod_derivacion || "No disponible")}
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha Registro:</strong>
+                    ${escapeHtml(derivacion.fecha_registro || "No disponible")}
+                </li>
+                <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha Vigencia:</strong>
+                    ${escapeHtml(derivacion.fecha_vigencia || "No disponible")}
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-hourglass-split"></i> ${vigenciaInfo.texto}
+                    ${badgeHtml}
+                </li>
+                <li class="list-group-item">
+                    <i class="bi bi-clipboard2-pulse"></i>
+                    <strong>Diagnóstico:</strong>
+                    ${buildDerivacionDiagnosticoHtml(derivacion)}
+                </li>
+            </ul>
+            <div class="box-body"></div>
+        </div>
+    `;
+}
+
+function renderDerivacionContent(container, payload) {
+    if (!container) {
+        return;
+    }
+    const hasDerivacion =
+        payload?.success &&
+        payload?.has_derivacion &&
+        payload?.derivacion &&
+        payload?.derivacion_status !== "missing";
+
+    if (hasDerivacion) {
+        container.innerHTML = buildDerivacionHtml(payload.derivacion);
+        return;
+    }
+
+    const status = payload?.derivacion_status || "missing";
+    const fallbackMessage =
+        status === "error"
+            ? "Derivación no disponible por ahora."
+            : payload?.message || "Seguro particular: requiere autorización.";
+
+    container.innerHTML = buildDerivacionMissingHtml(fallbackMessage);
 }
 
 function buildPrioridadInfo(solicitud = {}) {
@@ -924,6 +1095,54 @@ async function hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber}) {
     }
 }
 
+async function loadSolicitudCore({hc, formId, solicitudId}) {
+    const {basePath} = getKanbanConfig();
+    const prefacturaUrl = `${basePath}/prefactura?hc_number=${encodeURIComponent(
+        hc
+    )}&form_id=${encodeURIComponent(formId)}&solicitud_id=${encodeURIComponent(
+        solicitudId
+    )}`;
+
+    const [html, solicitud] = await Promise.all([
+        fetch(prefacturaUrl).then((response) => {
+            if (!response.ok) {
+                throw new Error("No se encontró la prefactura");
+            }
+            return response.text();
+        }),
+        hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber: hc}),
+    ]);
+
+    return {html, solicitud};
+}
+
+async function loadDerivacion({hc, formId}) {
+    const {basePath} = getKanbanConfig();
+    const derivacionUrl = `${basePath}/derivacion?hc_number=${encodeURIComponent(
+        hc
+    )}&form_id=${encodeURIComponent(formId)}`;
+
+    try {
+        const response = await fetch(derivacionUrl);
+        if (!response.ok) {
+            return {
+                success: true,
+                has_derivacion: false,
+                derivacion_status: "error",
+                derivacion: null,
+            };
+        }
+        return response.json();
+    } catch (error) {
+        return {
+            success: true,
+            has_derivacion: false,
+            derivacion_status: "error",
+            derivacion: null,
+        };
+    }
+}
+
 function abrirPrefactura({hc, formId, solicitudId}) {
     if (!hc || !formId) {
         console.warn(
@@ -949,31 +1168,32 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     modal.show();
     actualizarBotonesModal(solicitudId);
 
-    const {basePath} = getKanbanConfig();
+    const corePromise = loadSolicitudCore({hc, formId, solicitudId});
+    const derivacionPromise = loadDerivacion({hc, formId});
 
-    const prefacturaUrl = `${basePath}/prefactura?hc_number=${encodeURIComponent(
-        hc
-    )}&form_id=${encodeURIComponent(formId)}&solicitud_id=${encodeURIComponent(solicitudId)}`;
-
-    Promise.all([
-        fetch(prefacturaUrl).then((response) => {
-            if (!response.ok) {
-                throw new Error("No se encontró la prefactura");
+    Promise.allSettled([corePromise, derivacionPromise]).then(
+        ([coreResult, derivacionResult]) => {
+            if (coreResult.status !== "fulfilled") {
+                console.error("❌ Error cargando prefactura:", coreResult.reason);
+                content.innerHTML =
+                    '<p class="text-danger mb-0">No se pudo cargar la información de la solicitud.</p>';
+                return;
             }
-            return response.text();
-        }),
-        hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber: hc}),
-    ])
-        .then(([html, solicitud]) => {
+
+            const {html, solicitud} = coreResult.value;
             const contextual = buildContextualActionsHtml(solicitud || {});
             content.innerHTML = `${contextual}${html}`;
             relocatePatientAlert(solicitudId);
             renderEstadoContext(solicitudId);
             actualizarBotonesModal(solicitudId, solicitud);
 
-            const actionsContainer = document.getElementById("prefacturaContextualActions");
+            const actionsContainer = document.getElementById(
+                "prefacturaContextualActions"
+            );
             if (actionsContainer) {
-                const panels = content.querySelectorAll("#prefacturaAnestesiaPanel, #prefacturaAgendaPanel");
+                const panels = content.querySelectorAll(
+                    "#prefacturaAnestesiaPanel, #prefacturaAgendaPanel"
+                );
                 panels.forEach((panel) => actionsContainer.appendChild(panel));
             }
 
@@ -982,15 +1202,31 @@ function abrirPrefactura({hc, formId, solicitudId}) {
             const header = content.querySelector(".prefactura-detail-header");
             const tabs = content.querySelector("#prefacturaTabs");
             if (header && tabs) {
-                const headerHeight = Math.ceil(header.getBoundingClientRect().height);
-                tabs.style.setProperty("--prefactura-header-height", `${headerHeight}px`);
+                const headerHeight = Math.ceil(
+                    header.getBoundingClientRect().height
+                );
+                tabs.style.setProperty(
+                    "--prefactura-header-height",
+                    `${headerHeight}px`
+                );
             }
-        })
-        .catch((error) => {
-            console.error("❌ Error cargando prefactura:", error);
-            content.innerHTML =
-                '<p class="text-danger mb-0">No se pudo cargar la información de la solicitud.</p>';
-        });
+
+            const derivacionContainer = content.querySelector(
+                "#prefacturaDerivacionContent"
+            );
+            if (derivacionResult.status === "fulfilled") {
+                renderDerivacionContent(derivacionContainer, derivacionResult.value);
+            } else {
+                console.warn(
+                    "⚠️ Derivación no disponible:",
+                    derivacionResult.reason
+                );
+                if (derivacionContainer) {
+                    derivacionContainer.innerHTML = buildDerivacionMissingHtml();
+                }
+            }
+        }
+    );
 
     modalElement.addEventListener(
         "hidden.bs.modal",
