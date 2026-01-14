@@ -8,7 +8,7 @@
  * @var string|null $metricLabel
  */
 
-$layout = __DIR__ . '/../layouts/report_simple.php';
+$layout = __DIR__ . '/../layouts/base.php';
 
 $title = $titulo ?? 'Reporte de solicitudes';
 $generatedAt = $generatedAt ?? '';
@@ -29,20 +29,6 @@ $formatDate = static function ($value): string {
         return (string) $value;
     }
 };
-
-$styles = <<<CSS
-.report-header { margin-bottom: 12px; }
-.report-header h2 { margin: 0 0 4px; font-size: 16pt; }
-.report-meta { font-size: 9pt; color: #374151; margin-bottom: 6px; }
-.report-badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 10px; font-size: 8pt; margin-top: 4px; }
-.filters-list { list-style: none; padding: 0; margin: 6px 0 10px; font-size: 8pt; color: #1f2937; }
-.filters-list li { margin-bottom: 2px; }
-.report-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
-.report-table th,
-.report-table td { border: 0.6pt solid #cbd5f5; padding: 4px 6px; vertical-align: top; }
-.report-table th { background: #e0e7ff; text-transform: uppercase; font-size: 7pt; letter-spacing: 0.04em; }
-.text-muted { color: #6b7280; }
-CSS;
 
 ob_start();
 ?>

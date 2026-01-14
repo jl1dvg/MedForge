@@ -275,6 +275,7 @@ class ExamenesModel
                 u.last_name AS doctor_last_name,
                 u.second_last_name AS doctor_second_last_name,
                 u.cedula AS doctor_cedula,
+                u.firma AS doctor_firma,
                 u.full_name AS doctor_full_name
             FROM solicitud_procedimiento sp
             LEFT JOIN users u 
