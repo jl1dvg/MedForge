@@ -286,10 +286,21 @@ $contextFor = 'turneroTitle';
     && get_option('pusher_app_key') !== ''): ?>
 <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
+<?php
+$basePath = '/solicitudes';
+if (defined('BASE_URL')) {
+    $baseUrlPath = parse_url((string) BASE_URL, PHP_URL_PATH) ?: '';
+    $baseUrlPath = rtrim($baseUrlPath, '/');
+    if ($baseUrlPath !== '') {
+        $basePath = $baseUrlPath . '/solicitudes';
+    }
+}
+?>
+
 <script>
     window.__KANBAN_MODULE__ = {
         key: 'solicitudes',
-        basePath: '/solicitudes',
+        basePath: <?= json_encode($basePath, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
         selectors: {
             prefix: 'solicitudes',
         },
