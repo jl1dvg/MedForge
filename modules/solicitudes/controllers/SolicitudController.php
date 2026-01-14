@@ -18,6 +18,7 @@ use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Reporting\Services\ReportService;
 use Models\SettingsModel;
+use Controllers\DerivacionController;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -1921,6 +1922,111 @@ class SolicitudController extends BaseController
         ob_start();
         include __DIR__ . '/../views/prefactura_detalle.php';
         echo ob_get_clean();
+    }
+
+    public function rescrapeDerivacion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Faltan datos (form_id / hc_number).',
+                ],
+                400
+            );
+            return;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
+        if (!is_file($script)) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se encontró el script de scraping.',
+                ],
+                500
+            );
+            return;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s %s --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($formId),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $rawOutput = trim(implode("\n", $output));
+        $parsed = null;
+
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string) $output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se pudo interpretar la respuesta del scraper.',
+                    'raw_output' => $rawOutput,
+                    'exit_code' => $exitCode,
+                ],
+                500
+            );
+            return;
+        }
+
+        $codDerivacion = trim((string) ($parsed['codigo_derivacion'] ?? ''));
+        $archivoPath = trim((string) ($parsed['archivo_path'] ?? ''));
+        $derivacionId = null;
+        $saved = false;
+
+        if ($codDerivacion !== '' && $archivoPath !== '') {
+            $derivacionController = new DerivacionController($this->pdo);
+            $derivacionId = $derivacionController->guardarDerivacion(
+                $codDerivacion,
+                $formId,
+                $hcNumber,
+                $parsed['fecha_registro'] ?? null,
+                $parsed['fecha_vigencia'] ?? null,
+                $parsed['referido'] ?? null,
+                $parsed['diagnostico'] ?? null,
+                $parsed['sede'] ?? null,
+                $parsed['parentesco'] ?? null,
+                $archivoPath
+            );
+            $saved = $derivacionId !== false && $derivacionId !== null;
+        }
+
+        $this->json(
+            [
+                'success' => true,
+                'saved' => $saved,
+                'derivacion_id' => $derivacionId,
+                'payload' => $parsed,
+                'raw_output' => $rawOutput,
+                'exit_code' => $exitCode,
+            ],
+            200
+        );
     }
 
     public function getSolicitudesConDetalles(array $filtros = []): array

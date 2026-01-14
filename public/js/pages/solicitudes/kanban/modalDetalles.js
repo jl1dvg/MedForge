@@ -61,6 +61,33 @@ const ALERT_TEMPLATES = [
     },
 ];
 
+function syncPrefacturaContext({formId, hcNumber, solicitudId}) {
+    const payload = {
+        formId: formId || "",
+        hcNumber: hcNumber || "",
+        solicitudId: solicitudId || "",
+    };
+    window.__prefacturaCurrent = payload;
+
+    const button = document.getElementById("btnRescrapeDerivacion");
+    if (!button) {
+        return;
+    }
+
+    button.dataset.formId = payload.formId;
+    button.dataset.hcNumber = payload.hcNumber;
+    button.dataset.solicitudId = payload.solicitudId;
+}
+
+function getPrefacturaContextFromButton(button) {
+    const fallback = window.__prefacturaCurrent || {};
+    const formId = button?.dataset?.formId || fallback.formId || "";
+    const hcNumber = button?.dataset?.hcNumber || fallback.hcNumber || "";
+    const solicitudId = button?.dataset?.solicitudId || fallback.solicitudId || "";
+
+    return {formId, hcNumber, solicitudId};
+}
+
 function escapeHtml(value) {
     if (value === null || value === undefined) {
         return "";
@@ -909,6 +936,7 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     const modal = new bootstrap.Modal(modalElement);
     const content = document.getElementById("prefacturaContent");
 
+    syncPrefacturaContext({formId, hcNumber: hc, solicitudId});
     parkExamenesPrequirurgicosButton(modalElement);
 
     content.innerHTML = `
@@ -1524,6 +1552,77 @@ function handleContextualAction(event) {
     }
 }
 
+async function handleRescrapeDerivacion(event) {
+    const button = event.target.closest("#btnRescrapeDerivacion");
+    if (!button) {
+        return;
+    }
+
+    const {formId, hcNumber, solicitudId} = getPrefacturaContextFromButton(button);
+    if (!formId || !hcNumber) {
+        showToast("Faltan datos (form_id / hc_number) para re-scrapear", false);
+        return;
+    }
+
+    const defaultLabel = button.dataset.defaultLabel || button.textContent.trim();
+    button.dataset.defaultLabel = defaultLabel;
+    button.disabled = true;
+    button.textContent = "⏳ Re-scrapeando…";
+
+    try {
+        const response = await fetch("/solicitudes/re-scrape-derivacion", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({form_id: formId, hc_number: hcNumber}),
+            credentials: "include",
+        });
+
+        let data = null;
+        let rawText = "";
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            data = await response.json();
+        } else {
+            rawText = await response.text();
+            try {
+                data = JSON.parse(rawText);
+            } catch (error) {
+                data = null;
+            }
+        }
+
+        if (!response.ok || !data?.success) {
+            const errorMessage =
+                data?.message ||
+                data?.error ||
+                "No se pudo re-scrapear la derivación";
+            showToast(errorMessage, false);
+            return;
+        }
+
+        showToast(
+            data?.saved
+                ? "Derivación actualizada correctamente"
+                : "Scraping completado, sin cambios guardados",
+            true
+        );
+
+        if (solicitudId) {
+            solicitudDetalleCache.delete(String(solicitudId));
+        }
+        abrirPrefactura({hc: hcNumber, formId, solicitudId});
+    } catch (error) {
+        console.error("Error re-scrapeando derivación", error);
+        showToast(
+            error?.message || "No se pudo re-scrapear la derivación",
+            false
+        );
+    } finally {
+        button.disabled = false;
+        button.textContent = button.dataset.defaultLabel || "🔄 Re-scrapear derivación";
+    }
+}
+
 export function inicializarModalDetalles() {
     if (prefacturaListenerAttached) {
         return;
@@ -1532,4 +1631,5 @@ export function inicializarModalDetalles() {
     prefacturaListenerAttached = true;
     document.addEventListener("click", handlePrefacturaClick);
     document.addEventListener("click", handleContextualAction);
+    document.addEventListener("click", handleRescrapeDerivacion);
 }

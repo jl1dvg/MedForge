@@ -1488,6 +1488,9 @@ $reporting = array_merge(
                 </div>
             </div>
             <div class="modal-footer d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
+                    🔄 Re-scrapear derivación
+                </button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
