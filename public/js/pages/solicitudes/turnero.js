@@ -1,7 +1,8 @@
-import { getKanbanConfig, getRealtimeConfig } from './kanban/config.js';
+import { getKanbanConfig, getRealtimeConfig, getTurneroConfig } from './kanban/config.js';
 
 const ENDPOINT = `${getKanbanConfig().basePath}/turnero-data`;
-const REFRESH_INTERVAL = 30000;
+const resolvedRefresh = Number(getTurneroConfig().refreshMs);
+const REFRESH_INTERVAL = Number.isFinite(resolvedRefresh) && resolvedRefresh > 0 ? resolvedRefresh : 30000;
 
 const DEFAULT_CHANNELS = {
     solicitudes: 'solicitudes-kanban',
