@@ -1693,9 +1693,9 @@ $doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
                 <td colspan=34 class=verde_010>SELLO</td>
             </tr>
             <tr>
-                <td colspan=17 class=blanco><?php echo htmlspecialchars($solicitud['cedula_doctor']); ?></td>
+                <td colspan=17 class=blanco><?php echo htmlspecialchars($solicitud['doctor_cedula']); ?></td>
                 <td colspan=28
-                    class=blanco><?php echo "<img src='" . htmlspecialchars($solicitud['firma_doctor']) . "' alt='Imagen de la firma' style='max-height: 25px;'>";
+                    class=blanco><?php echo "<img src='" . htmlspecialchars($solicitud['doctor_firma']) . "' alt='Imagen de la firma' style='max-height: 25px;'>";
                     ?></td>
                 <td colspan=34 class=blanco>&nbsp;
                 </td>
