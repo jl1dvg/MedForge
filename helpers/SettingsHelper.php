@@ -1713,7 +1713,8 @@ class SettingsHelper
         foreach ($section['groups'] as $group) {
             foreach ($group['fields'] as $field) {
                 $key = $field['key'];
-                $raw = $input[$key] ?? null;
+                $altKey = str_replace('.', '_', $key);
+                $raw = $input[$key] ?? $input[$altKey] ?? null;
 
                 if (($field['sensitive'] ?? false) && ($raw === null || $raw === '')) {
                     continue;

@@ -104,9 +104,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_VISIBLE_KEYS = [
         'total-de-solicitudes',
         'sla-vencido',
-        'reprogramacion',
-        'consentimiento',
-        'equipo-con-mayor-carga',
+        'cobertura',
+        'oftalmologo',
+        'anestesia',
+        'listo',
     ];
     const OVERVIEW_STORAGE_KEY = 'solicitudes:overview:expanded';
     const OVERVIEW_TOGGLE_ID = 'solicitudesOverviewToggle';
@@ -590,15 +591,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
         }
 
+        const metricKeyBySlug = Object.entries(quickMetricsConfig).reduce((acc, [key, config]) => {
+            if (config?.estado) {
+                acc[normalizeEstado(config.estado)] = key;
+            }
+            return acc;
+        }, {});
+
         Object.entries(estadosMeta).forEach(([slug, meta]) => {
             // Omitir estados excluidos en el overview
             if (OVERVIEW_EXCLUDED_STATES.has(slug)) return;
             const count = counts[slug] || 0;
             const porcentaje = total ? Math.round((count / total) * 100) : 0;
-            const metricKeyBySlug = {
-                'apto-anestesia': 'anestesia',
-                'revision-codigos': 'cobertura',
-            };
             const metricKey = metricKeyBySlug[slug];
             cards.push(createOverviewCard({
                 title: meta?.label ?? slug,

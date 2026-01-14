@@ -247,6 +247,13 @@ class SolicitudSettingsService
 
         $decoded = json_decode($value, true);
         if (!is_array($decoded)) {
+            $normalized = $this->normalizeLooseJson($value);
+            if ($normalized !== $value) {
+                $decoded = json_decode($normalized, true);
+            }
+        }
+
+        if (!is_array($decoded)) {
             JsonLogger::log(
                 'solicitudes_settings',
                 'Settings de solicitudes con JSON inválido',
@@ -260,5 +267,23 @@ class SolicitudSettingsService
         }
 
         return $decoded;
+    }
+
+    private function normalizeLooseJson(string $value): string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return $value;
+        }
+
+        $normalized = $trimmed;
+        $normalized = str_replace('=>', ':', $normalized);
+        $normalized = preg_replace("/'([^']*)'/", '"$1"', $normalized) ?? $normalized;
+        $normalized = preg_replace('/,\s*([}\]])/', '$1', $normalized) ?? $normalized;
+        if (str_starts_with($normalized, '[') && str_ends_with($normalized, ']')) {
+            $normalized = '{' . substr($normalized, 1, -1) . '}';
+        }
+
+        return $normalized;
     }
 }
