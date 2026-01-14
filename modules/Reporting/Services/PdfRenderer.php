@@ -108,6 +108,17 @@ class PdfRenderer
 
         $mpdf = new Mpdf($config);
 
+        $inlineCss = '';
+        $bodyHtml = $html;
+
+        if (str_contains($html, '<style') || str_contains($html, '<head') || str_contains($html, '<body')) {
+            [$bodyHtml, $inlineCss] = $this->extractBodyAndCss($html);
+        }
+
+        if ($inlineCss !== '') {
+            $mpdf->WriteHTML($inlineCss, HTMLParserMode::HEADER_CSS);
+        }
+
         if (!empty($options['css'])) {
             $cssPath = $this->resolveTemplate($options['css']);
             if (!is_file($cssPath)) {
@@ -122,11 +133,31 @@ class PdfRenderer
             $mpdf->WriteHTML($stylesheet, HTMLParserMode::HEADER_CSS);
         }
 
-        $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY);
+        $mpdf->WriteHTML($bodyHtml, HTMLParserMode::HTML_BODY);
 
         $filename = $options['filename'] ?? 'documento.pdf';
         $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'I');
 
         return $mpdf->Output($filename, $destination);
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function extractBodyAndCss(string $html): array
+    {
+        $css = '';
+        if (preg_match_all('/<style[^>]*>(.*?)<\\/style>/is', $html, $matches)) {
+            $css = trim(implode("\n", $matches[1]));
+        }
+
+        $body = $html;
+        if (preg_match('/<body[^>]*>(.*)<\\/body>/is', $html, $bodyMatches)) {
+            $body = $bodyMatches[1];
+        }
+
+        $body = preg_replace('/<style[^>]*>.*?<\\/style>/is', '', $body) ?? $body;
+
+        return [$body, $css];
     }
 }
