@@ -314,8 +314,8 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'pdf')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'pdf')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'pdf') {
@@ -420,8 +420,8 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'excel')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'excel')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'excel') {
@@ -995,11 +995,11 @@ class SolicitudController extends BaseController
      */
     private function sanitizeReportFilters(array $filters): array
     {
-        $search = trim((string) ($filters['search'] ?? ''));
-        $doctor = trim((string) ($filters['doctor'] ?? ''));
-        $afiliacion = trim((string) ($filters['afiliacion'] ?? ''));
-        $prioridad = trim((string) ($filters['prioridad'] ?? ''));
-        $estado = trim((string) ($filters['estado'] ?? ''));
+        $search = trim((string)($filters['search'] ?? ''));
+        $doctor = trim((string)($filters['doctor'] ?? ''));
+        $afiliacion = trim((string)($filters['afiliacion'] ?? ''));
+        $prioridad = trim((string)($filters['prioridad'] ?? ''));
+        $estado = trim((string)($filters['estado'] ?? ''));
 
         $allowedPriorities = ['normal', 'pendiente', 'urgente'];
         if ($prioridad !== '' && !in_array(strtolower($prioridad), $allowedPriorities, true)) {
@@ -1010,7 +1010,7 @@ class SolicitudController extends BaseController
         $dateTo = $this->normalizeDateInput($filters['date_to'] ?? null);
 
         if (!$dateFrom && !$dateTo && !empty($filters['fechaTexto'])) {
-            [$dateFrom, $dateTo] = $this->parseDateRange((string) $filters['fechaTexto']);
+            [$dateFrom, $dateTo] = $this->parseDateRange((string)$filters['fechaTexto']);
         }
 
         return [
@@ -1030,7 +1030,7 @@ class SolicitudController extends BaseController
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
         if ($value === '') {
             return null;
         }
@@ -1094,7 +1094,7 @@ class SolicitudController extends BaseController
         return array_values(array_filter($solicitudes, static function (array $row) use ($term, $keys) {
             foreach ($keys as $key) {
                 $value = $row[$key] ?? '';
-                if ($value !== '' && str_contains(mb_strtolower((string) $value), $term)) {
+                if ($value !== '' && str_contains(mb_strtolower((string)$value), $term)) {
                     return true;
                 }
             }
@@ -1718,8 +1718,8 @@ class SolicitudController extends BaseController
                 [
                     'user_id' => $this->getCurrentUserId(),
                     'payload' => [
-                        'id' => isset($payload['id']) ? (int) $payload['id'] : null,
-                        'turno' => isset($payload['turno']) ? (int) $payload['turno'] : null,
+                        'id' => isset($payload['id']) ? (int)$payload['id'] : null,
+                        'turno' => isset($payload['turno']) ? (int)$payload['turno'] : null,
                     ],
                     'timestamp' => (new DateTimeImmutable('now'))->format(DATE_ATOM),
                 ]
@@ -1930,13 +1930,26 @@ class SolicitudController extends BaseController
 
     public function obtenerDatosParaVista($hc, $form_id)
     {
-        $data = $this->ensureDerivacion($form_id, $hc);
+        // 1) Cargar primero la data principal del modal (NO depende de derivación)
         $solicitud = $this->solicitudModel->obtenerDatosYCirujanoSolicitud($form_id, $hc);
         $paciente = $this->pacienteService->getPatientDetails($hc);
         $diagnostico = $this->solicitudModel->obtenerDxDeSolicitud($form_id);
         $consulta = $this->solicitudModel->obtenerConsultaDeSolicitud($form_id);
+
+        // 2) Derivación es opcional: solo intentamos cuando aplica por afiliación
+        $afiliacion = '';
+        if (is_array($solicitud)) {
+            $afiliacion = (string)($solicitud['afiliacion'] ?? $solicitud['afiliacion_nombre'] ?? $solicitud['aseguradora'] ?? '');
+        }
+        $afiliacion = strtoupper(trim($afiliacion));
+
+        $derivacion = null;
+        if ($this->shouldFetchDerivacion($afiliacion)) {
+            $derivacion = $this->ensureDerivacion((string)$form_id, (string)$hc);
+        }
+
         return [
-            'derivacion' => $data,
+            'derivacion' => $derivacion,
             'solicitud' => $solicitud,
             'paciente' => $paciente,
             'diagnostico' => $diagnostico,
@@ -1947,10 +1960,10 @@ class SolicitudController extends BaseController
     /**
      * Verifica derivación; si no existe, intenta scrapear y reconsultar.
      */
-    private function ensureDerivacion(string $formId, string $hcNumber): ?array
+    private function ensureDerivacion(string $formId, string $hcNumber, bool $forceScrape = false): ?array
     {
         $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
-        if ($derivacion) {
+        if ($derivacion && !$forceScrape) {
             return $derivacion;
         }
 
@@ -1968,12 +1981,107 @@ class SolicitudController extends BaseController
 
         // Ejecutar scraping para poblar derivaciones_form_id cuando falte.
         try {
-            @exec($cmd);
+            @exec($cmd, $out, $code);
+
+            if ($code !== 0) {
+                JsonLogger::log(
+                    'derivaciones',
+                    'Scrape derivación devolvió código no-cero',
+                    null,
+                    [
+                        'form_id' => $formId,
+                        'hc_number' => $hcNumber,
+                        'exit_code' => $code,
+                        'output_preview' => is_array($out) ? implode("\n", array_slice($out, 0, 10)) : null,
+                    ]
+                );
+            }
         } catch (\Throwable $e) {
             // silenciar para no romper flujo de prefactura
         }
 
         return $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+    }
+
+    private function shouldFetchDerivacion(string $afiliacion): bool
+    {
+        $raw = trim($afiliacion);
+        if ($raw === '') {
+            return false;
+        }
+
+        // Normalizamos (minúsculas, sin tildes, sin símbolos) para comparar de forma robusta.
+        // Reutilizamos la misma normalización que usa el turnero para evitar duplicar lógica.
+        $key = $this->normalizarTurneroClave($raw);
+        if ($key === '') {
+            return false;
+        }
+
+        // Afiliaciones que realmente pertenecen a IESS (en tu data NO siempre viene la palabra "IESS").
+        $iess = [
+            'contribuyente voluntario',
+            'conyuge',
+            'conyuge pensionista',
+            'seguro campesino',
+            'seguro campesino jubilado',
+            'seguro general',
+            'seguro general jubilado',
+            'seguro general por montepio',
+            'seguro general tiempo parcial',
+        ];
+
+        // Normalizar lista IESS una sola vez por llamada (lista corta, costo despreciable).
+        $iessKeys = array_map(fn($v) => $this->normalizarTurneroClave($v), $iess);
+
+        if (in_array($key, $iessKeys, true)) {
+            return true;
+        }
+
+        // Otros convenios donde existe derivación.
+        // Nota: aquí comparamos también en clave normalizada.
+        return in_array($key, ['msp', 'issfa', 'isspol'], true);
+    }
+
+    public function rescrapeDerivacion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $hcNumber = (string)($payload['hc_number'] ?? $payload['hcNumber'] ?? $_POST['hc_number'] ?? $_POST['hcNumber'] ?? '');
+        $formId = (string)($payload['form_id'] ?? $payload['formId'] ?? $_POST['form_id'] ?? $_POST['formId'] ?? '');
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(['success' => false, 'error' => 'Faltan parámetros (hc_number, form_id)'], 400);
+            return;
+        }
+
+        try {
+            $derivacion = $this->ensureDerivacion($formId, $hcNumber, true);
+
+            $this->json([
+                'success' => true,
+                'derivacion' => $derivacion,
+                'message' => $derivacion ? 'Derivación actualizada.' : 'No se encontró derivación para este caso.',
+            ]);
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'derivaciones',
+                'Error al re-scrapear derivación',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $this->json([
+                'success' => false,
+                'error' => 'No se pudo re-scrapear derivación (ref: ' . $errorId . ')',
+            ], 500);
+        }
     }
 
     private function ordenarSolicitudes(array $solicitudes, string $criterio): array

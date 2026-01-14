@@ -1006,7 +1006,7 @@ $reporting = array_merge(
     <?php
     $basePath = '/solicitudes';
     if (defined('BASE_URL')) {
-        $baseUrlPath = parse_url((string) BASE_URL, PHP_URL_PATH) ?: '';
+        $baseUrlPath = parse_url((string)BASE_URL, PHP_URL_PATH) ?: '';
         $baseUrlPath = rtrim($baseUrlPath, '/');
         if ($baseUrlPath !== '') {
             $basePath = $baseUrlPath . '/solicitudes';
@@ -1488,6 +1488,9 @@ $reporting = array_merge(
                 </div>
             </div>
             <div class="modal-footer d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
+                    🔄 Re-scrapear derivación
+                </button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
@@ -1549,7 +1552,31 @@ $reporting = array_merge(
         });
     });
 </script>
+<script>
+    document.getElementById('btnRescrapeDerivacion')?.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/solicitudes/re-scrape-derivacion', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({form_id, hc_number})
+            });
 
+            const json = await res.json();
+
+            if (!json.success) {
+                // toast warning opcional
+                console.warn(json.error || 'No se encontró derivación');
+            }
+
+            // Recargar SOLO el contenido del modal
+            const html = await fetch(`/solicitudes/prefactura?form_id=${form_id}&hc_number=${hc_number}`).then(r => r.text());
+            document.getElementById('prefacturaContent').innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            // toast error
+        }
+    });
+</script>
 <script>
     window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
 </script>
