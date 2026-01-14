@@ -161,7 +161,8 @@ class SolicitudModel
                 sp.tipo,
                 pd.afiliacion,
                 sp.procedimiento,
-                sp.doctor,
+                sp.doctor AS doctor_raw,
+                COALESCE(NULLIF(TRIM(sp.doctor), ''), 'Sin asignar') AS doctor,
                 sp.estado,
                 cd.fecha,
                 sp.duracion,
@@ -184,9 +185,9 @@ class SolicitudModel
             LEFT JOIN derivaciones_form_id d ON d.form_id = sp.form_id AND d.hc_number = sp.hc_number
             LEFT JOIN users u ON LOWER(TRIM(sp.doctor)) = LOWER(TRIM(u.nombre))
             WHERE sp.procedimiento IS NOT NULL
-              AND sp.procedimiento <> ''
-              AND sp.procedimiento != 'SELECCIONE' 
-              AND sp.doctor != 'SELECCIONE'";
+              AND TRIM(sp.procedimiento) <> ''
+              AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+              AND (sp.doctor IS NULL OR TRIM(sp.doctor) = '' OR sp.doctor <> 'SELECCIONE')";
 
 
         // 🧩 Filtros dinámicos
@@ -198,7 +199,7 @@ class SolicitudModel
         }
 
         if (!empty($filtros['doctor'])) {
-            $sql .= " AND sp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
+            $sql .= " AND COALESCE(NULLIF(TRIM(sp.doctor), ''), 'Sin asignar') COLLATE utf8mb4_unicode_ci LIKE ?";
             $params[] = '%' . trim($filtros['doctor']) . '%';
         }
 
@@ -405,7 +406,7 @@ class SolicitudModel
                 return null;
             }
 
-            $estadoActualNormalizado = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? ''));
+            $estadoActualNormalizado = $this->normalizarEstadoTurnero((string)($registro['estado'] ?? ''));
 
             if ($estadoActualNormalizado === null) {
                 $this->db->rollBack();
@@ -413,7 +414,7 @@ class SolicitudModel
             }
 
             if (empty($registro['turno'])) {
-                $registro['turno'] = $this->asignarTurnoSiNecesario((int) $registro['id']);
+                $registro['turno'] = $this->asignarTurnoSiNecesario((int)$registro['id']);
             }
 
             $update = $this->db->prepare('UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id');
@@ -478,11 +479,11 @@ class SolicitudModel
         $actual = $consulta->fetchColumn();
 
         if ($actual !== false && $actual !== null) {
-            return (int) $actual;
+            return (int)$actual;
         }
 
         $maxStmt = $this->db->query('SELECT turno FROM solicitud_procedimiento WHERE turno IS NOT NULL ORDER BY turno DESC LIMIT 1 FOR UPDATE');
-        $maxTurno = $maxStmt ? (int) $maxStmt->fetchColumn() : 0;
+        $maxTurno = $maxStmt ? (int)$maxStmt->fetchColumn() : 0;
         $siguiente = $maxTurno + 1;
 
         $update = $this->db->prepare('UPDATE solicitud_procedimiento SET turno = :turno WHERE id = :id AND turno IS NULL');
@@ -493,7 +494,7 @@ class SolicitudModel
         if ($update->rowCount() === 0) {
             $consulta->execute();
             $actual = $consulta->fetchColumn();
-            return $actual !== false ? (int) $actual : null;
+            return $actual !== false ? (int)$actual : null;
         }
 
         return $siguiente;
