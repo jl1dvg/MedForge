@@ -1,5 +1,6 @@
 import { poblarAfiliacionesUnicas, poblarDoctoresUnicos } from './kanban/filtros.js';
 import { initKanban } from './kanban/index.js';
+import { updateKanbanCardSla } from './kanban/renderer.js';
 import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 import { createNotificationPanel } from './notifications/panel.js';
@@ -18,6 +19,12 @@ import {
 
 document.addEventListener('DOMContentLoaded', () => {
     const config = getKanbanConfig();
+    const normalizedBasePath = config.basePath && config.basePath !== '/'
+        ? config.basePath.replace(/\/+$/, '')
+        : '';
+    const normalizedApiBasePath = config.apiBasePath && config.apiBasePath !== '/'
+        ? config.apiBasePath.replace(/\/+$/, '')
+        : '';
     const realtimeConfig = getRealtimeConfig();
     const reportingConfig = getReportingConfig();
     const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
@@ -72,6 +79,101 @@ document.addEventListener('DOMContentLoaded', () => {
         if (merged.sms) labels.push('SMS');
         if (merged.daily_summary) labels.push('Resumen diario');
         return labels;
+    };
+
+    const buildEstadoApiCandidates = () => {
+        const candidates = [
+            '/solicitudes/api/estado',
+            '/api/solicitudes/estado',
+        ];
+
+        if (normalizedApiBasePath) {
+            candidates.push(`${normalizedApiBasePath}/solicitudes/estado`);
+        }
+
+        if (normalizedBasePath) {
+            candidates.push(`${normalizedBasePath}/api/estado`);
+        }
+
+        return Array.from(new Set(candidates));
+    };
+
+    const fetchDetalleSolicitud = async ({ solicitudId, formId, hcNumber }) => {
+        if (!hcNumber) {
+            throw new Error('No se puede solicitar detalle sin HC');
+        }
+
+        const searchParams = new URLSearchParams({ hcNumber });
+        if (formId) {
+            searchParams.set('form_id', formId);
+        }
+
+        const candidates = buildEstadoApiCandidates();
+        let lastError = null;
+
+        for (const base of candidates) {
+            try {
+                const response = await fetch(`${base}?${searchParams.toString()}`, {
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) {
+                    lastError = new Error(`HTTP ${response.status}`);
+                    continue;
+                }
+                const payload = await response.json();
+                const lista = Array.isArray(payload?.solicitudes) ? payload.solicitudes : [];
+                const detalle = lista.find(item =>
+                    String(item.id) === String(solicitudId)
+                    || String(item.form_id) === String(formId)
+                );
+                if (!detalle) {
+                    throw new Error('No se encontró información de la solicitud');
+                }
+                return detalle;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError || new Error('No se pudo completar la solicitud');
+    };
+
+    const refreshSolicitudFromBackend = async ({ solicitudId, formId, hcNumber }) => {
+        if (!solicitudId && !formId && !hcNumber) {
+            return;
+        }
+
+        try {
+            const detalle = await fetchDetalleSolicitud({ solicitudId, formId, hcNumber });
+            const store = getDataStore();
+            const target = Array.isArray(store)
+                ? store.find(item => String(item.id) === String(solicitudId))
+                : null;
+            if (target && typeof target === 'object') {
+                Object.assign(target, detalle);
+            }
+            updateKanbanCardSla(detalle);
+        } catch (error) {
+            console.warn('No se pudo refrescar SLA desde backend', error);
+        }
+    };
+
+    const realtimeRefreshTimers = new Map();
+    const scheduleRealtimeRefresh = ({ solicitudId, formId, hcNumber }) => {
+        const key = solicitudId ? String(solicitudId) : formId ? `form-${formId}` : `hc-${hcNumber}`;
+        if (!key) {
+            return;
+        }
+        if (realtimeRefreshTimers.has(key)) {
+            clearTimeout(realtimeRefreshTimers.get(key));
+        }
+        realtimeRefreshTimers.set(
+            key,
+            setTimeout(() => {
+                realtimeRefreshTimers.delete(key);
+                refreshSolicitudFromBackend({ solicitudId, formId, hcNumber });
+            }, 350)
+        );
     };
 
     if (!realtimeConfig.enabled) {
@@ -1362,6 +1464,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const paciente = data?.full_name || (data?.hc_number ? `HC ${data.hc_number}` : `Solicitud #${data?.id ?? ''}`);
                     const nuevoEstado = data?.estado || 'Actualizada';
                     const estadoAnterior = data?.estado_anterior || 'Sin estado previo';
+                    const solicitudId = data?.id ?? data?.solicitud_id ?? null;
+                    const formId = data?.form_id ?? data?.formId ?? null;
+                    const hcNumber = data?.hc_number
+                        ?? data?.hcNumber
+                        ?? (solicitudId
+                            ? getDataStore().find(item => String(item.id) === String(solicitudId))?.hc_number
+                            : null);
 
                     notificationPanel.pushRealtime({
                         dedupeKey: `estado-${data?.id ?? Date.now()}-${nuevoEstado}`,
@@ -1384,6 +1493,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     showToast(`📌 ${paciente}: ahora está en ${nuevoEstado}`, true, toastDurationMs);
                     maybeShowDesktopNotification('Estado de solicitud', `${paciente} pasó a ${nuevoEstado}`);
+                    scheduleRealtimeRefresh({ solicitudId, formId, hcNumber });
                     window.aplicarFiltros();
                 });
             }

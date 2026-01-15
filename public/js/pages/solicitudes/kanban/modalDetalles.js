@@ -7,6 +7,7 @@ import {
 import {formatTurno} from "./turnero.js";
 import {actualizarEstadoSolicitud} from "./estado.js";
 import {showToast} from "./toast.js";
+import {updateKanbanCardSla} from "./renderer.js";
 
 let prefacturaListenerAttached = false;
 const solicitudDetalleCache = new Map();
@@ -1065,6 +1066,30 @@ async function fetchDetalleSolicitud({hcNumber, solicitudId, formId}) {
     return detalle;
 }
 
+async function refreshKanbanBadgeFromDetalle({hcNumber, solicitudId, formId}) {
+    if (!solicitudId && !formId && !hcNumber) {
+        return;
+    }
+
+    try {
+        const detalle = await fetchDetalleSolicitud({
+            hcNumber,
+            solicitudId,
+            formId,
+        });
+        const store = getDataStore();
+        const target = Array.isArray(store)
+            ? store.find((item) => String(item.id) === String(solicitudId))
+            : null;
+        if (target && typeof target === "object") {
+            Object.assign(target, detalle);
+        }
+        updateKanbanCardSla(detalle);
+    } catch (error) {
+        console.warn("No se pudo refrescar badge SLA", error);
+    }
+}
+
 async function hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber}) {
     const base = findSolicitudById(solicitudId) || {};
     if (!hcNumber && !base.hc_number) {
@@ -1183,6 +1208,7 @@ function abrirPrefactura({hc, formId, solicitudId}) {
             const {html, solicitud} = coreResult.value;
             const contextual = buildContextualActionsHtml(solicitud || {});
             content.innerHTML = `${contextual}${html}`;
+            updateKanbanCardSla(solicitud);
             relocatePatientAlert(solicitudId);
             renderEstadoContext(solicitudId);
             actualizarBotonesModal(solicitudId, solicitud);
@@ -1225,6 +1251,12 @@ function abrirPrefactura({hc, formId, solicitudId}) {
                     derivacionContainer.innerHTML = buildDerivacionMissingHtml();
                 }
             }
+
+            refreshKanbanBadgeFromDetalle({
+                hcNumber: hc,
+                solicitudId,
+                formId,
+            });
         }
     );
 
@@ -1845,6 +1877,16 @@ async function handleRescrapeDerivacion(event) {
 
         if (solicitudId) {
             solicitudDetalleCache.delete(String(solicitudId));
+            const store = getDataStore();
+            const item = Array.isArray(store)
+                ? store.find((entry) => String(entry.id) === String(solicitudId))
+                : null;
+            if (item && typeof item === "object") {
+                delete item.detalle_hidratado;
+            }
+        }
+        if (typeof window.aplicarFiltros === "function") {
+            window.aplicarFiltros();
         }
         abrirPrefactura({hc: hcNumber, formId, solicitudId});
     } catch (error) {
