@@ -377,8 +377,42 @@ const PRIORIDAD_META = {
 };
 
 function getSlaMeta(status) {
-    const normalized = (status || "").toString().trim();
+    const normalized = (status || "").toString().trim().toLowerCase();
     return SLA_META[normalized] || SLA_META.sin_fecha;
+}
+
+export function updateKanbanCardSla(solicitud = {}) {
+    if (!solicitud) {
+        return;
+    }
+    if (
+        solicitud.sla_status === undefined ||
+        solicitud.sla_status === null ||
+        String(solicitud.sla_status).trim() === ""
+    ) {
+        return;
+    }
+    const id = solicitud.id ?? solicitud.solicitud_id ?? null;
+    if (!id) {
+        return;
+    }
+    const safeId =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(String(id))
+            : String(id).replace(/"/g, '\\"');
+    const card = document.querySelector(`.kanban-card[data-id="${safeId}"]`);
+    if (!card) {
+        return;
+    }
+    const badge = card.querySelector(".badge-sla");
+    if (!badge) {
+        return;
+    }
+    const slaMeta = getSlaMeta(solicitud.sla_status);
+    badge.className = slaMeta.badgeClass;
+    badge.innerHTML = `<i class="mdi ${escapeHtml(
+        slaMeta.icon
+    )} me-1"></i>${escapeHtml(slaMeta.label)}`;
 }
 
 function getPrioridadMeta(priority) {
