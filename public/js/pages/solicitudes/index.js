@@ -459,20 +459,76 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span class="table-avatar-placeholder">${escapeHtml(getInitials(nombre || ''))}</span>`;
     };
 
-    const aplicarFiltrosLocales = (data) => {
-        const term = (searchInput?.value || '').trim().toLowerCase();
-        if (!term) {
-            return Array.isArray(data) ? [...data] : [];
+    const parseLocalDate = (value) => {
+        if (!value) {
+            return null;
         }
+        if (value instanceof Date) {
+            return Number.isNaN(value.getTime()) ? null : value;
+        }
+        const raw = typeof value === 'string' ? value.trim() : String(value);
+        if (!raw) {
+            return null;
+        }
+        const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const normalizeUpper = (value) => (value ?? '').toString().trim().toUpperCase();
+    const isChecked = (id) => Boolean(document.getElementById(id)?.checked);
+    const getValue = (id) => document.getElementById(id)?.value ?? '';
+
+    const aplicarFiltrosLocales = (data) => {
+        const items = Array.isArray(data) ? data : [];
+        const term = (searchInput?.value || '').trim().toLowerCase();
+        const tipoSeleccionado = normalizeUpper(getValue('kanbanTipoFilter'));
+
+        const filtrarDerivacionVencida = isChecked('kanbanDerivacionVencidaFilter');
+        const filtrarDerivacionPorVencer = isChecked('kanbanDerivacionPorVencerFilter');
+        const derivacionDiasRaw = Number.parseInt(getValue('kanbanDerivacionDiasInput'), 10);
+        const diasPorVencer = Number.isFinite(derivacionDiasRaw) ? Math.max(0, derivacionDiasRaw) : 0;
+        const filtrarSinResponsable = isChecked('kanbanCrmSinResponsableFilter');
+
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const msPerDay = 24 * 60 * 60 * 1000;
 
         const keys = ['full_name', 'hc_number', 'procedimiento', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
 
-        return (Array.isArray(data) ? data : []).filter(item =>
-            keys.some(key => {
+        return items.filter(item => {
+            if (tipoSeleccionado && normalizeUpper(item?.tipo) !== tipoSeleccionado) {
+                return false;
+            }
+
+            if (filtrarSinResponsable && item?.crm_responsable_id) {
+                return false;
+            }
+
+            if (filtrarDerivacionVencida || filtrarDerivacionPorVencer) {
+                const fechaDerivacion = parseLocalDate(item?.derivacion_fecha_vigencia);
+                if (!fechaDerivacion) {
+                    return false;
+                }
+                const diffDays = Math.ceil((fechaDerivacion - todayStart) / msPerDay);
+                const vence = diffDays < 0;
+                const porVencer = diffDays >= 0 && diffDays <= diasPorVencer;
+                const matchDerivacion = (filtrarDerivacionVencida && vence)
+                    || (filtrarDerivacionPorVencer && porVencer);
+                if (!matchDerivacion) {
+                    return false;
+                }
+            }
+
+            if (!term) {
+                return true;
+            }
+
+            return keys.some(key => {
                 const value = item?.[key];
                 return value && value.toString().toLowerCase().includes(term);
-            })
-        );
+            });
+        });
     };
 
     const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle, metricKey }) => {
@@ -819,12 +875,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     switchView(currentView, false);
 
+    const applyLocalFilters = () => renderFromCache();
+
     let searchDebounce = null;
     if (searchInput) {
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
             searchDebounce = setTimeout(() => {
-                renderFromCache();
+                applyLocalFilters();
             }, 220);
         });
     }
@@ -832,7 +890,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const obtenerFiltros = () => ({
         afiliacion: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
         doctor: document.getElementById('kanbanDoctorFilter')?.value ?? '',
-        prioridad: document.getElementById('kanbanSemaforoFilter')?.value ?? '',
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
         search: searchInput?.value ?? '',
     });
@@ -868,7 +925,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 search: filtros.search,
                 doctor: filtros.doctor,
                 afiliacion: filtros.afiliacion,
-                prioridad: filtros.prioridad,
                 date_from: range.from,
                 date_to: range.to,
             },
@@ -1083,11 +1139,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!f) return;
         const afSelect = document.getElementById('kanbanAfiliacionFilter');
         const docSelect = document.getElementById('kanbanDoctorFilter');
-        const priSelect = document.getElementById('kanbanSemaforoFilter');
         const dateInput = document.getElementById('kanbanDateFilter');
         if (afSelect && f.afiliacion !== undefined) afSelect.value = f.afiliacion;
         if (docSelect && f.doctor !== undefined) docSelect.value = f.doctor;
-        if (priSelect && f.prioridad !== undefined) priSelect.value = f.prioridad;
         if (dateInput && f.fechaTexto !== undefined) dateInput.value = f.fechaTexto;
         if (searchInput && f.search !== undefined) searchInput.value = f.search;
     };
@@ -1158,12 +1212,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.aplicarFiltros = () => cargarKanban(obtenerFiltros());
 
-    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter', 'kanbanSemaforoFilter'].forEach(id => {
+    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener('change', () => window.aplicarFiltros());
         }
     });
+
+    [
+        'kanbanTipoFilter',
+        'kanbanDerivacionVencidaFilter',
+        'kanbanDerivacionPorVencerFilter',
+        'kanbanCrmSinResponsableFilter',
+    ].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', applyLocalFilters);
+        }
+    });
+
+    const derivacionDiasInput = document.getElementById('kanbanDerivacionDiasInput');
+    if (derivacionDiasInput) {
+        derivacionDiasInput.addEventListener('input', applyLocalFilters);
+    }
 
     if (dateFilter && !dateFilter.value) {
         dateFilter.value = defaultDateRange.label;
