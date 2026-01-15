@@ -26,14 +26,14 @@ $tableOptions = $grupoConfig['tableOptions'] ?? [];
 $pageLength = isset($tableOptions['pageLength']) ? (int)$tableOptions['pageLength'] : 25;
 $defaultOrder = $tableOptions['defaultOrder'] ?? 'fecha_ingreso_desc';
 $orderMap = [
-    'fecha_ingreso_desc' => ['column' => 5, 'dir' => 'desc'],
-    'fecha_ingreso_asc' => ['column' => 5, 'dir' => 'asc'],
-    'nombre_asc' => ['column' => 4, 'dir' => 'asc'],
-    'nombre_desc' => ['column' => 4, 'dir' => 'desc'],
-    'monto_desc' => ['column' => 11, 'dir' => 'desc'],
-    'monto_asc' => ['column' => 11, 'dir' => 'asc'],
+    'fecha_ingreso_desc' => ['column' => 6, 'dir' => 'desc'],
+    'fecha_ingreso_asc' => ['column' => 6, 'dir' => 'asc'],
+    'nombre_asc' => ['column' => 5, 'dir' => 'asc'],
+    'nombre_desc' => ['column' => 5, 'dir' => 'desc'],
+    'monto_desc' => ['column' => 12, 'dir' => 'desc'],
+    'monto_asc' => ['column' => 12, 'dir' => 'asc'],
 ];
-$defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 5;
+$defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 6;
 $defaultOrderDir = $orderMap[$defaultOrder]['dir'] ?? 'desc';
 $afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
 if (empty($afiliacionesPermitidas)) {
@@ -47,6 +47,7 @@ if (empty($afiliacionesPermitidas)) {
         'seguro general jubilado',
         'seguro general por montepio',
         'seguro general tiempo parcial',
+        'iess',
         'hijos dependientes',
     ];
 }
@@ -54,6 +55,7 @@ $afiliacionesPermitidas = array_map(
     fn($afiliacion) => InformesHelper::normalizarAfiliacion($afiliacion),
     $afiliacionesPermitidas
 );
+$afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
 
 ?>
 
@@ -112,6 +114,9 @@ $afiliacionesPermitidas = array_map(
                                             $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
                                         }
                                         $afiliacion = InformesHelper::normalizarAfiliacion($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? '');
+                                        if ($afiliacionSeleccionada && $afiliacionSeleccionada !== $afiliacion) {
+                                            continue;
+                                        }
                                         if (in_array($afiliacion, $afiliacionesPermitidas, true)) {
                                             $mesesValidos[$mes] = true;
                                         }
@@ -155,6 +160,25 @@ $afiliacionesPermitidas = array_map(
                                         value="<?= htmlspecialchars($filtros['hc_number'] ?? '') ?>"
                                         placeholder="Ej: 0102345678"
                                 >
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="afiliacion" class="form-label fw-bold">
+                                    <i class="mdi mdi-domain"></i> Filtrar por afiliación:
+                                </label>
+                                <select name="afiliacion" id="afiliacion" class="form-select">
+                                    <option value="">Todas</option>
+                                    <?php
+                                    $afiliacionesDisponibles = array_unique($afiliacionesPermitidas);
+                                    sort($afiliacionesDisponibles);
+                                    foreach ($afiliacionesDisponibles as $afiliacionOption):
+                                        $normalizedOption = InformesHelper::normalizarAfiliacion($afiliacionOption);
+                                        $selected = $afiliacionSeleccionada === $normalizedOption ? 'selected' : '';
+                                        $label = ucwords($afiliacionOption);
+                                        echo "<option value='{$normalizedOption}' {$selected}>{$label}</option>";
+                                    endforeach;
+                                    ?>
+                                </select>
                             </div>
 
                             <div class="col-md-4">
@@ -374,6 +398,7 @@ $afiliacionesPermitidas = array_map(
                                                         <th class="text-center"><input type="checkbox" class="form-check-input select-all-derivaciones" title="Seleccionar visibles (filas sin código)"></th>
                                                         <th>#</th>
                                                         <th>🏛️</th>
+                                                        <th>Afiliación</th>
                                                         <th>🪪 Cédula</th>
                                                         <th>👤 Nombres</th>
                                                         <th>📅➕</th>
@@ -396,6 +421,7 @@ $afiliacionesPermitidas = array_map(
                                                         $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
                                                         $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
                                                         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
+                                                        $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
                                                         $formIdsPaciente = implode(', ', $info['form_ids']);
                                                         $puedeSeleccionar = empty($codigoDerivacion);
                                                         ?>
@@ -411,6 +437,7 @@ $afiliacionesPermitidas = array_map(
                                                             </td>
                                                             <td class="text-center"><?= $n ?></td>
                                                             <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
+                                                            <td><?= htmlspecialchars($afiliacionTexto) ?></td>
                                                             <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
                                                             <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
                                                             <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>

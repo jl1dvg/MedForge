@@ -47,6 +47,7 @@ class InformesController extends BaseController
                     'seguro general jubilado',
                     'seguro general por montepio',
                     'seguro general tiempo parcial',
+                    'iess',
                     'hijos dependientes',
                 ],
                 'excelButtons' => [
@@ -317,6 +318,7 @@ class InformesController extends BaseController
             'apellido' => $_GET['apellido'] ?? '',
             'hc_number' => $_GET['hc_number'] ?? '',
             'derivacion' => $_GET['derivacion'] ?? '',
+            'afiliacion' => $_GET['afiliacion'] ?? '',
         ];
 
         $mesSeleccionado = $filtros['mes'];
