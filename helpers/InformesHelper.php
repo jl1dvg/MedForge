@@ -200,6 +200,7 @@ class InformesHelper
 
         $hcFiltro = trim((string)($filtros['hc_number'] ?? ''));
         $derivacionFiltro = $filtros['derivacion'] ?? '';
+        $afiliacionFiltro = self::normalizarAfiliacion($filtros['afiliacion'] ?? '');
 
         $consolidado = [];
 
@@ -210,6 +211,7 @@ class InformesHelper
             }
             $afiliacion = self::normalizarAfiliacion($pacienteInfo['afiliacion'] ?? '');
             if ($afiliacionesPermitidas && !in_array($afiliacion, $afiliacionesPermitidas, true)) continue;
+            if ($afiliacionFiltro !== '' && $afiliacionFiltro !== $afiliacion) continue;
 
             if ($hcFiltro !== '') {
                 $cedulaPaciente = (string)($pacienteInfo['cedula'] ?? $pacienteInfo['ci'] ?? $pacienteInfo['identificacion'] ?? '');
