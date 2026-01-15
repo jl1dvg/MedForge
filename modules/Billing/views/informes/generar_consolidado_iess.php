@@ -18,6 +18,10 @@ $formato = strtoupper($_GET['formato'] ?? 'IESS');
 $esFormatoSoam = in_array($formato, ['SOAM', 'IESS_SOAM'], true);
 
 $mes = $_GET['mes'] ?? null;
+$afiliacion = $_GET['afiliacion'] ?? null;
+$apellido = $_GET['apellido'] ?? null;
+$hcNumber = $_GET['hc_number'] ?? null;
+$derivacion = $_GET['derivacion'] ?? null;
 $categoria = $_GET['categoria'] ?? null;
 $categoria = is_string($categoria) ? strtolower(trim($categoria)) : null;
 $categoriasValidas = ['procedimientos', 'consulta', 'imagenes'];
@@ -29,13 +33,39 @@ if ($categoria && !in_array($categoria, $categoriasValidas, true)) {
 $soloProcedimientos = in_array($categoria, ['consulta', 'imagenes'], true);
 $facturas = $billingController->obtenerFacturasDisponibles();
 
-
 $pacientesCache = [];
 $datosCache = [];
 $cacheDerivaciones = [];
-$filtros = ['mes' => $mes];
+$filtros = [
+    'mes' => $mes,
+    'afiliacion' => $afiliacion,
+    'apellido' => $apellido,
+    'hc_number' => $hcNumber,
+    'derivacion' => $derivacion,
+];
+$afiliacionesPermitidas = [
+    'contribuyente voluntario',
+    'conyuge',
+    'conyuge pensionista',
+    'seguro campesino',
+    'seguro campesino jubilado',
+    'seguro general',
+    'seguro general jubilado',
+    'seguro general por montepio',
+    'seguro general tiempo parcial',
+    'iess',
+    'hijos dependientes',
+];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], $categoria, $cacheDerivaciones);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+    $facturas,
+    $filtros,
+    $billingController,
+    $pacienteService,
+    $afiliacionesPermitidas,
+    $categoria,
+    $cacheDerivaciones
+);
 
 $formIdsConsolidado = [];
 foreach ($consolidado as $pacientesDelMes) {

@@ -481,10 +481,22 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                             <?php endforeach; ?>
                         </div>
                         <?php
-                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS') use ($basePath, $mesSeleccionado): string {
+                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS') use ($basePath, $mesSeleccionado, $filtros): string {
                             $params = [];
                             if (!empty($mesSeleccionado)) {
                                 $params['mes'] = $mesSeleccionado;
+                            }
+                            if (!empty($filtros['afiliacion'])) {
+                                $params['afiliacion'] = $filtros['afiliacion'];
+                            }
+                            if (!empty($filtros['apellido'])) {
+                                $params['apellido'] = $filtros['apellido'];
+                            }
+                            if (!empty($filtros['hc_number'])) {
+                                $params['hc_number'] = $filtros['hc_number'];
+                            }
+                            if (!empty($filtros['derivacion'])) {
+                                $params['derivacion'] = $filtros['derivacion'];
                             }
                             if (!empty($categoriaSlug)) {
                                 $params['categoria'] = $categoriaSlug;
