@@ -911,17 +911,51 @@ $reporting = array_merge(
                             <option value="">Todas</option>
                         </select>
                     </div>
-
                     <div class="col-lg-2 col-md-6">
-                        <label for="kanbanSemaforoFilter" class="form-label">Prioridad</label>
-                        <select id="kanbanSemaforoFilter" class="form-select">
+                        <label for="kanbanTipoFilter" class="form-label">Tipo de solicitud</label>
+                        <select id="kanbanTipoFilter" class="form-select">
                             <option value="">Todas</option>
-                            <option value="normal">🟢 Normal</option>
-                            <option value="pendiente">🟡 Pendiente</option>
-                            <option value="urgente">🔴 Urgente</option>
+                            <option value="CIRUGÍA">CIRUGÍA</option>
+                            <option value="PROCEDIMIENTO">PROCEDIMIENTO</option>
                         </select>
                     </div>
                 </div>
+
+                <div class="row g-3 mt-1 align-items-end">
+                    <div class="col-lg-5 col-md-12">
+                        <label class="form-label d-flex align-items-center gap-2">
+                            Derivación
+                            <span class="badge bg-light text-muted">opt-in</span>
+                        </label>
+                        <div class="d-flex flex-wrap gap-3 align-items-center">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="kanbanDerivacionVencidaFilter">
+                                <label class="form-check-label" for="kanbanDerivacionVencidaFilter">Mostrar solo
+                                    vencidas</label>
+                            </div>
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" id="kanbanDerivacionPorVencerFilter">
+                                <label class="form-check-label" for="kanbanDerivacionPorVencerFilter">Por vencer</label>
+                                <input type="number" min="0" step="1" value="14" class="form-control form-control-sm"
+                                       id="kanbanDerivacionDiasInput" style="width: 90px;" aria-label="Días por vencer">
+                                <span class="text-muted small">días</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label d-flex align-items-center gap-2">
+                            Responsable CRM
+                            <span class="badge bg-light text-muted">opt-in</span>
+                        </label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="kanbanCrmSinResponsableFilter">
+                            <label class="form-check-label" for="kanbanCrmSinResponsableFilter">Sin responsable
+                                asignado</label>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -1006,7 +1040,7 @@ $reporting = array_merge(
     <?php
     $basePath = '/solicitudes';
     if (defined('BASE_URL')) {
-        $baseUrlPath = parse_url((string) BASE_URL, PHP_URL_PATH) ?: '';
+        $baseUrlPath = parse_url((string)BASE_URL, PHP_URL_PATH) ?: '';
         $baseUrlPath = rtrim($baseUrlPath, '/');
         if ($baseUrlPath !== '') {
             $basePath = $baseUrlPath . '/solicitudes';

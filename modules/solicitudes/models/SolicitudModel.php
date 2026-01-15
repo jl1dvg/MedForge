@@ -198,12 +198,15 @@ class SolicitudModel
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
                 COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
-                tareas.proximo_vencimiento AS crm_proximo_vencimiento
+                tareas.proximo_vencimiento AS crm_proximo_vencimiento,
+                COALESCE(derivacion_nueva.fecha_vigencia, derivacion_legacy.fecha_vigencia) AS derivacion_fecha_vigencia
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+            LEFT JOIN derivaciones_forms derivacion_nueva ON derivacion_nueva.iess_form_id = sp.form_id
+            LEFT JOIN derivaciones_form_id derivacion_legacy ON derivacion_legacy.form_id = sp.form_id AND derivacion_legacy.hc_number = sp.hc_number
             LEFT JOIN (
                 SELECT solicitud_id, COUNT(*) AS total_notas
                 FROM solicitud_crm_notas
