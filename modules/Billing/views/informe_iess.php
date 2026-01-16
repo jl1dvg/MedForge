@@ -423,6 +423,19 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                         $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
                                                         $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
                                                         $formIdsPaciente = implode(', ', $info['form_ids']);
+                                                        $procHtml = htmlspecialchars($formIdsPaciente);
+                                                        if ($slug === 'consulta' && !empty($info['form_ids'])) {
+                                                            $hcNumberConsulta = $pacienteInfo['hc_number'] ?? '';
+                                                            $consultaLinks = array_map(static function ($formId) use ($hcNumberConsulta) {
+                                                                $url = '/reports/consulta/pdf?form_id=' . urlencode((string) $formId)
+                                                                    . '&hc_number=' . urlencode((string) $hcNumberConsulta);
+                                                                return '<a href="' . htmlspecialchars($url)
+                                                                    . '" class="text-decoration-none" target="_blank">'
+                                                                    . htmlspecialchars((string) $formId)
+                                                                    . '</a>';
+                                                            }, $info['form_ids']);
+                                                            $procHtml = implode(', ', $consultaLinks);
+                                                        }
                                                         $puedeSeleccionar = empty($codigoDerivacion);
                                                         ?>
                                                         <tr style='font-size: 12.5px;'>
@@ -443,7 +456,7 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                             <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
                                                             <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
                                                             <td><?= htmlspecialchars($cie10) ?></td>
-                                                            <td><?= htmlspecialchars($formIdsPaciente) ?></td>
+                                                            <td><?= $procHtml ?></td>
                                                             <td class="text-center"><?= $edad ?></td>
                                                             <td class="text-center">
                                                                 <?php if (!empty($codigoDerivacion)): ?>
