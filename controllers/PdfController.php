@@ -10,6 +10,7 @@ use Models\ProtocoloModel;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ProtocolReportService;
 use Modules\Reporting\Services\ReportService;
+use Modules\Reporting\Support\SolicitudDataFormatter;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use PDO;
@@ -210,6 +211,25 @@ class PdfController
             $orientation,
             $mpdfOptions
         );
+    }
+
+    public function generateConsultaIess(string $form_id, string $hc_number): void
+    {
+        $data = $this->solicitudController->obtenerDatosParaVista($hc_number, $form_id);
+
+        if (!is_array($data) || $data === []) {
+            http_response_code(404);
+            echo 'No se encontraron datos para la consulta solicitada.';
+            return;
+        }
+
+        $data = SolicitudDataFormatter::enrich($data, $form_id, $hc_number);
+        $filename = sprintf('consulta_iess_%s_%s.pdf', $form_id, $hc_number);
+        $pdfContent = $this->reportService->renderPdf('002', $data, [
+            'filename' => $filename,
+        ]);
+
+        $this->emitPdf($pdfContent, $filename, 'I');
     }
 
     /**
