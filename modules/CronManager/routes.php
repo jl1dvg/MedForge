@@ -17,4 +17,8 @@ return static function (Router $router, \PDO $pdo): void {
     $router->post('/cron-manager/run/{slug}', function (\PDO $pdo, string $slug): void {
         (new CronManagerController($pdo))->runTask($slug);
     });
+
+    $router->post('/cron-manager/settings/{slug}', function (\PDO $pdo, string $slug): void {
+        (new CronManagerController($pdo))->updateSettings($slug);
+    });
 };

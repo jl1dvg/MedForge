@@ -149,6 +149,7 @@ if (!function_exists('cron_manager_render_details')) {
                                     $lastError = (string) ($task['last_error'] ?? '');
                                     $failureCount = (int) ($task['failure_count'] ?? 0);
                                     $intervalLabel = (string) ($task['interval_label'] ?? '—');
+                                    $settings = $task['settings_decoded'] ?? null;
                                     ?>
                                     <tr>
                                         <td>
@@ -167,6 +168,38 @@ if (!function_exists('cron_manager_render_details')) {
                                                 <div class="mt-5 small text-danger">
                                                     <i class="fa-solid fa-circle-exclamation me-1"></i>
                                                     <?= htmlspecialchars($lastError, ENT_QUOTES, 'UTF-8'); ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if ($slug === 'cive-index-admisiones-sync'): ?>
+                                                <?php
+                                                $defaultStart = (new DateTimeImmutable('today'))->sub(new DateInterval('P1D'))->format('Y-m-d');
+                                                $defaultEnd = (new DateTimeImmutable('today'))->add(new DateInterval('P1D'))->format('Y-m-d');
+                                                $currentStart = $settings['date_start'] ?? '';
+                                                $currentEnd = $settings['date_end'] ?? '';
+                                                ?>
+                                                <div class="mt-10 border-top pt-10 small">
+                                                    <div class="fw-600 mb-5">Rango para index-admisiones</div>
+                                                    <div class="text-muted mb-5">
+                                                        Automático: <?= htmlspecialchars($defaultStart, ENT_QUOTES, 'UTF-8'); ?> → <?= htmlspecialchars($defaultEnd, ENT_QUOTES, 'UTF-8'); ?>
+                                                    </div>
+                                                    <form method="post" action="/cron-manager/settings/<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8'); ?>" class="row g-2 align-items-end">
+                                                        <div class="col-12 col-md-5">
+                                                            <label class="form-label mb-1">Inicio</label>
+                                                            <input type="date" name="date_start" class="form-control form-control-sm" value="<?= htmlspecialchars($currentStart, ENT_QUOTES, 'UTF-8'); ?>">
+                                                        </div>
+                                                        <div class="col-12 col-md-5">
+                                                            <label class="form-label mb-1">Fin</label>
+                                                            <input type="date" name="date_end" class="form-control form-control-sm" value="<?= htmlspecialchars($currentEnd, ENT_QUOTES, 'UTF-8'); ?>">
+                                                        </div>
+                                                        <div class="col-12 col-md-2">
+                                                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">
+                                                                Guardar
+                                                            </button>
+                                                        </div>
+                                                        <div class="col-12">
+                                                            <small class="text-muted">Deja en blanco para usar automático (máx. 31 días en modo manual).</small>
+                                                        </div>
+                                                    </form>
                                                 </div>
                                             <?php endif; ?>
                                         </td>
