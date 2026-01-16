@@ -1,14 +1,5 @@
 <?php
 
-use Helpers\OpenAIHelper;
-
-// Inicializa el helper de OpenAI (requiere que el autoload/bootstrapping ya esté cargado antes)
-$ai = null;
-if (class_exists(OpenAIHelper::class)) {
-    $ai = new OpenAIHelper();
-}
-$AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
-
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
     'afiliacion' => $paciente['afiliacion'] ?? '',
@@ -38,6 +29,57 @@ if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '
 }
 
 $doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
+$doctorLastNameDisplay = $doctorLastName;
+$doctorSecondLastNameDisplay = $doctorSecondLastName;
+
+$motivoConsulta = trim((string)($consulta['motivo_consulta'] ?? $consulta['motivo'] ?? ''));
+$enfermedadActual = trim((string)($consulta['enfermedad_actual'] ?? ''));
+$reason = trim($motivoConsulta . ' ' . $enfermedadActual);
+
+$consultaFechaRaw = $consulta['fecha'] ?? $solicitud['created_at'] ?? null;
+$fechaConsulta = '';
+$horaConsulta = '';
+if (is_string($consultaFechaRaw) && trim($consultaFechaRaw) !== '') {
+    $consultaTimestamp = strtotime($consultaFechaRaw);
+    if ($consultaTimestamp) {
+        $fechaConsulta = date('Y-m-d', $consultaTimestamp);
+        $horaConsulta = date('H:i', $consultaTimestamp);
+    }
+}
+if ($fechaConsulta === '') {
+    $fechaConsulta = (string)($solicitud['created_at_date'] ?? '');
+}
+if ($horaConsulta === '') {
+    $horaConsulta = (string)($solicitud['created_at_time'] ?? '');
+}
+
+$diagnosticoItems = is_array($diagnostico ?? null) ? array_values(array_filter($diagnostico, 'is_array')) : [];
+$diagnosticoTexto = [];
+foreach ($diagnosticoItems as $item) {
+    $codigo = trim((string)($item['dx_code'] ?? $item['codigo'] ?? ''));
+    $descripcion = trim((string)($item['descripcion'] ?? $item['descripcion_dx'] ?? $item['nombre'] ?? ''));
+
+    if ($codigo === '' && $descripcion === '') {
+        continue;
+    }
+
+    $diagnosticoTexto[] = trim($descripcion . ($codigo !== '' ? ' CIE10: ' . $codigo : ''));
+}
+
+$consultaPlan = trim((string)($consulta['plan'] ?? ''));
+$consultaDiagnosticoPlan = trim((string)($consulta['diagnostico_plan'] ?? ''));
+$consultaRecomendaciones = trim((string)($consulta['recomen_no_farmaco'] ?? ''));
+$consultaSignosAlarma = trim((string)($consulta['signos_alarma'] ?? ''));
+$consultaVigenciaReceta = trim((string)($consulta['vigencia_receta'] ?? ''));
+
+$planLineas = array_values(array_filter([
+    $consultaDiagnosticoPlan !== '' ? 'Diagnóstico/Plan: ' . $consultaDiagnosticoPlan : '',
+    $consultaPlan !== '' ? 'Plan terapéutico: ' . $consultaPlan : '',
+    $consultaRecomendaciones !== '' ? 'Recomendaciones: ' . $consultaRecomendaciones : '',
+    $consultaSignosAlarma !== '' ? 'Signos de alarma: ' . $consultaSignosAlarma : '',
+    $consultaVigenciaReceta !== '' ? 'Vigencia receta: ' . $consultaVigenciaReceta : '',
+], static fn($line) => trim($line) !== ''));
+$planTratamiento = implode(PHP_EOL, $planLineas);
 
 ob_start();
 ?>
@@ -51,7 +93,8 @@ ob_start();
         </tr>
         <tr>
             <td colspan="5" class="blanco_left"><?php
-                echo wordwrap($reason, 165, "</td>
+                $motivoTexto = $reason !== '' ? $reason : 'Sin datos registrados.';
+                echo wordwrap($motivoTexto, 165, "</td>
     </tr>
     <tr>
         <td colspan=\"5\" class=\"blanco_left\">"); ?></td>
@@ -90,16 +133,12 @@ ob_start();
             <td class="blanco" width="2%"></td>
         </tr>
         <?php
-        $diagnoses = getMedicalProblems($pid);
-
-        if (!empty($diagnoses)) {
-            foreach ($diagnoses as $diagnosis) {
-                $problem = lookup_code_short_descriptions($diagnosis);
-                $cie10 = substr($diagnosis, 6);
-                echo "<tr><td colspan=\"20\" class=\"blanco_left\">$problem CIE10: $cie10<td></td>";
+        if ($diagnosticoTexto !== []) {
+            foreach ($diagnosticoTexto as $detalle) {
+                echo '<tr><td colspan="20" class="blanco_left">' . htmlspecialchars($detalle) . '</td></tr>';
             }
         } else {
-            echo "<tr><td colspan=\"20\" class=\"blanco_left\">Niega</td>></tr>";
+            echo '<tr><td colspan="20" class="blanco_left">Niega</td></tr>';
         }
         ?>
     </table>
@@ -133,7 +172,7 @@ ob_start();
             <td colspan="20" class="blanco_left"></td>
         </tr>
         <tr>
-            <td colspan="20" class="blanco_left"></td>
+            <td colspan="20" class="blanco_left">Sin datos registrados.</td>
         </tr>
     </table>
     <table>
@@ -146,19 +185,9 @@ ob_start();
         <tr>
             <td colspan="2" class="blanco_left">
                 <?php
-                if ($formdir === 'eye_mag') {
-                    $encounter_data = getEyeMagEncounterData($form_encounter, $pid);
-                    if ($encounter_data) {
-                        extract($encounter_data);
-                        $examOutput = ExamOftal($val, $CC1 ?? '', $RBROW ?? '', $LBROW ?? '', $RUL ?? '', $LUL ?? '', $RLL ?? '', $LLL ?? '', $RMCT ?? '', $LMCT ?? '', $RADNEXA ?? '', $LADNEXA ?? '', $EXT_COMMENTS ?? '',
-                            $SCODVA ?? '', $SCOSVA ?? '', $ODVA ?? '', $OSVA ?? '', $ODIOPAP ?? '', $OSIOPAP ?? '', $ODCONJ ?? '', $OSCONJ ?? '', $ODCORNEA ?? '', $OSCORNEA ?? '', $ODAC ?? '', $OSAC ?? '', $ODLENS ?? '', $OSLENS ?? '', $ODIRIS ?? '', $OSIRIS ?? '',
-                            $ODDISC ?? '', $OSDISC ?? '', $ODCUP ?? '', $OSCUP ?? '', $ODMACULA ?? '', $OSMACULA ?? '', $ODVESSELS ?? '', $OSVESSELS ?? '', $ODPERIPH ?? '', $OSPERIPH ?? '', $ODVITREOUS ?? '', $OSVITREOUS ?? '');
-                        if (!empty($examOutput)) {
-                            $enfermedadActual = generateEnfermedadProblemaActual($reason, $examOutput);
-                            echo wordwrap($enfermedadActual, 165, "</td></tr><tr><td colspan='2' class='blanco_left'>", true);
-                        }
-                    }
-                }
+                $enfermedadActualTexto = trim((string)($consulta['estado_enfermedad'] ?? $consulta['enfermedad_actual'] ?? $reason));
+                $enfermedadActualTexto = $enfermedadActualTexto !== '' ? $enfermedadActualTexto : 'Sin datos registrados.';
+                echo wordwrap($enfermedadActualTexto, 165, "</td></tr><tr><td colspan='2' class='blanco_left'>", true);
                 ?>
             </td>
         </tr>
@@ -186,8 +215,8 @@ ob_start();
             <td class="verde" width="7.69%">Pulsioximetría (%)</td>
         </tr>
         <tr>
-            <td class="blanco"><?php echo $fecha007; ?></td>
-            <td class="blanco"><?php echo date("H:i", $time007); ?></td>
+            <td class="blanco"><?php echo $fechaConsulta; ?></td>
+            <td class="blanco"><?php echo $horaConsulta; ?></td>
             <td class="blanco">N/A</td>
             <td class="blanco">N/A</td>
             <td class="blanco">N/A</td>
@@ -244,6 +273,18 @@ ob_start();
         </tr>
         <tr>
             <td colspan="15" class="blanco"></td>
+        </tr>
+        <tr>
+            <td colspan="15" class="blanco_left">
+                <?php
+                $revisionSistemas = trim((string)($consulta['examen_fisico_normalizado'] ?? $consulta['examen_fisico'] ?? ''));
+                if ($revisionSistemas !== '') {
+                    echo wordwrap($revisionSistemas, 165, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
+                } else {
+                    echo 'Sin datos registrados.';
+                }
+                ?>
+            </td>
         </tr>
     </table>
     <table style="border: none">
@@ -356,18 +397,9 @@ ob_start();
         <tr>
             <td colspan="15" class="blanco_left">
                 <?php
-                if ($formdir === 'eye_mag') {
-                    $encounter_data = getEyeMagEncounterData($form_encounter, $pid);
-                    if ($encounter_data) {
-                        extract($encounter_data);
-                        $examOutput = ExamOftal($val, $CC1 ?? '', $RBROW ?? '', $LBROW ?? '', $RUL ?? '', $LUL ?? '', $RLL ?? '', $LLL ?? '', $RMCT ?? '', $LMCT ?? '', $RADNEXA ?? '', $LADNEXA ?? '', $EXT_COMMENTS ?? '',
-                            $SCODVA ?? '', $SCOSVA ?? '', $ODVA ?? '', $OSVA ?? '', $ODIOPAP ?? '', $OSIOPAP ?? '', $ODCONJ ?? '', $OSCONJ ?? '', $ODCORNEA ?? '', $OSCORNEA ?? '', $ODAC ?? '', $OSAC ?? '', $ODLENS ?? '', $OSLENS ?? '', $ODIRIS ?? '', $OSIRIS ?? '',
-                            $ODDISC ?? '', $OSDISC ?? '', $ODCUP ?? '', $OSCUP ?? '', $ODMACULA ?? '', $OSMACULA ?? '', $ODVESSELS ?? '', $OSVESSELS ?? '', $ODPERIPH ?? '', $OSPERIPH ?? '', $ODVITREOUS ?? '', $OSVITREOUS ?? '');
-                        if (!empty($examOutput)) {
-                            echo wordwrap($examOutput, 165, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
-                        }
-                    }
-                }
+                $examenFisicoTexto = trim((string)($consultaExamenFisico ?? $consulta['examen_fisico'] ?? ''));
+                $examenFisicoTexto = $examenFisicoTexto !== '' ? $examenFisicoTexto : 'Sin datos registrados.';
+                echo wordwrap($examenFisicoTexto, 165, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
                 ?>
             </td>
         </tr>
@@ -391,63 +423,36 @@ ob_start();
             <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">PRE</TD>
             <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">DEF</TD>
         </TR>
-        <TR>
-            <td class="verde">1.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "0"); ?></td>
-            <td class="blanco"><?php echo getDXoftalmoCIE10($form_id, $pid, "0"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "0")) {
-                    echo "x";
-                } ?></td>
-            <td class="verde">4.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "3"); ?></td>
-            <td class=" blanco
-        "><?php echo getDXoftalmoCIE10($form_id, $pid, "3"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "3")) {
-                    echo "x";
-                } ?></td>
-        </TR>
-        <TR>
-            <td class="verde">2.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "1"); ?></td>
-            <td class="blanco"><?php echo getDXoftalmoCIE10($form_id, $pid, "1"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "1")) {
-                    echo "x";
-                } ?></td>
-            <td class="verde">5.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "4"); ?></td>
-            <td class=" blanco
-        "><?php echo getDXoftalmoCIE10($form_id, $pid, "4"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "4")) {
-                    echo "x";
-                } ?></td>
-        </TR>
-        <TR>
-            <td class="verde">3.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "2"); ?></td>
-            <td class="blanco"><?php echo getDXoftalmoCIE10($form_id, $pid, "2"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "2")) {
-                    echo "x";
-                } ?></td>
-            <td class="verde">6.</td>
-            <td colspan="2" class="blanco"
-                style="text-align: left"><?php echo getDXoftalmo($form_id, $pid, "5"); ?></td>
-            <td class=" blanco
-        "><?php echo getDXoftalmoCIE10($form_id, $pid, "5"); ?></td>
-            <td class="amarillo"></td>
-            <td class="amarillo"><?php if (getDXoftalmo($form_id, $pid, "5")) {
-                    echo "x";
-                } ?></td>
-        </TR>
+        <?php
+        $totalDiagnosticos = count($diagnosticoItems);
+        for ($row = 0; $row < 3; $row++):
+            $leftIndex = $row * 2;
+            $rightIndex = $leftIndex + 1;
+            ?>
+            <tr>
+                <?php
+                $leftDiag = $leftIndex < $totalDiagnosticos ? $diagnosticoItems[$leftIndex] : null;
+                $leftDesc = $leftDiag['descripcion'] ?? $leftDiag['descripcion_dx'] ?? '';
+                $leftCode = $leftDiag['dx_code'] ?? $leftDiag['codigo'] ?? '';
+                ?>
+                <td class="verde"><?= $leftIndex + 1 ?>.</td>
+                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars((string)$leftDesc) ?></td>
+                <td class="blanco"><?= htmlspecialchars((string)$leftCode) ?></td>
+                <td class="amarillo"></td>
+                <td class="amarillo"><?= ($leftDiag !== null && ($leftDesc !== '' || $leftCode !== '')) ? 'x' : '' ?></td>
+
+                <?php
+                $rightDiag = $rightIndex < $totalDiagnosticos ? $diagnosticoItems[$rightIndex] : null;
+                $rightDesc = $rightDiag['descripcion'] ?? $rightDiag['descripcion_dx'] ?? '';
+                $rightCode = $rightDiag['dx_code'] ?? $rightDiag['codigo'] ?? '';
+                ?>
+                <td class="verde"><?= $rightIndex + 1 ?>.</td>
+                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars((string)$rightDesc) ?></td>
+                <td class="blanco"><?= htmlspecialchars((string)$rightCode) ?></td>
+                <td class="amarillo"></td>
+                <td class="amarillo"><?= ($rightDiag !== null && ($rightDesc !== '' || $rightCode !== '')) ? 'x' : '' ?></td>
+            </tr>
+        <?php endfor; ?>
     </table>
     <table>
         <tr>
@@ -459,8 +464,11 @@ ob_start();
         <tr>
             <td colspan="71" class="blanco_left">
                 <?php
-                echo getPlanTerapeuticoOD($form_id, $pid);
-                echo getPlanTerapeuticoOI($form_id, $pid);
+                if ($planTratamiento !== '') {
+                    echo nl2br(htmlspecialchars($planTratamiento));
+                } else {
+                    echo 'Sin datos registrados.';
+                }
                 ?>
             </td>
         </tr>
@@ -494,11 +502,11 @@ ob_start();
         </tr>
         <tr>
             <td colspan="8"
-                class="blanco"><?php echo $fecha007; ?></td>
-            <td colspan="7" class="blanco"><?php echo date("H:i", $time007); ?></td>
-            <td colspan="21" class="blanco"><?php echo $doc['fname'] . " " . $doc['mname']; ?></td>
-            <td colspan="19" class="blanco"><?php echo $doc['apellido_1']; ?></td>
-            <td colspan="16" class="blanco"><?php echo $doc['apellido_2']; ?></td>
+                class="blanco"><?php echo $fechaConsulta; ?></td>
+            <td colspan="7" class="blanco"><?php echo $horaConsulta; ?></td>
+            <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstNameDisplay); ?></td>
+            <td colspan="19" class="blanco"><?php echo htmlspecialchars($doctorLastNameDisplay); ?></td>
+            <td colspan="16" class="blanco"><?php echo htmlspecialchars($doctorSecondLastNameDisplay); ?></td>
         </tr>
         <tr>
             <td colspan="15" class="verde">NÚMERO DE DOCUMENTO DE IDENTIFICACIÓN</td>
@@ -506,8 +514,14 @@ ob_start();
             <td colspan="30" class="verde">SELLO</td>
         </tr>
         <tr>
-            <td colspan="15" class="blanco" style="height: 40px"><?php echo getProviderRegistro($providerID); ?></td>
-            <td colspan="26" class="blanco">&nbsp;</td>
+            <td colspan="15" class="blanco" style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? $solicitud['cedula'] ?? '')); ?></td>
+            <td colspan="26" class="blanco">
+                <?php if (!empty($solicitud['signature_path'] ?? $solicitud['firma'] ?? '')): ?>
+                    <div style="margin-bottom: -25px;">
+                        <img src="<?= htmlspecialchars((string)($solicitud['signature_path'] ?? $solicitud['firma'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" alt="Firma del profesional" style="max-height: 60px;">
+                    </div>
+                <?php endif; ?>
+            </td>
             <td colspan="30" class="blanco">&nbsp;</td>
         </tr>
     </table>
