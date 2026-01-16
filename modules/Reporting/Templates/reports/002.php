@@ -1,17 +1,16 @@
 <?php
-
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
-    'afiliacion' => $paciente['afiliacion'] ?? '',
-    'hc_number' => $paciente['hc_number'] ?? '',
-    'archive_number' => $paciente['hc_number'] ?? '',
-    'lname' => $paciente['lname'] ?? '',
-    'lname2' => $paciente['lname2'] ?? '',
-    'fname' => $paciente['fname'] ?? '',
-    'mname' => $paciente['mname'] ?? '',
-    'sexo' => $paciente['sexo'] ?? '',
-    'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? '',
-    'edad' => $edadPaciente ?? '',
+        'afiliacion' => $paciente['afiliacion'] ?? '',
+        'hc_number' => $paciente['hc_number'] ?? '',
+        'archive_number' => $paciente['hc_number'] ?? '',
+        'lname' => $paciente['lname'] ?? '',
+        'lname2' => $paciente['lname2'] ?? '',
+        'fname' => $paciente['fname'] ?? '',
+        'mname' => $paciente['mname'] ?? '',
+        'sexo' => $paciente['sexo'] ?? '',
+        'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? '',
+        'edad' => $edadPaciente ?? '',
 ];
 
 ob_start();
@@ -36,16 +35,31 @@ $motivoConsulta = trim((string)($consulta['motivo_consulta'] ?? $consulta['motiv
 $enfermedadActual = trim((string)($consulta['enfermedad_actual'] ?? ''));
 $reason = trim($motivoConsulta . ' ' . $enfermedadActual);
 
-$consultaFechaRaw = $consulta['fecha'] ?? $solicitud['created_at'] ?? null;
-$fechaConsulta = '';
+// Fecha/Hora de la consulta (preferir datos del propio registro $consulta)
+$fechaConsulta = trim((string)($consulta['fecha'] ?? ''));
 $horaConsulta = '';
-if (is_string($consultaFechaRaw) && trim($consultaFechaRaw) !== '') {
-    $consultaTimestamp = strtotime($consultaFechaRaw);
-    if ($consultaTimestamp) {
-        $fechaConsulta = date('Y-m-d', $consultaTimestamp);
-        $horaConsulta = date('H:i', $consultaTimestamp);
+
+// Si $consulta['fecha'] viene vacío, intentar inferir desde created_at (consulta o solicitud)
+$createdAtRaw = trim((string)($consulta['created_at'] ?? $solicitud['created_at'] ?? ''));
+
+// Si tenemos fecha pero no hora, intentar extraer la hora desde created_at
+if ($fechaConsulta !== '' && $createdAtRaw !== '') {
+    $createdTs = strtotime($createdAtRaw);
+    if ($createdTs) {
+        $horaConsulta = date('H:i', $createdTs);
     }
 }
+
+// Si no hay fecha, intentar calcularla desde created_at
+if ($fechaConsulta === '' && $createdAtRaw !== '') {
+    $createdTs = strtotime($createdAtRaw);
+    if ($createdTs) {
+        $fechaConsulta = date('Y-m-d', $createdTs);
+        $horaConsulta = date('H:i', $createdTs);
+    }
+}
+
+// Fallbacks legacy
 if ($fechaConsulta === '') {
     $fechaConsulta = (string)($solicitud['created_at_date'] ?? '');
 }
@@ -73,15 +87,17 @@ $consultaSignosAlarma = trim((string)($consulta['signos_alarma'] ?? ''));
 $consultaVigenciaReceta = trim((string)($consulta['vigencia_receta'] ?? ''));
 
 $planLineas = array_values(array_filter([
-    $consultaDiagnosticoPlan !== '' ? 'Diagnóstico/Plan: ' . $consultaDiagnosticoPlan : '',
-    $consultaPlan !== '' ? 'Plan terapéutico: ' . $consultaPlan : '',
-    $consultaRecomendaciones !== '' ? 'Recomendaciones: ' . $consultaRecomendaciones : '',
-    $consultaSignosAlarma !== '' ? 'Signos de alarma: ' . $consultaSignosAlarma : '',
-    $consultaVigenciaReceta !== '' ? 'Vigencia receta: ' . $consultaVigenciaReceta : '',
+        $consultaDiagnosticoPlan !== '' ? 'Diagnóstico/Plan: ' . $consultaDiagnosticoPlan : '',
+        $consultaPlan !== '' ? 'Plan terapéutico: ' . $consultaPlan : '',
+        $consultaRecomendaciones !== '' ? 'Recomendaciones: ' . $consultaRecomendaciones : '',
+        $consultaSignosAlarma !== '' ? 'Signos de alarma: ' . $consultaSignosAlarma : '',
+        $consultaVigenciaReceta !== '' ? 'Vigencia receta: ' . $consultaVigenciaReceta : '',
 ], static fn($line) => trim($line) !== ''));
 $planTratamiento = implode(PHP_EOL, $planLineas);
-
 ob_start();
+echo '<pre>';
+var_dump($consulta);
+echo '</pre>';
 ?>
     <table>
         <tr>
@@ -94,7 +110,7 @@ ob_start();
         <tr>
             <td colspan="5" class="blanco_left"><?php
                 $motivoTexto = $reason !== '' ? $reason : 'Sin datos registrados.';
-                echo wordwrap($motivoTexto, 165, "</td>
+                echo wordwrap($motivoTexto, 135, "</td>
     </tr>
     <tr>
         <td colspan=\"5\" class=\"blanco_left\">"); ?></td>
@@ -185,9 +201,26 @@ ob_start();
         <tr>
             <td colspan="2" class="blanco_left">
                 <?php
-                $enfermedadActualTexto = trim((string)($consulta['estado_enfermedad'] ?? $consulta['enfermedad_actual'] ?? $reason));
-                $enfermedadActualTexto = $enfermedadActualTexto !== '' ? $enfermedadActualTexto : 'Sin datos registrados.';
-                echo wordwrap($enfermedadActualTexto, 165, "</td></tr><tr><td colspan='2' class='blanco_left'>", true);
+                // E. ENFERMEDAD O PROBLEMA ACTUAL
+                // Regla correcta:
+                // 1) usar enfermedad_actual
+                // 2) si está vacío, usar motivo_consulta
+                $enfermedadActualTexto = trim((string)($consulta['enfermedad_actual'] ?? ''));
+
+                if ($enfermedadActualTexto === '') {
+                    $enfermedadActualTexto = trim((string)($consulta['motivo_consulta'] ?? ''));
+                }
+
+                $enfermedadActualTexto = $enfermedadActualTexto !== ''
+                        ? $enfermedadActualTexto
+                        : 'Sin datos registrados.';
+
+                echo wordwrap(
+                        $enfermedadActualTexto,
+                        135,
+                        "</td></tr><tr><td colspan='2' class='blanco_left'>",
+                        true
+                );
                 ?>
             </td>
         </tr>
@@ -272,19 +305,13 @@ ob_start();
             <td class="blanco" width="2%" style="font-weight: normal; font-size: 5pt"></td>
         </tr>
         <tr>
-            <td colspan="15" class="blanco"></td>
+            <td colspan="15" class="blanco_left"><br></td>
         </tr>
         <tr>
-            <td colspan="15" class="blanco_left">
-                <?php
-                $revisionSistemas = trim((string)($consulta['examen_fisico_normalizado'] ?? $consulta['examen_fisico'] ?? ''));
-                if ($revisionSistemas !== '') {
-                    echo wordwrap($revisionSistemas, 165, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
-                } else {
-                    echo 'Sin datos registrados.';
-                }
-                ?>
-            </td>
+            <td colspan="15" class="blanco_left"><br></td>
+        </tr>
+        <tr>
+            <td colspan="15" class="blanco_left"><br></td>
         </tr>
     </table>
     <table style="border: none">
@@ -399,7 +426,7 @@ ob_start();
                 <?php
                 $examenFisicoTexto = trim((string)($consultaExamenFisico ?? $consulta['examen_fisico'] ?? ''));
                 $examenFisicoTexto = $examenFisicoTexto !== '' ? $examenFisicoTexto : 'Sin datos registrados.';
-                echo wordwrap($examenFisicoTexto, 165, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
+                echo wordwrap($examenFisicoTexto, 135, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
                 ?>
             </td>
         </tr>
@@ -465,7 +492,7 @@ ob_start();
             <td colspan="71" class="blanco_left">
                 <?php
                 if ($planTratamiento !== '') {
-                    echo nl2br(htmlspecialchars($planTratamiento));
+                    echo wordwrap($planTratamiento, 135, "</td></tr><tr><td colspan='71' class='blanco_left'>", true);
                 } else {
                     echo 'Sin datos registrados.';
                 }
@@ -514,11 +541,13 @@ ob_start();
             <td colspan="30" class="verde">SELLO</td>
         </tr>
         <tr>
-            <td colspan="15" class="blanco" style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? $solicitud['cedula'] ?? '')); ?></td>
+            <td colspan="15" class="blanco"
+                style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? $solicitud['cedula'] ?? '')); ?></td>
             <td colspan="26" class="blanco">
                 <?php if (!empty($solicitud['signature_path'] ?? $solicitud['firma'] ?? '')): ?>
                     <div style="margin-bottom: -25px;">
-                        <img src="<?= htmlspecialchars((string)($solicitud['signature_path'] ?? $solicitud['firma'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" alt="Firma del profesional" style="max-height: 60px;">
+                        <img src="<?= htmlspecialchars((string)($solicitud['signature_path'] ?? $solicitud['firma'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                             alt="Firma del profesional" style="max-height: 60px;">
                     </div>
                 <?php endif; ?>
             </td>
