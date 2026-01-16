@@ -55,6 +55,20 @@ class CronTaskRepository
         return $row ?: null;
     }
 
+    public function updateSettings(int $taskId, ?array $settings): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE medforge_cron_tasks
+             SET settings = :settings,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
+        );
+        $stmt->execute([
+            ':settings' => $this->encodeJson($settings),
+            ':id' => $taskId,
+        ]);
+    }
+
     /**
      * @param array{slug:string,name:string,description:string,interval:int} $definition
      */
@@ -286,6 +300,24 @@ class CronTaskRepository
         return $row ?: null;
     }
 
+    private function ensureColumn(string $table, string $column, string $definition): void
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
+        );
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+
+        if ($stmt->fetchColumn()) {
+            return;
+        }
+
+        $sql = sprintf('ALTER TABLE `%s` ADD COLUMN `%s` %s', $table, $column, $definition);
+        $this->pdo->exec($sql);
+    }
+
     private function ensureSchema(): void
     {
         if ($this->schemaEnsured) {
@@ -310,12 +342,15 @@ class CronTaskRepository
                 `last_error` TEXT NULL,
                 `last_duration_ms` INT UNSIGNED NULL,
                 `failure_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                `settings` LONGTEXT NULL,
                 `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 UNIQUE KEY `idx_slug` (`slug`),
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
         );
+
+        $this->ensureColumn('medforge_cron_tasks', 'settings', 'LONGTEXT NULL');
 
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS `medforge_cron_logs` (

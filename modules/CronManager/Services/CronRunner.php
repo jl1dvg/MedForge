@@ -168,6 +168,15 @@ class CronRunner
     {
         return [
             [
+                'slug' => 'cive-index-admisiones-sync',
+                'name' => 'Scraping index-admisiones',
+                'description' => 'Sincroniza pacientes y procedimientos desde el index-admisiones de CIVE.',
+                'interval' => 86400,
+                'callback' => function (): array {
+                    return $this->runIndexAdmisionesSyncTask();
+                },
+            ],
+            [
                 'slug' => 'solicitudes-overdue',
                 'name' => 'Actualizar solicitudes atrasadas',
                 'description' => 'Marca como atrasadas las solicitudes quirúrgicas cuyo agendamiento ya venció.',
@@ -567,6 +576,148 @@ class CronRunner
             'message' => 'Sincronización IA completada correctamente.',
             'details' => $details,
         ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runIndexAdmisionesSyncTask(): array
+    {
+        $script = BASE_PATH . '/scrapping/sync_index_admisiones.py';
+
+        if (!is_file($script)) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No se encontró el script de index-admisiones.',
+            ];
+        }
+
+        $range = $this->resolveIndexAdmisionesRange();
+        if (isset($range['status']) && $range['status'] === 'skipped') {
+            return $range;
+        }
+
+        $apiUrl = getenv('MEDFORGE_API_URL') ?: 'https://asistentecive.consulmed.me';
+        $command = sprintf(
+            'python3 %s --start %s --end %s --api-url %s --quiet',
+            escapeshellarg($script),
+            escapeshellarg($range['start']),
+            escapeshellarg($range['end']),
+            escapeshellarg($apiUrl)
+        );
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptors, $pipes, BASE_PATH);
+
+        if (!is_resource($process)) {
+            throw new RuntimeException('No fue posible iniciar el proceso de index-admisiones.');
+        }
+
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]) ?: '';
+        $stderr = stream_get_contents($pipes[2]) ?: '';
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $code = proc_close($process);
+
+        if ($code !== 0) {
+            $message = trim($stderr !== '' ? $stderr : $stdout);
+            if ($message === '') {
+                $message = sprintf('El script de index-admisiones finalizó con código %d.', $code);
+            }
+            throw new RuntimeException($message);
+        }
+
+        $decoded = json_decode($stdout, true);
+        $details = is_array($decoded) ? $decoded : ['output' => trim($stdout)];
+
+        return [
+            'message' => 'Scraping de index-admisiones completado correctamente.',
+            'details' => $details,
+        ];
+    }
+
+    /**
+     * @return array{start:string,end:string,status?:string,message?:string,details?:array}
+     */
+    private function resolveIndexAdmisionesRange(): array
+    {
+        $today = new DateTimeImmutable('today');
+        $defaultStart = $today->sub(new DateInterval('P1D'));
+        $defaultEnd = $today->add(new DateInterval('P1D'));
+
+        $task = $this->repository->findBySlug('cive-index-admisiones-sync');
+        $settings = $this->decodeJson($task['settings'] ?? null);
+
+        $start = $defaultStart;
+        $end = $defaultEnd;
+
+        if (is_array($settings) && !empty($settings['date_start']) && !empty($settings['date_end'])) {
+            try {
+                $start = new DateTimeImmutable((string) $settings['date_start']);
+                $end = new DateTimeImmutable((string) $settings['date_end']);
+            } catch (Throwable) {
+                return [
+                    'status' => 'skipped',
+                    'message' => 'Rango manual inválido en la configuración del cron.',
+                    'details' => [
+                        'settings' => $settings,
+                    ],
+                ];
+            }
+        }
+
+        if ($start > $end) {
+            return [
+                'status' => 'skipped',
+                'message' => 'El rango configurado es inválido (inicio mayor que fin).',
+                'details' => [
+                    'start' => $start->format('Y-m-d'),
+                    'end' => $end->format('Y-m-d'),
+                ],
+            ];
+        }
+
+        $days = $start->diff($end)->days ?? 0;
+        if ($days > 31) {
+            return [
+                'status' => 'skipped',
+                'message' => 'El rango configurado supera el máximo permitido de 31 días.',
+                'details' => [
+                    'start' => $start->format('Y-m-d'),
+                    'end' => $end->format('Y-m-d'),
+                    'days' => $days,
+                ],
+            ];
+        }
+
+        return [
+            'start' => $start->format('Y-m-d'),
+            'end' => $end->format('Y-m-d'),
+            'details' => [
+                'auto_default' => [
+                    'start' => $defaultStart->format('Y-m-d'),
+                    'end' => $defaultEnd->format('Y-m-d'),
+                ],
+            ],
+        ];
+    }
+
+    private function decodeJson(?string $value): ?array
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**

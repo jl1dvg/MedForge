@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use PDO;
+use Modules\Shared\Services\SchemaInspector;
 
 class GuardarProyeccionController
 {
@@ -92,10 +93,12 @@ class GuardarProyeccionController
     }
 
     private $db;
+    private SchemaInspector $schemaInspector;
 
     public function __construct(PDO $pdo)
     {
         $this->db = $pdo;
+        $this->schemaInspector = new SchemaInspector($pdo);
     }
 
     public function guardar(array $data): array
@@ -169,27 +172,7 @@ class GuardarProyeccionController
         $data['lname2'] = $data['lname2'] ?? '';
 
         // Guardar datos del paciente SIEMPRE antes de crear o actualizar la visita
-        $sqlPatient = "
-            INSERT INTO patient_data (hc_number, lname, lname2, fname, mname, afiliacion, fecha_caducidad)
-            VALUES (:hc, :lname, :lname2, :fname, :mname, :afiliacion, :caducidad)
-            ON DUPLICATE KEY UPDATE 
-                lname = VALUES(lname),
-                lname2 = VALUES(lname2),
-                fname = VALUES(fname),
-                mname = VALUES(mname),
-                afiliacion = VALUES(afiliacion),
-                fecha_caducidad = VALUES(fecha_caducidad)
-        ";
-        $stmt = $this->db->prepare($sqlPatient);
-        $stmt->execute([
-            ':hc' => $hcNumber,
-            ':lname' => $data['lname'],
-            ':lname2' => $data['lname2'],
-            ':fname' => $data['fname'],
-            ':mname' => $data['mname'],
-            ':afiliacion' => $data['afiliacion'] ?? null,
-            ':caducidad' => $data['fechaCaducidad'] ?? null,
-        ]);
+        $this->upsertPatientData($hcNumber, $data);
 
         // 1. Verifica si form_id ya existe y tiene visita_id asignado
         $stmtCheckVisita = $this->db->prepare("SELECT visita_id FROM procedimiento_proyectado WHERE form_id = ?");
@@ -203,14 +186,20 @@ class GuardarProyeccionController
             error_log("🟢 Usando visita_id ya existente para form_id $form_id: $visita_id");
         }
 
+        $fecha_normalizada = $this->normalizeDateField($data['fecha'] ?? null);
+
         // Lógica defensiva para la fecha de visita
-        if (!empty($data['fecha']) && $this->fechaValida($data['fecha'])) {
-            $fecha_visita = date('Y-m-d', strtotime($data['fecha']));
+        if (!empty($fecha_normalizada) && $this->fechaValida($fecha_normalizada)) {
+            $fecha_visita = $fecha_normalizada;
         } else {
             $fecha_visita = date('Y-m-d'); // fallback seguro
             error_log("❗ Fecha inválida recibida para visita. Se usó la fecha actual: $fecha_visita");
         }
         $hc_number = $data['hcNumber'];
+        $data['fecha'] = $fecha_normalizada ?: $fecha_visita;
+        if (!$this->fechaValida($data['fecha'] ?? '')) {
+            $data['fecha'] = $fecha_visita;
+        }
 
         // Antes de crear o actualizar visita, si la fecha es inválida, abortar
         if (!$this->fechaValida($fecha_visita)) {
@@ -307,7 +296,7 @@ class GuardarProyeccionController
             // Cambia la lógica de estado_agenda según si existe el form_id
             ':estado_agenda' => $exists ? null : 'AGENDADO',
             ':afiliacion' => $data['afiliacion'] ?? null,
-            ':fecha' => $data['fecha'] ?? null,
+            ':fecha' => $data['fecha'],
             ':hora' => $data['hora'] ?? null,
             ':visita_id' => $visita_id
         ]);
@@ -378,6 +367,108 @@ class GuardarProyeccionController
             "hc_number" => $hcNumber,
             "visita_id" => $visita_id,
         ];
+    }
+
+    private function upsertPatientData(string $hcNumber, array $data): void
+    {
+        $fields = $this->buildPatientFields($data);
+
+        $columns = ['hc_number'];
+        $placeholders = [':hc_number'];
+        $params = [':hc_number' => $hcNumber];
+
+        foreach ($fields as $column => $value) {
+            $columns[] = $column;
+            $placeholders[] = ':' . $column;
+            $params[':' . $column] = $value;
+        }
+
+        if (count($columns) === 1) {
+            return;
+        }
+
+        $updates = [];
+        foreach (array_keys($fields) as $column) {
+            $updates[] = sprintf(
+                '%1$s = IF(VALUES(%1$s) IS NULL OR VALUES(%1$s) = "", %1$s, VALUES(%1$s))',
+                $column
+            );
+        }
+
+        $sql = sprintf(
+            'INSERT INTO patient_data (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
+            implode(', ', $columns),
+            implode(', ', $placeholders),
+            implode(', ', $updates)
+        );
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildPatientFields(array $data): array
+    {
+        $baseFields = [
+            'lname' => $data['lname'] ?? 'DESCONOCIDO',
+            'lname2' => $data['lname2'] ?? '',
+            'fname' => $data['fname'] ?? '',
+            'mname' => $data['mname'] ?? '',
+        ];
+
+        $optionalFields = [
+            'afiliacion' => $data['afiliacion'] ?? null,
+            'fecha_caducidad' => $this->normalizeDateField($data['fechaCaducidad'] ?? null),
+            'fecha_nacimiento' => $this->normalizeDateField($data['fecha_nacimiento'] ?? $data['fecha_nac'] ?? null),
+            'sexo' => $data['sexo'] ?? null,
+            'ciudad' => $data['ciudad'] ?? null,
+            'email' => $data['email'] ?? null,
+            'celular' => $data['celular'] ?? $data['telefono'] ?? null,
+        ];
+
+        $dateColumns = ['fecha_nacimiento', 'fecha_caducidad'];
+        $fields = [];
+        foreach (array_merge($baseFields, $optionalFields) as $column => $value) {
+            if (!$this->schemaInspector->tableHasColumn('patient_data', $column)) {
+                continue;
+            }
+
+            if ($value === null) {
+                if (in_array($column, $dateColumns, true)) {
+                    $fields[$column] = null;
+                }
+                continue;
+            }
+
+            if ($value === '' && !array_key_exists($column, $baseFields)) {
+                continue;
+            }
+
+            $fields[$column] = $value;
+        }
+
+        return $fields;
+    }
+
+    private function normalizeDateField(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return null;
+        }
+
+        return date('Y-m-d', $timestamp);
     }
 
     public function obtenerEstado($formId): ?string
