@@ -9,7 +9,6 @@ modo_quieto = "--quiet" in sys.argv
 USERNAME = "jdevera"
 PASSWORD = "0925619736"
 LOGIN_URL = "https://cive.ddns.net:8085/site/login"
-LOG_URL = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -61,15 +60,39 @@ def iniciar_sesion_y_extraer_log():
 
     # Paso 3: Buscar el enlace de modificación desde el form_id y el id del paciente
     form_id = sys.argv[1]
-    paciente_view_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
-    r = session.get(paciente_view_url, headers=headers)
-    soup = BeautifulSoup(r.text, "html.parser")
-    link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
-    if not link_tag:
-        print("❌ No se encontró el enlace de actualización.")
-        return
-    href = link_tag["href"]
-    update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
+    log_url = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={form_id}"
+
+    # Intento rápido: usar la vista de la solicitud (log_url) para encontrar el link update-solicitud
+    # Esto evita una visita extra a ver-paciente?... cuando el link está disponible aquí.
+    update_url = None
+    try:
+        r = session.get(log_url, headers=headers)
+        soup = BeautifulSoup(r.text, "html.parser")
+        link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
+        if link_tag and link_tag.has_attr("href"):
+            href = link_tag["href"]
+            update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
+            if not modo_quieto:
+                print("⚡ update_url obtenido desde LOG_URL (se evitó ver-paciente extra)")
+    except Exception:
+        update_url = None
+
+    # Fallback: si no se encontró en log_url, usamos el método anterior con ver-paciente?
+    if not update_url:
+        paciente_view_url = (
+            f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente"
+            f"?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
+        )
+        r = session.get(paciente_view_url, headers=headers)
+        soup = BeautifulSoup(r.text, "html.parser")
+        link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
+        if not link_tag or not link_tag.has_attr("href"):
+            print("❌ No se encontró el enlace de actualización.")
+            return
+        href = link_tag["href"]
+        update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
+        if not modo_quieto:
+            print("ℹ️ update_url obtenido por fallback ver-paciente")
 
     # Paso 4: Entrar al formulario de modificación y extraer los datos
     r = session.get(update_url, headers=headers)
@@ -114,36 +137,42 @@ def iniciar_sesion_y_extraer_log():
     r = session.get(tabla_view_url, headers=headers)
     soup_tabla = BeautifulSoup(r.text, "html.parser")
 
-    for proc in procedimientos:
-        # Obtenemos el ID del procedimiento proyectado
-        proc_id = proc["procedimiento_proyectado"]["id"]
-        fila_encontrada = None
+    # Construimos un mapa en una sola pasada por la tabla: {proc_id: {fecha_ejecucion, doctor, estado_alta}}
+    ejecuciones_map = {}
+    for row in soup_tabla.select("table.kv-grid-table tr"):
+        celdas = row.find_all("td")
+        # Necesitamos al menos 13 columnas para leer fecha (col 10), doctor (col 11) y estado (col 13)
+        if len(celdas) >= 13:
+            # Columna 5: suele contener el ID del procedimiento (a veces con sufijo tipo 176281/ADMISION)
+            celda_id = celdas[4].get_text(strip=True)
+            if not celda_id:
+                continue
 
-        # Recorremos todas las filas de la tabla que muestra el historial de procedimientos ejecutados
-        for row in soup_tabla.select("table.kv-grid-table tr"):
-            celdas = row.find_all("td")
-            if len(celdas) >= 5:
-                # Extraemos el contenido de la celda 5, donde puede aparecer el ID del procedimiento
-                celda_id = celdas[4].get_text(strip=True)
-                # Usamos startswith en lugar de comparación exacta para capturar casos como 176281/ADMISION
-                if celda_id.startswith(proc_id):
-                    fila_encontrada = celdas
-                    break
+            # Extraemos el ID base (antes de cualquier "/"), para poder matchear rápido con proc_id
+            proc_id_base = celda_id.split("/", 1)[0].strip()
+            if not proc_id_base:
+                continue
 
-        # Si encontramos la fila correcta, extraemos fecha, doctor y estado de alta
-        if fila_encontrada and len(fila_encontrada) >= 13:
-            # La columna 10 contiene la fecha de ejecución
-            fecha_ejecucion = fila_encontrada[9].get_text(strip=True)
-            # La columna 11 contiene el nombre del doctor
-            doctor = fila_encontrada[10].get_text(strip=True)
-            # La columna 13 indica si fue dado de alta (verificamos si contiene texto "YA FUE DADO DE ALTA")
-            estado_alta = "✅ Dado de Alta" if "YA FUE DADO DE ALTA" in fila_encontrada[
+            fecha_ejecucion = celdas[9].get_text(strip=True)
+            doctor = celdas[10].get_text(strip=True)
+            estado_alta = "✅ Dado de Alta" if "YA FUE DADO DE ALTA" in celdas[
                 12].decode_contents() else "❌ No dado de alta"
 
-            # Guardamos estos nuevos campos dentro del mismo diccionario del procedimiento proyectado
-            proc["procedimiento_proyectado"]["fecha_ejecucion"] = fecha_ejecucion
-            proc["procedimiento_proyectado"]["doctor"] = doctor
-            proc["procedimiento_proyectado"]["estado_alta"] = estado_alta
+            # Si el mismo ID aparece varias veces, nos quedamos con el último encontrado
+            ejecuciones_map[proc_id_base] = {
+                "fecha_ejecucion": fecha_ejecucion,
+                "doctor": doctor,
+                "estado_alta": estado_alta
+            }
+
+    # Aplicamos el mapa a los procedimientos proyectados (lookup O(1))
+    for proc in procedimientos:
+        proc_id = proc["procedimiento_proyectado"]["id"]
+        datos = ejecuciones_map.get(proc_id)
+        if datos:
+            proc["procedimiento_proyectado"]["fecha_ejecucion"] = datos.get("fecha_ejecucion", "")
+            proc["procedimiento_proyectado"]["doctor"] = datos.get("doctor", "")
+            proc["procedimiento_proyectado"]["estado_alta"] = datos.get("estado_alta", "")
 
     codigo = soup.find("input", {"id": "docsolicitudpaciente-cod_derivacion"})["value"].strip()
     input_registro = soup.find("input", {"id": "docsolicitudpaciente-fecha_registro"})
