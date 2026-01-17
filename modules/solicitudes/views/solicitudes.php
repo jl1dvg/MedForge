@@ -1530,8 +1530,12 @@ $reporting = array_merge(
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
                         data-estado="En atención">👥 En atención
                 </button>
-                <button type="button" class="btn btn-outline-info" id="btnSolicitarExamenesPrequirurgicos">
-                    <i class="mdi mdi-file-document-multiple-outline me-1"></i> Solicitar exámenes prequirúrgicos
+                <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
+                        type="button"
+                        id="btnSolicitarExamenesPrequirurgicos"
+                        data-bs-toggle="tooltip"
+                        title="Enviar solicitud de exámenes prequirúrgicos al paciente">
+                    <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
                 </button>
                 <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
                         data-estado="Revisión Códigos" data-completado="0">
