@@ -25,7 +25,7 @@ class OpenAIHelper
             $options['api_key'] = $config;
         }
 
-        $apiKey = trim((string) ($options['api_key'] ?? ''));
+        $apiKey = trim((string)($options['api_key'] ?? ''));
         if ($apiKey === '') {
             $apiKey = $_ENV['OPENAI_API_KEY'] ?? getenv('OPENAI_API_KEY') ?: '';
         }
@@ -37,7 +37,7 @@ class OpenAIHelper
         $this->apiKey = $apiKey;
 
         $endpoint = $options['endpoint'] ?? ($options['base_url'] ?? null);
-        $endpoint = trim((string) ($endpoint ?? ''));
+        $endpoint = trim((string)($endpoint ?? ''));
         if ($endpoint === '') {
             $endpoint = 'https://api.openai.com/v1/responses';
         }
@@ -48,16 +48,16 @@ class OpenAIHelper
         }
         $this->endpoint = $normalizedEndpoint;
 
-        $model = trim((string) ($options['model'] ?? ''));
+        $model = trim((string)($options['model'] ?? ''));
         $this->model = $model !== '' ? $model : 'gpt-4o-mini';
 
-        $maxTokens = (int) ($options['max_output_tokens'] ?? 400);
+        $maxTokens = (int)($options['max_output_tokens'] ?? 400);
         $this->defaultMaxOutputTokens = $maxTokens > 0 ? $maxTokens : 400;
 
         if (!empty($options['headers']) && is_array($options['headers'])) {
             foreach ($options['headers'] as $header => $value) {
-                $headerName = trim((string) $header);
-                $headerValue = trim((string) $value);
+                $headerName = trim((string)$header);
+                $headerValue = trim((string)$value);
                 if ($headerName !== '' && $headerValue !== '') {
                     $this->headers[$headerName] = $headerValue;
                 }
@@ -65,7 +65,7 @@ class OpenAIHelper
         }
 
         if (!empty($options['organization']) && !isset($this->headers['OpenAI-Organization'])) {
-            $organization = trim((string) $options['organization']);
+            $organization = trim((string)$options['organization']);
             if ($organization !== '') {
                 $this->headers['OpenAI-Organization'] = $organization;
             }
@@ -158,6 +158,70 @@ class OpenAIHelper
     }
 
     /** ===== Casos de uso clínicos (tus funciones) ===== */
+    /**
+     * B. MOTIVO DE CONSULTA
+     * Frase breve en palabras del paciente. Normaliza/redacta mejor sin inventar síntomas.
+     */
+    public function generateMotivoConsulta(string $reason): string
+    {
+        $reason = trim((string)$reason);
+
+        $prompt = <<<TXT
+Motivo de consulta (texto fuente): {$reason}
+
+Actúa como un médico y redacta el MOTIVO DE CONSULTA como una frase breve, clara y fiel a lo expresado por el paciente.
+
+Definición: el motivo de consulta es la razón principal por la que una persona busca ayuda profesional, expresada brevemente con sus propias palabras. Se enfoca en el problema inmediato que trae al paciente hoy.
+
+REGLAS OBLIGATORIAS:
+- NO uses Markdown ni asteriscos.
+- Usa SOLO texto plano.
+- NO inventes síntomas, diagnósticos, antecedentes ni tratamientos.
+- Si el texto fuente está vacío, es genérico o no describe un motivo real, responde EXACTAMENTE: "Sin datos registrados.".
+
+TXT;
+
+        return $this->respond($prompt, 400);
+    }
+
+    /**
+     * E. ENFERMEDAD O PROBLEMA ACTUAL
+     * Descripción cronológica y detallada, guiada por ALICIAN.
+     * $examenFisico es solo contexto terminológico (NO inventar datos a partir de él).
+     */
+    public function generateEnfermedadActualALICIAN(string $enfermedadActual, string $examenFisico = ''): string
+    {
+        $enfermedadActual = trim((string)$enfermedadActual);
+        $examenFisico = trim((string)$examenFisico);
+
+        $prompt = <<<TXT
+Enfermedad o problema actual (texto fuente del paciente): {$enfermedadActual}
+
+Contexto adicional (examen físico, solo referencia terminológica; NO inventar datos): {$examenFisico}
+
+Actúa como un médico y redacta la ENFERMEDAD O PROBLEMA ACTUAL de forma cronológica, clara y completa, desde la perspectiva del paciente.
+Incluye el síntoma principal y síntomas asociados, y cuando estén descritos: inicio, localización, características, intensidad, evolución, factores agravantes/atenuantes y tratamientos previos.
+
+ALICIAN es SOLO una guía mental para no olvidar componentes, pero NO debe aparecer en la salida y NO debes usar prefijos como "A:", "L:", "I:", etc.
+
+REGLAS OBLIGATORIAS:
+- NO uses Markdown ni asteriscos.
+- Usa SOLO texto plano.
+- NO inventes datos. Si un componente no está en el texto, NO lo pongas.
+- NO conviertas hallazgos del examen físico en síntomas; el examen físico solo ayuda a mantener terminología coherente.
+- Evita frases administrativas ("acude a consulta", "se realiza examen").
+
+ESTILO Y FORMATO:
+- Escribe en 1 párrafo o máximo 2 párrafos cortos.
+- NO uses viñetas, NO uses numeración, NO uses etiquetas.
+- Máximo 6 líneas.
+- Si el texto menciona edad/antecedentes, inclúyelos SOLO si el paciente los relaciona con el problema actual.
+
+Si el texto fuente está vacío, es genérico o no describe una enfermedad actual, responde EXACTAMENTE: "Sin datos registrados.".
+TXT;
+
+        return $this->respond($prompt, 400);
+    }
 
     public function generateEnfermedadProblemaActual(string $examenFisico): string
     {
@@ -183,6 +247,66 @@ Ejemplo de formato:
 Biomicroscopia: OD: [detalles]. OI: [detalles].
 Fondo de Ojo: OD: [detalles]. OI: [detalles].
 PIO: [valor].
+TXT;
+
+        return $this->respond($prompt, 400);
+    }
+
+    /**
+     * Genera una síntesis profesional del EXAMEN FÍSICO oftalmológico (sección H).
+     * Usa únicamente el texto proporcionado; no inventa datos.
+     */
+    public function generateExamenFisicoOftalmologico(string $texto): string
+    {
+        $texto = trim((string)$texto);
+
+        $prompt = <<<TXT
+Examen físico oftalmológico (texto libre): {$texto}
+
+Actúa como un médico oftalmólogo especialista y redacta los hallazgos del examen físico
+para un documento clínico oficial, de manera profesional, clara y sintética,
+UTILIZANDO ÚNICAMENTE la información proporcionada.
+
+REGLAS OBLIGATORIAS (cumplimiento estricto):
+- NO inventes datos bajo ninguna circunstancia.
+- NO uses Markdown.
+- NO uses asteriscos (*), negritas, cursivas, viñetas ni formato enriquecido.
+- Usa SOLO texto plano.
+- Este texto forma parte de una historia clínica oficial.
+
+NOMENCLATURA CLÍNICA (muy importante):
+- NO usar siglas como OD, OI ni PIO.
+- Utiliza SIEMPRE:
+  - "ojo derecho"
+  - "ojo izquierdo"
+  - "presión intraocular"
+- Si la presión intraocular está reportada, descríbela en forma narrativa
+  (por ejemplo: presión intraocular dentro de rangos normales).
+- Si no hay datos de presión intraocular, NO la menciones.
+
+CONTENIDO Y ESTRUCTURA:
+- Describe únicamente hallazgos oftalmológicos reales.
+- Incluye "Biomicroscopía" solo si existen hallazgos descritos.
+- Incluye "Fondo de ojo" solo si existen hallazgos descritos.
+- Si solo hay hallazgos en un ojo, menciona únicamente ese ojo.
+- Elimina frases no clínicas o administrativas
+  (por ejemplo: "se realiza examen", "paciente refiere", "se observa").
+
+ESTILO:
+- Redacción médica formal, como informe elaborado por un oftalmólogo.
+- Frases completas, coherentes y continuas.
+- Evita repeticiones y lenguaje coloquial.
+
+FORMATO DE SALIDA (ajústalo según los datos disponibles, SIN encabezados en negrita):
+Biomicroscopía: ojo derecho: ... ojo izquierdo: ...
+Fondo de ojo: ojo derecho: ... ojo izquierdo: ...
+Presión intraocular: ...
+
+CONDICIÓN DE SALIDA VACÍA:
+- Si el texto no contiene hallazgos clínicos útiles
+  (está vacío, es genérico o no describe examen físico),
+  responde EXACTAMENTE:
+  "Sin datos registrados."
 TXT;
 
         return $this->respond($prompt, 400);

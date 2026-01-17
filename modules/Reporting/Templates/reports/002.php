@@ -1,4 +1,14 @@
 <?php
+
+use Helpers\OpenAIHelper;
+
+// Inicializa el helper de OpenAI (requiere que el autoload/bootstrapping ya esté cargado antes)
+$ai = null;
+if (class_exists(OpenAIHelper::class)) {
+    $ai = new OpenAIHelper();
+}
+$AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
+
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
         'afiliacion' => $paciente['afiliacion'] ?? '',
@@ -100,11 +110,40 @@ ob_start();
         </tr>
         <tr>
             <td colspan="5" class="blanco_left"><?php
-                $motivoTexto = $reason !== '' ? $reason : 'Sin datos registrados.';
-                echo wordwrap($motivoTexto, 135, "</td>
+                $motivoTexto = $reason !== '' ? $reason : '';
+                $motivoAI = '';
+                $motivoAI_error = null;
+                if (isset($ai)) {
+                    try {
+                        $motivoAI = $ai->generateMotivoConsulta($motivoTexto);
+                    } catch (\Throwable $e) {
+                        $motivoAI_error = $e->getMessage();
+                        error_log('OpenAI generateEnfermedadProblemaActual error: ' . $motivoAI_error);
+                    }
+                }
+                if (trim($motivoAI) !== '') {
+                    echo wordwrap($motivoAI, 160, "</td>
     </tr>
     <tr>
-        <td colspan=\"5\" class=\"blanco_left\">"); ?></td>
+        <td colspan=\"5\" class=\"blanco_left\">");
+                } else {
+                    echo wordwrap('Sin datos registrados.', 160, "</td>
+    </tr>
+    <tr>
+        <td colspan=\"5\" class=\"blanco_left\">");
+                }
+                if (!empty($AI_DEBUG)) {
+                    echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Motivo Consulta</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                                    'has_ai' => isset($ai),
+                                    'input_preview' => mb_substr((string)$motivoTexto, 0, 400),
+                                    'output_len' => mb_strlen((string)$motivoAI),
+                                    'error' => $motivoAI_error
+                            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+                }
+                ?></td>
         </tr>
         <tr>
             <td colspan="5" class="blanco_left"></td>
@@ -204,14 +243,36 @@ ob_start();
 
                 $enfermedadActualTexto = $enfermedadActualTexto !== ''
                         ? $enfermedadActualTexto
-                        : 'Sin datos registrados.';
+                        : '';
 
+                $enfermedadActualAI = '';
+                $enfermedadActualAI_error = null;
+                if (isset($ai)) {
+                    try {
+                        $enfermedadActualAI = $ai->generateEnfermedadActualALICIAN($enfermedadActualTexto);
+                    } catch (\Throwable $e) {
+                        $enfermedadActualAI_error = $e->getMessage();
+                        error_log('OpenAI generateEnfermedadProblemaActual error: ' . $enfermedadActualAI_error);
+                    }
+                }
+                $enfermedadSalida = trim($enfermedadActualAI) !== '' ? $enfermedadActualAI : 'Sin datos registrados.';
                 echo wordwrap(
-                        $enfermedadActualTexto,
-                        135,
+                        $enfermedadSalida,
+                        160,
                         "</td></tr><tr><td colspan='2' class='blanco_left'>",
                         true
                 );
+                if (!empty($AI_DEBUG)) {
+                    echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Enfermedad Actual</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                                    'has_ai' => isset($ai),
+                                    'input_preview' => mb_substr((string)$enfermedadActualTexto, 0, 400),
+                                    'output_len' => mb_strlen((string)$enfermedadActualAI),
+                                    'error' => $enfermedadActualAI_error
+                            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+                }
                 ?>
             </td>
         </tr>
@@ -415,9 +476,47 @@ ob_start();
         <tr>
             <td colspan="15" class="blanco_left">
                 <?php
-                $examenFisicoTexto = trim((string)($consultaExamenFisico ?? $consulta['examen_fisico'] ?? ''));
-                $examenFisicoTexto = $examenFisicoTexto !== '' ? $examenFisicoTexto : 'Sin datos registrados.';
-                echo wordwrap($examenFisicoTexto, 135, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
+                // H. EXAMEN FÍSICO (texto libre + síntesis opcional por IA)
+                $examenFisicoTextoRaw = trim((string)($consultaExamenFisico ?? ($consulta['examen_fisico'] ?? '')));
+                $examenFisicoTexto = $examenFisicoTextoRaw !== '' ? $examenFisicoTextoRaw : '';
+
+                $examenFisicoAI = '';
+                $examenFisicoAI_error = null;
+
+                // Solo invocar IA si hay texto real
+                if ($examenFisicoTexto !== '' && isset($ai)) {
+                    try {
+                        // Nuevo método especializado para examen físico
+                        $examenFisicoAI = $ai->generateExamenFisicoOftalmologico($examenFisicoTexto);
+                    } catch (\Throwable $e) {
+                        $examenFisicoAI_error = $e->getMessage();
+                        error_log('OpenAI generateExamenFisicoOftalmologico error: ' . $examenFisicoAI_error);
+                    }
+                }
+
+                // Preferir salida IA si existe; si no, mostrar el texto original; si no hay nada, mostrar mensaje estándar.
+                $examenFisicoSalida = '';
+                if (trim($examenFisicoAI) !== '') {
+                    $examenFisicoSalida = $examenFisicoAI;
+                } elseif ($examenFisicoTexto !== '') {
+                    $examenFisicoSalida = $examenFisicoTexto;
+                } else {
+                    $examenFisicoSalida = 'Sin datos registrados.';
+                }
+
+                echo wordwrap($examenFisicoSalida, 160, "</td></tr><tr><td colspan='15' class='blanco_left'>", true);
+
+                if (!empty($AI_DEBUG)) {
+                    echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Examen Físico</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                                    'has_ai' => isset($ai),
+                                    'input_preview' => mb_substr((string)$examenFisicoTexto, 0, 400),
+                                    'output_len' => mb_strlen((string)$examenFisicoAI),
+                                    'error' => $examenFisicoAI_error
+                            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
+                }
                 ?>
             </td>
         </tr>
@@ -482,10 +581,49 @@ ob_start();
         <tr>
             <td colspan="71" class="blanco_left">
                 <?php
-                if ($planTratamiento !== '') {
-                    echo wordwrap($planTratamiento, 135, "</td></tr><tr><td colspan='71' class='blanco_left'>", true);
+                // J. PLAN DE TRATAMIENTO (texto libre + estructuración opcional por IA)
+                $planTextoRaw = trim((string)($planTratamiento ?? ''));
+                $planTexto = $planTextoRaw !== '' ? $planTextoRaw : '';
+
+                // Aseguradora/afiliación para el texto estándar del plan (la usa generatePlanTratamiento)
+                $insurance = trim((string)($paciente['afiliacion'] ?? $patient['afiliacion'] ?? ''));
+
+                $planAI = '';
+                $planAI_error = null;
+
+                // Solo invocar IA si hay texto real
+                if ($planTexto !== '' && isset($ai)) {
+                    try {
+                        $planAI = $ai->generatePlanTratamiento($planTexto, $insurance);
+                    } catch (\Throwable $e) {
+                        $planAI_error = $e->getMessage();
+                        error_log('OpenAI generatePlanTratamiento error: ' . $planAI_error);
+                    }
+                }
+
+                // Preferir salida IA si existe; si no, mostrar el texto original; si no hay nada, mostrar mensaje estándar.
+                $planSalida = '';
+                if (trim($planAI) !== '') {
+                    $planSalida = $planAI;
+                } elseif ($planTexto !== '') {
+                    $planSalida = $planTexto;
                 } else {
-                    echo 'Sin datos registrados.';
+                    $planSalida = 'Sin datos registrados.';
+                }
+
+                echo wordwrap($planSalida, 160, "</td></tr><tr><td colspan='71' class='blanco_left'>", true);
+
+                if (!empty($AI_DEBUG)) {
+                    echo "<div style='border:1px dashed #c00; margin:6px 0; padding:6px; font-size:8pt; color:#900;'>
+            <b>AI DEBUG — Plan de Tratamiento</b><br>
+            <pre style='white-space:pre-wrap;'>" . htmlspecialchars(json_encode([
+                                    'has_ai' => isset($ai),
+                                    'insurance' => $insurance,
+                                    'input_preview' => mb_substr((string)$planTexto, 0, 400),
+                                    'output_len' => mb_strlen((string)$planAI),
+                                    'error' => $planAI_error
+                            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) . "</pre>
+          </div>";
                 }
                 ?>
             </td>
