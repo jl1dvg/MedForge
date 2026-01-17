@@ -6,9 +6,12 @@ if (!defined('BASE_PATH')) {
 require_once BASE_PATH . '/helpers/InformesHelper.php';
 
 use Controllers\BillingController;
-use Modules\Pacientes\Services\PacienteService;
 use Controllers\ReglaController;
 use Helpers\InformesHelper;
+use Modules\Consulta\Services\ConsultaReportService;
+use Modules\Pacientes\Services\PacienteService;
+use Modules\Reporting\Services\ReportService;
+use Modules\Reporting\Support\SolicitudDataFormatter;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
@@ -16,6 +19,7 @@ $billingController = new BillingController($pdo);
 $pacienteService = new PacienteService($pdo);
 $formato = strtoupper($_GET['formato'] ?? 'IESS');
 $esFormatoSoam = in_array($formato, ['SOAM', 'IESS_SOAM'], true);
+$zipSolicitado = $esFormatoSoam && (($_GET['zip'] ?? '') === '1');
 
 $mes = $_GET['mes'] ?? null;
 $afiliacion = $_GET['afiliacion'] ?? null;
@@ -92,6 +96,95 @@ if ($esFormatoSoam) {
     if (!($spreadsheet instanceof Spreadsheet)) {
         http_response_code(500);
         echo 'No se pudo generar el consolidado SOAM.';
+        exit;
+    }
+
+    if ($zipSolicitado) {
+        $excelName = 'consolidado_iess_soam' . ($categoria ? "_{$categoria}" : '') . '.xlsx';
+        $zipName = 'consolidado_iess_soam' . ($categoria ? "_{$categoria}" : '') . '.zip';
+        $tmpDir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'soam_zip_' . uniqid();
+        if (!is_dir($tmpDir) && !mkdir($tmpDir, 0777, true) && !is_dir($tmpDir)) {
+            http_response_code(500);
+            echo 'No se pudo preparar el zip del consolidado SOAM.';
+            exit;
+        }
+
+        $excelPath = $tmpDir . DIRECTORY_SEPARATOR . $excelName;
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($excelPath);
+
+        $zipPath = $tmpDir . DIRECTORY_SEPARATOR . $zipName;
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            http_response_code(500);
+            echo 'No se pudo crear el archivo ZIP del consolidado SOAM.';
+            exit;
+        }
+
+        $zip->addFile($excelPath, $excelName);
+
+        $consultaReportService = new ConsultaReportService($pdo);
+        $reportService = new ReportService();
+        $pdfsAgregados = 0;
+        $pairs = [];
+
+        foreach ($consolidado as $pacientesDelMes) {
+            foreach ($pacientesDelMes as $factura) {
+                $formId = $factura['form_id'] ?? null;
+                $hcNumber = $factura['hc_number'] ?? null;
+                if (!$formId || !$hcNumber) {
+                    continue;
+                }
+                $pairKey = $formId . '|' . $hcNumber;
+                if (isset($pairs[$pairKey])) {
+                    continue;
+                }
+                $pairs[$pairKey] = true;
+
+                $data = $consultaReportService->buildConsultaReportData($hcNumber, $formId);
+                if (!is_array($data) || $data === []) {
+                    continue;
+                }
+                $data = SolicitudDataFormatter::enrich($data, $formId, $hcNumber);
+                $filename = sprintf('consulta_iess_%s_%s.pdf', $formId, $hcNumber);
+
+                try {
+                    $pdfContent = $reportService->renderPdf('002', $data, [
+                        'filename' => $filename,
+                    ]);
+                } catch (\Throwable $exception) {
+                    continue;
+                }
+
+                if ($pdfContent !== '') {
+                    $zip->addFromString($filename, $pdfContent);
+                    $pdfsAgregados++;
+                }
+            }
+        }
+
+        $zip->close();
+
+        if (!is_file($zipPath)) {
+            http_response_code(500);
+            echo 'No se pudo generar el archivo ZIP del consolidado SOAM.';
+            exit;
+        }
+
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $zipName . '"');
+        header('Content-Length: ' . filesize($zipPath));
+        readfile($zipPath);
+
+        if (is_file($excelPath)) {
+            @unlink($excelPath);
+        }
+        if (is_file($zipPath)) {
+            @unlink($zipPath);
+        }
+        if (is_dir($tmpDir)) {
+            @rmdir($tmpDir);
+        }
         exit;
     }
 
