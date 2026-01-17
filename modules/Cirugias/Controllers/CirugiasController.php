@@ -291,7 +291,7 @@ class CirugiasController extends BaseController
             return;
         }
 
-        $ok = $this->service->actualizarStatus($formId, $hcNumber, $status);
+        $ok = $this->service->actualizarStatus($formId, $hcNumber, $status, $this->currentUserId());
         $this->json(['success' => $ok]);
     }
 
