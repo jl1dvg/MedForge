@@ -134,17 +134,17 @@ $estadoBadgeMap = [
 $estadoBadgeColor = $estadoBadgeMap[$estadoKey] ?? 'secondary';
 $diagnosticosLimitados = array_slice($diagnosticos, 0, 3);
 $hasDerivacion = !empty($derivacion['cod_derivacion'])
-    || !empty($derivacion['derivacion_id'])
-    || !empty($derivacion['id'])
-    || !empty($derivacion['archivo_derivacion_path']);
+        || !empty($derivacion['derivacion_id'])
+        || !empty($derivacion['id'])
+        || !empty($derivacion['archivo_derivacion_path']);
 
 $afiliacionSolicitud = trim((string)($solicitud['afiliacion'] ?? ''));
 $normalizarAfiliacion = static function (string $value): string {
     $value = trim($value);
     $value = str_replace(
-        ['á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú', 'ñ', 'Ñ'],
-        ['a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u', 'n', 'n'],
-        $value
+            ['á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú', 'ñ', 'Ñ'],
+            ['a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u', 'n', 'n'],
+            $value
     );
     $value = strtolower($value);
     $value = preg_replace('/[^a-z0-9\s]/', ' ', $value) ?? $value;
@@ -153,17 +153,17 @@ $normalizarAfiliacion = static function (string $value): string {
     return trim($value);
 };
 $afiliacionesCobertura = array_map($normalizarAfiliacion, [
-    'contribuyente voluntario',
-    'conyuge',
-    'conyuge pensionista',
-    'seguro campesino',
-    'seguro general por montepio',
-    'seguro general tiempo parcial',
-    'iess',
-    'hijos dependientes',
-    'seguro campesino jubilado',
-    'seguro general',
-    'seguro general jubilado',
+        'contribuyente voluntario',
+        'conyuge',
+        'conyuge pensionista',
+        'seguro campesino',
+        'seguro general por montepio',
+        'seguro general tiempo parcial',
+        'iess',
+        'hijos dependientes',
+        'seguro campesino jubilado',
+        'seguro general',
+        'seguro general jubilado',
 ]);
 $afiliacionNormalizada = $normalizarAfiliacion($afiliacionSolicitud);
 $solicitudCoberturaMail = $derivacionVencida && in_array($afiliacionNormalizada, $afiliacionesCobertura, true);
@@ -362,36 +362,38 @@ $coberturaPlan = $consulta['plan'] ?? '';
                             </div>
                         </div>
                     </div>
-            </div>
+                </div>
 
-            <?php if ($solicitudCoberturaMail): ?>
-                <div class="alert alert-warning border d-flex flex-column gap-2 mb-0">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="bi bi-envelope-exclamation"></i>
-                        <div>
-                            <div class="fw-semibold">Derivación vencida</div>
-                            <small class="text-muted">
-                                Afiliación: <?= htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8') ?>.
-                                Solicita un nuevo código por correo adjuntando la derivación.
-                            </small>
+                <?php if ($solicitudCoberturaMail): ?>
+                    <div class="alert alert-warning border d-flex flex-column gap-2 mb-0">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-envelope-exclamation"></i>
+                            <div>
+                                <div class="fw-semibold">Derivación vencida</div>
+                                <small class="text-muted">
+                                    Afiliación: <?= htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8') ?>.
+                                    Solicita un nuevo código por correo adjuntando la derivación.
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-warning btn-sm"
+                                    id="btnPrefacturaSolicitarCoberturaMail">
+                                <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
+                            </button>
+                            <?php if ($archivoHref): ?>
+                                <a class="btn btn-outline-secondary btn-sm"
+                                   href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
+                                   target="_blank" rel="noopener">
+                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-warning btn-sm" id="btnPrefacturaSolicitarCoberturaMail">
-                            <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
-                        </button>
-                        <?php if ($archivoHref): ?>
-                            <a class="btn btn-outline-secondary btn-sm" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
-                               target="_blank" rel="noopener">
-                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
-                            </a>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            <?php endif; ?>
+                <?php endif; ?>
 
-            <div class="card border-0 shadow-sm">
-                <div class="card-header">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header">
                         <h6 class="card-title">
                             <i class="bi bi-folder2-open prefactura-icon me-2"
                                aria-label="Información de la solicitud"></i>
@@ -600,7 +602,8 @@ $coberturaPlan = $consulta['plan'] ?? '';
                             <span class="text-muted ms-1">Documento adjunto disponible.</span>
                         </div>
                         <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
-                           href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">
+                           href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank"
+                           rel="noopener">
                             <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
                         </a>
                     </div>
@@ -750,12 +753,20 @@ $coberturaPlan = $consulta['plan'] ?? '';
                         </div>
                     </div>
                     <div class="card-footer bg-white border-0">
-                        <button class="btn btn-outline-primary" type="button" id="btnPrefacturaEditarLio"
+                        <button
+                                class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                                type="button"
+                                id="btnPrefacturaEditarLio"
                                 data-context-action="editar-lio"
                                 data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
                                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                            <i class="mdi mdi-eyedropper-variant"></i> Editar datos de LIO
+                                data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-bs-toggle="tooltip"
+                                title="Editar LIO, poder, lateralidad, incisión y médico asignado"
+                        >
+                            <i class="mdi mdi-tune-variant"></i>
+                            <span>Editar cirugía</span>
+                            <span class="badge bg-light text-primary">LIO</span>
                         </button>
                     </div>
                 </div>
