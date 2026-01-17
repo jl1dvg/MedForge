@@ -68,6 +68,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
                     $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
                     $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
+                    $canAccessCirugiasDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']);
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -199,6 +200,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
                                 </a>
                             </li>
+                            <?php if ($canAccessCirugiasDashboard): ?>
+                                <li class="<?= isActive('/cirugias/dashboard') ?>">
+                                    <a href="/cirugias/dashboard">
+                                        <i class="mdi mdi-chart-box"></i>Dashboard quirúrgico
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <li class="<?= isActive('/ipl') ?: isActive('/views/ipl/ipl_planificador_lista.php') ?>">
                                 <a href="/ipl">
                                     <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
