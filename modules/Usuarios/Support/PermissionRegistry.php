@@ -20,6 +20,7 @@ class PermissionRegistry
             ],
             'Cirugías' => [
                 'cirugias.view' => 'Cirugías - Ver',
+                'cirugias.dashboard.view' => 'Cirugías - Dashboard',
                 'cirugias.create' => 'Cirugías - Registrar',
                 'cirugias.edit' => 'Cirugías - Editar',
                 'cirugias.delete' => 'Cirugías - Anular',
