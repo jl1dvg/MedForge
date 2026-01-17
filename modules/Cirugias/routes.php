@@ -2,10 +2,15 @@
 
 use Core\Router;
 use Modules\Cirugias\Controllers\CirugiasController;
+use Modules\Cirugias\Controllers\CirugiasDashboardController;
 
 return function (Router $router) {
     $router->get('/cirugias', function (\PDO $pdo) {
         (new CirugiasController($pdo))->index();
+    });
+
+    $router->get('/cirugias/dashboard', function (\PDO $pdo) {
+        (new CirugiasDashboardController($pdo))->index();
     });
 
     $router->match(['GET', 'POST'], '/cirugias/wizard', function (\PDO $pdo) {
