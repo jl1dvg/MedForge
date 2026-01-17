@@ -494,7 +494,7 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                             <?php endforeach; ?>
                         </div>
                         <?php
-                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS') use ($basePath, $mesSeleccionado, $filtros): string {
+                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS', bool $zip = false) use ($basePath, $mesSeleccionado, $filtros): string {
                             $params = [];
                             if (!empty($mesSeleccionado)) {
                                 $params['mes'] = $mesSeleccionado;
@@ -517,6 +517,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                             if (!empty($formato)) {
                                 $params['formato'] = $formato;
                             }
+                            if ($zip) {
+                                $params['zip'] = 1;
+                            }
                             $query = $params ? '?' . http_build_query($params) : '';
                             return $basePath . '/consolidado' . $query;
                         };
@@ -533,6 +536,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                             </a>
                             <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM')) ?>" class="btn btn-outline-primary">
                                 Consolidado de Consultas (SOAM)
+                            </a>
+                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM', true)) ?>" class="btn btn-outline-primary">
+                                Consolidado de Consultas (SOAM + PDFs)
                             </a>
                             <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS')) ?>" class="btn btn-outline-info">
                                 Consolidado de Imágenes (44 columnas)
