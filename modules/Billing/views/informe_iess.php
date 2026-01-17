@@ -1,4 +1,5 @@
 <?php
+
 use Helpers\InformesHelper;
 
 $facturas = $facturas ?? [];
@@ -26,34 +27,34 @@ $tableOptions = $grupoConfig['tableOptions'] ?? [];
 $pageLength = isset($tableOptions['pageLength']) ? (int)$tableOptions['pageLength'] : 25;
 $defaultOrder = $tableOptions['defaultOrder'] ?? 'fecha_ingreso_desc';
 $orderMap = [
-    'fecha_ingreso_desc' => ['column' => 6, 'dir' => 'desc'],
-    'fecha_ingreso_asc' => ['column' => 6, 'dir' => 'asc'],
-    'nombre_asc' => ['column' => 5, 'dir' => 'asc'],
-    'nombre_desc' => ['column' => 5, 'dir' => 'desc'],
-    'monto_desc' => ['column' => 12, 'dir' => 'desc'],
-    'monto_asc' => ['column' => 12, 'dir' => 'asc'],
+        'fecha_ingreso_desc' => ['column' => 6, 'dir' => 'desc'],
+        'fecha_ingreso_asc' => ['column' => 6, 'dir' => 'asc'],
+        'nombre_asc' => ['column' => 5, 'dir' => 'asc'],
+        'nombre_desc' => ['column' => 5, 'dir' => 'desc'],
+        'monto_desc' => ['column' => 12, 'dir' => 'desc'],
+        'monto_asc' => ['column' => 12, 'dir' => 'asc'],
 ];
 $defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 6;
 $defaultOrderDir = $orderMap[$defaultOrder]['dir'] ?? 'desc';
 $afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
 if (empty($afiliacionesPermitidas)) {
     $afiliacionesPermitidas = [
-        'contribuyente voluntario',
-        'conyuge',
-        'conyuge pensionista',
-        'seguro campesino',
-        'seguro campesino jubilado',
-        'seguro general',
-        'seguro general jubilado',
-        'seguro general por montepio',
-        'seguro general tiempo parcial',
-        'iess',
-        'hijos dependientes',
+            'contribuyente voluntario',
+            'conyuge',
+            'conyuge pensionista',
+            'seguro campesino',
+            'seguro campesino jubilado',
+            'seguro general',
+            'seguro general jubilado',
+            'seguro general por montepio',
+            'seguro general tiempo parcial',
+            'iess',
+            'hijos dependientes',
     ];
 }
 $afiliacionesPermitidas = array_map(
-    fn($afiliacion) => InformesHelper::normalizarAfiliacion($afiliacion),
-    $afiliacionesPermitidas
+        fn($afiliacion) => InformesHelper::normalizarAfiliacion($afiliacion),
+        $afiliacionesPermitidas
 );
 $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
 
@@ -187,8 +188,12 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                 </label>
                                 <select name="derivacion" id="derivacion" class="form-select">
                                     <option value="">Todas</option>
-                                    <option value="con" <?= ($filtros['derivacion'] ?? '') === 'con' ? 'selected' : '' ?>>Solo con código</option>
-                                    <option value="sin" <?= ($filtros['derivacion'] ?? '') === 'sin' ? 'selected' : '' ?>>Solo sin código</option>
+                                    <option value="con" <?= ($filtros['derivacion'] ?? '') === 'con' ? 'selected' : '' ?>>
+                                        Solo con código
+                                    </option>
+                                    <option value="sin" <?= ($filtros['derivacion'] ?? '') === 'sin' ? 'selected' : '' ?>>
+                                        Solo sin código
+                                    </option>
                                 </select>
                             </div>
 
@@ -228,21 +233,22 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                     </div>
 
                     <?php if (!empty($hcNumber)):
-                        $scrapeActionUrl = $basePath;
-                        if (!empty($filtros['billing_id'])) {
-                            $scrapeActionUrl .= '?billing_id=' . urlencode((string)$filtros['billing_id']);
-                        }
-                        ?>
-                        <div class="mb-4 text-end">
-                            <form method="post" action="<?= htmlspecialchars($scrapeActionUrl) ?>">
-                                <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($primerDato['billing']['form_id'] ?? '') ?>">
-                                <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($hcNumber) ?>">
-                                <button type="submit" name="scrape_derivacion" class="btn btn-warning">
-                                    <?= htmlspecialchars($scrapeButtonLabel) ?>
-                                </button>
-                            </form>
-                        </div>
-                    <?php endif; ?>
+                    $scrapeActionUrl = $basePath;
+                    if (!empty($filtros['billing_id'])) {
+                        $scrapeActionUrl .= '?billing_id=' . urlencode((string)$filtros['billing_id']);
+                    }
+                    ?>
+                    <div class="mb-4 text-end">
+                        <form method="post" action="<?= htmlspecialchars($scrapeActionUrl) ?>">
+                            <input type="hidden" name="form_id_scrape"
+                                   value="<?= htmlspecialchars($primerDato['billing']['form_id'] ?? '') ?>">
+                            <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($hcNumber) ?>">
+                            <button type="submit" name="scrape_derivacion" class="btn btn-warning">
+                                <?= htmlspecialchars($scrapeButtonLabel) ?>
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
 
                     <?php $hc_number = $hcNumber; ?>
                     <?php include __DIR__ . '/components/scrapping_procedimientos.php'; ?>
@@ -264,8 +270,10 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                 $iconExcel = $button['icon'] ?? 'fa fa-file-excel-o';
                                 $excelUrl = '/public/index.php/billing/excel?form_id=' . urlencode($formIdsParam) . '&grupo=' . urlencode($grupoExcel);
                                 ?>
-                                <a href="<?= htmlspecialchars($excelUrl) ?>" class="<?= htmlspecialchars($classExcel) ?>">
-                                    <?php if (!empty($iconExcel)): ?><i class="<?= htmlspecialchars($iconExcel) ?>"></i> <?php endif; ?>
+                                <a href="<?= htmlspecialchars($excelUrl) ?>"
+                                   class="<?= htmlspecialchars($classExcel) ?>">
+                                    <?php if (!empty($iconExcel)): ?><i
+                                        class="<?= htmlspecialchars($iconExcel) ?>"></i> <?php endif; ?>
                                     <?= htmlspecialchars($labelExcel) ?>
                                 </a>
                             <?php endforeach; ?>
@@ -285,271 +293,432 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                 <?php elseif ($billingIds): ?>
                     <div class="alert alert-warning mt-4">No se encontraron datos para esta factura.</div>
                 <?php else: ?>
-                    <?php if (!empty($mesSeleccionado) && $pacienteService && $billingController): ?>
-                        <h4><?= htmlspecialchars($consolidadoTitulo) ?></h4>
-                        <?php
-                        $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-                            $facturas,
-                            $filtros,
-                            $billingController,
-                            $pacienteService,
-                            $afiliacionesPermitidas,
-                            null,
-                            $cacheDerivaciones
-                        );
+                <?php if (!empty($mesSeleccionado) && $pacienteService && $billingController): ?>
+                    <h4><?= htmlspecialchars($consolidadoTitulo) ?></h4>
+                <?php
+                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                        $facturas,
+                        $filtros,
+                        $billingController,
+                        $pacienteService,
+                        $afiliacionesPermitidas,
+                        null,
+                        $cacheDerivaciones
+                );
 
-                        $categoriasIess = [
-                            'procedimientos' => 'IESS procedimientos',
-                            'consulta' => 'IESS consulta',
-                            'imagenes' => 'IESS imágenes',
-                        ];
+                $categoriasIess = [
+                        'procedimientos' => 'IESS procedimientos',
+                        'consulta' => 'IESS consulta',
+                        'imagenes' => 'IESS imágenes',
+                ];
 
-                        $consolidadoPorCategoria = array_fill_keys(array_keys($categoriasIess), []);
+                $consolidadoPorCategoria = array_fill_keys(array_keys($categoriasIess), []);
 
-                        foreach ($consolidado as $mes => $grupoPacientes) {
-                            foreach ($grupoPacientes as $p) {
-                                if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
-                                    $p['fecha_ordenada'] = $p['fecha'];
-                                }
-                                $categoria = $p['categoria'] ?? 'procedimientos';
-                                if (!isset($consolidadoPorCategoria[$categoria])) {
-                                    $categoria = 'procedimientos';
-                                }
-                                $consolidadoPorCategoria[$categoria][$mes][] = $p;
-                            }
+                foreach ($consolidado as $mes => $grupoPacientes) {
+                    foreach ($grupoPacientes as $p) {
+                        if (!isset($p['fecha_ordenada']) && isset($p['fecha'])) {
+                            $p['fecha_ordenada'] = $p['fecha'];
                         }
+                        $categoria = $p['categoria'] ?? 'procedimientos';
+                        if (!isset($consolidadoPorCategoria[$categoria])) {
+                            $categoria = 'procedimientos';
+                        }
+                        $consolidadoPorCategoria[$categoria][$mes][] = $p;
+                    }
+                }
 
-                        $consolidadoAgrupadoPorCategoria = InformesHelper::agruparConsolidadoPorPaciente(
-                            $consolidadoPorCategoria,
-                            $pacientesCache,
-                            $datosCache,
-                            $cacheDerivaciones,
-                            $pacienteService,
-                            $billingController
-                        );
-                        ?>
-                        <ul class="nav nav-tabs" role="tablist">
-                            <?php foreach ($categoriasIess as $slug => $label): ?>
-                                <li class="nav-item" role="presentation">
-                                    <button
-                                            class="nav-link <?= $slug === 'procedimientos' ? 'active' : '' ?>"
-                                            id="tab-<?= htmlspecialchars($slug) ?>-tab"
-                                            data-bs-toggle="tab"
-                                            data-bs-target="#tab-<?= htmlspecialchars($slug) ?>"
-                                            type="button"
-                                            role="tab"
-                                            aria-controls="tab-<?= htmlspecialchars($slug) ?>"
-                                            aria-selected="<?= $slug === 'procedimientos' ? 'true' : 'false' ?>"
-                                    >
-                                        <?= htmlspecialchars($label) ?>
-                                    </button>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                        <div class="tab-content p-3 border border-top-0 rounded-bottom">
-                            <?php foreach ($categoriasIess as $slug => $label): ?>
-                                <?php $consolidadoAgrupado = $consolidadoAgrupadoPorCategoria[$slug] ?? []; ?>
-                                <div
-                                        class="tab-pane fade <?= $slug === 'procedimientos' ? 'show active' : '' ?>"
-                                        id="tab-<?= htmlspecialchars($slug) ?>"
-                                        role="tabpanel"
-                                        aria-labelledby="tab-<?= htmlspecialchars($slug) ?>-tab"
+                $consolidadoAgrupadoPorCategoria = InformesHelper::agruparConsolidadoPorPaciente(
+                        $consolidadoPorCategoria,
+                        $pacientesCache,
+                        $datosCache,
+                        $cacheDerivaciones,
+                        $pacienteService,
+                        $billingController
+                );
+                ?>
+                    <ul class="nav nav-tabs" role="tablist">
+                        <?php foreach ($categoriasIess as $slug => $label): ?>
+                            <li class="nav-item" role="presentation">
+                                <button
+                                        class="nav-link <?= $slug === 'procedimientos' ? 'active' : '' ?>"
+                                        id="tab-<?= htmlspecialchars($slug) ?>-tab"
+                                        data-bs-toggle="tab"
+                                        data-bs-target="#tab-<?= htmlspecialchars($slug) ?>"
+                                        type="button"
+                                        role="tab"
+                                        aria-controls="tab-<?= htmlspecialchars($slug) ?>"
+                                        aria-selected="<?= $slug === 'procedimientos' ? 'true' : 'false' ?>"
                                 >
-                                    <?php if (empty($consolidadoAgrupado)): ?>
-                                        <div class="alert alert-info mb-0">No hay registros para esta categoría en el periodo seleccionado.</div>
-                                    <?php else: ?>
-                                        <?php
-                                        $n = 1;
-                                        foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
-                                            $listaPacientes = array_values($pacientesAgrupados);
-                                            $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
-                                            $mesFormateado = $formatter->format(strtotime($mes . '-15'));
-                                            $facturasMes = array_sum(array_map(static fn($info) => (int) ($info['facturas'] ?? count($info['form_ids'] ?? [])), $pacientesAgrupados));
-                                            ?>
-                                            <div class="d-flex justify-content-between align-items-center mt-4">
-                                                <h5>Mes: <?= $mesFormateado ?></h5>
-                                                <div>
-                                                    🧮 Pacientes únicos: <?= count($pacientesAgrupados) ?>
-                                                    &nbsp;&nbsp; 📄 Facturas: <?= $facturasMes ?>
-                                                    &nbsp;&nbsp; 💵 Monto total: $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?>
-                                                </div>
+                                    <?= htmlspecialchars($label) ?>
+                                </button>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <div class="tab-content p-3 border border-top-0 rounded-bottom">
+                        <?php foreach ($categoriasIess as $slug => $label): ?>
+                            <?php $consolidadoAgrupado = $consolidadoAgrupadoPorCategoria[$slug] ?? []; ?>
+                            <div
+                                    class="tab-pane fade <?= $slug === 'procedimientos' ? 'show active' : '' ?>"
+                                    id="tab-<?= htmlspecialchars($slug) ?>"
+                                    role="tabpanel"
+                                    aria-labelledby="tab-<?= htmlspecialchars($slug) ?>-tab"
+                            >
+                                <?php if (empty($consolidadoAgrupado)): ?>
+                                    <div class="alert alert-info mb-0">No hay registros para esta categoría en el
+                                        periodo seleccionado.
+                                    </div>
+                                <?php else: ?>
+                                    <?php
+                                    $n = 1;
+                                    foreach ($consolidadoAgrupado as $mes => $pacientesAgrupados):
+                                        $listaPacientes = array_values($pacientesAgrupados);
+                                        $formatter = new \IntlDateFormatter('es_ES', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, 'America/Guayaquil', \IntlDateFormatter::GREGORIAN, "LLLL 'de' yyyy");
+                                        $mesFormateado = $formatter->format(strtotime($mes . '-15'));
+                                        $facturasMes = array_sum(array_map(static fn($info) => (int)($info['facturas'] ?? count($info['form_ids'] ?? [])), $pacientesAgrupados));
+                                        ?>
+                                        <div class="d-flex justify-content-between align-items-center mt-4">
+                                            <h5>Mes: <?= $mesFormateado ?></h5>
+                                            <div>
+                                                🧮 Pacientes únicos: <?= count($pacientesAgrupados) ?>
+                                                &nbsp;&nbsp; 📄 Facturas: <?= $facturasMes ?>
+                                                &nbsp;&nbsp; 💵 Monto total:
+                                                $<?= number_format(array_sum(array_column($listaPacientes, 'total')), 2) ?>
                                             </div>
+                                        </div>
 
-                                            <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                                                <div class="text-muted small">Selecciona filas sin código de derivación para lanzar el scraping en lote.</div>
-                                                <form method="post" action="<?= htmlspecialchars($basePath) ?>" class="d-flex gap-2 align-items-center bulk-derivaciones-form">
-                                                    <input type="hidden" name="scrape_derivacion" value="1">
-                                                    <div class="bulk-derivaciones-fields"></div>
-                                                    <button type="submit" class="btn btn-warning btn-sm bulk-derivaciones-submit" disabled>
-                                                        <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
-                                                    </button>
-                                                </form>
+                                        <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                                            <div class="text-muted small">Selecciona filas sin código de derivación para
+                                                lanzar el scraping en lote.
                                             </div>
+                                            <form method="post" action="<?= htmlspecialchars($basePath) ?>"
+                                                  class="d-flex gap-2 align-items-center bulk-derivaciones-form">
+                                                <input type="hidden" name="scrape_derivacion" value="1">
+                                                <div class="bulk-derivaciones-fields"></div>
+                                                <button type="submit"
+                                                        class="btn btn-warning btn-sm bulk-derivaciones-submit"
+                                                        disabled>
+                                                    <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
+                                                </button>
+                                            </form>
+                                        </div>
 
-                                            <div class="table-responsive" style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
-                                                <table
-                                                        class="table table-striped table-hover table-sm invoice-archive sticky-header consolidado-table"
-                                                        data-page-length="<?= $pageLength ?>"
-                                                        data-order-column="<?= $defaultOrderColumn ?>"
-                                                        data-order-dir="<?= htmlspecialchars($defaultOrderDir) ?>"
-                                                >
-                                                    <thead class="bg-success-light">
-                                                    <tr>
-                                                        <th class="text-center"><input type="checkbox" class="form-check-input select-all-derivaciones" title="Seleccionar visibles (filas sin código)"></th>
-                                                        <th>#</th>
-                                                        <th>🏛️</th>
-                                                        <th>Afiliación</th>
-                                                        <th>🪪 Cédula</th>
-                                                        <th>👤 Nombres</th>
-                                                        <th>📅➕</th>
-                                                        <th>📅➖</th>
-                                                        <th>📝 CIE10</th>
-                                                        <th>🔬 Proc</th>
-                                                        <th>⏳</th>
-                                                        <th>⚧️</th>
-                                                        <th>💲 Total</th>
-                                                        <th>🧾Fact.</th>
-                                                    </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                    <?php foreach ($pacientesAgrupados as $hc => $info):
-                                                        $pacienteInfo = $pacienteService->getPatientDetails($hc);
-                                                        $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
-                                                        $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
-                                                        $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
-                                                        $cie10 = InformesHelper::extraerCie10($cie10);
-                                                        $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
-                                                        $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
-                                                        $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
-                                                        $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
-                                                        $formIdsPaciente = implode(', ', $info['form_ids']);
-                                                        $procHtml = htmlspecialchars($formIdsPaciente);
-                                                        if ($slug === 'consulta' && !empty($info['form_ids'])) {
-                                                            $hcNumberConsulta = $pacienteInfo['hc_number'] ?? '';
-                                                            $consultaLinks = array_map(static function ($formId) use ($hcNumberConsulta) {
-                                                                $url = '/reports/consulta/pdf?form_id=' . urlencode((string) $formId)
-                                                                    . '&hc_number=' . urlencode((string) $hcNumberConsulta);
-                                                                return '<a href="' . htmlspecialchars($url)
+                                        <div class="table-responsive"
+                                             style="overflow-x: auto; max-width: 100%; font-size: 0.85rem;">
+                                            <table
+                                                    class="table table-striped table-hover table-sm invoice-archive sticky-header consolidado-table"
+                                                    data-page-length="<?= $pageLength ?>"
+                                                    data-order-column="<?= $defaultOrderColumn ?>"
+                                                    data-order-dir="<?= htmlspecialchars($defaultOrderDir) ?>"
+                                            >
+                                                <thead class="bg-success-light">
+                                                <tr>
+                                                    <th class="text-center"><input type="checkbox"
+                                                                                   class="form-check-input select-all-derivaciones"
+                                                                                   title="Seleccionar visibles (filas sin código)">
+                                                    </th>
+                                                    <th>#</th>
+                                                    <th>🏛️</th>
+                                                    <th>Afiliación</th>
+                                                    <th>🪪 Cédula</th>
+                                                    <th>👤 Nombres</th>
+                                                    <th>📅➕</th>
+                                                    <th>📅➖</th>
+                                                    <th>📝 CIE10</th>
+                                                    <th>🔬 Proc</th>
+                                                    <th>⏳</th>
+                                                    <th>⚧️</th>
+                                                    <th>💲 Total</th>
+                                                    <th>🧾Fact.</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                <?php foreach ($pacientesAgrupados as $hc => $info):
+                                                    $pacienteInfo = $pacienteService->getPatientDetails($hc);
+                                                    $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
+                                                    $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
+                                                    $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
+                                                    $cie10 = InformesHelper::extraerCie10($cie10);
+                                                    $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
+                                                    $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
+                                                    $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
+                                                    $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
+                                                    $formIdsPaciente = implode(', ', $info['form_ids']);
+                                                    $procHtml = htmlspecialchars($formIdsPaciente);
+                                                    if ($slug === 'consulta' && !empty($info['form_ids'])) {
+                                                        $hcNumberConsulta = $pacienteInfo['hc_number'] ?? '';
+                                                        $consultaLinks = array_map(static function ($formId) use ($hcNumberConsulta) {
+                                                            $url = '/reports/consulta/pdf?form_id=' . urlencode((string)$formId)
+                                                                    . '&hc_number=' . urlencode((string)$hcNumberConsulta);
+                                                            return '<a href="' . htmlspecialchars($url)
                                                                     . '" class="text-decoration-none" target="_blank">'
-                                                                    . htmlspecialchars((string) $formId)
+                                                                    . htmlspecialchars((string)$formId)
                                                                     . '</a>';
-                                                            }, $info['form_ids']);
-                                                            $procHtml = implode(', ', $consultaLinks);
-                                                        }
-                                                        $puedeSeleccionar = empty($codigoDerivacion);
-                                                        ?>
-                                                        <tr style='font-size: 12.5px;'>
-                                                            <td class="text-center">
-                                                                <input
-                                                                        type="checkbox"
-                                                                        class="form-check-input select-derivacion"
-                                                                        data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
-                                                                        data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
-                                                                        <?= $puedeSeleccionar ? '' : 'disabled' ?>
-                                                                >
-                                                            </td>
-                                                            <td class="text-center"><?= $n ?></td>
-                                                            <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
-                                                            <td><?= htmlspecialchars($afiliacionTexto) ?></td>
-                                                            <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
-                                                            <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
-                                                            <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
-                                                            <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
-                                                            <td><?= htmlspecialchars($cie10) ?></td>
-                                                            <td><?= $procHtml ?></td>
-                                                            <td class="text-center"><?= $edad ?></td>
-                                                            <td class="text-center">
-                                                                <?php if (!empty($codigoDerivacion)): ?>
-                                                                    <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
-                                                                <?php else: ?>
-                                                                    <form method="post" style="display:inline;">
-                                                                        <input type="hidden" name="form_id_scrape" value="<?= htmlspecialchars($formIdsPaciente) ?>">
-                                                                        <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
-                                                                        <button type="submit" name="scrape_derivacion" class="btn btn-sm btn-warning">📌 Obtener Código Derivación</button>
-                                                                    </form>
-                                                                <?php endif; ?>
-                                                            </td>
-                                                            <td class="text-end">$
-                                                                <?= number_format($info['total'], 2) ?></td>
-                                                            <?php
-                                                            $billingIdsDetalle = [];
-                                                            foreach ($info['form_ids'] as $formIdLoop) {
-                                                                $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
-                                                                if ($id) {
-                                                                    $billingIdsDetalle[] = $id;
-                                                                }
+                                                        }, $info['form_ids']);
+                                                        $procHtml = implode(', ', $consultaLinks);
+                                                    }
+                                                    $puedeSeleccionar = empty($codigoDerivacion);
+                                                    ?>
+                                                    <tr style='font-size: 12.5px;'>
+                                                        <td class="text-center">
+                                                            <input
+                                                                    type="checkbox"
+                                                                    class="form-check-input select-derivacion"
+                                                                    data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
+                                                                    data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
+                                                                    <?= $puedeSeleccionar ? '' : 'disabled' ?>
+                                                            >
+                                                        </td>
+                                                        <td class="text-center"><?= $n ?></td>
+                                                        <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
+                                                        <td><?= htmlspecialchars($afiliacionTexto) ?></td>
+                                                        <td class="text-center"><?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?></td>
+                                                        <td><?= htmlspecialchars($apellido . ' ' . $nombre) ?></td>
+                                                        <td><?= $info['fecha_ingreso'] ? date('d/m/Y', strtotime($info['fecha_ingreso'])) : '--' ?></td>
+                                                        <td><?= $info['fecha_egreso'] ? date('d/m/Y', strtotime($info['fecha_egreso'])) : '--' ?></td>
+                                                        <td><?= htmlspecialchars($cie10) ?></td>
+                                                        <td><?= $procHtml ?></td>
+                                                        <td class="text-center"><?= $edad ?></td>
+                                                        <td class="text-center">
+                                                            <?php if (!empty($codigoDerivacion)): ?>
+                                                                <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
+                                                            <?php else: ?>
+                                                                <form method="post" style="display:inline;">
+                                                                    <input type="hidden" name="form_id_scrape"
+                                                                           value="<?= htmlspecialchars($formIdsPaciente) ?>">
+                                                                    <input type="hidden" name="hc_number_scrape"
+                                                                           value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
+                                                                    <button type="submit" name="scrape_derivacion"
+                                                                            class="btn btn-sm btn-warning">📌 Obtener
+                                                                        Código Derivación
+                                                                    </button>
+                                                                </form>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td class="text-end">$
+                                                            <?= number_format($info['total'], 2) ?></td>
+                                                        <?php
+                                                        $billingIdsDetalle = [];
+                                                        foreach ($info['form_ids'] as $formIdLoop) {
+                                                            $id = $billingController->obtenerBillingIdPorFormId($formIdLoop);
+                                                            if ($id) {
+                                                                $billingIdsDetalle[] = $id;
                                                             }
-                                                            $billingParam = implode(',', $billingIdsDetalle);
-                                                            $urlDetalle = $basePath . '?billing_id=' . urlencode($billingParam);
-                                                            ?>
-                                                            <td><a href="<?= htmlspecialchars($urlDetalle) ?>" class="btn btn-sm btn-info" target="_blank">Ver detalle</a></td>
-                                                        </tr>
-                                                        <?php $n++; endforeach; ?>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
+                                                        }
+                                                        $billingParam = implode(',', $billingIdsDetalle);
+                                                        $urlDetalle = $basePath . '?billing_id=' . urlencode($billingParam);
+                                                        ?>
+                                                        <td><a href="<?= htmlspecialchars($urlDetalle) ?>"
+                                                               class="btn btn-sm btn-info" target="_blank">Ver
+                                                                detalle</a></td>
+                                                    </tr>
+                                                    <?php $n++; endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php
+                $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS', bool $zip = false) use ($basePath, $mesSeleccionado, $filtros): string {
+                    $params = [];
+                    if (!empty($mesSeleccionado)) {
+                        $params['mes'] = $mesSeleccionado;
+                    }
+                    if (!empty($filtros['afiliacion'])) {
+                        $params['afiliacion'] = $filtros['afiliacion'];
+                    }
+                    if (!empty($filtros['apellido'])) {
+                        $params['apellido'] = $filtros['apellido'];
+                    }
+                    if (!empty($filtros['hc_number'])) {
+                        $params['hc_number'] = $filtros['hc_number'];
+                    }
+                    if (!empty($filtros['derivacion'])) {
+                        $params['derivacion'] = $filtros['derivacion'];
+                    }
+                    if (!empty($categoriaSlug)) {
+                        $params['categoria'] = $categoriaSlug;
+                    }
+                    if (!empty($formato)) {
+                        $params['formato'] = $formato;
+                    }
+                    if ($zip) {
+                        $params['zip'] = 1;
+                    }
+                    $query = $params ? '?' . http_build_query($params) : '';
+                    return $basePath . '/consolidado' . $query;
+                };
+                ?>
+                    <div class="card border-0 shadow-sm mt-3">
+                        <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="mdi mdi-download-outline text-primary"></i>
+                                <div>
+                                    <div class="fw-semibold">Acciones de exportación</div>
+                                    <div class="text-muted small">Descarga consolidado mensual según formato y
+                                        categoría.
+                                    </div>
                                 </div>
-                            <?php endforeach; ?>
+                            </div>
+                            <div class="text-muted small">
+                                <i class="mdi mdi-information-outline"></i>
+                                Tip: SOAM suele ser el formato requerido para carga.
+                            </div>
                         </div>
-                        <?php
-                        $buildConsolidadoUrl = static function (?string $categoriaSlug = null, string $formato = 'IESS', bool $zip = false) use ($basePath, $mesSeleccionado, $filtros): string {
-                            $params = [];
-                            if (!empty($mesSeleccionado)) {
-                                $params['mes'] = $mesSeleccionado;
-                            }
-                            if (!empty($filtros['afiliacion'])) {
-                                $params['afiliacion'] = $filtros['afiliacion'];
-                            }
-                            if (!empty($filtros['apellido'])) {
-                                $params['apellido'] = $filtros['apellido'];
-                            }
-                            if (!empty($filtros['hc_number'])) {
-                                $params['hc_number'] = $filtros['hc_number'];
-                            }
-                            if (!empty($filtros['derivacion'])) {
-                                $params['derivacion'] = $filtros['derivacion'];
-                            }
-                            if (!empty($categoriaSlug)) {
-                                $params['categoria'] = $categoriaSlug;
-                            }
-                            if (!empty($formato)) {
-                                $params['formato'] = $formato;
-                            }
-                            if ($zip) {
-                                $params['zip'] = 1;
-                            }
-                            $query = $params ? '?' . http_build_query($params) : '';
-                            return $basePath . '/consolidado' . $query;
-                        };
-                        ?>
-                        <div class="d-flex flex-wrap gap-2 mt-3">
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS')) ?>" class="btn btn-primary">
-                                Consolidado (44 columnas)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS_SOAM')) ?>" class="btn btn-outline-primary">
-                                Consolidado (SOAM)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS')) ?>" class="btn btn-outline-primary">
-                                Consolidado de Consultas (44 columnas)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM')) ?>" class="btn btn-outline-primary">
-                                Consolidado de Consultas (SOAM)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM', true)) ?>" class="btn btn-outline-primary">
-                                Consolidado de Consultas (SOAM + PDFs)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS')) ?>" class="btn btn-outline-info">
-                                Consolidado de Imágenes (44 columnas)
-                            </a>
-                            <a href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS_SOAM')) ?>" class="btn btn-outline-info">
-                                Consolidado de Imágenes (SOAM)
-                            </a>
+
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <!-- CONSOLIDADO GENERAL -->
+                                <div class="col-12 col-lg-4">
+                                    <div class="box p-3 bb-3 border-primary h-100">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="fw-semibold">
+                                                <i class="mdi mdi-grid me-1"></i> Consolidado general
+                                            </div>
+                                            <span class="badge bg-light text-dark" data-bs-toggle="tooltip"
+                                                  title="Incluye procedimientos (categoría principal) para el periodo seleccionado">Base</span>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS')) ?>"
+                                                    class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel IESS (44 columnas). Recomendado para consolidado estándar."
+                                            >
+                                                <i class="mdi mdi-file-excel"></i>
+                                                <span>Excel</span>
+                                                <span class="badge bg-white text-primary">44 col</span>
+                                            </a>
+
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl(null, 'IESS_SOAM')) ?>"
+                                                    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel SOAM. Útil para carga/plantillas SOAM."
+                                            >
+                                                <i class="mdi mdi-file-check"></i>
+                                                <span>SOAM</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- CONSULTAS -->
+                                <div class="col-12 col-lg-4">
+                                    <div class="box p-3 bb-3 border-success h-100">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="fw-semibold">
+                                                <i class="mdi mdi-stethoscope me-1"></i> Consultas
+                                            </div>
+                                            <span class="badge bg-light text-dark" data-bs-toggle="tooltip"
+                                                  title="Filtra el consolidado a la categoría de consultas">Categoría</span>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS')) ?>"
+                                                    class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel IESS (44 columnas) solo para consultas."
+                                            >
+                                                <i class="mdi mdi-file-excel"></i>
+                                                <span>Excel</span>
+                                                <span class="badge bg-white text-primary">44 col</span>
+                                            </a>
+
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM')) ?>"
+                                                    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel SOAM solo para consultas."
+                                            >
+                                                <i class="mdi mdi-file-check"></i>
+                                                <span>SOAM</span>
+                                            </a>
+
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('consulta', 'IESS_SOAM', true)) ?>"
+                                                    class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Genera ZIP con Excel SOAM + PDFs individuales de consultas. Puede tardar más."
+                                            >
+                                                <i class="mdi mdi-zip-box"></i>
+                                                <span>SOAM</span>
+                                                <span class="badge bg-danger text-white"><i
+                                                            class="mdi mdi-file-pdf-box"></i></span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- IMÁGENES -->
+                                <div class="col-12 col-lg-4">
+                                    <div class="box p-3 bb-3 border-info h-100">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="fw-semibold">
+                                                <i class="mdi mdi-image-multiple me-1"></i> Imágenes
+                                            </div>
+                                            <span class="badge bg-light text-dark" data-bs-toggle="tooltip"
+                                                  title="Filtra el consolidado a la categoría de imágenes">Categoría</span>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS')) ?>"
+                                                    class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel IESS (44 columnas) solo para imágenes."
+                                            >
+                                                <i class="mdi mdi-file-excel"></i>
+                                                <span>Excel</span>
+                                                <span class="badge bg-white text-primary">44 col</span>
+                                            </a>
+
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('imagenes', 'IESS_SOAM')) ?>"
+                                                    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel SOAM solo para imágenes."
+                                            >
+                                                <i class="mdi mdi-file-check"></i>
+                                                <span>SOAM</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                                <div class="text-muted small">
+                                    <i class="mdi mdi-filter-variant"></i>
+                                    Los filtros actuales (mes/afiliación/apellido/HC/derivación) se aplican a todas las
+                                    descargas.
+                                </div>
+                                <div class="text-muted small">
+                                    <i class="mdi mdi-shield-check-outline"></i>
+                                    Verifica derivaciones faltantes antes de exportar para evitar observaciones.
+                                </div>
+                            </div>
                         </div>
-                    <?php else: ?>
-                        <div class="alert alert-info">📅 Por favor selecciona un mes para ver el consolidado.</div>
-                    <?php endif; ?>
+                    </div>
+
+                    <script>
+                        (function () {
+                            // Bootstrap 5 tooltips (si está disponible)
+                            try {
+                                if (window.bootstrap && typeof window.bootstrap.Tooltip === 'function') {
+                                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                                        new window.bootstrap.Tooltip(el);
+                                    });
+                                }
+                            } catch (e) {
+                                // noop
+                            }
+                        })();
+                    </script>
+                <?php else: ?>
+                    <div class="alert alert-info">📅 Por favor selecciona un mes para ver el consolidado.</div>
+                <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
