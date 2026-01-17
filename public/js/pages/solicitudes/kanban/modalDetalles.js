@@ -8,6 +8,7 @@ import {formatTurno} from "./turnero.js";
 import {actualizarEstadoSolicitud} from "./estado.js";
 import {showToast} from "./toast.js";
 import {updateKanbanCardSla} from "./renderer.js";
+import {attachPrefacturaCoberturaMail} from "./botonesModal.js";
 
 let prefacturaListenerAttached = false;
 const solicitudDetalleCache = new Map();
@@ -1212,6 +1213,7 @@ function abrirPrefactura({hc, formId, solicitudId}) {
             relocatePatientAlert(solicitudId);
             renderEstadoContext(solicitudId);
             actualizarBotonesModal(solicitudId, solicitud);
+            attachPrefacturaCoberturaMail();
 
             const actionsContainer = document.getElementById(
                 "prefacturaContextualActions"
