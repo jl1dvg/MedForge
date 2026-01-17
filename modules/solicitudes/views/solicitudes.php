@@ -1563,10 +1563,10 @@ $reporting = array_merge(
             if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
                 return CSS.escape(value);
             }
-            return String(value).replace(/([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/
-            g, '\\\\$1'
-        )
-            ;
+            return String(value).replace(
+                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g,
+                '\\\\$1'
+            );
         };
 
         modal.addEventListener('click', (event) => {

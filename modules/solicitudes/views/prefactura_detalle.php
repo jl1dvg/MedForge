@@ -60,11 +60,13 @@ if ($diasTranscurridos !== null) {
 
 $vigenciaTexto = 'No disponible';
 $vigenciaBadge = null;
+$derivacionVencida = false;
 if (!empty($derivacion['fecha_vigencia'])) {
     try {
         $vigencia = new DateTime($derivacion['fecha_vigencia']);
         $hoy = new DateTime();
         $intervalo = (int)$hoy->diff($vigencia)->format('%r%a');
+        $derivacionVencida = $intervalo < 0;
 
         if ($intervalo >= 60) {
             $vigenciaBadge = ['color' => 'success', 'texto' => 'Vigente', 'icon' => 'bi-check-circle'];
@@ -135,6 +137,40 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
     || !empty($derivacion['derivacion_id'])
     || !empty($derivacion['id'])
     || !empty($derivacion['archivo_derivacion_path']);
+
+$afiliacionSolicitud = trim((string)($solicitud['afiliacion'] ?? ''));
+$normalizarAfiliacion = static function (string $value): string {
+    $value = trim($value);
+    $value = str_replace(
+        ['á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú', 'ñ', 'Ñ'],
+        ['a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u', 'n', 'n'],
+        $value
+    );
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9\s]/', ' ', $value) ?? $value;
+    $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+    return trim($value);
+};
+$afiliacionesCobertura = array_map($normalizarAfiliacion, [
+    'contribuyente voluntario',
+    'conyuge',
+    'conyuge pensionista',
+    'seguro campesino',
+    'seguro general por montepio',
+    'seguro general tiempo parcial',
+    'iess',
+    'hijos dependientes',
+    'seguro campesino jubilado',
+    'seguro general',
+    'seguro general jubilado',
+]);
+$afiliacionNormalizada = $normalizarAfiliacion($afiliacionSolicitud);
+$solicitudCoberturaMail = $derivacionVencida && in_array($afiliacionNormalizada, $afiliacionesCobertura, true);
+$coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
+$coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
+$coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
+$coberturaPlan = $consulta['plan'] ?? '';
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -205,6 +241,16 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
 </ul>
 
 <div class="tab-content prefactura-tab-content" id="prefacturaTabsContent">
+    <div id="prefacturaCoberturaData"
+         class="d-none"
+         data-derivacion-vencida="<?= $derivacionVencida ? '1' : '0' ?>"
+         data-afiliacion="<?= htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8') ?>"
+         data-nombre="<?= htmlspecialchars($nombrePaciente !== '' ? $nombrePaciente : 'Paciente', ENT_QUOTES, 'UTF-8') ?>"
+         data-hc="<?= htmlspecialchars((string)$coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
+         data-procedimiento="<?= htmlspecialchars((string)$coberturaProcedimiento, ENT_QUOTES, 'UTF-8') ?>"
+         data-plan="<?= htmlspecialchars((string)$coberturaPlan, ENT_QUOTES, 'UTF-8') ?>"
+         data-form-id="<?= htmlspecialchars((string)$coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
+         data-derivacion-pdf="<?= htmlspecialchars((string)($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
     <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel"
          aria-labelledby="prefactura-tab-resumen-tab">
         <!-- TAB 1: Resumen -->
@@ -316,10 +362,36 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
                             </div>
                         </div>
                     </div>
-                </div>
+            </div>
 
-                <div class="card border-0 shadow-sm">
-                    <div class="card-header">
+            <?php if ($solicitudCoberturaMail): ?>
+                <div class="alert alert-warning border d-flex flex-column gap-2 mb-0">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-envelope-exclamation"></i>
+                        <div>
+                            <div class="fw-semibold">Derivación vencida</div>
+                            <small class="text-muted">
+                                Afiliación: <?= htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8') ?>.
+                                Solicita un nuevo código por correo adjuntando la derivación.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-warning btn-sm" id="btnPrefacturaSolicitarCoberturaMail">
+                            <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
+                        </button>
+                        <?php if ($archivoHref): ?>
+                            <a class="btn btn-outline-secondary btn-sm" href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
+                               target="_blank" rel="noopener">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header">
                         <h6 class="card-title">
                             <i class="bi bi-folder2-open prefactura-icon me-2"
                                aria-label="Información de la solicitud"></i>
@@ -1039,7 +1111,7 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
         const bootstrapButton = document.getElementById('prefacturaChecklistBootstrap');
 
         const basePath = (window.__KANBAN_MODULE__ && window.__KANBAN_MODULE__.basePath) || '/solicitudes';
-        const buildUrl = (suffix) => `${basePath.replace(/\\/+$/, '')}/${solicitudId}${suffix}`;
+        const buildUrl = (suffix) => `${basePath.replace(/\/+$/, '')}/${solicitudId}${suffix}`;
 
         const escapeHtml = (value) => String(value ?? '')
             .replace(/&/g, '&amp;')
