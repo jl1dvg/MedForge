@@ -106,7 +106,7 @@ class ExamenesController extends BaseController
             $solicitudes = array_map([$this, 'transformSolicitudRow'], $solicitudes);
             $solicitudes = $this->estadoService->enrichExamenes($solicitudes);
             $solicitudes = $this->ordenarSolicitudes($solicitudes, $kanbanPreferences['sort'] ?? 'fecha_desc');
-            $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int) ($kanbanPreferences['column_limit'] ?? 0));
+            $solicitudes = $this->limitarSolicitudesPorEstado($solicitudes, (int)($kanbanPreferences['column_limit'] ?? 0));
 
             $responsables = $this->leadConfig->getAssignableUsers();
             $responsables = array_map([$this, 'transformResponsable'], $responsables);
@@ -219,7 +219,7 @@ class ExamenesController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $nota = trim((string) ($payload['nota'] ?? ''));
+        $nota = trim((string)($payload['nota'] ?? ''));
 
         if ($nota === '') {
             $this->json(['success' => false, 'error' => 'La nota no puede estar vacía'], 422);
@@ -261,8 +261,8 @@ class ExamenesController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
-        $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
+        $tareaId = isset($payload['tarea_id']) ? (int)$payload['tarea_id'] : 0;
+        $estado = isset($payload['estado']) ? (string)$payload['estado'] : '';
 
         if ($tareaId <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
@@ -291,15 +291,15 @@ class ExamenesController extends BaseController
         }
 
         $archivo = $_FILES['archivo'];
-        if ((int) ($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
+        if ((int)($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
             $this->json(['success' => false, 'error' => 'El archivo es inválido'], 422);
             return;
         }
 
-        $descripcion = isset($_POST['descripcion']) ? trim((string) $_POST['descripcion']) : null;
-        $nombreOriginal = (string) ($archivo['name'] ?? 'adjunto');
-        $mimeType = isset($archivo['type']) ? (string) $archivo['type'] : null;
-        $tamano = isset($archivo['size']) ? (int) $archivo['size'] : null;
+        $descripcion = isset($_POST['descripcion']) ? trim((string)$_POST['descripcion']) : null;
+        $nombreOriginal = (string)($archivo['name'] ?? 'adjunto');
+        $mimeType = isset($archivo['type']) ? (string)$archivo['type'] : null;
+        $tamano = isset($archivo['size']) ? (int)$archivo['size'] : null;
 
         $carpetaBase = rtrim(PUBLIC_PATH . '/uploads/solicitudes/' . $solicitudId, '/');
         if (!is_dir($carpetaBase) && !mkdir($carpetaBase, 0775, true) && !is_dir($carpetaBase)) {
@@ -340,7 +340,7 @@ class ExamenesController extends BaseController
             @unlink($destinoRuta);
             $this->json(['success' => false, 'error' => 'No se pudo registrar el adjunto'], 500);
         }
-            }
+    }
 
     private function getRequestBody(): array
     {
@@ -368,7 +368,7 @@ class ExamenesController extends BaseController
 
     private function getCurrentUserId(): ?int
     {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
     }
 
     private function transformSolicitudRow(array $row): array
@@ -415,7 +415,7 @@ class ExamenesController extends BaseController
             $payload = $_POST;
         }
 
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
         $estado = trim($payload['estado'] ?? '');
 
         if ($id <= 0 || $estado === '') {
@@ -453,8 +453,8 @@ class ExamenesController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
-        $horasPasadas = isset($payload['horas_pasadas']) ? (int) $payload['horas_pasadas'] : 48;
+        $horas = isset($payload['horas']) ? (int)$payload['horas'] : 24;
+        $horasPasadas = isset($payload['horas_pasadas']) ? (int)$payload['horas_pasadas'] : 48;
 
         $scheduler = new ExamenesReminderService($this->pdo, $this->pusherConfig);
         $enviados = $scheduler->dispatchUpcoming($horas, $horasPasadas);
@@ -475,24 +475,24 @@ class ExamenesController extends BaseController
 
         $estados = [];
         if (!empty($_GET['estado'])) {
-            $estados = array_values(array_filter(array_map('trim', explode(',', (string) $_GET['estado']))));
+            $estados = array_values(array_filter(array_map('trim', explode(',', (string)$_GET['estado']))));
         }
 
         try {
             $solicitudes = $this->solicitudModel->fetchTurneroSolicitudes($estados);
 
             foreach ($solicitudes as &$solicitud) {
-                $nombreCompleto = trim((string) ($solicitud['full_name'] ?? ''));
+                $nombreCompleto = trim((string)($solicitud['full_name'] ?? ''));
                 $solicitud['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-                $solicitud['turno'] = isset($solicitud['turno']) ? (int) $solicitud['turno'] : null;
-                $estadoNormalizado = $this->normalizarEstadoTurnero((string) ($solicitud['estado'] ?? ''));
+                $solicitud['turno'] = isset($solicitud['turno']) ? (int)$solicitud['turno'] : null;
+                $estadoNormalizado = $this->normalizarEstadoTurnero((string)($solicitud['estado'] ?? ''));
                 $solicitud['estado'] = $estadoNormalizado ?? ($solicitud['estado'] ?? null);
 
                 $solicitud['hora'] = null;
                 $solicitud['fecha'] = null;
 
                 if (!empty($solicitud['created_at'])) {
-                    $timestamp = strtotime((string) $solicitud['created_at']);
+                    $timestamp = strtotime((string)$solicitud['created_at']);
                     if ($timestamp !== false) {
                         $solicitud['hora'] = date('H:i', $timestamp);
                         $solicitud['fecha'] = date('d/m/Y', $timestamp);
@@ -525,9 +525,9 @@ class ExamenesController extends BaseController
             $payload = $_POST;
         }
 
-        $id = isset($payload['id']) ? (int) $payload['id'] : null;
-        $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $id = isset($payload['id']) ? (int)$payload['id'] : null;
+        $turno = isset($payload['turno']) ? (int)$payload['turno'] : null;
+        $estadoSolicitado = isset($payload['estado']) ? trim((string)$payload['estado']) : 'Llamado';
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -548,9 +548,9 @@ class ExamenesController extends BaseController
                 return;
             }
 
-            $nombreCompleto = trim((string) ($registro['full_name'] ?? ''));
+            $nombreCompleto = trim((string)($registro['full_name'] ?? ''));
             $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-            $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
+            $registro['estado'] = $this->normalizarEstadoTurnero((string)($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
 
             $this->json([
                 'success' => true,
@@ -681,7 +681,7 @@ class ExamenesController extends BaseController
             return 0;
         }
 
-        $timestamp = strtotime((string) $valor);
+        $timestamp = strtotime((string)$valor);
 
         return $timestamp ?: 0;
     }

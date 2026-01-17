@@ -17,19 +17,10 @@ ob_start();
 include __DIR__ . '/../partials/patient_header.php';
 $header = ob_get_clean();
 
-$doctorFirstName = trim((string)($solicitud['doctor_first_name'] ?? ''));
-$doctorMiddleName = trim((string)($solicitud['doctor_middle_name'] ?? ''));
-$doctorLastName = trim((string)($solicitud['doctor_last_name'] ?? ''));
-$doctorSecondLastName = trim((string)($solicitud['doctor_second_last_name'] ?? ''));
-
-if ($doctorFirstName === '' && $doctorMiddleName === '' && $doctorLastName === '' && $doctorSecondLastName === '') {
-    $doctorFullName = trim((string)($solicitud['doctor_full_name'] ?? $solicitud['doctor'] ?? ''));
-    $doctorFirstName = $doctorFullName;
-}
-
-$doctorFirstNameDisplay = trim($doctorFirstName . ' ' . $doctorMiddleName);
-$doctorLastNameDisplay = $doctorLastName;
-$doctorSecondLastNameDisplay = $doctorSecondLastName;
+$doctorFirstName = trim((string)($consulta['doctor_fname'] ?? ''));
+$doctorMiddleName = trim((string)($consulta['doctor_mname'] ?? ''));
+$doctorLastName = trim((string)($consulta['doctor_lname'] ?? ''));
+$doctorSecondLastName = trim((string)($consulta['doctor_lname2'] ?? ''));
 
 $motivoConsulta = trim((string)($consulta['motivo_consulta'] ?? $consulta['motivo'] ?? ''));
 $enfermedadActual = trim((string)($consulta['enfermedad_actual'] ?? ''));
@@ -95,9 +86,9 @@ $planLineas = array_values(array_filter([
 ], static fn($line) => trim($line) !== ''));
 $planTratamiento = implode(PHP_EOL, $planLineas);
 ob_start();
-echo '<pre>';
-var_dump($consulta);
-echo '</pre>';
+//echo '<pre>';
+//var_dump($data);
+//echo '</pre>';
 ?>
     <table>
         <tr>
@@ -531,9 +522,10 @@ echo '</pre>';
             <td colspan="8"
                 class="blanco"><?php echo $fechaConsulta; ?></td>
             <td colspan="7" class="blanco"><?php echo $horaConsulta; ?></td>
-            <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstNameDisplay); ?></td>
-            <td colspan="19" class="blanco"><?php echo htmlspecialchars($doctorLastNameDisplay); ?></td>
-            <td colspan="16" class="blanco"><?php echo htmlspecialchars($doctorSecondLastNameDisplay); ?></td>
+            <td colspan="21"
+                class="blanco"><?php echo htmlspecialchars($doctorFirstName) . ' ' . htmlspecialchars($doctorMiddleName); ?></td>
+            <td colspan="19" class="blanco"><?php echo htmlspecialchars($doctorLastName); ?></td>
+            <td colspan="16" class="blanco"><?php echo htmlspecialchars($doctorSecondLastName); ?></td>
         </tr>
         <tr>
             <td colspan="15" class="verde">NÚMERO DE DOCUMENTO DE IDENTIFICACIÓN</td>
@@ -542,11 +534,11 @@ echo '</pre>';
         </tr>
         <tr>
             <td colspan="15" class="blanco"
-                style="height: 40px"><?php echo htmlspecialchars((string)($solicitud['doctor_cedula'] ?? $solicitud['cedula'] ?? '')); ?></td>
+                style="height: 40px"><?php echo htmlspecialchars((string)($consulta['doctor_cedula'] ?? '')); ?></td>
             <td colspan="26" class="blanco">
-                <?php if (!empty($solicitud['signature_path'] ?? $solicitud['firma'] ?? '')): ?>
+                <?php if (!empty($consulta['doctor_firma'] ?? '')): ?>
                     <div style="margin-bottom: -25px;">
-                        <img src="<?= htmlspecialchars((string)($solicitud['signature_path'] ?? $solicitud['firma'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        <img src="<?= htmlspecialchars((string)$consulta['doctor_firma'], ENT_QUOTES, 'UTF-8') ?>"
                              alt="Firma del profesional" style="max-height: 60px;">
                     </div>
                 <?php endif; ?>

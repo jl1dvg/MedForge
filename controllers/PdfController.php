@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/modules/Reporting/Support/LegacyLoader.php';
 use Controllers\ExamenesController;
 use Helpers\PdfGenerator;
 use Models\ProtocoloModel;
+use Modules\Consulta\Services\ConsultaReportService;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
 use Modules\Reporting\Services\ProtocolReportService;
 use Modules\Reporting\Services\ReportService;
@@ -23,6 +24,7 @@ class PdfController
     private PDO $db;
     private ProtocoloModel $protocoloModel;
     private ExamenesController $solicitudController; // ✅ nueva propiedad
+    private ConsultaReportService $consultaReportService;
     private ReportingReportController $reportController;
     private ProtocolReportService $protocolReportService;
     private ReportService $reportService;
@@ -32,6 +34,7 @@ class PdfController
         $this->db = $pdo;
         $this->protocoloModel = new ProtocoloModel($pdo);
         $this->solicitudController = new ExamenesController($this->db);
+        $this->consultaReportService = new ConsultaReportService($this->db);
         $this->reportService = new ReportService();
         $this->reportController = new ReportingReportController($this->db, $this->reportService);
         $this->protocolReportService = new ProtocolReportService(
@@ -215,7 +218,7 @@ class PdfController
 
     public function generateConsultaIess(string $form_id, string $hc_number): void
     {
-        $data = $this->solicitudController->obtenerDatosParaVista($hc_number, $form_id);
+        $data = $this->consultaReportService->buildConsultaReportData($hc_number, $form_id);
 
         if (!is_array($data) || $data === []) {
             http_response_code(404);
