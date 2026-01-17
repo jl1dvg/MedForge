@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\CronManager\Services;
 
+use Controllers\DerivacionController;
 use DateInterval;
 use DateTimeImmutable;
 use DatePeriod;
@@ -16,6 +17,7 @@ use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Notifications\Services\PusherConfigService;
+use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
 use PDO;
 use RuntimeException;
@@ -290,6 +292,24 @@ class CronRunner
                 'callback' => function (): array {
                     $service = new DerivacionesSyncService($this->pdo);
                     return $service->syncInvoicesFromBilling();
+                },
+            ],
+            [
+                'slug' => 'solicitudes-crm-sync',
+                'name' => 'Sincronización CRM de solicitudes',
+                'description' => 'Reintenta vincular solicitudes sin lead CRM y refresca su checklist.',
+                'interval' => 1800,
+                'callback' => function (): array {
+                    return $this->runSolicitudesCrmSyncTask();
+                },
+            ],
+            [
+                'slug' => 'solicitudes-derivaciones-refresh',
+                'name' => 'Refresco de derivaciones en solicitudes',
+                'description' => 'Actualiza derivaciones y vigencias para solicitudes con afiliación estatal sin derivación.',
+                'interval' => 900,
+                'callback' => function (): array {
+                    return $this->runSolicitudesDerivacionesRefreshTask();
                 },
             ],
         ];
@@ -640,6 +660,235 @@ class CronRunner
         return [
             'message' => 'Scraping de index-admisiones completado correctamente.',
             'details' => $details,
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runSolicitudesCrmSyncTask(): array
+    {
+        $this->ensureSolicitudModuleLoaded();
+
+        $terminalStatuses = [
+            'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
+            'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
+            'pagado', 'pagada', 'no procede'
+        ];
+
+        $placeholders = implode(', ', array_fill(0, count($terminalStatuses), '?'));
+        $sql = "SELECT sp.id, sp.hc_number, sp.form_id
+                FROM solicitud_procedimiento sp
+                LEFT JOIN solicitud_crm_detalles scd ON scd.solicitud_id = sp.id
+                WHERE sp.hc_number IS NOT NULL
+                  AND sp.hc_number <> ''
+                  AND (scd.crm_lead_id IS NULL OR scd.crm_lead_id = 0)
+                  AND (sp.estado IS NULL OR sp.estado = '' OR LOWER(sp.estado) NOT IN ($placeholders))
+                ORDER BY sp.created_at DESC
+                LIMIT 25";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->toLower($terminalStatuses));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($rows)) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No se encontraron solicitudes pendientes de sincronización CRM.',
+            ];
+        }
+
+        $service = new SolicitudCrmService($this->pdo);
+        $synced = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($rows as $row) {
+            $solicitudId = (int) ($row['id'] ?? 0);
+            $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+
+            if ($solicitudId <= 0 || $hcNumber === '') {
+                $failed++;
+                continue;
+            }
+
+            try {
+                $service->bootstrapChecklist($solicitudId, ['hc_number' => $hcNumber], null, []);
+                $synced++;
+            } catch (Throwable $exception) {
+                $failed++;
+                if (count($errors) < 5) {
+                    $errors[] = [
+                        'solicitud_id' => $solicitudId,
+                        'message' => $exception->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'message' => sprintf('Se sincronizaron %d solicitudes con CRM.', $synced),
+            'details' => [
+                'processed' => count($rows),
+                'synced' => $synced,
+                'failed' => $failed,
+                'errors' => $errors,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runSolicitudesDerivacionesRefreshTask(): array
+    {
+        $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
+        if (!is_file($script)) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No se encontró el script de derivaciones.',
+            ];
+        }
+
+        $afiliaciones = ['iess', 'isspol', 'issfa', 'msp'];
+        $placeholders = implode(', ', array_fill(0, count($afiliaciones), '?'));
+        $sql = "SELECT sp.form_id, sp.hc_number, sp.afiliacion
+                FROM solicitud_procedimiento sp
+                LEFT JOIN derivaciones_forms df ON df.iess_form_id = sp.form_id
+                LEFT JOIN derivaciones_form_id dfl ON dfl.form_id = sp.form_id AND dfl.hc_number = sp.hc_number
+                WHERE sp.form_id IS NOT NULL
+                  AND sp.form_id <> ''
+                  AND sp.hc_number IS NOT NULL
+                  AND sp.hc_number <> ''
+                  AND LOWER(sp.afiliacion) IN ($placeholders)
+                  AND df.id IS NULL
+                  AND dfl.form_id IS NULL
+                ORDER BY sp.created_at DESC
+                LIMIT 10";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($afiliaciones);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($rows)) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No se encontraron solicitudes sin derivación para refrescar.',
+            ];
+        }
+
+        $processed = 0;
+        $saved = 0;
+        $failed = 0;
+        $samples = [];
+
+        foreach ($rows as $row) {
+            $formId = trim((string) ($row['form_id'] ?? ''));
+            $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+
+            if ($formId === '' || $hcNumber === '') {
+                $failed++;
+                continue;
+            }
+
+            $result = $this->scrapeSolicitudDerivacion($script, $formId, $hcNumber);
+            $processed++;
+
+            if (!empty($result['saved'])) {
+                $saved++;
+            } else {
+                $failed++;
+            }
+
+            if (count($samples) < 5) {
+                $samples[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'saved' => !empty($result['saved']),
+                ];
+            }
+        }
+
+        return [
+            'message' => sprintf('Se refrescaron derivaciones en %d solicitudes.', $saved),
+            'details' => [
+                'processed' => $processed,
+                'saved' => $saved,
+                'failed' => $failed,
+                'samples' => $samples,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{saved:bool,derivacion_id:int|null,payload:?array,raw_output:string,exit_code:int}
+     */
+    private function scrapeSolicitudDerivacion(string $script, string $formId, string $hcNumber): array
+    {
+        $cmd = sprintf(
+            'python3 %s %s %s --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($formId),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $rawOutput = trim(implode("\n", $output));
+        $parsed = null;
+
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string) $output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            return [
+                'saved' => false,
+                'derivacion_id' => null,
+                'payload' => null,
+                'raw_output' => $rawOutput,
+                'exit_code' => $exitCode,
+            ];
+        }
+
+        $codDerivacion = trim((string) ($parsed['codigo_derivacion'] ?? ''));
+        $archivoPath = trim((string) ($parsed['archivo_path'] ?? ''));
+        $derivacionId = null;
+        $saved = false;
+
+        if ($codDerivacion !== '' && $archivoPath !== '') {
+            $derivacionController = new DerivacionController($this->pdo);
+            $derivacionId = $derivacionController->guardarDerivacion(
+                $codDerivacion,
+                $formId,
+                $hcNumber,
+                $parsed['fecha_registro'] ?? null,
+                $parsed['fecha_vigencia'] ?? null,
+                $parsed['referido'] ?? null,
+                $parsed['diagnostico'] ?? null,
+                $parsed['sede'] ?? null,
+                $parsed['parentesco'] ?? null,
+                $archivoPath
+            );
+            $saved = $derivacionId !== false && $derivacionId !== null;
+        }
+
+        return [
+            'saved' => $saved,
+            'derivacion_id' => $derivacionId !== null ? (int) $derivacionId : null,
+            'payload' => $parsed,
+            'raw_output' => $rawOutput,
+            'exit_code' => $exitCode,
         ];
     }
 
