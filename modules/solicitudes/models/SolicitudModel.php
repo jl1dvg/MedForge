@@ -252,17 +252,17 @@ class SolicitudModel
 
         if (!empty($filtros['afiliacion'])) {
             $sql .= " AND pd.afiliacion COLLATE utf8mb4_unicode_ci LIKE ?";
-            $params[] = '%' . trim((string) $filtros['afiliacion']) . '%';
+            $params[] = '%' . trim((string)$filtros['afiliacion']) . '%';
         }
 
         if (!empty($filtros['doctor'])) {
             $sql .= " AND sp.doctor COLLATE utf8mb4_unicode_ci LIKE ?";
-            $params[] = '%' . trim((string) $filtros['doctor']) . '%';
+            $params[] = '%' . trim((string)$filtros['doctor']) . '%';
         }
 
         if (!empty($filtros['prioridad'])) {
             $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
-            $params[] = trim((string) $filtros['prioridad']);
+            $params[] = trim((string)$filtros['prioridad']);
         }
 
         $dateRange = $this->resolveDateRange($filtros);
@@ -290,8 +290,8 @@ class SolicitudModel
         $from = $this->normalizeDateValue($filtros['date_from'] ?? null);
         $to = $this->normalizeDateValue($filtros['date_to'] ?? null);
 
-        if (!$from && !$to && !empty($filtros['fechaTexto']) && str_contains((string) $filtros['fechaTexto'], ' - ')) {
-            [$inicio, $fin] = explode(' - ', (string) $filtros['fechaTexto']);
+        if (!$from && !$to && !empty($filtros['fechaTexto']) && str_contains((string)$filtros['fechaTexto'], ' - ')) {
+            [$inicio, $fin] = explode(' - ', (string)$filtros['fechaTexto']);
             $from = $this->normalizeDateValue($inicio);
             $to = $this->normalizeDateValue($fin);
         }
@@ -308,7 +308,7 @@ class SolicitudModel
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
         if ($value === '') {
             return null;
         }
@@ -405,6 +405,178 @@ class SolicitudModel
         return $stmtLegacy->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function guardarSolicitudesBatchUpsert(array $data): array
+    {
+        $hcNumber = $data['hcNumber'] ?? $data['hc_number'] ?? null;
+
+        if (!$hcNumber || !isset($data['form_id'], $data['solicitudes']) || !is_array($data['solicitudes'])) {
+            return ['success' => false, 'message' => 'Datos no válidos o incompletos'];
+        }
+
+        // Helper closures for limpieza/normalización
+        $clean = function ($v) {
+            if (is_string($v)) {
+                $v = trim($v);
+                if ($v === '' || in_array(mb_strtoupper($v), ['SELECCIONE', 'NINGUNO'], true)) {
+                    return null;
+                }
+                return $v;
+            }
+            return $v === '' ? null : $v;
+        };
+
+        $normPrioridad = function ($v) {
+            $v = is_string($v) ? mb_strtoupper(trim($v)) : $v;
+            return ($v === 'SI' || $v === 1 || $v === '1' || $v === true) ? 'SI' : 'NO';
+        };
+
+        $normFecha = function ($v) {
+            $v = is_string($v) ? trim($v) : $v;
+            if (!$v) return null;
+
+            // ISO
+            if (preg_match('/^\\d{4}-\\d{2}-\\d{2}( \\d{2}:\\d{2}(:\\d{2})?)?$/', $v)) {
+                return $v;
+            }
+
+            // ISO con T
+            if (preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2})?$/', $v)) {
+                $format = strlen($v) === 19 ? 'Y-m-d\\TH:i:s' : 'Y-m-d\\TH:i';
+                $dt = DateTime::createFromFormat($format, $v);
+                if ($dt instanceof DateTime) {
+                    return $dt->format('Y-m-d H:i:s');
+                }
+            }
+
+            $fmt = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
+            foreach ($fmt as $f) {
+                $dt = DateTime::createFromFormat($f, $v);
+                if ($dt instanceof DateTime) {
+                    return $dt->format(strlen($f) >= 10 ? 'Y-m-d H:i:s' : 'Y-m-d');
+                }
+            }
+
+            return null;
+        };
+
+        // Validar procedimiento obligatorio
+        $missingProcedimientos = [];
+        foreach ($data['solicitudes'] as $idx => $solicitud) {
+            $procedimientoVal = $clean($solicitud['procedimiento'] ?? null);
+            if ($procedimientoVal === null) {
+                $missingProcedimientos[] = $solicitud['secuencia'] ?? ($idx + 1);
+            }
+        }
+        if ($missingProcedimientos) {
+            return [
+                'success' => false,
+                'message' => 'El procedimiento es obligatorio en todas las solicitudes (faltante en: ' . implode(', ', $missingProcedimientos) . ')',
+            ];
+        }
+
+        $sql = "INSERT INTO solicitud_procedimiento
+        (hc_number, form_id, secuencia, tipo, afiliacion, procedimiento, doctor, fecha, duracion, ojo, prioridad, producto, observacion, sesiones, lente_id, lente_nombre, lente_poder, lente_observacion, incision)
+        VALUES (:hc, :form_id, :secuencia, :tipo, :afiliacion, :procedimiento, :doctor, :fecha, :duracion, :ojo, :prioridad, :producto, :observacion, :sesiones, :lente_id, :lente_nombre, :lente_poder, :lente_observacion, :incision)
+        ON DUPLICATE KEY UPDATE
+            tipo = VALUES(tipo),
+            afiliacion = VALUES(afiliacion),
+            procedimiento = VALUES(procedimiento),
+            doctor = VALUES(doctor),
+            fecha = VALUES(fecha),
+            duracion = VALUES(duracion),
+            ojo = VALUES(ojo),
+            prioridad = VALUES(prioridad),
+            producto = VALUES(producto),
+            observacion = VALUES(observacion),
+            sesiones = VALUES(sesiones),
+            lente_id = VALUES(lente_id),
+            lente_nombre = VALUES(lente_nombre),
+            lente_poder = VALUES(lente_poder),
+            lente_observacion = VALUES(lente_observacion),
+            incision = VALUES(incision)";
+
+        $stmt = $this->db->prepare($sql);
+
+        foreach ($data['solicitudes'] as $solicitud) {
+            $secuencia = $solicitud['secuencia'] ?? null;
+            $tipo = $clean($solicitud['tipo'] ?? null);
+            $afiliacion = $clean($solicitud['afiliacion'] ?? null);
+            $procedimiento = $clean($solicitud['procedimiento'] ?? null);
+            $doctor = $clean($solicitud['doctor'] ?? null);
+            $fecha = $normFecha($solicitud['fecha'] ?? null);
+            $duracion = $clean($solicitud['duracion'] ?? null);
+            $prioridad = $normPrioridad($solicitud['prioridad'] ?? 'NO');
+            $producto = $clean($solicitud['producto'] ?? null);
+            $observacion = $clean($solicitud['observacion'] ?? null);
+            $sesiones = $clean($solicitud['sesiones'] ?? null);
+
+            // ojo: string o array
+            $ojoVal = $solicitud['ojo'] ?? null;
+            if (is_array($ojoVal)) {
+                $ojoVal = implode(',', array_values(array_filter(array_map($clean, $ojoVal))));
+            } else {
+                $ojoVal = $clean($ojoVal);
+            }
+
+            // LIO/Incisión
+            $lenteId = $clean($solicitud['lente_id'] ?? null);
+            $lenteNombre = $clean($solicitud['lente_nombre'] ?? null);
+            $lentePoder = $clean($solicitud['lente_poder'] ?? null);
+            $lenteObs = $clean($solicitud['lente_observacion'] ?? null);
+            $incision = $clean($solicitud['incision'] ?? null);
+
+            $detalles = $solicitud['detalles'] ?? [];
+            if (is_array($detalles)) {
+                $detallePlano = null;
+                foreach ($detalles as $d) {
+                    if (!is_array($d)) continue;
+                    $detallePlano = $d;
+                    if (!empty($d['principal']) || !empty($d['tipo'])) {
+                        break;
+                    }
+                }
+                if ($detallePlano) {
+                    $lenteId = $lenteId ?: $clean($detallePlano['id_lente_intraocular'] ?? $detallePlano['lente_id'] ?? null);
+                    $lenteNombre = $lenteNombre ?: $clean($detallePlano['lente'] ?? $detallePlano['lente_nombre'] ?? null);
+                    $lentePoder = $lentePoder ?: $clean($detallePlano['poder'] ?? $detallePlano['lente_poder'] ?? null);
+                    $lenteObs = $lenteObs ?: $clean($detallePlano['observaciones'] ?? $detallePlano['lente_observacion'] ?? null);
+                    $incision = $incision ?: $clean($detallePlano['incision'] ?? null);
+                    if (!$ojoVal) {
+                        $ojoVal = $clean($detallePlano['lateralidad'] ?? null);
+                    }
+                }
+            }
+
+            $stmt->execute([
+                ':hc' => $hcNumber,
+                ':form_id' => $data['form_id'],
+                ':secuencia' => $secuencia,
+                ':tipo' => $tipo,
+                ':afiliacion' => $afiliacion,
+                ':procedimiento' => $procedimiento,
+                ':doctor' => $doctor,
+                ':fecha' => $fecha,
+                ':duracion' => $duracion,
+                ':ojo' => $ojoVal,
+                ':prioridad' => $prioridad,
+                ':producto' => $producto,
+                ':observacion' => $observacion,
+                ':sesiones' => $sesiones,
+                ':lente_id' => $lenteId,
+                ':lente_nombre' => $lenteNombre,
+                ':lente_poder' => $lentePoder,
+                ':lente_observacion' => $lenteObs,
+                ':incision' => $incision,
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Solicitudes guardadas o actualizadas correctamente',
+            'total' => count($data['solicitudes']),
+        ];
+    }
+
     public function obtenerFechaCreacionSolicitud($form_id, $hc)
     {
         $sql = "SELECT * FROM solicitud_procedimiento
@@ -472,7 +644,7 @@ class SolicitudModel
         $stmt->execute([$formId]);
         $result = $stmt->fetchColumn();
 
-        return $result !== false ? (int) $result : null;
+        return $result !== false ? (int)$result : null;
     }
 
     public function actualizarEstado(int $id, string $estado): array
@@ -555,22 +727,22 @@ class SolicitudModel
             $this->db->commit();
 
             return [
-                'id'           => $id,
-                'form_id'      => $datos['form_id'] ?? null,
-                'hc_number'    => $datos['hc_number'] ?? null,
-                'estado'       => $datos['estado'] ?? $estado,
-                'turno'        => $datos['turno'] ?? $turno,
-                'full_name'    => isset($datos['full_name']) && trim((string) $datos['full_name']) !== ''
-                    ? trim((string) $datos['full_name'])
+                'id' => $id,
+                'form_id' => $datos['form_id'] ?? null,
+                'hc_number' => $datos['hc_number'] ?? null,
+                'estado' => $datos['estado'] ?? $estado,
+                'turno' => $datos['turno'] ?? $turno,
+                'full_name' => isset($datos['full_name']) && trim((string)$datos['full_name']) !== ''
+                    ? trim((string)$datos['full_name'])
                     : null,
                 'procedimiento' => $datos['procedimiento'] ?? null,
-                'prioridad'     => $datos['prioridad'] ?? null,
-                'doctor'        => $datos['doctor'] ?? null,
-                'tipo'          => $datos['tipo'] ?? null,
-                'afiliacion'    => $datos['afiliacion'] ?? null,
+                'prioridad' => $datos['prioridad'] ?? null,
+                'doctor' => $datos['doctor'] ?? null,
+                'tipo' => $datos['tipo'] ?? null,
+                'afiliacion' => $datos['afiliacion'] ?? null,
                 'fecha_programada' => $datos['fecha_programada'] ?? null,
                 'estado_anterior' => $datosPrevios['estado'] ?? null,
-                'turno_anterior'  => $datosPrevios['turno'] ?? null,
+                'turno_anterior' => $datosPrevios['turno'] ?? null,
             ];
         } catch (\Throwable $e) {
             $this->db->rollBack();
@@ -613,8 +785,8 @@ class SolicitudModel
         }
 
         if (isset($row['full_name'])) {
-            $row['full_name'] = trim((string) $row['full_name']) !== ''
-                ? trim((string) $row['full_name'])
+            $row['full_name'] = trim((string)$row['full_name']) !== ''
+                ? trim((string)$row['full_name'])
                 : null;
         }
 
@@ -666,8 +838,8 @@ class SolicitudModel
 
         foreach ($resultados as &$row) {
             if (isset($row['full_name'])) {
-                $row['full_name'] = trim((string) $row['full_name']) !== ''
-                    ? trim((string) $row['full_name'])
+                $row['full_name'] = trim((string)$row['full_name']) !== ''
+                    ? trim((string)$row['full_name'])
                     : null;
             }
         }
@@ -694,7 +866,7 @@ class SolicitudModel
         $stmt->bindValue(':columna', $columna, PDO::PARAM_STR);
         $stmt->execute();
 
-        $cache[$columna] = ((int) $stmt->fetchColumn()) > 0;
+        $cache[$columna] = ((int)$stmt->fetchColumn()) > 0;
 
         return $cache[$columna];
     }
@@ -722,7 +894,7 @@ class SolicitudModel
                 return null;
             }
 
-            $estadoActualNormalizado = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? ''));
+            $estadoActualNormalizado = $this->normalizarEstadoTurnero((string)($registro['estado'] ?? ''));
 
             if ($estadoActualNormalizado === null) {
                 $this->db->rollBack();
@@ -730,7 +902,7 @@ class SolicitudModel
             }
 
             if (empty($registro['turno'])) {
-                $registro['turno'] = $this->asignarTurnoSiNecesario((int) $registro['id']);
+                $registro['turno'] = $this->asignarTurnoSiNecesario((int)$registro['id']);
             }
 
             $update = $this->db->prepare('UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id');
@@ -795,11 +967,11 @@ class SolicitudModel
         $actual = $consulta->fetchColumn();
 
         if ($actual !== false && $actual !== null) {
-            return (int) $actual;
+            return (int)$actual;
         }
 
         $maxStmt = $this->db->query('SELECT turno FROM solicitud_procedimiento WHERE turno IS NOT NULL ORDER BY turno DESC LIMIT 1 FOR UPDATE');
-        $maxTurno = $maxStmt ? (int) $maxStmt->fetchColumn() : 0;
+        $maxTurno = $maxStmt ? (int)$maxStmt->fetchColumn() : 0;
         $siguiente = $maxTurno + 1;
 
         $update = $this->db->prepare('UPDATE solicitud_procedimiento SET turno = :turno WHERE id = :id AND turno IS NULL');
@@ -810,7 +982,7 @@ class SolicitudModel
         if ($update->rowCount() === 0) {
             $consulta->execute();
             $actual = $consulta->fetchColumn();
-            return $actual !== false ? (int) $actual : null;
+            return $actual !== false ? (int)$actual : null;
         }
 
         return $siguiente;
@@ -829,4 +1001,5 @@ class SolicitudModel
 
         return $service->getSources();
     }
+
 }

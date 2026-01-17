@@ -294,8 +294,8 @@ function buildDerivacionHtml(derivacion) {
                 <span class="text-muted ms-1">Documento adjunto disponible.</span>
             </div>
             <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="${escapeHtml(
-                archivoHref
-            )}" target="_blank" rel="noopener">
+            archivoHref
+        )}" target="_blank" rel="noopener">
                 <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
             </a>
         </div>
@@ -778,8 +778,8 @@ function renderPatientSummaryFallback(solicitudId) {
                         <div class="mt-2">
                             <p class="prefactura-meta-label mb-1">Procedimiento</p>
                             <div class="prefactura-line-clamp">${escapeHtml(
-                                procedimiento
-                            )}</div>
+        procedimiento
+    )}</div>
                         </div>
                     </div>
                 </div>
@@ -924,6 +924,61 @@ function buildEstadoApiCandidates() {
     });
 
     return expanded;
+}
+
+function buildGuardarSolicitudInternalCandidates({solicitudId} = {}) {
+    const {basePath} = getKanbanConfig();
+    const normalizedBase =
+        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
+
+    const sid = solicitudId ? encodeURIComponent(String(solicitudId)) : "";
+
+    // ✅ Endpoint interno del módulo (requiere sesión)
+    // Ruta canónica: POST /solicitudes/{id}/cirugia
+    // Nota: en muchos entornos `basePath` ya es "/solicitudes" (se usa para /prefactura, /derivacion, etc.)
+    // Por eso evitamos construir "/solicitudes/solicitudes/...".
+
+    const candidates = [];
+
+    if (!sid) {
+        return candidates;
+    }
+
+    // 1) Canónica absoluta
+    candidates.push(`/solicitudes/${sid}/cirugia`);
+
+    // 2) Si el basePath existe y NO es ya "/solicitudes", construir prefijo + "/solicitudes/..."
+    if (normalizedBase && normalizedBase !== "/solicitudes") {
+        candidates.push(`${normalizedBase}/solicitudes/${sid}/cirugia`);
+    }
+
+    // 3) Si el basePath existe y YA es "/solicitudes", construir simplemente basePath + "/{id}/cirugia"
+    if (normalizedBase === "/solicitudes") {
+        candidates.push(`${normalizedBase}/${sid}/cirugia`);
+    }
+
+    // Fallback opcional: endpoint CRM (solo si backend lo soporta)
+    candidates.push(`/solicitudes/${sid}/crm`);
+    if (normalizedBase && normalizedBase !== "/solicitudes") {
+        candidates.push(`${normalizedBase}/solicitudes/${sid}/crm`);
+    }
+    if (normalizedBase === "/solicitudes") {
+        candidates.push(`${normalizedBase}/${sid}/crm`);
+    }
+
+    // Filtrar duplicados preservando orden
+    return Array.from(new Set(candidates.filter(Boolean)));
+}
+
+function clearSolicitudDetalleCacheBySolicitudId(solicitudId) {
+    if (!solicitudId) return;
+    const sid = String(solicitudId);
+    for (const key of Array.from(solicitudDetalleCache.keys())) {
+        // keys are like: hc:solicitudId:formId (some parts may be missing)
+        if (key.split(":").includes(sid)) {
+            solicitudDetalleCache.delete(key);
+        }
+    }
 }
 
 let __lentesCache = null;
@@ -1345,10 +1400,10 @@ function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
     show(
         btnCobertura,
         canShow &&
-            (estado === "recibida" ||
-                estado === "en-atencion" ||
-                estado === "revision-codigos" ||
-                estado === "espera-documentos")
+        (estado === "recibida" ||
+            estado === "en-atencion" ||
+            estado === "revision-codigos" ||
+            estado === "espera-documentos")
     );
     show(
         btnCoberturaExitosa,
@@ -1734,12 +1789,15 @@ function handleContextualAction(event) {
                         }
                     },
                     preConfirm: async () => {
+                        // Campos del formulario
                         const producto =
                             document.getElementById("sol-producto")?.value.trim() || "";
                         const poder =
                             document.getElementById("sol-lente-poder")?.value.trim() || "";
                         const lenteId =
                             document.getElementById("sol-lente-id")?.value.trim() || "";
+                        const lenteNombre =
+                            document.getElementById("sol-lente-nombre")?.value.trim() || producto;
                         const ojo = document.getElementById("sol-ojo")?.value.trim() || "";
                         const incision =
                             document.getElementById("sol-incision")?.value.trim() || "";
@@ -1749,43 +1807,77 @@ function handleContextualAction(event) {
                             document.getElementById("sol-observacion")?.value.trim() || "";
                         const procedimiento =
                             document.getElementById("sol-procedimiento")?.value.trim() || "";
-                        const fecha =
-                            document.getElementById("sol-fecha")?.value.trim() || "";
-                        const doctor =
-                            document.getElementById("sol-doctor")?.value.trim() || "";
+                        const fecha = document.getElementById("sol-fecha")?.value.trim() || "";
+                        const doctor = document.getElementById("sol-doctor")?.value.trim() || "";
+
+                        // Usar el id real del registro (detalle) si existe.
+                        // En algunos flujos el dataset id puede no coincidir con el id de solicitud_procedimiento.
+                        const targetSolicitudId =
+                            merged?.id ? String(merged.id) : String(solicitudId || "");
+
+                        // ✅ Guardado interno (módulo Solicitudes): endpoint con sesión.
+                        // Recomendado: POST /solicitudes/{id}/cirugia
+                        // Payload mínimo: { form_id, hc_number, updates: {...} }
 
                         const payload = {
-                            id: solicitudId,
-                            solicitud_id: solicitudId,
-                            producto,
-                            procedimiento,
-                            fecha,
-                            doctor,
-                            lente_nombre:
-                                document.getElementById("sol-lente-nombre")?.value.trim() ||
-                                producto,
-                            lente_id: lenteId,
-                            lente_poder: poder,
-                            lente_observacion: lenteObservacion,
-                            observacion,
-                            ojo,
-                            incision,
+                            solicitud_id: targetSolicitudId,
+                            form_id: formId || merged.form_id || solicitud.form_id || "",
+                            hc_number: hcNumber || merged.hc_number || solicitud.hc_number || "",
+                            updates: {
+                                doctor,
+                                fecha,
+                                ojo,
+                                procedimiento,
+                                observacion,
+                                // Detalles quirúrgicos (LIO / incisión)
+                                lente_id: lenteId,
+                                lente_nombre: lenteNombre,
+                                lente_poder: poder,
+                                lente_observacion: lenteObservacion,
+                                incision,
+                                // Campo resumen
+                                producto: lenteNombre || producto,
+                            },
                         };
 
+                        if (!payload.hc_number || !payload.form_id) {
+                            Swal.showValidationMessage(
+                                "Faltan datos para guardar (hc_number / form_id)."
+                            );
+                            return false;
+                        }
+
                         try {
-                            const postUrls = buildEstadoApiCandidates();
+                            const postUrls = buildGuardarSolicitudInternalCandidates({solicitudId: targetSolicitudId});
+                            console.log("[guardarCirugia] candidates:", postUrls);
+                            console.log("[guardarCirugia] payload:", payload);
+                            // Siempre con sesión para endpoints internos
                             const response = await fetchWithFallback(postUrls, {
                                 method: "POST",
+                                credentials: "include",
                                 headers: {"Content-Type": "application/json"},
                                 body: JSON.stringify(payload),
                             });
-                            const resp = await response.json();
-                            if (!resp?.success) {
-                                throw new Error(
-                                    resp?.message || "No se guardaron los cambios"
-                                );
+                            console.log("[guardarCirugia] response ok/status:", response.ok, response.status);
+
+                            let resp = null;
+                            const ct = response.headers.get("content-type") || "";
+                            if (ct.includes("application/json")) {
+                                resp = await response.json();
+                            } else {
+                                const raw = await response.text();
+                                try {
+                                    resp = JSON.parse(raw);
+                                } catch (e) {
+                                    resp = {success: response.ok, message: raw};
+                                }
                             }
-                            return {payload, response: resp};
+
+                            if (!resp?.success) {
+                                throw new Error(resp?.message || "No se guardaron los cambios");
+                            }
+
+                            return {payload, response: resp, targetSolicitudId};
                         } catch (error) {
                             console.error("No se pudo guardar la solicitud", error);
                             Swal.showValidationMessage(
@@ -1797,22 +1889,61 @@ function handleContextualAction(event) {
                 }).then((result) => {
                     if (!result.isConfirmed) return;
 
+                    const targetSolicitudId = result.value?.targetSolicitudId || solicitudId;
                     const payload = result.value?.payload || {};
                     const responseData = result.value?.response?.data || null;
                     const store = getDataStore();
                     const item = store.find(
-                        (entry) => String(entry.id) === String(solicitudId)
+                        (entry) => String(entry.id) === String(targetSolicitudId)
                     );
                     if (item) {
-                        Object.assign(item, payload, responseData || {});
+                        // Refrescar campos visibles y detalles del lente
+                        const updated = payload?.updates || {};
+                        Object.assign(
+                            item,
+                            {
+                                doctor: updated.doctor ?? item.doctor,
+                                fecha: updated.fecha ?? item.fecha,
+                                ojo: updated.ojo ?? item.ojo,
+                                producto: updated.producto ?? item.producto,
+                                procedimiento: updated.procedimiento ?? item.procedimiento,
+                                observacion: updated.observacion ?? item.observacion,
+                                // LIO
+                                lente_id: updated.lente_id ?? item.lente_id,
+                                lente_nombre: updated.lente_nombre ?? item.lente_nombre,
+                                lente_poder: updated.lente_poder ?? item.lente_poder,
+                                lente_observacion:
+                                    updated.lente_observacion ?? item.lente_observacion,
+                                incision: updated.incision ?? item.incision,
+                            },
+                            responseData || {}
+                        );
+                        delete item.detalle_hidratado;
                     }
-                    solicitudDetalleCache.delete(String(solicitudId));
+                    clearSolicitudDetalleCacheBySolicitudId(targetSolicitudId);
                     showToast("Solicitud actualizada", true);
-                    renderEstadoContext(solicitudId);
+                    renderEstadoContext(targetSolicitudId);
                     if (typeof window.aplicarFiltros === "function") {
                         window.aplicarFiltros();
                     }
-                    abrirPrefactura({hc: hcNumber || solicitud.hc_number, formId, solicitudId});
+                    // Evitar re-abrir el modal si ya está visible (puede dejar backdrops y congelar la UI).
+                    const prefacturaModalEl = document.getElementById("prefacturaModal");
+                    const modalIsOpen = prefacturaModalEl?.classList?.contains("show");
+
+                    // Refrescar badges/detalle desde backend cuando sea posible
+                    refreshKanbanBadgeFromDetalle({
+                        hcNumber: hcNumber || solicitud.hc_number,
+                        solicitudId: targetSolicitudId,
+                        formId,
+                    });
+
+                    if (!modalIsOpen) {
+                        abrirPrefactura({
+                            hc: hcNumber || solicitud.hc_number,
+                            formId,
+                            solicitudId: targetSolicitudId,
+                        });
+                    }
                 });
             })
             .catch((error) => {
@@ -1878,7 +2009,7 @@ async function handleRescrapeDerivacion(event) {
         );
 
         if (solicitudId) {
-            solicitudDetalleCache.delete(String(solicitudId));
+            clearSolicitudDetalleCacheBySolicitudId(solicitudId);
             const store = getDataStore();
             const item = Array.isArray(store)
                 ? store.find((entry) => String(entry.id) === String(solicitudId))

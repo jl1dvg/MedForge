@@ -315,8 +315,8 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'pdf')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'pdf')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'pdf') {
@@ -421,8 +421,8 @@ class SolicitudController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'excel')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'excel')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'excel') {
@@ -996,11 +996,11 @@ class SolicitudController extends BaseController
      */
     private function sanitizeReportFilters(array $filters): array
     {
-        $search = trim((string) ($filters['search'] ?? ''));
-        $doctor = trim((string) ($filters['doctor'] ?? ''));
-        $afiliacion = trim((string) ($filters['afiliacion'] ?? ''));
-        $prioridad = trim((string) ($filters['prioridad'] ?? ''));
-        $estado = trim((string) ($filters['estado'] ?? ''));
+        $search = trim((string)($filters['search'] ?? ''));
+        $doctor = trim((string)($filters['doctor'] ?? ''));
+        $afiliacion = trim((string)($filters['afiliacion'] ?? ''));
+        $prioridad = trim((string)($filters['prioridad'] ?? ''));
+        $estado = trim((string)($filters['estado'] ?? ''));
 
         $allowedPriorities = ['normal', 'pendiente', 'urgente'];
         if ($prioridad !== '' && !in_array(strtolower($prioridad), $allowedPriorities, true)) {
@@ -1011,7 +1011,7 @@ class SolicitudController extends BaseController
         $dateTo = $this->normalizeDateInput($filters['date_to'] ?? null);
 
         if (!$dateFrom && !$dateTo && !empty($filters['fechaTexto'])) {
-            [$dateFrom, $dateTo] = $this->parseDateRange((string) $filters['fechaTexto']);
+            [$dateFrom, $dateTo] = $this->parseDateRange((string)$filters['fechaTexto']);
         }
 
         return [
@@ -1031,7 +1031,7 @@ class SolicitudController extends BaseController
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
         if ($value === '') {
             return null;
         }
@@ -1095,7 +1095,7 @@ class SolicitudController extends BaseController
         return array_values(array_filter($solicitudes, static function (array $row) use ($term, $keys) {
             foreach ($keys as $key) {
                 $value = $row[$key] ?? '';
-                if ($value !== '' && str_contains(mb_strtolower((string) $value), $term)) {
+                if ($value !== '' && str_contains(mb_strtolower((string)$value), $term)) {
                     return true;
                 }
             }
@@ -1719,8 +1719,8 @@ class SolicitudController extends BaseController
                 [
                     'user_id' => $this->getCurrentUserId(),
                     'payload' => [
-                        'id' => isset($payload['id']) ? (int) $payload['id'] : null,
-                        'turno' => isset($payload['turno']) ? (int) $payload['turno'] : null,
+                        'id' => isset($payload['id']) ? (int)$payload['id'] : null,
+                        'turno' => isset($payload['turno']) ? (int)$payload['turno'] : null,
                     ],
                     'timestamp' => (new DateTimeImmutable('now'))->format(DATE_ATOM),
                 ]
@@ -1928,8 +1928,8 @@ class SolicitudController extends BaseController
     {
         $this->requireAuth();
 
-        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
-        $formId = trim((string) ($_GET['form_id'] ?? ''));
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
 
         if ($hcNumber === '' || $formId === '') {
             $this->json(
@@ -1987,8 +1987,8 @@ class SolicitudController extends BaseController
         $this->requireAuth();
 
         $payload = $this->getRequestBody();
-        $formId = trim((string) ($payload['form_id'] ?? ''));
-        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $formId = trim((string)($payload['form_id'] ?? ''));
+        $hcNumber = trim((string)($payload['hc_number'] ?? ''));
 
         if ($formId === '' || $hcNumber === '') {
             $this->json(
@@ -2028,7 +2028,7 @@ class SolicitudController extends BaseController
         $parsed = null;
 
         for ($i = count($output) - 1; $i >= 0; $i--) {
-            $line = trim((string) $output[$i]);
+            $line = trim((string)$output[$i]);
             if ($line === '') {
                 continue;
             }
@@ -2052,8 +2052,8 @@ class SolicitudController extends BaseController
             return;
         }
 
-        $codDerivacion = trim((string) ($parsed['codigo_derivacion'] ?? ''));
-        $archivoPath = trim((string) ($parsed['archivo_path'] ?? ''));
+        $codDerivacion = trim((string)($parsed['codigo_derivacion'] ?? ''));
+        $archivoPath = trim((string)($parsed['archivo_path'] ?? ''));
         $derivacionId = null;
         $saved = false;
 
@@ -2231,5 +2231,96 @@ class SolicitudController extends BaseController
         $estado = preg_replace('/\s+/', '-', $estado) ?? $estado;
 
         return $estado;
+    }
+
+    public function guardarDetallesCirugia(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+
+        try {
+            // A) Shape moderno (modal): { updates: { ...campos... } }
+            if (isset($payload['updates']) && is_array($payload['updates'])) {
+                $updates = $payload['updates'];
+
+                $allowed = [
+                    'estado', 'doctor', 'fecha', 'prioridad', 'observacion',
+                    'procedimiento', 'producto', 'ojo', 'afiliacion', 'duracion',
+                    'lente_id', 'lente_nombre', 'lente_poder', 'lente_observacion',
+                    'incision',
+                ];
+
+                $campos = [];
+                foreach ($allowed as $k) {
+                    if (array_key_exists($k, $updates)) {
+                        $campos[$k] = $updates[$k];
+                    }
+                }
+
+                $resultado = $this->solicitudModel->actualizarSolicitudParcial($solicitudId, $campos);
+
+                if (!is_array($resultado) || ($resultado['success'] ?? false) !== true) {
+                    $this->json([
+                        'success' => false,
+                        'error' => $resultado['message'] ?? 'No se pudieron guardar los cambios',
+                    ], 422);
+                    return;
+                }
+
+                $this->json([
+                    'success' => true,
+                    'message' => $resultado['message'] ?? 'Cambios guardados',
+                    'data' => $resultado['data'] ?? null,
+                ]);
+                return;
+            }
+
+            // B) Shape batch (API legacy): { hcNumber, form_id, solicitudes: [] }
+            $hc = $payload['hcNumber'] ?? $payload['hc_number'] ?? null;
+            if ($hc && isset($payload['form_id'], $payload['solicitudes']) && is_array($payload['solicitudes'])) {
+                $resultado = $this->solicitudModel->guardarSolicitudesBatchUpsert($payload);
+
+                $ok = (bool)($resultado['success'] ?? false);
+                if (!$ok) {
+                    $this->json([
+                        'success' => false,
+                        'error' => $resultado['message'] ?? 'No se pudieron guardar las solicitudes',
+                        'data' => $resultado,
+                    ], 422);
+                    return;
+                }
+
+                $this->json($resultado);
+                return;
+            }
+
+            // C) nada coincide
+            $this->json(['success' => false, 'error' => 'Datos no válidos o incompletos'], 422);
+            return;
+
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes',
+                'Error al guardar detalles de cirugía',
+                $e,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'usuario_id' => $this->getCurrentUserId(),
+                    'payload' => $payload,
+                    'error_id' => $errorId,
+                ]
+            );
+
+            $this->json([
+                'success' => false,
+                'error' => sprintf('Error interno (ref: %s)', $errorId),
+            ], 500);
+            return;
+        }
     }
 }
