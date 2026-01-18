@@ -31,16 +31,35 @@ class NotificationMailer
     }
 
     /**
+     * @param string|string[] $recipients
+     * @param string[] $cc
+     * @param array<int, array{path: string, name?: string, type?: string}> $attachments
+     * @param bool $isHtml
      * @return array{success: bool, error?: string}
      */
-    public function sendPatientUpdate(string $recipient, string $subject, string $body): array
+    public function sendPatientUpdate(
+        string|array $recipients,
+        string $subject,
+        string $body,
+        array $cc = [],
+        array $attachments = [],
+        bool $isHtml = false
+    ): array
     {
         $this->refresh();
 
-        $recipient = trim($recipient);
-        if ($recipient === '' || !$this->isConfigured()) {
+        $recipientList = is_array($recipients) ? $recipients : [$recipients];
+        $normalizedRecipients = [];
+        foreach ($recipientList as $recipient) {
+            $recipient = trim((string) $recipient);
+            if ($recipient !== '' && filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+                $normalizedRecipients[] = $recipient;
+            }
+        }
+
+        if ($normalizedRecipients === [] || !$this->isConfigured()) {
             $missing = $this->missingRequiredFields();
-            $error = $recipient === '' ? 'El destinatario está vacío' : 'SMTP no configurado';
+            $error = $normalizedRecipients === [] ? 'El destinatario está vacío' : 'SMTP no configurado';
             if ($missing !== []) {
                 $error .= ': falta ' . implode(', ', $missing);
             }
@@ -50,22 +69,48 @@ class NotificationMailer
 
         $mailer = $this->buildMailer();
         if ($mailer === null) {
-            $message = 'No se pudo inicializar el cliente SMTP para enviar la notificación a ' . $recipient;
+            $recipientLabel = $normalizedRecipients[0] ?? 'destinatario';
+            $message = 'No se pudo inicializar el cliente SMTP para enviar la notificación a ' . $recipientLabel;
             error_log($message);
 
             return ['success' => false, 'error' => 'No se pudo preparar el cliente SMTP'];
         }
 
         try {
-            $mailer->addAddress($recipient);
+            foreach ($normalizedRecipients as $recipient) {
+                $mailer->addAddress($recipient);
+            }
+            foreach ($cc as $email) {
+                $email = trim((string) $email);
+                if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $mailer->addCC($email);
+                }
+            }
+            foreach ($attachments as $attachment) {
+                $path = $attachment['path'] ?? '';
+                if ($path === '' || !is_file($path)) {
+                    continue;
+                }
+                $name = $attachment['name'] ?? '';
+                if ($name !== '') {
+                    $mailer->addAttachment($path, $name);
+                } else {
+                    $mailer->addAttachment($path);
+                }
+            }
             $mailer->Subject = $subject !== '' ? $subject : 'Actualización de su atención';
-            $mailer->Body = $this->buildHtmlBody($body);
-            $mailer->AltBody = trim($body);
+            if ($isHtml) {
+                $mailer->Body = $this->buildHtmlBodyFromHtml($body);
+                $mailer->AltBody = trim(strip_tags($body));
+            } else {
+                $mailer->Body = $this->buildHtmlBody($body);
+                $mailer->AltBody = trim($body);
+            }
             $mailer->send();
 
             return ['success' => true];
         } catch (MailException $exception) {
-            error_log('No se pudo enviar el correo de notificación a ' . $recipient . ': ' . $exception->getMessage());
+            error_log('No se pudo enviar el correo de notificación: ' . $exception->getMessage());
 
             return ['success' => false, 'error' => $mailer->ErrorInfo ?: $exception->getMessage()];
         }
@@ -80,6 +125,27 @@ class NotificationMailer
         }
 
         $parts[] = '<p>' . nl2br(htmlentities($content, ENT_QUOTES, 'UTF-8')) . '</p>';
+
+        if ($this->config['signature'] !== '') {
+            $parts[] = '<p>' . $this->config['signature'] . '</p>';
+        }
+
+        if ($this->config['footer'] !== '') {
+            $parts[] = $this->config['footer'];
+        }
+
+        return implode("\n\n", $parts);
+    }
+
+    private function buildHtmlBodyFromHtml(string $html): string
+    {
+        $parts = [];
+
+        if ($this->config['header'] !== '') {
+            $parts[] = $this->config['header'];
+        }
+
+        $parts[] = $html;
 
         if ($this->config['signature'] !== '') {
             $parts[] = '<p>' . $this->config['signature'] . '</p>';
