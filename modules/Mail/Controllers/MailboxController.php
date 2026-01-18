@@ -6,6 +6,7 @@ use Core\BaseController;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Mail\Services\MailboxService;
 use Modules\Mail\Services\NotificationMailer;
+use Modules\Mail\Services\MailProfileService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
 use RuntimeException;
@@ -227,7 +228,17 @@ class MailboxController extends BaseController
         }
 
         try {
-            $result = $this->mailer->sendPatientUpdate($email, $subject, implode("\n", $messageLines));
+            $profileService = new MailProfileService($this->pdo);
+            $profileSlug = $profileService->getProfileSlugForContext('crm');
+            $result = $this->mailer->sendPatientUpdate(
+                $email,
+                $subject,
+                implode("\n", $messageLines),
+                [],
+                [],
+                false,
+                $profileSlug
+            );
             if (!$result['success']) {
                 $message = $result['error'] ?? 'No se pudo enviar el correo de notificación';
                 throw new RuntimeException($message);

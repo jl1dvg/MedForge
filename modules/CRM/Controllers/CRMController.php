@@ -16,6 +16,7 @@ use Modules\CRM\Services\CrmTaskService;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\CRM\Services\PerfexEstimatesParser;
 use Modules\Mail\Services\NotificationMailer;
+use Modules\Mail\Services\MailProfileService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -435,7 +436,9 @@ class CRMController extends BaseController
                 return;
             }
 
-            $result = $this->mailer->sendPatientUpdate($to, $subject, $body);
+            $profileService = new MailProfileService($this->pdo);
+            $profileSlug = $profileService->getProfileSlugForContext('crm');
+            $result = $this->mailer->sendPatientUpdate($to, $subject, $body, [], [], false, $profileSlug);
             if (!$result['success']) {
                 $message = $result['error'] ?? 'No se pudo enviar el correo de notificación';
                 throw new RuntimeException($message);

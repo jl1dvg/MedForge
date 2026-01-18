@@ -1377,9 +1377,10 @@ function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-");
 
-    const estado = solicitud
-        ? normalize(solicitud.estado || solicitud.kanban_estado)
+    const estadoRaw = solicitud
+        ? (solicitud.kanban_estado || solicitud.estado || solicitud.estado_label)
         : "";
+    const estado = estadoRaw ? normalize(estadoRaw) : "";
 
     const btnGenerarTurno = document.getElementById("btnGenerarTurnoModal");
     const btnEnAtencion = document.getElementById("btnMarcarAtencionModal");
@@ -1397,19 +1398,20 @@ function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
     show(btnGenerarTurno, canShow && estado === "recibida");
     show(btnEnAtencion, canShow && estado === "llamado");
     show(btnRevisar, canShow && estado === "revision-codigos");
-    show(
-        btnCobertura,
-        canShow &&
-        (estado === "recibida" ||
-            estado === "en-atencion" ||
-            estado === "revision-codigos" ||
-            estado === "espera-documentos")
-    );
+    const coberturaStates = new Set([
+        "recibida",
+        "en-atencion",
+        "revision-codigos",
+        "revision-codigo",
+        "cobertura",
+        "espera-documentos",
+    ]);
+    show(btnCobertura, canShow && coberturaStates.has(estado));
     show(
         btnCoberturaExitosa,
         canShow && (estado === "en-atencion" || estado === "revision-codigos")
     );
-    console.log("[botones] estado raw:", solicitud?.estado || solicitud?.kanban_estado);
+    console.log("[botones] estado raw:", estadoRaw);
     console.log("[botones] estado normalized:", estado);
 }
 

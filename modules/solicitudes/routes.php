@@ -36,6 +36,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->rescrapeDerivacion();
     });
 
+    $router->post('/solicitudes/cobertura-mail', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->enviarCoberturaMail();
+    });
+
     $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
         (new SolicitudController($pdo))->enviarRecordatorios();
     });
