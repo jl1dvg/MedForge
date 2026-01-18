@@ -17,6 +17,7 @@ use Modules\Solicitudes\Services\CalendarBlockService;
 use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Reporting\Services\ReportService;
+use Modules\Mail\Services\NotificationMailer;
 use Models\SettingsModel;
 use Controllers\DerivacionController;
 use PDO;
@@ -25,6 +26,8 @@ use Throwable;
 
 class SolicitudController extends BaseController
 {
+    private const COBERTURA_MAIL_TO = 'cespinoza@cive.ec';
+    private const COBERTURA_MAIL_CC = ['oespinoza@cive.ec'];
     private const TERMINAL_STATES = [
         'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
         'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
@@ -2085,6 +2088,108 @@ class SolicitudController extends BaseController
             ],
             200
         );
+    }
+
+    public function enviarCoberturaMail(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $subject = trim((string)($payload['subject'] ?? $_POST['subject'] ?? ''));
+        $body = trim((string)($payload['body'] ?? $_POST['body'] ?? ''));
+        $toRaw = trim((string)($payload['to'] ?? $_POST['to'] ?? ''));
+        $ccRaw = trim((string)($payload['cc'] ?? $_POST['cc'] ?? ''));
+        $isHtml = filter_var($payload['is_html'] ?? $_POST['is_html'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($subject === '' || $body === '') {
+            $this->json(['success' => false, 'error' => 'Asunto y mensaje son obligatorios'], 422);
+            return;
+        }
+
+        $toList = $this->parseCoberturaEmails($toRaw);
+        $ccList = $this->parseCoberturaEmails($ccRaw);
+        if ($toList === []) {
+            $toList = [self::COBERTURA_MAIL_TO];
+        }
+
+        $attachment = $this->getCoberturaAttachment();
+        $attachments = $attachment ? [$attachment] : [];
+
+        $mailer = new NotificationMailer($this->pdo);
+        $toList = array_values(array_unique($toList));
+        $ccList = array_values(array_unique(array_merge($ccList, self::COBERTURA_MAIL_CC)));
+        $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml);
+
+        if (!($result['success'] ?? false)) {
+            $this->json(
+                ['success' => false, 'error' => $result['error'] ?? 'No se pudo enviar el correo'],
+                500
+            );
+            return;
+        }
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function parseCoberturaEmails(string $raw): array
+    {
+        if ($raw === '') {
+            return [];
+        }
+
+        $candidates = preg_split('/[;,]+/', $raw) ?: [];
+        $emails = [];
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            if (!filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+            $emails[] = strtolower($candidate);
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    /**
+     * @return array{path: string, name?: string, type?: string}|null
+     */
+    private function getCoberturaAttachment(): ?array
+    {
+        if (empty($_FILES['attachment']) || !is_array($_FILES['attachment'])) {
+            return null;
+        }
+
+        $file = $_FILES['attachment'];
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            return null;
+        }
+
+        $name = trim((string)($file['name'] ?? ''));
+        $type = trim((string)($file['type'] ?? ''));
+
+        $attachment = ['path' => $tmpName];
+        if ($name !== '') {
+            $attachment['name'] = $name;
+        }
+        if ($type !== '') {
+            $attachment['type'] = $type;
+        }
+
+        return $attachment;
     }
 
     public function getSolicitudesConDetalles(array $filtros = []): array

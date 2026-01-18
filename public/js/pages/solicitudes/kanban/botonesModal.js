@@ -10,6 +10,10 @@ const COBERTURA_DEBOUNCE_MS = 1200;
 let lastCoberturaMailAt = 0;
 let lastDerivacionPdfAt = 0;
 let coberturaInProgress = false;
+let coberturaMailModalReady = false;
+let coberturaMailSending = false;
+let pendingCoberturaUpdate = null;
+let coberturaEditorReady = false;
 
 const COBERTURA_MAIL_RECIPIENTS = {
     to: 'cespinoza@cive.ec',
@@ -23,9 +27,32 @@ const COBERTURA_MAIL_TEMPLATES = {
         const formId = data.formId || '—';
         const paciente = data.nombre || 'Paciente';
         const hcNumber = data.hcNumber || '—';
+        const derivacionLink = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '';
+
+        const htmlLines = [
+            '<p>Buenos días,</p>',
+            `<p>De su gentil ayuda solicitando nuevo código para el paciente <strong>${escapeHtml(paciente)}</strong> ` +
+                `con numero de cedula <strong>${escapeHtml(hcNumber)}</strong> para el siguiente procedimiento:</p>`,
+            '<p><strong>TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA:</strong><br>' +
+            `<strong>Procedimiento solicitado:</strong> ${escapeHtml(procedimiento)}</p>` +
+            `<p><strong>Plan de consulta:</strong> ${escapeHtml(plan)}</p>`,
+            derivacionLink
+                ? `<p><a href="${escapeHtml(derivacionLink)}" target="_blank" rel="noopener">` +
+                    'Ver PDF de derivación</a></p>'
+                : '',
+            `<p><strong>Pedido:</strong> ${escapeHtml(formId)}</p>`,
+            '<p>Información que notifico para los fines pertinentes</p><br><br>',
+            '<p>Coordinacion Quirúrgica</p>',
+            '<p>Clínica Internacional de la Vision del Ecuador</p>',
+            '<p>Telefono: 043 3729340 Ext. 200</p>',
+            '<p>Celular : 099 879 6124</p>',
+            '<p>Email: coordinacionquirurgica@cive.ec</p>',
+            '<p>Dir. Km 12.5 Av. Leon Febres Cordero junto a la Piazza de Villa Club</p>',
+            '<p><a href="https://www.cive.ec" target="_blank" rel="noopener">www.cive.ec</a></p>',
+        ].filter(Boolean);
 
         return {
-            subject: 'Solicitud de nuevo código',
+            subject: `Solicitud de nuevo código ${paciente} - ${hcNumber}`,
             body: [
                 'Buenos días,',
                 '',
@@ -34,6 +61,7 @@ const COBERTURA_MAIL_TEMPLATES = {
                 'TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA:',
                 `Procedimiento solicitado: ${procedimiento}`,
                 `Plan de consulta: ${plan}`,
+                derivacionLink ? `Derivación (PDF): ${derivacionLink}` : null,
                 '',
                 'form_id',
                 `${formId}`,
@@ -53,7 +81,8 @@ const COBERTURA_MAIL_TEMPLATES = {
                 'Dir. Km 12.5 Av. Leon Febres Cordero junto a la Piazza de Villa Club',
                 '',
                 'www.cive.ec',
-            ].join('\n'),
+            ].filter(Boolean).join('\n'),
+            bodyHtml: htmlLines.join('\n'),
         };
     },
 };
@@ -108,21 +137,57 @@ function abrirEnNuevaPestana(url) {
     return false;
 }
 
-function openMailto(url) {
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.rel = 'noopener';
-    anchor.style.position = 'absolute';
-    anchor.style.left = '-9999px';
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    return true;
+function request(url, options = {}) {
+    const config = {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {},
+        ...options,
+    };
+
+    if (config.body && !(config.body instanceof FormData)) {
+        config.headers = {
+            'Content-Type': 'application/json',
+            ...config.headers,
+        };
+        config.body = JSON.stringify(config.body);
+    }
+
+    return fetch(url, config).then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.success === false || data.ok === false) {
+            throw new Error(data.error || data.message || 'No se pudo completar la solicitud');
+        }
+        return data;
+    });
 }
 
 function shouldDebounce(lastTime, windowMs) {
     const now = Date.now();
     return now - lastTime < windowMs;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function buildAbsoluteUrl(url) {
+    if (!url) {
+        return '';
+    }
+    if (/^https?:\/\//i.test(url)) {
+        return url;
+    }
+    if (url.startsWith('//')) {
+        return `${window.location.protocol}${url}`;
+    }
+    const normalized = url.startsWith('/') ? url : `/${url}`;
+    return `${window.location.origin}${normalized}`;
 }
 
 function buildCoberturaUrl(formId, hcNumber, pages) {
@@ -218,6 +283,178 @@ function resolveCoberturaTemplate(afiliacion) {
     return null;
 }
 
+function getCoberturaMailModalElements() {
+    const modal = document.getElementById('coberturaMailModal');
+    if (!modal || !window.bootstrap) {
+        return null;
+    }
+
+    return {
+        modal,
+        form: modal.querySelector('[data-cobertura-mail-form]'),
+        to: modal.querySelector('[data-cobertura-mail-to]'),
+        cc: modal.querySelector('[data-cobertura-mail-cc]'),
+        subject: modal.querySelector('[data-cobertura-mail-subject]'),
+        body: modal.querySelector('[data-cobertura-mail-body]'),
+        attachment: modal.querySelector('[data-cobertura-mail-attachment]'),
+        pdfLink: modal.querySelector('[data-cobertura-mail-pdf]'),
+        sendButton: modal.querySelector('[data-cobertura-mail-send]'),
+    };
+}
+
+function ensureCoberturaEditor() {
+    if (coberturaEditorReady) {
+        return;
+    }
+
+    if (!window.CKEDITOR) {
+        return;
+    }
+
+    const textarea = document.getElementById('coberturaMailBody');
+    if (!textarea) {
+        return;
+    }
+
+    if (!CKEDITOR.instances.coberturaMailBody) {
+        CKEDITOR.replace('coberturaMailBody', {
+            toolbar: [
+                { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline'] },
+                { name: 'links', items: ['Link', 'Unlink'] },
+                { name: 'paragraph', items: ['BulletedList', 'NumberedList'] },
+                { name: 'clipboard', items: ['Undo', 'Redo'] },
+                { name: 'editing', items: ['RemoveFormat'] },
+            ],
+            removePlugins: 'elementspath',
+            resize_enabled: false,
+        });
+    }
+
+    coberturaEditorReady = true;
+}
+
+function getCoberturaEditorInstance() {
+    if (!window.CKEDITOR) {
+        return null;
+    }
+    return CKEDITOR.instances.coberturaMailBody || null;
+}
+
+function ensureCoberturaMailModal() {
+    if (coberturaMailModalReady) {
+        return;
+    }
+
+    const elements = getCoberturaMailModalElements();
+    if (!elements || !elements.form) {
+        return;
+    }
+
+    coberturaMailModalReady = true;
+    elements.form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (coberturaMailSending) {
+            return;
+        }
+
+        const editor = getCoberturaEditorInstance();
+        const subject = elements.subject?.value?.trim() || '';
+        const body = editor ? editor.getData().trim() : (elements.body?.value?.trim() || '');
+        const to = elements.to?.value?.trim() || '';
+        const cc = elements.cc?.value?.trim() || '';
+        const attachment = elements.attachment?.files?.[0] ?? null;
+
+        if (!subject || !body) {
+            showToast('Completa el asunto y el mensaje antes de enviar.', false);
+            return;
+        }
+
+        coberturaMailSending = true;
+        if (elements.sendButton) {
+            elements.sendButton.disabled = true;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('subject', subject);
+            formData.append('body', body);
+            formData.append('to', to);
+            formData.append('cc', cc);
+            if (attachment) {
+                formData.append('attachment', attachment);
+            }
+            if (editor) {
+                formData.append('is_html', '1');
+            }
+            await request('/solicitudes/cobertura-mail', {
+                method: 'POST',
+                body: formData,
+            });
+            showToast('Correo enviado desde el mailbox.', true);
+            const instance = window.bootstrap.Modal.getInstance(elements.modal)
+                ?? new window.bootstrap.Modal(elements.modal);
+            instance.hide();
+            if (pendingCoberturaUpdate) {
+                const { estado, completado } = pendingCoberturaUpdate;
+                pendingCoberturaUpdate = null;
+                actualizarDesdeBoton(estado, { force: true, completado }).catch(() => {});
+            }
+        } catch (error) {
+            console.error('No se pudo enviar el correo de cobertura', error);
+            showToast(error?.message || 'No se pudo enviar el correo de cobertura.', false);
+        } finally {
+            coberturaMailSending = false;
+            if (elements.sendButton) {
+                elements.sendButton.disabled = false;
+            }
+        }
+    });
+}
+
+function openCoberturaMailModal({ subject, body, derivacionPdf }) {
+    const elements = getCoberturaMailModalElements();
+    if (!elements) {
+        return false;
+    }
+
+    ensureCoberturaMailModal();
+    ensureCoberturaEditor();
+    const editor = getCoberturaEditorInstance();
+
+    if (elements.to) {
+        elements.to.value = COBERTURA_MAIL_RECIPIENTS.to;
+    }
+    if (elements.cc) {
+        elements.cc.value = COBERTURA_MAIL_RECIPIENTS.cc;
+    }
+    if (elements.subject) {
+        elements.subject.value = subject || '';
+    }
+    if (editor) {
+        editor.setData(body || '');
+    } else if (elements.body) {
+        elements.body.value = body || '';
+    }
+    if (elements.attachment) {
+        elements.attachment.value = '';
+    }
+
+    if (elements.pdfLink) {
+        if (derivacionPdf) {
+            elements.pdfLink.href = derivacionPdf;
+            elements.pdfLink.classList.remove('d-none');
+        } else {
+            elements.pdfLink.classList.add('d-none');
+        }
+    }
+
+    const instance = window.bootstrap.Modal.getInstance(elements.modal)
+        ?? new window.bootstrap.Modal(elements.modal);
+    instance.show();
+
+    return true;
+}
+
 function abrirCoberturaMail() {
     if (coberturaInProgress || shouldDebounce(lastCoberturaMailAt, COBERTURA_DEBOUNCE_MS)) {
         return true;
@@ -242,20 +479,20 @@ function abrirCoberturaMail() {
         return false;
     }
 
-    const { subject, body } = template(data);
-    const mailto = [
-        `mailto:${encodeURIComponent(COBERTURA_MAIL_RECIPIENTS.to)}`,
-        '?cc=',
-        encodeURIComponent(COBERTURA_MAIL_RECIPIENTS.cc),
-        '&subject=',
-        encodeURIComponent(subject),
-        '&body=',
-        encodeURIComponent(body),
-    ].join('');
+    const { subject, body, bodyHtml } = template(data);
+    const pdfUrl = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '';
 
     coberturaInProgress = true;
     lastCoberturaMailAt = Date.now();
-    openMailto(mailto);
+    const opened = openCoberturaMailModal({
+        subject,
+        body: bodyHtml || body,
+        derivacionPdf: pdfUrl,
+    });
+    if (!opened) {
+        coberturaInProgress = false;
+        return false;
+    }
 
     if (data.derivacionPdf && !shouldDebounce(lastDerivacionPdfAt, COBERTURA_DEBOUNCE_MS)) {
         lastDerivacionPdfAt = Date.now();
@@ -430,6 +667,10 @@ export function inicializarBotonesModal() {
             // Pasar a revisión de códigos (pendiente)
             const estado = coberturaBtn.dataset.estado || 'Revisión Códigos';
             const completado = coberturaBtn.dataset.completado === '1';
+            if (openedMail) {
+                pendingCoberturaUpdate = { estado, completado };
+                return;
+            }
             actualizarDesdeBoton(estado, { force: true, completado }).catch(() => {});
         });
     }
