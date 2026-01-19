@@ -25,11 +25,13 @@ class ConsultaReportService
         $paciente = $this->pacienteService->getPatientDetails($hc);
         $consulta = $this->consultaModel->obtenerConsultaConProcedimiento($form_id, $hc);
         $diagnostico = $this->consultaModel->obtenerDxDeConsulta($form_id);
+        $dxDerivacion = $this->consultaModel->obtenerDxDerivacion($form_id);
 
         return [
             'paciente' => $paciente,
             'diagnostico' => $diagnostico,
             'consulta' => $consulta,
+            'dx_derivacion' => $dxDerivacion,
         ];
     }
 }

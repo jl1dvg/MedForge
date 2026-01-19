@@ -48,4 +48,15 @@ class ConsultaModel
         $stmt->execute([$form_id]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    public function obtenerDxDerivacion(string $form_id): array
+    {
+        $sql = "SELECT diagnostico
+                FROM derivaciones_form_id
+                WHERE form_id = ? ";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$form_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    }
 }

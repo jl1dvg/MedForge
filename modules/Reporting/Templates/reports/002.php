@@ -10,6 +10,13 @@ if (class_exists(OpenAIHelper::class)) {
 $AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
 
 $layout = __DIR__ . '/../layouts/base.php';
+// Normalizar inputs (preferir $data del ReportService)
+$data = is_array($data ?? null) ? $data : [];
+$paciente = $data['paciente'] ?? ($paciente ?? []);
+$consulta = $data['consulta'] ?? ($consulta ?? []);
+$diagnostico = $data['diagnostico'] ?? ($diagnostico ?? []);
+$dx_derivacion = $data['dx_derivacion'] ?? ($dx_derivacion ?? []);
+$solicitud = $data['solicitud'] ?? ($solicitud ?? []);
 $patient = [
         'afiliacion' => $paciente['afiliacion'] ?? '',
         'hc_number' => $paciente['hc_number'] ?? '',
@@ -68,7 +75,83 @@ if ($horaConsulta === '') {
     $horaConsulta = (string)($solicitud['created_at_time'] ?? '');
 }
 
-$diagnosticoItems = is_array($diagnostico ?? null) ? array_values(array_filter($diagnostico, 'is_array')) : [];
+// --- DIAGNÓSTICOS ---
+// Regla solicitada:
+// 1) Primero diagnósticos desde DERIVACIÓN ($dx_derivacion: string con ';')
+// 2) Luego completar con diagnósticos normalizados ($diagnostico: array con dx_code/descripcion)
+// 3) No repetir (dedupe por code+desc)
+// 4) Máximo 6 (el formato 002 solo muestra 6)
+
+$diagnosticoItems = [];
+$seenDx = [];
+
+$pushDx = function (string $code, string $desc) use (&$diagnosticoItems, &$seenDx) {
+    $code = trim($code);
+    $desc = trim($desc);
+    if ($code === '' && $desc === '') {
+        return;
+    }
+    $k = mb_strtoupper($code . '|' . $desc);
+    if (isset($seenDx[$k])) {
+        return;
+    }
+    $seenDx[$k] = true;
+    $diagnosticoItems[] = [
+            'dx_code' => $code,
+            'descripcion' => $desc,
+    ];
+};
+
+$parseDxLine = function (string $line): array {
+    $line = trim($line);
+    if ($line === '') {
+        return ['', ''];
+    }
+    $code = '';
+    $desc = $line;
+    // Formato típico: "H25 - CATARATA SENIL"
+    if (preg_match('/^\s*([A-Z][0-9A-Z\.]+)\s*[-–]\s*(.+)\s*$/u', $line, $m)) {
+        $code = trim($m[1]);
+        $desc = trim($m[2]);
+    }
+    return [$code, $desc];
+};
+
+// 1) Diagnósticos desde DERIVACIÓN (string separada por ';')
+$dxDerivacionStr = '';
+if (is_array($dx_derivacion) && !empty($dx_derivacion[0]['diagnostico'])) {
+    $dxDerivacionStr = (string)$dx_derivacion[0]['diagnostico'];
+}
+$dxDerivacionStr = trim($dxDerivacionStr);
+if ($dxDerivacionStr !== '') {
+    $dxDerivacionStr = preg_replace("/\r\n|\r/", "\n", $dxDerivacionStr);
+    $parts = array_filter(array_map('trim', preg_split('/\s*;\s*/', $dxDerivacionStr)));
+    foreach ($parts as $p) {
+        if ($p === '') {
+            continue;
+        }
+        [$code, $desc] = $parseDxLine($p);
+        $pushDx($code, $desc);
+        if (count($diagnosticoItems) >= 6) {
+            break;
+        }
+    }
+}
+
+// 2) Completar con diagnósticos normalizados ($diagnostico)
+if (is_array($diagnostico) && count($diagnosticoItems) < 6) {
+    foreach ($diagnostico as $dx) {
+        if (!is_array($dx)) {
+            continue;
+        }
+        $code = (string)($dx['dx_code'] ?? $dx['codigo'] ?? '');
+        $desc = (string)($dx['descripcion'] ?? $dx['descripcion_dx'] ?? $dx['nombre'] ?? '');
+        $pushDx($code, $desc);
+        if (count($diagnosticoItems) >= 6) {
+            break;
+        }
+    }
+}
 $diagnosticoTexto = [];
 foreach ($diagnosticoItems as $item) {
     $codigo = trim((string)($item['dx_code'] ?? $item['codigo'] ?? ''));
@@ -549,25 +632,25 @@ ob_start();
             <tr>
                 <?php
                 $leftDiag = $leftIndex < $totalDiagnosticos ? $diagnosticoItems[$leftIndex] : null;
-                $leftDesc = $leftDiag['descripcion'] ?? $leftDiag['descripcion_dx'] ?? '';
-                $leftCode = $leftDiag['dx_code'] ?? $leftDiag['codigo'] ?? '';
+                $leftDesc = is_array($leftDiag) ? (string)($leftDiag['descripcion'] ?? $leftDiag['descripcion_dx'] ?? $leftDiag['nombre'] ?? '') : '';
+                $leftCode = is_array($leftDiag) ? (string)($leftDiag['dx_code'] ?? $leftDiag['codigo'] ?? '') : '';
                 ?>
                 <td class="verde"><?= $leftIndex + 1 ?>.</td>
-                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars((string)$leftDesc) ?></td>
-                <td class="blanco"><?= htmlspecialchars((string)$leftCode) ?></td>
+                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars(trim($leftDesc)) ?></td>
+                <td class="blanco"><?= htmlspecialchars(trim($leftCode)) ?></td>
                 <td class="amarillo"></td>
-                <td class="amarillo"><?= ($leftDiag !== null && ($leftDesc !== '' || $leftCode !== '')) ? 'x' : '' ?></td>
+                <td class="amarillo"><?= (trim($leftDesc) !== '' || trim($leftCode) !== '') ? 'x' : '' ?></td>
 
                 <?php
                 $rightDiag = $rightIndex < $totalDiagnosticos ? $diagnosticoItems[$rightIndex] : null;
-                $rightDesc = $rightDiag['descripcion'] ?? $rightDiag['descripcion_dx'] ?? '';
-                $rightCode = $rightDiag['dx_code'] ?? $rightDiag['codigo'] ?? '';
+                $rightDesc = is_array($rightDiag) ? (string)($rightDiag['descripcion'] ?? $rightDiag['descripcion_dx'] ?? $rightDiag['nombre'] ?? '') : '';
+                $rightCode = is_array($rightDiag) ? (string)($rightDiag['dx_code'] ?? $rightDiag['codigo'] ?? '') : '';
                 ?>
                 <td class="verde"><?= $rightIndex + 1 ?>.</td>
-                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars((string)$rightDesc) ?></td>
-                <td class="blanco"><?= htmlspecialchars((string)$rightCode) ?></td>
+                <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars(trim($rightDesc)) ?></td>
+                <td class="blanco"><?= htmlspecialchars(trim($rightCode)) ?></td>
                 <td class="amarillo"></td>
-                <td class="amarillo"><?= ($rightDiag !== null && ($rightDesc !== '' || $rightCode !== '')) ? 'x' : '' ?></td>
+                <td class="amarillo"><?= (trim($rightDesc) !== '' || trim($rightCode) !== '') ? 'x' : '' ?></td>
             </tr>
         <?php endfor; ?>
     </table>
