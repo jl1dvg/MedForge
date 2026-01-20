@@ -1522,9 +1522,9 @@ $reporting = array_merge(
                 </div>
             </div>
             <div class="modal-footer d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
+                <!--<button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
                     🔄 Re-scrapear derivación
-                </button>
+                </button> -->
                 <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
@@ -1537,7 +1537,7 @@ $reporting = array_merge(
                         title="Enviar solicitud de exámenes prequirúrgicos al paciente">
                     <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
                 </button>
-                <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
+                <!-- <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
                         data-estado="Revisión Códigos" data-completado="0">
                     <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
                 </button>
@@ -1546,66 +1546,9 @@ $reporting = array_merge(
                 </button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos"
                         data-estado="Revisión Códigos">✅ Códigos Revisado
-                </button>
+                </button> -->
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
             </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="coberturaMailModal" tabindex="-1" aria-labelledby="coberturaMailModalLabel"
-     aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="coberturaMailModalLabel">Solicitar cobertura por correo</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-            </div>
-            <form data-cobertura-mail-form>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label" for="coberturaMailTo">Para</label>
-                            <input type="text" class="form-control" id="coberturaMailTo" name="to"
-                                   data-cobertura-mail-to placeholder="correo1@cive.ec, correo2@cive.ec">
-                            <small class="text-muted">Separa múltiples correos con coma o punto y coma.</small>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="coberturaMailCc">CC</label>
-                            <input type="text" class="form-control" id="coberturaMailCc" name="cc"
-                                   data-cobertura-mail-cc placeholder="correo@cive.ec">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="coberturaMailSubject">Asunto</label>
-                            <input type="text" class="form-control" id="coberturaMailSubject" name="subject"
-                                   data-cobertura-mail-subject required>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="coberturaMailBody">Mensaje</label>
-                            <textarea class="form-control" id="coberturaMailBody" rows="8" name="body"
-                                      data-cobertura-mail-body required></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="coberturaMailAttachment">Adjuntar archivo</label>
-                            <input type="file" class="form-control" id="coberturaMailAttachment" name="attachment"
-                                   data-cobertura-mail-attachment accept="application/pdf">
-                        </div>
-                        <div class="col-12 d-flex flex-wrap align-items-center gap-2">
-                            <a class="btn btn-outline-secondary btn-sm d-none" data-cobertura-mail-pdf
-                               target="_blank" rel="noopener">
-                                <i class="mdi mdi-file-pdf-box"></i> Ver PDF de derivación
-                            </a>
-                            <small class="text-muted">Adjunta el PDF de la derivación antes de enviar.</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-danger" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success" data-cobertura-mail-send>
-                        <i class="mdi mdi-send"></i> Enviar correo
-                    </button>
-                </div>
-            </form>
         </div>
     </div>
 </div>
@@ -1627,9 +1570,11 @@ $reporting = array_merge(
                 return CSS.escape(value);
             }
             return String(value).replace(
-                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g,
+                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/
+            g,
                 '\\\\$1'
-            );
+        )
+            ;
         };
 
         modal.addEventListener('click', (event) => {

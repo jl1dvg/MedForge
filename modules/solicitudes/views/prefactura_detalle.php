@@ -166,7 +166,21 @@ $afiliacionesCobertura = array_map($normalizarAfiliacion, [
         'seguro general jubilado',
 ]);
 $afiliacionNormalizada = $normalizarAfiliacion($afiliacionSolicitud);
-$solicitudCoberturaMail = $derivacionVencida && in_array($afiliacionNormalizada, $afiliacionesCobertura, true);
+
+// Match por "contiene" para soportar afiliaciones con prefijos (ej: "AG - IESS - HIJOS DEPENDIENTES")
+$afiliacionMatch = false;
+foreach ($afiliacionesCobertura as $needle) {
+    $needle = trim((string)$needle);
+    if ($needle === '') {
+        continue;
+    }
+    if (str_contains($afiliacionNormalizada, $needle)) {
+        $afiliacionMatch = true;
+        break;
+    }
+}
+
+$solicitudCoberturaMail = $derivacionVencida && $afiliacionMatch;
 $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
