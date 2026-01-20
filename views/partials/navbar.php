@@ -296,7 +296,7 @@ if (!function_exists('isTreeOpen')) {
                     $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessCronManager;
                     ?>
                     <?php if ($showAdmin): ?>
-                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/codes', '/codes/packages']) ?>">
+                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/codes', '/codes/packages', '/mail-templates']) ?>">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
                                             class="path3"></span></i>
@@ -322,6 +322,11 @@ if (!function_exists('isTreeOpen')) {
                                     <li class="<?= isActive('/settings') ?>">
                                         <a href="/settings">
                                             <i class="mdi mdi-settings"></i>Ajustes
+                                        </a>
+                                    </li>
+                                    <li class="<?= isActivePrefix('/mail-templates') ?>">
+                                        <a href="/mail-templates/cobertura">
+                                            <i class="mdi mdi-email-edit-outline"></i>Plantillas de correo
                                         </a>
                                     </li>
                                 <?php endif; ?>

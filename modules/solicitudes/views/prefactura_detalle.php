@@ -139,48 +139,9 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
         || !empty($derivacion['archivo_derivacion_path']);
 
 $afiliacionSolicitud = trim((string)($solicitud['afiliacion'] ?? ''));
-$normalizarAfiliacion = static function (string $value): string {
-    $value = trim($value);
-    $value = str_replace(
-            ['á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú', 'ñ', 'Ñ'],
-            ['a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u', 'n', 'n'],
-            $value
-    );
-    $value = strtolower($value);
-    $value = preg_replace('/[^a-z0-9\s]/', ' ', $value) ?? $value;
-    $value = preg_replace('/\s+/', ' ', $value) ?? $value;
-
-    return trim($value);
-};
-$afiliacionesCobertura = array_map($normalizarAfiliacion, [
-        'contribuyente voluntario',
-        'conyuge',
-        'conyuge pensionista',
-        'seguro campesino',
-        'seguro general por montepio',
-        'seguro general tiempo parcial',
-        'iess',
-        'hijos dependientes',
-        'seguro campesino jubilado',
-        'seguro general',
-        'seguro general jubilado',
-]);
-$afiliacionNormalizada = $normalizarAfiliacion($afiliacionSolicitud);
-
-// Match por "contiene" para soportar afiliaciones con prefijos (ej: "AG - IESS - HIJOS DEPENDIENTES")
-$afiliacionMatch = false;
-foreach ($afiliacionesCobertura as $needle) {
-    $needle = trim((string)$needle);
-    if ($needle === '') {
-        continue;
-    }
-    if (str_contains($afiliacionNormalizada, $needle)) {
-        $afiliacionMatch = true;
-        break;
-    }
-}
-
-$solicitudCoberturaMail = $derivacionVencida && $afiliacionMatch;
+$coberturaTemplateKey = $viewData['coberturaTemplateKey'] ?? null;
+$coberturaTemplateAvailable = (bool)($viewData['coberturaTemplateAvailable'] ?? false);
+$solicitudCoberturaMail = $derivacionVencida && $coberturaTemplateAvailable;
 $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
@@ -264,7 +225,8 @@ $coberturaPlan = $consulta['plan'] ?? '';
          data-procedimiento="<?= htmlspecialchars((string)$coberturaProcedimiento, ENT_QUOTES, 'UTF-8') ?>"
          data-plan="<?= htmlspecialchars((string)$coberturaPlan, ENT_QUOTES, 'UTF-8') ?>"
          data-form-id="<?= htmlspecialchars((string)$coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
-         data-derivacion-pdf="<?= htmlspecialchars((string)($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+         data-derivacion-pdf="<?= htmlspecialchars((string)($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+         data-template-key="<?= htmlspecialchars((string)($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
     <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel"
          aria-labelledby="prefactura-tab-resumen-tab">
         <!-- TAB 1: Resumen -->
