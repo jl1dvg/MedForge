@@ -19,6 +19,7 @@ use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Reporting\Services\ReportService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Mail\Services\MailProfileService;
+use Modules\MailTemplates\Services\CoberturaMailTemplateService;
 use Models\SettingsModel;
 use Controllers\DerivacionController;
 use PDO;
@@ -1922,6 +1923,13 @@ class SolicitudController extends BaseController
         }
 
         $viewData = $data;
+        $afiliacion = trim((string)($data['solicitud']['afiliacion'] ?? ''));
+        $templateService = new CoberturaMailTemplateService($this->pdo);
+        $templateKey = $templateService->resolveTemplateKey($afiliacion);
+        $viewData['coberturaTemplateKey'] = $templateKey;
+        $viewData['coberturaTemplateAvailable'] = $templateKey !== null
+            ? $templateService->hasEnabledTemplate($templateKey)
+            : false;
         $slaLabels = $this->settingsService->getSlaLabels();
         ob_start();
         include __DIR__ . '/../views/prefactura_detalle.php';

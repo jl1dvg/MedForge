@@ -8,37 +8,12 @@ let lastPrequirurgicoOpenAt = 0;
 let prequirurgicoOpening = false;
 const COBERTURA_DEBOUNCE_MS = 1200;
 let lastCoberturaMailAt = 0;
-let lastDerivacionPdfAt = 0;
 let coberturaInProgress = false;
 let coberturaMailModalReady = false;
 let coberturaMailSending = false;
 let pendingCoberturaUpdate = null;
 let coberturaEditorReady = false;
-
-const COBERTURA_MAIL_RECIPIENTS = {
-    to: 'cespinoza@cive.ec', cc: 'oespinoza@cive.ec',
-};
-
-const COBERTURA_MAIL_TEMPLATES = {
-    iess_cive: (data) => {
-        const procedimiento = data.procedimiento || 'Procedimiento solicitado';
-        const plan = data.plan || 'Plan de consulta';
-        const formId = data.formId || '—';
-        const paciente = data.nombre || 'Paciente';
-        const hcNumber = data.hcNumber || '—';
-        const derivacionLink = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '';
-
-        const htmlLines = ['<p>Buenos días,</p>', `<p>De su gentil ayuda solicitando nuevo código para el paciente <strong>${escapeHtml(paciente)}</strong> ` + `con numero de cedula <strong>${escapeHtml(hcNumber)}</strong> para el siguiente procedimiento:</p>`, '<p><strong>TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA:</strong><br>' + `<strong>Procedimiento solicitado:</strong> ${escapeHtml(procedimiento)}</p>` + `<p><strong>Plan de consulta:</strong> ${escapeHtml(plan)}</p>`, derivacionLink ? `<p><a href="${escapeHtml(derivacionLink)}" target="_blank" rel="noopener">` + 'Ver PDF de derivación</a></p>' : '', `<p><strong>Pedido:</strong> ${escapeHtml(formId)}</p>`, '<p>Información que notifico para los fines pertinentes</p><br><br>', '<p>Coordinacion Quirúrgica</p>', '<p>Clínica Internacional de la Vision del Ecuador</p>', '<p>Telefono: 043 3729340 Ext. 200</p>', '<p>Celular : 099 879 6124</p>', '<p>Email: coordinacionquirurgica@cive.ec</p>', '<p>Dir. Km 12.5 Av. Leon Febres Cordero junto a la Piazza de Villa Club</p>', '<p><a href="https://www.cive.ec" target="_blank" rel="noopener">www.cive.ec</a></p>',].filter(Boolean);
-
-        return {
-            subject: `Solicitud de nuevo código ${paciente} - ${hcNumber}`,
-            body: ['Buenos días,', '', `De su gentil ayuda solicitando nuevo código para el paciente ${paciente} con numero de cedula ${hcNumber} para el siguiente procedimiento:`, '', 'TRATAMIENTO / OBSERVACIONES FINALES DE LA CONSULTA:', `Procedimiento solicitado: ${procedimiento}`, `Plan de consulta: ${plan}`, derivacionLink ? `Derivación (PDF): ${derivacionLink}` : null, '', 'form_id', `${formId}`, '', 'Información que notifico para los fines pertinentes', '', 'Coordinacion Quirúrgica', '', 'Clínica Internacional de la Vision del Ecuador', '', 'Telefono: 043 3729340 Ext. 200', '', 'Celular : 099 879 6124', '', 'Email: coordinacionquirurgica@cive.ec ', '', 'Dir. Km 12.5 Av. Leon Febres Cordero junto a la Piazza de Villa Club', '', 'www.cive.ec',].filter(Boolean).join('\n'),
-            bodyHtml: htmlLines.join('\n'),
-        };
-    },
-};
-
-const COBERTURA_AFILIACIONES = new Map([['contribuyente voluntario', 'iess_cive'], ['conyuge', 'iess_cive'], ['conyuge pensionista', 'iess_cive'], ['seguro campesino', 'iess_cive'], ['seguro general por montepio', 'iess_cive'], ['seguro general tiempo parcial', 'iess_cive'], ['iess', 'iess_cive'], ['hijos dependientes', 'iess_cive'], ['seguro campesino jubilado', 'iess_cive'], ['seguro general', 'iess_cive'], ['seguro general jubilado', 'iess_cive'],]);
+const coberturaTemplateCache = new Map();
 
 function obtenerTarjetaActiva() {
     return document.querySelector('.kanban-card.view-details.active');
@@ -104,15 +79,6 @@ function shouldDebounce(lastTime, windowMs) {
     return now - lastTime < windowMs;
 }
 
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
 function buildAbsoluteUrl(url) {
     if (!url) {
         return '';
@@ -125,6 +91,42 @@ function buildAbsoluteUrl(url) {
     }
     const normalized = url.startsWith('/') ? url : `/${url}`;
     return `${window.location.origin}${normalized}`;
+}
+
+function buildTemplatePayload(data) {
+    return {
+        afiliacion: data.afiliacion || '',
+        nombre: data.nombre || '',
+        hc_number: data.hcNumber || '',
+        procedimiento: data.procedimiento || '',
+        plan: data.plan || '',
+        form_id: data.formId || '',
+        pdf_url: data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '',
+    };
+}
+
+async function fetchCoberturaTemplate(data) {
+    const cacheKey = JSON.stringify({
+        afiliacion: data.afiliacion || '',
+        formId: data.formId || '',
+    });
+    if (coberturaTemplateCache.has(cacheKey)) {
+        return coberturaTemplateCache.get(cacheKey);
+    }
+
+    try {
+        const result = await request('/mail-templates/cobertura/resolve', {
+            method: 'POST',
+            body: buildTemplatePayload(data),
+        });
+        const template = result?.template || null;
+        coberturaTemplateCache.set(cacheKey, template);
+        return template;
+    } catch (error) {
+        console.warn('No se pudo resolver la plantilla de cobertura', error);
+        coberturaTemplateCache.set(cacheKey, null);
+        return null;
+    }
 }
 
 function buildCoberturaUrl(formId, hcNumber, pages) {
@@ -143,42 +145,6 @@ function buildCoberturaUrl(formId, hcNumber, pages) {
     return `/reports/cobertura/pdf?${params.toString()}`;
 }
 
-function normalizeText(value) {
-    const input = (value ?? '').toString().trim().toLowerCase();
-    if (!input) {
-        return '';
-    }
-
-    const replacements = {
-        á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n',
-    };
-
-    let normalized = '';
-    for (const char of input) {
-        normalized += replacements[char] ?? char;
-    }
-
-    let output = '';
-    let lastWasSpace = false;
-    for (const char of normalized) {
-        const isLetter = char >= 'a' && char <= 'z';
-        const isDigit = char >= '0' && char <= '9';
-
-        if (isLetter || isDigit) {
-            output += char;
-            lastWasSpace = false;
-            continue;
-        }
-
-        if (!lastWasSpace) {
-            output += ' ';
-            lastWasSpace = true;
-        }
-    }
-
-    return output.trim();
-}
-
 function getCoberturaMailData() {
     const container = document.getElementById('prefacturaCoberturaData');
     if (!container) {
@@ -195,21 +161,6 @@ function getCoberturaMailData() {
         formId: container.dataset.formId || '',
         derivacionPdf: container.dataset.derivacionPdf || '',
     };
-}
-
-function resolveCoberturaTemplate(afiliacion) {
-    const normalized = normalizeText(afiliacion);
-    if (COBERTURA_AFILIACIONES.has(normalized)) {
-        return COBERTURA_AFILIACIONES.get(normalized) || null;
-    }
-
-    for (const [key, template] of COBERTURA_AFILIACIONES.entries()) {
-        if (normalized.includes(key)) {
-            return template;
-        }
-    }
-
-    return null;
 }
 
 function getCoberturaMailModalElements() {
@@ -337,7 +288,7 @@ function ensureCoberturaMailModal() {
     });
 }
 
-function openCoberturaMailModal({subject, body, derivacionPdf}) {
+function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
     const elements = getCoberturaMailModalElements();
     if (!elements) {
         return false;
@@ -347,11 +298,12 @@ function openCoberturaMailModal({subject, body, derivacionPdf}) {
     ensureCoberturaEditor();
     const editor = getCoberturaEditorInstance();
 
+    const destinatarios = recipients || {};
     if (elements.to) {
-        elements.to.value = COBERTURA_MAIL_RECIPIENTS.to;
+        elements.to.value = destinatarios.to || '';
     }
     if (elements.cc) {
-        elements.cc.value = COBERTURA_MAIL_RECIPIENTS.cc;
+        elements.cc.value = destinatarios.cc || '';
     }
     if (elements.subject) {
         elements.subject.value = subject || '';
@@ -380,7 +332,7 @@ function openCoberturaMailModal({subject, body, derivacionPdf}) {
     return true;
 }
 
-function abrirCoberturaMail() {
+async function abrirCoberturaMail() {
     if (coberturaInProgress || shouldDebounce(lastCoberturaMailAt, COBERTURA_DEBOUNCE_MS)) {
         return true;
     }
@@ -394,23 +346,26 @@ function abrirCoberturaMail() {
         return false;
     }
 
-    const templateKey = resolveCoberturaTemplate(data.afiliacion);
-    if (!templateKey) {
-        return false;
-    }
-
-    const template = COBERTURA_MAIL_TEMPLATES[templateKey];
+    const template = await fetchCoberturaTemplate(data);
     if (!template) {
         return false;
     }
 
-    const {subject, body, bodyHtml} = template(data);
+    const subject = template.subject || '';
+    const body = template.body_html || template.body_text || '';
     const pdfUrl = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '';
+    const recipients = {
+        to: template.recipients_to || '',
+        cc: template.recipients_cc || '',
+    };
 
     coberturaInProgress = true;
     lastCoberturaMailAt = Date.now();
     const opened = openCoberturaMailModal({
-        subject, body: bodyHtml || body, derivacionPdf: pdfUrl,
+        subject,
+        body,
+        derivacionPdf: pdfUrl,
+        recipients,
     });
     if (!opened) {
         coberturaInProgress = false;
@@ -574,8 +529,8 @@ export function inicializarBotonesModal() {
     const coberturaBtn = document.getElementById('btnSolicitarCobertura');
     if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
         coberturaBtn.dataset.listenerAttached = 'true';
-        coberturaBtn.addEventListener('click', () => {
-            const openedMail = abrirCoberturaMail();
+        coberturaBtn.addEventListener('click', async () => {
+            const openedMail = await abrirCoberturaMail();
             if (!openedMail) {
                 const tarjeta = obtenerTarjetaActiva();
                 imprimirReferenciaCobertura(tarjeta);
@@ -612,8 +567,8 @@ export function attachPrefacturaCoberturaMail() {
     }
 
     button.dataset.listenerAttached = 'true';
-    button.addEventListener('click', () => {
-        const opened = abrirCoberturaMail();
+    button.addEventListener('click', async () => {
+        const opened = await abrirCoberturaMail();
         if (!opened) {
             showToast('No hay información suficiente para armar el correo de cobertura.', false);
         }
