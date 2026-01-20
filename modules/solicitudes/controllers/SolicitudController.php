@@ -18,6 +18,7 @@ use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Reporting\Services\ReportService;
 use Modules\Mail\Services\NotificationMailer;
+use Modules\Mail\Services\MailProfileService;
 use Models\SettingsModel;
 use Controllers\DerivacionController;
 use PDO;
@@ -2118,10 +2119,12 @@ class SolicitudController extends BaseController
         $attachment = $this->getCoberturaAttachment();
         $attachments = $attachment ? [$attachment] : [];
 
-        $mailer = new NotificationMailer($this->pdo);
+        $profileService = new MailProfileService($this->pdo);
+        $profileSlug = $profileService->getProfileSlugForContext('solicitudes');
+        $mailer = new NotificationMailer($this->pdo, $profileSlug);
         $toList = array_values(array_unique($toList));
         $ccList = array_values(array_unique(array_merge($ccList, self::COBERTURA_MAIL_CC)));
-        $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml);
+        $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml, $profileSlug);
 
         if (!($result['success'] ?? false)) {
             $this->json(

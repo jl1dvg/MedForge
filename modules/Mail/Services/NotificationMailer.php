@@ -10,14 +10,18 @@ use PHPMailer\PHPMailer\PHPMailer;
 class NotificationMailer
 {
     private SettingsModel $settings;
+    private \PDO $pdo;
+    private ?string $profileSlug = null;
 
     /** @var array<string, mixed> */
     private array $config;
 
-    public function __construct(PDO $pdo)
+    public function __construct(PDO $pdo, ?string $profileSlug = null)
     {
+        $this->pdo = $pdo;
+        $this->profileSlug = $profileSlug;
         $this->settings = new SettingsModel($pdo);
-        $this->config = $this->loadConfig();
+        $this->config = $this->loadConfig($profileSlug);
     }
 
     public function isConfigured(): bool
@@ -35,6 +39,7 @@ class NotificationMailer
      * @param string[] $cc
      * @param array<int, array{path: string, name?: string, type?: string}> $attachments
      * @param bool $isHtml
+     * @param string|null $profileSlug
      * @return array{success: bool, error?: string}
      */
     public function sendPatientUpdate(
@@ -43,10 +48,11 @@ class NotificationMailer
         string $body,
         array $cc = [],
         array $attachments = [],
-        bool $isHtml = false
+        bool $isHtml = false,
+        ?string $profileSlug = null
     ): array
     {
-        $this->refresh();
+        $this->refresh($profileSlug ?? $this->profileSlug);
 
         $recipientList = is_array($recipients) ? $recipients : [$recipients];
         $normalizedRecipients = [];
@@ -214,16 +220,31 @@ class NotificationMailer
         return $mailer;
     }
 
-    public function refresh(): void
+    public function refresh(?string $profileSlug = null): void
     {
-        $this->config = $this->loadConfig();
+        $this->profileSlug = $profileSlug ?? $this->profileSlug;
+        $this->config = $this->loadConfig($this->profileSlug);
+    }
+
+    public function setProfile(?string $profileSlug): void
+    {
+        $this->profileSlug = $profileSlug;
+        $this->refresh($profileSlug);
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function loadConfig(): array
+    private function loadConfig(?string $profileSlug = null): array
     {
+        $profileSlug = $profileSlug !== null ? trim(strtolower($profileSlug)) : null;
+        if ($profileSlug !== null && $profileSlug !== '') {
+            $profileConfig = $this->loadProfileConfig($profileSlug);
+            if ($profileConfig !== null && $this->isProfileConfigured($profileConfig)) {
+                return $profileConfig;
+            }
+        }
+
         $options = $this->settings->getOptions([
             'mail_engine',
             'smtp_host',
@@ -262,6 +283,51 @@ class NotificationMailer
             'debug_enabled' => filter_var($options['smtp_debug_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'allow_self_signed' => filter_var($options['smtp_allow_self_signed'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function loadProfileConfig(string $profileSlug): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM mail_profiles WHERE slug = :slug AND active = 1 LIMIT 1'
+        );
+        $stmt->execute([':slug' => $profileSlug]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return null;
+        }
+
+        return [
+            'engine' => strtolower((string)($row['engine'] ?? 'phpmailer')),
+            'host' => trim((string)($row['smtp_host'] ?? '')),
+            'port' => (int)($row['smtp_port'] ?? 0),
+            'encryption' => $this->resolveEncryption($row['smtp_encryption'] ?? ''),
+            'username' => trim((string)($row['smtp_username'] ?? '')),
+            'password' => (string)($row['smtp_password'] ?? ''),
+            'from_address' => trim((string)($row['from_address'] ?? '')),
+            'from_name' => trim((string)($row['from_name'] ?? '')),
+            'reply_to_address' => trim((string)($row['reply_to_address'] ?? '')),
+            'reply_to_name' => trim((string)($row['reply_to_name'] ?? '')),
+            'header' => trim((string)($row['header'] ?? '')),
+            'footer' => trim((string)($row['footer'] ?? '')),
+            'signature' => trim((string)($row['signature'] ?? '')),
+            'timeout' => (int)($row['smtp_timeout_seconds'] ?? 15),
+            'debug_enabled' => filter_var($row['smtp_debug_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'allow_self_signed' => filter_var($row['smtp_allow_self_signed'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $profileConfig
+     */
+    private function isProfileConfigured(array $profileConfig): bool
+    {
+        return $profileConfig['engine'] === 'phpmailer'
+            && $profileConfig['host'] !== ''
+            && $profileConfig['port'] > 0
+            && $profileConfig['from_address'] !== '';
     }
 
     private function resolveEncryption(string $value): string
