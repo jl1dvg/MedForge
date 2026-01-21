@@ -41,3 +41,4 @@ cive_extention/manifest.json
 !/views/pacientes/
 !/views/pacientes/flujo/
 !/views/pacientes/flujo/**
+cive_extention/*.zip
