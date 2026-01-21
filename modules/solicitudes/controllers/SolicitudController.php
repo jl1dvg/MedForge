@@ -16,6 +16,7 @@ use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
 use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Solicitudes\Services\SolicitudSettingsService;
+use Modules\Solicitudes\Services\CoberturaMailLogService;
 use Modules\Reporting\Services\ReportService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Mail\Services\MailProfileService;
@@ -1930,6 +1931,12 @@ class SolicitudController extends BaseController
         $viewData['coberturaTemplateAvailable'] = $templateKey !== null
             ? $templateService->hasEnabledTemplate($templateKey)
             : false;
+        $solicitudId = isset($data['solicitud']['id']) ? (int) $data['solicitud']['id'] : null;
+        $viewData['coberturaMailLog'] = null;
+        if ($solicitudId) {
+            $mailLogService = new CoberturaMailLogService($this->pdo);
+            $viewData['coberturaMailLog'] = $mailLogService->fetchLatestBySolicitud($solicitudId);
+        }
         $slaLabels = $this->settingsService->getSlaLabels();
         ob_start();
         include __DIR__ . '/../views/prefactura_detalle.php';
@@ -2112,6 +2119,72 @@ class SolicitudController extends BaseController
         $toRaw = trim((string)($payload['to'] ?? $_POST['to'] ?? ''));
         $ccRaw = trim((string)($payload['cc'] ?? $_POST['cc'] ?? ''));
         $isHtml = filter_var($payload['is_html'] ?? $_POST['is_html'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $solicitudId = isset($payload['solicitud_id']) ? (int) $payload['solicitud_id'] : null;
+        $formId = trim((string)($payload['form_id'] ?? $_POST['form_id'] ?? ''));
+        $hcNumber = trim((string)($payload['hc_number'] ?? $_POST['hc_number'] ?? ''));
+        $afiliacion = trim((string)($payload['afiliacion'] ?? $_POST['afiliacion'] ?? ''));
+        $templateKey = trim((string)($payload['template_key'] ?? $_POST['template_key'] ?? ''));
+        $derivacionPdf = trim((string)($payload['derivacion_pdf'] ?? $_POST['derivacion_pdf'] ?? ''));
+        $currentUserId = $this->getCurrentUserId();
+
+        JsonLogger::log(
+            'solicitudes_mail',
+            'Cobertura mail ▶ Payload recibido',
+            null,
+            [
+                'solicitud_id' => $solicitudId,
+                'form_id' => $formId !== '' ? $formId : null,
+                'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                'user_id' => $currentUserId,
+            ]
+        );
+
+        if ($formId !== '' && $hcNumber !== '') {
+            $stmt = $this->pdo->prepare(
+                "SELECT id FROM solicitud_procedimiento
+                 WHERE form_id = :form_id AND hc_number = :hc
+                 ORDER BY id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute([
+                ':form_id' => $formId,
+                ':hc' => $hcNumber,
+            ]);
+            $resolved = $stmt->fetchColumn();
+            if ($resolved !== false) {
+                $resolvedId = (int) $resolved;
+                if ($solicitudId && $solicitudId !== $resolvedId) {
+                    JsonLogger::log(
+                        'solicitudes_mail',
+                        'Cobertura mail ▶ solicitud_id corregido',
+                        null,
+                        [
+                            'solicitud_id_payload' => $solicitudId,
+                            'solicitud_id_resolved' => $resolvedId,
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                            'user_id' => $currentUserId,
+                        ]
+                    );
+                }
+                $solicitudId = $resolvedId;
+            }
+        }
+        if (!$solicitudId && $formId !== '' && ctype_digit($formId)) {
+            $solicitudId = $this->solicitudModel->findIdByFormId((int) $formId);
+        }
+
+        JsonLogger::log(
+            'solicitudes_mail',
+            'Cobertura mail ▶ Solicitud resuelta',
+            null,
+            [
+                'solicitud_id' => $solicitudId,
+                'form_id' => $formId !== '' ? $formId : null,
+                'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                'user_id' => $currentUserId,
+            ]
+        );
 
         if ($subject === '' || $body === '') {
             $this->json(['success' => false, 'error' => 'Asunto y mensaje son obligatorios'], 422);
@@ -2133,8 +2206,43 @@ class SolicitudController extends BaseController
         $toList = array_values(array_unique($toList));
         $ccList = array_values(array_unique(array_merge($ccList, self::COBERTURA_MAIL_CC)));
         $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml, $profileSlug);
+        $sentAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $bodyText = $this->formatCoberturaMailBodyText($body, $isHtml);
+        $mailLogService = new CoberturaMailLogService($this->pdo);
+        $mailLogPayload = [
+            'solicitud_id' => $solicitudId ?: null,
+            'form_id' => $formId !== '' ? $formId : null,
+            'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+            'afiliacion' => $afiliacion !== '' ? $afiliacion : null,
+            'template_key' => $templateKey !== '' ? $templateKey : null,
+            'to_emails' => implode(', ', $toList),
+            'cc_emails' => $ccList !== [] ? implode(', ', $ccList) : null,
+            'subject' => $subject,
+            'body_text' => $bodyText !== '' ? $bodyText : null,
+            'body_html' => $isHtml ? $body : null,
+            'attachment_path' => null,
+            'attachment_name' => $attachment['name'] ?? null,
+            'attachment_size' => $attachment['size'] ?? null,
+            'sent_by_user_id' => $currentUserId,
+            'sent_at' => $sentAt,
+        ];
 
         if (!($result['success'] ?? false)) {
+            $mailLogPayload['status'] = 'failed';
+            $mailLogPayload['error_message'] = $result['error'] ?? 'No se pudo enviar el correo';
+            try {
+                $mailLogService->create($mailLogPayload);
+            } catch (Throwable $e) {
+                JsonLogger::log(
+                    'solicitudes_mail',
+                    'No se pudo guardar el log de correo fallido',
+                    $e,
+                    [
+                        'solicitud_id' => $solicitudId,
+                        'user_id' => $currentUserId,
+                    ]
+                );
+            }
             $this->json(
                 ['success' => false, 'error' => $result['error'] ?? 'No se pudo enviar el correo'],
                 500
@@ -2142,7 +2250,104 @@ class SolicitudController extends BaseController
             return;
         }
 
-        $this->json(['success' => true]);
+        $mailLogPayload['status'] = 'sent';
+        $mailLogPayload['error_message'] = null;
+        $mailLogId = null;
+        try {
+            $mailLogId = $mailLogService->create($mailLogPayload);
+        } catch (Throwable $e) {
+            JsonLogger::log(
+                'solicitudes_mail',
+                'No se pudo guardar el log de correo enviado',
+                $e,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'user_id' => $currentUserId,
+                ]
+            );
+        }
+
+        if (!$solicitudId) {
+            JsonLogger::log(
+                'solicitudes_mail',
+                'Cobertura mail ▶ Sin solicitud_id, se omite CRM',
+                null,
+                [
+                    'form_id' => $formId !== '' ? $formId : null,
+                    'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                    'user_id' => $currentUserId,
+                ]
+            );
+        }
+
+        if ($solicitudId) {
+            $notaLineas = [
+                'Cobertura solicitada por correo',
+                'Para: ' . implode(', ', $toList),
+            ];
+            if ($ccList !== []) {
+                $notaLineas[] = 'CC: ' . implode(', ', $ccList);
+            }
+            $notaLineas[] = 'Asunto: ' . $subject;
+            if ($templateKey !== '') {
+                $notaLineas[] = 'Plantilla: ' . $templateKey;
+            }
+            if ($derivacionPdf !== '') {
+                $notaLineas[] = 'PDF derivación: ' . $derivacionPdf;
+            }
+
+            try {
+                $this->crmService->registrarNota($solicitudId, implode("\n", $notaLineas), $currentUserId);
+            } catch (Throwable $e) {
+                JsonLogger::log(
+                    'crm',
+                    'No se pudo registrar la nota de cobertura enviada',
+                    $e,
+                    [
+                        'solicitud_id' => $solicitudId,
+                        'user_id' => $currentUserId,
+                    ]
+                );
+            }
+
+            try {
+                $this->crmService->completarCoberturaMailTask(
+                    $solicitudId,
+                    $currentUserId,
+                    [
+                        'template_key' => $templateKey !== '' ? $templateKey : null,
+                        'mail_log_id' => $mailLogId,
+                    ]
+                );
+            } catch (Throwable $e) {
+                JsonLogger::log(
+                    'crm',
+                    'No se pudo completar la tarea de cobertura por correo',
+                    $e,
+                    [
+                        'solicitud_id' => $solicitudId,
+                        'user_id' => $currentUserId,
+                    ]
+                );
+            }
+        }
+
+        $sentByName = null;
+        if ($mailLogId) {
+            $mailLog = $mailLogService->fetchById($mailLogId);
+            $sentByName = $mailLog['sent_by_name'] ?? null;
+            $sentAt = $mailLog['sent_at'] ?? $sentAt;
+        }
+
+        $this->json([
+            'success' => true,
+            'ok' => true,
+            'mail_log_id' => $mailLogId,
+            'sent_at' => $sentAt,
+            'sent_by' => $currentUserId,
+            'sent_by_name' => $sentByName,
+            'template_key' => $templateKey !== '' ? $templateKey : null,
+        ]);
     }
 
     /**
@@ -2171,7 +2376,7 @@ class SolicitudController extends BaseController
     }
 
     /**
-     * @return array{path: string, name?: string, type?: string}|null
+     * @return array{path: string, name?: string, type?: string, size?: int}|null
      */
     private function getCoberturaAttachment(): ?array
     {
@@ -2199,8 +2404,25 @@ class SolicitudController extends BaseController
         if ($type !== '') {
             $attachment['type'] = $type;
         }
+        if (isset($file['size'])) {
+            $attachment['size'] = (int) $file['size'];
+        }
 
         return $attachment;
+    }
+
+    private function formatCoberturaMailBodyText(string $body, bool $isHtml): string
+    {
+        if (!$isHtml) {
+            return $body;
+        }
+
+        $text = trim(strip_tags($body));
+        if ($text === '') {
+            return '';
+        }
+
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     public function getSolicitudesConDetalles(array $filtros = []): array

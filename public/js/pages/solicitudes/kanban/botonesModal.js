@@ -160,6 +160,8 @@ function getCoberturaMailData() {
         plan: container.dataset.plan || '',
         formId: container.dataset.formId || '',
         derivacionPdf: container.dataset.derivacionPdf || '',
+        templateKey: container.dataset.templateKey || '',
+        solicitudId: container.dataset.solicitudId || '',
     };
 }
 
@@ -253,21 +255,41 @@ function ensureCoberturaMailModal() {
         }
 
         try {
+            const coberturaData = getCoberturaMailData() || {};
             const formData = new FormData();
             formData.append('subject', subject);
             formData.append('body', body);
             formData.append('to', to);
             formData.append('cc', cc);
+            if (coberturaData.solicitudId) {
+                formData.append('solicitud_id', coberturaData.solicitudId);
+            }
+            if (coberturaData.formId) {
+                formData.append('form_id', coberturaData.formId);
+            }
+            if (coberturaData.hcNumber) {
+                formData.append('hc_number', coberturaData.hcNumber);
+            }
+            if (coberturaData.afiliacion) {
+                formData.append('afiliacion', coberturaData.afiliacion);
+            }
+            if (coberturaData.templateKey) {
+                formData.append('template_key', coberturaData.templateKey);
+            }
+            if (coberturaData.derivacionPdf) {
+                formData.append('derivacion_pdf', buildAbsoluteUrl(coberturaData.derivacionPdf));
+            }
             if (attachment) {
                 formData.append('attachment', attachment);
             }
             if (editor) {
                 formData.append('is_html', '1');
             }
-            await request('/solicitudes/cobertura-mail', {
+            const response = await request('/solicitudes/cobertura-mail', {
                 method: 'POST', body: formData,
             });
-            showToast('Correo enviado desde el mailbox.', true);
+            showToast('Correo enviado.', true);
+            updateCoberturaMailStatus(response);
             const instance = window.bootstrap.Modal.getInstance(elements.modal) ?? new window.bootstrap.Modal(elements.modal);
             instance.hide();
             if (pendingCoberturaUpdate) {
@@ -558,6 +580,67 @@ export function inicializarBotonesModal() {
             });
         });
     }
+}
+
+function updateCoberturaMailStatus(payload = {}) {
+    const statusLabel = buildCoberturaMailStatusLabel(payload);
+    if (!statusLabel) {
+        return;
+    }
+
+    const prefacturaStatus = document.getElementById('prefacturaCoberturaMailStatus');
+    if (prefacturaStatus) {
+        prefacturaStatus.textContent = statusLabel;
+        prefacturaStatus.classList.remove('d-none');
+        if (payload?.sent_at) {
+            prefacturaStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            prefacturaStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+
+    const modalStatus = document.getElementById('coberturaMailModalStatus');
+    if (modalStatus) {
+        modalStatus.textContent = statusLabel;
+        modalStatus.classList.remove('d-none');
+        if (payload?.sent_at) {
+            modalStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            modalStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+}
+
+function buildCoberturaMailStatusLabel(payload) {
+    const sentAt = payload?.sent_at || payload?.sentAt || '';
+    if (!sentAt) {
+        return '';
+    }
+
+    const sentBy = payload?.sent_by_name || payload?.sentByName || '';
+    const formattedDate = formatCoberturaDateTime(sentAt);
+    if (!formattedDate) {
+        return '';
+    }
+
+    return sentBy ? `Cobertura solicitada el ${formattedDate} por ${sentBy}` : `Cobertura solicitada el ${formattedDate}`;
+}
+
+function formatCoberturaDateTime(value) {
+    if (!value) {
+        return '';
+    }
+
+    const normalized = value.replace(' ', 'T');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function attachPrefacturaCoberturaMail() {
