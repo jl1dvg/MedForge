@@ -146,6 +146,27 @@ $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
 $coberturaPlan = $consulta['plan'] ?? '';
+$coberturaMailLog = $viewData['coberturaMailLog'] ?? null;
+$coberturaMailSentLabel = '';
+$coberturaMailSentAt = '';
+$coberturaMailSentBy = '';
+if (!empty($coberturaMailLog['sent_at'])) {
+    try {
+        $sentAt = new DateTime($coberturaMailLog['sent_at']);
+        $coberturaMailSentAt = $sentAt->format('d-m-Y H:i');
+    } catch (Exception $e) {
+        $coberturaMailSentAt = (string) $coberturaMailLog['sent_at'];
+    }
+}
+if (!empty($coberturaMailLog['sent_by_name'])) {
+    $coberturaMailSentBy = (string) $coberturaMailLog['sent_by_name'];
+}
+if ($coberturaMailSentAt !== '') {
+    $coberturaMailSentLabel = 'Cobertura solicitada el ' . $coberturaMailSentAt;
+    if ($coberturaMailSentBy !== '') {
+        $coberturaMailSentLabel .= ' por ' . $coberturaMailSentBy;
+    }
+}
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -226,7 +247,8 @@ $coberturaPlan = $consulta['plan'] ?? '';
          data-plan="<?= htmlspecialchars((string)$coberturaPlan, ENT_QUOTES, 'UTF-8') ?>"
          data-form-id="<?= htmlspecialchars((string)$coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
          data-derivacion-pdf="<?= htmlspecialchars((string)($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-         data-template-key="<?= htmlspecialchars((string)($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+         data-template-key="<?= htmlspecialchars((string)($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+         data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
     <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel"
          aria-labelledby="prefactura-tab-resumen-tab">
         <!-- TAB 1: Resumen -->
@@ -364,6 +386,12 @@ $coberturaPlan = $consulta['plan'] ?? '';
                                     <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
                                 </a>
                             <?php endif; ?>
+                        </div>
+                        <div id="prefacturaCoberturaMailStatus"
+                             class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
+                             data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
+                             data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
+                            <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -1125,6 +1153,14 @@ $coberturaPlan = $consulta['plan'] ?? '';
                                 <i class="mdi mdi-file-pdf-box"></i> Ver PDF de derivación
                             </a>
                             <small class="text-muted">Adjunta el PDF de la derivación antes de enviar.</small>
+                        </div>
+                        <div class="col-12">
+                            <div id="coberturaMailModalStatus"
+                                 class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
+                                 data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
+                                 data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -13,6 +13,7 @@ use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use Modules\Solicitudes\Services\CalendarBlockService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
+use Helpers\JsonLogger;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -321,6 +322,113 @@ class SolicitudCrmService
                 'tarea' => $tareaContexto,
                 'autor_id' => $autorId,
                 'autor_nombre' => $this->obtenerNombreUsuario($autorId),
+            ]
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function completarCoberturaMailTask(int $solicitudId, ?int $usuarioId, array $metadata = []): void
+    {
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];
+        $leadId = !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null;
+        $project = $this->ensureCrmProject($solicitudId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+        $companyId = $this->resolveCompanyId();
+        $taskKey = $this->buildTaskKey($solicitudId, 'cobertura-mail');
+
+        JsonLogger::log(
+            'crm',
+            'CRM ▶ Completar tarea de cobertura por correo',
+            null,
+            [
+                'solicitud_id' => $solicitudId,
+                'company_id' => $companyId,
+                'task_key' => $taskKey,
+                'user_id' => $usuarioId,
+            ]
+        );
+
+        $task = $this->fetchChecklistTaskByKey($solicitudId, $companyId, $taskKey);
+        if (!$task) {
+            $task = $this->fetchTaskByTitle($solicitudId, $companyId, 'Solicitar cobertura');
+        }
+        if (!$task) {
+            $revisionKey = $this->buildTaskKey($solicitudId, 'revision-codigos');
+            $task = $this->fetchChecklistTaskByKey($solicitudId, $companyId, $revisionKey);
+        }
+        if (!$task) {
+            $task = $this->fetchTaskByTitleLike($solicitudId, $companyId, 'cobertura');
+        }
+
+        $payloadMetadata = array_filter(
+            array_merge(
+                [
+                    'task_key' => $taskKey,
+                    'context' => 'cobertura_mail',
+                ],
+                $metadata
+            ),
+            static fn($value) => $value !== null && $value !== ''
+        );
+
+        if ($task) {
+            $updated = $this->taskService->update(
+                (int) $task['id'],
+                $companyId,
+                [
+                    'status' => 'completada',
+                    'title' => 'Solicitar cobertura',
+                    'description' => 'Correo de cobertura enviado.',
+                    'project_id' => $projectId,
+                    'lead_id' => $leadId,
+                    'metadata' => $payloadMetadata,
+                ],
+                $usuarioId
+            );
+            JsonLogger::log(
+                'crm',
+                'CRM ▶ Tarea de cobertura actualizada',
+                null,
+                [
+                    'solicitud_id' => $solicitudId,
+                    'company_id' => $companyId,
+                    'task_id' => (int) $task['id'],
+                    'updated' => $updated !== null,
+                ]
+            );
+            return;
+        }
+
+        $created = $this->taskService->create(
+            [
+                'project_id' => $projectId,
+                'entity_type' => 'solicitud',
+                'entity_id' => (string) $solicitudId,
+                'lead_id' => $leadId,
+                'hc_number' => $detalle['hc_number'] ?? null,
+                'patient_id' => $detalle['hc_number'] ?? null,
+                'form_id' => $detalle['form_id'] ?? null,
+                'source_module' => 'solicitudes',
+                'source_ref_id' => (string) $solicitudId,
+                'title' => 'Solicitar cobertura',
+                'description' => 'Correo de cobertura enviado.',
+                'status' => 'completada',
+                'assigned_to' => !empty($detalle['crm_responsable_id']) ? (int) $detalle['crm_responsable_id'] : null,
+                'metadata' => $payloadMetadata,
+            ],
+            $companyId,
+            $usuarioId ?? 0
+        );
+        JsonLogger::log(
+            'crm',
+            'CRM ▶ Tarea de cobertura creada',
+            null,
+            [
+                'solicitud_id' => $solicitudId,
+                'company_id' => $companyId,
+                'task_id' => (int) ($created['id'] ?? 0),
             ]
         );
     }
@@ -1650,6 +1758,48 @@ class SolicitudCrmService
         $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
         $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
         $stmt->bindValue(':task_key', $taskKey, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function fetchTaskByTitle(int $solicitudId, int $companyId, string $title): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, title, status, metadata
+             FROM crm_tasks
+             WHERE company_id = :company_id
+               AND source_module = 'solicitudes'
+               AND source_ref_id = :source_ref_id
+               AND LOWER(title) = LOWER(:title)
+             ORDER BY id DESC
+             LIMIT 1"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
+        $stmt->bindValue(':title', $title, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function fetchTaskByTitleLike(int $solicitudId, int $companyId, string $needle): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, title, status, metadata
+             FROM crm_tasks
+             WHERE company_id = :company_id
+               AND source_module = 'solicitudes'
+               AND source_ref_id = :source_ref_id
+               AND LOWER(title) LIKE :needle
+             ORDER BY id DESC
+             LIMIT 1"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $solicitudId, PDO::PARAM_STR);
+        $stmt->bindValue(':needle', '%' . strtolower($needle) . '%', PDO::PARAM_STR);
         $stmt->execute();
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);

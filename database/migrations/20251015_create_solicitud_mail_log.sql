@@ -1,0 +1,26 @@
+-- Registro de correos enviados desde solicitudes (cobertura por correo)
+CREATE TABLE IF NOT EXISTS solicitud_mail_log (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    solicitud_id INT UNSIGNED NULL,
+    form_id VARCHAR(50) NULL,
+    hc_number VARCHAR(50) NULL,
+    afiliacion VARCHAR(120) NULL,
+    template_key VARCHAR(120) NULL,
+    to_emails TEXT NOT NULL,
+    cc_emails TEXT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body_text MEDIUMTEXT NULL,
+    body_html MEDIUMTEXT NULL,
+    attachment_path TEXT NULL,
+    attachment_name VARCHAR(255) NULL,
+    attachment_size INT UNSIGNED NULL,
+    sent_by_user_id INT UNSIGNED NULL,
+    status ENUM('sent', 'failed') NOT NULL DEFAULT 'sent',
+    error_message TEXT NULL,
+    sent_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY solicitud_idx (solicitud_id),
+    KEY sent_by_idx (sent_by_user_id),
+    KEY sent_at_idx (sent_at),
+    KEY status_idx (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
