@@ -392,14 +392,27 @@ class SolicitudModel
                 $sql = "SELECT sp.id, sp.turno, sp.estado FROM solicitud_procedimiento sp WHERE sp.turno = :turno FOR UPDATE";
                 $stmt = $this->db->prepare($sql);
                 $stmt->bindParam(':turno', $turno, \PDO::PARAM_INT);
+                $stmt->execute();
+                $registro = $stmt->fetch(PDO::FETCH_ASSOC);
             } else {
                 $sql = "SELECT sp.id, sp.turno, sp.estado FROM solicitud_procedimiento sp WHERE sp.id = :id FOR UPDATE";
                 $stmt = $this->db->prepare($sql);
                 $stmt->bindParam(':id', $id, \PDO::PARAM_INT);
-            }
+                $stmt->execute();
+                $registro = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            $stmt->execute();
-            $registro = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$registro && $id !== null) {
+                    $fallback = $this->db->prepare("SELECT sp.id, sp.turno, sp.estado
+                        FROM solicitud_procedimiento sp
+                        WHERE sp.form_id = :form_id
+                        ORDER BY sp.id DESC
+                        LIMIT 1
+                        FOR UPDATE");
+                    $fallback->bindParam(':form_id', $id, \PDO::PARAM_INT);
+                    $fallback->execute();
+                    $registro = $fallback->fetch(PDO::FETCH_ASSOC);
+                }
+            }
 
             if (!$registro) {
                 $this->db->rollBack();
@@ -457,6 +470,7 @@ class SolicitudModel
     {
         $mapa = [
             'recibido' => 'Recibido',
+            'recibida' => 'Recibido',
             'llamado' => 'Llamado',
             'en atencion' => 'En atención',
             'en atención' => 'En atención',
