@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Asistente CIVE",
-  "version": "7.2.0",
+  "version": "7.3.0",
   "description": "Descripción de mi extensión",
   "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "host_permissions": [
@@ -13,8 +13,11 @@
     "https://cive.ddns.net/*",
     "http://cive.ddns.net:8085/*",
     "http://192.168.1.13:8085/*",
+    "https://192.168.1.13:8085/*",
     "http://localhost:8085/*",
-    "http://127.0.0.1:8085/*"
+    "https://localhost:8085/*",
+    "http://127.0.0.1:8085/*",
+    "https://127.0.0.1:8085/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -105,8 +108,11 @@
         "http://cive.ddns.net:8085/*",
         "https://cive.ddns.net:8085/*",
         "http://192.168.1.13:8085/*",
+        "https://192.168.1.13:8085/*",
         "http://localhost:8085/*",
-        "http://127.0.0.1:8085/*"
+        "https://localhost:8085/*",
+        "http://127.0.0.1:8085/*",
+        "https://127.0.0.1:8085/*"
       ]
     }
   ],
@@ -119,8 +125,11 @@
         "http://cive.ddns.net:8085/*",
         "https://cive.ddns.net/*",
         "http://192.168.1.13:8085/*",
+        "https://192.168.1.13:8085/*",
         "http://localhost:8085/*",
+        "https://localhost:8085/*",
         "http://127.0.0.1:8085/*",
+        "https://127.0.0.1:8085/*",
         "http://192.168.1.13:8085/historia-automatica*",
         "http://cive.ddns.net:8085/historia-automatica*"
       ],
