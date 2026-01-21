@@ -116,6 +116,10 @@ class CirugiasController extends BaseController
             if ($protocoloId !== null) {
                 $response['protocolo_id'] = $protocoloId;
             }
+
+            if (!empty($_POST['status']) && (int) $_POST['status'] === 1) {
+                $this->service->actualizarStatus($_POST['form_id'], $_POST['hc_number'] ?? '', 1, $this->currentUserId());
+            }
         }
 
         $this->json($response, $statusCode);

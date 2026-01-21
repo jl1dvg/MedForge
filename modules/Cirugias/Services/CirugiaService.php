@@ -599,7 +599,10 @@ class CirugiaService
             $this->db->beginTransaction();
 
             $stmt = $this->db->prepare(
-                'SELECT id, status, version FROM protocolo_data WHERE form_id = :form_id AND hc_number = :hc_number LIMIT 1'
+                'SELECT id, status, version, protocolo_firmado_por, fecha_firma
+                 FROM protocolo_data
+                 WHERE form_id = :form_id AND hc_number = :hc_number
+                 LIMIT 1'
             );
             $stmt->execute([
                 ':form_id' => $formId,
@@ -614,9 +617,18 @@ class CirugiaService
 
             $protocoloId = (int) ($protocolo['id'] ?? 0);
             $currentVersion = isset($protocolo['version']) ? (int) $protocolo['version'] : 0;
+            $currentStatus = isset($protocolo['status']) ? (int) $protocolo['status'] : 0;
+            $needsSignature = $status === 1
+                && ($currentStatus !== 1 || empty($protocolo['fecha_firma']));
+
+            if ($status === $currentStatus && !$needsSignature) {
+                $this->db->rollBack();
+                return true;
+            }
+
             $newVersion = $currentVersion;
 
-            if ($status === 1) {
+            if ($needsSignature) {
                 $newVersion = $currentVersion + 1;
                 $updateSql = 'UPDATE protocolo_data
                     SET status = :status,
