@@ -110,6 +110,39 @@ function normalizeEntry(entry, fallbackTone = 'info') {
     };
 }
 
+function serializeEntry(entry) {
+    return {
+        ...entry,
+        timestamp: entry.timestamp instanceof Date && !Number.isNaN(entry.timestamp.getTime())
+            ? entry.timestamp.toISOString()
+            : null,
+        dueAt: entry.dueAt instanceof Date && !Number.isNaN(entry.dueAt.getTime())
+            ? entry.dueAt.toISOString()
+            : null,
+    };
+}
+
+function parseEntry(raw, fallbackTone) {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    return normalizeEntry({
+        ...raw,
+        timestamp: raw.timestamp ? new Date(raw.timestamp) : undefined,
+        dueAt: raw.dueAt ? new Date(raw.dueAt) : undefined,
+    }, fallbackTone);
+}
+
+function isWithinRetention(entry, retentionMs) {
+    if (!Number.isFinite(retentionMs) || retentionMs <= 0) {
+        return true;
+    }
+    const timestamp = entry.timestamp instanceof Date && !Number.isNaN(entry.timestamp.getTime())
+        ? entry.timestamp.getTime()
+        : Date.now();
+    return Date.now() - timestamp <= retentionMs;
+}
+
 function renderEntry(entry) {
     const avatarClass = TONE_TO_AVATAR[entry.tone] || TONE_TO_AVATAR.info;
     const badgesHtml = entry.badges.map(badge => `
@@ -201,10 +234,48 @@ export function createNotificationPanel(options = {}) {
     const toggleButtons = document.querySelectorAll(toggleSelector);
     const realtimeLimit = options.realtimeLimit || 40;
     const pendingLimit = options.pendingLimit || 40;
+    const storageKey = options.storageKey || null;
+    const retentionDays = Number.isFinite(options.retentionDays) ? options.retentionDays : 0;
+    const retentionMs = retentionDays > 0 ? retentionDays * 24 * 60 * 60 * 1000 : 0;
 
     const state = {
         realtime: [],
         pending: [],
+    };
+
+    const loadState = () => {
+        if (!storageKey || typeof window === 'undefined' || !window.localStorage) {
+            return;
+        }
+        try {
+            const raw = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
+            const realtime = Array.isArray(raw.realtime)
+                ? raw.realtime.map(item => parseEntry(item, 'info')).filter(Boolean)
+                : [];
+            const pending = Array.isArray(raw.pending)
+                ? raw.pending.map(item => parseEntry(item, 'primary')).filter(Boolean)
+                : [];
+
+            state.realtime = realtime.filter(entry => isWithinRetention(entry, retentionMs));
+            state.pending = pending.filter(entry => isWithinRetention(entry, retentionMs));
+        } catch (error) {
+            console.warn('No se pudo restaurar el panel de notificaciones', error);
+        }
+    };
+
+    const persistState = () => {
+        if (!storageKey || typeof window === 'undefined' || !window.localStorage) {
+            return;
+        }
+        try {
+            const payload = {
+                realtime: state.realtime.map(entry => serializeEntry(entry)),
+                pending: state.pending.map(entry => serializeEntry(entry)),
+            };
+            window.localStorage.setItem(storageKey, JSON.stringify(payload));
+        } catch (error) {
+            console.warn('No se pudo guardar el panel de notificaciones', error);
+        }
     };
 
     const ensureIndicator = (button) => {
@@ -351,7 +422,12 @@ export function createNotificationPanel(options = {}) {
             state.realtime.length = realtimeLimit;
         }
 
+        if (retentionMs > 0) {
+            state.realtime = state.realtime.filter(item => isWithinRetention(item, retentionMs));
+        }
+
         renderRealtime();
+        persistState();
         highlightToggleButtons();
     };
 
@@ -373,7 +449,12 @@ export function createNotificationPanel(options = {}) {
             state.pending.length = pendingLimit;
         }
 
+        if (retentionMs > 0) {
+            state.pending = state.pending.filter(item => isWithinRetention(item, retentionMs));
+        }
+
         renderPending();
+        persistState();
         highlightToggleButtons();
     };
 
@@ -409,6 +490,8 @@ export function createNotificationPanel(options = {}) {
             warningBox.classList.add('d-none');
         }
     };
+
+    loadState();
 
     // Initial render state
     renderRealtime();

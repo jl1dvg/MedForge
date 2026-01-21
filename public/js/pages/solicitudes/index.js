@@ -27,13 +27,17 @@ document.addEventListener('DOMContentLoaded', () => {
         : '';
     const realtimeConfig = getRealtimeConfig();
     const reportingConfig = getReportingConfig();
-    const rawAutoDismiss = Number(realtimeConfig.auto_dismiss_seconds);
-    const autoDismissSeconds = Number.isFinite(rawAutoDismiss) && rawAutoDismiss >= 0 ? rawAutoDismiss : null;
-    const toastDurationMs = autoDismissSeconds === null
+    const rawDesktopDismiss = Number(realtimeConfig.auto_dismiss_seconds);
+    const desktopDismissSeconds = Number.isFinite(rawDesktopDismiss) && rawDesktopDismiss >= 0 ? rawDesktopDismiss : 0;
+    const rawToastDismiss = Number(realtimeConfig.toast_auto_dismiss_seconds);
+    const toastDismissSeconds = Number.isFinite(rawToastDismiss) && rawToastDismiss >= 0 ? rawToastDismiss : null;
+    const toastDurationMs = toastDismissSeconds === null
         ? 4000
-        : autoDismissSeconds === 0
+        : toastDismissSeconds === 0
             ? 0
-            : autoDismissSeconds * 1000;
+            : toastDismissSeconds * 1000;
+    const rawRetentionDays = Number(realtimeConfig.panel_retention_days);
+    const retentionDays = Number.isFinite(rawRetentionDays) && rawRetentionDays >= 0 ? rawRetentionDays : 0;
 
     const ensureNotificationPanel = () => {
         if (window.MEDF?.notificationPanel) {
@@ -44,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
             panelId: 'kanbanNotificationPanel',
             backdropId: 'notificationPanelBackdrop',
             toggleSelector: '[data-notification-panel-toggle]',
+            storageKey: `${config.key}:notification-panel`,
+            retentionDays,
         });
 
         window.MEDF = window.MEDF || {};
@@ -194,8 +200,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const notification = new Notification(title, { body });
-        if (autoDismissSeconds && autoDismissSeconds > 0) {
-            setTimeout(() => notification.close(), autoDismissSeconds * 1000);
+        if (desktopDismissSeconds && desktopDismissSeconds > 0) {
+            setTimeout(() => notification.close(), desktopDismissSeconds * 1000);
         }
     };
 

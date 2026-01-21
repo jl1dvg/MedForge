@@ -533,6 +533,25 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'panel_behavior',
+                        'title' => 'Panel y toasts',
+                        'description' => 'Controla la persistencia del panel y el tiempo de auto cierre de toasts.',
+                        'fields' => [
+                            self::numberField(
+                                'notifications_toast_auto_dismiss_seconds',
+                                'Cerrar toasts después de (segundos)',
+                                4,
+                                'Usa 0 para mantener el toast visible hasta que el usuario lo cierre.'
+                            ),
+                            self::numberField(
+                                'notifications_panel_retention_days',
+                                'Días visibles en el panel de notificaciones',
+                                7,
+                                'Usa 0 para no caducar las notificaciones almacenadas.'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'summaries',
                         'title' => 'Resúmenes automáticos',
                         'description' => 'Define si deseas recibir un resumen diario consolidado.',
