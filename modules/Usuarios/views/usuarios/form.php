@@ -185,12 +185,36 @@ if (!function_exists('usuarios_permission_id')) {
                                 <input type="text" name="sede" class="form-control" value="<?= usuarios_form_old($usuario, 'sede'); ?>">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Especialidad</label>
-                                <input type="text" name="especialidad" class="form-control" value="<?= usuarios_form_old($usuario, 'especialidad'); ?>">
+                                <label class="form-label" for="especialidad">Especialidad</label>
+                                <?php
+                                $especialidades = [
+                                    '' => 'Seleccionar',
+                                    'Cirujano Oftalmólogo' => 'Cirujano Oftalmólogo',
+                                    'Anestesiologo' => 'Anestesiólogo',
+                                    'Asistente' => 'Asistente',
+                                    'Optometrista' => 'Optometrista',
+                                    'Enfermera' => 'Enfermera',
+                                    'Administrativo' => 'Administrativo',
+                                    'Facturación' => 'Facturación',
+                                    'Sistemas' => 'Sistemas',
+                                    'Coordinación Quirúrgica' => 'Coordinación Quirúrgica',
+                                    'Admisión' => 'Admisión',
+                                    'Imagenología' => 'Imagenología',
+                                ];
+                                $especialidadActual = usuarios_form_old($usuario, 'especialidad');
+                                ?>
+                                <select name="especialidad" id="especialidad" class="form-select">
+                                    <?php foreach ($especialidades as $valor => $label): ?>
+                                        <option value="<?= htmlspecialchars($valor, ENT_QUOTES, 'UTF-8'); ?>" <?= $especialidadActual === $valor ? 'selected' : ''; ?>>
+                                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Subespecialidad</label>
-                                <input type="text" name="subespecialidad" class="form-control" value="<?= usuarios_form_old($usuario, 'subespecialidad'); ?>">
+                                <label class="form-label" for="subespecialidad">Subespecialidad</label>
+                                <input type="text" name="subespecialidad" id="subespecialidad" class="form-control" value="<?= usuarios_form_old($usuario, 'subespecialidad'); ?>">
+                                <small class="text-muted">Se habilita solo para Cirujano Oftalmólogo.</small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Sello</label>
@@ -383,6 +407,26 @@ if (!function_exists('usuarios_permission_id')) {
                             <button type="submit" class="btn btn-primary">Guardar</button>
                         </div>
                     </form>
+                    <script>
+                        (function () {
+                            const especialidadSelect = document.getElementById('especialidad');
+                            const subespecialidadInput = document.getElementById('subespecialidad');
+                            if (!especialidadSelect || !subespecialidadInput) {
+                                return;
+                            }
+
+                            const toggleSubespecialidad = () => {
+                                const isOftalmologo = especialidadSelect.value === 'Cirujano Oftalmólogo';
+                                subespecialidadInput.disabled = !isOftalmologo;
+                                if (!isOftalmologo) {
+                                    subespecialidadInput.value = '';
+                                }
+                            };
+
+                            especialidadSelect.addEventListener('change', toggleSubespecialidad);
+                            toggleSubespecialidad();
+                        })();
+                    </script>
                 </div>
             </div>
         </div>
