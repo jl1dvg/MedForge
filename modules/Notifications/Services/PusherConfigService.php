@@ -64,6 +64,8 @@ class PusherConfigService
      *     event: string,
      *     desktop_notifications: bool,
      *     auto_dismiss_seconds: int,
+     *     toast_auto_dismiss_seconds: int,
+     *     panel_retention_days: int,
      *     events: array<string, string>,
      *     channels: array{email: bool, sms: bool, daily_summary: bool}
      * }
@@ -84,6 +86,8 @@ class PusherConfigService
             'event' => self::DEFAULT_EVENTS[self::EVENT_NEW_REQUEST],
             'desktop_notifications' => false,
             'auto_dismiss_seconds' => 0,
+            'toast_auto_dismiss_seconds' => 4,
+            'panel_retention_days' => 7,
             'events' => self::DEFAULT_EVENTS,
             'channels' => [
                 'email' => false,
@@ -102,6 +106,8 @@ class PusherConfigService
                     'pusher_realtime_notifications',
                     'desktop_notifications',
                     'auto_dismiss_desktop_notifications_after',
+                    'notifications_toast_auto_dismiss_seconds',
+                    'notifications_panel_retention_days',
                     'notifications_email_enabled',
                     'notifications_sms_enabled',
                     'notifications_daily_summary',
@@ -113,6 +119,8 @@ class PusherConfigService
                 $config['cluster'] = trim((string) ($options['pusher_cluster'] ?? ''));
                 $config['desktop_notifications'] = ($options['desktop_notifications'] ?? '0') === '1';
                 $config['auto_dismiss_seconds'] = max(0, (int) ($options['auto_dismiss_desktop_notifications_after'] ?? 0));
+                $config['toast_auto_dismiss_seconds'] = max(0, (int) ($options['notifications_toast_auto_dismiss_seconds'] ?? 4));
+                $config['panel_retention_days'] = max(0, (int) ($options['notifications_panel_retention_days'] ?? 7));
                 $config['enabled'] = ($options['pusher_realtime_notifications'] ?? '0') === '1';
                 $config['channels'] = [
                     'email' => ($options['notifications_email_enabled'] ?? '0') === '1',
@@ -143,6 +151,8 @@ class PusherConfigService
      *     event: string,
      *     desktop_notifications: bool,
      *     auto_dismiss_seconds: int,
+     *     toast_auto_dismiss_seconds: int,
+     *     panel_retention_days: int,
      *     events: array<string, string>,
      *     channels: array{email: bool, sms: bool, daily_summary: bool}
      * }
@@ -159,6 +169,8 @@ class PusherConfigService
             'event' => $config['event'],
             'desktop_notifications' => $config['desktop_notifications'],
             'auto_dismiss_seconds' => $config['auto_dismiss_seconds'],
+            'toast_auto_dismiss_seconds' => $config['toast_auto_dismiss_seconds'],
+            'panel_retention_days' => $config['panel_retention_days'],
             'events' => $config['events'],
             'channels' => $config['channels'],
         ];
