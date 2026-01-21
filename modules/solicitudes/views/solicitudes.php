@@ -63,6 +63,57 @@ $reporting = array_merge(
 
 <section class="content">
     <style>
+        .kanban-board-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden; /* evita scroll vertical accidental */
+            -webkit-overflow-scrolling: touch; /* mejor scroll en iOS */
+            padding-bottom: 8px; /* espacio para la barra de scroll */
+        }
+
+        .kanban-board-wrapper .kanban-scroll {
+            min-width: 100%;
+            width: max-content; /* permite que las columnas se extiendan horizontalmente */
+        }
+
+        /* --- Kanban horizontal nav (flechas) --- */
+        .kanban-nav {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin: 0.25rem 0 0.75rem;
+        }
+
+        .kanban-nav .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            white-space: nowrap;
+        }
+
+        .kanban-nav.opacity-50 {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .kanban-nav {
+                justify-content: space-between;
+            }
+        }
+
+        .kanban-board-wrapper .kanban-column {
+            width: 250px;
+            flex: 0 0 auto;
+        }
+
+        @media (max-width: 768px) {
+            .kanban-board-wrapper .kanban-column {
+                width: 280px;
+            }
+        }
+
         .kanban-card {
             border: 1px solid #e1e5eb;
             background: #fff;
@@ -988,6 +1039,15 @@ $reporting = array_merge(
     }
     ?>
 
+    <div class="kanban-nav" aria-label="Navegación horizontal del tablero">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-kanban-scroll-left>
+            <i class="mdi mdi-chevron-left"></i> Izquierda
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-kanban-scroll-right>
+            Derecha <i class="mdi mdi-chevron-right"></i>
+        </button>
+    </div>
+
     <div id="solicitudesViewKanban" class="kanban-board kanban-board-wrapper bg-light p-3">
         <div class="kanban-scroll d-flex flex-nowrap gap-3">
             <?php foreach ($estadoColumnas as $estadoId => $estadoMeta):
@@ -1008,6 +1068,55 @@ $reporting = array_merge(
             <?php endforeach; ?>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // El overflow-x está en el wrapper (#solicitudesViewKanban). .kanban-scroll es solo el contenido.
+            // Usamos el elemento que realmente hace scroll.
+            const kanbanWrapper = document.querySelector('#solicitudesViewKanban');
+            const kanbanInner = document.querySelector('#solicitudesViewKanban .kanban-scroll');
+
+            // Preferimos el wrapper (tiene overflow-x: auto). Si por algún motivo no existe, usamos el inner.
+            const scroller = kanbanWrapper || kanbanInner;
+            if (!scroller) return;
+
+            const btnLeft = document.querySelector('[data-kanban-scroll-left]');
+            const btnRight = document.querySelector('[data-kanban-scroll-right]');
+
+            const scrollToEdge = (direction) => {
+                // direction: 'left' | 'right'
+                const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+                const targetLeft = direction === 'left' ? 0 : maxLeft;
+                // Algunos navegadores no animan scrollLeft directo; usamos scrollTo con behavior smooth.
+                scroller.scrollTo({left: targetLeft, behavior: 'smooth'});
+            };
+
+            const updateNavState = () => {
+                const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+                const left = scroller.scrollLeft;
+                // tolerancia para evitar parpadeo por decimales
+                const atStart = left <= 2;
+                const atEnd = left >= (maxLeft - 2);
+                if (btnLeft) btnLeft.disabled = atStart;
+                if (btnRight) btnRight.disabled = atEnd;
+                // Si no hay overflow horizontal, deshabilitamos botones (no ocultamos, para que sea claro al usuario)
+                const nav = (btnLeft && btnLeft.closest('.kanban-nav')) || document.querySelector('.kanban-nav');
+                if (nav) {
+                    nav.classList.toggle('opacity-50', maxLeft <= 2);
+                }
+            };
+
+            btnLeft && btnLeft.addEventListener('click', () => scrollToEdge('left'));
+            btnRight && btnRight.addEventListener('click', () => scrollToEdge('right'));
+
+            // Mantener estado actualizado
+            scroller.addEventListener('scroll', () => updateNavState(), {passive: true});
+            window.addEventListener('resize', () => updateNavState());
+
+            // Estado inicial
+            updateNavState();
+        });
+    </script>
 
     <div id="solicitudesViewTable" class="table-view d-none">
         <div class="table-responsive">
