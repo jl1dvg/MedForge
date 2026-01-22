@@ -114,6 +114,27 @@ class SolicitudEstadoService
         }, $solicitudes))));
 
         $rowsBySolicitud = $this->fetchChecklistRows($ids);
+        $seededIds = [];
+
+        foreach ($solicitudes as $row) {
+            $solicitudId = isset($row['id']) ? (int)$row['id'] : 0;
+            if ($solicitudId <= 0) {
+                continue;
+            }
+
+            $legacyEstado = isset($row['estado']) ? (string)$row['estado'] : '';
+            $existingRows = $rowsBySolicitud[$solicitudId] ?? [];
+            if ($this->ensureChecklistRows($solicitudId, $existingRows, $legacyEstado)) {
+                $seededIds[] = $solicitudId;
+            }
+        }
+
+        if ($seededIds) {
+            $refreshedRows = $this->fetchChecklistRows($seededIds);
+            foreach ($refreshedRows as $sid => $rows) {
+                $rowsBySolicitud[$sid] = $rows;
+            }
+        }
 
         foreach ($solicitudes as &$row) {
             $solicitudId = isset($row['id']) ? (int)$row['id'] : 0;
@@ -280,7 +301,7 @@ class SolicitudEstadoService
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $this->pdo->prepare(
-            "SELECT solicitud_id, etapa_slug, completado_at, completado_por, nota
+            "SELECT solicitud_id, etapa_slug, checked, completado_at, completado_por, nota
              FROM solicitud_checklist
              WHERE solicitud_id IN ($placeholders)"
         );
@@ -327,7 +348,11 @@ class SolicitudEstadoService
         foreach ($stages as $stage) {
             $slug = $stage['slug'];
             $row = $map[$slug] ?? [];
-            $completed = !empty($row['completado_at']);
+            $checkedValue = null;
+            if (array_key_exists('checked', $row)) {
+                $checkedValue = (int)$row['checked'];
+            }
+            $completed = $checkedValue !== null ? (bool)$checkedValue : !empty($row['completado_at']);
             if (
                 !$completed &&
                 !$hasChecklistRows &&
@@ -345,6 +370,7 @@ class SolicitudEstadoService
                 'column' => $stage['column'],
                 'required' => (bool)($stage['required'] ?? true),
                 'completed' => $completed,
+                'checked' => $completed ? 1 : 0,
                 'completado_at' => $row['completado_at'] ?? null,
                 'completado_por' => $row['completado_por'] ?? null,
                 'nota' => $row['nota'] ?? null,
@@ -552,9 +578,10 @@ class SolicitudEstadoService
     ): void
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO solicitud_checklist (solicitud_id, etapa_slug, completado_at, completado_por, nota)
-             VALUES (:solicitud_id, :etapa_slug, :completado_at, :completado_por, :nota)
+            'INSERT INTO solicitud_checklist (solicitud_id, etapa_slug, checked, completado_at, completado_por, nota)
+             VALUES (:solicitud_id, :etapa_slug, :checked, :completado_at, :completado_por, :nota)
              ON DUPLICATE KEY UPDATE
+                checked = VALUES(checked),
                 completado_at = VALUES(completado_at),
                 completado_por = VALUES(completado_por),
                 nota = VALUES(nota)'
@@ -562,6 +589,7 @@ class SolicitudEstadoService
 
         $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
         $stmt->bindValue(':etapa_slug', $slug, PDO::PARAM_STR);
+        $stmt->bindValue(':checked', $completed ? 1 : 0, PDO::PARAM_INT);
         $stmt->bindValue(
             ':completado_at',
             $completed ? ($timestamp ?? date('Y-m-d H:i:s')) : null,
@@ -619,11 +647,77 @@ class SolicitudEstadoService
 
         $placeholders = implode(',', array_fill(0, count($slugsToClear), '?'));
         $sql = "UPDATE solicitud_checklist 
-                SET completado_at = NULL, completado_por = NULL, nota = NULL
+                SET checked = 0, completado_at = NULL, completado_por = NULL, nota = NULL
                 WHERE solicitud_id = ? AND etapa_slug IN ($placeholders)";
         $stmt = $this->pdo->prepare($sql);
         $params = array_merge([$solicitudId], $slugsToClear);
         $stmt->execute($params);
+    }
+
+    private function ensureChecklistRows(int $solicitudId, array $rows, string $legacyEstado): bool
+    {
+        $stages = $this->getStages();
+        if (empty($stages)) {
+            return false;
+        }
+
+        $existing = [];
+        foreach ($rows as $row) {
+            $slug = $this->normalizeSlug($row['etapa_slug'] ?? '');
+            if ($slug !== '') {
+                $existing[$slug] = true;
+            }
+        }
+
+        if (count($existing) >= count($stages)) {
+            return false;
+        }
+
+        $legacyOrder = null;
+        if (empty($existing)) {
+            $legacySlug = $this->mapLegacyEstado($legacyEstado);
+            if ($legacySlug !== null) {
+                foreach ($stages as $stage) {
+                    if (($stage['slug'] ?? null) === $legacySlug) {
+                        $legacyOrder = $stage['order'] ?? null;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO solicitud_checklist (solicitud_id, etapa_slug, checked, completado_at, completado_por, nota)
+             VALUES (:solicitud_id, :etapa_slug, :checked, :completado_at, :completado_por, :nota)
+             ON DUPLICATE KEY UPDATE
+                checked = VALUES(checked),
+                completado_at = VALUES(completado_at),
+                completado_por = VALUES(completado_por),
+                nota = VALUES(nota)'
+        );
+
+        foreach ($stages as $stage) {
+            $slug = $stage['slug'] ?? '';
+            if ($slug === '' || isset($existing[$slug])) {
+                continue;
+            }
+
+            $checked = $legacyOrder !== null && ($stage['order'] ?? 0) <= $legacyOrder ? 1 : 0;
+            $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+            $stmt->bindValue(':etapa_slug', $slug, PDO::PARAM_STR);
+            $stmt->bindValue(':checked', $checked, PDO::PARAM_INT);
+            $stmt->bindValue(
+                ':completado_at',
+                $checked ? $now : null,
+                $checked ? PDO::PARAM_STR : PDO::PARAM_NULL
+            );
+            $stmt->bindValue(':completado_por', null, PDO::PARAM_NULL);
+            $stmt->bindValue(':nota', null, PDO::PARAM_NULL);
+            $stmt->execute();
+        }
+
+        return true;
     }
 
     private function actualizarEstadoLegacy(int $solicitudId, string $estadoSlug): void

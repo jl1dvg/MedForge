@@ -1057,24 +1057,6 @@ class SolicitudCrmService
             $tasks[] = $this->formatChecklistTask($task, (string) $taskKey);
         }
 
-        foreach ($checklist as &$item) {
-            $slug = $item['slug'] ?? null;
-            if (!$slug) {
-                continue;
-            }
-
-            $taskKey = $this->buildTaskKey($solicitudId, $slug);
-            $task = $existingTasks[$taskKey] ?? null;
-            if (!$task) {
-                continue;
-            }
-
-            if (($task['status'] ?? '') === 'completada') {
-                $item['completed'] = true;
-            }
-        }
-        unset($item);
-
         $progress = $this->computeChecklistProgress($checklist, $progress);
 
         return [
