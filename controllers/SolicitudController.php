@@ -48,6 +48,12 @@ class SolicitudController
     {
         return $this->solicitudModel->actualizarSolicitudParcial($id, $campos);
     }
+
+    public function marcarChecklistAptoOftalmologo(int $id): bool
+    {
+        return $this->solicitudModel->marcarChecklistAptoOftalmologo($id);
+    }
+
     public function obtenerEstadosPorHc(string $hcNumber): array
     {
         $solicitudes = $this->solicitudModel->obtenerEstadosPorHc($hcNumber);

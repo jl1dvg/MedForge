@@ -23,6 +23,24 @@ function readJsonBody(): array
     return is_array($json) ? $json : [];
 }
 
+function normalizeSlug(?string $value): string
+{
+    $base = $value ?? '';
+    $base = trim($base);
+    if ($base === '') {
+        return '';
+    }
+    $base = mb_strtolower($base, 'UTF-8');
+    $base = str_replace(['_', '  '], ['-', ' '], $base);
+    $base = preg_replace('/[^\p{L}\p{N}\-\s]/u', '', $base) ?? '';
+    $base = preg_replace('/\s+/', '-', $base) ?? '';
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT', $base);
+    if ($ascii !== false) {
+        $base = $ascii;
+    }
+    return $base;
+}
+
 try {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $controller = new SolicitudController($pdo);
@@ -94,6 +112,14 @@ try {
 
         if (!is_array($resultado) || ($resultado['success'] ?? false) === false) {
             http_response_code(422);
+        } else {
+            $estadoPayload = $payload['estado'] ?? $payload['etapa_slug'] ?? $payload['etapa'] ?? '';
+            if (normalizeSlug((string) $estadoPayload) === 'apto-oftalmologo') {
+                $checklistActualizado = $controller->marcarChecklistAptoOftalmologo($id);
+                if (is_array($resultado)) {
+                    $resultado['checklist_updated'] = $checklistActualizado;
+                }
+            }
         }
 
         echo json_encode($resultado, JSON_UNESCAPED_UNICODE);
