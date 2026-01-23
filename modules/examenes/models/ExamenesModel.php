@@ -473,6 +473,20 @@ class ExamenesModel
         ];
     }
 
+    public function marcarChecklistAptoOftalmologo(int $solicitudId): bool
+    {
+        $sql = "
+            INSERT INTO solicitud_checklist (solicitud_id, etapa_slug, checked, completado_at)
+            VALUES (:solicitud_id, 'apto-oftalmologo', 1, NOW())
+            ON DUPLICATE KEY UPDATE
+                checked = IF(checked = 0, 1, checked),
+                completado_at = IF(checked = 0 OR completado_at IS NULL, NOW(), completado_at)
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([':solicitud_id' => $solicitudId]);
+    }
+
     public function obtenerSolicitudBasicaPorId(int $id): ?array
     {
         $stmt = $this->db->prepare("SELECT
