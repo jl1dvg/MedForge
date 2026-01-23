@@ -141,7 +141,13 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
 $afiliacionSolicitud = trim((string)($solicitud['afiliacion'] ?? ''));
 $coberturaTemplateKey = $viewData['coberturaTemplateKey'] ?? null;
 $coberturaTemplateAvailable = (bool)($viewData['coberturaTemplateAvailable'] ?? false);
-$solicitudCoberturaMail = $derivacionVencida && $coberturaTemplateAvailable;
+$solicitudCoberturaMail = $coberturaTemplateAvailable;
+$solicitudCoberturaMailStyle = $derivacionVencida ? 'warning' : 'info';
+$solicitudCoberturaMailTitle = $derivacionVencida ? 'Derivación vencida' : 'Solicitar cobertura adicional';
+$solicitudCoberturaMailMessage = $derivacionVencida
+    ? 'Afiliación: ' . htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8')
+        . '. Solicita un nuevo código por correo adjuntando la derivación.'
+    : 'Si necesitas otro código de procedimiento o cobertura para el otro ojo, puedes solicitarla por correo.';
 $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
@@ -363,14 +369,13 @@ if ($coberturaMailSentAt !== '') {
                 </div>
 
                 <?php if ($solicitudCoberturaMail): ?>
-                    <div class="alert alert-warning border d-flex flex-column gap-2 mb-0">
+                    <div class="alert alert-<?= $solicitudCoberturaMailStyle ?> border d-flex flex-column gap-2 mb-0">
                         <div class="d-flex align-items-center gap-2">
                             <i class="bi bi-envelope-exclamation"></i>
                             <div>
-                                <div class="fw-semibold">Derivación vencida</div>
+                                <div class="fw-semibold"><?= $solicitudCoberturaMailTitle ?></div>
                                 <small class="text-muted">
-                                    Afiliación: <?= htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8') ?>.
-                                    Solicita un nuevo código por correo adjuntando la derivación.
+                                    <?= $solicitudCoberturaMailMessage ?>
                                 </small>
                             </div>
                         </div>
