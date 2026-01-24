@@ -27,6 +27,9 @@
 </div>
 <div class="col-sm-12 invoice-col mb-15">
     <div class="invoice-details row no-margin">
+        <?php
+        $facturadorNombre = $billing['facturador_nombre'] ?? $billing['facturador'] ?? null;
+        ?>
         <div class="col-md-6 col-lg-3"><b>Pedido:</b> <?= $codigoDerivacion ?></div>
         <div class="col-md-6 col-lg-3"><b>Fecha
                 Registro:</b> <?= !empty($fecha_registro) ? date('d/m/Y', strtotime($fecha_registro ?? '')) : '--' ?>
@@ -36,6 +39,9 @@
         </div>
         <div class="col-md-6 col-lg-3">
             <b>Médico:</b> <?= htmlspecialchars($doctor) ?>
+        </div>
+        <div class="col-md-6 col-lg-3">
+            <b>Facturado por:</b> <?= htmlspecialchars($facturadorNombre ?: '—') ?>
         </div>
     </div>
 </div>

@@ -50,14 +50,17 @@ class BillingService
         try {
             $this->db->beginTransaction();
 
+            $userId = isset($data['user_id']) ? (int)$data['user_id'] : (int)($_SESSION['user_id'] ?? 0);
+
             // Billing main
             $billing = $this->billingMainModel->findByFormId($data['form_id']);
             if ($billing) {
                 $billingId = $billing['id'];
                 $this->borrarDetalles($billingId);
                 $this->billingMainModel->update($data['hcNumber'], $billingId);
+                $this->billingMainModel->assignFacturador($billingId, $userId ?: null);
             } else {
-                $billingId = $this->billingMainModel->insert($data['hcNumber'], $data['form_id']);
+                $billingId = $this->billingMainModel->insert($data['hcNumber'], $data['form_id'], $userId ?: null);
             }
 
             // Actualizar fecha de creación si existe en protocolo
@@ -128,6 +131,9 @@ class BillingService
         if (!$billing) return null;
 
         $billingId = $billing['id'];
+        $facturador = $this->resolverFacturador($billing);
+        $billing['facturador_id'] = $facturador['id'] ?? null;
+        $billing['facturador_nombre'] = $facturador['nombre'] ?? null;
 
         // Dependencias
         require_once __DIR__ . '/../GuardarProyeccionController.php';
@@ -198,6 +204,26 @@ class BillingService
             'visita' => $visita,
             'formulario' => $formDetails,
             'protocoloExtendido' => $protocoloExtendido,
+        ];
+    }
+
+    private function resolverFacturador(array $billing): ?array
+    {
+        $userId = !empty($billing['facturado_por']) ? (int)$billing['facturado_por'] : null;
+
+        if (!$userId) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT COALESCE(NULLIF(nombre, ''), NULLIF(username, '')) AS nombre FROM users WHERE id = ?"
+        );
+        $stmt->execute([$userId]);
+        $nombre = $stmt->fetchColumn();
+
+        return [
+            'id' => $userId,
+            'nombre' => $nombre ?: null,
         ];
     }
 

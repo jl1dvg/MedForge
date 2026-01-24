@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use PDO;
+use Models\BillingMainModel;
 use Modules\Derivaciones\Services\DerivacionesSyncService;
 
 class DerivacionController
@@ -142,6 +143,8 @@ class DerivacionController
     public function insertarBillingMainSiNoExiste(array $form_hc_data)
     {
         $db = $this->db;
+        $billingMainModel = new BillingMainModel($db);
+        $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
         $form_ids = array_map(fn($item) => $item['form_id'], $form_hc_data);
         $placeholders = implode(',', array_fill(0, count($form_ids), '?'));
@@ -164,9 +167,7 @@ class DerivacionController
 
                     if (!$billing_id) {
                         try {
-                            $stmtInsert = $db->prepare("INSERT INTO billing_main (form_id, hc_number) VALUES (?, ?)");
-                            $stmtInsert->execute([$form_id, $item['hc_number']]);
-                            $billing_id = $db->lastInsertId();
+                            $billing_id = $billingMainModel->insert($item['hc_number'], $form_id, $userId);
                             $nuevos[] = $form_id;
 
                             $syncService = new DerivacionesSyncService($db);

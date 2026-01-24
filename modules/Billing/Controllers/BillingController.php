@@ -123,7 +123,8 @@ class BillingController extends BaseController
         }
 
         try {
-            $billingId = $billingModel->insert($hcNumber, $formId);
+            $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+            $billingId = $billingModel->insert($hcNumber, $formId, $userId);
 
             $stmtFecha = $this->pdo->prepare('SELECT fecha_inicio FROM protocolo_data WHERE form_id = ?');
             $stmtFecha->execute([$formId]);
