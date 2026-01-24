@@ -20,10 +20,16 @@ class BillingMainModel
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
-    public function insert(string $hcNumber, string $formId): int
+    public function insert(string $hcNumber, string $formId, ?int $userId = null): int
     {
-        $stmt = $this->db->prepare("INSERT INTO billing_main (hc_number, form_id) VALUES (?, ?)");
-        $stmt->execute([$hcNumber, $formId]);
+        if ($userId) {
+            $stmt = $this->db->prepare("INSERT INTO billing_main (hc_number, form_id, facturado_por) VALUES (?, ?, ?)");
+            $stmt->execute([$hcNumber, $formId, $userId]);
+        } else {
+            $stmt = $this->db->prepare("INSERT INTO billing_main (hc_number, form_id) VALUES (?, ?)");
+            $stmt->execute([$hcNumber, $formId]);
+        }
+
         return (int)$this->db->lastInsertId();
     }
 
@@ -37,5 +43,15 @@ class BillingMainModel
     {
         $stmt = $this->db->prepare("UPDATE billing_main SET created_at = ? WHERE id = ?");
         $stmt->execute([$fecha, $billingId]);
+    }
+
+    public function assignFacturador(int $billingId, ?int $userId): void
+    {
+        if (!$userId) {
+            return;
+        }
+
+        $stmt = $this->db->prepare("UPDATE billing_main SET facturado_por = COALESCE(facturado_por, ?) WHERE id = ?");
+        $stmt->execute([$userId, $billingId]);
     }
 }

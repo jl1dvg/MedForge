@@ -428,6 +428,7 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                     <th>⏳</th>
                                                     <th>⚧️</th>
                                                     <th>💲 Total</th>
+                                                    <th>👤 Facturó</th>
                                                     <th>🧾Fact.</th>
                                                 </tr>
                                                 </thead>
@@ -443,6 +444,24 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                     $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
                                                     $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
                                                     $formIdsPaciente = implode(', ', $info['form_ids']);
+                                                    $facturadores = [];
+                                                    foreach ($info['form_ids'] as $formIdLoop) {
+                                                        if (!isset($datosCache[$formIdLoop])) {
+                                                            $datosCache[$formIdLoop] = $billingController->obtenerDatos($formIdLoop);
+                                                        }
+                                                        $datosFactura = $datosCache[$formIdLoop] ?? null;
+                                                        if (!$datosFactura) {
+                                                            continue;
+                                                        }
+                                                        $facturadorNombre = $datosFactura['billing']['facturador_nombre']
+                                                            ?? $datosFactura['billing']['facturador']
+                                                            ?? null;
+                                                        if (!empty($facturadorNombre)) {
+                                                            $facturadores[] = $facturadorNombre;
+                                                        }
+                                                    }
+                                                    $facturadores = array_values(array_unique($facturadores));
+                                                    $facturadoresTexto = $facturadores ? implode(', ', $facturadores) : '—';
                                                     $procHtml = htmlspecialchars($formIdsPaciente);
                                                     if ($slug === 'consulta' && !empty($info['form_ids'])) {
                                                         $hcNumberConsulta = $pacienteInfo['hc_number'] ?? '';
@@ -496,6 +515,7 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                         </td>
                                                         <td class="text-end">$
                                                             <?= number_format($info['total'], 2) ?></td>
+                                                        <td><?= htmlspecialchars($facturadoresTexto) ?></td>
                                                         <?php
                                                         $billingIdsDetalle = [];
                                                         foreach ($info['form_ids'] as $formIdLoop) {

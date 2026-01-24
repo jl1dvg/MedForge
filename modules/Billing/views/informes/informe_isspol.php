@@ -713,13 +713,14 @@ if ($billingId) {
         <th>Fecha Egreso</th>
         <th>CIE10</th>
         <th>Médico</th>
-        <th># Hist. C.</th>
-        <th>Edad</th>
-        <th>Ge</th>
-        <th>Monto Sol.</th>
-        <th>Cod. Derivacion</th>
-        <th>Acción</th>
-    </tr>
+                                                <th># Hist. C.</th>
+                                                <th>Edad</th>
+                                                <th>Ge</th>
+                                                <th>Monto Sol.</th>
+                                                <th>Facturado por</th>
+                                                <th>Cod. Derivacion</th>
+                                                <th>Acción</th>
+                                            </tr>
     </thead>
     <tbody>";
                                         $n = 1;

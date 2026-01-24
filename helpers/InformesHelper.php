@@ -121,6 +121,7 @@ class InformesHelper
         $fecha_egreso = $fecha_ingreso;
         $hc_number = $p['hc_number'];
         $monto_sol = number_format($p['total'], 2);
+        $facturador = $datosPaciente['billing']['facturador_nombre'] ?? $datosPaciente['billing']['facturador'] ?? null;
 
         $referidoWords = preg_split('/\s+/', trim($referido));
         $referidoFormateado = '';
@@ -156,6 +157,7 @@ class InformesHelper
             <td>{$edad}</td>
             <td>{$genero}</td>
             <td>{$monto_sol}</td>
+            <td>" . htmlspecialchars($facturador ?: '—') . "</td>
             <td>" .
             (!empty($codigoDerivacion)
                 ? "<span class='badge badge-success'>" . htmlspecialchars($codigoDerivacion) . "</span>"

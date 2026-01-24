@@ -671,6 +671,7 @@ $formulario = $datos['formulario'] ?? [];
                                                 <th>Edad</th>
                                                 <th>Ge</th>
                                                 <th>Monto Sol.</th>
+                                                <th>Facturado por</th>
                                                 <th>Cod. Derivacion</th>
                                                 <th>Acción</th>
                                             </tr>
