@@ -677,7 +677,9 @@ if ($billingId) {
                                         $pacienteService,
                                         $afiliacionesISSPOL,
                                         null,
-                                        $cacheDerivaciones
+                                        $cacheDerivaciones,
+                                        $pacientesCache,
+                                        $datosCache
                                     );
                                     foreach ($consolidado as $mes => $pacientes) {
                                         // Aplicar filtros de apellido usando helper

@@ -22,7 +22,17 @@ $datosCache = [];
 $cacheDerivaciones = [];
 $filtros = ['mes' => $mes];
 
-$consolidado = InformesHelper::obtenerConsolidadoFiltrado($facturas, $filtros, $billingController, $pacienteService, [], null, $cacheDerivaciones);
+$consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+    $facturas,
+    $filtros,
+    $billingController,
+    $pacienteService,
+    [],
+    null,
+    $cacheDerivaciones,
+    $pacientesCache,
+    $datosCache
+);
 
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
@@ -36,8 +46,10 @@ $row = 2;
 $n = 1;
 foreach ($consolidado as $mes => $pacientes) {
     foreach ($pacientes as $p) {
-        // Fetch patient details from DB
-        $paciente = $pacienteService->getPatientDetails($p['hc_number']);
+        if (!isset($pacientesCache[$p['hc_number']])) {
+            $pacientesCache[$p['hc_number']] = $pacienteService->getPatientDetails($p['hc_number']);
+        }
+        $paciente = $pacientesCache[$p['hc_number']] ?? [];
         $apellido = trim(($paciente['lname'] ?? '') . ' ' . ($paciente['lname2'] ?? ''));
         $nombre = trim(($paciente['fname'] ?? '') . ' ' . ($paciente['mname'] ?? ''));
         $cedula = $paciente['cedula'] ?? '';

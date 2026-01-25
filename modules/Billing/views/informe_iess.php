@@ -111,8 +111,13 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                         }
                                         $mes = date('Y-m', strtotime($factura['fecha_ordenada']));
                                         $hc = $factura['hc_number'];
-                                        if (!isset($cachePorMes[$mes]['pacientes'][$hc]) && $pacienteService) {
-                                            $cachePorMes[$mes]['pacientes'][$hc] = $pacienteService->getPatientDetails($hc);
+                                        if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
+                                            if (!isset($pacientesCache[$hc]) && $pacienteService) {
+                                                $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
+                                            }
+                                            if (isset($pacientesCache[$hc])) {
+                                                $cachePorMes[$mes]['pacientes'][$hc] = $pacientesCache[$hc];
+                                            }
                                         }
                                         $afiliacion = InformesHelper::normalizarAfiliacion($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? '');
                                         if ($afiliacionSeleccionada && $afiliacionSeleccionada !== $afiliacion) {
@@ -303,7 +308,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                         $pacienteService,
                         $afiliacionesPermitidas,
                         null,
-                        $cacheDerivaciones
+                        $cacheDerivaciones,
+                        $pacientesCache,
+                        $datosCache
                 );
 
                 $categoriasIess = [
@@ -434,7 +441,10 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                 </thead>
                                                 <tbody>
                                                 <?php foreach ($pacientesAgrupados as $hc => $info):
-                                                    $pacienteInfo = $pacienteService->getPatientDetails($hc);
+                                                    if (!isset($pacientesCache[$hc]) && $pacienteService) {
+                                                        $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
+                                                    }
+                                                    $pacienteInfo = $pacientesCache[$hc] ?? [];
                                                     $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
                                                     $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
                                                     $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));

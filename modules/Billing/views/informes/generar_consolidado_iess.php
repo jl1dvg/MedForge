@@ -68,7 +68,9 @@ $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
     $pacienteService,
     $afiliacionesPermitidas,
     $categoria,
-    $cacheDerivaciones
+    $cacheDerivaciones,
+    $pacientesCache,
+    $datosCache
 );
 
 $formIdsConsolidado = [];

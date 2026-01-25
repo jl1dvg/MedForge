@@ -191,7 +191,9 @@ class InformesHelper
         PacienteService   $pacienteService,
         array             $afiliacionesPermitidas = [],
         ?string           $categoriaFiltro = null,
-        array             &$cacheDerivaciones = []
+        array             &$cacheDerivaciones = [],
+        array             &$pacientesCache = [],
+        array             &$datosCache = []
     ): array
     {
         $categoriaFiltro = $categoriaFiltro ? strtolower(trim($categoriaFiltro)) : null;
@@ -207,7 +209,11 @@ class InformesHelper
         $consolidado = [];
 
         foreach ($facturas as $factura) {
-            $pacienteInfo = $pacienteService->getPatientDetails($factura['hc_number']);
+            $hcNumber = $factura['hc_number'];
+            if (!isset($pacientesCache[$hcNumber])) {
+                $pacientesCache[$hcNumber] = $pacienteService->getPatientDetails($hcNumber);
+            }
+            $pacienteInfo = $pacientesCache[$hcNumber];
             if (!is_array($pacienteInfo)) {
                 continue;
             }
@@ -231,8 +237,14 @@ class InformesHelper
                 }
             }
 
-            $datosPaciente = $billingController->obtenerDatos($factura['form_id']);
-            if (!$datosPaciente) continue;
+            $formId = $factura['form_id'];
+            if (!isset($datosCache[$formId])) {
+                $datosCache[$formId] = $billingController->obtenerDatos($formId);
+            }
+            $datosPaciente = $datosCache[$formId];
+            if (!$datosPaciente) {
+                continue;
+            }
 
             $fechaFactura = $factura['fecha_ordenada'];
             $mes = (!empty($fechaFactura) && strtotime($fechaFactura)) ? date('Y-m', strtotime($fechaFactura)) : 'desconocido';
@@ -249,10 +261,10 @@ class InformesHelper
                 continue;
             }
 
-            if (!isset($cacheDerivaciones[$factura['form_id']])) {
-                $cacheDerivaciones[$factura['form_id']] = $billingController->obtenerDerivacionPorFormId($factura['form_id']);
+            if (!isset($cacheDerivaciones[$formId])) {
+                $cacheDerivaciones[$formId] = $billingController->obtenerDerivacionPorFormId($formId);
             }
-            $derivacion = $cacheDerivaciones[$factura['form_id']];
+            $derivacion = $cacheDerivaciones[$formId];
             $tieneDerivacion = !empty($derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null);
             if ($derivacionFiltro === 'con' && !$tieneDerivacion) {
                 continue;
@@ -264,7 +276,7 @@ class InformesHelper
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
                 'hc_number' => $factura['hc_number'],
-                'form_id' => $factura['form_id'],
+                'form_id' => $formId,
                 'fecha' => $fechaFactura,
                 'total' => $total,
                 'id' => $factura['id'],
