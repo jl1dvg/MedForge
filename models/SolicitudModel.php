@@ -420,6 +420,51 @@ class SolicitudModel
         ];
     }
 
+    public function guardarAgendaCitaSigcenter(array $datos): array
+    {
+        $permitidos = [
+            'solicitud_id',
+            'sigcenter_agenda_id',
+            'sigcenter_pedido_id',
+            'sigcenter_factura_id',
+            'fecha_inicio',
+            'fecha_llegada',
+            'payload',
+            'response',
+            'created_by',
+        ];
+
+        $columns = [];
+        $placeholders = [];
+        $params = [];
+
+        foreach ($permitidos as $campo) {
+            if (!array_key_exists($campo, $datos)) {
+                continue;
+            }
+            $valor = $datos[$campo];
+            if (in_array($campo, ['payload', 'response'], true) && is_array($valor)) {
+                $valor = json_encode($valor, JSON_UNESCAPED_UNICODE);
+            }
+            $columns[] = $campo;
+            $placeholders[] = ':' . $campo;
+            $params[':' . $campo] = $valor;
+        }
+
+        if ($columns === []) {
+            return ['success' => false, 'message' => 'No se enviaron campos de agenda'];
+        }
+
+        $sql = 'INSERT INTO agenda_citas (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return [
+            'success' => true,
+            'id' => (int) $this->db->lastInsertId(),
+        ];
+    }
+
     public function actualizarEstado(int $id, string $estado): void
     {
         $sql = "UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id";

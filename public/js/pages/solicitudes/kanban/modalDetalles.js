@@ -1353,6 +1353,7 @@ function initSigcenterPanel(container) {
     const daysContainer = card.querySelector("[data-sigcenter-days]");
     const timesContainer = card.querySelector("[data-sigcenter-times]");
     const scheduleBtn = card.querySelector("[data-sigcenter-agendar]");
+    const arrivalInput = card.querySelector("[data-sigcenter-arrival]");
     const selectedLabel = card.querySelector("[data-sigcenter-selected]");
     const status = card.querySelector("[data-sigcenter-status]");
 
@@ -1367,6 +1368,7 @@ function initSigcenterPanel(container) {
         ready: false,
         selectedDate: "",
         selectedTime: "",
+        arrivalTime: "",
         procedimientoId: existingProcedimientoId || "",
         sedeId: "1",
         procedimientosLoaded: false,
@@ -1740,7 +1742,12 @@ function initSigcenterPanel(container) {
             const res = await fetch("/api/sigcenter/horarios-especifico.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
-                body: JSON.stringify({trabajador_id: trabajadorId, FECHA: dateValue, company_id: 113, ID_SEDE: state.sedeId || 3}),
+                body: JSON.stringify({
+                    trabajador_id: trabajadorId,
+                    FECHA: dateValue,
+                    company_id: 113,
+                    ID_SEDE: state.sedeId || 3
+                }),
                 credentials: "include",
             });
             const data = await res.json().catch(() => ({}));
@@ -1783,12 +1790,14 @@ function initSigcenterPanel(container) {
             hora = `${hora}:00`;
         }
         const fechaInicio = `${fecha} ${hora}`;
+        const fechaLlegada = state.arrivalTime || "";
         console.log("[Sigcenter] agendar payload:", {
             solicitud_id: solicitudId,
             hc_number: hcNumber,
             trabajador_id: trabajadorId,
             procedimiento_id: Number(state.procedimientoId || 0),
             fecha_inicio: fechaInicio,
+            fecha_llegada: fechaLlegada,
             company_id: 113,
             ID_SEDE: state.sedeId || 1,
         });
@@ -1805,6 +1814,7 @@ function initSigcenterPanel(container) {
                     trabajador_id: trabajadorId,
                     procedimiento_id: Number(state.procedimientoId || 0),
                     fecha_inicio: fechaInicio,
+                    fecha_llegada: fechaLlegada,
                     company_id: 113,
                     ID_SEDE: 1,
                 }),
@@ -1856,6 +1866,12 @@ function initSigcenterPanel(container) {
 
     if (scheduleBtn) {
         scheduleBtn.addEventListener("click", () => schedule());
+    }
+
+    if (arrivalInput) {
+        arrivalInput.addEventListener("change", (event) => {
+            state.arrivalTime = event.target.value;
+        });
     }
 
     renderCurrentAgenda(existingAgendaId, existingFechaInicio);

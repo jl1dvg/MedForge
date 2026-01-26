@@ -15,6 +15,13 @@ $hcNumber = trim((string)($payload['hc_number'] ?? $payload['identificacion'] ??
 $trabajadorId = trim((string)($payload['trabajador_id'] ?? ''));
 $procedimientoId = $payload['procedimiento_id'] ?? null;
 $fechaInicio = trim((string)($payload['fecha_inicio'] ?? ''));
+$fechaLlegada = trim((string)($payload['fecha_llegada'] ?? ''));
+if ($fechaLlegada !== '') {
+    $fechaLlegada = str_replace('T', ' ', $fechaLlegada);
+    if (strlen($fechaLlegada) === 16) {
+        $fechaLlegada .= ':00';
+    }
+}
 
 if ($solicitudId <= 0 || $hcNumber === '' || $trabajadorId === '' || $procedimientoId === null || $fechaInicio === '') {
     sigcenterJsonResponse([
@@ -25,6 +32,48 @@ if ($solicitudId <= 0 || $hcNumber === '' || $trabajadorId === '' || $procedimie
 
 $companyId = $payload['company_id'] ?? 113;
 $sedeId = $payload['ID_SEDE'] ?? 1;
+$afiliacionId = null;
+$afiliacionNombre = '';
+
+if (isset($pdo) && $pdo instanceof PDO && $hcNumber !== '') {
+    try {
+        $stmtAfiliacion = $pdo->prepare('SELECT afiliacion FROM patient_data WHERE hc_number = :hc LIMIT 1');
+        $stmtAfiliacion->execute([':hc' => $hcNumber]);
+        $rowAfiliacion = $stmtAfiliacion->fetch(PDO::FETCH_ASSOC);
+        $afiliacionNombre = isset($rowAfiliacion['afiliacion']) ? trim((string) $rowAfiliacion['afiliacion']) : '';
+        if ($afiliacionNombre !== '') {
+            $normalized = strtoupper(preg_replace('/\\s+/', ' ', $afiliacionNombre));
+            $normalized = trim($normalized);
+            $normalizedNoIess = preg_replace('/^IESS\\s*-\\s*/', '', $normalized);
+            $normalizedWithIess = str_starts_with($normalized, 'IESS')
+                ? $normalized
+                : 'IESS - ' . $normalized;
+
+            $stmtSigcenterAfiliacion = $pdo->prepare(
+                "SELECT sigcenter_id, nombre
+                FROM sigcenter_afiliaciones
+                WHERE activo = 1
+                    AND (
+                        UPPER(TRIM(nombre)) = :normalized
+                        OR UPPER(TRIM(nombre)) = :normalized_with_iess
+                        OR UPPER(TRIM(REPLACE(nombre, 'IESS - ', ''))) = :normalized_no_iess
+                    )
+                LIMIT 1"
+            );
+            $stmtSigcenterAfiliacion->execute([
+                ':normalized' => $normalized,
+                ':normalized_with_iess' => $normalizedWithIess,
+                ':normalized_no_iess' => $normalizedNoIess,
+            ]);
+            $sigcenterRow = $stmtSigcenterAfiliacion->fetch(PDO::FETCH_ASSOC);
+            if ($sigcenterRow && $sigcenterRow['sigcenter_id'] !== null) {
+                $afiliacionId = (string) $sigcenterRow['sigcenter_id'];
+            }
+        }
+    } catch (Throwable $error) {
+        $afiliacionId = null;
+    }
+}
 
 $requestPayload = [
     'company_id' => (int) $companyId,
@@ -37,6 +86,9 @@ $requestPayload = [
     'procedimiento_id' => (int) $procedimientoId,
     'fecha_inicio' => $fechaInicio,
 ];
+if ($afiliacionId !== null) {
+    $requestPayload['afiliacion_id'] = $afiliacionId;
+}
 
 $endpoint = 'https://cive.ddns.net:8085/restful/api-eva/agendar-facturar';
 $result = sigcenterRequest($endpoint, $requestPayload, 'POST');
@@ -100,12 +152,20 @@ if (!$ok) {
 }
 
 $agendaId = null;
+$pedidoId = null;
+$facturaId = null;
 $errorMessage = null;
 if (is_array($result['data'])) {
     $agendaId = $result['data']['agenda_id']
         ?? $result['data']['agendaId']
         ?? $result['data']['id_agenda']
         ?? $result['data']['id']
+        ?? null;
+    $pedidoId = $result['data']['pedido_id']
+        ?? $result['data']['pedidoId']
+        ?? null;
+    $facturaId = $result['data']['factura_id']
+        ?? $result['data']['facturaId']
         ?? null;
     $errorMessage = $result['data']['error']
         ?? $result['data']['message']
@@ -126,6 +186,7 @@ if (!$errorMessage && isset($result['fallback']['get']['data']) && is_array($res
 }
 
 $dbSaved = null;
+$agendaSaved = null;
 if ($ok && isset($pdo) && $pdo instanceof PDO) {
     $model = new SolicitudModel($pdo);
     $dbSaved = $model->guardarAgendamientoSigcenter($solicitudId, [
@@ -136,17 +197,31 @@ if ($ok && isset($pdo) && $pdo instanceof PDO) {
         'sigcenter_payload' => $requestPayload,
         'sigcenter_response' => $result['data'] ?? $result['raw'],
     ]);
+    $agendaSaved = $model->guardarAgendaCitaSigcenter([
+        'solicitud_id' => $solicitudId,
+        'sigcenter_agenda_id' => $agendaId,
+        'sigcenter_pedido_id' => $pedidoId,
+        'sigcenter_factura_id' => $facturaId,
+        'fecha_inicio' => $fechaInicio,
+        'fecha_llegada' => $fechaLlegada !== '' ? $fechaLlegada : null,
+        'payload' => $requestPayload,
+        'response' => $result['data'] ?? $result['raw'],
+        'created_by' => $_SESSION['user_id'] ?? null,
+    ]);
 }
 
 sigcenterJsonResponse([
     'success' => $ok,
     'http_code' => $result['http_code'],
     'agenda_id' => $agendaId,
+    'pedido_id' => $pedidoId,
+    'factura_id' => $facturaId,
     'data' => $result['data'] ?? null,
     'raw' => $result['data'] ? null : ($result['raw'] ?? null),
     'payload' => $requestPayload,
     'attempted_method' => $result['attempted_method'] ?? 'POST',
     'fallback' => $result['fallback'] ?? null,
     'db_saved' => $dbSaved,
+    'agenda_saved' => $agendaSaved,
     'error' => $ok ? null : ($errorMessage ?: ($result['error'] ?: 'Error al agendar en Sigcenter')),
 ], $ok ? 200 : 502);

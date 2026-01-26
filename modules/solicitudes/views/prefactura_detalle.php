@@ -380,6 +380,11 @@ $sigcenterSolicitudId = (int)($solicitud['solicitud_id'] ?? ($solicitud['id'] ??
                         <div class="d-flex flex-wrap gap-2" data-sigcenter-days></div>
                         <div class="d-flex flex-wrap gap-2" data-sigcenter-times></div>
                     </div>
+                    <div>
+                        <label class="form-label mb-1">Hora de llegada (interna)</label>
+                        <input type="datetime-local" class="form-control form-control-sm" data-sigcenter-arrival>
+                        <small class="text-muted">Este dato se guarda en agenda interna, no en Sigcenter.</small>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         <button type="button" class="btn btn-success btn-sm" data-sigcenter-agendar disabled>
                             <i class="bi bi-check2-circle me-1"></i> Agendar
