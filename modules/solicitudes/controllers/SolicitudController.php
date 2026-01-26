@@ -14,6 +14,7 @@ use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\SolicitudReminderService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Modules\Solicitudes\Services\SolicitudesDashboardService;
 use Modules\Solicitudes\Services\SolicitudReportExcelService;
 use Modules\Solicitudes\Services\SolicitudSettingsService;
 use Modules\Solicitudes\Services\CoberturaMailLogService;
@@ -46,6 +47,7 @@ class SolicitudController extends BaseController
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
     private SolicitudSettingsService $settingsService;
+    private SolicitudesDashboardService $dashboardService;
     private ?SettingsModel $settings = null;
     private ?array $bodyCache = null;
     private ?array $turneroStateMap = null;
@@ -61,6 +63,7 @@ class SolicitudController extends BaseController
         $this->pusherConfig = new PusherConfigService($pdo);
         $this->calendarBlocks = new CalendarBlockService($pdo);
         $this->settingsService = new SolicitudSettingsService($pdo);
+        $this->dashboardService = new SolicitudesDashboardService($pdo, $this->estadoService);
     }
 
     public function index(): void
@@ -78,6 +81,18 @@ class SolicitudController extends BaseController
                     'formats' => $this->settingsService->getReportFormats(),
                     'quickMetrics' => $this->settingsService->getQuickMetrics(),
                 ],
+            ]
+        );
+    }
+
+    public function dashboard(): void
+    {
+        $this->requireAuth();
+
+        $this->render(
+            __DIR__ . '/../views/dashboard.php',
+            [
+                'pageTitle' => 'Dashboard de Solicitudes',
             ]
         );
     }
@@ -114,6 +129,34 @@ class SolicitudController extends BaseController
             ],
             'layout-turnero.php'
         );
+    }
+
+    public function dashboardData(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $filters = $this->sanitizeReportFilters(is_array($payload) ? $payload : []);
+
+        $range = $this->resolveDashboardRange($filters);
+        $start = $range['start'];
+        $end = $range['end'];
+
+        try {
+            $data = $this->dashboardService->buildSummary($start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59'));
+        } catch (Throwable $exception) {
+            JsonLogger::log('solicitudes_dashboard', 'No se pudo cargar métricas del dashboard', $exception);
+            $this->json(['error' => 'No se pudo cargar el dashboard de solicitudes.'], 500);
+            return;
+        }
+
+        $this->json([
+            'filters' => [
+                'date_from' => $range['from'],
+                'date_to' => $range['to'],
+            ],
+            'data' => $data,
+        ]);
     }
 
     public function obtenerEstadosPorHc(string $hcNumber): array
@@ -1074,6 +1117,40 @@ class SolicitudController extends BaseController
         return [
             $this->normalizeDateInput($from),
             $this->normalizeDateInput($to),
+        ];
+    }
+
+    /**
+     * @param array<string, string|null> $filters
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable, from: string, to: string}
+     */
+    private function resolveDashboardRange(array $filters): array
+    {
+        $now = new DateTimeImmutable('now');
+        $fallbackStart = $now->sub(new DateInterval('P90D'));
+
+        $fromRaw = $filters['date_from'] ?? null;
+        $toRaw = $filters['date_to'] ?? null;
+
+        $start = $fromRaw ? $this->parseDate($fromRaw) : null;
+        $end = $toRaw ? $this->parseDate($toRaw) : null;
+
+        if (!$start) {
+            $start = $fallbackStart;
+        }
+        if (!$end) {
+            $end = $now;
+        }
+
+        if ($start > $end) {
+            [$start, $end] = [$end, $start];
+        }
+
+        return [
+            'start' => $start,
+            'end' => $end,
+            'from' => $start->format('Y-m-d'),
+            'to' => $end->format('Y-m-d'),
         ];
     }
 

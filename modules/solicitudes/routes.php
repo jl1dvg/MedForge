@@ -8,6 +8,10 @@ return function (Router $router) {
         (new SolicitudController($pdo))->index();
     });
 
+    $router->get('/solicitudes/dashboard', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->dashboard();
+    });
+
     $router->get('/solicitudes/turnero', function (\PDO $pdo) {
         (new SolicitudController($pdo))->turnero();
     });
@@ -66,6 +70,10 @@ return function (Router $router) {
 
     $router->post('/solicitudes/turnero-llamar', function (\PDO $pdo) {
         (new SolicitudController($pdo))->turneroLlamar();
+    });
+
+    $router->post('/solicitudes/dashboard-data', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->dashboardData();
     });
 
     $router->get('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
