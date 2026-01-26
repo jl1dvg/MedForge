@@ -69,6 +69,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
                     $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
                     $canAccessCirugiasDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']);
+                    $canAccessSolicitudesDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'solicitudes.dashboard.view']);
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -190,6 +191,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>
                             </li>
+                            <?php if ($canAccessSolicitudesDashboard): ?>
+                                <li class="<?= isActive('/solicitudes/dashboard') ?>">
+                                    <a href="/solicitudes/dashboard">
+                                        <i class="mdi mdi-chart-box"></i>Dashboard solicitudes
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <li class="<?= isActive('/examenes') ?>">
                                 <a href="/examenes">
                                     <i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)
