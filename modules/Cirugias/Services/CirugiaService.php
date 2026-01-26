@@ -593,14 +593,96 @@ class CirugiaService
         ]);
     }
 
-    public function actualizarStatus(string $formId, string $hcNumber, int $status): bool
+    public function actualizarStatus(string $formId, string $hcNumber, int $status, ?int $userId = null): bool
     {
-        $stmt = $this->db->prepare('UPDATE protocolo_data SET status = :status WHERE form_id = :form_id AND hc_number = :hc_number');
-        return $stmt->execute([
-            ':status' => $status,
-            ':form_id' => $formId,
-            ':hc_number' => $hcNumber,
-        ]);
+        try {
+            $this->db->beginTransaction();
+
+            $stmt = $this->db->prepare(
+                'SELECT id, status, version, protocolo_firmado_por, fecha_firma
+                 FROM protocolo_data
+                 WHERE form_id = :form_id AND hc_number = :hc_number
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                ':form_id' => $formId,
+                ':hc_number' => $hcNumber,
+            ]);
+            $protocolo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$protocolo) {
+                $this->db->rollBack();
+                return false;
+            }
+
+            $protocoloId = (int) ($protocolo['id'] ?? 0);
+            $currentVersion = isset($protocolo['version']) ? (int) $protocolo['version'] : 0;
+            $currentStatus = isset($protocolo['status']) ? (int) $protocolo['status'] : 0;
+            $needsSignature = $status === 1
+                && ($currentStatus !== 1 || empty($protocolo['fecha_firma']));
+
+            if ($status === $currentStatus && !$needsSignature) {
+                $this->db->rollBack();
+                return true;
+            }
+
+            $newVersion = $currentVersion;
+
+            if ($needsSignature) {
+                $newVersion = $currentVersion + 1;
+                $updateSql = 'UPDATE protocolo_data
+                    SET status = :status,
+                        protocolo_firmado_por = :user_id,
+                        fecha_firma = COALESCE(fecha_firma, NOW()),
+                        version = :version
+                    WHERE form_id = :form_id AND hc_number = :hc_number';
+                $updateParams = [
+                    ':status' => $status,
+                    ':user_id' => $userId,
+                    ':version' => $newVersion,
+                    ':form_id' => $formId,
+                    ':hc_number' => $hcNumber,
+                ];
+            } else {
+                $updateSql = 'UPDATE protocolo_data
+                    SET status = :status
+                    WHERE form_id = :form_id AND hc_number = :hc_number';
+                $updateParams = [
+                    ':status' => $status,
+                    ':form_id' => $formId,
+                    ':hc_number' => $hcNumber,
+                ];
+            }
+
+            $updateStmt = $this->db->prepare($updateSql);
+            $ok = $updateStmt->execute($updateParams);
+
+            if ($ok) {
+                $evento = $status === 1 ? 'revisado' : 'pendiente';
+                $auditStmt = $this->db->prepare(
+                    'INSERT INTO protocolo_auditoria
+                        (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
+                     VALUES
+                        (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+                );
+                $auditStmt->execute([
+                    ':protocolo_id' => $protocoloId ?: null,
+                    ':form_id' => $formId,
+                    ':hc_number' => $hcNumber,
+                    ':evento' => $evento,
+                    ':status' => $status,
+                    ':version' => $newVersion,
+                    ':usuario_id' => $userId,
+                ]);
+            }
+
+            $this->db->commit();
+            return $ok;
+        } catch (\Throwable $exception) {
+            $this->db->rollBack();
+            error_log('❌ Error al actualizar status: ' . $exception->getMessage());
+            return false;
+        }
     }
 
     public function guardarAutosave(string $formId, string $hcNumber, ?string $insumos, ?string $medicamentos): bool
