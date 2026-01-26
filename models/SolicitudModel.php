@@ -353,9 +353,23 @@ class SolicitudModel
 
     public function obtenerDatosYCirujanoSolicitud($form_id, $hc)
     {
-        $sql = "SELECT sp.*, u.*
+        $sql = "SELECT
+                sp.*,
+                sp.id AS solicitud_id,
+                sp.id AS id,
+                u.id AS user_id,
+                u.nombre AS user_nombre,
+                u.email AS user_email,
+                u.id_trabajador AS user_trabajador_id,
+                u.first_name AS doctor_first_name,
+                u.middle_name AS doctor_middle_name,
+                u.last_name AS doctor_last_name,
+                u.second_last_name AS doctor_second_last_name,
+                u.cedula AS doctor_cedula,
+                u.firma AS doctor_firma,
+                u.full_name AS doctor_full_name
             FROM solicitud_procedimiento sp
-            LEFT JOIN users u 
+            LEFT JOIN users u
                 ON LOWER(TRIM(sp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
             WHERE sp.form_id = ? AND sp.hc_number = ?
             ORDER BY sp.created_at DESC
@@ -364,6 +378,46 @@ class SolicitudModel
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$form_id, $hc]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function guardarAgendamientoSigcenter(int $id, array $campos): array
+    {
+        $permitidos = [
+            'sigcenter_agenda_id',
+            'sigcenter_fecha_inicio',
+            'sigcenter_trabajador_id',
+            'sigcenter_procedimiento_id',
+            'sigcenter_payload',
+            'sigcenter_response',
+        ];
+
+        $set = [];
+        $params = [':id' => $id];
+
+        foreach ($permitidos as $campo) {
+            if (!array_key_exists($campo, $campos)) {
+                continue;
+            }
+            $valor = $campos[$campo];
+            if (in_array($campo, ['sigcenter_payload', 'sigcenter_response'], true) && is_array($valor)) {
+                $valor = json_encode($valor, JSON_UNESCAPED_UNICODE);
+            }
+            $set[] = "{$campo} = :{$campo}";
+            $params[":{$campo}"] = $valor;
+        }
+
+        if ($set === []) {
+            return ['success' => false, 'message' => 'No se enviaron campos de Sigcenter'];
+        }
+
+        $sql = 'UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return [
+            'success' => true,
+            'rows_affected' => $stmt->rowCount(),
+        ];
     }
 
     public function actualizarEstado(int $id, string $estado): void

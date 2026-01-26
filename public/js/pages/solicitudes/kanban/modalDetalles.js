@@ -1309,6 +1309,8 @@ function abrirPrefactura({hc, formId, solicitudId}) {
                 }
             }
 
+            initSigcenterPanel(content);
+
             refreshKanbanBadgeFromDetalle({
                 hcNumber: hc,
                 solicitudId,
@@ -1332,6 +1334,534 @@ function abrirPrefactura({hc, formId, solicitudId}) {
         },
         {once: true}
     );
+}
+
+function initSigcenterPanel(container) {
+    const root = container || document;
+    const card = root.querySelector("#prefacturaSigcenterCard");
+    if (!card) return;
+
+    const controls = card.querySelector("[data-sigcenter-controls]");
+    const unavailable = card.querySelector("[data-sigcenter-unavailable]");
+    const noWorker = card.querySelector("[data-sigcenter-no-worker]");
+    const currentAlert = card.querySelector("[data-sigcenter-current]");
+    const currentFecha = card.querySelector("[data-sigcenter-current-fecha]");
+    const currentAgenda = card.querySelector("[data-sigcenter-current-agenda]");
+    const sedeSelect = card.querySelector("[data-sigcenter-sede]");
+    const procedureSelect = card.querySelector("[data-sigcenter-procedimiento]");
+    const loadDaysBtn = card.querySelector("[data-sigcenter-load-days]");
+    const daysContainer = card.querySelector("[data-sigcenter-days]");
+    const timesContainer = card.querySelector("[data-sigcenter-times]");
+    const scheduleBtn = card.querySelector("[data-sigcenter-agendar]");
+    const selectedLabel = card.querySelector("[data-sigcenter-selected]");
+    const status = card.querySelector("[data-sigcenter-status]");
+
+    const solicitudId = Number(card.dataset.solicitudId || 0);
+    const hcNumber = (card.dataset.hcNumber || "").trim();
+    const trabajadorId = (card.dataset.trabajadorId || "").trim();
+    const existingAgendaId = (card.dataset.sigcenterAgendaId || "").trim();
+    const existingFechaInicio = (card.dataset.sigcenterFechaInicio || "").trim();
+    const existingProcedimientoId = (card.dataset.sigcenterProcedimientoId || "").trim();
+
+    const state = {
+        ready: false,
+        selectedDate: "",
+        selectedTime: "",
+        procedimientoId: existingProcedimientoId || "",
+        sedeId: "1",
+        procedimientosLoaded: false,
+        sedesLoaded: false,
+    };
+
+    const setStatus = (message, tone = "") => {
+        if (!status) return;
+        status.textContent = message;
+        status.classList.remove("text-danger", "text-success", "text-muted");
+        if (tone) {
+            status.classList.add(tone);
+        } else {
+            status.classList.add("text-muted");
+        }
+    };
+
+    const setSelectedLabel = () => {
+        if (!selectedLabel) return;
+        if (!state.selectedDate || !state.selectedTime) {
+            selectedLabel.textContent = "";
+            return;
+        }
+        selectedLabel.textContent = `Fecha seleccionada: ${state.selectedDate} ${state.selectedTime}`;
+    };
+
+    const normalizeList = (items) => Array.from(new Set(items.filter(Boolean)));
+
+    const collectStrings = (value, output = []) => {
+        if (typeof value === "string") {
+            output.push(value);
+            return output;
+        }
+        if (Array.isArray(value)) {
+            value.forEach((item) => collectStrings(item, output));
+            return output;
+        }
+        if (value && typeof value === "object") {
+            Object.values(value).forEach((item) => collectStrings(item, output));
+        }
+        return output;
+    };
+
+    const extractDates = (data) => {
+        const strings = collectStrings(data);
+        const dates = strings
+            .map((value) => value.match(/\\d{4}-\\d{2}-\\d{2}/))
+            .filter(Boolean)
+            .map((match) => match[0]);
+        return normalizeList(dates);
+    };
+
+    const extractTimes = (data) => {
+        const strings = collectStrings(data);
+        const times = [];
+        strings.forEach((value) => {
+            const matches = value.match(/([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?/g);
+            if (matches) {
+                matches.forEach((match) => times.push(match));
+            }
+        });
+        return normalizeList(times);
+    };
+
+    const extractProcedimientos = (data) => {
+        const list = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.data?.tipoProcedimientos)
+                ? data.data.tipoProcedimientos
+                : Array.isArray(data?.data)
+                    ? data.data
+                    : [];
+        const result = [];
+        if (!Array.isArray(list)) return result;
+        list.forEach((item) => {
+            if (!item || typeof item !== "object") return;
+            const id = item.procedimiento_id ?? item.id ?? item.procedimientoId ?? null;
+            const label = item.nombre ?? item.descripcion ?? item.procedimiento ?? item.name ?? null;
+            if (id !== null) {
+                result.push({id: String(id), label: label ? String(label) : `Procedimiento ${id}`});
+            }
+        });
+        return result;
+    };
+
+    const extractSedes = (data) => {
+        const list = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.data?.sede)
+                ? data.data.sede
+                : Array.isArray(data?.data)
+                    ? data.data
+                    : [];
+        const result = [];
+        if (!Array.isArray(list)) return result;
+        list.forEach((item) => {
+            if (!item || typeof item !== "object") return;
+            const id = item.ID_SEDE ?? item.id ?? item.sede_id ?? null;
+            const label = item.NOMBRE ?? item.nombre ?? item.sede ?? item.name ?? null;
+            if (id !== null) {
+                result.push({id: String(id), label: label ? String(label) : `Sede ${id}`});
+            }
+        });
+        return result;
+    };
+
+    const renderCurrentAgenda = (agendaId, fechaInicio) => {
+        if (!currentAlert) return;
+        if (!agendaId && !fechaInicio) {
+            currentAlert.classList.add("d-none");
+            return;
+        }
+        currentAlert.classList.remove("d-none");
+        if (currentFecha) {
+            currentFecha.textContent = fechaInicio ? `Inicio: ${fechaInicio}` : "";
+        }
+        if (currentAgenda) {
+            currentAgenda.textContent = agendaId ? `Agenda ID: ${agendaId}` : "";
+        }
+    };
+
+    const setControlsEnabled = (enabled) => {
+        if (procedureSelect) procedureSelect.disabled = !enabled;
+        if (loadDaysBtn) loadDaysBtn.disabled = !enabled;
+        if (!enabled && scheduleBtn) scheduleBtn.disabled = true;
+    };
+
+    function loadSedes() {
+        if (!sedeSelect || !trabajadorId) return;
+        state.sedesLoaded = true;
+        setStatus("Cargando sedes...", "text-muted");
+        return fetch("/api/sigcenter/sedes.php", {
+            method: "POST",
+            headers: {"Content-Type": "application/json;charset=UTF-8"},
+            body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113}),
+            credentials: "include",
+        })
+            .then(async (res) => {
+                const raw = await res.text();
+                console.log("[Sigcenter] sedes HTTP:", res.status, raw);
+                let data = {};
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (error) {
+                    console.error("[Sigcenter] JSON inválido en sedes:", error);
+                }
+                if (!res.ok || !data.success) {
+                    throw new Error(
+                        data?.error
+                        || data?.message
+                        || `No se pudieron cargar sedes (HTTP ${res.status})`
+                    );
+                }
+                const sedes = extractSedes(data);
+                sedeSelect.innerHTML = '<option value="">Selecciona una sede</option>';
+                sedes.forEach((sede) => {
+                    const option = document.createElement("option");
+                    option.value = sede.id;
+                    option.textContent = sede.label;
+                    if (sede.id === state.sedeId) {
+                        option.selected = true;
+                    }
+                    sedeSelect.appendChild(option);
+                });
+                if (!state.sedeId && sedes.length > 0) {
+                    state.sedeId = sedes[0].id;
+                    sedeSelect.value = state.sedeId;
+                }
+                setStatus("Sedes cargadas.", "text-muted");
+            })
+            .catch((error) => {
+                console.error(error);
+                setStatus(error?.message || "No se pudieron cargar sedes.", "text-danger");
+            });
+    }
+
+    function loadProcedimientos() {
+        if (!procedureSelect || !trabajadorId) return;
+        state.procedimientosLoaded = true;
+        setStatus("Cargando procedimientos...", "text-muted");
+        return fetch("/api/sigcenter/procedimientos.php", {
+            method: "POST",
+            headers: {"Content-Type": "application/json;charset=UTF-8"},
+            body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113}),
+            credentials: "include",
+        })
+            .then(async (res) => {
+                const raw = await res.text();
+                console.log("[Sigcenter] procedimientos HTTP:", res.status, raw);
+                let data = {};
+                try {
+                    data = raw ? JSON.parse(raw) : {};
+                } catch (error) {
+                    console.error("[Sigcenter] JSON inválido en procedimientos:", error);
+                }
+                if (!res.ok || !data.success) {
+                    throw new Error(
+                        data?.error
+                        || data?.message
+                        || `No se pudieron cargar procedimientos (HTTP ${res.status})`
+                    );
+                }
+                const procedimientos = extractProcedimientos(data);
+                procedureSelect.innerHTML = '<option value="">Selecciona un procedimiento</option>';
+                procedimientos.forEach((proc) => {
+                    const option = document.createElement("option");
+                    option.value = proc.id;
+                    option.textContent = proc.label;
+                    if (proc.id === state.procedimientoId) {
+                        option.selected = true;
+                    }
+                    procedureSelect.appendChild(option);
+                });
+                if (!state.procedimientoId && procedimientos.length > 0) {
+                    state.procedimientoId = procedimientos[0].id;
+                    procedureSelect.value = state.procedimientoId;
+                }
+                setStatus("Procedimientos cargados.", "text-muted");
+                updateScheduleButton();
+            })
+            .catch((error) => {
+                console.error(error);
+                setStatus(error?.message || "No se pudieron cargar procedimientos.", "text-danger");
+            });
+    }
+
+    const updateAvailability = (checklist = []) => {
+        const isReady = checklist.some((item) => {
+            const slug = (item?.slug || item?.etapa_slug || "").toString().trim().toLowerCase();
+            const isCompleted = Boolean(
+                item?.completed
+                || item?.completado
+                || item?.checked
+                || item?.completado_at
+            );
+            return slug === "apto-oftalmologo" && isCompleted;
+        });
+        console.log("[Sigcenter] Checklist recibido:", checklist);
+        console.log("[Sigcenter] Apto oftalmologo listo:", isReady);
+        state.ready = isReady;
+        if (unavailable) {
+            unavailable.classList.toggle("d-none", isReady);
+        }
+        if (controls) {
+            controls.classList.toggle("d-none", !isReady);
+        }
+
+        const hasWorker = trabajadorId !== "";
+        if (noWorker) {
+            noWorker.classList.toggle("d-none", !isReady || hasWorker);
+        }
+        setControlsEnabled(isReady && hasWorker);
+        if (isReady && hasWorker && !state.sedesLoaded) {
+            loadSedes();
+        }
+        if (isReady && hasWorker && !state.procedimientosLoaded) {
+            loadProcedimientos();
+        }
+    };
+
+    const refreshChecklistState = async () => {
+        if (!solicitudId) return;
+        const {basePath} = getKanbanConfig();
+        const safeBasePath = String(basePath || "").replace(/\/+$/g, "");
+        const url = `${safeBasePath}/${encodeURIComponent(String(solicitudId))}/crm/checklist-state`;
+        console.log("[Sigcenter] basePath:", basePath);
+        console.log("[Sigcenter] checklist-state url:", url);
+        setStatus("Validando checklist...", "text-muted");
+        try {
+            const res = await fetch(url, {credentials: "include"});
+            console.log("[Sigcenter] checklist-state HTTP:", res.status, res.statusText);
+            const raw = await res.text();
+            console.log("[Sigcenter] checklist-state raw:", raw);
+            let data = {};
+            try {
+                data = raw ? JSON.parse(raw) : {};
+            } catch (error) {
+                console.warn("[Sigcenter] checklist-state no es JSON válido");
+            }
+            if (!res.ok || !data.success) {
+                throw new Error(data?.error || data?.message || "No se pudo cargar checklist");
+            }
+            console.log("[Sigcenter] checklist-state parsed:", data);
+            updateAvailability(data.checklist || []);
+            if (!state.ready) {
+                setStatus("Checklist apto oftalmólogo no marcado.", "text-muted");
+            }
+        } catch (error) {
+            console.error("Sigcenter: no se pudo cargar checklist.", error);
+            setStatus("No se pudo validar checklist. Revisa sesión/permiso.", "text-danger");
+        }
+    };
+
+    const renderButtons = (containerEl, items, onSelect, selectedValue) => {
+        if (!containerEl) return;
+        containerEl.innerHTML = "";
+        if (items.length === 0) return;
+        items.forEach((item) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `btn btn-sm ${item === selectedValue ? "btn-primary" : "btn-outline-secondary"}`;
+            btn.textContent = item;
+            btn.addEventListener("click", () => onSelect(item));
+            containerEl.appendChild(btn);
+        });
+    };
+
+    const updateScheduleButton = () => {
+        if (!scheduleBtn) return;
+        const ready = state.ready
+            && state.selectedDate
+            && state.selectedTime
+            && state.procedimientoId
+            && state.sedeId;
+        scheduleBtn.disabled = !ready;
+    };
+
+    const loadDays = async () => {
+        if (!trabajadorId) return;
+        setStatus("Cargando días disponibles...", "text-muted");
+        loadDaysBtn.disabled = true;
+        try {
+            const res = await fetch("/api/sigcenter/horarios-dias.php", {
+                method: "POST",
+                headers: {"Content-Type": "application/json;charset=UTF-8"},
+                body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113, ID_SEDE: state.sedeId || 3}),
+                credentials: "include",
+            });
+            const raw = await res.text();
+            console.log("[Sigcenter] horarios-dias HTTP:", res.status, raw);
+            let data = {};
+            try {
+                data = raw ? JSON.parse(raw) : {};
+            } catch (error) {
+                console.error("[Sigcenter] JSON inválido en horarios-dias:", error);
+            }
+            if (!res.ok || !data.success) {
+                throw new Error(
+                    data?.error
+                    || data?.message
+                    || `No se pudieron cargar días (HTTP ${res.status})`
+                );
+            }
+            const dates = Array.isArray(data?.data?.fechas)
+                ? data.data.fechas
+                : extractDates(data.data || data);
+            console.log("[Sigcenter] fechas parseadas:", dates);
+            const onDateSelect = (value) => {
+                state.selectedDate = value;
+                state.selectedTime = "";
+                renderButtons(daysContainer, dates, onDateSelect, value);
+                timesContainer.innerHTML = "";
+                setSelectedLabel();
+                updateScheduleButton();
+                loadTimes(value);
+            };
+            renderButtons(daysContainer, dates, onDateSelect, state.selectedDate);
+            setStatus(dates.length ? "Selecciona un día." : "No hay días disponibles.", "text-muted");
+        } catch (error) {
+            console.error(error);
+            setStatus(error?.message || "No se pudieron cargar días disponibles.", "text-danger");
+        } finally {
+            loadDaysBtn.disabled = false;
+        }
+    };
+
+    const loadTimes = async (dateValue) => {
+        if (!trabajadorId || !dateValue) return;
+        setStatus(`Cargando horarios para ${dateValue}...`, "text-muted");
+        try {
+            const res = await fetch("/api/sigcenter/horarios-especifico.php", {
+                method: "POST",
+                headers: {"Content-Type": "application/json;charset=UTF-8"},
+                body: JSON.stringify({trabajador_id: trabajadorId, FECHA: dateValue, company_id: 113, ID_SEDE: state.sedeId || 3}),
+                credentials: "include",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(
+                    data?.error
+                    || data?.message
+                    || `No se pudieron cargar horarios (HTTP ${res.status})`
+                );
+            }
+            const times = Array.isArray(data?.data?.horarios)
+                ? data.data.horarios
+                : Array.isArray(data?.data?.horas)
+                    ? data.data.horas
+                    : extractTimes(data.data || data);
+            console.log("[Sigcenter] horarios parseados:", times);
+            const onTimeSelect = (value) => {
+                state.selectedTime = value;
+                renderButtons(timesContainer, times, onTimeSelect, value);
+                setSelectedLabel();
+                updateScheduleButton();
+            };
+            renderButtons(timesContainer, times, onTimeSelect, state.selectedTime);
+            setStatus(times.length ? "Selecciona un horario." : "No hay horarios disponibles.", "text-muted");
+        } catch (error) {
+            console.error(error);
+            setStatus(error?.message || "No se pudieron cargar horarios disponibles.", "text-danger");
+        }
+    };
+
+    const schedule = async () => {
+        if (!scheduleBtn) return;
+        const fecha = state.selectedDate;
+        let hora = state.selectedTime;
+        if (!fecha || !hora) return;
+        if (hora.includes(" - ")) {
+            hora = hora.split(" - ")[0].trim();
+        }
+        if (hora.length === 5) {
+            hora = `${hora}:00`;
+        }
+        const fechaInicio = `${fecha} ${hora}`;
+        console.log("[Sigcenter] agendar payload:", {
+            solicitud_id: solicitudId,
+            hc_number: hcNumber,
+            trabajador_id: trabajadorId,
+            procedimiento_id: Number(state.procedimientoId || 0),
+            fecha_inicio: fechaInicio,
+            company_id: 113,
+            ID_SEDE: state.sedeId || 1,
+        });
+
+        scheduleBtn.disabled = true;
+        setStatus("Agendando en Sigcenter...", "text-muted");
+        try {
+            const res = await fetch("/api/sigcenter/agendar.php", {
+                method: "POST",
+                headers: {"Content-Type": "application/json;charset=UTF-8"},
+                body: JSON.stringify({
+                    solicitud_id: solicitudId,
+                    hc_number: hcNumber,
+                    trabajador_id: trabajadorId,
+                    procedimiento_id: Number(state.procedimientoId || 0),
+                    fecha_inicio: fechaInicio,
+                    company_id: 113,
+                    ID_SEDE: 1,
+                }),
+                credentials: "include",
+            });
+            const raw = await res.text();
+            console.log("[Sigcenter] agendar HTTP:", res.status, raw);
+            let data = {};
+            try {
+                data = raw ? JSON.parse(raw) : {};
+            } catch (error) {
+                console.error("[Sigcenter] JSON inválido en agendar:", error);
+            }
+            if (!res.ok || !data.success) {
+                throw new Error(
+                    data?.error
+                    || data?.message
+                    || `No se pudo agendar (HTTP ${res.status})`
+                );
+            }
+            const agendaId = data.agenda_id || "";
+            renderCurrentAgenda(agendaId, fechaInicio);
+            setStatus(`Agendado correctamente${agendaId ? ` (ID ${agendaId})` : ""}.`, "text-success");
+        } catch (error) {
+            console.error(error);
+            setStatus(error?.message || "No se pudo agendar en Sigcenter.", "text-danger");
+        } finally {
+            scheduleBtn.disabled = false;
+        }
+    };
+
+    if (sedeSelect) {
+        sedeSelect.addEventListener("change", (event) => {
+            state.sedeId = event.target.value;
+            updateScheduleButton();
+        });
+    }
+
+    if (procedureSelect) {
+        procedureSelect.addEventListener("change", (event) => {
+            state.procedimientoId = event.target.value;
+            updateScheduleButton();
+        });
+    }
+
+    if (loadDaysBtn) {
+        loadDaysBtn.addEventListener("click", () => loadDays());
+    }
+
+    if (scheduleBtn) {
+        scheduleBtn.addEventListener("click", () => schedule());
+    }
+
+    renderCurrentAgenda(existingAgendaId, existingFechaInicio);
+    setSelectedLabel();
+    setStatus("Selecciona un procedimiento y carga días disponibles.", "text-muted");
+    refreshChecklistState();
 }
 
 function relocateExamenesPrequirurgicosButton(content) {
