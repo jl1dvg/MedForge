@@ -356,21 +356,21 @@ function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
 
 async function abrirCoberturaMail() {
     if (coberturaInProgress || shouldDebounce(lastCoberturaMailAt, COBERTURA_DEBOUNCE_MS)) {
-        return true;
+        return {opened: true};
     }
 
     const data = getCoberturaMailData();
     if (!data) {
-        return false;
+        return {opened: false, error: 'No hay información suficiente para armar el correo de cobertura.'};
     }
 
-    if (!data.derivacionVencida) {
-        return false;
+    if (!data.afiliacion) {
+        return {opened: false, error: 'No se encontró la afiliación necesaria para armar el correo.'};
     }
 
     const template = await fetchCoberturaTemplate(data);
     if (!template) {
-        return false;
+        return {opened: false, error: 'No hay plantilla configurada para esta afiliación.'};
     }
 
     const subject = template.subject || '';
@@ -391,7 +391,7 @@ async function abrirCoberturaMail() {
     });
     if (!opened) {
         coberturaInProgress = false;
-        return false;
+        return {opened: false, error: 'No se pudo abrir el formulario de correo de cobertura.'};
     }
 
     // Ya no abrimos el PDF automáticamente (evita abrir 2 pestañas). El enlace queda disponible en el modal.
@@ -405,7 +405,7 @@ async function abrirCoberturaMail() {
         coberturaInProgress = false;
     }, COBERTURA_DEBOUNCE_MS);
 
-    return true;
+    return {opened: true};
 }
 
 function imprimirExamenesPrequirurgicos(tarjeta) {
@@ -552,8 +552,8 @@ export function inicializarBotonesModal() {
     if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
         coberturaBtn.dataset.listenerAttached = 'true';
         coberturaBtn.addEventListener('click', async () => {
-            const openedMail = await abrirCoberturaMail();
-            if (!openedMail) {
+            const result = await abrirCoberturaMail();
+            if (!result.opened) {
                 const tarjeta = obtenerTarjetaActiva();
                 imprimirReferenciaCobertura(tarjeta);
             }
@@ -561,7 +561,7 @@ export function inicializarBotonesModal() {
             // Pasar a revisión de códigos (pendiente)
             const estado = coberturaBtn.dataset.estado || 'Revisión Códigos';
             const completado = coberturaBtn.dataset.completado === '1';
-            if (openedMail) {
+            if (result.opened) {
                 pendingCoberturaUpdate = {estado, completado};
                 return;
             }
@@ -651,9 +651,9 @@ export function attachPrefacturaCoberturaMail() {
 
     button.dataset.listenerAttached = 'true';
     button.addEventListener('click', async () => {
-        const opened = await abrirCoberturaMail();
-        if (!opened) {
-            showToast('No hay información suficiente para armar el correo de cobertura.', false);
+        const result = await abrirCoberturaMail();
+        if (!result.opened) {
+            showToast(result.error || 'No hay información suficiente para armar el correo de cobertura.', false);
         }
     });
 }
