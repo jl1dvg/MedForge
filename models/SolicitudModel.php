@@ -465,6 +465,60 @@ class SolicitudModel
         ];
     }
 
+    public function actualizarAgendaCitaSigcenter(int $solicitudId, string $agendaId, array $datos): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id FROM agenda_citas WHERE solicitud_id = :solicitud_id AND sigcenter_agenda_id = :agenda_id ORDER BY id DESC LIMIT 1'
+        );
+        $stmt->execute([
+            ':solicitud_id' => $solicitudId,
+            ':agenda_id' => $agendaId,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !isset($row['id'])) {
+            return ['success' => false, 'message' => 'No existe agenda previa'];
+        }
+
+        $permitidos = [
+            'sigcenter_pedido_id',
+            'sigcenter_factura_id',
+            'fecha_inicio',
+            'fecha_llegada',
+            'payload',
+            'response',
+            'created_by',
+        ];
+
+        $set = [];
+        $params = [':id' => (int) $row['id']];
+
+        foreach ($permitidos as $campo) {
+            if (!array_key_exists($campo, $datos)) {
+                continue;
+            }
+            $valor = $datos[$campo];
+            if (in_array($campo, ['payload', 'response'], true) && is_array($valor)) {
+                $valor = json_encode($valor, JSON_UNESCAPED_UNICODE);
+            }
+            $set[] = "{$campo} = :{$campo}";
+            $params[":{$campo}"] = $valor;
+        }
+
+        if ($set === []) {
+            return ['success' => false, 'message' => 'No se enviaron campos para actualizar agenda'];
+        }
+
+        $sql = 'UPDATE agenda_citas SET ' . implode(', ', $set) . ' WHERE id = :id';
+        $update = $this->db->prepare($sql);
+        $update->execute($params);
+
+        return [
+            'success' => true,
+            'rows_affected' => $update->rowCount(),
+            'id' => (int) $row['id'],
+        ];
+    }
+
     public function actualizarEstado(int $id, string $estado): void
     {
         $sql = "UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id";
