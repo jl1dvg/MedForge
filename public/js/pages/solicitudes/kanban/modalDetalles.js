@@ -1373,6 +1373,8 @@ function initSigcenterPanel(container) {
         sedeId: "1",
         procedimientosLoaded: false,
         sedesLoaded: false,
+        action: existingAgendaId ? "UPDATE" : "CREATE",
+        agendaId: existingAgendaId,
     };
 
     const setStatus = (message, tone = "") => {
@@ -1494,6 +1496,17 @@ function initSigcenterPanel(container) {
         if (procedureSelect) procedureSelect.disabled = !enabled;
         if (loadDaysBtn) loadDaysBtn.disabled = !enabled;
         if (!enabled && scheduleBtn) scheduleBtn.disabled = true;
+    };
+
+    const setScheduleLabel = () => {
+        if (!scheduleBtn) return;
+        const icon = scheduleBtn.querySelector("i");
+        const label = state.action === "UPDATE" ? "Reagendar" : "Agendar";
+        if (icon) {
+            scheduleBtn.innerHTML = `${icon.outerHTML} ${label}`;
+        } else {
+            scheduleBtn.textContent = label;
+        }
     };
 
     function loadSedes() {
@@ -1793,6 +1806,8 @@ function initSigcenterPanel(container) {
             procedimiento_id: Number(state.procedimientoId || 0),
             fecha_inicio: fechaInicio,
             fecha_llegada: fechaLlegada,
+            agenda_id: state.agendaId,
+            action: state.action,
             company_id: 113,
             ID_SEDE: state.sedeId || 1,
         });
@@ -1810,6 +1825,8 @@ function initSigcenterPanel(container) {
                     procedimiento_id: Number(state.procedimientoId || 0),
                     fecha_inicio: fechaInicio,
                     fecha_llegada: fechaLlegada,
+                    agenda_id: state.agendaId,
+                    action: state.action,
                     company_id: 113,
                     ID_SEDE: 1,
                 }),
@@ -1831,6 +1848,11 @@ function initSigcenterPanel(container) {
                 );
             }
             const agendaId = data.agenda_id || "";
+            if (agendaId) {
+                state.agendaId = String(agendaId);
+                state.action = "UPDATE";
+                setScheduleLabel();
+            }
             renderCurrentAgenda(agendaId, fechaInicio);
             setStatus(`Agendado correctamente${agendaId ? ` (ID ${agendaId})` : ""}.`, "text-success");
         } catch (error) {
@@ -1870,6 +1892,7 @@ function initSigcenterPanel(container) {
     }
 
     renderCurrentAgenda(existingAgendaId, existingFechaInicio);
+    setScheduleLabel();
     setSelectedLabel();
     setStatus("Selecciona un procedimiento y carga días disponibles.", "text-muted");
     refreshChecklistState();

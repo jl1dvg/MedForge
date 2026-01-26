@@ -16,6 +16,9 @@ $trabajadorId = trim((string)($payload['trabajador_id'] ?? ''));
 $procedimientoId = $payload['procedimiento_id'] ?? null;
 $fechaInicio = trim((string)($payload['fecha_inicio'] ?? ''));
 $fechaLlegada = trim((string)($payload['fecha_llegada'] ?? ''));
+$agendaIdInput = trim((string)($payload['agenda_id'] ?? ''));
+$action = strtoupper(trim((string)($payload['action'] ?? 'CREATE')));
+$estadoPago = trim((string)($payload['estado_pago'] ?? ''));
 if ($fechaLlegada !== '') {
     $fechaLlegada = str_replace('T', ' ', $fechaLlegada);
     if (strlen($fechaLlegada) === 16) {
@@ -27,6 +30,12 @@ if ($solicitudId <= 0 || $hcNumber === '' || $trabajadorId === '' || $procedimie
     sigcenterJsonResponse([
         'success' => false,
         'message' => 'solicitud_id, hc_number, trabajador_id, procedimiento_id y fecha_inicio son requeridos',
+    ], 400);
+}
+if ($action === 'UPDATE' && $agendaIdInput === '') {
+    sigcenterJsonResponse([
+        'success' => false,
+        'message' => 'agenda_id es requerido para UPDATE',
     ], 400);
 }
 
@@ -78,9 +87,9 @@ if (isset($pdo) && $pdo instanceof PDO && $hcNumber !== '') {
 $requestPayload = [
     'company_id' => (int) $companyId,
     'ID_SEDE' => (string) $sedeId,
-    'action' => 'CREATE',
-    'agenda_id' => '',
-    'estado_pago' => '',
+    'action' => $action !== '' ? $action : 'CREATE',
+    'agenda_id' => $agendaIdInput,
+    'estado_pago' => $estadoPago,
     'identificacion' => $hcNumber,
     'trabajador_id' => $trabajadorId,
     'procedimiento_id' => (int) $procedimientoId,
@@ -161,6 +170,9 @@ if (is_array($result['data'])) {
         ?? $result['data']['id_agenda']
         ?? $result['data']['id']
         ?? null;
+    if (!$agendaId && $agendaIdInput !== '') {
+        $agendaId = $agendaIdInput;
+    }
     $pedidoId = $result['data']['pedido_id']
         ?? $result['data']['pedidoId']
         ?? null;
@@ -197,7 +209,7 @@ if ($ok && isset($pdo) && $pdo instanceof PDO) {
         'sigcenter_payload' => $requestPayload,
         'sigcenter_response' => $result['data'] ?? $result['raw'],
     ]);
-    $agendaSaved = $model->guardarAgendaCitaSigcenter([
+    $agendaPayload = [
         'solicitud_id' => $solicitudId,
         'sigcenter_agenda_id' => $agendaId,
         'sigcenter_pedido_id' => $pedidoId,
@@ -207,7 +219,15 @@ if ($ok && isset($pdo) && $pdo instanceof PDO) {
         'payload' => $requestPayload,
         'response' => $result['data'] ?? $result['raw'],
         'created_by' => $_SESSION['user_id'] ?? null,
-    ]);
+    ];
+    if ($action === 'UPDATE' && $agendaId) {
+        $agendaSaved = $model->actualizarAgendaCitaSigcenter($solicitudId, (string) $agendaId, $agendaPayload);
+        if (!$agendaSaved['success']) {
+            $agendaSaved = $model->guardarAgendaCitaSigcenter($agendaPayload);
+        }
+    } else {
+        $agendaSaved = $model->guardarAgendaCitaSigcenter($agendaPayload);
+    }
 }
 
 sigcenterJsonResponse([
