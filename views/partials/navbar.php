@@ -291,6 +291,11 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-account-outline"></i>No Facturado
                                 </a>
                             </li>
+                            <li class="<?= isActive('/billing/dashboard') ?>">
+                                <a href="/billing/dashboard">
+                                    <i class="mdi mdi-chart-line"></i>Dashboard Billing
+                                </a>
+                            </li>
                             <li class="header">Reportes y estadísticas</li>
                             <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
                                 <a href="/views/reportes/estadistica_flujo.php">

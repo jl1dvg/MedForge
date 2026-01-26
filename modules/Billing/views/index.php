@@ -12,6 +12,9 @@
             </div>
         </div>
         <div class="ms-auto">
+            <a href="/billing/dashboard" class="btn btn-outline-primary me-2">
+                <i class="mdi mdi-chart-line me-2"></i>Dashboard
+            </a>
             <a href="/public/index.php/billing/exportar_mes" class="btn btn-primary">
                 <i class="fa fa-file-excel-o me-2"></i>Exportar mes
             </a>

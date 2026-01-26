@@ -1,0 +1,251 @@
+<?php
+/** @var string $pageTitle */
+
+if (!isset($styles) || !is_array($styles)) {
+    $styles = [];
+}
+
+$styles[] = 'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css';
+
+if (!isset($scripts) || !is_array($scripts)) {
+    $scripts = [];
+}
+
+array_push(
+    $scripts,
+    'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
+    'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
+    'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'js/pages/billing/dashboard.js'
+);
+?>
+
+<div class="content-header">
+    <div class="d-flex align-items-center">
+        <div class="me-auto">
+            <h3 class="page-title">Dashboard Billing</h3>
+            <div class="d-inline-block align-items-center">
+                <nav>
+                    <ol class="breadcrumb mb-0">
+                        <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
+                        <li class="breadcrumb-item"><a href="/billing">Billing</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <style>
+        .dashboard-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .dashboard-header .date-range {
+            min-width: 260px;
+        }
+
+        .dashboard-header .range-label {
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .metric-card {
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: #ffffff;
+            padding: 1rem 1.1rem;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+        }
+
+        .metric-card h6 {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #0ea5e9;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .metric-subtext {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
+        .chart-card {
+            height: 100%;
+        }
+
+        .chart-container {
+            min-height: 280px;
+        }
+
+        .chart-empty {
+            height: 240px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            text-align: center;
+            font-size: 0.95rem;
+        }
+
+        .dashboard-section-title {
+            font-weight: 600;
+            color: #0f172a;
+        }
+
+        .table-sticky th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+        }
+    </style>
+
+    <div class="dashboard-header">
+        <div>
+            <h4 class="mb-1">Resumen ejecutivo</h4>
+            <div class="range-label">Rango actual: <span id="billing-range">—</span></div>
+        </div>
+        <div class="ms-auto d-flex flex-wrap gap-2">
+            <input type="text" class="form-control date-range" id="billing-range-input" placeholder="Selecciona rango" autocomplete="off">
+            <button type="button" class="btn btn-primary" id="billing-refresh">
+                <i class="mdi mdi-refresh"></i> Actualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="metric-card">
+            <h6>Total facturas</h6>
+            <div class="metric-value" id="metric-facturas">—</div>
+            <div class="metric-subtext">Facturas generadas en el periodo</div>
+        </div>
+        <div class="metric-card">
+            <h6>Monto facturado</h6>
+            <div class="metric-value" id="metric-monto">—</div>
+            <div class="metric-subtext">Total facturado (incluye todos los ítems)</div>
+        </div>
+        <div class="metric-card">
+            <h6>Ticket promedio</h6>
+            <div class="metric-value" id="metric-ticket">—</div>
+            <div class="metric-subtext">Promedio de facturación por factura</div>
+        </div>
+        <div class="metric-card">
+            <h6>Ítems por factura</h6>
+            <div class="metric-value" id="metric-items">—</div>
+            <div class="metric-subtext">Promedio de ítems cobrados por factura</div>
+        </div>
+        <div class="metric-card">
+            <h6>Fuga detectada</h6>
+            <div class="metric-value" id="metric-leakage">—</div>
+            <div class="metric-subtext">Procedimientos sin factura</div>
+        </div>
+        <div class="metric-card">
+            <h6>Aging promedio</h6>
+            <div class="metric-value" id="metric-aging">—</div>
+            <div class="metric-subtext">Días promedio sin facturar</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-8 col-12">
+            <div class="box chart-card">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">Monto facturado por día</h4>
+                </div>
+                <div class="box-body">
+                    <div id="chart-billing-dia" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-12">
+            <div class="box chart-card">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">Fuga de facturación</h4>
+                </div>
+                <div class="box-body">
+                    <div id="chart-leakage" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-6 col-12">
+            <div class="box chart-card">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">Monto por afiliación</h4>
+                </div>
+                <div class="box-body">
+                    <div id="chart-afiliacion" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 col-12">
+            <div class="box chart-card">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">Top procedimientos por ingresos</h4>
+                </div>
+                <div class="box-body">
+                    <div id="chart-procedimientos" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-6 col-12">
+            <div class="box chart-card">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">No facturados por afiliación</h4>
+                </div>
+                <div class="box-body">
+                    <div id="chart-leakage-afiliacion" class="chart-container"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 col-12">
+            <div class="box">
+                <div class="box-header with-border">
+                    <h4 class="box-title dashboard-section-title">Top pendientes más antiguos</h4>
+                </div>
+                <div class="box-body table-responsive" style="max-height: 320px;">
+                    <table class="table table-hover table-sm table-sticky mb-0">
+                        <thead>
+                        <tr>
+                            <th>Form ID</th>
+                            <th>Paciente</th>
+                            <th>Afiliación</th>
+                            <th>Días pendiente</th>
+                        </tr>
+                        </thead>
+                        <tbody id="table-oldest">
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">Sin datos disponibles</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

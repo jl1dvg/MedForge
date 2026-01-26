@@ -86,63 +86,8 @@ class NoFacturadosService
     {
         $baseSql = $this->getBaseSql();
 
-        $conditions = [];
         $params = [];
-        $afiliaciones = array_values(array_filter(array_map('trim', (array)($filters['afiliacion'] ?? [])), static fn($value) => $value !== ''));
-
-        if (!empty($filters['fecha_desde'])) {
-            $conditions[] = 'base.fecha >= :fecha_desde';
-            $params[':fecha_desde'] = $filters['fecha_desde'];
-        }
-
-        if (!empty($filters['fecha_hasta'])) {
-            $conditions[] = 'base.fecha <= :fecha_hasta';
-            $params[':fecha_hasta'] = $filters['fecha_hasta'];
-        }
-
-        if (!empty($afiliaciones)) {
-            $placeholders = [];
-            foreach ($afiliaciones as $index => $afiliacion) {
-                $placeholder = ':afiliacion_' . $index;
-                $placeholders[] = $placeholder;
-                $params[$placeholder] = $afiliacion;
-            }
-            $conditions[] = 'base.afiliacion IN (' . implode(', ', $placeholders) . ')';
-        }
-
-        if ($filters['estado_revision'] !== '' && $filters['estado_revision'] !== null) {
-            $conditions[] = 'COALESCE(base.estado_revision, 0) = :estado_revision';
-            $params[':estado_revision'] = (int)$filters['estado_revision'];
-        }
-
-        if (!empty($filters['tipo'])) {
-            $conditions[] = 'base.tipo = :tipo';
-            $params[':tipo'] = $filters['tipo'];
-        }
-
-        if (!empty($filters['busqueda'])) {
-            // Duplicated placeholders are not allowed in some PDO drivers, use two distinct ones
-            $conditions[] = '(base.hc_number LIKE :busqueda_hc OR base.paciente LIKE :busqueda_paciente)';
-            $params[':busqueda_hc'] = '%' . $filters['busqueda'] . '%';
-            $params[':busqueda_paciente'] = '%' . $filters['busqueda'] . '%';
-        }
-
-        if (!empty($filters['procedimiento'])) {
-            $conditions[] = 'base.procedimiento LIKE :procedimiento';
-            $params[':procedimiento'] = '%' . $filters['procedimiento'] . '%';
-        }
-
-        if ($filters['valor_min'] !== '' && $filters['valor_min'] !== null) {
-            $conditions[] = 'base.valor_estimado >= :valor_min';
-            $params[':valor_min'] = (float)$filters['valor_min'];
-        }
-
-        if ($filters['valor_max'] !== '' && $filters['valor_max'] !== null) {
-            $conditions[] = 'base.valor_estimado <= :valor_max';
-            $params[':valor_max'] = (float)$filters['valor_max'];
-        }
-
-        $where = $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';
+        $where = $this->buildWhere($filters, $params);
 
         $countSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS base' . $where;
         $stmtCount = $this->db->prepare($countSql);
@@ -220,6 +165,53 @@ class NoFacturadosService
         ];
     }
 
+    public function getLeakageSummary(array $filters, int $oldestLimit = 10): array
+    {
+        $baseSql = $this->getBaseSql();
+        $params = [];
+        $where = $this->buildWhere($filters, $params);
+
+        $summarySql = 'SELECT COUNT(*) AS total, AVG(DATEDIFF(CURDATE(), base.fecha)) AS avg_aging FROM (' . $baseSql . ') AS base' . $where;
+        $stmtSummary = $this->db->prepare($summarySql);
+        foreach ($params as $key => $value) {
+            $stmtSummary->bindValue($key, $value);
+        }
+        $stmtSummary->execute();
+        $summary = $stmtSummary->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'avg_aging' => null];
+
+        $afiliacionSql = 'SELECT COALESCE(NULLIF(TRIM(base.afiliacion), \'\'), \'Sin afiliación\') AS afiliacion, COUNT(*) AS total FROM (' . $baseSql . ') AS base' . $where . ' GROUP BY COALESCE(NULLIF(TRIM(base.afiliacion), \'\'), \'Sin afiliación\') ORDER BY total DESC';
+        $stmtAfiliacion = $this->db->prepare($afiliacionSql);
+        foreach ($params as $key => $value) {
+            $stmtAfiliacion->bindValue($key, $value);
+        }
+        $stmtAfiliacion->execute();
+        $afiliacionLabels = [];
+        $afiliacionTotals = [];
+        while ($row = $stmtAfiliacion->fetch(PDO::FETCH_ASSOC)) {
+            $afiliacionLabels[] = $row['afiliacion'];
+            $afiliacionTotals[] = (int) ($row['total'] ?? 0);
+        }
+
+        $oldestSql = 'SELECT base.form_id, base.hc_number, base.fecha, base.afiliacion, base.paciente, base.procedimiento, base.tipo, DATEDIFF(CURDATE(), base.fecha) AS dias_pendiente FROM (' . $baseSql . ') AS base' . $where . ' ORDER BY base.fecha ASC LIMIT :limit';
+        $stmtOldest = $this->db->prepare($oldestSql);
+        foreach ($params as $key => $value) {
+            $stmtOldest->bindValue($key, $value);
+        }
+        $stmtOldest->bindValue(':limit', max(1, $oldestLimit), PDO::PARAM_INT);
+        $stmtOldest->execute();
+        $oldest = $stmtOldest->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'total' => (int) ($summary['total'] ?? 0),
+            'avg_aging' => $summary['avg_aging'] !== null ? (float) $summary['avg_aging'] : null,
+            'por_afiliacion' => [
+                'labels' => $afiliacionLabels,
+                'totals' => $afiliacionTotals,
+            ],
+            'oldest' => $oldest,
+        ];
+    }
+
     public function listarAfiliaciones(): array
     {
         $baseSql = $this->getBaseSql();
@@ -264,5 +256,70 @@ class NoFacturadosService
         $clean = preg_replace('/^Imagenes\\s*-\\s*/i', '', $clean) ?? $clean;
         $clean = preg_replace('/^Dia-\\d+\\s*-\\s*/i', '', $clean) ?? $clean;
         return trim($clean);
+    }
+
+    private function buildWhere(array $filters, array &$params): string
+    {
+        $conditions = [];
+        $afiliaciones = array_values(array_filter(array_map('trim', (array)($filters['afiliacion'] ?? [])), static fn($value) => $value !== ''));
+        $estadoRevision = $filters['estado_revision'] ?? null;
+        $tipo = $filters['tipo'] ?? null;
+        $busqueda = $filters['busqueda'] ?? null;
+        $procedimiento = $filters['procedimiento'] ?? null;
+        $valorMin = $filters['valor_min'] ?? null;
+        $valorMax = $filters['valor_max'] ?? null;
+
+        if (!empty($filters['fecha_desde'])) {
+            $conditions[] = 'base.fecha >= :fecha_desde';
+            $params[':fecha_desde'] = $filters['fecha_desde'];
+        }
+
+        if (!empty($filters['fecha_hasta'])) {
+            $conditions[] = 'base.fecha <= :fecha_hasta';
+            $params[':fecha_hasta'] = $filters['fecha_hasta'];
+        }
+
+        if (!empty($afiliaciones)) {
+            $placeholders = [];
+            foreach ($afiliaciones as $index => $afiliacion) {
+                $placeholder = ':afiliacion_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = $afiliacion;
+            }
+            $conditions[] = 'base.afiliacion IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        if ($estadoRevision !== '' && $estadoRevision !== null) {
+            $conditions[] = 'COALESCE(base.estado_revision, 0) = :estado_revision';
+            $params[':estado_revision'] = (int)$estadoRevision;
+        }
+
+        if (!empty($tipo)) {
+            $conditions[] = 'base.tipo = :tipo';
+            $params[':tipo'] = $tipo;
+        }
+
+        if (!empty($busqueda)) {
+            $conditions[] = '(base.hc_number LIKE :busqueda_hc OR base.paciente LIKE :busqueda_paciente)';
+            $params[':busqueda_hc'] = '%' . $busqueda . '%';
+            $params[':busqueda_paciente'] = '%' . $busqueda . '%';
+        }
+
+        if (!empty($procedimiento)) {
+            $conditions[] = 'base.procedimiento LIKE :procedimiento';
+            $params[':procedimiento'] = '%' . $procedimiento . '%';
+        }
+
+        if ($valorMin !== '' && $valorMin !== null) {
+            $conditions[] = 'base.valor_estimado >= :valor_min';
+            $params[':valor_min'] = (float)$valorMin;
+        }
+
+        if ($valorMax !== '' && $valorMax !== null) {
+            $conditions[] = 'base.valor_estimado <= :valor_max';
+            $params[':valor_max'] = (float)$valorMax;
+        }
+
+        return $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';
     }
 }
