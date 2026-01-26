@@ -1,7 +1,7 @@
 <header class="main-header">
     <div class="d-flex align-items-center logo-box justify-content-start">
         <!-- Logo -->
-        <a href="/dashboard" class="logo">
+        <a href="<?= htmlspecialchars($dashboardLink ?? '/dashboard', ENT_QUOTES, 'UTF-8') ?>" class="logo">
             <!-- logo-->
             <div class="logo-mini w-50">
                 <span class="light-logo"><img src="<?= img('logo-light-text.png') ?>" alt="logo"></span>
@@ -58,6 +58,52 @@
 
         <div class="navbar-custom-menu r-side">
             <ul class="nav navbar-nav">
+                <?php
+                $dashboardContext = $dashboardContext ?? [];
+                $dashboardDashboards = $dashboardDashboards ?? [];
+                $showDashboardSwitcher = !empty($dashboardContext['is_admin']) && !empty($dashboardDashboards);
+                $defaultDashboardKey = $dashboardContext['default_key'] ?? null;
+                ?>
+                <?php if ($showDashboardSwitcher): ?>
+                    <li class="dropdown notifications-menu">
+                        <a href="#"
+                           class="waves-effect waves-light dropdown-toggle btn-primary-light"
+                           data-bs-toggle="dropdown" title="Dashboards">
+                            <i class="mdi mdi-view-dashboard"></i>
+                        </a>
+                        <ul class="dropdown-menu animated bounceIn">
+                            <li class="header">
+                                <div class="p-20">
+                                    <div class="flexbox">
+                                        <div>
+                                            <h4 class="mb-0 mt-0">Dashboards</h4>
+                                        </div>
+                                    </div>
+                                </div>
+                            </li>
+                            <li>
+                                <ul class="menu sm-scrol">
+                                    <?php foreach ($dashboardDashboards as $key => $meta): ?>
+                                        <?php
+                                        $label = $meta['label'] ?? ucfirst($key);
+                                        $path = $meta['path'] ?? '/dashboard';
+                                        $isDefault = $defaultDashboardKey === $key;
+                                        ?>
+                                        <li>
+                                            <a href="<?= htmlspecialchars($path, ENT_QUOTES, 'UTF-8') ?>">
+                                                <i class="mdi mdi-view-dashboard text-primary"></i>
+                                                <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                                                <?php if ($isDefault): ?>
+                                                    <span class="badge bg-primary-light text-primary ms-5">Por defecto</span>
+                                                <?php endif; ?>
+                                            </a>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                <?php endif; ?>
                 <!-- User Account-->
                 <li class="dropdown user user-menu">
                     <?php

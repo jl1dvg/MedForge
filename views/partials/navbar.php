@@ -68,11 +68,16 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
                     $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
                     $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
-                    $canAccessCirugiasDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']);
-                    $canAccessSolicitudesDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'solicitudes.dashboard.view']);
+                    $dashboardContext = $dashboardContext ?? [];
+                    $dashboardLink = $dashboardLink ?? '/dashboard';
+                    $dashboardAllowed = $dashboardContext['allowed_keys'] ?? [];
+                    $dashboardIsAdmin = !empty($dashboardContext['is_admin']);
+                    $canAccessCirugiasDashboard = $dashboardIsAdmin || in_array('cirugias', $dashboardAllowed, true);
+                    $canAccessSolicitudesDashboard = $dashboardIsAdmin || in_array('solicitudes', $dashboardAllowed, true);
+                    $canAccessBillingDashboard = $dashboardIsAdmin || in_array('billing', $dashboardAllowed, true);
                     ?>
-                    <li class="<?= isActive('/dashboard') ?>">
-                        <a href="/dashboard">
+                    <li class="<?= isActivePrefix('/dashboard') ?>">
+                        <a href="<?= htmlspecialchars($dashboardLink, ENT_QUOTES, 'UTF-8') ?>">
                             <i class="mdi mdi-view-dashboard"><span class="path1"></span><span class="path2"></span></i>
                             <span>Inicio</span>
                         </a>
@@ -192,8 +197,8 @@ if (!function_exists('isTreeOpen')) {
                                 </a>
                             </li>
                             <?php if ($canAccessSolicitudesDashboard): ?>
-                                <li class="<?= isActive('/solicitudes/dashboard') ?>">
-                                    <a href="/solicitudes/dashboard">
+                                <li class="<?= isActive('/dashboard/solicitudes') ?>">
+                                    <a href="/dashboard/solicitudes">
                                         <i class="mdi mdi-chart-box"></i>Dashboard solicitudes
                                     </a>
                                 </li>
@@ -209,8 +214,8 @@ if (!function_exists('isTreeOpen')) {
                                 </a>
                             </li>
                             <?php if ($canAccessCirugiasDashboard): ?>
-                                <li class="<?= isActive('/cirugias/dashboard') ?>">
-                                    <a href="/cirugias/dashboard">
+                                <li class="<?= isActive('/dashboard/cirugias') ?>">
+                                    <a href="/dashboard/cirugias">
                                         <i class="mdi mdi-chart-box"></i>Dashboard quirúrgico
                                     </a>
                                 </li>
@@ -291,11 +296,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-account-outline"></i>No Facturado
                                 </a>
                             </li>
-                            <li class="<?= isActive('/billing/dashboard') ?>">
-                                <a href="/billing/dashboard">
-                                    <i class="mdi mdi-chart-line"></i>Dashboard Billing
-                                </a>
-                            </li>
+                            <?php if ($canAccessBillingDashboard): ?>
+                                <li class="<?= isActive('/dashboard/billing') ?>">
+                                    <a href="/dashboard/billing">
+                                        <i class="mdi mdi-chart-line"></i>Dashboard Billing
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <li class="header">Reportes y estadísticas</li>
                             <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
                                 <a href="/views/reportes/estadistica_flujo.php">
