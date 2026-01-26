@@ -18,6 +18,14 @@ return function (Router $router) {
         (new BillingController($pdo))->noFacturados();
     });
 
+    $router->get('/billing/dashboard', function (\PDO $pdo) {
+        (new BillingController($pdo))->dashboard();
+    });
+
+    $router->post('/billing/dashboard-data', function (\PDO $pdo) {
+        (new BillingController($pdo))->dashboardData();
+    });
+
     $router->post('/billing/no-facturados/crear', function (\PDO $pdo) {
         (new BillingController($pdo))->crearDesdeNoFacturado();
     });

@@ -5,16 +5,21 @@ namespace Modules\Billing\Controllers;
 use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
 use Modules\Billing\Services\BillingViewService;
+use Modules\Billing\Services\BillingDashboardService;
 use Modules\Pacientes\Services\PacienteService;
 use Models\BillingSriDocumentModel;
 use Models\SettingsModel;
 use Modules\Billing\Services\BillingRuleService;
+use DateInterval;
+use DateTimeImmutable;
 use PDO;
+use Throwable;
 
 class BillingController extends BaseController
 {
     private BillingViewService $service;
     private \Modules\Billing\Services\NoFacturadosService $noFacturadosService;
+    private BillingDashboardService $dashboardService;
     private LegacyBillingController $legacyController;
 
     public function __construct(PDO $pdo)
@@ -33,6 +38,7 @@ class BillingController extends BaseController
             $billingRuleService
         );
         $this->noFacturadosService = new \Modules\Billing\Services\NoFacturadosService($pdo);
+        $this->dashboardService = new BillingDashboardService($pdo, $this->noFacturadosService);
     }
 
     public function index(): void
@@ -89,6 +95,40 @@ class BillingController extends BaseController
             'quirurgicosRevisados' => $clasificados['quirurgicosRevisados'],
             'quirurgicosNoRevisados' => $clasificados['quirurgicosNoRevisados'],
             'noQuirurgicos' => $clasificados['noQuirurgicos'],
+        ]);
+    }
+
+    public function dashboard(): void
+    {
+        $this->requireAuth();
+
+        $this->render('modules/Billing/views/dashboard.php', [
+            'pageTitle' => 'Dashboard de Facturación',
+        ]);
+    }
+
+    public function dashboardData(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $range = $this->resolveDashboardRange($payload);
+        $start = $range['start'];
+        $end = $range['end'];
+
+        try {
+            $data = $this->dashboardService->buildSummary($start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59'));
+        } catch (Throwable $exception) {
+            $this->json(['error' => 'No se pudo cargar el dashboard de billing.'], 500);
+            return;
+        }
+
+        $this->json([
+            'filters' => [
+                'date_from' => $range['from'],
+                'date_to' => $range['to'],
+            ],
+            'data' => $data,
         ]);
     }
 
@@ -256,5 +296,70 @@ class BillingController extends BaseController
         $target = '/billing/detalle?form_id=' . urlencode($formId);
         header('Location: ' . $target);
         exit;
+    }
+
+    private function getRequestBody(): array
+    {
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        if (stripos($contentType, 'application/json') !== false) {
+            $decoded = json_decode(file_get_contents('php://input'), true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if (!empty($_POST)) {
+            return $_POST;
+        }
+
+        $decoded = json_decode(file_get_contents('php://input'), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{start: DateTimeImmutable, end: DateTimeImmutable, from: string, to: string}
+     */
+    private function resolveDashboardRange(array $filters): array
+    {
+        $now = new DateTimeImmutable('now');
+        $fallbackStart = $now->sub(new DateInterval('P90D'));
+
+        $fromRaw = $this->normalizeDateInput($filters['date_from'] ?? null);
+        $toRaw = $this->normalizeDateInput($filters['date_to'] ?? null);
+
+        $start = $fromRaw ? $this->parseDate($fromRaw) : null;
+        $end = $toRaw ? $this->parseDate($toRaw) : null;
+
+        if (!$start) {
+            $start = $fallbackStart;
+        }
+        if (!$end) {
+            $end = $now;
+        }
+
+        if ($start > $end) {
+            [$start, $end] = [$end, $start];
+        }
+
+        return [
+            'start' => $start,
+            'end' => $end,
+            'from' => $start->format('Y-m-d'),
+            'to' => $end->format('Y-m-d'),
+        ];
+    }
+
+    private function normalizeDateInput(?string $value): ?string
+    {
+        $clean = trim((string) $value);
+        return $clean !== '' ? $clean : null;
+    }
+
+    private function parseDate(string $value): ?DateTimeImmutable
+    {
+        try {
+            return new DateTimeImmutable($value);
+        } catch (Throwable) {
+            return null;
+        }
     }
 }
