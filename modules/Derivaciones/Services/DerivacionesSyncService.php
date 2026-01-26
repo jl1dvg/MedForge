@@ -319,6 +319,117 @@ class DerivacionesSyncService
         ];
     }
 
+    public function scrapeMissingDerivationsBatch(int $batchSize = 200, int $maxAttempts = 3, int $cooldownHours = 6): array
+    {
+        $cursor = $this->getLastCursor('iess-derivaciones-scrape-missing');
+        $this->startSyncRun('iess-derivaciones-scrape-missing', $cursor);
+
+        $candidates = $this->fetchPendingBilledForms($batchSize, $maxAttempts, $cooldownHours);
+
+        if (empty($candidates)) {
+            $this->finishSyncRun('iess-derivaciones-scrape-missing', 'skipped', 0, $cursor, 'No hay formularios pendientes de scraping.');
+
+            return [
+                'status' => 'skipped',
+                'message' => 'No hay formularios pendientes de scraping.',
+            ];
+        }
+
+        $queueMeta = [];
+        foreach ($candidates as $candidate) {
+            $formId = (string) ($candidate['form_id'] ?? '');
+            $hcNumber = $this->normalizeNullable($candidate['hc_number'] ?? null);
+            $queueId = $this->upsertScrapeQueueEntry($formId, $hcNumber);
+            $queueMeta[$formId] = [
+                'queue_id' => $queueId,
+                'attempts' => (int) ($candidate['attempts'] ?? 0),
+                'hc_number' => $hcNumber,
+            ];
+        }
+
+        $scriptPayload = array_values(array_map(
+            fn (array $row): array => [
+                'form_id' => (string) ($row['form_id'] ?? ''),
+                'hc_number' => $this->normalizeNullable($row['hc_number'] ?? null),
+            ],
+            $candidates
+        ));
+
+        $results = $this->runBatchScraper($scriptPayload);
+
+        $codesByFormId = [];
+        $failedForms = [];
+        foreach ($results as $result) {
+            $formId = (string) ($result['form_id'] ?? '');
+            $ok = (bool) ($result['ok'] ?? false);
+            $codigo = trim((string) ($result['cod_derivacion'] ?? ''));
+            $error = $result['error'] ?? null;
+
+            if (!$ok || $codigo === '') {
+                $failedForms[$formId] = $error ?: 'No se obtuvo código de derivación.';
+                continue;
+            }
+
+            $codesByFormId[$formId] = $codigo;
+        }
+
+        $upsertRows = [];
+        $processed = 0;
+        $success = 0;
+        $failed = 0;
+        $skipped = 0;
+        $lastId = $cursor;
+
+        foreach ($candidates as $candidate) {
+            $formId = (string) ($candidate['form_id'] ?? '');
+            $hcNumber = $this->normalizeNullable($candidate['hc_number'] ?? null);
+            $billingId = (int) ($candidate['billing_id'] ?? 0);
+
+            $codigo = $codesByFormId[$formId] ?? '';
+
+            if ($codigo !== '') {
+                $upsertRows[] = [
+                    'cod_derivacion' => $codigo,
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                ];
+                $success++;
+                $this->markScrapeAttempt($queueMeta[$formId]['queue_id'], 'success', null, $queueMeta[$formId]['attempts'], $maxAttempts);
+            } else {
+                $error = $failedForms[$formId] ?? 'No se obtuvo código para el form.';
+                $status = array_key_exists($formId, $failedForms) ? 'error' : 'not_found';
+                $this->markScrapeAttempt($queueMeta[$formId]['queue_id'], $status, $error, $queueMeta[$formId]['attempts'], $maxAttempts);
+                if ($status === 'error') {
+                    $failed++;
+                } else {
+                    $skipped++;
+                }
+            }
+
+            $processed++;
+            $lastId = $billingId > 0 ? $billingId : $lastId;
+        }
+
+        if ($upsertRows !== []) {
+            $this->bulkUpsertLegacyDerivations($upsertRows);
+        }
+
+        $details = [
+            'processed' => $processed,
+            'success' => $success,
+            'failed' => $failed,
+            'skipped' => $skipped,
+        ];
+
+        $this->finishSyncRun('iess-derivaciones-scrape-missing', 'success', $processed, $lastId, 'Scraping batch de derivaciones completado.');
+
+        return [
+            'status' => 'success',
+            'message' => sprintf('Scraping batch completado. Exitosos: %d, fallidos: %d, omitidos: %d', $success, $failed, $skipped),
+            'details' => $details,
+        ];
+    }
+
     private function upsertReferral(string $referralCode, ?string $validUntil, ?string $issuedAt, ?string $source): int
     {
         $stmt = $this->db->prepare(
@@ -501,6 +612,81 @@ class DerivacionesSyncService
         ]);
     }
 
+    /**
+     * @param array<int, array{cod_derivacion:string,form_id:string,hc_number:?string}> $rows
+     */
+    private function bulkUpsertLegacyDerivations(array $rows, int $chunkSize = 200): void
+    {
+        $chunks = array_chunk($rows, $chunkSize);
+
+        foreach ($chunks as $chunk) {
+            $placeholders = [];
+            $values = [];
+
+            foreach ($chunk as $row) {
+                $placeholders[] = '(?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL)';
+                $values[] = $row['cod_derivacion'];
+                $values[] = $row['form_id'];
+                $values[] = $row['hc_number'];
+            }
+
+            $sql = 'INSERT INTO derivaciones_form_id (
+                        cod_derivacion, form_id, hc_number, fecha_registro, fecha_vigencia, referido, diagnostico, sede, parentesco, archivo_derivacion_path
+                    ) VALUES ' . implode(', ', $placeholders) . '
+                    ON DUPLICATE KEY UPDATE
+                        cod_derivacion = VALUES(cod_derivacion),
+                        hc_number = VALUES(hc_number),
+                        updated_at = CURRENT_TIMESTAMP';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($values);
+        }
+    }
+
+    /**
+     * @param array<int, array{form_id:string,hc_number:?string}> $payload
+     * @return array<int, array<string, mixed>>
+     */
+    private function runBatchScraper(array $payload): array
+    {
+        $scriptPath = BASE_PATH . '/scrapping/scrape_derivaciones_batch.py';
+
+        if (!is_file($scriptPath)) {
+            throw new RuntimeException('No se encontró el script de scraping batch.');
+        }
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'derivaciones_batch_');
+        if ($tempFile === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal para el batch.');
+        }
+
+        file_put_contents($tempFile, json_encode($payload, JSON_UNESCAPED_UNICODE));
+
+        $command = sprintf(
+            '/usr/bin/python3 %s %s --quiet 2>&1',
+            escapeshellarg($scriptPath),
+            escapeshellarg($tempFile)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($command, $output, $exitCode);
+
+        @unlink($tempFile);
+
+        $joined = trim(implode("\n", $output));
+        if ($exitCode !== 0) {
+            throw new RuntimeException($joined !== '' ? $joined : 'Fallo al ejecutar el scraper batch.');
+        }
+
+        $decoded = json_decode($joined, true);
+        if (!is_array($decoded)) {
+            throw new RuntimeException('Respuesta inválida del scraper batch.');
+        }
+
+        return $decoded;
+    }
+
     private function getLastCursor(string $jobName): ?int
     {
         $stmt = $this->db->prepare('SELECT last_cursor FROM derivaciones_sync_runs WHERE job_name = :job LIMIT 1');
@@ -577,6 +763,32 @@ class DerivacionesSyncService
 
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':maxAttempts', $maxAttempts, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchPendingBilledForms(int $limit, int $maxAttempts, int $cooldownHours): array
+    {
+        $sql = 'SELECT bm.id AS billing_id, bm.form_id, bm.hc_number, q.id AS queue_id, q.attempts, q.status, q.last_attempt_at
+                FROM billing_main bm
+                LEFT JOIN derivaciones_form_id dfi ON dfi.form_id = bm.form_id
+                LEFT JOIN derivaciones_scrape_queue q ON q.form_id = bm.form_id
+                WHERE bm.form_id IS NOT NULL AND bm.form_id <> ""
+                  AND bm.hc_number IS NOT NULL AND bm.hc_number <> ""
+                  AND (dfi.cod_derivacion IS NULL OR dfi.cod_derivacion = "")
+                  AND (q.attempts IS NULL OR q.attempts < :maxAttempts)
+                  AND (q.last_attempt_at IS NULL OR q.last_attempt_at <= DATE_SUB(NOW(), INTERVAL :cooldown HOUR))
+                ORDER BY bm.id ASC
+                LIMIT :limit';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':maxAttempts', $maxAttempts, PDO::PARAM_INT);
+        $stmt->bindValue(':cooldown', $cooldownHours, PDO::PARAM_INT);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 

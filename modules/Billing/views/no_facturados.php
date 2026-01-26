@@ -13,6 +13,17 @@ $scripts = array_merge($scripts ?? [], [
         opacity: 1 !important;
         margin: 0;
     }
+
+    .table-group-row td {
+        background-color: #f8f9fa;
+    }
+
+    .table-group-row .form-check-input {
+        position: static !important;
+        left: auto !important;
+        opacity: 1 !important;
+        margin: 0;
+    }
 </style>
 
 <section class="content-header">
@@ -55,6 +66,7 @@ $scripts = array_merge($scripts ?? [], [
         const btnGuardarVista = document.getElementById('btnGuardarVista');
         const btnBorrarVista = document.getElementById('btnBorrarVista');
         const afiliacionSelect = document.getElementById('fAfiliacion');
+        const toggleImagenesAgrupar = document.getElementById('toggleImagenesAgrupar');
 
         const previewEndpoint = <?= json_encode(buildAssetUrl('api/billing/billing_preview.php')); ?>;
 
@@ -651,6 +663,10 @@ $scripts = array_merge($scripts ?? [], [
             consultas: new Set(),
         };
 
+        const groupingState = {
+            imagenes: false,
+        };
+
         const tableConfigs = {
             revisados: {
                 tableId: 'tablaRevisados',
@@ -743,6 +759,112 @@ $scripts = array_merge($scripts ?? [], [
         };
 
         const escapeAttr = (value) => String(value ?? '').replace(/"/g, '&quot;');
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const getPacienteGroup = (row) => {
+            const hc = row?.hc_number ? String(row.hc_number).trim() : '';
+            const paciente = row?.paciente ? String(row.paciente).trim() : '';
+            if (hc) {
+                return {
+                    key: `HC:${hc}`,
+                    label: paciente ? `${paciente} · HC ${hc}` : `HC ${hc}`,
+                };
+            }
+            if (paciente) {
+                return {
+                    key: `PAC:${paciente}`,
+                    label: paciente,
+                };
+            }
+            return {
+                key: 'SIN',
+                label: 'Paciente sin identificar',
+            };
+        };
+
+        const buildGroupStats = (table) => {
+            const groups = new Map();
+            table.rows({page: 'current'}).every(function () {
+                const row = this.data();
+                const group = getPacienteGroup(row);
+                if (!groups.has(group.key)) {
+                    groups.set(group.key, {label: group.label, rows: []});
+                }
+                groups.get(group.key).rows.push(row);
+            });
+            return groups;
+        };
+
+        const updateGroupCheckboxes = (tableKey) => {
+            if (tableKey !== 'imagenes' || !groupingState.imagenes) return;
+            const table = tablas[tableKey];
+            if (!table) return;
+            const groups = buildGroupStats(table);
+            const tbody = $(`#${tableConfigs[tableKey].tableId} tbody`);
+            tbody.find('.group-select').each(function () {
+                const groupKey = this.dataset.groupKey;
+                const group = groups.get(groupKey);
+                if (!group) return;
+                const selectedCount = group.rows.filter((row) => selectionState[tableKey].has(String(row.form_id))).length;
+                this.checked = group.rows.length > 0 && selectedCount === group.rows.length;
+                this.indeterminate = selectedCount > 0 && selectedCount < group.rows.length;
+            });
+        };
+
+        const applyPatientGrouping = (table, tableKey) => {
+            if (tableKey !== 'imagenes') return;
+            const tableId = tableConfigs[tableKey].tableId;
+            const tbody = $(`#${tableId} tbody`);
+            tbody.find('tr.table-group-row').remove();
+            if (!groupingState.imagenes) return;
+
+            const groups = buildGroupStats(table);
+            let lastGroupKey = null;
+            let groupIndex = 0;
+            const columnCount = table.columns().count();
+
+            table.rows({page: 'current'}).every(function () {
+                const row = this.data();
+                const group = getPacienteGroup(row);
+                if (group.key === lastGroupKey) return;
+                groupIndex += 1;
+                lastGroupKey = group.key;
+                const groupInfo = groups.get(group.key);
+                if (!groupInfo) return;
+
+                const selectedCount = groupInfo.rows.filter((item) => selectionState[tableKey].has(String(item.form_id))).length;
+                const totalCount = groupInfo.rows.length;
+                const checked = totalCount > 0 && selectedCount === totalCount ? 'checked' : '';
+                const groupId = `group-${tableKey}-${groupIndex}`;
+
+                const groupRow = `
+                    <tr class="table-group-row" data-group-key="${escapeAttr(group.key)}">
+                        <td colspan="${columnCount}">
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="checkbox"
+                                       class="form-check-input group-select"
+                                       data-table-key="${tableKey}"
+                                       data-group-key="${escapeAttr(group.key)}"
+                                       id="${groupId}"
+                                       ${checked}>
+                                <label class="mb-0" for="${groupId}">
+                                    <strong>${escapeHtml(groupInfo.label)}</strong>
+                                    <span class="text-muted small ms-2">${totalCount} imágenes en esta página</span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                $(this.node()).before(groupRow);
+            });
+
+            updateGroupCheckboxes(tableKey);
+        };
 
         const getProcedimientoDisplay = (row) => {
             if (!row) return '';
@@ -924,6 +1046,7 @@ $scripts = array_merge($scripts ?? [], [
                     selectAll.checked = allSelected && table.rows().count() > 0;
                     selectAll.indeterminate = !selectAll.checked && anySelected;
                 }
+                applyPatientGrouping(table, tableKey);
             });
 
             table.on('xhr', function () {
@@ -956,6 +1079,7 @@ $scripts = array_merge($scripts ?? [], [
                     selectAll.indeterminate = checkedRows > 0 && checkedRows < totalRows;
                     selectAll.checked = checkedRows > 0 && checkedRows === totalRows;
                 }
+                updateGroupCheckboxes(tableKey);
             });
 
             document.getElementById(config.selectAllId)?.addEventListener('change', (event) => {
@@ -971,6 +1095,35 @@ $scripts = array_merge($scripts ?? [], [
                 });
                 table.rows().nodes().to$().find('.row-select').prop('checked', checked);
                 updateSelectionInfo();
+                updateGroupCheckboxes(tableKey);
+            });
+
+            $(`#${config.tableId} tbody`).on('change', '.group-select', function () {
+                if (tableKey !== 'imagenes') return;
+                const shouldSelect = this.checked;
+                const groupKey = this.dataset.groupKey;
+                if (!groupKey) return;
+                table.rows({page: 'current'}).every(function () {
+                    const row = this.data();
+                    const group = getPacienteGroup(row);
+                    if (group.key !== groupKey) return;
+                    const formId = row.form_id ? String(row.form_id) : '';
+                    if (shouldSelect) {
+                        selectionState[tableKey].add(formId);
+                    } else {
+                        selectionState[tableKey].delete(formId);
+                    }
+                    $(this.node()).find('.row-select').prop('checked', shouldSelect);
+                });
+                updateSelectionInfo();
+                const selectAll = document.getElementById(config.selectAllId);
+                if (selectAll) {
+                    const totalRows = table.rows().data().toArray().length;
+                    const checkedRows = table.rows().data().toArray().filter((row) => selectionState[tableKey].has(String(row.form_id))).length;
+                    selectAll.indeterminate = checkedRows > 0 && checkedRows < totalRows;
+                    selectAll.checked = checkedRows > 0 && checkedRows === totalRows;
+                }
+                updateGroupCheckboxes(tableKey);
             });
 
             table.on('error.dt', (_, __, ___, message) => {
@@ -989,6 +1142,11 @@ $scripts = array_merge($scripts ?? [], [
             imagenes: createTable('imagenes'),
             consultas: createTable('consultas'),
         };
+
+        toggleImagenesAgrupar?.addEventListener('change', (event) => {
+            groupingState.imagenes = event.target.checked;
+            tablas.imagenes?.draw(false);
+        });
 
         filtrosForm?.addEventListener('submit', (event) => {
             event.preventDefault();

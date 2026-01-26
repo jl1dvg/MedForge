@@ -281,7 +281,7 @@ class CronRunner
                 'interval' => 900,
                 'callback' => function (): array {
                     $service = new DerivacionesSyncService($this->pdo);
-                    return $service->scrapeMissingDerivations();
+                    return $service->scrapeMissingDerivationsBatch();
                 },
             ],
             [

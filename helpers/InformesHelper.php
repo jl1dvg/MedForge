@@ -237,21 +237,38 @@ class InformesHelper
                 }
             }
 
+            $fechaFactura = $factura['fecha_ordenada'];
+            $mes = (!empty($fechaFactura) && strtotime($fechaFactura)) ? date('Y-m', strtotime($fechaFactura)) : 'desconocido';
+            if (!empty($filtros['mes']) && $mes !== $filtros['mes']) {
+                continue;
+            }
+
+            $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));
+            if (!empty($filtros['apellido']) && !str_contains($apellidoCompleto, strtolower($filtros['apellido']))) {
+                continue;
+            }
+
+            if (!empty($derivacionFiltro)) {
+                $formIdParaDerivacion = $factura['form_id'];
+                if (!isset($cacheDerivaciones[$formIdParaDerivacion])) {
+                    $cacheDerivaciones[$formIdParaDerivacion] = $billingController->obtenerDerivacionPorFormId($formIdParaDerivacion);
+                }
+                $derivacionFiltroData = $cacheDerivaciones[$formIdParaDerivacion];
+                $tieneDerivacion = !empty($derivacionFiltroData['cod_derivacion'] ?? $derivacionFiltroData['codigo_derivacion'] ?? null);
+                if ($derivacionFiltro === 'con' && !$tieneDerivacion) {
+                    continue;
+                }
+                if ($derivacionFiltro === 'sin' && $tieneDerivacion) {
+                    continue;
+                }
+            }
+
             $formId = $factura['form_id'];
             if (!isset($datosCache[$formId])) {
                 $datosCache[$formId] = $billingController->obtenerDatos($formId);
             }
             $datosPaciente = $datosCache[$formId];
             if (!$datosPaciente) {
-                continue;
-            }
-
-            $fechaFactura = $factura['fecha_ordenada'];
-            $mes = (!empty($fechaFactura) && strtotime($fechaFactura)) ? date('Y-m', strtotime($fechaFactura)) : 'desconocido';
-            if (!empty($filtros['mes']) && $mes !== $filtros['mes']) continue;
-
-            $apellidoCompleto = strtolower(trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? '')));
-            if (!empty($filtros['apellido']) && !str_contains($apellidoCompleto, strtolower($filtros['apellido']))) {
                 continue;
             }
 
@@ -265,13 +282,6 @@ class InformesHelper
                 $cacheDerivaciones[$formId] = $billingController->obtenerDerivacionPorFormId($formId);
             }
             $derivacion = $cacheDerivaciones[$formId];
-            $tieneDerivacion = !empty($derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null);
-            if ($derivacionFiltro === 'con' && !$tieneDerivacion) {
-                continue;
-            }
-            if ($derivacionFiltro === 'sin' && $tieneDerivacion) {
-                continue;
-            }
 
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],

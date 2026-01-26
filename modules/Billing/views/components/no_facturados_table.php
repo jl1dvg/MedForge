@@ -292,6 +292,16 @@
                             </div>
                         </div>
                         <div class="tab-pane fade" id="paneImagenes" role="tabpanel" aria-labelledby="tabImagenes">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="toggleImagenesAgrupar">
+                                    <label class="form-check-label" for="toggleImagenesAgrupar">
+                                        Agrupar por paciente
+                                    </label>
+                                </div>
+                                <small class="text-muted">Selecciona todas las imágenes de un paciente en la página
+                                    actual.</small>
+                            </div>
                             <div class="table-responsive">
                                 <table class="table table-lg invoice-archive" id="tablaImagenes">
                                     <thead class="table-light">
