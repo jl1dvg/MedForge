@@ -1707,7 +1707,7 @@ function initSigcenterPanel(container) {
             const res = await fetch("/api/sigcenter/horarios-dias.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
-                body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113, ID_SEDE: state.sedeId || 3}),
+                body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113, ID_SEDE: state.sedeId}),
                 credentials: "include",
             });
             const raw = await res.text();
@@ -1755,7 +1755,12 @@ function initSigcenterPanel(container) {
             const res = await fetch("/api/sigcenter/horarios-especifico.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
-                body: JSON.stringify({trabajador_id: trabajadorId, FECHA: dateValue, company_id: 113, ID_SEDE: state.sedeId || 3}),
+                body: JSON.stringify({
+                    trabajador_id: trabajadorId,
+                    FECHA: dateValue,
+                    company_id: 113,
+                    ID_SEDE: state.sedeId
+                }),
                 credentials: "include",
             });
             const data = await res.json().catch(() => ({}));
@@ -1809,7 +1814,7 @@ function initSigcenterPanel(container) {
             agenda_id: state.agendaId,
             action: state.action,
             company_id: 113,
-            ID_SEDE: state.sedeId || 1,
+            ID_SEDE: state.sedeId,
         });
 
         scheduleBtn.disabled = true;
@@ -1828,7 +1833,7 @@ function initSigcenterPanel(container) {
                     agenda_id: state.agendaId,
                     action: state.action,
                     company_id: 113,
-                    ID_SEDE: 1,
+                    ID_SEDE: state.sedeId,
                 }),
                 credentials: "include",
             });
