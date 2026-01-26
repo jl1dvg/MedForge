@@ -173,6 +173,12 @@ if ($coberturaMailSentAt !== '') {
         $coberturaMailSentLabel .= ' por ' . $coberturaMailSentBy;
     }
 }
+$sigcenterAgendaId = $solicitud['sigcenter_agenda_id'] ?? '';
+$sigcenterFechaInicio = $solicitud['sigcenter_fecha_inicio'] ?? '';
+$sigcenterProcedimientoId = $solicitud['sigcenter_procedimiento_id'] ?? '';
+$sigcenterTrabajadorId = $solicitud['sigcenter_trabajador_id'] ?? '';
+$medicoTrabajadorId = $solicitud['user_trabajador_id'] ?? ($solicitud['id_trabajador'] ?? '');
+$sigcenterSolicitudId = (int)($solicitud['solicitud_id'] ?? ($solicitud['id'] ?? 0));
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -322,6 +328,71 @@ if ($coberturaMailSentAt !== '') {
                 </div>
                 <div class="list-group list-group-flush" id="prefacturaChecklistList"></div>
                 <div class="text-muted small d-none" id="prefacturaChecklistEmpty">Sin checklist disponible.</div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-3" id="prefacturaSigcenterCard"
+             data-solicitud-id="<?= htmlspecialchars((string)$sigcenterSolicitudId, ENT_QUOTES, 'UTF-8') ?>"
+             data-hc-number="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+             data-trabajador-id="<?= htmlspecialchars((string)$medicoTrabajadorId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-agenda-id="<?= htmlspecialchars((string)$sigcenterAgendaId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-fecha-inicio="<?= htmlspecialchars((string)$sigcenterFechaInicio, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-procedimiento-id="<?= htmlspecialchars((string)$sigcenterProcedimientoId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-trabajador-id="<?= htmlspecialchars((string)$sigcenterTrabajadorId, ENT_QUOTES, 'UTF-8') ?>">
+            <div class="card-header bg-white">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-calendar2-check prefactura-icon text-primary me-2"></i>
+                    Agendar en Sigcenter
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning small mb-3" data-sigcenter-unavailable>
+                    Marcar “Apto oftalmólogo” para habilitar agendamiento.
+                </div>
+                <div class="alert alert-info small mb-3 d-none" data-sigcenter-no-worker>
+                    No hay trabajador Sigcenter asignado al médico. Verifica <code>users.id_trabajador</code>.
+                </div>
+                <div class="alert alert-success small mb-3 d-none" data-sigcenter-current>
+                    <div class="fw-semibold">Agendamiento registrado</div>
+                    <div data-sigcenter-current-fecha></div>
+                    <div class="text-muted" data-sigcenter-current-agenda></div>
+                </div>
+                <div class="d-flex flex-column gap-3 d-none" data-sigcenter-controls>
+                    <div>
+                        <label class="form-label mb-1">Sede (Sigcenter)</label>
+                        <select class="form-select form-select-sm" data-sigcenter-sede>
+                            <option value="">Selecciona una sede</option>
+                        </select>
+                        <small class="text-muted">Se cargan desde Sigcenter según el médico.</small>
+                    </div>
+                    <div>
+                        <label class="form-label mb-1">Procedimiento (Sigcenter)</label>
+                        <select class="form-select form-select-sm" data-sigcenter-procedimiento>
+                            <option value="">Selecciona un procedimiento</option>
+                        </select>
+                        <small class="text-muted">Se cargan desde Sigcenter según el médico.</small>
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm align-self-start"
+                                data-sigcenter-load-days>
+                            <i class="bi bi-calendar3 me-1"></i> Cargar días disponibles
+                        </button>
+                        <div class="d-flex flex-wrap gap-2" data-sigcenter-days></div>
+                        <div class="d-flex flex-wrap gap-2" data-sigcenter-times></div>
+                    </div>
+                    <div>
+                        <label class="form-label mb-1">Hora de llegada (interna)</label>
+                        <input type="datetime-local" class="form-control form-control-sm" data-sigcenter-arrival>
+                        <small class="text-muted">Este dato se guarda en agenda interna, no en Sigcenter.</small>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <button type="button" class="btn btn-success btn-sm" data-sigcenter-agendar disabled>
+                            <i class="bi bi-check2-circle me-1"></i> Agendar
+                        </button>
+                        <small class="text-muted" data-sigcenter-selected></small>
+                    </div>
+                    <div class="small text-muted" data-sigcenter-status></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1241,6 +1312,13 @@ if ($coberturaMailSentAt !== '') {
             }
         };
 
+        const notifySigcenterChecklist = (checklist = []) => {
+            window.__prefacturaChecklistData = checklist;
+            if (window.prefacturaSigcenter && typeof window.prefacturaSigcenter.updateChecklist === 'function') {
+                window.prefacturaSigcenter.updateChecklist(checklist);
+            }
+        };
+
         const updateResumenFromChecklist = (data = {}) => {
             const openEl = document.getElementById('prefacturaStateTasksOpen');
             const totalEl = document.getElementById('prefacturaStateTasksTotal');
@@ -1291,12 +1369,14 @@ if ($coberturaMailSentAt !== '') {
                 empty.classList.remove('d-none');
                 setProgress(progress);
                 setBootstrapButton(checklist);
+                notifySigcenterChecklist(checklist);
                 return;
             }
 
             empty.classList.add('d-none');
             setProgress(progress);
             setBootstrapButton(checklist);
+            notifySigcenterChecklist(checklist);
 
             checklist.forEach((item) => {
                 const row = document.createElement('div');
