@@ -3,6 +3,7 @@
 namespace Modules\Solicitudes\Controllers;
 
 use Core\BaseController;
+use Core\DashboardAccess;
 use Helpers\JsonLogger;
 use DateInterval;
 use DateTimeImmutable;
@@ -88,6 +89,8 @@ class SolicitudController extends BaseController
     public function dashboard(): void
     {
         $this->requireAuth();
+        $context = DashboardAccess::resolveUserContext($this->pdo, $this->currentUserId(), $this->currentPermissions());
+        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_SOLICITUDES);
 
         $this->render(
             __DIR__ . '/../views/dashboard.php',

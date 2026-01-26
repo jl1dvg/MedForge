@@ -3,6 +3,7 @@
 namespace Modules\Cirugias\Controllers;
 
 use Core\BaseController;
+use Core\DashboardAccess;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Modules\Cirugias\Services\CirugiasDashboardService;
@@ -21,14 +22,8 @@ class CirugiasDashboardController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
-        $this->requirePermission([
-            'cirugias.dashboard.view',
-            'administrativo',
-            'admin.usuarios.manage',
-            'admin.roles.manage',
-            'admin.usuarios',
-            'admin.roles',
-        ]);
+        $context = DashboardAccess::resolveUserContext($this->pdo, $this->currentUserId(), $this->currentPermissions());
+        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_CIRUGIAS);
 
         $dateRange = $this->resolveDateRange();
         $startSql = $dateRange['start']->format('Y-m-d 00:00:00');

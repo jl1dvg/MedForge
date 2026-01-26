@@ -4,6 +4,7 @@ namespace Modules\Billing\Controllers;
 
 use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
+use Core\DashboardAccess;
 use Modules\Billing\Services\BillingViewService;
 use Modules\Billing\Services\BillingDashboardService;
 use Modules\Pacientes\Services\PacienteService;
@@ -101,6 +102,8 @@ class BillingController extends BaseController
     public function dashboard(): void
     {
         $this->requireAuth();
+        $context = DashboardAccess::resolveUserContext($this->pdo, $this->currentUserId(), $this->currentPermissions());
+        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_BILLING);
 
         $this->render('modules/Billing/views/dashboard.php', [
             'pageTitle' => 'Dashboard de Facturación',

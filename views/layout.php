@@ -1,5 +1,8 @@
 <?php // views/layout.php ?>
 <?php
+use Core\DashboardAccess;
+use Core\Permissions;
+
 if (!function_exists('format_profile_photo_url')) {
     function format_profile_photo_url(?string $path): ?string
     {
@@ -133,6 +136,19 @@ if (!function_exists('format_profile_photo_url')) {
 
         if (!isset($username) || trim((string) $username) === '') {
             $username = $currentUser['display_name'];
+        }
+
+        $dashboardContext = null;
+        $dashboardLink = '/dashboard';
+        $dashboardDashboards = [];
+
+        if (($currentUser['id'] ?? null) && $pdoInstance instanceof \PDO) {
+            $permissions = Permissions::normalize($_SESSION['permisos'] ?? []);
+            $dashboardContext = DashboardAccess::resolveUserContext($pdoInstance, (int) $currentUser['id'], $permissions);
+            $dashboardLink = !empty($dashboardContext['is_admin'])
+                ? '/dashboard'
+                : ($dashboardContext['default_path'] ?? '/dashboard');
+            $dashboardDashboards = DashboardAccess::dashboards();
         }
         ?>
 
