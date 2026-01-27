@@ -1,16 +1,16 @@
 <?php
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
-    'afiliacion' => $afiliacion ?? '',
-    'hc_number' => $hc_number ?? '',
-    'archive_number' => $hc_number ?? '',
-    'lname' => $lname ?? '',
-    'lname2' => $lname2 ?? '',
-    'fname' => $fname ?? '',
-    'mname' => $mname ?? '',
-    'sexo' => $sexo ?? '',
-    'fecha_nacimiento' => $fecha_nacimiento ?? '',
-    'edad' => $edadPaciente ?? '',
+        'afiliacion' => $afiliacion ?? '',
+        'hc_number' => $hc_number ?? '',
+        'archive_number' => $hc_number ?? '',
+        'lname' => $lname ?? '',
+        'lname2' => $lname2 ?? '',
+        'fname' => $fname ?? '',
+        'mname' => $mname ?? '',
+        'sexo' => $sexo ?? '',
+        'fecha_nacimiento' => $fecha_nacimiento ?? '',
+        'edad' => $edadPaciente ?? '',
 ];
 
 ob_start();
@@ -80,7 +80,17 @@ ob_start();
     <br>
     <br>
 <?php
-echo "<img src='" . htmlspecialchars($cirujano_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'><br>";
+$topSrc = (string)($cirujano_data['signature_path'] ?? '');
+$bottomSrc = (string)($cirujano_data['firma'] ?? '');
+
+mf_renderMergedSignature($topSrc, $bottomSrc, [
+        'padTop' => 100,
+        'maxHeight' => 70,
+        'boxW' => 320,
+        'boxH' => 80,
+        'alt' => 'Firma y sello (Cirujano)',
+]);
+echo"<br>";
 echo strtoupper($cirujano_data['nombre']);
 echo "<br>";
 ?>

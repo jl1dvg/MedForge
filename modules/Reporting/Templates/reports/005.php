@@ -1,16 +1,120 @@
 <?php
+function mf_loadImageAny(string $src)
+{
+    $src = trim($src);
+    if ($src === '') return null;
+
+    // Si viene como URL, intentamos descargar
+    if (preg_match('~^https?://~i', $src)) {
+        $data = @file_get_contents($src);
+        if ($data === false) return null;
+        $im = @imagecreatefromstring($data);
+        return $im ?: null;
+    }
+
+    // Si es path relativo/absoluto, lo resolvemos contra el docroot y este directorio
+    $candidates = [];
+    $candidates[] = $src;
+    if (!empty($_SERVER['DOCUMENT_ROOT'])) {
+        $candidates[] = rtrim($_SERVER['DOCUMENT_ROOT'], '/') . '/' . ltrim($src, '/');
+    }
+    $candidates[] = __DIR__ . '/' . ltrim($src, '/');
+
+    foreach ($candidates as $p) {
+        if (!is_string($p) || $p === '' || !is_file($p)) continue;
+        $ext = strtolower(pathinfo($p, PATHINFO_EXTENSION));
+        if ($ext === 'png') {
+            $im = @imagecreatefrompng($p);
+            return $im ?: null;
+        }
+        if ($ext === 'jpg' || $ext === 'jpeg') {
+            $im = @imagecreatefromjpeg($p);
+            return $im ?: null;
+        }
+        // fallback
+        $data = @file_get_contents($p);
+        if ($data !== false) {
+            $im = @imagecreatefromstring($data);
+            return $im ?: null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Renderiza firma + sello como UNA sola imagen (base64 PNG) para mejor compatibilidad con PDF.
+ * Si no puede unirlas, cae a un overlay CSS.
+ */
+function mf_renderMergedSignature(string $topSrc, string $bottomSrc, array $opt = []): void
+{
+    $padTop = (int)($opt['padTop'] ?? 100);
+    $maxHeight = (int)($opt['maxHeight'] ?? 70);
+    $boxW = (int)($opt['boxW'] ?? 320);
+    $boxH = (int)($opt['boxH'] ?? 80);
+    $alt = (string)($opt['alt'] ?? 'Firma y sello');
+
+    $mergedSignatureSrc = null;
+
+    $topIm = mf_loadImageAny($topSrc);
+    $bottomIm = mf_loadImageAny($bottomSrc);
+
+    if ($topIm && $bottomIm && function_exists('imagecreatetruecolor')) {
+        $w = max(imagesx($topIm), imagesx($bottomIm));
+        $h = max(imagesy($topIm), imagesy($bottomIm)) + max(0, $padTop);
+
+        $canvas = imagecreatetruecolor($w, $h);
+
+        // Fondo transparente
+        imagealphablending($canvas, false);
+        imagesavealpha($canvas, true);
+        $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+        imagefilledrectangle($canvas, 0, 0, $w, $h, $transparent);
+
+        // Dibujar abajo (sello) y luego arriba (firma)
+        imagealphablending($canvas, true);
+        imagecopy($canvas, $bottomIm, 0, max(0, $padTop), 0, 0, imagesx($bottomIm), imagesy($bottomIm));
+        imagecopy($canvas, $topIm, 0, 0, 0, 0, imagesx($topIm), imagesy($topIm));
+
+        ob_start();
+        imagepng($canvas);
+        $pngData = ob_get_clean();
+
+        if ($pngData) {
+            $mergedSignatureSrc = 'data:image/png;base64,' . base64_encode($pngData);
+        }
+
+        imagedestroy($canvas);
+    }
+
+    // Liberar recursos GD
+    if (is_resource($topIm) || (class_exists('GdImage') && $topIm instanceof GdImage)) imagedestroy($topIm);
+    if (is_resource($bottomIm) || (class_exists('GdImage') && $bottomIm instanceof GdImage)) imagedestroy($bottomIm);
+
+    if ($mergedSignatureSrc) {
+        echo "<img src='" . htmlspecialchars($mergedSignatureSrc, ENT_QUOTES) . "' alt='" . htmlspecialchars($alt, ENT_QUOTES) . "' style='max-height: {$maxHeight}px;'>";
+        return;
+    }
+
+    // Fallback: overlay por CSS (para navegador). Algunos motores PDF lo ignorarán.
+    echo "\n<div style='position: relative; height: {$boxH}px; width: {$boxW}px;'>\n";
+    echo "  <img src='" . htmlspecialchars($topSrc, ENT_QUOTES) . "' alt='Imagen de la firma' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 2;'>\n";
+    echo "  <img src='" . htmlspecialchars($bottomSrc, ENT_QUOTES) . "' alt='Imagen del sello' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 1;'>\n";
+    echo "</div>\n";
+}
+
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
-    'afiliacion' => $afiliacion ?? '',
-    'hc_number' => $hc_number ?? '',
-    'archive_number' => $hc_number ?? '',
-    'lname' => $lname ?? '',
-    'lname2' => $lname2 ?? '',
-    'fname' => $fname ?? '',
-    'mname' => $mname ?? '',
-    'sexo' => $sexo ?? '',
-    'fecha_nacimiento' => $fecha_nacimiento ?? '',
-    'edad' => $edadPaciente ?? '',
+        'afiliacion' => $afiliacion ?? '',
+        'hc_number' => $hc_number ?? '',
+        'archive_number' => $hc_number ?? '',
+        'lname' => $lname ?? '',
+        'lname2' => $lname2 ?? '',
+        'fname' => $fname ?? '',
+        'mname' => $mname ?? '',
+        'sexo' => $sexo ?? '',
+        'fecha_nacimiento' => $fecha_nacimiento ?? '',
+        'edad' => $edadPaciente ?? '',
 ];
 
 ob_start();
@@ -55,11 +159,11 @@ ob_start();
         </tr>
         <?php
         $maxLines = max(
-            count($preEvolucion ?? []),
-            count($preIndicacion ?? []),
-            count($postEvolucion ?? []),
-            count($postIndicacion ?? []),
-            7
+                count($preEvolucion ?? []),
+                count($preIndicacion ?? []),
+                count($postEvolucion ?? []),
+                count($postIndicacion ?? []),
+                7
         );
         ?>
         <tr>
@@ -94,9 +198,9 @@ ob_start();
 
         <?php
         $maxLinesPost = max(
-            count($postEvolucion ?? []),
-            count($postIndicacion ?? []),
-            6
+                count($postEvolucion ?? []),
+                count($postIndicacion ?? []),
+                6
         );
         for ($i = 0; $i < $maxLinesPost; $i++): ?>
             <tr>
@@ -113,9 +217,12 @@ ob_start();
             <td colspan="3" class="blanco_left"></td>
             <td colspan="29" class="blanco_left" style="text-align: left;">
                 <?php if (!empty($anestesiologo_data['firma'])): ?>
-                    <div style="margin-bottom: -25px;">
+                    <div style='position: relative; height: 80px; width: 300px;'>
+                        <img src="<?= htmlspecialchars($anestesiologo_data['signature_path']) ?>"
+                             alt="Firma del cirujano"
+                             style='position: absolute; top: 0; left: 0; max-height: 50px; z-index: 2;'>
                         <img src="<?= htmlspecialchars($anestesiologo_data['firma']) ?>" alt="Firma del cirujano"
-                             style="max-height: 60px;">
+                             style='position: absolute; top: 0; left: 0; max-height: 50px; z-index: 1;'>
                     </div>
                 <?php endif; ?>
                 <?= strtoupper($anestesiologo_data['nombre']) ?>
@@ -152,9 +259,11 @@ ob_start();
             <td colspan="3" class="blanco_left"></td>
             <td colspan="29" class="blanco_left" style="text-align: left;">
                 <?php if (!empty($cirujano_data['firma'])): ?>
-                    <div style="margin-bottom: -25px;">
+                    <div style='position: relative; height: 80px; width: 300px;'>
+                        <img src="<?= htmlspecialchars($cirujano_data['signature_path']) ?>" alt="Firma del cirujano"
+                             style='position: absolute; top: 0; left: 0; max-height: 50px; z-index: 2;'>
                         <img src="<?= htmlspecialchars($cirujano_data['firma']) ?>" alt="Firma del cirujano"
-                             style="max-height: 60px;">
+                             style='position: absolute; top: 0; left: 0; max-height: 50px; z-index: 1;'>
                     </div>
                 <?php endif; ?>
                 <?= strtoupper($cirujano_data['nombre']) ?>
