@@ -306,7 +306,7 @@ ob_start();
         <tr>
             <td class='blanco' style='height: 75' colspan='5'><?php echo strtoupper($cirujano_data['nombre']); ?></td>
             <td class='blanco' colspan='5'><?php echo strtoupper($cirujano_data['especialidad']); ?></td>
-            <td class='blanco' colspan='5'><?php echo $cirujano_data['cedula']; ?></td>
+            <td class='blanco' colspan='5'><?php echo "<img src='" . htmlspecialchars($cirujano_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>"; ?></td>
             <td class='blanco'
                 colspan='5'><?php echo "<img src='" . htmlspecialchars($cirujano_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                 ?></td>
@@ -331,12 +331,12 @@ ob_start();
                 }
                 ?></td>
             <td class='blanco' colspan='5'><?php
-                if (!empty($cirujano2_data) && !empty($cirujano2_data['cedula'])) {
-                    echo $cirujano2_data['cedula'];
-                } elseif (!empty($ayudante_data['cedula'])) {
-                    echo $ayudante_data['cedula'];
+                if (!empty($cirujano2_data) && !empty($cirujano2_data['signature_path'])) {
+                    echo "<img src='" . htmlspecialchars($cirujano2_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+                } elseif (!empty($ayudante_data['signature_path'])) {
+                    echo "<img src='" . htmlspecialchars($ayudante_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                 } else {
-                    echo '';
+                    echo ' ';
                 }
                 ?></td>
             <td class='blanco' colspan='5'><?php
@@ -353,7 +353,7 @@ ob_start();
             <td class='blanco' style='height: 75'
                 colspan='5'><?php echo strtoupper($anestesiologo_data['nombre']); ?></td>
             <td class='blanco' colspan='5'><?php echo strtoupper($anestesiologo_data['especialidad']); ?></td>
-            <td class='blanco' colspan='5'><?php echo $anestesiologo_data['cedula']; ?></td>
+            <td class='blanco' colspan='5'><?php echo "<img src='" . htmlspecialchars($anestesiologo_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>"; ?></td>
             <td class='blanco'
                 colspan='5'><?php echo "<img src='" . htmlspecialchars($anestesiologo_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                 ?></td>
