@@ -40,6 +40,14 @@ return function (Router $router) {
         (new SolicitudController($pdo))->rescrapeDerivacion();
     });
 
+    $router->post('/solicitudes/derivacion-preseleccion', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->derivacionPreseleccion();
+    });
+
+    $router->post('/solicitudes/derivacion-preseleccion/guardar', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->guardarDerivacionPreseleccion();
+    });
+
     $router->post('/solicitudes/cobertura-mail', function (\PDO $pdo) {
         (new SolicitudController($pdo))->enviarCoberturaMail();
     });

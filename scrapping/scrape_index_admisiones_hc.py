@@ -614,6 +614,7 @@ def export_to_csv(rows, filename):
 # =========================
 # Filtro por pedido_origen_raw
 # =========================
+
 def filtrar_por_pedido_origen(rows, term: str):
     """Filtra filas por coincidencia parcial (case-insensitive) en `pedido_origen_raw`.
 
@@ -630,6 +631,30 @@ def filtrar_por_pedido_origen(rows, term: str):
     out = []
     for r in rows or []:
         v = re.sub(r"\s+", " ", (r.get("pedido_origen_raw") or "").strip())
+        if t_upper in v.upper():
+            out.append(r)
+    return out
+
+
+# =========================
+# Filtro por procedimiento
+# =========================
+def filtrar_por_procedimiento(rows, term: str):
+    """Filtra filas por coincidencia parcial (case-insensitive) en `procedimiento`.
+
+    Ejemplos de term:
+      - "66982"
+      - "OCT"
+      - "BIOMETRIA"
+    """
+    term = re.sub(r"\s+", " ", (term or "").strip())
+    if not term:
+        return rows
+
+    t_upper = term.upper()
+    out = []
+    for r in rows or []:
+        v = re.sub(r"\s+", " ", (r.get("procedimiento") or "").strip())
         if t_upper in v.upper():
             out.append(r)
     return out
@@ -660,12 +685,13 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(
             "Uso:\n"
-            "  python scrape_index_admisiones_hc.py 0903470565 [--quiet] [--csv archivo.csv] [--origen VALOR]\n"
-            "  python scrape_index_admisiones_hc.py YYYY-MM-DD YYYY-MM-DD [--quiet] [--csv archivo.csv] [--origen VALOR]\n"
+            "  python scrape_index_admisiones_hc.py 0903470565 [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM]\n"
+            "  python scrape_index_admisiones_hc.py YYYY-MM-DD YYYY-MM-DD [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM]\n"
             "\nOpciones:\n"
             "  --group               Agrupa por codigo_derivacion\n"
             "  --include-undefined   Incluye codigo_derivacion vacío/(no definido) en el agrupamiento\n"
             "  --origen VALOR        Filtra por pedido_origen_raw (ej: ADMISIÓN, CRM, 229444)\n"
+            "  --procedimiento TERM  Filtra por el campo procedimiento (ej: 66982, OCT, BIOMETRIA)\n"
         )
         sys.exit(1)
 
@@ -688,6 +714,13 @@ if __name__ == "__main__":
         if i + 1 < len(sys.argv):
             origen_filter = sys.argv[i + 1]
 
+    # Filtro opcional por procedimiento (ej: "66982", "OCT", "BIOMETRIA")
+    procedimiento_filter = None
+    if "--procedimiento" in sys.argv:
+        i = sys.argv.index("--procedimiento")
+        if i + 1 < len(sys.argv):
+            procedimiento_filter = sys.argv[i + 1]
+
 
     # Detectar si argv[1] es fecha YYYY-MM-DD
     def es_fecha(s: str) -> bool:
@@ -706,6 +739,10 @@ if __name__ == "__main__":
             out = scrape_index_admisiones(fecha_inicio, fecha_fin)
             if origen_filter:
                 out["rows"] = filtrar_por_pedido_origen(out["rows"], origen_filter)
+                out["total"] = len(out["rows"])
+
+            if procedimiento_filter:
+                out["rows"] = filtrar_por_procedimiento(out["rows"], procedimiento_filter)
                 out["total"] = len(out["rows"])
 
             # Siempre ordenar por pedido_id asc (vacíos/0 al final)
@@ -740,6 +777,10 @@ if __name__ == "__main__":
             out = scrape_index_admisiones_por_identificacion(identificacion)
             if origen_filter:
                 out["rows"] = filtrar_por_pedido_origen(out["rows"], origen_filter)
+                out["total"] = len(out["rows"])
+
+            if procedimiento_filter:
+                out["rows"] = filtrar_por_procedimiento(out["rows"], procedimiento_filter)
                 out["total"] = len(out["rows"])
 
             # Siempre ordenar por pedido_id asc (vacíos/0 al final)
