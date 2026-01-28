@@ -109,7 +109,7 @@ JS,
                         </div>
                         <div class="col-md-4 col-lg-3">
                             <label class="form-label d-block">&nbsp;</label>
-                            <a href="/dashboard/general" class="btn btn-light w-100">
+                            <a href="/dashboard" class="btn btn-light w-100">
                                 <i class="fa fa-undo me-5"></i>Limpiar
                             </a>
                         </div>

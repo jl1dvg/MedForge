@@ -172,7 +172,8 @@ class InformesHelper
         </tr>";
     }
 
-    public static function formatearListaProcedimientos(array $bloques): string {
+    public static function formatearListaProcedimientos(array $bloques): string
+    {
         $lista = [];
         foreach ($bloques as $grupo) {
             foreach ($grupo as $p) {
@@ -205,6 +206,7 @@ class InformesHelper
         $hcFiltro = trim((string)($filtros['hc_number'] ?? ''));
         $derivacionFiltro = $filtros['derivacion'] ?? '';
         $afiliacionFiltro = self::normalizarAfiliacion($filtros['afiliacion'] ?? '');
+        $vistaRapida = ($filtros['vista'] ?? '') === 'rapida';
 
         $consolidado = [];
 
@@ -278,10 +280,13 @@ class InformesHelper
                 continue;
             }
 
-            if (!isset($cacheDerivaciones[$formId])) {
-                $cacheDerivaciones[$formId] = $billingController->obtenerDerivacionPorFormId($formId);
+            $derivacion = null;
+            if (!$vistaRapida) {
+                if (!isset($cacheDerivaciones[$formId])) {
+                    $cacheDerivaciones[$formId] = $billingController->obtenerDerivacionPorFormId($formId);
+                }
+                $derivacion = $cacheDerivaciones[$formId];
             }
-            $derivacion = $cacheDerivaciones[$formId];
 
             $consolidado[$mes][] = [
                 'nombre' => $pacienteInfo['lname'] . ' ' . $pacienteInfo['fname'],
@@ -292,6 +297,7 @@ class InformesHelper
                 'id' => $factura['id'],
                 'categoria' => $categoria,
                 'derivacion' => $derivacion,
+                'vista_rapida' => $vistaRapida,
             ];
         }
 
@@ -299,13 +305,14 @@ class InformesHelper
     }
 
     public static function agruparConsolidadoPorPaciente(
-        array $consolidadoPorCategoria,
-        array &$pacientesCache,
-        array &$datosCache,
-        array &$cacheDerivaciones,
-        PacienteService $pacienteService,
+        array             $consolidadoPorCategoria,
+        array             &$pacientesCache,
+        array             &$datosCache,
+        array             &$cacheDerivaciones,
+        PacienteService   $pacienteService,
         BillingController $billingController
-    ): array {
+    ): array
+    {
         $agrupadoPorCategoria = [];
 
         foreach ($consolidadoPorCategoria as $categoria => $pacientesPorMes) {
@@ -354,16 +361,19 @@ class InformesHelper
                         $agrupadoPorCategoria[$categoria][$mesKey][$hc]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
                     }
 
-                    if (!isset($cacheDerivaciones[$p['form_id']])) {
-                        $cacheDerivaciones[$p['form_id']] = $billingController->obtenerDerivacionPorFormId($p['form_id']);
-                    }
-                    $derivacion = $p['derivacion'] ?? $cacheDerivaciones[$p['form_id']];
-                    if (!empty($derivacion['diagnostico'])) {
-                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
-                    }
-                    $codigoDerivacion = $derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null;
-                    if (!empty($codigoDerivacion)) {
-                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cod_derivacion'][] = $codigoDerivacion;
+                    $vistaRapida = !empty($p['vista_rapida']);
+                    if (!$vistaRapida) {
+                        if (!isset($cacheDerivaciones[$p['form_id']])) {
+                            $cacheDerivaciones[$p['form_id']] = $billingController->obtenerDerivacionPorFormId($p['form_id']);
+                        }
+                        $derivacion = $p['derivacion'] ?? $cacheDerivaciones[$p['form_id']];
+                        if (!empty($derivacion['diagnostico'])) {
+                            $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
+                        }
+                        $codigoDerivacion = $derivacion['cod_derivacion'] ?? $derivacion['codigo_derivacion'] ?? null;
+                        if (!empty($codigoDerivacion)) {
+                            $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cod_derivacion'][] = $codigoDerivacion;
+                        }
                     }
 
                     if (!isset($pacientesCache[$hc])) {
@@ -434,9 +444,9 @@ class InformesHelper
 
         // 2) Regla fuerte: "imagenes" SOLO si se facturó con alguno de los códigos permitidos.
         $codigosImagen = [
-            '76512', '92081',
-            '281010', '281021', '281032',
-            '281186', '281197', '281230', '281306',
+            '76512', '92081', '92225',
+            '281010', '281021', '281032', '281229',
+            '281186', '281197', '281230', '281306', '281295',
         ];
         $lookupImagen = array_flip($codigosImagen);
 

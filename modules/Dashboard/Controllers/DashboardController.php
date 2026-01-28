@@ -2,8 +2,6 @@
 
 namespace Modules\Dashboard\Controllers;
 
-use Core\DashboardAccess;
-use Core\Permissions;
 use Core\View;
 use DateInterval;
 use DateTimeImmutable;
@@ -36,36 +34,11 @@ class DashboardController
 
     public function index()
     {
-        return $this->general();
-    }
-
-    public function entry(): void
-    {
-        $this->requireAuth();
-        $context = $this->resolveDashboardContext();
-
-        if (!empty($context['is_admin'])) {
-            View::render(
-                dirname(__DIR__) . '/views/selector.php',
-                [
-                    'pageTitle' => 'Dashboards',
-                    'dashboard_context' => $context,
-                    'dashboards' => DashboardAccess::dashboards(),
-                ]
-            );
-            return;
-        }
-
-        header('Location: ' . ($context['default_path'] ?? DashboardAccess::dashboardPath(DashboardAccess::DASHBOARD_GENERAL)));
-        exit;
-    }
-
-    public function general(): void
-    {
         try {
-            $this->requireAuth();
-            $context = $this->resolveDashboardContext();
-            DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_GENERAL);
+            if (!isset($_SESSION['user_id'])) {
+                header('Location: /auth/login');
+                exit;
+            }
 
             $dateRange = $this->resolveDateRange();
             $username = $this->getAuthenticatedUser();
@@ -121,54 +94,6 @@ class DashboardController
             http_response_code(500);
             echo "Error interno: " . htmlspecialchars($e->getMessage());
         }
-    }
-
-    public function solicitudes(): void
-    {
-        $this->requireAuth();
-        $context = $this->resolveDashboardContext();
-        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_SOLICITUDES);
-
-        header('Location: /solicitudes/dashboard');
-        exit;
-    }
-
-    public function cirugias(): void
-    {
-        $this->requireAuth();
-        $context = $this->resolveDashboardContext();
-        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_CIRUGIAS);
-
-        header('Location: /cirugias/dashboard');
-        exit;
-    }
-
-    public function billing(): void
-    {
-        $this->requireAuth();
-        $context = $this->resolveDashboardContext();
-        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_BILLING);
-
-        header('Location: /billing/dashboard');
-        exit;
-    }
-
-    private function requireAuth(): void
-    {
-        if (isset($_SESSION['user_id'])) {
-            return;
-        }
-
-        header('Location: /auth/login');
-        exit;
-    }
-
-    private function resolveDashboardContext(): array
-    {
-        $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
-        $permissions = Permissions::normalize($_SESSION['permisos'] ?? []);
-
-        return DashboardAccess::resolveUserContext($this->db, $userId, $permissions);
     }
 
     public function totalPacientes()

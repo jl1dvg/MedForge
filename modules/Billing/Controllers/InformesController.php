@@ -322,25 +322,32 @@ class InformesController extends BaseController
         ];
 
         $mesSeleccionado = $filtros['mes'];
+        $vista = $_GET['vista'] ?? '';
+        if ($vista === '' && !empty($mesSeleccionado)) {
+            $vista = 'rapida';
+        }
         $facturas = $this->billingController->obtenerFacturasDisponibles($mesSeleccionado ?: null);
 
+        $necesitaDerivacion = $vista !== 'rapida' || !empty($filtros['derivacion']);
         $cacheDerivaciones = [];
         $grupos = [];
-        foreach ($facturas as $factura) {
-            $formId = $factura['form_id'];
-            if (!isset($cacheDerivaciones[$formId])) {
-                $cacheDerivaciones[$formId] = $this->billingController->obtenerDerivacionPorFormId($formId);
-            }
-            $derivacion = $cacheDerivaciones[$formId];
-            $codigo = $derivacion['codigo_derivacion'] ?? $derivacion['cod_derivacion'] ?? null;
-            $keyAgrupacion = $codigo ?: 'SIN_CODIGO';
+        if ($necesitaDerivacion) {
+            foreach ($facturas as $factura) {
+                $formId = $factura['form_id'];
+                if (!isset($cacheDerivaciones[$formId])) {
+                    $cacheDerivaciones[$formId] = $this->billingController->obtenerDerivacionPorFormId($formId);
+                }
+                $derivacion = $cacheDerivaciones[$formId];
+                $codigo = $derivacion['codigo_derivacion'] ?? $derivacion['cod_derivacion'] ?? null;
+                $keyAgrupacion = $codigo ?: 'SIN_CODIGO';
 
-            $grupos[$keyAgrupacion][] = [
-                'factura' => $factura,
-                'codigo' => $codigo,
-                'form_id' => $formId,
-                'tiene_codigo' => !empty($codigo),
-            ];
+                $grupos[$keyAgrupacion][] = [
+                    'factura' => $factura,
+                    'codigo' => $codigo,
+                    'form_id' => $formId,
+                    'tiene_codigo' => !empty($codigo),
+                ];
+            }
         }
 
         $cachePorMes = [];
@@ -363,7 +370,7 @@ class InformesController extends BaseController
                     $pacientesCache[$hc] = $paciente;
                 }
 
-                if (!isset($cachePorMes[$mes]['datos'][$formId])) {
+                if ($vista !== 'rapida' && !isset($cachePorMes[$mes]['datos'][$formId])) {
                     $datos = $this->billingController->obtenerDatos($formId);
                     $cachePorMes[$mes]['datos'][$formId] = $datos;
                     $datosCache[$formId] = $datos;
@@ -399,6 +406,7 @@ class InformesController extends BaseController
             'scrapingOutput' => $scrapingOutput,
             'filtros' => $filtros,
             'mesSeleccionado' => $mesSeleccionado,
+            'vista' => $vista,
             'facturas' => $facturas,
             'grupos' => $grupos,
             'cachePorMes' => $cachePorMes,

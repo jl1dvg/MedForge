@@ -3,7 +3,6 @@
 namespace Modules\Solicitudes\Controllers;
 
 use Core\BaseController;
-use Core\DashboardAccess;
 use Helpers\JsonLogger;
 use DateInterval;
 use DateTimeImmutable;
@@ -89,8 +88,6 @@ class SolicitudController extends BaseController
     public function dashboard(): void
     {
         $this->requireAuth();
-        $context = DashboardAccess::resolveUserContext($this->pdo, $this->currentUserId(), $this->currentPermissions());
-        DashboardAccess::enforceAccess($context, DashboardAccess::DASHBOARD_SOLICITUDES);
 
         $this->render(
             __DIR__ . '/../views/dashboard.php',
@@ -1210,7 +1207,23 @@ class SolicitudController extends BaseController
             $estadoSlug = $this->estadoService->normalizeSlug($metricConfig['estado']);
             return array_values(array_filter(
                 $solicitudes,
-                static fn(array $row) => ($row['estado'] ?? '') === $estadoSlug
+                function (array $row) use ($estadoSlug) {
+                    $rawEstado = $row['kanban_estado'] ?? $row['estado'] ?? '';
+                    $estadoActual = $this->estadoService->normalizeSlug((string)$rawEstado);
+                    if ($estadoActual !== $estadoSlug) {
+                        return false;
+                    }
+
+                    if (!empty($row['checklist']) && is_array($row['checklist'])) {
+                        foreach ($row['checklist'] as $item) {
+                            if (($item['slug'] ?? '') === $estadoSlug) {
+                                return empty($item['completed']);
+                            }
+                        }
+                    }
+
+                    return true;
+                }
             ));
         }
 
