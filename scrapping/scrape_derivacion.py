@@ -4,7 +4,7 @@ import sys
 import json
 import re
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 import os
 
 # Limitar hilos de OpenBLAS/Numpy para no chocar con RLIMIT_NPROC del hosting
@@ -88,7 +88,7 @@ def normalizar_hc(hc_number):
     return re.sub(r"[^A-Za-z0-9_-]+", "_", hc_number) if hc_number else "SIN_HC"
 
 
-def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_derivacion):
+def descargar_pdf_totalizado(session, totalizado_id, form_id, hc_number, codigo_derivacion):
     # Guardar en storage/derivaciones/{hc}/{codigo}/
     safe_hc = normalizar_hc(str(hc_number or "SIN_HC"))
     safe_codigo = normalizar_codigo(codigo_derivacion or "SIN_CODIGO")
@@ -98,7 +98,7 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
 
     pdf_url = (
         "https://cive.ddns.net:8085/documentacion/doc-multiple-documentos/imprimir-totalizado"
-        f"?id={paciente_id}&idSolicitud={form_id}&check=18"
+        f"?id={totalizado_id}&idSolicitud={form_id}&check=18"
     )
 
     def extraer_pdf_candidates(html):
@@ -200,6 +200,23 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
             print("   " + ocr_text.replace("\n", " ")[:300] + ("..." if len(ocr_text) > 300 else ""))
 
     return archivo_path
+
+
+def find_totalizado_id(html: str, form_id: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
+    for link in soup.select("a[href*='doc-multiple-documentos/seleccionar-totalizado']"):
+        href = link.get("href", "")
+        if not href:
+            continue
+        parsed = urlparse(href)
+        qs = parse_qs(parsed.query or "")
+        id_solicitud = (qs.get("idSolicitud") or [""])[0]
+        if str(id_solicitud) != str(form_id):
+            continue
+        totalizado_id = (qs.get("id") or [""])[0]
+        if totalizado_id:
+            return totalizado_id
+    return None
 
 
 def iniciar_sesion_y_extraer_log():
@@ -323,9 +340,11 @@ def iniciar_sesion_y_extraer_log():
     )
     diagnosticos = [opt.get_text(strip=True) for opt in diagnostico_options] if diagnostico_options else []
 
+    totalizado_id = find_totalizado_id(r_tabla.text, form_id) or paciente_id
+
     archivo_path = descargar_pdf_totalizado(
         session,
-        paciente_id,
+        totalizado_id,
         form_id,
         hc_number,
         codigo_derivacion_raw
