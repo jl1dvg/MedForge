@@ -1245,23 +1245,23 @@ async function guardarPreseleccionDerivacion(payload) {
 function buildDerivacionOptionsHtml(options, selectedValue) {
     return `
         <input type="hidden" id="derivacionSeleccionValue" value="${escapeHtml(
-            selectedValue || ""
-        )}">
+        selectedValue || ""
+    )}">
         <div class="d-flex flex-column gap-2 text-start" id="derivacionSeleccionList">
             ${options
-                .map((option) => {
-                    const value = String(option.pedido_id_mas_antiguo || "");
-                    const isSelected = value === selectedValue;
-                    const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
-                        option.pedido_id_mas_antiguo || "-"
-                    }`;
-                    const meta = [
-                        option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
-                        option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
-                    ]
-                        .filter(Boolean)
-                        .join(" · ");
-                    return `
+        .map((option) => {
+            const value = String(option.pedido_id_mas_antiguo || "");
+            const isSelected = value === selectedValue;
+            const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
+                option.pedido_id_mas_antiguo || "-"
+            }`;
+            const meta = [
+                option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
+                option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
+            ]
+                .filter(Boolean)
+                .join(" · ");
+            return `
                         <button type="button"
                                 class="btn btn-light text-start border ${isSelected ? "border-primary" : ""}"
                                 data-derivacion-option="true"
@@ -1270,8 +1270,8 @@ function buildDerivacionOptionsHtml(options, selectedValue) {
                             ${meta ? `<div class="text-muted small">${escapeHtml(meta)}</div>` : ""}
                         </button>
                     `;
-                })
-                .join("")}
+        })
+        .join("")}
         </div>
     `;
 }
@@ -1527,7 +1527,6 @@ function initSigcenterPanel(container) {
     const currentFecha = card.querySelector("[data-sigcenter-current-fecha]");
     const currentAgenda = card.querySelector("[data-sigcenter-current-agenda]");
     const sedeSelect = card.querySelector("[data-sigcenter-sede]");
-    const procedureSelect = card.querySelector("[data-sigcenter-procedimiento]");
     const loadDaysBtn = card.querySelector("[data-sigcenter-load-days]");
     const daysContainer = card.querySelector("[data-sigcenter-days]");
     const timesContainer = card.querySelector("[data-sigcenter-times]");
@@ -1548,9 +1547,7 @@ function initSigcenterPanel(container) {
         selectedDate: "",
         selectedTime: "",
         arrivalTime: "",
-        procedimientoId: existingProcedimientoId || "",
         sedeId: "1",
-        procedimientosLoaded: false,
         sedesLoaded: false,
         action: existingAgendaId ? "UPDATE" : "CREATE",
         agendaId: existingAgendaId,
@@ -1672,7 +1669,6 @@ function initSigcenterPanel(container) {
     };
 
     const setControlsEnabled = (enabled) => {
-        if (procedureSelect) procedureSelect.disabled = !enabled;
         if (loadDaysBtn) loadDaysBtn.disabled = !enabled;
         if (!enabled && scheduleBtn) scheduleBtn.disabled = true;
     };
@@ -1737,55 +1733,7 @@ function initSigcenterPanel(container) {
             });
     }
 
-    function loadProcedimientos() {
-        if (!procedureSelect || !trabajadorId) return;
-        state.procedimientosLoaded = true;
-        setStatus("Cargando procedimientos...", "text-muted");
-        return fetch("/api/sigcenter/procedimientos.php", {
-            method: "POST",
-            headers: {"Content-Type": "application/json;charset=UTF-8"},
-            body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113}),
-            credentials: "include",
-        })
-            .then(async (res) => {
-                const raw = await res.text();
-                console.log("[Sigcenter] procedimientos HTTP:", res.status, raw);
-                let data = {};
-                try {
-                    data = raw ? JSON.parse(raw) : {};
-                } catch (error) {
-                    console.error("[Sigcenter] JSON inválido en procedimientos:", error);
-                }
-                if (!res.ok || !data.success) {
-                    throw new Error(
-                        data?.error
-                        || data?.message
-                        || `No se pudieron cargar procedimientos (HTTP ${res.status})`
-                    );
-                }
-                const procedimientos = extractProcedimientos(data);
-                procedureSelect.innerHTML = '<option value="">Selecciona un procedimiento</option>';
-                procedimientos.forEach((proc) => {
-                    const option = document.createElement("option");
-                    option.value = proc.id;
-                    option.textContent = proc.label;
-                    if (proc.id === state.procedimientoId) {
-                        option.selected = true;
-                    }
-                    procedureSelect.appendChild(option);
-                });
-                if (!state.procedimientoId && procedimientos.length > 0) {
-                    state.procedimientoId = procedimientos[0].id;
-                    procedureSelect.value = state.procedimientoId;
-                }
-                setStatus("Procedimientos cargados.", "text-muted");
-                updateScheduleButton();
-            })
-            .catch((error) => {
-                console.error(error);
-                setStatus(error?.message || "No se pudieron cargar procedimientos.", "text-danger");
-            });
-    }
+    // Procedimientos eliminados del frontend. No se requiere cargar ni renderizar.
 
     const updateAvailability = (checklist = []) => {
         const isReady = checklist.some((item) => {
@@ -1816,9 +1764,7 @@ function initSigcenterPanel(container) {
         if (isReady && hasWorker && !state.sedesLoaded) {
             loadSedes();
         }
-        if (isReady && hasWorker && !state.procedimientosLoaded) {
-            loadProcedimientos();
-        }
+        // Procedimientos eliminados: no se cargan.
     };
 
     const refreshChecklistState = async () => {
@@ -1873,7 +1819,6 @@ function initSigcenterPanel(container) {
         const ready = state.ready
             && state.selectedDate
             && state.selectedTime
-            && state.procedimientoId
             && state.sedeId;
         scheduleBtn.disabled = !ready;
     };
@@ -1982,37 +1927,47 @@ function initSigcenterPanel(container) {
             hora = `${hora}:00`;
         }
         const fechaInicio = `${fecha} ${hora}`;
-        const fechaLlegada = state.arrivalTime || "";
-        console.log("[Sigcenter] agendar payload:", {
-            solicitud_id: solicitudId,
-            hc_number: hcNumber,
-            trabajador_id: trabajadorId,
-            procedimiento_id: Number(state.procedimientoId || 0),
-            fecha_inicio: fechaInicio,
-            fecha_llegada: fechaLlegada,
-            agenda_id: state.agendaId,
-            action: state.action,
-            company_id: 113,
-            ID_SEDE: state.sedeId,
-        });
-
+        // Para compatibilidad, obtener el input si existe:
+        const arrivalInput = card.querySelector("[data-sigcenter-arrival]");
         scheduleBtn.disabled = true;
         setStatus("Agendando en Sigcenter...", "text-muted");
         try {
-            const res = await fetch("/api/sigcenter/agendar.php", {
+            console.log("[Sigcenter] agendar payload:", {
+                docSolicitud: solicitudId,
+                idtrabajador: trabajadorId,
+                fechaInicio,
+                fechaFin: (() => {
+                    const [h, m, s] = hora.split(":");
+                    const end = new Date(`${fecha}T${h}:${m}:${s || "00"}`);
+                    end.setMinutes(end.getMinutes() + 15);
+                    return end.toISOString().slice(0, 19).replace("T", " ");
+                })(),
+                horaIni: arrivalInput?.dataset?.horaIni || "",
+                horaFin: arrivalInput?.dataset?.horaFin || "",
+                sede_departamento: state.sedeId,
+                AgendaDoctor_ID_SEDE_DEPARTAMENTO: state.sedeId,
+                ID_OJO: card.dataset.idOjo || 1,
+                ID_ANESTESIA: 4
+            });
+            const res = await fetch("/api/sigcenter/agendar_real.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
                 body: JSON.stringify({
-                    solicitud_id: solicitudId,
-                    hc_number: hcNumber,
-                    trabajador_id: trabajadorId,
-                    procedimiento_id: Number(state.procedimientoId || 0),
-                    fecha_inicio: fechaInicio,
-                    fecha_llegada: fechaLlegada,
-                    agenda_id: state.agendaId,
-                    action: state.action,
-                    company_id: 113,
-                    ID_SEDE: state.sedeId,
+                    docSolicitud: solicitudId,
+                    idtrabajador: trabajadorId,
+                    fechaInicio,
+                    fechaFin: (() => {
+                        const [h, m, s] = hora.split(":");
+                        const end = new Date(`${fecha}T${h}:${m}:${s || "00"}`);
+                        end.setMinutes(end.getMinutes() + 15);
+                        return end.toISOString().slice(0, 19).replace("T", " ");
+                    })(),
+                    horaIni: arrivalInput?.dataset?.horaIni || "",
+                    horaFin: arrivalInput?.dataset?.horaFin || "",
+                    sede_departamento: state.sedeId,
+                    AgendaDoctor_ID_SEDE_DEPARTAMENTO: state.sedeId,
+                    ID_OJO: card.dataset.idOjo || 1,
+                    ID_ANESTESIA: 4
                 }),
                 credentials: "include",
             });
@@ -2054,13 +2009,6 @@ function initSigcenterPanel(container) {
         });
     }
 
-    if (procedureSelect) {
-        procedureSelect.addEventListener("change", (event) => {
-            state.procedimientoId = event.target.value;
-            updateScheduleButton();
-        });
-    }
-
     if (loadDaysBtn) {
         loadDaysBtn.addEventListener("click", () => loadDays());
     }
@@ -2078,7 +2026,7 @@ function initSigcenterPanel(container) {
     renderCurrentAgenda(existingAgendaId, existingFechaInicio);
     setScheduleLabel();
     setSelectedLabel();
-    setStatus("Selecciona un procedimiento y carga días disponibles.", "text-muted");
+    setStatus("Selecciona una sede y carga días disponibles.", "text-muted");
     refreshChecklistState();
 }
 
