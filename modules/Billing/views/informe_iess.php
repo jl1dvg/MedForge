@@ -17,6 +17,7 @@ $pacientesCache = $pacientesCache ?? [];
 $datosCache = $datosCache ?? [];
 $scrapingOutput = $scrapingOutput ?? null;
 $grupoConfig = $grupoConfig ?? [];
+$vista = $vista ?? '';
 $basePath = rtrim($grupoConfig['basePath'] ?? '/informes/iess', '/');
 $pageTitle = $grupoConfig['titulo'] ?? 'Informe IESS';
 $excelButtons = $grupoConfig['excelButtons'] ?? [];
@@ -57,6 +58,7 @@ $afiliacionesPermitidas = array_map(
         $afiliacionesPermitidas
 );
 $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
+$vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
 
 ?>
 
@@ -96,6 +98,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                     <div class="card-body">
                         <form method="GET" action="<?= htmlspecialchars($basePath) ?>" class="row g-3 align-items-end">
                             <input type="hidden" name="modo" value="consolidado">
+                            <?php if ($vista): ?>
+                                <input type="hidden" name="vista" value="<?= htmlspecialchars($vista) ?>">
+                            <?php endif; ?>
 
                             <div class="col-md-4">
                                 <label for="mes" class="form-label fw-bold">
@@ -202,6 +207,20 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                 </select>
                             </div>
 
+                            <div class="col-md-4">
+                                <label for="vista" class="form-label fw-bold">
+                                    <i class="mdi mdi-speedometer"></i> Vista:
+                                </label>
+                                <select name="vista" id="vista" class="form-select">
+                                    <option value="rapida" <?= $vista === 'rapida' ? 'selected' : '' ?>>
+                                        Rápida (carga ligera)
+                                    </option>
+                                    <option value="" <?= $vista === '' ? 'selected' : '' ?>>
+                                        Completa (con derivaciones)
+                                    </option>
+                                </select>
+                            </div>
+
                             <div class="col-md-4 d-flex gap-2">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="mdi mdi-magnify"></i> Buscar
@@ -300,10 +319,16 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                 <?php else: ?>
                 <?php if (!empty($mesSeleccionado) && $pacienteService && $billingController): ?>
                     <h4><?= htmlspecialchars($consolidadoTitulo) ?></h4>
+                    <?php if ($vista === 'rapida'): ?>
+                        <div class="alert alert-info">
+                            ⚡ Vista rápida activa: se omiten las consultas de derivación y el scraping para acelerar la carga.
+                            Usa <strong>Vista completa</strong> si necesitas validar códigos de derivación o ejecutar scraping.
+                        </div>
+                    <?php endif; ?>
                 <?php
                 $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
                         $facturas,
-                        $filtros,
+                        array_merge($filtros, ['vista' => $vista]),
                         $billingController,
                         $pacienteService,
                         $afiliacionesPermitidas,
@@ -394,19 +419,21 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                         </div>
 
                                         <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                                            <div class="text-muted small">Selecciona filas sin código de derivación para
-                                                lanzar el scraping en lote.
-                                            </div>
-                                            <form method="post" action="<?= htmlspecialchars($basePath) ?>"
-                                                  class="d-flex gap-2 align-items-center bulk-derivaciones-form">
-                                                <input type="hidden" name="scrape_derivacion" value="1">
-                                                <div class="bulk-derivaciones-fields"></div>
-                                                <button type="submit"
-                                                        class="btn btn-warning btn-sm bulk-derivaciones-submit"
-                                                        disabled>
-                                                    <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
-                                                </button>
-                                            </form>
+                                            <?php if ($vista !== 'rapida'): ?>
+                                                <div class="text-muted small">Selecciona filas sin código de
+                                                    derivación para lanzar el scraping en lote.
+                                                </div>
+                                                <form method="post" action="<?= htmlspecialchars($basePath) ?>"
+                                                      class="d-flex gap-2 align-items-center bulk-derivaciones-form">
+                                                    <input type="hidden" name="scrape_derivacion" value="1">
+                                                    <div class="bulk-derivaciones-fields"></div>
+                                                    <button type="submit"
+                                                            class="btn btn-warning btn-sm bulk-derivaciones-submit"
+                                                            disabled>
+                                                        <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         </div>
 
                                         <div class="table-responsive"
@@ -419,9 +446,12 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                             >
                                                 <thead class="bg-success-light">
                                                 <tr>
-                                                    <th class="text-center"><input type="checkbox"
-                                                                                   class="form-check-input select-all-derivaciones"
-                                                                                   title="Seleccionar visibles (filas sin código)">
+                                                    <th class="text-center">
+                                                        <?php if ($vista !== 'rapida'): ?>
+                                                            <input type="checkbox"
+                                                                   class="form-check-input select-all-derivaciones"
+                                                                   title="Seleccionar visibles (filas sin código)">
+                                                        <?php endif; ?>
                                                     </th>
                                                     <th>#</th>
                                                     <th>🏛️</th>
@@ -485,17 +515,19 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                         }, $info['form_ids']);
                                                         $procHtml = implode(', ', $consultaLinks);
                                                     }
-                                                    $puedeSeleccionar = empty($codigoDerivacion);
+                                                    $puedeSeleccionar = $vista !== 'rapida' && empty($codigoDerivacion);
                                                     ?>
                                                     <tr style='font-size: 12.5px;'>
                                                         <td class="text-center">
-                                                            <input
-                                                                    type="checkbox"
-                                                                    class="form-check-input select-derivacion"
-                                                                    data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
-                                                                    data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
-                                                                    <?= $puedeSeleccionar ? '' : 'disabled' ?>
-                                                            >
+                                                            <?php if ($vista !== 'rapida'): ?>
+                                                                <input
+                                                                        type="checkbox"
+                                                                        class="form-check-input select-derivacion"
+                                                                        data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
+                                                                        data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
+                                                                        <?= $puedeSeleccionar ? '' : 'disabled' ?>
+                                                                >
+                                                            <?php endif; ?>
                                                         </td>
                                                         <td class="text-center"><?= $n ?></td>
                                                         <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
@@ -508,7 +540,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                         <td><?= $procHtml ?></td>
                                                         <td class="text-center"><?= $edad ?></td>
                                                         <td class="text-center">
-                                                            <?php if (!empty($codigoDerivacion)): ?>
+                                                            <?php if ($vista === 'rapida'): ?>
+                                                                <span class="badge bg-secondary">—</span>
+                                                            <?php elseif (!empty($codigoDerivacion)): ?>
                                                                 <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
                                                             <?php else: ?>
                                                                 <form method="post" style="display:inline;">
