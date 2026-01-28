@@ -2042,6 +2042,7 @@ class SolicitudController extends BaseController
 
         $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
         $formId = trim((string)($_GET['form_id'] ?? ''));
+        $solicitudId = isset($_GET['solicitud_id']) ? (int) $_GET['solicitud_id'] : null;
 
         if ($hcNumber === '' || $formId === '') {
             $this->json(
@@ -2055,7 +2056,7 @@ class SolicitudController extends BaseController
         }
 
         try {
-            $derivacion = $this->ensureDerivacion($formId, $hcNumber);
+            $derivacion = $this->ensureDerivacion($formId, $hcNumber, $solicitudId);
         } catch (\Throwable $e) {
             // No bloquear el modal por fallas del scraper/consulta: responder como "sin derivación"
             $this->json(
@@ -2094,6 +2095,159 @@ class SolicitudController extends BaseController
         );
     }
 
+    public function derivacionPreseleccion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $hcNumber = trim((string)($payload['hc_number'] ?? $_POST['hc_number'] ?? ''));
+        $formId = trim((string)($payload['form_id'] ?? $_POST['form_id'] ?? ''));
+        $solicitudId = isset($payload['solicitud_id'])
+            ? (int) $payload['solicitud_id']
+            : (isset($_POST['solicitud_id']) ? (int) $_POST['solicitud_id'] : null);
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Faltan parámetros para consultar derivaciones disponibles.',
+                ],
+                400
+            );
+            return;
+        }
+
+        $seleccion = null;
+        if ($solicitudId) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccion($solicitudId);
+        }
+
+        if (!$seleccion) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        }
+
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            $this->json([
+                'success' => true,
+                'selected' => [
+                    'codigo_derivacion' => $seleccion['derivacion_codigo'] ?? null,
+                    'pedido_id_mas_antiguo' => $seleccion['derivacion_pedido_id'] ?? null,
+                    'lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+                    'fecha_vigencia' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+                ],
+                'needs_selection' => false,
+                'options' => [],
+            ]);
+            return;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_index_admisiones_hc.py';
+        if (!is_file($script)) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se encontró el script de admisiones.',
+                ],
+                500
+            );
+            return;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s --group --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $rawOutput = trim(implode("\n", $output));
+        $parsed = null;
+
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string)$output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se pudo interpretar la respuesta del scraper de admisiones.',
+                    'raw_output' => $rawOutput,
+                    'exit_code' => $exitCode,
+                ],
+                500
+            );
+            return;
+        }
+
+        $grouped = $parsed['grouped'] ?? [];
+        $options = [];
+        foreach ($grouped as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $data = $item['data'] ?? [];
+            $options[] = [
+                'codigo_derivacion' => $item['codigo_derivacion'] ?? null,
+                'pedido_id_mas_antiguo' => $item['pedido_id_mas_antiguo'] ?? null,
+                'lateralidad' => $item['lateralidad'] ?? null,
+                'fecha_vigencia' => $data['fecha_grupo'] ?? null,
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'selected' => null,
+            'needs_selection' => true,
+            'options' => $options,
+        ]);
+    }
+
+    public function guardarDerivacionPreseleccion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $solicitudId = isset($payload['solicitud_id']) ? (int) $payload['solicitud_id'] : null;
+        $codigo = trim((string)($payload['codigo_derivacion'] ?? ''));
+        $pedidoId = trim((string)($payload['pedido_id_mas_antiguo'] ?? ''));
+        $lateralidad = trim((string)($payload['lateralidad'] ?? ''));
+        $vigencia = trim((string)($payload['fecha_vigencia'] ?? ''));
+
+        if (!$solicitudId || $codigo === '' || $pedidoId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Datos incompletos para guardar la derivación seleccionada.',
+                ],
+                422
+            );
+            return;
+        }
+
+        $saved = $this->solicitudModel->guardarDerivacionPreseleccion($solicitudId, [
+            'derivacion_codigo' => $codigo,
+            'derivacion_pedido_id' => $pedidoId,
+            'derivacion_lateralidad' => $lateralidad !== '' ? $lateralidad : null,
+            'derivacion_fecha_vigencia_sel' => $vigencia !== '' ? $vigencia : null,
+        ]);
+
+        $this->json([
+            'success' => $saved,
+        ]);
+    }
+
     public function rescrapeDerivacion(): void
     {
         $this->requireAuth();
@@ -2101,6 +2255,7 @@ class SolicitudController extends BaseController
         $payload = $this->getRequestBody();
         $formId = trim((string)($payload['form_id'] ?? ''));
         $hcNumber = trim((string)($payload['hc_number'] ?? ''));
+        $solicitudId = isset($payload['solicitud_id']) ? (int) $payload['solicitud_id'] : null;
 
         if ($formId === '' || $hcNumber === '') {
             $this->json(
@@ -2112,6 +2267,16 @@ class SolicitudController extends BaseController
             );
             return;
         }
+
+        $seleccion = null;
+        if ($solicitudId) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccion($solicitudId);
+        }
+        if (!$seleccion) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        }
+
+        $lookupFormId = $seleccion['derivacion_pedido_id'] ?? $formId;
 
         $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
         if (!is_file($script)) {
@@ -2128,7 +2293,7 @@ class SolicitudController extends BaseController
         $cmd = sprintf(
             'python3 %s %s %s --quiet 2>&1',
             escapeshellarg($script),
-            escapeshellarg($formId),
+            escapeshellarg($lookupFormId),
             escapeshellarg($hcNumber)
         );
 
@@ -2173,7 +2338,7 @@ class SolicitudController extends BaseController
             $derivacionController = new DerivacionController($this->pdo);
             $derivacionId = $derivacionController->guardarDerivacion(
                 $codDerivacion,
-                $formId,
+                $lookupFormId,
                 $hcNumber,
                 $parsed['fecha_registro'] ?? null,
                 $parsed['fecha_vigencia'] ?? null,
@@ -2191,6 +2356,7 @@ class SolicitudController extends BaseController
                 'success' => true,
                 'saved' => $saved,
                 'derivacion_id' => $derivacionId,
+                'lookup_form_id' => $lookupFormId,
                 'payload' => $parsed,
                 'raw_output' => $rawOutput,
                 'exit_code' => $exitCode,
@@ -2525,7 +2691,8 @@ class SolicitudController extends BaseController
 
     public function obtenerDatosParaVista($hc, $form_id)
     {
-        $data = $this->ensureDerivacion($form_id, $hc);
+        $solicitudId = $this->solicitudModel->obtenerSolicitudIdPorFormHc((string) $form_id, (string) $hc);
+        $data = $this->ensureDerivacion($form_id, $hc, $solicitudId);
         $solicitud = $this->solicitudModel->obtenerDatosYCirujanoSolicitud($form_id, $hc);
         $paciente = $this->pacienteService->getPatientDetails($hc);
         $diagnostico = $this->solicitudModel->obtenerDxDeSolicitud($form_id);
@@ -2542,14 +2709,31 @@ class SolicitudController extends BaseController
     /**
      * Verifica derivación; si no existe, intenta scrapear y reconsultar.
      */
-    private function ensureDerivacion(string $formId, string $hcNumber): ?array
+    private function ensureDerivacion(string $formId, string $hcNumber, ?int $solicitudId = null): ?array
     {
-        $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
-        if ($derivacion === false) {
-            $derivacion = null;
+        $seleccion = null;
+        if ($solicitudId) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccion($solicitudId);
         }
-        if ($derivacion) {
-            return $derivacion;
+        if (!$seleccion) {
+            $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        }
+        $lookupFormId = $seleccion['derivacion_pedido_id'] ?? $formId;
+        $hasSelection = !empty($seleccion['derivacion_pedido_id']);
+
+        if ($hasSelection) {
+            $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($lookupFormId);
+            if ($derivacion !== false && $derivacion) {
+                return $derivacion;
+            }
+        } else {
+            $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+            if ($derivacion === false) {
+                $derivacion = null;
+            }
+            if ($derivacion) {
+                return $derivacion;
+            }
         }
 
         $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
@@ -2560,7 +2744,7 @@ class SolicitudController extends BaseController
         $cmd = sprintf(
             'python3 %s %s %s',
             escapeshellarg($script),
-            escapeshellarg($formId),
+            escapeshellarg($lookupFormId),
             escapeshellarg($hcNumber)
         );
 
@@ -2571,7 +2755,7 @@ class SolicitudController extends BaseController
             // silenciar para no romper flujo de prefactura
         }
 
-        $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($formId);
+        $derivacion = $this->solicitudModel->obtenerDerivacionPorFormId($lookupFormId);
         if ($derivacion === false) {
             return null;
         }

@@ -1201,7 +1201,9 @@ async function loadDerivacion({hc, formId}) {
     const {basePath} = getKanbanConfig();
     const derivacionUrl = `${basePath}/derivacion?hc_number=${encodeURIComponent(
         hc
-    )}&form_id=${encodeURIComponent(formId)}`;
+    )}&form_id=${encodeURIComponent(formId)}&solicitud_id=${encodeURIComponent(
+        window.__prefacturaSolicitudId || ""
+    )}`;
 
     try {
         const response = await fetch(derivacionUrl);
@@ -1224,6 +1226,164 @@ async function loadDerivacion({hc, formId}) {
     }
 }
 
+async function guardarPreseleccionDerivacion(payload) {
+    const response = await fetch("/solicitudes/derivacion-preseleccion/guardar", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        throw new Error("No se pudo guardar la derivación seleccionada.");
+    }
+    const data = await response.json();
+    if (!data?.success) {
+        throw new Error("No se pudo guardar la derivación seleccionada.");
+    }
+    return data;
+}
+
+function buildDerivacionOptionsHtml(options, selectedValue) {
+    return `
+        <input type="hidden" id="derivacionSeleccionValue" value="${escapeHtml(
+            selectedValue || ""
+        )}">
+        <div class="d-flex flex-column gap-2 text-start" id="derivacionSeleccionList">
+            ${options
+                .map((option) => {
+                    const value = String(option.pedido_id_mas_antiguo || "");
+                    const isSelected = value === selectedValue;
+                    const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
+                        option.pedido_id_mas_antiguo || "-"
+                    }`;
+                    const meta = [
+                        option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
+                        option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
+                    ]
+                        .filter(Boolean)
+                        .join(" · ");
+                    return `
+                        <button type="button"
+                                class="btn btn-light text-start border ${isSelected ? "border-primary" : ""}"
+                                data-derivacion-option="true"
+                                data-derivacion-value="${escapeHtml(value)}">
+                            <strong>${label}</strong>
+                            ${meta ? `<div class="text-muted small">${escapeHtml(meta)}</div>` : ""}
+                        </button>
+                    `;
+                })
+                .join("")}
+        </div>
+    `;
+}
+
+async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) {
+    if (!hc || !formId) {
+        return null;
+    }
+
+    const response = await fetch("/solicitudes/derivacion-preseleccion", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            hc_number: hc,
+            form_id: formId,
+            solicitud_id: solicitudId,
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error("No se pudo obtener las derivaciones disponibles.");
+    }
+
+    const data = await response.json();
+    if (data?.selected) {
+        return data.selected;
+    }
+
+    const options = Array.isArray(data?.options) ? data.options : [];
+    if (!data?.needs_selection || options.length === 0) {
+        return null;
+    }
+
+    if (options.length === 1) {
+        const option = options[0];
+        await guardarPreseleccionDerivacion({
+            solicitud_id: solicitudId,
+            codigo_derivacion: option.codigo_derivacion,
+            pedido_id_mas_antiguo: option.pedido_id_mas_antiguo,
+            lateralidad: option.lateralidad,
+            fecha_vigencia: option.fecha_vigencia,
+        });
+        return option;
+    }
+
+    if (typeof Swal === "undefined") {
+        throw new Error("No se puede seleccionar derivación sin SweetAlert.");
+    }
+
+    const selectedValue = String(options[0]?.pedido_id_mas_antiguo || "");
+    const {isConfirmed} = await Swal.fire({
+        title: "Selecciona la derivación",
+        html: buildDerivacionOptionsHtml(options, selectedValue),
+        confirmButtonText: "Guardar selección",
+        showCancelButton: true,
+        cancelButtonText: "Cancelar",
+        focusConfirm: false,
+        didOpen: () => {
+            const list = document.getElementById("derivacionSeleccionList");
+            const hidden = document.getElementById("derivacionSeleccionValue");
+            if (!list || !hidden) {
+                return;
+            }
+            list.querySelectorAll("[data-derivacion-option]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const value = btn.dataset.derivacionValue || "";
+                    hidden.value = value;
+                    list.querySelectorAll("[data-derivacion-option]").forEach((item) => {
+                        item.classList.toggle(
+                            "border-primary",
+                            item === btn
+                        );
+                    });
+                });
+            });
+        },
+        preConfirm: () => {
+            const chosenValue = document.getElementById(
+                "derivacionSeleccionValue"
+            )?.value;
+            if (!chosenValue) {
+                Swal.showValidationMessage("Selecciona una derivación.");
+                return null;
+            }
+            return chosenValue;
+        },
+    });
+
+    if (!isConfirmed) {
+        return null;
+    }
+
+    const chosenValue =
+        document.getElementById("derivacionSeleccionValue")?.value || "";
+    const chosen = options.find(
+        (option) => String(option.pedido_id_mas_antiguo || "") === String(chosenValue)
+    );
+    if (!chosen) {
+        return null;
+    }
+
+    await guardarPreseleccionDerivacion({
+        solicitud_id: solicitudId,
+        codigo_derivacion: chosen.codigo_derivacion,
+        pedido_id_mas_antiguo: chosen.pedido_id_mas_antiguo,
+        lateralidad: chosen.lateralidad,
+        fecha_vigencia: chosen.fecha_vigencia,
+    });
+
+    return chosen;
+}
+
 function abrirPrefactura({hc, formId, solicitudId}) {
     if (!hc || !formId) {
         console.warn(
@@ -1236,6 +1396,7 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     const modal = new bootstrap.Modal(modalElement);
     const content = document.getElementById("prefacturaContent");
 
+    window.__prefacturaSolicitudId = solicitudId || null;
     syncPrefacturaContext({formId, hcNumber: hc, solicitudId});
     parkExamenesPrequirurgicosButton(modalElement);
 
@@ -1250,7 +1411,25 @@ function abrirPrefactura({hc, formId, solicitudId}) {
     actualizarBotonesModal(solicitudId);
 
     const corePromise = loadSolicitudCore({hc, formId, solicitudId});
-    const derivacionPromise = loadDerivacion({hc, formId});
+    const derivacionPromise = asegurarPreseleccionDerivacion({
+        hc,
+        formId,
+        solicitudId,
+    })
+        .then(() => loadDerivacion({hc, formId}))
+        .catch((error) => {
+            console.error("❌ Error preseleccionando derivación:", error);
+            showToast(
+                error?.message || "No se pudo seleccionar la derivación.",
+                false
+            );
+            return {
+                success: true,
+                has_derivacion: false,
+                derivacion_status: "error",
+                derivacion: null,
+            };
+        });
 
     Promise.allSettled([corePromise, derivacionPromise]).then(
         ([coreResult, derivacionResult]) => {
@@ -2545,7 +2724,11 @@ async function handleRescrapeDerivacion(event) {
         const response = await fetch("/solicitudes/re-scrape-derivacion", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({form_id: formId, hc_number: hcNumber}),
+            body: JSON.stringify({
+                form_id: formId,
+                hc_number: hcNumber,
+                solicitud_id: solicitudId,
+            }),
             credentials: "include",
         });
 

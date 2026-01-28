@@ -155,6 +155,7 @@ class DerivacionesService
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
+            $this->ensureArchivoPath($row);
             return $row;
         }
 
@@ -177,6 +178,10 @@ class DerivacionesService
         );
         $legacyStmt->execute([':id' => $id]);
         $legacyRow = $legacyStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($legacyRow) {
+            $this->ensureArchivoPath($legacyRow);
+        }
 
         return $legacyRow ?: null;
     }
@@ -216,5 +221,39 @@ class DerivacionesService
             'sede' => $row['sede'],
             'parentesco' => $row['parentesco'],
         ];
+    }
+
+    private function ensureArchivoPath(array &$row): void
+    {
+        if (!empty($row['archivo_derivacion_path'])) {
+            return;
+        }
+
+        $hcNumber = $row['hc_number'] ?? null;
+        $codigo = $row['cod_derivacion'] ?? null;
+
+        if (!$hcNumber || !$codigo) {
+            return;
+        }
+
+        $safeHc = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $hcNumber));
+        $safeCodigo = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $codigo));
+
+        if ($safeHc === '' || $safeCodigo === '') {
+            return;
+        }
+
+        $path = sprintf(
+            'storage/derivaciones/%s/%s/derivacion_%s_%s.pdf',
+            $safeHc,
+            $safeCodigo,
+            $safeHc,
+            $safeCodigo
+        );
+
+        $absolute = BASE_PATH . '/' . ltrim($path, '/');
+        if (is_file($absolute)) {
+            $row['archivo_derivacion_path'] = $path;
+        }
     }
 }
