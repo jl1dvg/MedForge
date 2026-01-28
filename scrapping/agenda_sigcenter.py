@@ -5,6 +5,8 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import re
+from urllib.parse import urljoin
 
 BASE = "https://cive.ddns.net:8085"
 LOGIN_URL = f"{BASE}/site/login"
@@ -21,6 +23,63 @@ if not USER or not PASS:
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 }
+
+
+UPDATE_ID_RE = re.compile(r"agenda-doctor/(?:update|view)\?id=(\d+)")
+
+
+def _extract_ids_from_html(html: str):
+    if not html:
+        return []
+    return [int(m.group(1)) for m in UPDATE_ID_RE.finditer(html)]
+
+
+def _resolve_created_agenda_id_from_index(html: str, *, doc_solicitud: int, hora_ini_disp: str, hora_fin_disp: str):
+    """Best-effort: find agenda id in index HTML by matching docSolicitud + times.
+
+    It tries:
+    - <tr data-key="ID">
+    - hrefs containing agenda-doctor/update?id=ID or view?id=ID
+    If it can't confidently match, returns the highest id found in the page.
+    """
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # 1) Prefer matching table rows
+    rows = soup.find_all("tr")
+    candidates = []
+    for tr in rows:
+        txt = " ".join(tr.get_text(" ", strip=True).split())
+        if not txt:
+            continue
+        if str(doc_solicitud) not in txt:
+            continue
+        # match displayed times (e.g. "01:30 PM" / "01:45 PM")
+        if (hora_ini_disp in txt) and (hora_fin_disp in txt):
+            # Yii GridView often has data-key
+            if tr.has_attr("data-key"):
+                try:
+                    return int(str(tr["data-key"]).strip())
+                except Exception:
+                    pass
+            # otherwise look for update/view links
+            a = tr.find("a", href=True)
+            if a:
+                m = UPDATE_ID_RE.search(a["href"])
+                if m:
+                    return int(m.group(1))
+            # keep as candidate by parsing any ids inside the row
+            ids_in_row = _extract_ids_from_html(str(tr))
+            candidates.extend(ids_in_row)
+
+    if candidates:
+        return max(candidates)
+
+    # 2) Fallback: max id found anywhere in the document
+    all_ids = _extract_ids_from_html(html)
+    return max(all_ids) if all_ids else None
 
 
 def get_csrf_from_html(html: str):
@@ -128,6 +187,7 @@ def agendar(data):
     )
 
     r0 = session.get(referer_index, headers=HEADERS, timeout=30)
+    index_before_html = r0.text or ""
     csrf = get_csrf_from_session(session, r0.text)
     if not csrf:
         return {"ok": False, "error": "CSRF no encontrado (meta/input)"}
@@ -228,7 +288,37 @@ def agendar(data):
     if isinstance(resp, dict) and (resp.get("success") is False or resp.get("ok") is False):
         return {"ok": False, "response": resp}
 
-    return {"ok": True, "response": resp}
+    # === Resolve agenda_id (best-effort) ===
+    agenda_id = None
+
+    # Sometimes response only redirects; the id isn't returned.
+    # Fetch index again and match by docSolicitud + displayed times.
+    try:
+        r1 = session.get(referer_index, headers=HEADERS, timeout=30)
+        index_after_html = r1.text or ""
+
+        # Prefer the id found in the AFTER page
+        agenda_id = _resolve_created_agenda_id_from_index(
+            index_after_html,
+            doc_solicitud=int(data["docSolicitud"]),
+            hora_ini_disp=hora_ini_disp,
+            hora_fin_disp=hora_fin_disp,
+        )
+
+        # If still none, try a heuristic: max(new_ids - old_ids)
+        if agenda_id is None:
+            before_ids = set(_extract_ids_from_html(index_before_html))
+            after_ids = set(_extract_ids_from_html(index_after_html))
+            diff = list(after_ids - before_ids)
+            if diff:
+                agenda_id = max(diff)
+    except Exception:
+        agenda_id = None
+
+    out = {"ok": True, "response": resp}
+    if agenda_id is not None:
+        out["agenda_id"] = agenda_id
+    return out
 
 
 if __name__ == "__main__":

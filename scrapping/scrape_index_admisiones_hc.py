@@ -210,6 +210,7 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                     "estado": c(33),
 
                     # Derivación
+                    "prefactura": c(9),
                     "codigo_derivacion": c(42),
                     "num_secuencial_derivacion": c(43),
                 }
@@ -433,6 +434,7 @@ def scrape_index_admisiones_por_identificacion(identificacion: str):
             "estado": c(33),
 
             # Derivación
+            "prefactura": c(9),
             "codigo_derivacion": c(42),
             "num_secuencial_derivacion": c(43),
         }
@@ -636,6 +638,7 @@ def filtrar_por_pedido_origen(rows, term: str):
     return out
 
 
+
 # =========================
 # Filtro por procedimiento
 # =========================
@@ -656,6 +659,44 @@ def filtrar_por_procedimiento(rows, term: str):
     for r in rows or []:
         v = re.sub(r"\s+", " ", (r.get("procedimiento") or "").strip())
         if t_upper in v.upper():
+            out.append(r)
+    return out
+
+
+# =========================
+# Filtro por lateralidad
+# =========================
+def filtrar_por_lateralidad(rows, term: str):
+    """Filtra filas por lateralidad inferida desde `procedimiento`/`cie10`.
+
+    Valores esperados (case-insensitive):
+      - DERECHO (o OD)
+      - IZQUIERDO (o OI)
+      - AMBOS (o AO)
+
+    Nota: la inferencia usa `_infer_lateralidad_from_row()`.
+    """
+    term = re.sub(r"\s+", " ", (term or "").strip())
+    if not term:
+        return rows
+
+    t = term.upper().strip()
+    # Normalizar alias
+    if t in {"OD", "DER", "DERECHA", "DERECHO"}:
+        t = "DERECHO"
+    elif t in {"OI", "IZQ", "IZQUIERDA", "IZQUIERDO"}:
+        t = "IZQUIERDO"
+    elif t in {"AO", "AMBOS", "AMBOS OJOS", "AMBOS OJOS."}:
+        t = "AMBOS"
+
+    if t not in {"DERECHO", "IZQUIERDO", "AMBOS"}:
+        # Si pasan algo raro, no filtramos (comportamiento "safe")
+        return rows
+
+    out = []
+    for r in rows or []:
+        lat = _infer_lateralidad_from_row(r)
+        if lat == t:
             out.append(r)
     return out
 
@@ -685,13 +726,14 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(
             "Uso:\n"
-            "  python scrape_index_admisiones_hc.py 0903470565 [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM]\n"
-            "  python scrape_index_admisiones_hc.py YYYY-MM-DD YYYY-MM-DD [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM]\n"
+            "  python scrape_index_admisiones_hc.py 0903470565 [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM] [--lateralidad VALOR]\n"
+            "  python scrape_index_admisiones_hc.py YYYY-MM-DD YYYY-MM-DD [--quiet] [--csv archivo.csv] [--origen VALOR] [--procedimiento TERM] [--lateralidad VALOR]\n"
             "\nOpciones:\n"
             "  --group               Agrupa por codigo_derivacion\n"
             "  --include-undefined   Incluye codigo_derivacion vacío/(no definido) en el agrupamiento\n"
             "  --origen VALOR        Filtra por pedido_origen_raw (ej: ADMISIÓN, CRM, 229444)\n"
             "  --procedimiento TERM  Filtra por el campo procedimiento (ej: 66982, OCT, BIOMETRIA)\n"
+            "  --lateralidad VALOR   Filtra por lateralidad inferida (DERECHO/IZQUIERDO/AMBOS; alias: OD/OI/AO)\n"
         )
         sys.exit(1)
 
@@ -714,12 +756,20 @@ if __name__ == "__main__":
         if i + 1 < len(sys.argv):
             origen_filter = sys.argv[i + 1]
 
+
     # Filtro opcional por procedimiento (ej: "66982", "OCT", "BIOMETRIA")
     procedimiento_filter = None
     if "--procedimiento" in sys.argv:
         i = sys.argv.index("--procedimiento")
         if i + 1 < len(sys.argv):
             procedimiento_filter = sys.argv[i + 1]
+
+    # Filtro opcional por lateralidad (DERECHO/IZQUIERDO/AMBOS; alias OD/OI/AO)
+    lateralidad_filter = None
+    if "--lateralidad" in sys.argv:
+        i = sys.argv.index("--lateralidad")
+        if i + 1 < len(sys.argv):
+            lateralidad_filter = sys.argv[i + 1]
 
 
     # Detectar si argv[1] es fecha YYYY-MM-DD
@@ -743,6 +793,10 @@ if __name__ == "__main__":
 
             if procedimiento_filter:
                 out["rows"] = filtrar_por_procedimiento(out["rows"], procedimiento_filter)
+                out["total"] = len(out["rows"])
+
+            if lateralidad_filter:
+                out["rows"] = filtrar_por_lateralidad(out["rows"], lateralidad_filter)
                 out["total"] = len(out["rows"])
 
             # Siempre ordenar por pedido_id asc (vacíos/0 al final)
@@ -781,6 +835,10 @@ if __name__ == "__main__":
 
             if procedimiento_filter:
                 out["rows"] = filtrar_por_procedimiento(out["rows"], procedimiento_filter)
+                out["total"] = len(out["rows"])
+
+            if lateralidad_filter:
+                out["rows"] = filtrar_por_lateralidad(out["rows"], lateralidad_filter)
                 out["total"] = len(out["rows"])
 
             # Siempre ordenar por pedido_id asc (vacíos/0 al final)
