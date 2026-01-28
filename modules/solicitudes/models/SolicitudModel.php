@@ -7,6 +7,10 @@ use DateTime;
 use DateTimeImmutable;
 use Modules\CRM\Services\LeadConfigurationService;
 
+if (class_exists(__NAMESPACE__ . '\\SolicitudModel', false)) {
+    return;
+}
+
 class SolicitudModel
 {
     protected $db;
@@ -466,6 +470,98 @@ class SolicitudModel
             ':pedido_id' => $data['derivacion_pedido_id'] ?? null,
             ':lateralidad' => $data['derivacion_lateralidad'] ?? null,
             ':vigencia' => $data['derivacion_fecha_vigencia_sel'] ?? null,
+            ':id' => $solicitudId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function obtenerSolicitudIdPorFormHc(string $formId, string $hcNumber): ?int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id
+             FROM solicitud_procedimiento
+             WHERE form_id = :form_id
+               AND hc_number = :hc
+             ORDER BY id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc' => $hcNumber,
+        ]);
+        $row = $stmt->fetchColumn();
+        if ($row === false) {
+            return null;
+        }
+        return (int) $row;
+    }
+
+    public function obtenerDerivacionPreseleccion(int $solicitudId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                derivacion_codigo,
+                derivacion_pedido_id,
+                derivacion_lateralidad,
+                derivacion_fecha_vigencia_sel,
+                derivacion_prefactura
+             FROM solicitud_procedimiento
+             WHERE id = :id
+             LIMIT 1"
+        );
+        $stmt->execute([':id' => $solicitudId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return $row;
+    }
+
+    public function obtenerDerivacionPreseleccionPorFormHc(string $formId, string $hcNumber): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                id,
+                derivacion_codigo,
+                derivacion_pedido_id,
+                derivacion_lateralidad,
+                derivacion_fecha_vigencia_sel,
+                derivacion_prefactura
+             FROM solicitud_procedimiento
+             WHERE form_id = :form_id
+               AND hc_number = :hc
+             ORDER BY id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc' => $hcNumber,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return $row;
+    }
+
+    public function guardarDerivacionPreseleccion(int $solicitudId, array $data): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE solicitud_procedimiento
+             SET derivacion_codigo = :codigo,
+                 derivacion_pedido_id = :pedido_id,
+                 derivacion_lateralidad = :lateralidad,
+                 derivacion_fecha_vigencia_sel = :vigencia,
+                 derivacion_prefactura = :prefactura
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            ':codigo' => $data['derivacion_codigo'] ?? null,
+            ':pedido_id' => $data['derivacion_pedido_id'] ?? null,
+            ':lateralidad' => $data['derivacion_lateralidad'] ?? null,
+            ':vigencia' => $data['derivacion_fecha_vigencia_sel'] ?? null,
+            ':prefactura' => $data['derivacion_prefactura'] ?? null,
             ':id' => $solicitudId,
         ]);
 

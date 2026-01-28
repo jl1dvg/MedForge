@@ -2134,6 +2134,7 @@ class SolicitudController extends BaseController
                     'pedido_id_mas_antiguo' => $seleccion['derivacion_pedido_id'] ?? null,
                     'lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
                     'fecha_vigencia' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+                    'prefactura' => $seleccion['derivacion_prefactura'] ?? null,
                 ],
                 'needs_selection' => false,
                 'options' => [],
@@ -2203,6 +2204,7 @@ class SolicitudController extends BaseController
                 'pedido_id_mas_antiguo' => $item['pedido_id_mas_antiguo'] ?? null,
                 'lateralidad' => $item['lateralidad'] ?? null,
                 'fecha_vigencia' => $data['fecha_grupo'] ?? null,
+                'prefactura' => $data['prefactura'] ?? null,
             ];
         }
 
@@ -2224,6 +2226,7 @@ class SolicitudController extends BaseController
         $pedidoId = trim((string)($payload['pedido_id_mas_antiguo'] ?? ''));
         $lateralidad = trim((string)($payload['lateralidad'] ?? ''));
         $vigencia = trim((string)($payload['fecha_vigencia'] ?? ''));
+        $prefactura = trim((string)($payload['prefactura'] ?? ''));
 
         if (!$solicitudId || $codigo === '' || $pedidoId === '') {
             $this->json(
@@ -2241,6 +2244,7 @@ class SolicitudController extends BaseController
             'derivacion_pedido_id' => $pedidoId,
             'derivacion_lateralidad' => $lateralidad !== '' ? $lateralidad : null,
             'derivacion_fecha_vigencia_sel' => $vigencia !== '' ? $vigencia : null,
+            'derivacion_prefactura' => $prefactura !== '' ? $prefactura : null,
         ]);
 
         $this->json([

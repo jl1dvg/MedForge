@@ -1245,23 +1245,24 @@ async function guardarPreseleccionDerivacion(payload) {
 function buildDerivacionOptionsHtml(options, selectedValue) {
     return `
         <input type="hidden" id="derivacionSeleccionValue" value="${escapeHtml(
-        selectedValue || ""
-    )}">
+            selectedValue || ""
+        )}">
         <div class="d-flex flex-column gap-2 text-start" id="derivacionSeleccionList">
             ${options
-        .map((option) => {
-            const value = String(option.pedido_id_mas_antiguo || "");
-            const isSelected = value === selectedValue;
-            const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
-                option.pedido_id_mas_antiguo || "-"
-            }`;
-            const meta = [
-                option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
-                option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
-            ]
-                .filter(Boolean)
-                .join(" · ");
-            return `
+                .map((option) => {
+                    const value = String(option.pedido_id_mas_antiguo || "");
+                    const isSelected = value === selectedValue;
+                    const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
+                        option.pedido_id_mas_antiguo || "-"
+                    }`;
+                    const meta = [
+                        option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
+                        option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
+                        option.prefactura ? `Prefactura: ${option.prefactura}` : null,
+                    ]
+                        .filter(Boolean)
+                        .join(" · ");
+                    return `
                         <button type="button"
                                 class="btn btn-light text-start border ${isSelected ? "border-primary" : ""}"
                                 data-derivacion-option="true"
@@ -1270,8 +1271,8 @@ function buildDerivacionOptionsHtml(options, selectedValue) {
                             ${meta ? `<div class="text-muted small">${escapeHtml(meta)}</div>` : ""}
                         </button>
                     `;
-        })
-        .join("")}
+                })
+                .join("")}
         </div>
     `;
 }
@@ -1313,6 +1314,7 @@ async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) {
             pedido_id_mas_antiguo: option.pedido_id_mas_antiguo,
             lateralidad: option.lateralidad,
             fecha_vigencia: option.fecha_vigencia,
+            prefactura: option.prefactura,
         });
         return option;
     }
@@ -1379,6 +1381,7 @@ async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) {
         pedido_id_mas_antiguo: chosen.pedido_id_mas_antiguo,
         lateralidad: chosen.lateralidad,
         fecha_vigencia: chosen.fecha_vigencia,
+        prefactura: chosen.prefactura,
     });
 
     return chosen;

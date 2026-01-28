@@ -5,6 +5,10 @@ namespace Models;
 use PDO;
 use DateTime;
 
+if (class_exists(__NAMESPACE__ . '\\SolicitudModel', false)) {
+    return;
+}
+
 class SolicitudModel
 {
     protected $db;
@@ -57,7 +61,8 @@ class SolicitudModel
                 derivacion_codigo,
                 derivacion_pedido_id,
                 derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel
+                derivacion_fecha_vigencia_sel,
+                derivacion_prefactura
              FROM solicitud_procedimiento
              WHERE id = :id
              LIMIT 1"
@@ -78,7 +83,8 @@ class SolicitudModel
                 derivacion_codigo,
                 derivacion_pedido_id,
                 derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel
+                derivacion_fecha_vigencia_sel,
+                derivacion_prefactura
              FROM solicitud_procedimiento
              WHERE form_id = :form_id
                AND hc_number = :hc
@@ -103,7 +109,8 @@ class SolicitudModel
              SET derivacion_codigo = :codigo,
                  derivacion_pedido_id = :pedido_id,
                  derivacion_lateralidad = :lateralidad,
-                 derivacion_fecha_vigencia_sel = :vigencia
+                 derivacion_fecha_vigencia_sel = :vigencia,
+                 derivacion_prefactura = :prefactura
              WHERE id = :id"
         );
         $stmt->execute([
@@ -111,6 +118,7 @@ class SolicitudModel
             ':pedido_id' => $data['derivacion_pedido_id'] ?? null,
             ':lateralidad' => $data['derivacion_lateralidad'] ?? null,
             ':vigencia' => $data['derivacion_fecha_vigencia_sel'] ?? null,
+            ':prefactura' => $data['derivacion_prefactura'] ?? null,
             ':id' => $solicitudId,
         ]);
 

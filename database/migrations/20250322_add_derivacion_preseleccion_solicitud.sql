@@ -33,3 +33,11 @@ SET @sql := IF(
     'ALTER TABLE solicitud_procedimiento ADD COLUMN derivacion_fecha_vigencia_sel VARCHAR(20) NULL AFTER derivacion_lateralidad'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- derivacion_prefactura
+SET @sql := IF(
+    EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name=@tbl AND table_schema=DATABASE() AND column_name='derivacion_prefactura'),
+    'SELECT "derivacion_prefactura ya existe"',
+    'ALTER TABLE solicitud_procedimiento ADD COLUMN derivacion_prefactura VARCHAR(32) NULL AFTER derivacion_fecha_vigencia_sel'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
