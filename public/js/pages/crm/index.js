@@ -14,13 +14,19 @@ import {
     mapLeads,
     mapProposals,
     projectDetailState,
+    projectFilters,
+    projectPagination,
     proposalBuilder,
     proposalDetailState,
     proposalFilters,
+    proposalPagination,
     proposalUIState,
     selectedLeads,
     state,
+    taskPagination,
     taskPriorityOptions,
+    ticketFilters,
+    ticketPagination,
 } from './state.js';
 import {
     appendLine,
@@ -58,6 +64,21 @@ import {
 
     initDom(rootElement);
     initState(bootstrapData);
+    if (elements.leadPageSize) {
+        leadTableState.pageSize = Number(elements.leadPageSize.value) || leadTableState.pageSize;
+    }
+    if (elements.projectPageSize) {
+        projectPagination.perPage = Number(elements.projectPageSize.value) || projectPagination.perPage;
+    }
+    if (elements.taskPageSize) {
+        taskPagination.perPage = Number(elements.taskPageSize.value) || taskPagination.perPage;
+    }
+    if (elements.ticketPageSize) {
+        ticketPagination.perPage = Number(elements.ticketPageSize.value) || ticketPagination.perPage;
+    }
+    if (elements.proposalPageSize) {
+        proposalPagination.perPage = Number(elements.proposalPageSize.value) || proposalPagination.perPage;
+    }
 
     function activateTab(tabId) {
         const tabLink = document.getElementById(tabId);
@@ -129,17 +150,20 @@ import {
     function updateCounters(visibleLeadsCount) {
         if (elements.leadsCount) {
             const visible = typeof visibleLeadsCount === 'number' ? visibleLeadsCount : state.leads.length;
-            const total = state.leads.length;
+            const total = leadTableState.total || state.leads.length;
             elements.leadsCount.textContent = `Leads: ${visible}${visible !== total ? ` / ${total}` : ''}`;
         }
         if (elements.projectsCount) {
-            elements.projectsCount.textContent = `Proyectos: ${state.projects.length}`;
+            const total = projectPagination.total || state.projects.length;
+            elements.projectsCount.textContent = `Proyectos: ${state.projects.length}${state.projects.length !== total ? ` / ${total}` : ''}`;
         }
         if (elements.tasksCount) {
-            elements.tasksCount.textContent = `Tareas: ${state.tasks.length}`;
+            const total = taskPagination.total || state.tasks.length;
+            elements.tasksCount.textContent = `Tareas: ${state.tasks.length}${state.tasks.length !== total ? ` / ${total}` : ''}`;
         }
         if (elements.ticketsCount) {
-            elements.ticketsCount.textContent = `Tickets: ${state.tickets.length}`;
+            const total = ticketPagination.total || state.tickets.length;
+            elements.ticketsCount.textContent = `Tickets: ${state.tickets.length}${state.tickets.length !== total ? ` / ${total}` : ''}`;
         }
     }
 
@@ -256,125 +280,100 @@ import {
         return state.tickets.find((ticket) => Number(ticket.id) === Number(id)) || null;
     }
 
-    function getFilteredLeads() {
-        const search = (leadFilters.search || '').toLowerCase();
-
-        return state.leads.filter((lead) => {
-            if (leadFilters.status) {
-                if (leadFilters.status === 'sin_estado') {
-                    if (lead.status) {
-                        return false;
-                    }
-                } else if ((lead.status || '') !== leadFilters.status) {
-                    return false;
-                }
-            }
-            if (leadFilters.source && (lead.source || '').toLowerCase() !== leadFilters.source.toLowerCase()) {
-                return false;
-            }
-            if (leadFilters.assigned && String(lead.assigned_to || '') !== String(leadFilters.assigned)) {
-                return false;
-            }
-            if (search) {
-                const haystack = [
-                    lead.name,
-                    lead.email,
-                    lead.phone,
-                    lead.source,
-                    lead.assigned_name,
-                    lead.hc_number,
-                ]
-                    .filter(Boolean)
-                    .map((value) => String(value).toLowerCase())
-                    .join(' ');
-                if (!haystack.includes(search)) {
-                    return false;
-                }
-            }
-            return true;
-        });
-    }
-
-    function clampPage(totalItems) {
-        if (leadTableState.pageSize === -1) {
-            leadTableState.page = 1;
-            return;
-        }
-        const totalPages = Math.max(1, Math.ceil(totalItems / leadTableState.pageSize));
-        if (leadTableState.page > totalPages) {
-            leadTableState.page = totalPages;
-        }
-        if (leadTableState.page < 1) {
-            leadTableState.page = 1;
-        }
-    }
-
     function getPaginatedLeads() {
-        const filtered = getFilteredLeads();
-        clampPage(filtered.length);
-        if (leadTableState.pageSize === -1) {
-            return { items: filtered, total: filtered.length, totalPages: 1 };
-        }
-        const start = (leadTableState.page - 1) * leadTableState.pageSize;
-        const end = start + leadTableState.pageSize;
-        const items = filtered.slice(start, end);
-        const totalPages = Math.max(1, Math.ceil(filtered.length / leadTableState.pageSize));
-        return { items, total: filtered.length, totalPages };
+        return {
+            items: state.leads,
+            total: leadTableState.total,
+            totalPages: leadTableState.totalPages,
+        };
     }
 
-    function renderPagination(totalPages) {
-        if (!elements.leadPagination) {
+    function buildPageRange(current, total) {
+        if (total <= 7) {
+            return Array.from({ length: total }, (_, i) => i + 1);
+        }
+        const pages = new Set([1, total]);
+        const start = Math.max(2, current - 1);
+        const end = Math.min(total - 1, current + 1);
+        for (let i = start; i <= end; i += 1) {
+            pages.add(i);
+        }
+        if (current <= 3) {
+            pages.add(2);
+            pages.add(3);
+            pages.add(4);
+        }
+        if (current >= total - 2) {
+            pages.add(total - 1);
+            pages.add(total - 2);
+            pages.add(total - 3);
+        }
+        return Array.from(pages).filter((page) => page > 0 && page <= total).sort((a, b) => a - b);
+    }
+
+    function renderPagination(container, paginationState, onPageChange) {
+        if (!container) {
             return;
         }
-        clearContainer(elements.leadPagination);
+        clearContainer(container);
+        const totalPages = paginationState.totalPages || 1;
+        if (totalPages <= 1) {
+            return;
+        }
 
         const prev = document.createElement('li');
-        prev.className = `page-item ${leadTableState.page === 1 ? 'disabled' : ''}`;
+        prev.className = `page-item ${paginationState.page === 1 ? 'disabled' : ''}`;
         const prevLink = document.createElement('a');
         prevLink.className = 'page-link';
         prevLink.href = '#';
         prevLink.textContent = 'Anterior';
         prevLink.addEventListener('click', (event) => {
             event.preventDefault();
-            if (leadTableState.page > 1) {
-                leadTableState.page -= 1;
-                renderLeads();
+            if (paginationState.page > 1) {
+                onPageChange(paginationState.page - 1);
             }
         });
         prev.appendChild(prevLink);
-        elements.leadPagination.appendChild(prev);
+        container.appendChild(prev);
 
-        for (let page = 1; page <= totalPages; page += 1) {
+        const pages = buildPageRange(paginationState.page, totalPages);
+        pages.forEach((page, index) => {
+            if (index > 0 && page - pages[index - 1] > 1) {
+                const ellipsis = document.createElement('li');
+                ellipsis.className = 'page-item disabled';
+                ellipsis.innerHTML = '<span class="page-link">…</span>';
+                container.appendChild(ellipsis);
+            }
             const item = document.createElement('li');
-            item.className = `page-item ${leadTableState.page === page ? 'active' : ''}`;
+            item.className = `page-item ${paginationState.page === page ? 'active' : ''}`;
             const link = document.createElement('a');
             link.className = 'page-link';
             link.href = '#';
             link.textContent = String(page);
             link.addEventListener('click', (event) => {
                 event.preventDefault();
-                leadTableState.page = page;
-                renderLeads();
+                if (page !== paginationState.page) {
+                    onPageChange(page);
+                }
             });
             item.appendChild(link);
-            elements.leadPagination.appendChild(item);
-        }
+            container.appendChild(item);
+        });
 
         const next = document.createElement('li');
-        next.className = `page-item ${leadTableState.page === totalPages ? 'disabled' : ''}`;
+        next.className = `page-item ${paginationState.page === totalPages ? 'disabled' : ''}`;
         const nextLink = document.createElement('a');
         nextLink.className = 'page-link';
         nextLink.href = '#';
         nextLink.textContent = 'Siguiente';
         nextLink.addEventListener('click', (event) => {
             event.preventDefault();
-            if (leadTableState.page < totalPages) {
-                leadTableState.page += 1;
-                renderLeads();
+            if (paginationState.page < totalPages) {
+                onPageChange(paginationState.page + 1);
             }
         });
         next.appendChild(nextLink);
-        elements.leadPagination.appendChild(next);
+        container.appendChild(next);
     }
 
     function renderLeadStatusSummary() {
@@ -437,13 +436,101 @@ import {
         }
     }
 
+    function syncProjectFiltersUI() {
+        if (elements.projectFilterStatus) elements.projectFilterStatus.value = projectFilters.status || '';
+        if (elements.projectFilterOwner) elements.projectFilterOwner.value = projectFilters.owner_id || '';
+        if (elements.projectFilterLead) elements.projectFilterLead.value = projectFilters.lead_id || '';
+        if (elements.projectFilterCustomer) elements.projectFilterCustomer.value = projectFilters.customer_id || '';
+        if (elements.projectFilterHc) elements.projectFilterHc.value = projectFilters.hc_number || '';
+        if (elements.projectFilterSourceModule) elements.projectFilterSourceModule.value = projectFilters.source_module || '';
+        if (elements.projectFilterSourceRef) elements.projectFilterSourceRef.value = projectFilters.source_ref_id || '';
+        if (elements.projectFilterForm) elements.projectFilterForm.value = projectFilters.form_id || '';
+        if (elements.projectFilterEpisode) elements.projectFilterEpisode.value = projectFilters.episode_type || '';
+        if (elements.projectFilterEye) elements.projectFilterEye.value = projectFilters.eye || '';
+    }
+
+    function updateProjectFiltersFromUI() {
+        projectFilters.status = elements.projectFilterStatus?.value || '';
+        projectFilters.owner_id = elements.projectFilterOwner?.value || '';
+        projectFilters.lead_id = elements.projectFilterLead?.value || '';
+        projectFilters.customer_id = elements.projectFilterCustomer?.value || '';
+        projectFilters.hc_number = elements.projectFilterHc?.value || '';
+        projectFilters.source_module = elements.projectFilterSourceModule?.value || '';
+        projectFilters.source_ref_id = elements.projectFilterSourceRef?.value || '';
+        projectFilters.form_id = elements.projectFilterForm?.value || '';
+        projectFilters.episode_type = elements.projectFilterEpisode?.value || '';
+        projectFilters.eye = elements.projectFilterEye?.value || '';
+    }
+
+    function syncTaskFiltersUI() {
+        if (elements.taskFilterStatus) elements.taskFilterStatus.value = state.taskFilters.status || '';
+        if (elements.taskFilterAssigned) elements.taskFilterAssigned.value = state.taskFilters.assigned_to || '';
+        if (elements.taskFilterDue) elements.taskFilterDue.value = state.taskFilters.due || '';
+        if (elements.taskFilterProject) elements.taskFilterProject.value = state.taskFilters.project_id || '';
+        if (elements.taskFilterLead) elements.taskFilterLead.value = state.taskFilters.lead_id || '';
+        if (elements.taskFilterHc) elements.taskFilterHc.value = state.taskFilters.hc_number || '';
+        if (elements.taskFilterEntityType) elements.taskFilterEntityType.value = state.taskFilters.entity_type || '';
+        if (elements.taskFilterEntityId) elements.taskFilterEntityId.value = state.taskFilters.entity_id || '';
+        if (elements.taskFilterCustomer) elements.taskFilterCustomer.value = state.taskFilters.customer_id || '';
+        if (elements.taskFilterPatient) elements.taskFilterPatient.value = state.taskFilters.patient_id || '';
+        if (elements.taskFilterForm) elements.taskFilterForm.value = state.taskFilters.form_id || '';
+        if (elements.taskFilterSourceModule) elements.taskFilterSourceModule.value = state.taskFilters.source_module || '';
+        if (elements.taskFilterSourceRef) elements.taskFilterSourceRef.value = state.taskFilters.source_ref_id || '';
+        if (elements.taskFilterEpisode) elements.taskFilterEpisode.value = state.taskFilters.episode_type || '';
+        if (elements.taskFilterEye) elements.taskFilterEye.value = state.taskFilters.eye || '';
+    }
+
+    function updateTaskFiltersFromUI() {
+        state.taskFilters = {
+            status: elements.taskFilterStatus?.value || '',
+            assigned_to: elements.taskFilterAssigned?.value || '',
+            due: elements.taskFilterDue?.value || '',
+            project_id: elements.taskFilterProject?.value || '',
+            lead_id: elements.taskFilterLead?.value || '',
+            hc_number: elements.taskFilterHc?.value || '',
+            entity_type: elements.taskFilterEntityType?.value || '',
+            entity_id: elements.taskFilterEntityId?.value || '',
+            customer_id: elements.taskFilterCustomer?.value || '',
+            patient_id: elements.taskFilterPatient?.value || '',
+            form_id: elements.taskFilterForm?.value || '',
+            source_module: elements.taskFilterSourceModule?.value || '',
+            source_ref_id: elements.taskFilterSourceRef?.value || '',
+            episode_type: elements.taskFilterEpisode?.value || '',
+            eye: elements.taskFilterEye?.value || '',
+        };
+    }
+
+    function syncTicketFiltersUI() {
+        if (elements.ticketFilterStatus) elements.ticketFilterStatus.value = ticketFilters.status || '';
+        if (elements.ticketFilterPriority) elements.ticketFilterPriority.value = ticketFilters.priority || '';
+        if (elements.ticketFilterAssigned) elements.ticketFilterAssigned.value = ticketFilters.assigned_to || '';
+    }
+
+    function updateTicketFiltersFromUI() {
+        ticketFilters.status = elements.ticketFilterStatus?.value || '';
+        ticketFilters.priority = elements.ticketFilterPriority?.value || '';
+        ticketFilters.assigned_to = elements.ticketFilterAssigned?.value || '';
+    }
+
+    function syncProposalFiltersUI() {
+        if (elements.proposalStatusFilter) elements.proposalStatusFilter.value = proposalFilters.status || '';
+        if (elements.proposalSearchInput) elements.proposalSearchInput.value = proposalFilters.search || '';
+        if (elements.proposalLeadFilter) elements.proposalLeadFilter.value = proposalFilters.lead_id || '';
+    }
+
+    function updateProposalFiltersFromUI() {
+        proposalFilters.status = elements.proposalStatusFilter?.value || '';
+        proposalFilters.search = elements.proposalSearchInput?.value?.trim() || '';
+        proposalFilters.lead_id = elements.proposalLeadFilter?.value || '';
+    }
+
     function renderLeads() {
         if (!elements.leadTableBody) {
             return;
         }
         clearContainer(elements.leadTableBody);
 
-        const { items: leadsToRender, total, totalPages } = getPaginatedLeads();
+        const { items: leadsToRender, total } = getPaginatedLeads();
 
         if (!leadsToRender.length) {
             const emptyRow = document.createElement('tr');
@@ -624,7 +711,10 @@ import {
         populateLeadSelects();
         syncConvertFormSelection();
         renderLeadStatusSummary();
-        renderPagination(totalPages);
+        renderPagination(elements.leadPagination, leadTableState, (page) => {
+            leadTableState.page = page;
+            loadLeads();
+        });
         updateCounters(total);
         syncLeadSelectionUI();
         renderLeadInfo(total, leadsToRender.length);
@@ -634,16 +724,24 @@ import {
         if (!elements.leadTableInfo) {
             return;
         }
-        const pageSizeText = leadTableState.pageSize === -1 ? 'todos' : leadTableState.pageSize;
+        const pageSizeText = leadTableState.pageSize || 0;
         elements.leadTableInfo.textContent = `Mostrando ${visible} de ${total} leads (página ${leadTableState.page}, ${pageSizeText} por página)`;
+    }
+
+    function renderTableInfo(element, label, paginationState, visible) {
+        if (!element) {
+            return;
+        }
+        const total = paginationState.total || visible;
+        const perPage = paginationState.perPage || paginationState.pageSize || 0;
+        element.textContent = `Mostrando ${visible} de ${total} ${label} (página ${paginationState.page}, ${perPage} por página)`;
     }
 
     function syncLeadSelectionUI() {
         if (elements.leadSelectAll) {
-            const paginated = getPaginatedLeads();
-            const allSelected = paginated.items.length > 0 && paginated.items.every((lead) => selectedLeads.has(String(lead.id)));
+            const allSelected = state.leads.length > 0 && state.leads.every((lead) => selectedLeads.has(String(lead.id)));
             elements.leadSelectAll.checked = allSelected;
-            elements.leadSelectAll.indeterminate = !allSelected && paginated.items.some((lead) => selectedLeads.has(String(lead.id)));
+            elements.leadSelectAll.indeterminate = !allSelected && state.leads.some((lead) => selectedLeads.has(String(lead.id)));
         }
         if (elements.leadBulkHelper) {
             const count = selectedLeads.size;
@@ -737,6 +835,11 @@ import {
             }
         }
 
+        renderPagination(elements.projectPagination, projectPagination, (page) => {
+            projectPagination.page = page;
+            loadProjects();
+        });
+        renderTableInfo(elements.projectTableInfo, 'proyectos', projectPagination, state.projects.length);
         populateProjectSelects();
         updateCounters();
     }
@@ -1707,6 +1810,11 @@ import {
         }
 
         renderTaskSummary();
+        renderPagination(elements.taskPagination, taskPagination, (page) => {
+            taskPagination.page = page;
+            loadTasks();
+        });
+        renderTableInfo(elements.taskTableInfo, 'tareas', taskPagination, state.tasks.length);
         updateCounters();
     }
 
@@ -1919,6 +2027,11 @@ import {
         }
 
         syncTicketReplySelection();
+        renderPagination(elements.ticketPagination, ticketPagination, (page) => {
+            ticketPagination.page = page;
+            loadTickets();
+        });
+        renderTableInfo(elements.ticketTableInfo, 'tickets', ticketPagination, state.tickets.length);
         updateCounters();
     }
 
@@ -2541,12 +2654,35 @@ import {
     }
 
     function loadLeads() {
-        return request('/crm/leads')
-            .then((data) => {
-                state.leads = mapLeads(data.data);
-                selectedLeads.clear();
-                leadTableState.page = 1;
+        const params = new URLSearchParams();
+        if (leadFilters.status) {
+            params.set('status', leadFilters.status);
+        }
+        if (leadFilters.source) {
+            params.set('source', leadFilters.source);
+        }
+        if (leadFilters.assigned) {
+            params.set('assigned_to', leadFilters.assigned);
+        }
+        if (leadFilters.search) {
+            params.set('q', leadFilters.search);
+        }
+        params.set('page', leadTableState.page);
+        params.set('per_page', leadTableState.pageSize);
+
+        return request(`/crm/leads?${params.toString()}`)
+            .then((payload) => {
+                state.leads = mapLeads(payload.data);
+                const meta = payload.meta || {};
+                leadTableState.total = Number(meta.total || state.leads.length);
+                leadTableState.totalPages = Number(meta.total_pages || 1);
+                leadTableState.page = Number(meta.page || leadTableState.page);
+                if (leadTableState.page > leadTableState.totalPages && leadTableState.totalPages > 0) {
+                    leadTableState.page = leadTableState.totalPages;
+                    return loadLeads();
+                }
                 renderLeads();
+                return null;
             })
             .catch((error) => {
                 console.error('Error cargando leads', error);
@@ -2555,10 +2691,28 @@ import {
     }
 
     function loadProjects() {
-        return request('/crm/projects')
-            .then((data) => {
-                state.projects = Array.isArray(data.data) ? data.data : [];
+        const params = new URLSearchParams();
+        Object.entries(projectFilters).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+                params.set(key, value);
+            }
+        });
+        params.set('page', projectPagination.page);
+        params.set('per_page', projectPagination.perPage);
+
+        return request(`/crm/projects?${params.toString()}`)
+            .then((payload) => {
+                state.projects = Array.isArray(payload.data) ? payload.data : [];
+                const meta = payload.meta || {};
+                projectPagination.total = Number(meta.total || state.projects.length);
+                projectPagination.totalPages = Number(meta.total_pages || 1);
+                projectPagination.page = Number(meta.page || projectPagination.page);
+                if (projectPagination.page > projectPagination.totalPages && projectPagination.totalPages > 0) {
+                    projectPagination.page = projectPagination.totalPages;
+                    return loadProjects();
+                }
                 renderProjects();
+                return null;
             })
             .catch((error) => {
                 console.error('Error cargando proyectos', error);
@@ -2573,11 +2727,21 @@ import {
                 params.set(key, value);
             }
         });
-        const url = params.toString() ? `/crm/tasks?${params.toString()}` : '/crm/tasks';
-        return request(url)
-            .then((data) => {
-                state.tasks = Array.isArray(data.data) ? data.data : [];
+        params.set('page', taskPagination.page);
+        params.set('per_page', taskPagination.perPage);
+        return request(`/crm/tasks?${params.toString()}`)
+            .then((payload) => {
+                state.tasks = Array.isArray(payload.data) ? payload.data : [];
+                const meta = payload.meta || {};
+                taskPagination.total = Number(meta.total || state.tasks.length);
+                taskPagination.totalPages = Number(meta.total_pages || 1);
+                taskPagination.page = Number(meta.page || taskPagination.page);
+                if (taskPagination.page > taskPagination.totalPages && taskPagination.totalPages > 0) {
+                    taskPagination.page = taskPagination.totalPages;
+                    return loadTasks();
+                }
                 renderTasks();
+                return null;
             })
             .catch((error) => {
                 console.error('Error cargando tareas', error);
@@ -2586,10 +2750,28 @@ import {
     }
 
     function loadTickets() {
-        return request('/crm/tickets')
-            .then((data) => {
-                state.tickets = Array.isArray(data.data) ? data.data : [];
+        const params = new URLSearchParams();
+        Object.entries(ticketFilters).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+                params.set(key, value);
+            }
+        });
+        params.set('page', ticketPagination.page);
+        params.set('per_page', ticketPagination.perPage);
+
+        return request(`/crm/tickets?${params.toString()}`)
+            .then((payload) => {
+                state.tickets = Array.isArray(payload.data) ? payload.data : [];
+                const meta = payload.meta || {};
+                ticketPagination.total = Number(meta.total || state.tickets.length);
+                ticketPagination.totalPages = Number(meta.total_pages || 1);
+                ticketPagination.page = Number(meta.page || ticketPagination.page);
+                if (ticketPagination.page > ticketPagination.totalPages && ticketPagination.totalPages > 0) {
+                    ticketPagination.page = ticketPagination.totalPages;
+                    return loadTickets();
+                }
                 renderTickets();
+                return null;
             })
             .catch((error) => {
                 console.error('Error cargando tickets', error);
@@ -2617,17 +2799,7 @@ import {
     }
 
     function getFilteredProposals() {
-        const search = (proposalFilters.search || '').toLowerCase();
-        const status = proposalFilters.status || '';
-
-        return state.proposals.filter((proposal) => {
-            const matchesStatus = status ? proposal.status === status : true;
-            const matchesSearch = !search
-                ? true
-                : [proposal.proposal_number, proposal.title, proposal.lead_name, proposal.customer_name]
-                    .some((value) => (value || '').toLowerCase().includes(search));
-            return matchesStatus && matchesSearch;
-        });
+        return state.proposals;
     }
 
     function proposalStatusBadge(status) {
@@ -2664,6 +2836,11 @@ import {
             row.appendChild(cell);
             elements.proposalTableBody.appendChild(row);
             setProposalPreview(null);
+            renderPagination(elements.proposalPagination, proposalPagination, (page) => {
+                proposalPagination.page = page;
+                loadProposals();
+            });
+            renderTableInfo(elements.proposalTableInfo, 'propuestas', proposalPagination, 0);
             return;
         }
 
@@ -2734,20 +2911,41 @@ import {
         if (!proposalUIState.selectedId && proposals.length) {
             setSelectedProposal(proposals[0].id);
         }
+
+        renderPagination(elements.proposalPagination, proposalPagination, (page) => {
+            proposalPagination.page = page;
+            loadProposals();
+        });
+        renderTableInfo(elements.proposalTableInfo, 'propuestas', proposalPagination, proposals.length);
     }
 
     function loadProposals() {
         const params = new URLSearchParams();
-        if (elements.proposalStatusFilter && elements.proposalStatusFilter.value) {
-            params.set('status', elements.proposalStatusFilter.value);
+        if (proposalFilters.status) {
+            params.set('status', proposalFilters.status);
         }
+        if (proposalFilters.search) {
+            params.set('q', proposalFilters.search);
+        }
+        if (proposalFilters.lead_id) {
+            params.set('lead_id', proposalFilters.lead_id);
+        }
+        params.set('page', proposalPagination.page);
+        params.set('per_page', proposalPagination.perPage);
 
-        const url = params.toString() ? `/crm/proposals?${params.toString()}` : '/crm/proposals';
-
-        return request(url)
-            .then((data) => {
-                state.proposals = mapProposals(data.data);
+        return request(`/crm/proposals?${params.toString()}`)
+            .then((payload) => {
+                state.proposals = mapProposals(payload.data);
+                const meta = payload.meta || {};
+                proposalPagination.total = Number(meta.total || state.proposals.length);
+                proposalPagination.totalPages = Number(meta.total_pages || 1);
+                proposalPagination.page = Number(meta.page || proposalPagination.page);
+                if (proposalPagination.page > proposalPagination.totalPages && proposalPagination.totalPages > 0) {
+                    proposalPagination.page = proposalPagination.totalPages;
+                    return loadProposals();
+                }
                 renderProposals();
+                return null;
             })
             .catch((error) => {
                 console.error('Error cargando propuestas', error);
@@ -3408,7 +3606,9 @@ import {
             const status = button.dataset.statusFilter || '';
             leadFilters.status = status === 'sin_estado' ? 'sin_estado' : status;
             syncLeadFiltersUI();
-            renderLeads();
+            leadTableState.page = 1;
+            selectedLeads.clear();
+            loadLeads();
         });
     }
 
@@ -3419,7 +3619,9 @@ import {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 leadFilters.search = value.trim();
-                renderLeads();
+                leadTableState.page = 1;
+                selectedLeads.clear();
+                loadLeads();
             }, 200);
         });
     }
@@ -3428,7 +3630,8 @@ import {
         elements.leadFilterStatus.addEventListener('change', () => {
             leadFilters.status = elements.leadFilterStatus.value || '';
             leadTableState.page = 1;
-            renderLeads();
+            selectedLeads.clear();
+            loadLeads();
         });
     }
 
@@ -3436,7 +3639,8 @@ import {
         elements.leadFilterSource.addEventListener('change', () => {
             leadFilters.source = elements.leadFilterSource.value || '';
             leadTableState.page = 1;
-            renderLeads();
+            selectedLeads.clear();
+            loadLeads();
         });
     }
 
@@ -3444,7 +3648,8 @@ import {
         elements.leadFilterAssigned.addEventListener('change', () => {
             leadFilters.assigned = elements.leadFilterAssigned.value || '';
             leadTableState.page = 1;
-            renderLeads();
+            selectedLeads.clear();
+            loadLeads();
         });
     }
 
@@ -3456,7 +3661,8 @@ import {
             leadFilters.assigned = '';
             syncLeadFiltersUI();
             leadTableState.page = 1;
-            renderLeads();
+            selectedLeads.clear();
+            loadLeads();
         });
     }
 
@@ -3474,7 +3680,8 @@ import {
             searchTimeout = setTimeout(() => {
                 leadFilters.search = value.trim();
                 leadTableState.page = 1;
-                renderLeads();
+                selectedLeads.clear();
+                loadLeads();
             }, 150);
         });
     }
@@ -3484,7 +3691,7 @@ import {
             const value = Number(elements.leadPageSize.value);
             leadTableState.pageSize = Number.isNaN(value) ? 10 : value;
             leadTableState.page = 1;
-            renderLeads();
+            loadLeads();
         });
     }
 
@@ -3506,7 +3713,122 @@ import {
     if (elements.leadReloadTable) {
         elements.leadReloadTable.addEventListener('click', () => {
             leadTableState.page = 1;
-            renderLeads();
+            loadLeads();
+        });
+    }
+
+    if (elements.projectFilterApply) {
+        elements.projectFilterApply.addEventListener('click', () => {
+            updateProjectFiltersFromUI();
+            projectPagination.page = 1;
+            loadProjects();
+        });
+    }
+
+    if (elements.projectFilterClear) {
+        elements.projectFilterClear.addEventListener('click', () => {
+            Object.keys(projectFilters).forEach((key) => {
+                projectFilters[key] = '';
+            });
+            syncProjectFiltersUI();
+            projectPagination.page = 1;
+            loadProjects();
+        });
+    }
+
+    if (elements.projectPageSize) {
+        elements.projectPageSize.addEventListener('change', () => {
+            projectPagination.perPage = Number(elements.projectPageSize.value) || projectPagination.perPage;
+            projectPagination.page = 1;
+            loadProjects();
+        });
+    }
+
+    if (elements.projectReloadBtn) {
+        elements.projectReloadBtn.addEventListener('click', () => {
+            projectPagination.page = 1;
+            loadProjects();
+        });
+    }
+
+    if (elements.taskFilterApply) {
+        elements.taskFilterApply.addEventListener('click', () => {
+            updateTaskFiltersFromUI();
+            taskPagination.page = 1;
+            loadTasks();
+        });
+    }
+
+    if (elements.taskFilterClear) {
+        elements.taskFilterClear.addEventListener('click', () => {
+            state.taskFilters = {};
+            syncTaskFiltersUI();
+            taskPagination.page = 1;
+            loadTasks();
+        });
+    }
+
+    if (elements.taskPageSize) {
+        elements.taskPageSize.addEventListener('change', () => {
+            taskPagination.perPage = Number(elements.taskPageSize.value) || taskPagination.perPage;
+            taskPagination.page = 1;
+            loadTasks();
+        });
+    }
+
+    if (elements.taskReloadBtn) {
+        elements.taskReloadBtn.addEventListener('click', () => {
+            taskPagination.page = 1;
+            loadTasks();
+        });
+    }
+
+    if (elements.ticketFilterApply) {
+        elements.ticketFilterApply.addEventListener('click', () => {
+            updateTicketFiltersFromUI();
+            ticketPagination.page = 1;
+            loadTickets();
+        });
+    }
+
+    if (elements.ticketFilterClear) {
+        elements.ticketFilterClear.addEventListener('click', () => {
+            Object.keys(ticketFilters).forEach((key) => {
+                ticketFilters[key] = '';
+            });
+            syncTicketFiltersUI();
+            ticketPagination.page = 1;
+            loadTickets();
+        });
+    }
+
+    if (elements.ticketPageSize) {
+        elements.ticketPageSize.addEventListener('change', () => {
+            ticketPagination.perPage = Number(elements.ticketPageSize.value) || ticketPagination.perPage;
+            ticketPagination.page = 1;
+            loadTickets();
+        });
+    }
+
+    if (elements.ticketReloadBtn) {
+        elements.ticketReloadBtn.addEventListener('click', () => {
+            ticketPagination.page = 1;
+            loadTickets();
+        });
+    }
+
+    if (elements.proposalPageSize) {
+        elements.proposalPageSize.addEventListener('change', () => {
+            proposalPagination.perPage = Number(elements.proposalPageSize.value) || proposalPagination.perPage;
+            proposalPagination.page = 1;
+            loadProposals();
+        });
+    }
+
+    if (elements.proposalReloadBtn) {
+        elements.proposalReloadBtn.addEventListener('click', () => {
+            proposalPagination.page = 1;
+            loadProposals();
         });
     }
 
@@ -4022,6 +4344,7 @@ import {
     if (elements.proposalStatusFilter) {
         elements.proposalStatusFilter.addEventListener('change', () => {
             proposalFilters.status = elements.proposalStatusFilter.value || '';
+            proposalPagination.page = 1;
             loadProposals();
         });
     }
@@ -4033,7 +4356,21 @@ import {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 proposalFilters.search = value.trim();
-                renderProposals();
+                proposalPagination.page = 1;
+                loadProposals();
+            }, 200);
+        });
+    }
+
+    if (elements.proposalLeadFilter) {
+        let leadTimeout;
+        elements.proposalLeadFilter.addEventListener('input', () => {
+            const value = elements.proposalLeadFilter.value || '';
+            clearTimeout(leadTimeout);
+            leadTimeout = setTimeout(() => {
+                proposalFilters.lead_id = value.trim();
+                proposalPagination.page = 1;
+                loadProposals();
             }, 200);
         });
     }
@@ -4517,6 +4854,11 @@ import {
     }
 
     applyUrlDeepLink();
+    syncLeadFiltersUI();
+    syncProjectFiltersUI();
+    syncTaskFiltersUI();
+    syncTicketFiltersUI();
+    syncProposalFiltersUI();
     resetLeadForm();
     disableConvertForm();
     disableTicketReplyForm();

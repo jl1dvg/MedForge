@@ -80,10 +80,14 @@ class LeadModel
         $params = [];
 
         if (!empty($filters['status'])) {
-            $status = $this->configService->normalizeStage($filters['status'], false);
-            if ($status !== '') {
-                $sql .= " AND l.status = :status";
-                $params[':status'] = $status;
+            if ($filters['status'] === 'sin_estado') {
+                $sql .= " AND (l.status IS NULL OR l.status = '')";
+            } else {
+                $status = $this->configService->normalizeStage($filters['status'], false);
+                if ($status !== '') {
+                    $sql .= " AND l.status = :status";
+                    $params[':status'] = $status;
+                }
             }
         }
 
@@ -93,7 +97,7 @@ class LeadModel
         }
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (l.name LIKE :search OR l.email LIKE :search OR l.phone LIKE :search)";
+            $sql .= " AND (l.name LIKE :search OR l.email LIKE :search OR l.phone LIKE :search OR l.hc_number LIKE :search OR c.name LIKE :search)";
             $params[':search'] = '%' . $filters['search'] . '%';
         }
 
@@ -104,11 +108,13 @@ class LeadModel
 
         $sql .= " ORDER BY l.updated_at DESC";
 
-        $limit = isset($filters['limit']) ? max(1, (int)$filters['limit']) : 500;
-        $sql .= " LIMIT :limit";
+        $limit = isset($filters['limit']) ? max(1, (int)$filters['limit']) : 50;
+        $offset = isset($filters['offset']) ? max(0, (int)$filters['offset']) : 0;
+        $sql .= " LIMIT :limit OFFSET :offset";
 
         $debugParams = $params;
         $debugParams[':limit'] = $limit;
+        $debugParams[':offset'] = $offset;
 
         try {
             $stmt = $this->pdo->prepare($sql);
@@ -118,6 +124,7 @@ class LeadModel
             }
 
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $stmt->execute();
         } catch (PDOException $e) {
             $this->logSqlException($e, $sql ?? null, $debugParams ?? []);
@@ -125,6 +132,53 @@ class LeadModel
         }
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function count(array $filters = []): int
+    {
+        $sql = "
+            SELECT COUNT(*) as total
+            FROM crm_leads l
+            LEFT JOIN crm_customers c ON l.customer_id = c.id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if (!empty($filters['status'])) {
+            if ($filters['status'] === 'sin_estado') {
+                $sql .= " AND (l.status IS NULL OR l.status = '')";
+            } else {
+                $status = $this->configService->normalizeStage($filters['status'], false);
+                if ($status !== '') {
+                    $sql .= " AND l.status = :status";
+                    $params[':status'] = $status;
+                }
+            }
+        }
+
+        if (!empty($filters['assigned_to'])) {
+            $sql .= " AND l.assigned_to = :assigned_to";
+            $params[':assigned_to'] = (int)$filters['assigned_to'];
+        }
+
+        if (!empty($filters['search'])) {
+            $sql .= " AND (l.name LIKE :search OR l.email LIKE :search OR l.phone LIKE :search OR l.hc_number LIKE :search OR c.name LIKE :search)";
+            $params[':search'] = '%' . $filters['search'] . '%';
+        }
+
+        if (!empty($filters['source'])) {
+            $sql .= " AND l.source = :source";
+            $params[':source'] = $filters['source'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+
+        return (int)($stmt->fetchColumn() ?: 0);
     }
 
     public function findById(int $id): ?array

@@ -106,8 +106,9 @@ class ProjectModel
 
         $sql .= ' ORDER BY p.updated_at DESC';
 
-        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 100;
-        $sql .= ' LIMIT :limit';
+        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 50;
+        $offset = isset($filters['offset']) ? max(0, (int) $filters['offset']) : 0;
+        $sql .= ' LIMIT :limit OFFSET :offset';
 
         $stmt = $this->pdo->prepare($sql);
 
@@ -116,9 +117,79 @@ class ProjectModel
         }
 
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function count(array $filters = []): int
+    {
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM crm_projects p
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if (!empty($filters['status']) && in_array($filters['status'], self::STATUSES, true)) {
+            $sql .= " AND p.status = :status";
+            $params[':status'] = $filters['status'];
+        }
+
+        if (!empty($filters['owner_id'])) {
+            $sql .= " AND p.owner_id = :owner";
+            $params[':owner'] = (int) $filters['owner_id'];
+        }
+
+        if (!empty($filters['lead_id'])) {
+            $sql .= " AND p.lead_id = :lead";
+            $params[':lead'] = (int) $filters['lead_id'];
+        }
+
+        if (!empty($filters['customer_id'])) {
+            $sql .= " AND p.customer_id = :customer";
+            $params[':customer'] = (int) $filters['customer_id'];
+        }
+
+        if (!empty($filters['hc_number'])) {
+            $sql .= " AND p.hc_number = :hc_number";
+            $params[':hc_number'] = (string) $filters['hc_number'];
+        }
+
+        if (!empty($filters['form_id'])) {
+            $sql .= " AND p.form_id = :form_id";
+            $params[':form_id'] = (int) $filters['form_id'];
+        }
+
+        if (!empty($filters['source_module'])) {
+            $sql .= " AND p.source_module = :source_module";
+            $params[':source_module'] = (string) $filters['source_module'];
+        }
+
+        if (!empty($filters['source_ref_id'])) {
+            $sql .= " AND p.source_ref_id = :source_ref_id";
+            $params[':source_ref_id'] = (string) $filters['source_ref_id'];
+        }
+
+        if (!empty($filters['episode_type'])) {
+            $sql .= " AND p.episode_type = :episode_type";
+            $params[':episode_type'] = (string) $filters['episode_type'];
+        }
+
+        if (!empty($filters['eye'])) {
+            $sql .= " AND p.eye = :eye";
+            $params[':eye'] = (string) $filters['eye'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+
+        return (int)($stmt->fetchColumn() ?: 0);
     }
 
     public function find(int $id): ?array
