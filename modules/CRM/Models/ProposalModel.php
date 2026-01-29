@@ -81,7 +81,7 @@ class ProposalModel
             LIMIT :limit OFFSET :offset
         ";
 
-        $limit = isset($filters['limit']) ? max(1, min(100, (int) $filters['limit'])) : 50;
+        $limit = isset($filters['limit']) ? max(1, min(100, (int) $filters['limit'])) : 25;
         $offset = isset($filters['offset']) ? max(0, (int) $filters['offset']) : 0;
 
         $stmt = $this->pdo->prepare($sql);
@@ -93,6 +93,35 @@ class ProposalModel
         $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function count(array $filters = []): int
+    {
+        $where = ['1 = 1'];
+        $params = [];
+
+        if (!empty($filters['status'])) {
+            $where[] = 'p.status = :status';
+            $params[':status'] = $filters['status'];
+        }
+
+        if (!empty($filters['lead_id'])) {
+            $where[] = 'p.lead_id = :lead_id';
+            $params[':lead_id'] = (int) $filters['lead_id'];
+        }
+
+        if (!empty($filters['search'])) {
+            $where[] = '(p.title LIKE :search OR p.proposal_number LIKE :search)';
+            $params[':search'] = '%' . $filters['search'] . '%';
+        }
+
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) AS total FROM crm_proposals p WHERE ' . implode(' AND ', $where));
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+
+        return (int)($stmt->fetchColumn() ?: 0);
     }
 
     public function find(int $id): ?array

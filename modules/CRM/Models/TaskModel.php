@@ -171,8 +171,9 @@ class TaskModel
 
         $sql .= " ORDER BY $dueExpression IS NULL, $dueExpression ASC, t.updated_at DESC";
 
-        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 200;
-        $sql .= ' LIMIT :limit';
+        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 50;
+        $offset = isset($filters['offset']) ? max(0, (int) $filters['offset']) : 0;
+        $sql .= ' LIMIT :limit OFFSET :offset';
 
         $stmt = $this->pdo->prepare($sql);
 
@@ -181,6 +182,7 @@ class TaskModel
         }
 
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
         $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -204,6 +206,124 @@ class TaskModel
         }
 
         return $tasks;
+    }
+
+    public function count(array $filters = []): int
+    {
+        if (empty($filters['company_id'])) {
+            return 0;
+        }
+
+        $companyId = (int) $filters['company_id'];
+        $viewerId = isset($filters['viewer_id']) ? (int) $filters['viewer_id'] : null;
+        $isAdmin = (bool) ($filters['is_admin'] ?? false);
+        $dueExpression = "COALESCE(t.due_at, CONCAT(t.due_date, ' 23:59:59'))";
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM crm_tasks t
+            WHERE t.company_id = :company_id
+        ";
+
+        $params = [
+            ':company_id' => $companyId,
+        ];
+
+        if (!empty($filters['project_id'])) {
+            $sql .= ' AND t.project_id = :project';
+            $params[':project'] = (int) $filters['project_id'];
+        }
+
+        if (!empty($filters['entity_type'])) {
+            $sql .= ' AND t.entity_type = :entity_type';
+            $params[':entity_type'] = (string) $filters['entity_type'];
+        }
+
+        if (!empty($filters['entity_id'])) {
+            $sql .= ' AND t.entity_id = :entity_id';
+            $params[':entity_id'] = (string) $filters['entity_id'];
+        }
+
+        if (!empty($filters['assigned_to'])) {
+            $sql .= ' AND t.assigned_to = :assigned';
+            $params[':assigned'] = (int) $filters['assigned_to'];
+        }
+
+        if (!empty($filters['lead_id'])) {
+            $sql .= ' AND t.lead_id = :lead_id';
+            $params[':lead_id'] = (int) $filters['lead_id'];
+        }
+
+        if (!empty($filters['customer_id'])) {
+            $sql .= ' AND t.customer_id = :customer_id';
+            $params[':customer_id'] = (int) $filters['customer_id'];
+        }
+
+        if (!empty($filters['hc_number'])) {
+            $sql .= ' AND t.hc_number = :hc_number';
+            $params[':hc_number'] = (string) $filters['hc_number'];
+        }
+
+        if (!empty($filters['patient_id'])) {
+            $sql .= ' AND t.patient_id = :patient_id';
+            $params[':patient_id'] = (string) $filters['patient_id'];
+        }
+
+        if (!empty($filters['form_id'])) {
+            $sql .= ' AND t.form_id = :form_id';
+            $params[':form_id'] = (int) $filters['form_id'];
+        }
+
+        if (!empty($filters['source_module'])) {
+            $sql .= ' AND t.source_module = :source_module';
+            $params[':source_module'] = (string) $filters['source_module'];
+        }
+
+        if (!empty($filters['source_ref_id'])) {
+            $sql .= ' AND t.source_ref_id = :source_ref_id';
+            $params[':source_ref_id'] = (string) $filters['source_ref_id'];
+        }
+
+        if (!empty($filters['episode_type'])) {
+            $sql .= ' AND t.episode_type = :episode_type';
+            $params[':episode_type'] = (string) $filters['episode_type'];
+        }
+
+        if (!empty($filters['eye'])) {
+            $sql .= ' AND t.eye = :eye';
+            $params[':eye'] = (string) $filters['eye'];
+        }
+
+        if (!empty($filters['status']) && in_array($filters['status'], self::STATUSES, true)) {
+            $sql .= ' AND t.status = :status';
+            $params[':status'] = $filters['status'];
+        }
+
+        if (!$isAdmin && $viewerId) {
+            $sql .= ' AND (t.assigned_to = :viewer_id OR t.created_by = :viewer_id)';
+            $params[':viewer_id'] = $viewerId;
+        }
+
+        if (!empty($filters['due'])) {
+            switch ($filters['due']) {
+                case 'today':
+                    $sql .= " AND DATE($dueExpression) = CURRENT_DATE()";
+                    break;
+                case 'overdue':
+                    $sql .= " AND $dueExpression IS NOT NULL AND $dueExpression < NOW() AND t.status NOT IN ('completada', 'cancelada')";
+                    break;
+                case 'week':
+                    $sql .= " AND $dueExpression >= CURRENT_DATE() AND $dueExpression < DATE_ADD(CURRENT_DATE(), INTERVAL 8 DAY)";
+                    break;
+            }
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+
+        return (int)($stmt->fetchColumn() ?: 0);
     }
 
     public function find(int $id, int $companyId): ?array

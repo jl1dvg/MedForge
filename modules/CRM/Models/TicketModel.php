@@ -72,14 +72,16 @@ class TicketModel
 
         $sql .= ' ORDER BY t.updated_at DESC';
 
-        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 100;
-        $sql .= ' LIMIT :limit';
+        $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 50;
+        $offset = isset($filters['offset']) ? max(0, (int) $filters['offset']) : 0;
+        $sql .= ' LIMIT :limit OFFSET :offset';
 
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
         $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -96,6 +98,40 @@ class TicketModel
         }
 
         return $tickets;
+    }
+
+    public function count(array $filters = []): int
+    {
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM crm_tickets t
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if (!empty($filters['status']) && in_array($filters['status'], self::STATUSES, true)) {
+            $sql .= ' AND t.status = :status';
+            $params[':status'] = $filters['status'];
+        }
+
+        if (!empty($filters['assigned_to'])) {
+            $sql .= ' AND t.assigned_to = :assigned';
+            $params[':assigned'] = (int) $filters['assigned_to'];
+        }
+
+        if (!empty($filters['priority']) && in_array($filters['priority'], self::PRIORITIES, true)) {
+            $sql .= ' AND t.priority = :priority';
+            $params[':priority'] = $filters['priority'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->execute();
+
+        return (int)($stmt->fetchColumn() ?: 0);
     }
 
     public function find(int $id): ?array

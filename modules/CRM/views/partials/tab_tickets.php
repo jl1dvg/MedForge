@@ -1,6 +1,41 @@
 <div class="tab-pane fade" id="crm-tab-tickets" role="tabpanel" aria-labelledby="crm-tab-tickets-link">
     <div class="row g-3">
         <div class="col-xl-7">
+            <div class="card mb-3 shadow-sm">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label for="ticket-filter-status" class="form-label mb-1">Estado</label>
+                            <select id="ticket-filter-status" class="form-select form-select-sm">
+                                <option value="">Todos</option>
+                                <?php foreach (($ticketStatuses ?? []) as $status): ?>
+                                    <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $status)), ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="ticket-filter-priority" class="form-label mb-1">Prioridad</label>
+                            <select id="ticket-filter-priority" class="form-select form-select-sm">
+                                <option value="">Todas</option>
+                                <?php foreach (($ticketPriorities ?? []) as $priority): ?>
+                                    <option value="<?= htmlspecialchars($priority, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(ucwords($priority), ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="ticket-filter-assigned" class="form-label mb-1">Asignado</label>
+                            <select id="ticket-filter-assigned" class="form-select form-select-sm">
+                                <option value="">Todos</option>
+                                <?php include __DIR__ . '/user_options.php'; ?>
+                            </select>
+                        </div>
+                        <div class="col-12 d-flex flex-wrap gap-2 mt-2">
+                            <button class="btn btn-sm btn-secondary" type="button" id="ticket-filter-clear">Limpiar filtros</button>
+                            <button class="btn btn-sm btn-primary" type="button" id="ticket-filter-apply">Aplicar filtros</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="table-responsive rounded card-table shadow-sm">
                 <table class="table table-striped table-sm align-middle" id="crm-tickets-table">
                     <thead class="bg-info text-white">
@@ -17,6 +52,24 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="width: 160px;">
+                        <span class="input-group-text"><i class="mdi mdi-format-list-numbered"></i></span>
+                        <select id="ticket-page-size" class="form-select">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="ticket-reload-btn">
+                        <i class="mdi mdi-refresh"></i>
+                    </button>
+                </div>
+                <div class="text-muted small" id="ticket-table-info">Mostrando 0 de 0</div>
+                <ul class="pagination pagination-sm mb-0" id="ticket-pagination"></ul>
             </div>
         </div>
         <div class="col-xl-5">

@@ -18,6 +18,10 @@
                     <span class="input-group-text"><i class="fa fa-search"></i></span>
                     <input type="search" class="form-control" id="proposal-search" placeholder="Buscar #, asunto o destinatario">
                 </div>
+                <div class="input-group input-group-sm" style="max-width: 160px;">
+                    <span class="input-group-text"><i class="mdi mdi-account-search"></i></span>
+                    <input type="text" class="form-control" id="proposal-lead-filter" placeholder="Lead ID">
+                </div>
                 <select class="form-select form-select-sm" id="proposal-status-filter" style="min-width: 140px;">
                     <option value="">Todos</option>
                     <?php foreach (($proposalStatuses ?? []) as $statusOption): ?>
@@ -43,11 +47,29 @@
                                     <th>Estado</th>
                                     <th class="text-end"></th>
                                 </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between mt-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="width: 160px;">
+                        <span class="input-group-text"><i class="mdi mdi-format-list-numbered"></i></span>
+                        <select id="proposal-page-size" class="form-select">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
                     </div>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="proposal-reload-btn">
+                        <i class="mdi mdi-refresh"></i>
+                    </button>
                 </div>
+                <div class="text-muted small" id="proposal-table-info">Mostrando 0 de 0</div>
+                <ul class="pagination pagination-sm mb-0" id="proposal-pagination"></ul>
+            </div>
+        </div>
                 <div class="col-xl-5">
                     <div class="card mb-3">
                         <div class="card-header d-flex align-items-center justify-content-between">

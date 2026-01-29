@@ -66,11 +66,61 @@ export const leadFilters = {
 export const leadTableState = {
     page: 1,
     pageSize: 10,
+    total: 0,
+    totalPages: 1,
+};
+
+export const projectFilters = {
+    status: '',
+    owner_id: '',
+    lead_id: '',
+    customer_id: '',
+    hc_number: '',
+    source_module: '',
+    source_ref_id: '',
+    form_id: '',
+    episode_type: '',
+    eye: '',
+};
+
+export const projectPagination = {
+    page: 1,
+    perPage: 25,
+    total: 0,
+    totalPages: 1,
+};
+
+export const taskPagination = {
+    page: 1,
+    perPage: 25,
+    total: 0,
+    totalPages: 1,
+};
+
+export const ticketFilters = {
+    status: '',
+    assigned_to: '',
+    priority: '',
+};
+
+export const ticketPagination = {
+    page: 1,
+    perPage: 25,
+    total: 0,
+    totalPages: 1,
 };
 
 export const proposalFilters = {
     status: '',
     search: '',
+    lead_id: '',
+};
+
+export const proposalPagination = {
+    page: 1,
+    perPage: 25,
+    total: 0,
+    totalPages: 1,
 };
 
 export const proposalUIState = {
@@ -145,4 +195,25 @@ export function initState(bootstrapData) {
 
     state.leads = mapLeads(state.leads);
     state.proposals = mapProposals(state.proposals);
+
+    leadTableState.total = state.leads.length;
+    leadTableState.totalPages = leadTableState.pageSize
+        ? Math.max(1, Math.ceil(leadTableState.total / leadTableState.pageSize))
+        : 1;
+    projectPagination.total = state.projects.length;
+    projectPagination.totalPages = projectPagination.perPage
+        ? Math.max(1, Math.ceil(projectPagination.total / projectPagination.perPage))
+        : 1;
+    taskPagination.total = state.tasks.length;
+    taskPagination.totalPages = taskPagination.perPage
+        ? Math.max(1, Math.ceil(taskPagination.total / taskPagination.perPage))
+        : 1;
+    ticketPagination.total = state.tickets.length;
+    ticketPagination.totalPages = ticketPagination.perPage
+        ? Math.max(1, Math.ceil(ticketPagination.total / ticketPagination.perPage))
+        : 1;
+    proposalPagination.total = state.proposals.length;
+    proposalPagination.totalPages = proposalPagination.perPage
+        ? Math.max(1, Math.ceil(proposalPagination.total / proposalPagination.perPage))
+        : 1;
 }

@@ -73,15 +73,15 @@ class CRMController extends BaseController
                 'ticketStatuses' => $this->tickets->getStatuses(),
                 'ticketPriorities' => $this->tickets->getPriorities(),
                 'assignableUsers' => $this->getAssignableUsers(),
-                'initialLeads' => $this->leads->list(['limit' => 50]),
-                'initialProjects' => $this->projects->list(['limit' => 50]),
+                'initialLeads' => $this->leads->list(['limit' => 25]),
+                'initialProjects' => $this->projects->list(['limit' => 25]),
                 'initialTasks' => $this->tasks->list([
-                    'limit' => 50,
+                    'limit' => 25,
                     'company_id' => $this->currentCompanyId(),
                     'viewer_id' => $this->currentUserId(),
                     'is_admin' => $this->isAdminUser(),
                 ]),
-                'initialTickets' => $this->tickets->list(['limit' => 50]),
+                'initialTickets' => $this->tickets->list(['limit' => 25]),
                 'initialProposals' => $this->proposals->list(['limit' => 25]),
                 'proposalStatuses' => $this->proposals->getStatuses(),
                 'permissions' => $permissions,
@@ -110,13 +110,32 @@ class CRMController extends BaseController
             if (($source = $this->getQuery('source')) !== null) {
                 $filters['source'] = $source;
             }
-            if (($limit = $this->getQueryInt('limit')) !== null) {
-                $filters['limit'] = $limit;
+            $page = $this->getQueryInt('page') ?? 1;
+            $page = max(1, $page);
+            $perPage = $this->getQueryInt('per_page');
+            if ($perPage === null) {
+                $perPage = $this->getQueryInt('limit') ?? 50;
             }
+            $perPage = max(1, min(200, $perPage));
+            $filters['limit'] = $perPage;
+            $filters['offset'] = ($page - 1) * $perPage;
 
+            $countFilters = $filters;
+            unset($countFilters['limit'], $countFilters['offset']);
+
+            $total = $this->leads->count($countFilters);
             $leads = $this->leads->list($filters);
             $this->auditCrm('crm_leads_list', ['filters' => $filters]);
-            $this->json(['ok' => true, 'data' => $leads]);
+            $this->json([
+                'ok' => true,
+                'data' => $leads,
+                'meta' => [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'total_pages' => $perPage ? (int)ceil($total / $perPage) : 1,
+                ],
+            ]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los leads'], 500);
         }
@@ -526,10 +545,42 @@ class CRMController extends BaseController
             if (($limit = $this->getQueryInt('limit')) !== null) {
                 $filters['limit'] = $limit;
             }
+            if (($formId = $this->getQueryInt('form_id')) !== null) {
+                $filters['form_id'] = $formId;
+            }
+            if (($episodeType = $this->getQuery('episode_type')) !== null) {
+                $filters['episode_type'] = $episodeType;
+            }
+            if (($eye = $this->getQuery('eye')) !== null) {
+                $filters['eye'] = $eye;
+            }
 
+            $page = $this->getQueryInt('page') ?? 1;
+            $page = max(1, $page);
+            $perPage = $this->getQueryInt('per_page');
+            if ($perPage === null) {
+                $perPage = $this->getQueryInt('limit') ?? 50;
+            }
+            $perPage = max(1, min(200, $perPage));
+            $filters['limit'] = $perPage;
+            $filters['offset'] = ($page - 1) * $perPage;
+
+            $countFilters = $filters;
+            unset($countFilters['limit'], $countFilters['offset']);
+
+            $total = $this->projects->count($countFilters);
             $projects = $this->projectService->list($filters);
             $this->auditCrm('crm_projects_list', ['filters' => $filters]);
-            $this->json(['ok' => true, 'data' => $projects]);
+            $this->json([
+                'ok' => true,
+                'data' => $projects,
+                'meta' => [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'total_pages' => $perPage ? (int)ceil($total / $perPage) : 1,
+                ],
+            ]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los proyectos'], 500);
         }
@@ -721,6 +772,45 @@ class CRMController extends BaseController
             if (($limit = $this->getQueryInt('limit')) !== null) {
                 $filters['limit'] = $limit;
             }
+            if (($customerId = $this->getQueryInt('customer_id')) !== null) {
+                $filters['customer_id'] = $customerId;
+            }
+            if (($patientId = $this->getQuery('patient_id')) !== null) {
+                $filters['patient_id'] = $patientId;
+            }
+            if (($formId = $this->getQueryInt('form_id')) !== null) {
+                $filters['form_id'] = $formId;
+            }
+            if (($sourceModule = $this->getQuery('source_module')) !== null) {
+                $filters['source_module'] = $sourceModule;
+            }
+            if (($sourceRefId = $this->getQuery('source_ref_id')) !== null) {
+                $filters['source_ref_id'] = $sourceRefId;
+            }
+            if (($episodeType = $this->getQuery('episode_type')) !== null) {
+                $filters['episode_type'] = $episodeType;
+            }
+            if (($eye = $this->getQuery('eye')) !== null) {
+                $filters['eye'] = $eye;
+            }
+
+            $page = $this->getQueryInt('page') ?? 1;
+            $page = max(1, $page);
+            $perPage = $this->getQueryInt('per_page');
+            if ($perPage === null) {
+                $perPage = $this->getQueryInt('limit') ?? 50;
+            }
+            $perPage = max(1, min(200, $perPage));
+            $filters['limit'] = $perPage;
+            $filters['offset'] = ($page - 1) * $perPage;
+
+            $countFilters = $filters;
+            unset($countFilters['limit'], $countFilters['offset']);
+
+            $countFilters['company_id'] = $this->currentCompanyId();
+            $countFilters['viewer_id'] = $this->currentUserId();
+            $countFilters['is_admin'] = $this->isAdminUser();
+            $total = $this->tasks->count($countFilters);
 
             $tasks = $this->taskService->list(
                 $filters,
@@ -729,7 +819,16 @@ class CRMController extends BaseController
                 $this->isAdminUser()
             );
             $this->auditCrm('crm_tasks_list', ['filters' => $filters]);
-            $this->json(['ok' => true, 'data' => $tasks]);
+            $this->json([
+                'ok' => true,
+                'data' => $tasks,
+                'meta' => [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'total_pages' => $perPage ? (int)ceil($total / $perPage) : 1,
+                ],
+            ]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar las tareas'], 500);
         }
@@ -908,13 +1007,32 @@ class CRMController extends BaseController
             if (($priority = $this->getQuery('priority')) !== null) {
                 $filters['priority'] = $priority;
             }
-            if (($limit = $this->getQueryInt('limit')) !== null) {
-                $filters['limit'] = $limit;
+            $page = $this->getQueryInt('page') ?? 1;
+            $page = max(1, $page);
+            $perPage = $this->getQueryInt('per_page');
+            if ($perPage === null) {
+                $perPage = $this->getQueryInt('limit') ?? 50;
             }
+            $perPage = max(1, min(200, $perPage));
+            $filters['limit'] = $perPage;
+            $filters['offset'] = ($page - 1) * $perPage;
 
+            $countFilters = $filters;
+            unset($countFilters['limit'], $countFilters['offset']);
+
+            $total = $this->tickets->count($countFilters);
             $tickets = $this->tickets->list($filters);
             $this->auditCrm('crm_tickets_list', ['filters' => $filters]);
-            $this->json(['ok' => true, 'data' => $tickets]);
+            $this->json([
+                'ok' => true,
+                'data' => $tickets,
+                'meta' => [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'total_pages' => $perPage ? (int)ceil($total / $perPage) : 1,
+                ],
+            ]);
         } catch (Throwable $e) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar los tickets'], 500);
         }
@@ -1013,13 +1131,32 @@ class CRMController extends BaseController
             if (($search = $this->getQuery('q')) !== null) {
                 $filters['search'] = $search;
             }
-            if (($limit = $this->getQueryInt('limit')) !== null) {
-                $filters['limit'] = $limit;
+            $page = $this->getQueryInt('page') ?? 1;
+            $page = max(1, $page);
+            $perPage = $this->getQueryInt('per_page');
+            if ($perPage === null) {
+                $perPage = $this->getQueryInt('limit') ?? 25;
             }
+            $perPage = max(1, min(100, $perPage));
+            $filters['limit'] = $perPage;
+            $filters['offset'] = ($page - 1) * $perPage;
 
+            $countFilters = $filters;
+            unset($countFilters['limit'], $countFilters['offset']);
+
+            $total = $this->proposals->count($countFilters);
             $proposals = $this->proposals->list($filters);
             $this->auditCrm('crm_proposals_list', ['filters' => $filters]);
-            $this->json(['ok' => true, 'data' => $proposals]);
+            $this->json([
+                'ok' => true,
+                'data' => $proposals,
+                'meta' => [
+                    'page' => $page,
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'total_pages' => $perPage ? (int)ceil($total / $perPage) : 1,
+                ],
+            ]);
         } catch (Throwable $exception) {
             $this->json(['ok' => false, 'error' => 'No se pudieron cargar las propuestas'], 500);
         }
