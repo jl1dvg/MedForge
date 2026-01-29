@@ -145,9 +145,9 @@ $solicitudCoberturaMail = $coberturaTemplateAvailable;
 $solicitudCoberturaMailStyle = $derivacionVencida ? 'warning' : 'info';
 $solicitudCoberturaMailTitle = $derivacionVencida ? 'Derivación vencida' : 'Solicitar cobertura adicional';
 $solicitudCoberturaMailMessage = $derivacionVencida
-    ? 'Afiliación: ' . htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8')
+        ? 'Afiliación: ' . htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8')
         . '. Solicita un nuevo código por correo adjuntando la derivación.'
-    : 'Si necesitas otro código de procedimiento o cobertura para el otro ojo, puedes solicitarla por correo.';
+        : 'Si necesitas otro código de procedimiento o cobertura para el otro ojo, puedes solicitarla por correo.';
 $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';
@@ -161,11 +161,11 @@ if (!empty($coberturaMailLog['sent_at'])) {
         $sentAt = new DateTime($coberturaMailLog['sent_at']);
         $coberturaMailSentAt = $sentAt->format('d-m-Y H:i');
     } catch (Exception $e) {
-        $coberturaMailSentAt = (string) $coberturaMailLog['sent_at'];
+        $coberturaMailSentAt = (string)$coberturaMailLog['sent_at'];
     }
 }
 if (!empty($coberturaMailLog['sent_by_name'])) {
-    $coberturaMailSentBy = (string) $coberturaMailLog['sent_by_name'];
+    $coberturaMailSentBy = (string)$coberturaMailLog['sent_by_name'];
 }
 if ($coberturaMailSentAt !== '') {
     $coberturaMailSentLabel = 'Cobertura solicitada el ' . $coberturaMailSentAt;
@@ -179,6 +179,10 @@ $sigcenterProcedimientoId = $solicitud['sigcenter_procedimiento_id'] ?? '';
 $sigcenterTrabajadorId = $solicitud['sigcenter_trabajador_id'] ?? '';
 $medicoTrabajadorId = $solicitud['user_trabajador_id'] ?? ($solicitud['id_trabajador'] ?? '');
 $sigcenterSolicitudId = (int)($solicitud['solicitud_id'] ?? ($solicitud['id'] ?? 0));
+$sigcenterDocSolicitud = $solicitud['pedido_cirugia_id'] ?? '';
+$sigcenterOrigenId = $solicitud['derivacion_pedido_id'] ?? '';
+$sigcenterLateralidad = $solicitud['lateralidad'] ?? ($solicitud['ojo'] ?? '');
+$sigcenterPrefacturaId = $solicitud['derivacion_prefactura'] ?? '';
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -338,7 +342,11 @@ $sigcenterSolicitudId = (int)($solicitud['solicitud_id'] ?? ($solicitud['id'] ??
              data-sigcenter-agenda-id="<?= htmlspecialchars((string)$sigcenterAgendaId, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-fecha-inicio="<?= htmlspecialchars((string)$sigcenterFechaInicio, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-procedimiento-id="<?= htmlspecialchars((string)$sigcenterProcedimientoId, ENT_QUOTES, 'UTF-8') ?>"
-             data-sigcenter-trabajador-id="<?= htmlspecialchars((string)$sigcenterTrabajadorId, ENT_QUOTES, 'UTF-8') ?>">
+             data-sigcenter-trabajador-id="<?= htmlspecialchars((string)$sigcenterTrabajadorId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-doc-solicitud="<?= htmlspecialchars((string)$sigcenterDocSolicitud, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-origen-id="<?= htmlspecialchars((string)$sigcenterOrigenId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-prefactura-id="<?= htmlspecialchars((string)$sigcenterPrefacturaId, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-lateralidad="<?= htmlspecialchars((string)$sigcenterLateralidad, ENT_QUOTES, 'UTF-8') ?>">
             <div class="card-header bg-white">
                 <h6 class="card-title mb-0">
                     <i class="bi bi-calendar2-check prefactura-icon text-primary me-2"></i>

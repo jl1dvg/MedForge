@@ -34,6 +34,8 @@ class SolicitudModel
                 sp.fecha,
                 sp.duracion,
                 sp.ojo,
+                sp.pedido_origen_id,
+                sp.pedido_origen,
                 sp.prioridad,
                 sp.producto,
                 sp.observacion,
@@ -43,6 +45,9 @@ class SolicitudModel
                 sp.lente_observacion,
                 sp.incision,
                 sp.estado,
+                sp.derivacion_pedido_id,
+                sp.derivacion_lateralidad,
+                sp.derivacion_prefactura,
                 sp.created_at
             FROM solicitud_procedimiento sp
             WHERE sp.hc_number = :hcNumber
@@ -174,6 +179,8 @@ class SolicitudModel
                 COALESCE(cd.fecha, sp.fecha, sp.created_at) AS fecha_programada,
                 sp.duracion,
                 sp.ojo,
+                sp.pedido_origen_id,
+                sp.pedido_origen,
                 sp.prioridad,
                 sp.producto,
                 sp.observacion,
@@ -182,6 +189,8 @@ class SolicitudModel
                 pd.fecha_caducidad,
                 cd.diagnosticos,
                 sp.turno,
+                sp.derivacion_pedido_id,
+                sp.derivacion_lateralidad,
                 detalles.pipeline_stage AS crm_pipeline_stage,
                 detalles.fuente AS crm_fuente,
                 detalles.contacto_email AS crm_contacto_email,
@@ -407,94 +416,6 @@ class SolicitudModel
         $stmtLegacy = $this->db->prepare("SELECT * FROM derivaciones_form_id WHERE form_id = ?");
         $stmtLegacy->execute([$form_id]);
         return $stmtLegacy->fetch(PDO::FETCH_ASSOC);
-    }
-
-    public function obtenerDerivacionPreseleccion(int $solicitudId): ?array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT
-                derivacion_codigo,
-                derivacion_pedido_id,
-                derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel
-             FROM solicitud_procedimiento
-             WHERE id = :id
-             LIMIT 1"
-        );
-        $stmt->execute([':id' => $solicitudId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            return null;
-        }
-        return $row;
-    }
-
-    public function obtenerDerivacionPreseleccionPorFormHc(string $formId, string $hcNumber): ?array
-    {
-        $stmt = $this->db->prepare(
-            "SELECT
-                id,
-                derivacion_codigo,
-                derivacion_pedido_id,
-                derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel
-             FROM solicitud_procedimiento
-             WHERE form_id = :form_id
-               AND hc_number = :hc
-             ORDER BY id DESC
-             LIMIT 1"
-        );
-        $stmt->execute([
-            ':form_id' => $formId,
-            ':hc' => $hcNumber,
-        ]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            return null;
-        }
-        return $row;
-    }
-
-    public function guardarDerivacionPreseleccion(int $solicitudId, array $data): bool
-    {
-        $stmt = $this->db->prepare(
-            "UPDATE solicitud_procedimiento
-             SET derivacion_codigo = :codigo,
-                 derivacion_pedido_id = :pedido_id,
-                 derivacion_lateralidad = :lateralidad,
-                 derivacion_fecha_vigencia_sel = :vigencia
-             WHERE id = :id"
-        );
-        $stmt->execute([
-            ':codigo' => $data['derivacion_codigo'] ?? null,
-            ':pedido_id' => $data['derivacion_pedido_id'] ?? null,
-            ':lateralidad' => $data['derivacion_lateralidad'] ?? null,
-            ':vigencia' => $data['derivacion_fecha_vigencia_sel'] ?? null,
-            ':id' => $solicitudId,
-        ]);
-
-        return $stmt->rowCount() > 0;
-    }
-
-    public function obtenerSolicitudIdPorFormHc(string $formId, string $hcNumber): ?int
-    {
-        $stmt = $this->db->prepare(
-            "SELECT id
-             FROM solicitud_procedimiento
-             WHERE form_id = :form_id
-               AND hc_number = :hc
-             ORDER BY id DESC
-             LIMIT 1"
-        );
-        $stmt->execute([
-            ':form_id' => $formId,
-            ':hc' => $hcNumber,
-        ]);
-        $row = $stmt->fetchColumn();
-        if ($row === false) {
-            return null;
-        }
-        return (int) $row;
     }
 
     public function obtenerDerivacionPreseleccion(int $solicitudId): ?array

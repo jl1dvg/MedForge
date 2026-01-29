@@ -2025,6 +2025,9 @@ class SolicitudController extends BaseController
             ? $templateService->hasEnabledTemplate($templateKey)
             : false;
         $solicitudId = isset($data['solicitud']['id']) ? (int) $data['solicitud']['id'] : null;
+        if ($solicitudId) {
+            $this->ensureDerivacionPreseleccionAuto($hcNumber, $formId, $solicitudId);
+        }
         $viewData['coberturaMailLog'] = null;
         if ($solicitudId) {
             $mailLogService = new CoberturaMailLogService($this->pdo);
@@ -2708,6 +2711,94 @@ class SolicitudController extends BaseController
             'diagnostico' => $diagnostico,
             'consulta' => $consulta,
         ];
+    }
+
+    private function ensureDerivacionPreseleccionAuto(string $hcNumber, string $formId, int $solicitudId): void
+    {
+        $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccion($solicitudId);
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            return;
+        }
+
+        $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            $this->solicitudModel->guardarDerivacionPreseleccion($solicitudId, [
+                'derivacion_codigo' => $seleccion['derivacion_codigo'] ?? null,
+                'derivacion_pedido_id' => $seleccion['derivacion_pedido_id'] ?? null,
+                'derivacion_lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+                'derivacion_fecha_vigencia_sel' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+                'derivacion_prefactura' => $seleccion['derivacion_prefactura'] ?? null,
+            ]);
+            return;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_index_admisiones_hc.py';
+        if (!is_file($script)) {
+            return;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s --group --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $parsed = null;
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string) $output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            return;
+        }
+
+        $grouped = $parsed['grouped'] ?? [];
+        $options = [];
+        foreach ($grouped as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $data = $item['data'] ?? [];
+            $options[] = [
+                'codigo_derivacion' => $item['codigo_derivacion'] ?? null,
+                'pedido_id_mas_antiguo' => $item['pedido_id_mas_antiguo'] ?? null,
+                'lateralidad' => $item['lateralidad'] ?? null,
+                'fecha_vigencia' => $data['fecha_grupo'] ?? null,
+                'prefactura' => $data['prefactura'] ?? null,
+            ];
+        }
+
+        if (count($options) !== 1) {
+            return;
+        }
+
+        $option = $options[0];
+        $pedidoId = trim((string) ($option['pedido_id_mas_antiguo'] ?? ''));
+        $codigo = trim((string) ($option['codigo_derivacion'] ?? ''));
+
+        if ($pedidoId === '' || $codigo === '') {
+            return;
+        }
+
+        $this->solicitudModel->guardarDerivacionPreseleccion($solicitudId, [
+            'derivacion_codigo' => $codigo,
+            'derivacion_pedido_id' => $pedidoId,
+            'derivacion_lateralidad' => $option['lateralidad'] ?? null,
+            'derivacion_fecha_vigencia_sel' => $option['fecha_vigencia'] ?? null,
+            'derivacion_prefactura' => $option['prefactura'] ?? null,
+        ]);
     }
 
     /**

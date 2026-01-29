@@ -180,6 +180,48 @@ function formatDerivacionVigencia(fechaVigencia) {
     };
 }
 
+function normalizeTextValue(value) {
+    return (value ?? "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase()
+        .trim();
+}
+
+function extractProcedimientoCodigo(value) {
+    if (!value) return "";
+    const match = value.toString().match(/(\d{3,})/);
+    return match ? match[1] : "";
+}
+
+function resolveLateralidad(value) {
+    const normalized = normalizeTextValue(value);
+    if (!normalized) return "";
+    if (normalized.includes("AMB")) return "AMBOS";
+    if (normalized.includes("AO")) return "AMBOS";
+    if (normalized.includes("DER") || normalized.includes("OD") || normalized.includes("DERECHO")) {
+        return "DERECHO";
+    }
+    if (normalized.includes("IZQ") || normalized.includes("OI") || normalized.includes("IZQUIERDO")) {
+        return "IZQUIERDO";
+    }
+    return "";
+}
+
+function lateralidadToId(lateralidad) {
+    switch (lateralidad) {
+        case "DERECHO":
+            return 1;
+        case "IZQUIERDO":
+            return 2;
+        case "AMBOS":
+            return 3;
+        default:
+            return 1;
+    }
+}
+
 function formatHoursRemaining(value) {
     if (typeof value !== "number" || Number.isNaN(value)) {
         return null;
@@ -1245,24 +1287,24 @@ async function guardarPreseleccionDerivacion(payload) {
 function buildDerivacionOptionsHtml(options, selectedValue) {
     return `
         <input type="hidden" id="derivacionSeleccionValue" value="${escapeHtml(
-            selectedValue || ""
-        )}">
+        selectedValue || ""
+    )}">
         <div class="d-flex flex-column gap-2 text-start" id="derivacionSeleccionList">
             ${options
-                .map((option) => {
-                    const value = String(option.pedido_id_mas_antiguo || "");
-                    const isSelected = value === selectedValue;
-                    const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
-                        option.pedido_id_mas_antiguo || "-"
-                    }`;
-                    const meta = [
-                        option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
-                        option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
-                        option.prefactura ? `Prefactura: ${option.prefactura}` : null,
-                    ]
-                        .filter(Boolean)
-                        .join(" · ");
-                    return `
+        .map((option) => {
+            const value = String(option.pedido_id_mas_antiguo || "");
+            const isSelected = value === selectedValue;
+            const label = `${escapeHtml(option.codigo_derivacion || "Sin código")} · Pedido ${
+                option.pedido_id_mas_antiguo || "-"
+            }`;
+            const meta = [
+                option.lateralidad ? `Lateralidad: ${option.lateralidad}` : null,
+                option.fecha_vigencia ? `Vigencia: ${option.fecha_vigencia}` : null,
+                option.prefactura ? `Prefactura: ${option.prefactura}` : null,
+            ]
+                .filter(Boolean)
+                .join(" · ");
+            return `
                         <button type="button"
                                 class="btn btn-light text-start border ${isSelected ? "border-primary" : ""}"
                                 data-derivacion-option="true"
@@ -1271,8 +1313,8 @@ function buildDerivacionOptionsHtml(options, selectedValue) {
                             ${meta ? `<div class="text-muted small">${escapeHtml(meta)}</div>` : ""}
                         </button>
                     `;
-                })
-                .join("")}
+        })
+        .join("")}
         </div>
     `;
 }
@@ -1520,6 +1562,82 @@ function abrirPrefactura({hc, formId, solicitudId}) {
 
 function initSigcenterPanel(container) {
     const root = container || document;
+    const SIGCENTER_DEBUG =
+        typeof window !== "undefined" && typeof window.__SIGCENTER_DEBUG !== "undefined"
+            ? Boolean(window.__SIGCENTER_DEBUG)
+            : true;
+
+    const absUrl = (path) => {
+        try {
+            return new URL(path, window.location.origin).href;
+        } catch (e) {
+            return String(path);
+        }
+    };
+
+    const logReq = (label, url, payload) => {
+        if (!SIGCENTER_DEBUG) return;
+        console.groupCollapsed(`%c[Sigcenter][REQ] ${label}`, "color:#0d6efd");
+        console.log("url:", absUrl(url));
+        console.log("payload:", payload);
+        console.groupEnd();
+    };
+
+    const logRes = (label, res, raw) => {
+        if (!SIGCENTER_DEBUG) return;
+        console.groupCollapsed(`%c[Sigcenter][RES] ${label}`, "color:#198754");
+        console.log("url:", res?.url);
+        console.log("status:", res?.status, res?.statusText);
+        console.log("raw:", raw);
+        console.groupEnd();
+    };
+
+    // --- Begin Sigcenter API candidate helpers ---
+    const buildSigcenterApiCandidates = (filename) => {
+        const apiBase = resolveApiBasePath();
+        const {basePath} = getKanbanConfig();
+        const normalizedBase =
+            basePath && basePath !== "/" ? String(basePath).replace(/\/+$/g, "") : "";
+
+        const path = filename.startsWith("/") ? filename : `/sigcenter/${filename}`;
+
+        const candidates = new Set();
+
+        // Canonical
+        candidates.add(`/api${path}`);
+
+        // Using configured apiBasePath
+        candidates.add(`${apiBase}${path}`);
+
+        // Some deployments mount api under the module basePath
+        if (normalizedBase) {
+            candidates.add(`${normalizedBase}/api${path}`);
+            candidates.add(`${normalizedBase}${apiBase}${path}`);
+        }
+
+        // Absolute (helps when running inside nested routes)
+        try {
+            const origin = window.location.origin;
+            Array.from(candidates).forEach((u) => {
+                if (u.startsWith("/")) candidates.add(`${origin}${u}`);
+            });
+        } catch (e) {
+            // ignore
+        }
+
+        return Array.from(candidates);
+    };
+
+    const fetchSigcenter = async (label, filename, options) => {
+        const candidates = buildSigcenterApiCandidates(filename);
+        if (SIGCENTER_DEBUG) {
+            console.groupCollapsed(`%c[Sigcenter][CANDIDATES] ${label}`, "color:#6f42c1");
+            console.log("candidates:", candidates);
+            console.groupEnd();
+        }
+        return fetchWithFallback(candidates, options);
+    };
+    // --- End Sigcenter API candidate helpers ---
     const card = root.querySelector("#prefacturaSigcenterCard");
     if (!card) return;
 
@@ -1544,6 +1662,8 @@ function initSigcenterPanel(container) {
     const existingAgendaId = (card.dataset.sigcenterAgendaId || "").trim();
     const existingFechaInicio = (card.dataset.sigcenterFechaInicio || "").trim();
     const existingProcedimientoId = (card.dataset.sigcenterProcedimientoId || "").trim();
+    const coberturaData = root.querySelector("#prefacturaCoberturaData");
+    const existingDocSolicitud = (card.dataset.sigcenterDocSolicitud || "").trim();
 
     const state = {
         ready: false,
@@ -1691,7 +1811,7 @@ function initSigcenterPanel(container) {
         if (!sedeSelect || !trabajadorId) return;
         state.sedesLoaded = true;
         setStatus("Cargando sedes...", "text-muted");
-        return fetch("/api/sigcenter/sedes.php", {
+        return fetchSigcenter("sedes", "sedes.php", {
             method: "POST",
             headers: {"Content-Type": "application/json;charset=UTF-8"},
             body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113}),
@@ -1831,7 +1951,7 @@ function initSigcenterPanel(container) {
         setStatus("Cargando días disponibles...", "text-muted");
         loadDaysBtn.disabled = true;
         try {
-            const res = await fetch("/api/sigcenter/horarios-dias.php", {
+            const res = await fetchSigcenter("horarios-dias", "horarios-dias.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
                 body: JSON.stringify({trabajador_id: trabajadorId, company_id: 113, ID_SEDE: state.sedeId}),
@@ -1879,7 +1999,7 @@ function initSigcenterPanel(container) {
         if (!trabajadorId || !dateValue) return;
         setStatus(`Cargando horarios para ${dateValue}...`, "text-muted");
         try {
-            const res = await fetch("/api/sigcenter/horarios-especifico.php", {
+            const res = await fetchSigcenter("horarios-especifico", "horarios-especifico.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
                 body: JSON.stringify({
@@ -1918,6 +2038,162 @@ function initSigcenterPanel(container) {
         }
     };
 
+    const resolveDocSolicitud = async () => {
+        const cachedDoc = (card.dataset.sigcenterDocSolicitud || "").trim();
+        if (cachedDoc) {
+            return {
+                docSolicitud: cachedDoc,
+                lateralidad: resolveLateralidad(card.dataset.sigcenterLateralidad || ""),
+            };
+        }
+
+        const formId = coberturaData?.dataset?.formId || "";
+        const detalle = (() => {
+            const base = findSolicitudById(solicitudId) || {};
+            return base;
+        })();
+
+        let procedimientoText = detalle.procedimiento || coberturaData?.dataset?.procedimiento || "";
+        let origen = card.dataset.sigcenterOrigenId
+            || detalle.derivacion_pedido_id
+            || "";
+        // Nota: en el HTML puede venir como data-sigcenter-prefactura o data-sigcenter-prefactura-id
+        let prefactura = (
+            card.dataset.sigcenterPrefactura
+            || card.dataset.sigcenterPrefacturaId
+            || detalle.prefactura
+            || coberturaData?.dataset?.prefactura
+            || ""
+        )
+            .toString()
+            .trim();
+        let lateralidadRaw = card.dataset.sigcenterLateralidad
+            || detalle.lateralidad
+            || detalle.ojo
+            || procedimientoText;
+        let procedimientoCodigo = extractProcedimientoCodigo(procedimientoText);
+        let lateralidad = resolveLateralidad(lateralidadRaw);
+
+        if (!procedimientoCodigo || (!origen && !prefactura) || !lateralidad) {
+            try {
+                const detalleFetch = await fetchDetalleSolicitud({
+                    hcNumber,
+                    solicitudId,
+                    formId: detalle.form_id,
+                });
+                procedimientoText = procedimientoText || detalleFetch.procedimiento || "";
+                origen = origen
+                    || detalleFetch.derivacion_pedido_id
+                    || "";
+                prefactura = prefactura
+                    || (detalleFetch.prefactura || "").toString().trim();
+                if (prefactura) {
+                    if (!card.dataset.sigcenterPrefactura) {
+                        card.dataset.sigcenterPrefactura = prefactura;
+                    }
+                    if (!card.dataset.sigcenterPrefacturaId) {
+                        card.dataset.sigcenterPrefacturaId = prefactura;
+                    }
+                }
+                lateralidadRaw = lateralidadRaw
+                    || detalleFetch.lateralidad
+                    || detalleFetch.ojo
+                    || detalleFetch.procedimiento
+                    || "";
+                procedimientoCodigo = procedimientoCodigo || extractProcedimientoCodigo(procedimientoText);
+                lateralidad = lateralidad || resolveLateralidad(lateralidadRaw);
+                if (!card.dataset.sigcenterLateralidad && lateralidad) {
+                    card.dataset.sigcenterLateralidad = lateralidad;
+                }
+            } catch (error) {
+                console.warn("[Sigcenter] No se pudo hidratar detalle para docSolicitud:", error);
+            }
+        }
+
+        if (!origen && hcNumber && formId) {
+            try {
+                const response = await fetch("/solicitudes/derivacion-preseleccion", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json;charset=UTF-8"},
+                    body: JSON.stringify({
+                        hc_number: hcNumber,
+                        form_id: formId,
+                        solicitud_id: solicitudId || undefined,
+                    }),
+                    credentials: "include",
+                });
+                const data = await response.json().catch(() => ({}));
+                if (response.ok && data?.selected?.pedido_id_mas_antiguo) {
+                    const pedidoId = String(data.selected.pedido_id_mas_antiguo || "");
+                    const lateralidadSel = resolveLateralidad(data.selected.lateralidad || lateralidadRaw);
+                    if (pedidoId) {
+                        card.dataset.sigcenterDocSolicitud = pedidoId;
+                        if (!card.dataset.sigcenterLateralidad && lateralidadSel) {
+                            card.dataset.sigcenterLateralidad = lateralidadSel;
+                        }
+                        return {docSolicitud: pedidoId, lateralidad: lateralidadSel};
+                    }
+                }
+            } catch (error) {
+                console.warn("[Sigcenter] No se pudo resolver docSolicitud desde derivación:", error);
+            }
+        }
+
+        if (!hcNumber || !procedimientoCodigo || !lateralidad || (!origen && !prefactura)) {
+            const missing = [];
+            if (!hcNumber) missing.push("hc_number");
+            if (!procedimientoCodigo) missing.push("procedimiento");
+            if (!lateralidad) missing.push("lateralidad");
+            if (!origen && !prefactura) missing.push("origen|prefactura");
+            throw new Error(`Faltan datos para resolver docSolicitud (${missing.join(", ")})`);
+        }
+
+        const payload = {
+            hc_number: hcNumber,
+            origen: origen || undefined,
+            prefactura: prefactura || undefined,
+            procedimiento: procedimientoCodigo,
+            lateralidad,
+            solicitud_id: solicitudId || undefined,
+        };
+        logReq("doc_solicitud", buildSigcenterApiCandidates("doc_solicitud.php")[0] || "/api/sigcenter/doc_solicitud.php", payload);
+        const res = await fetchSigcenter("doc_solicitud", "doc_solicitud.php", {
+            method: "POST",
+            headers: {"Content-Type": "application/json;charset=UTF-8"},
+            body: JSON.stringify(payload),
+            credentials: "include",
+        });
+        const raw = await res.text();
+        logRes("doc_solicitud", res, raw);
+        let data = {};
+        try {
+            data = raw ? JSON.parse(raw) : {};
+        } catch (error) {
+            console.error("[Sigcenter] JSON inválido en doc_solicitud:", error);
+        }
+        if (!res.ok || !data.success) {
+            throw new Error(
+                data?.error
+                || data?.message
+                || `No se pudo resolver docSolicitud (HTTP ${res.status})`
+            );
+        }
+        const pedidoId = data.pedido_id ? String(data.pedido_id) : "";
+        if (!pedidoId) {
+            throw new Error("No se obtuvo pedido_id válido");
+        }
+        card.dataset.sigcenterDocSolicitud = pedidoId;
+        if (prefactura) {
+            if (!card.dataset.sigcenterPrefactura) {
+                card.dataset.sigcenterPrefactura = prefactura;
+            }
+            if (!card.dataset.sigcenterPrefacturaId) {
+                card.dataset.sigcenterPrefacturaId = prefactura;
+            }
+        }
+        return {docSolicitud: pedidoId, lateralidad};
+    };
+
     const schedule = async () => {
         if (!scheduleBtn) return;
         const fecha = state.selectedDate;
@@ -1933,10 +2209,13 @@ function initSigcenterPanel(container) {
         // Para compatibilidad, obtener el input si existe:
         const arrivalInput = card.querySelector("[data-sigcenter-arrival]");
         scheduleBtn.disabled = true;
-        setStatus("Agendando en Sigcenter...", "text-muted");
+        setStatus("Resolviendo docSolicitud...", "text-muted");
         try {
-            console.log("[Sigcenter] agendar payload:", {
-                docSolicitud: solicitudId,
+            const {docSolicitud, lateralidad} = await resolveDocSolicitud();
+            const idOjo = lateralidadToId(lateralidad);
+            setStatus("Agendando en Sigcenter...", "text-muted");
+            const payload = {
+                docSolicitud,
                 idtrabajador: trabajadorId,
                 fechaInicio,
                 fechaFin: (() => {
@@ -1949,33 +2228,18 @@ function initSigcenterPanel(container) {
                 horaFin: arrivalInput?.dataset?.horaFin || "",
                 sede_departamento: state.sedeId,
                 AgendaDoctor_ID_SEDE_DEPARTAMENTO: state.sedeId,
-                ID_OJO: card.dataset.idOjo || 1,
-                ID_ANESTESIA: 4
-            });
-            const res = await fetch("/api/sigcenter/agendar_real.php", {
+                ID_OJO: idOjo,
+                ID_ANESTESIA: 4,
+            };
+            logReq("agendar_real", buildSigcenterApiCandidates("agendar_real.php")[0] || "/api/sigcenter/agendar_real.php", payload);
+            const res = await fetchSigcenter("agendar_real", "agendar_real.php", {
                 method: "POST",
                 headers: {"Content-Type": "application/json;charset=UTF-8"},
-                body: JSON.stringify({
-                    docSolicitud: solicitudId,
-                    idtrabajador: trabajadorId,
-                    fechaInicio,
-                    fechaFin: (() => {
-                        const [h, m, s] = hora.split(":");
-                        const end = new Date(`${fecha}T${h}:${m}:${s || "00"}`);
-                        end.setMinutes(end.getMinutes() + 15);
-                        return end.toISOString().slice(0, 19).replace("T", " ");
-                    })(),
-                    horaIni: arrivalInput?.dataset?.horaIni || "",
-                    horaFin: arrivalInput?.dataset?.horaFin || "",
-                    sede_departamento: state.sedeId,
-                    AgendaDoctor_ID_SEDE_DEPARTAMENTO: state.sedeId,
-                    ID_OJO: card.dataset.idOjo || 1,
-                    ID_ANESTESIA: 4
-                }),
+                body: JSON.stringify(payload),
                 credentials: "include",
             });
             const raw = await res.text();
-            console.log("[Sigcenter] agendar HTTP:", res.status, raw);
+            logRes("agendar_real", res, raw);
             let data = {};
             try {
                 data = raw ? JSON.parse(raw) : {};

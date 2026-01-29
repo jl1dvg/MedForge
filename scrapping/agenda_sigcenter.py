@@ -13,17 +13,14 @@ LOGIN_URL = f"{BASE}/site/login"
 CREATE_ENDPOINT = f"{BASE}/documentacion/agenda-doctor/create"
 INDEX_URL = f"{BASE}/documentacion/agenda-doctor/index"
 
-USER = os.getenv("SIGCENTER_USER")
-PASS = os.getenv("SIGCENTER_PASS")
-
-if not USER or not PASS:
-    print(json.dumps({"ok": False, "error": "Credenciales no configuradas"}))
-    sys.exit(1)
+# Credenciales: preferir payload (stdin) y luego variables de entorno.
+# Esto evita depender de que Apache/PHP-FPM exporte env vars.
+USER = None
+PASS = None
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 }
-
 
 UPDATE_ID_RE = re.compile(r"agenda-doctor/(?:update|view)\?id=(\d+)")
 
@@ -322,6 +319,31 @@ def agendar(data):
 
 
 if __name__ == "__main__":
-    data = json.loads(sys.stdin.read())
+    raw = sys.stdin.read() or ""
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        print(json.dumps({"ok": False, "error": "JSON inválido en stdin"}, ensure_ascii=False))
+        sys.exit(1)
+
+    # 1) Credenciales por payload (recomendado cuando llamas desde PHP exec/proc_open)
+    u = (data.get("sigcenter_user") or data.get("username") or "").strip()
+    p = (data.get("sigcenter_pass") or data.get("password") or "").strip()
+
+    # 2) Fallback: variables de entorno (útil si configuras Apache/PHP-FPM)
+    if not u:
+        u = (os.getenv("SIGCENTER_USER") or "").strip()
+    if not p:
+        p = (os.getenv("SIGCENTER_PASS") or "").strip()
+
+    # 3) Validación final
+    if not u or not p:
+        print(json.dumps({"ok": False, "error": "Credenciales no configuradas"}, ensure_ascii=False))
+        sys.exit(1)
+
+    # Asignar a globales usadas por login()
+    USER = u
+    PASS = p
+
     result = agendar(data)
     print(json.dumps(result, ensure_ascii=False))
