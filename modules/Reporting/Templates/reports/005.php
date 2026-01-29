@@ -76,12 +76,22 @@ function mf_renderMergedSignature(string $topSrc, string $bottomSrc, array $opt 
         imagecopy($canvas, $bottomIm, 0, max(0, $padTop), 0, 0, imagesx($bottomIm), imagesy($bottomIm));
         imagecopy($canvas, $topIm, 0, 0, 0, 0, imagesx($topIm), imagesy($topIm));
 
-        ob_start();
-        imagepng($canvas);
-        $pngData = ob_get_clean();
+        // Guardar el PNG en un archivo temporal (evita inflar el HTML con base64 y el error de pcre.backtrack_limit)
+        $cacheDir = rtrim((string)sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'medforge_sig';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0775, true);
+        }
 
-        if ($pngData) {
-            $mergedSignatureSrc = 'data:image/png;base64,' . base64_encode($pngData);
+        $key = sha1($topSrc . '|' . $bottomSrc . '|' . $padTop . '|' . $maxHeight);
+        $tmpPng = $cacheDir . DIRECTORY_SEPARATOR . 'sig_' . $key . '.png';
+
+        // Re-generar solo si no existe
+        if (!is_file($tmpPng)) {
+            @imagepng($canvas, $tmpPng);
+        }
+
+        if (is_file($tmpPng) && filesize($tmpPng) > 0) {
+            $mergedSignatureSrc = $tmpPng; // ruta local para mPDF
         }
 
         imagedestroy($canvas);
@@ -97,10 +107,7 @@ function mf_renderMergedSignature(string $topSrc, string $bottomSrc, array $opt 
     }
 
     // Fallback: overlay por CSS (para navegador). Algunos motores PDF lo ignorarán.
-    echo "\n<div style='position: relative; height: {$boxH}px; width: {$boxW}px;'>\n";
-    echo "  <img src='" . htmlspecialchars($topSrc, ENT_QUOTES) . "' alt='Imagen de la firma' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 2;'>\n";
-    echo "  <img src='" . htmlspecialchars($bottomSrc, ENT_QUOTES) . "' alt='Imagen del sello' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 1;'>\n";
-    echo "</div>\n";
+    echo "<div style='position: relative; height: {$boxH}px; width: {$boxW}px;'><img src='" . htmlspecialchars($topSrc, ENT_QUOTES) . "' alt='Imagen de la firma' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 2;'><img src='" . htmlspecialchars($bottomSrc, ENT_QUOTES) . "' alt='Imagen del sello' style='position: absolute; top: 0; left: 0; max-height: {$maxHeight}px; z-index: 1;'></div>";
 }
 
 $layout = __DIR__ . '/../layouts/base.php';

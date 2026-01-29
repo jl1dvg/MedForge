@@ -50,7 +50,7 @@ class PdfRenderer
 
             $orientation = null;
             if (isset($page['orientation'])) {
-                $orientation = strtoupper((string) $page['orientation']);
+                $orientation = strtoupper((string)$page['orientation']);
                 if (!in_array($orientation, ['P', 'L'], true)) {
                     $orientation = null;
                 }
@@ -83,7 +83,7 @@ class PdfRenderer
 
         ob_start();
         include $path;
-        return (string) ob_get_clean();
+        return (string)ob_get_clean();
     }
 
     private function resolveTemplate(string $template): string
@@ -133,7 +133,7 @@ class PdfRenderer
             $mpdf->WriteHTML($stylesheet, HTMLParserMode::HEADER_CSS);
         }
 
-        $mpdf->WriteHTML($bodyHtml, HTMLParserMode::HTML_BODY);
+        $this->writeHtmlInChunks($mpdf, $bodyHtml, HTMLParserMode::HTML_BODY);
 
         $filename = $options['filename'] ?? 'documento.pdf';
         $destination = PdfDestinationNormalizer::normalize($options['destination'] ?? 'I');
@@ -159,5 +159,66 @@ class PdfRenderer
         $body = preg_replace('/<style[^>]*>.*?<\\/style>/is', '', $body) ?? $body;
 
         return [$body, $css];
+    }
+
+    private function writeHtmlInChunks(Mpdf $mpdf, string $html, int $mode, int $chunkSize = 200000): void
+    {
+        if (strlen($html) <= $chunkSize) {
+            $mpdf->WriteHTML($html, $mode);
+            return;
+        }
+
+        $parts = preg_split('/(<pagebreak[^>]*>)/i', $html, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            $this->writeSplitChunks($mpdf, $html, $mode, $chunkSize);
+            return;
+        }
+
+        $buffer = '';
+        foreach ($parts as $part) {
+            $partLength = strlen($part);
+
+            if ($partLength > $chunkSize) {
+                if ($buffer !== '') {
+                    $mpdf->WriteHTML($buffer, $mode);
+                    $buffer = '';
+                }
+                $this->writeSplitChunks($mpdf, $part, $mode, $chunkSize);
+                continue;
+            }
+
+            if (strlen($buffer) + $partLength > $chunkSize && $buffer !== '') {
+                $mpdf->WriteHTML($buffer, $mode);
+                $buffer = '';
+            }
+
+            $buffer .= $part;
+        }
+
+        if ($buffer !== '') {
+            $mpdf->WriteHTML($buffer, $mode);
+        }
+    }
+
+    private function writeSplitChunks(Mpdf $mpdf, string $html, int $mode, int $chunkSize): void
+    {
+        $remaining = $html;
+        while ($remaining !== '') {
+            if (strlen($remaining) <= $chunkSize) {
+                $mpdf->WriteHTML($remaining, $mode);
+                break;
+            }
+
+            $slice = substr($remaining, 0, $chunkSize);
+            $cutPosition = strrpos($slice, '>');
+            if ($cutPosition === false || $cutPosition < ($chunkSize * 0.5)) {
+                $cutPosition = $chunkSize;
+            } else {
+                $cutPosition += 1;
+            }
+
+            $mpdf->WriteHTML(substr($remaining, 0, $cutPosition), $mode);
+            $remaining = substr($remaining, $cutPosition);
+        }
     }
 }

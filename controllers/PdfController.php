@@ -76,6 +76,15 @@ class PdfController
 
         $documento = $this->protocolReportService->generateProtocolDocument($form_id, $hc_number);
 
+        if (isset($documento['segments']) && is_array($documento['segments'])) {
+            PdfGenerator::generarDesdeHtmlSegments(
+                $documento['segments'],
+                $documento['filename'],
+                $documento['css']
+            );
+            return;
+        }
+
         PdfGenerator::generarDesdeHtml(
             $documento['html'],
             $documento['filename'],
@@ -295,7 +304,7 @@ class PdfController
             }
         }
 
-        $mpdf->WriteHTML($html, HTMLParserMode::HTML_BODY);
+        PdfGenerator::writeHtmlInChunks($mpdf, $html, HTMLParserMode::HTML_BODY);
 
         return $mpdf->Output('', 'S');
     }

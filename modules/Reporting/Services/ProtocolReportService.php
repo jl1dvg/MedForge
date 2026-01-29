@@ -187,20 +187,20 @@ class ProtocolReportService
     }
 
     /**
-     * @return array{html: string, filename: string, css: string}
+     * @return array{segments: array<int, array{html: string, orientation: string}>, filename: string, css: string}
      */
     public function generateProtocolDocument(string $formId, string $hcNumber): array
     {
         $datos = $this->buildProtocolData($formId, $hcNumber);
 
-        $html = $this->renderSegments(
+        $segments = $this->renderSegmentsList(
             array_merge(self::PROTOCOL_PAGES, [self::PROTOCOL_LANDSCAPE_PAGE]),
             $datos,
             [self::PROTOCOL_LANDSCAPE_PAGE => 'L']
         );
 
         return [
-            'html' => $html,
+            'segments' => $segments,
             'filename' => sprintf('protocolo_%s_%s.pdf', $formId, $hcNumber),
             'css' => $this->getStylesheetPath(),
         ];
@@ -565,6 +565,34 @@ class ProtocolReportService
         }
 
         return $html;
+    }
+
+    /**
+     * @param array<int, string> $identificadores
+     * @param array<string, mixed> $datos
+     * @param array<string, string> $orientaciones
+     * @return array<int, array{html: string, orientation: string}>
+     */
+    private function renderSegmentsList(array $identificadores, array $datos, array $orientaciones = []): array
+    {
+        $segments = [];
+
+        foreach ($identificadores as $slug) {
+            $segmento = $this->renderSegment($slug, $datos);
+
+            if ($segmento === null || $segmento === '') {
+                continue;
+            }
+
+            $orientation = $orientaciones[$slug] ?? $this->resolverOrientacion($slug);
+
+            $segments[] = [
+                'html' => $segmento,
+                'orientation' => $orientation,
+            ];
+        }
+
+        return $segments;
     }
 
     private function renderSegment(string $identifier, array $datos): ?string
