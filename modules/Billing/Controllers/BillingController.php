@@ -254,12 +254,15 @@ class BillingController extends BaseController
 
         $afiliacion = $_GET['afiliacion'] ?? [];
         $afiliaciones = is_array($afiliacion) ? $afiliacion : [$afiliacion];
+        $estadoAgenda = $_GET['estado_agenda'] ?? [];
+        $estadosAgenda = is_array($estadoAgenda) ? $estadoAgenda : [$estadoAgenda];
 
         $filters = [
             'fecha_desde' => $_GET['fecha_desde'] ?? null,
             'fecha_hasta' => $_GET['fecha_hasta'] ?? null,
             'afiliacion' => $afiliaciones,
             'estado_revision' => $_GET['estado_revision'] ?? null,
+            'estado_agenda' => $estadosAgenda,
             'tipo' => $_GET['tipo'] ?? null,
             'busqueda' => $_GET['busqueda'] ?? null,
             'procedimiento' => $_GET['procedimiento'] ?? null,
