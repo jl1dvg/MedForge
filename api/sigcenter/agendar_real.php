@@ -39,20 +39,53 @@ $required = [
     'sede_departamento',
 ];
 
+
 foreach ($required as $k) {
     if (!array_key_exists($k, $data) || $data[$k] === '' || $data[$k] === null) {
         sigcenterAgendaRespond(422, ['success' => false, 'error' => "Falta campo: {$k}"]);
     }
 }
 
-$data['docSolicitud'] = (int) $data['docSolicitud'];
-$data['idtrabajador'] = (int) $data['idtrabajador'];
-$data['sede_departamento'] = (int) $data['sede_departamento'];
-$data['AgendaDoctor_ID_SEDE_DEPARTAMENTO'] = (int) ($data['AgendaDoctor_ID_SEDE_DEPARTAMENTO'] ?? $data['sede_departamento']);
-$data['ID_OJO'] = (int) ($data['ID_OJO'] ?? 1);
-$data['ID_ANESTESIA'] = (int) ($data['ID_ANESTESIA'] ?? 4);
-$data['horaIni'] = (string) ($data['horaIni'] ?? '');
-$data['horaFin'] = (string) ($data['horaFin'] ?? '');
+// Credenciales Sigcenter: NO deben venir del frontend.
+// Preferir variables de entorno (o constantes definidas en _client.php) y opcionalmente permitir override por payload.
+$u = trim((string)($data['sigcenter_user'] ?? $data['username'] ?? 'jdevera' ?? ''));
+$p = trim((string)($data['sigcenter_pass'] ?? $data['password'] ?? '0925619736' ?? ''));
+
+if ($u === '') {
+    $u = trim((string)(getenv('SIGCENTER_USER') ?: ''));
+}
+if ($p === '') {
+    $p = trim((string)(getenv('SIGCENTER_PASS') ?: ''));
+}
+
+// Si _client.php define constantes opcionales, usarlas como fallback.
+if ($u === '' && defined('SIGCENTER_USER')) {
+    $u = trim((string)constant('SIGCENTER_USER'));
+}
+if ($p === '' && defined('SIGCENTER_PASS')) {
+    $p = trim((string)constant('SIGCENTER_PASS'));
+}
+
+if ($u === '' || $p === '') {
+    sigcenterAgendaLog('error', ['error' => 'SIGCENTER_USER/SIGCENTER_PASS no configuradas']);
+    sigcenterAgendaRespond(500, [
+        'success' => false,
+        'error' => 'Credenciales Sigcenter no configuradas en el servidor',
+    ]);
+}
+
+// Pasar a Python por stdin.
+$data['sigcenter_user'] = $u;
+$data['sigcenter_pass'] = $p;
+
+$data['docSolicitud'] = (int)$data['docSolicitud'];
+$data['idtrabajador'] = (int)$data['idtrabajador'];
+$data['sede_departamento'] = (int)$data['sede_departamento'];
+$data['AgendaDoctor_ID_SEDE_DEPARTAMENTO'] = (int)($data['AgendaDoctor_ID_SEDE_DEPARTAMENTO'] ?? $data['sede_departamento']);
+$data['ID_OJO'] = (int)($data['ID_OJO'] ?? 1);
+$data['ID_ANESTESIA'] = (int)($data['ID_ANESTESIA'] ?? 4);
+$data['horaIni'] = (string)($data['horaIni'] ?? '');
+$data['horaFin'] = (string)($data['horaFin'] ?? '');
 
 sigcenterAgendaLog('info', ['payload' => $data]);
 
