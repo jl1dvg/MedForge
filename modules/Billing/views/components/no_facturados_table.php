@@ -86,6 +86,21 @@
                             </select>
                         </div>
                         <div class="col-md-2">
+                            <label for="fEstadoAgenda" class="form-label">Estado agenda</label>
+                            <select id="fEstadoAgenda" name="estado_agenda" class="form-select form-select-sm" multiple
+                                    aria-label="Selecciona estados de agenda">
+                                <option value="ATENDIDO" selected>ATENDIDO</option>
+                                <option value="AGENDADO">AGENDADO</option>
+                                <option value="LLEGADO">LLEGADO</option>
+                                <option value="CONFIRMADO">CONFIRMADO</option>
+                                <option value="CONSULTA">CONSULTA</option>
+                                <option value="DILATAR">DILATAR</option>
+                                <option value="PAGADO">PAGADO</option>
+                                <option value="CONSULTA_TERMINADO">CONSULTA_TERMINADO</option>
+                                <option value="NULL">Sin estado (NULL)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label for="fTipo" class="form-label">Tipo</label>
                             <select id="fTipo" name="tipo" class="form-select form-select-sm">
                                 <option value="">Todos</option>

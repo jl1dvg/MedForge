@@ -22,6 +22,7 @@ class NoFacturadosService
                 base.procedimiento,
                 base.tipo,
                 base.estado_revision,
+                base.estado_agenda,
                 base.valor_estimado
             FROM (
                 SELECT
@@ -37,6 +38,7 @@ class NoFacturadosService
                         ELSE 'no_quirurgico'
                     END AS tipo,
                     NULL AS estado_revision,
+                    pr.estado_agenda AS estado_agenda,
                     0 AS valor_estimado
                 FROM procedimiento_proyectado pr
                 INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
@@ -66,6 +68,7 @@ class NoFacturadosService
                         ELSE 'quirurgico'
                     END AS tipo,
                     pd.status AS estado_revision,
+                    pr.estado_agenda AS estado_agenda,
                     0 AS valor_estimado
                 FROM protocolo_data pd
                 INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
@@ -268,6 +271,7 @@ class NoFacturadosService
         $procedimiento = $filters['procedimiento'] ?? null;
         $valorMin = $filters['valor_min'] ?? null;
         $valorMax = $filters['valor_max'] ?? null;
+        $estadosAgenda = array_values(array_filter(array_map('trim', (array)($filters['estado_agenda'] ?? [])), static fn($value) => $value !== ''));
 
         if (!empty($filters['fecha_desde'])) {
             $conditions[] = 'base.fecha >= :fecha_desde';
@@ -297,6 +301,28 @@ class NoFacturadosService
         if (!empty($tipo)) {
             $conditions[] = 'base.tipo = :tipo';
             $params[':tipo'] = $tipo;
+        }
+
+        if (!empty($estadosAgenda)) {
+            $placeholders = [];
+            $orConditions = [];
+            foreach ($estadosAgenda as $index => $estadoAgenda) {
+                if (strcasecmp($estadoAgenda, 'NULL') === 0) {
+                    $orConditions[] = '(base.estado_agenda IS NULL OR TRIM(base.estado_agenda) = \'\')';
+                    continue;
+                }
+                $placeholder = ':estado_agenda_' . $index;
+                $placeholders[] = $placeholder;
+                $params[$placeholder] = strtoupper($estadoAgenda);
+            }
+
+            if (!empty($placeholders)) {
+                $orConditions[] = 'UPPER(base.estado_agenda) IN (' . implode(', ', $placeholders) . ')';
+            }
+
+            if (!empty($orConditions)) {
+                $conditions[] = '(' . implode(' OR ', $orConditions) . ')';
+            }
         }
 
         if (!empty($busqueda)) {
