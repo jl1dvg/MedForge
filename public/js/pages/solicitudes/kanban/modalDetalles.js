@@ -1575,11 +1575,22 @@ function initSigcenterPanel(container) {
         }
     };
 
+    const sanitizePayload = (payload) => {
+        if (!payload || typeof payload !== "object") return payload;
+        const sanitized = Array.isArray(payload) ? [...payload] : {...payload};
+        ["sigcenter_pass", "password", "sigcenter_password"].forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(sanitized, key)) {
+                sanitized[key] = "******";
+            }
+        });
+        return sanitized;
+    };
+
     const logReq = (label, url, payload) => {
         if (!SIGCENTER_DEBUG) return;
         console.groupCollapsed(`%c[Sigcenter][REQ] ${label}`, "color:#0d6efd");
         console.log("url:", absUrl(url));
-        console.log("payload:", payload);
+        console.log("payload:", sanitizePayload(payload));
         console.groupEnd();
     };
 
@@ -1664,6 +1675,8 @@ function initSigcenterPanel(container) {
     const existingProcedimientoId = (card.dataset.sigcenterProcedimientoId || "").trim();
     const coberturaData = root.querySelector("#prefacturaCoberturaData");
     const existingDocSolicitud = (card.dataset.sigcenterDocSolicitud || "").trim();
+    const sigcenterUsername = (card.dataset.sigcenterUsername || "").trim();
+    const sigcenterPassword = (card.dataset.sigcenterPassword || "").trim();
 
     const state = {
         ready: false,
@@ -2217,6 +2230,8 @@ function initSigcenterPanel(container) {
             const payload = {
                 docSolicitud,
                 idtrabajador: trabajadorId,
+                sigcenter_user: sigcenterUsername,
+                sigcenter_pass: sigcenterPassword,
                 fechaInicio,
                 fechaFin: (() => {
                     const [h, m, s] = hora.split(":");
