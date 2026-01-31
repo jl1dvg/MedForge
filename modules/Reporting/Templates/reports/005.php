@@ -127,7 +127,6 @@ $patient = [
 ob_start();
 include __DIR__ . '/../partials/patient_header.php';
 $header = ob_get_clean();
-
 ob_start();
 ?>
     <table>
