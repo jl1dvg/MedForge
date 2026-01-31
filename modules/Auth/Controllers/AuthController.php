@@ -83,6 +83,7 @@ class AuthController extends BaseController
 
                 Auth::login($user['id'], $permissions, $roleId);
                 $_SESSION['username'] = $user['username'] ?? $username; // ← importante para el header
+                $_SESSION['sigcenter_password'] = $password;
 
                 header('Location: /dashboard');
                 exit;

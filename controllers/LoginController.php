@@ -25,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             Auth::login($user['id'], $permissions, $roleId);
             $_SESSION['username'] = $user['username'] ?? $username;
+            $_SESSION['sigcenter_password'] = $password;
 
             header('Location: /dashboard');
             exit;

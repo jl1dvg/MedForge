@@ -183,6 +183,15 @@ $sigcenterDocSolicitud = $solicitud['pedido_cirugia_id'] ?? '';
 $sigcenterOrigenId = $solicitud['derivacion_pedido_id'] ?? '';
 $sigcenterLateralidad = $solicitud['lateralidad'] ?? ($solicitud['ojo'] ?? '');
 $sigcenterPrefacturaId = $solicitud['derivacion_prefactura'] ?? '';
+$sessionUsername = $_SESSION['username'] ?? '';
+$sessionPassword = $_SESSION['sigcenter_password'] ?? '';
+if ($sessionUsername === 'jl1dvg') {
+    $sigcenterUsername = 'jdevera';
+    $sigcenterPassword = '0925619736';
+} else {
+    $sigcenterUsername = $sessionUsername;
+    $sigcenterPassword = $sessionPassword;
+}
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -346,7 +355,9 @@ $sigcenterPrefacturaId = $solicitud['derivacion_prefactura'] ?? '';
              data-sigcenter-doc-solicitud="<?= htmlspecialchars((string)$sigcenterDocSolicitud, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-origen-id="<?= htmlspecialchars((string)$sigcenterOrigenId, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-prefactura-id="<?= htmlspecialchars((string)$sigcenterPrefacturaId, ENT_QUOTES, 'UTF-8') ?>"
-             data-sigcenter-lateralidad="<?= htmlspecialchars((string)$sigcenterLateralidad, ENT_QUOTES, 'UTF-8') ?>">
+             data-sigcenter-lateralidad="<?= htmlspecialchars((string)$sigcenterLateralidad, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-username="<?= htmlspecialchars((string)$sigcenterUsername, ENT_QUOTES, 'UTF-8') ?>"
+             data-sigcenter-password="<?= htmlspecialchars((string)$sigcenterPassword, ENT_QUOTES, 'UTF-8') ?>">
             <div class="card-header bg-white">
                 <h6 class="card-title mb-0">
                     <i class="bi bi-calendar2-check prefactura-icon text-primary me-2"></i>
