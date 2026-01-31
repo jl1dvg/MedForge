@@ -6,6 +6,7 @@ use Controllers\BillingController as LegacyBillingController;
 use Core\BaseController;
 use Modules\Billing\Services\BillingViewService;
 use Modules\Billing\Services\BillingDashboardService;
+use Modules\Billing\Services\HonorariosDashboardService;
 use Modules\Pacientes\Services\PacienteService;
 use Models\BillingSriDocumentModel;
 use Models\SettingsModel;
@@ -20,6 +21,7 @@ class BillingController extends BaseController
     private BillingViewService $service;
     private \Modules\Billing\Services\NoFacturadosService $noFacturadosService;
     private BillingDashboardService $dashboardService;
+    private HonorariosDashboardService $honorariosDashboardService;
     private LegacyBillingController $legacyController;
 
     public function __construct(PDO $pdo)
@@ -39,6 +41,7 @@ class BillingController extends BaseController
         );
         $this->noFacturadosService = new \Modules\Billing\Services\NoFacturadosService($pdo);
         $this->dashboardService = new BillingDashboardService($pdo, $this->noFacturadosService);
+        $this->honorariosDashboardService = new HonorariosDashboardService($pdo);
     }
 
     public function index(): void
@@ -127,6 +130,51 @@ class BillingController extends BaseController
             'filters' => [
                 'date_from' => $range['from'],
                 'date_to' => $range['to'],
+            ],
+            'data' => $data,
+        ]);
+    }
+
+    public function honorarios(): void
+    {
+        $this->requireAuth();
+
+        $this->render('modules/Billing/views/honorarios.php', [
+            'pageTitle' => 'Honorarios médicos',
+            'cirujanos' => $this->honorariosDashboardService->getCirujanos(),
+        ]);
+    }
+
+    public function honorariosData(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $range = $this->resolveDashboardRange($payload);
+        $filters = [
+            'cirujano' => $payload['cirujano'] ?? null,
+            'afiliacion' => $payload['afiliacion'] ?? null,
+        ];
+        $rules = $payload['reglas'] ?? [];
+
+        try {
+            $data = $this->honorariosDashboardService->buildSummary(
+                $range['start']->format('Y-m-d 00:00:00'),
+                $range['end']->format('Y-m-d 23:59:59'),
+                $filters,
+                is_array($rules) ? $rules : []
+            );
+        } catch (Throwable $exception) {
+            $this->json(['error' => 'No se pudo cargar el dashboard de honorarios.'], 500);
+            return;
+        }
+
+        $this->json([
+            'filters' => [
+                'date_from' => $range['from'],
+                'date_to' => $range['to'],
+                'cirujano' => $filters['cirujano'],
+                'afiliacion' => $filters['afiliacion'],
             ],
             'data' => $data,
         ]);
