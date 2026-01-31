@@ -36,6 +36,24 @@ function hasAny(obj, keys) {
     return keys.some(k => !!norm(obj[k]));
 }
 
+function pruneEmptyCollections(payload, keys = []) {
+    keys.forEach((key) => {
+        if (Array.isArray(payload[key]) && payload[key].length === 0) {
+            delete payload[key];
+        }
+    });
+}
+
+function findRows(selectors, fallbackSelector = '.multiple-input-list__item') {
+    for (const selector of selectors) {
+        const rows = document.querySelectorAll(selector);
+        if (rows.length) {
+            return rows;
+        }
+    }
+    return document.querySelectorAll(fallbackSelector);
+}
+
 
 // ==== Notificación no intrusiva (evita solaparse con los flujos de paciente.js) ====
 function notifySwal({icon = 'info', title = '', text = '', timer = 2000}) {
@@ -147,7 +165,12 @@ async function extraerDatosYEnviar() {
         data.tipoAnestesia = document.querySelector('#consultasubsecuente-anestesia_id')?.selectedOptions[0]?.textContent || '';
 
         // Recopilar datos del protocolo
-        document.querySelectorAll('.multiple-input-list__item').forEach((item) => {
+        const staffRows = findRows([
+            '#trabajadorprotocolo-input-subsecuente .multiple-input-list__item',
+            '#trabajadorprotocolo-input .multiple-input-list__item'
+        ]);
+
+        staffRows.forEach((item) => {
             const funcion = item.querySelector('.list-cell__funcion select')?.selectedOptions[0]?.textContent.trim() || '';
             const doctor = item.querySelector('.list-cell__doctor select')?.selectedOptions[0]?.textContent.trim() || '';
 
@@ -189,14 +212,24 @@ async function extraerDatosYEnviar() {
 
         // Extraer procedimientos
         data.procedimientos = [];
-        document.querySelectorAll('.multiple-input-list__item').forEach((item) => {
+        const procedureRows = findRows([
+            '#procedimientoprotocolo-input-subsecuente .multiple-input-list__item',
+            '#procedimientoprotocolo-input .multiple-input-list__item'
+        ]);
+
+        procedureRows.forEach((item) => {
             const procInterno = item.querySelector('.list-cell__procInterno select')?.selectedOptions[0]?.textContent.trim() || '';
             if (procInterno) data.procedimientos.push({procInterno});
         });
 
         // Extraer diagnósticos
         data.diagnosticos = [];
-        document.querySelectorAll('.multiple-input-list__item').forEach((item) => {
+        const diagnosticoRows = findRows([
+            '#diagnosticossub11111 .multiple-input-list__item',
+            '#diagnosticosconsultaexterna .multiple-input-list__item'
+        ]);
+
+        diagnosticoRows.forEach((item) => {
             const idDiagnostico = item.querySelector('.list-cell__idDiagnostico select')?.selectedOptions[0]?.textContent.trim() || '';
             const evidencia = item.querySelector('.list-cell__evidencia .cbx-icon')?.textContent.trim() || '';
             const ojo = item.querySelector('.list-cell__ojo_id select')?.selectedOptions[0]?.textContent.trim() || '';
@@ -382,7 +415,7 @@ async function extraerDatosYEnviar() {
             // Opcional: ID interno si existe
             const registroId = row.querySelector('[id$="-id"][type="hidden"]')?.value || '';
 
-            data.pio.push({
+            const payload = {
                 id: registroId,
                 tonometro,
                 od,
@@ -391,7 +424,22 @@ async function extraerDatosYEnviar() {
                 hora_toma: horaToma,
                 hora_fin: horaFin,
                 observacion
-            });
+            };
+
+            const hasData = hasAny(payload, [
+                'tonometro',
+                'od',
+                'oi',
+                'patologico',
+                'hora_toma',
+                'hora_fin',
+                'observacion',
+                'id',
+            ]);
+
+            if (hasData) {
+                data.pio.push(payload);
+            }
         });
 
         // Remover campos no requeridos por el backend (por seguridad)
@@ -405,6 +453,8 @@ async function extraerDatosYEnviar() {
         delete data.recomen_no_farmaco_externa;
         // Puedes agregar otros campos relevantes de la consulta normal aquí
     }
+
+    pruneEmptyCollections(data, ['diagnosticos', 'examenes', 'recetas', 'pio', 'procedimientos']);
 
     // Enviar los datos al backend
     console.log('Datos a enviar:', data);

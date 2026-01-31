@@ -26,6 +26,9 @@ function ejecutarProtocoloEnPagina(item) {
     const LOG_PREFIX = '[CIVE EXT]';
     const MODO_DEBUG_VISUAL = true; // Cambiar a false para desactivar visualización
     const MODO_LOG_COMPACTO = true;
+    const SELECT2_RESULT_TIMEOUT_MS = 12000;
+    const SELECT2_INTERACTION_PAUSE_MS = 250;
+    const SELECT2_RESULTS_SELECTOR = '.select2-container--open .select2-results__option';
 
     function validarItem(item) {
         if (!item || typeof item !== 'object') {
@@ -52,6 +55,16 @@ function ejecutarProtocoloEnPagina(item) {
         }
     }
 
+    function liberarCandado() {
+        window._cive_protocolo_en_ejecucion = false;
+    }
+
+    function dispatchInputChange(element) {
+        if (!element) return;
+        element.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
+        element.dispatchEvent(new Event('change', {bubbles: true, cancelable: true}));
+    }
+
 // Verificar que el item tenga la estructura esperada
     try {
         validarItem(item);
@@ -63,6 +76,7 @@ function ejecutarProtocoloEnPagina(item) {
             text: error.message,
             confirmButtonText: 'Entendido'
         });
+        liberarCandado();
         return;
     }
 
@@ -70,6 +84,7 @@ function ejecutarProtocoloEnPagina(item) {
 
     if (!item || typeof item !== 'object' || !item.codigos || !Array.isArray(item.codigos)) {
         console.error(`${LOG_PREFIX} El item recibido no tiene la estructura esperada.`, item);
+        liberarCandado();
         return;
     }
 
@@ -85,6 +100,7 @@ function ejecutarProtocoloEnPagina(item) {
                     console.log(`${LOG_PREFIX} Llenando el campo de texto "${selector}" con "${valor}"`);
                 }
                 textArea.value = valor;
+                dispatchInputChange(textArea);
                 resaltarElemento(textArea, 'blue');
                 // Si el campo es el pie de página, hacerlo de solo lectura
                 if (selector === SELECTORS.piepagina) {
@@ -119,6 +135,10 @@ function ejecutarProtocoloEnPagina(item) {
         }, 1000);
     }
 
+    function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     // Nueva función retry para reintentos
     function retry(fn, maxRetries = 5, delay = 300) {
         return new Promise((resolve, reject) => {
@@ -143,12 +163,40 @@ function ejecutarProtocoloEnPagina(item) {
     function buscarYSeleccionar(selector, valor) {
         return retry(() => hacerClickEnSelect2(selector), 3, 300)
             .then(() => establecerBusqueda(selector, valor))
-            .then(() => seleccionarOpcion());
+            .then(() => seleccionarOpcion())
+            .then(() => delay(SELECT2_INTERACTION_PAUSE_MS));
     }
 
     function abrirYBuscarSelect2(selector, valor) {
         return retry(() => hacerClickEnSelect2(selector), 3, 300)
             .then(() => establecerBusqueda(selector, valor));
+    }
+
+    function esperarResultadosSelect2(timeoutMs = SELECT2_RESULT_TIMEOUT_MS) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const poll = () => {
+                const resultados = Array.from(document.querySelectorAll(SELECT2_RESULTS_SELECTOR))
+                    .filter((option) => {
+                        const text = option.textContent ? option.textContent.trim() : '';
+                        if (!text) return false;
+                        if (option.getAttribute('aria-disabled') === 'true') return false;
+                        if (text.toLowerCase().includes('loading')) return false;
+                        if (text.toLowerCase().includes('no results')) return false;
+                        return true;
+                    });
+                if (resultados.length > 0) {
+                    resolve(resultados);
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) {
+                    reject(new Error('No se encontraron resultados de Select2.'));
+                    return;
+                }
+                setTimeout(poll, 250);
+            };
+            poll();
+        });
     }
 
     function hacerClickEnBoton(selector, veces) {
@@ -210,10 +258,14 @@ function ejecutarProtocoloEnPagina(item) {
                     }
                 } else {
                     console.log(`${LOG_PREFIX} Estableciendo búsqueda:`, valor);
+                    searchField.value = '';
+                    searchField.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
                     searchField.value = valor;
                     const inputEvent = new Event('input', {bubbles: true, cancelable: true});
                     searchField.dispatchEvent(inputEvent);
-                    setTimeout(() => resolve(searchField), 500);
+                    esperarResultadosSelect2()
+                        .then(() => resolve(searchField))
+                        .catch(reject);
                 }
             };
 
@@ -226,21 +278,38 @@ function ejecutarProtocoloEnPagina(item) {
             // Verificar que el selector existe y es accesible antes de intentar realizar operaciones
             if (document.querySelector('input.select2-search__field') === null) {
                 console.error(`${LOG_PREFIX} El campo de búsqueda select2-search__field no existe en el DOM.`);
+                reject('El campo de búsqueda select2-search__field no existe en el DOM.');
                 return;
             }
             const searchField = document.querySelector('input.select2-search__field');
-            if (searchField) {
-                console.log(`${LOG_PREFIX} Seleccionando opción`);
-                resaltarElemento(searchField, 'red');
-                const enterEvent = new KeyboardEvent('keydown', {
-                    key: 'Enter', keyCode: 13, bubbles: true, cancelable: true
-                });
-                searchField.dispatchEvent(enterEvent);
-                setTimeout(resolve, 200); // Añadir un retraso para asegurar que la opción se seleccione
-            } else {
+            if (!searchField) {
                 console.error(`${LOG_PREFIX} El campo de búsqueda del Select2 no se encontró para seleccionar la opción.`);
                 reject('El campo de búsqueda del Select2 no se encontró para seleccionar la opción.');
+                return;
             }
+
+            esperarResultadosSelect2()
+                .then((resultados) => {
+                    console.log(`${LOG_PREFIX} Seleccionando opción`);
+                    resaltarElemento(searchField, 'red');
+                    const highlighted = document.querySelector('.select2-container--open .select2-results__option--highlighted')
+                        || resultados[0];
+                    if (highlighted) {
+                        highlighted.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true}));
+                        setTimeout(resolve, 250);
+                        return;
+                    }
+
+                    const enterEvent = new KeyboardEvent('keydown', {
+                        key: 'Enter', keyCode: 13, bubbles: true, cancelable: true
+                    });
+                    searchField.dispatchEvent(enterEvent);
+                    setTimeout(resolve, 250);
+                })
+                .catch((error) => {
+                    console.error(`${LOG_PREFIX} No se pudieron cargar resultados de Select2:`, error);
+                    reject(error);
+                });
         });
     }
 
@@ -250,6 +319,7 @@ function ejecutarProtocoloEnPagina(item) {
             if (radioNo) {
                 console.log('Seleccionando el radio botón "NO"');
                 radioNo.checked = true;
+                dispatchInputChange(radioNo);
                 resolve();
             } else {
                 console.error('El radio botón "NO" no se encontró.');
@@ -401,6 +471,7 @@ function ejecutarProtocoloEnPagina(item) {
                 return buscarYSeleccionar(item.selector, item[campoNombre])
                     .then(() => item.definitivo !== undefined ? hacerClickEnPresuntivo(item.definitivo, 1) : Promise.resolve())
                     .then(() => buscarYSeleccionar(item.lateralidad, ojoATratar.sigla))
+                    .then(() => delay(SELECT2_INTERACTION_PAUSE_MS))
                     .catch(error => console.error(`Error procesando item ${item[campoNombre]}:`, error));
             });
         }, Promise.resolve());
@@ -557,6 +628,7 @@ Se indica al paciente que debe acudir a una consulta de control en las próximas
                         return abrirYBuscarSelect2(tecnico.trabajador, valor);
                     })
                     .then(() => seleccionarOpcion())
+                    .then(() => delay(SELECT2_INTERACTION_PAUSE_MS))
                     .catch(error => console.error(`Error procesando técnico ${tecnico.nombre}:`, error));
             });
         }, Promise.resolve()); // Inicializa con una promesa resuelta
@@ -599,7 +671,7 @@ Se indica al paciente que debe acudir a una consulta de control en las próximas
         .then(() => console.log(`${LOG_PREFIX} Clic simulado correctamente.`))
         .catch(error => console.error(`${LOG_PREFIX} Error en la ejecución de acciones:`, error))
         .finally(() => {
-            window._cive_protocolo_en_ejecucion = false;
+            liberarCandado();
         });
 }
 
@@ -611,6 +683,4 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('[CIVE EXT] Campo piepagina marcado como solo lectura al cargar.');
     }
 });
-
-
 
