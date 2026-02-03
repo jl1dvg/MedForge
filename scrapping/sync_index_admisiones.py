@@ -82,9 +82,22 @@ def enviar_a_api(api_url: str, datos: List[Dict]) -> Dict:
     url = api_url.rstrip("/") + "/api/proyecciones/guardar_index_admisiones.php"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     respuesta = requests.post(url, headers=headers, json=datos, timeout=120)
-    if respuesta.status_code != 200:
+    if respuesta.status_code not in {200, 207}:
         raise RuntimeError(f"Error al enviar a API: {respuesta.status_code} - {respuesta.text}")
-    return respuesta.json()
+
+    payload = respuesta.json()
+    if respuesta.status_code == 207:
+        detalles = payload.get("detalles", [])
+        fallas = [item for item in detalles if not item.get("success")]
+        if fallas:
+            resumen = ", ".join(
+                f"index={item.get('index')} message={item.get('message')}"
+                for item in fallas
+            )
+            raise RuntimeError(
+                f"Error parcial al enviar a API (207): {resumen or respuesta.text}"
+            )
+    return payload
 
 
 def sync_range(start: datetime, end: datetime, api_url: str) -> Dict:
