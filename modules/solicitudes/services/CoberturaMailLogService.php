@@ -79,6 +79,31 @@ class CoberturaMailLogService
     }
 
     /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchBySolicitud(int $solicitudId, int $limit = 5): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT sml.id, sml.solicitud_id, sml.form_id, sml.hc_number, sml.afiliacion, sml.template_key,
+                    sml.to_emails, sml.cc_emails, sml.subject, sml.body_text, sml.body_html, sml.attachment_path,
+                    sml.attachment_name, sml.attachment_size, sml.sent_by_user_id, sml.status, sml.error_message,
+                    sml.sent_at, sml.created_at, u.nombre AS sent_by_name
+             FROM solicitud_mail_log sml
+             LEFT JOIN users u ON u.id = sml.sent_by_user_id
+             WHERE sml.solicitud_id = :solicitud_id
+             ORDER BY COALESCE(sml.sent_at, sml.created_at) DESC, sml.id DESC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':solicitud_id', $solicitudId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        return array_map(fn(array $row): array => $this->normalizeRow($row), $rows);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function fetchById(int $id): ?array

@@ -9,7 +9,7 @@ use Throwable;
 
 class MailboxService
 {
-    private const DEFAULT_SOURCES = ['solicitudes', 'examenes', 'whatsapp', 'tickets'];
+    private const DEFAULT_SOURCES = ['solicitudes', 'examenes', 'cobertura', 'whatsapp', 'tickets'];
     private const PHONE_REPLACEMENTS = ['+', '-', ' ', '(', ')', '.', '_'];
 
     private PDO $pdo;
@@ -67,6 +67,10 @@ class MailboxService
 
         if (in_array('examenes', $sources, true)) {
             $entries = array_merge($entries, $this->fetchExamenNotes($limit));
+        }
+
+        if (in_array('cobertura', $sources, true)) {
+            $entries = array_merge($entries, $this->fetchCoberturaMails($limit));
         }
 
         if (in_array('tickets', $sources, true)) {
@@ -193,8 +197,16 @@ class MailboxService
             [
                 'key' => 'crm',
                 'icon' => 'ion ion-social-buffer',
-                'label' => 'CRM (Solicitudes + Exámenes)',
-                'count' => ($bySource['solicitudes']['count'] ?? 0) + ($bySource['examenes']['count'] ?? 0),
+                'label' => 'CRM (Solicitudes + Exámenes + Cobertura)',
+                'count' => ($bySource['solicitudes']['count'] ?? 0)
+                    + ($bySource['examenes']['count'] ?? 0)
+                    + ($bySource['cobertura']['count'] ?? 0),
+            ],
+            [
+                'key' => 'cobertura',
+                'icon' => 'mdi mdi-email-check-outline',
+                'label' => 'Cobertura (Email)',
+                'count' => $bySource['cobertura']['count'] ?? 0,
             ],
             [
                 'key' => 'tickets',
@@ -359,6 +371,57 @@ SQL;
         }
 
         return array_map(fn(array $row): array => $this->mapExamenRow($row), $rows);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchCoberturaMails(int $limit): array
+    {
+        $sql = <<<SQL
+SELECT
+    sml.id,
+    sml.solicitud_id,
+    sml.form_id,
+    sml.hc_number,
+    sml.afiliacion,
+    sml.template_key,
+    sml.to_emails,
+    sml.cc_emails,
+    sml.subject,
+    sml.body_text,
+    sml.body_html,
+    sml.status,
+    sml.error_message,
+    sml.sent_at,
+    sml.created_at,
+    sp.procedimiento,
+    sp.doctor,
+    sp.hc_number AS solicitud_hc_number,
+    pd.fname,
+    pd.mname,
+    pd.lname,
+    pd.lname2,
+    pd.celular,
+    u.nombre AS autor_nombre
+FROM solicitud_mail_log sml
+LEFT JOIN solicitud_procedimiento sp ON sp.id = sml.solicitud_id
+LEFT JOIN patient_data pd ON pd.hc_number = COALESCE(sp.hc_number, sml.hc_number)
+LEFT JOIN users u ON u.id = sml.sent_by_user_id
+ORDER BY COALESCE(sml.sent_at, sml.created_at) DESC, sml.id DESC
+LIMIT :limit
+SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        return array_map(fn(array $row): array => $this->mapCoberturaRow($row), $rows);
     }
 
     /**
@@ -537,6 +600,91 @@ SQL;
                 'id' => (int) $row['examen_id'],
             ],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapCoberturaRow(array $row): array
+    {
+        $createdAt = $row['sent_at'] ?: $row['created_at'] ?? null;
+        $date = $this->parseDate($createdAt ? (string) $createdAt : null);
+        if (!empty($row['solicitud_hc_number']) && empty($row['hc_number'])) {
+            $row['hc_number'] = $row['solicitud_hc_number'];
+        }
+        $patient = $this->formatPatient($row);
+        $subject = $this->sanitizeString($row['subject'] ?? '');
+        $body = $this->buildCoberturaBody($row);
+
+        $contactLabel = $patient['name'] ?? '';
+        if ($contactLabel === '' || $contactLabel === 'Paciente sin nombre') {
+            $contactLabel = $this->sanitizeString($row['to_emails'] ?? '');
+        }
+
+        $meta = array_filter([
+            'Estado' => $row['status'] ?? null,
+            'Plantilla' => $row['template_key'] ?? null,
+            'Para' => $row['to_emails'] ?? null,
+            'CC' => $row['cc_emails'] ?? null,
+            'Error' => $row['error_message'] ?? null,
+        ]);
+
+        $solicitudId = (int) ($row['solicitud_id'] ?? 0);
+
+        return [
+            'uid' => 'cobertura:' . (int) $row['id'],
+            'source' => 'cobertura',
+            'source_label' => 'Cobertura Email',
+            'category' => 'Correo enviado',
+            'subject' => $subject !== '' ? $subject : 'Cobertura solicitada',
+            'snippet' => $this->truncate($body),
+            'body' => $body,
+            'patient' => $patient,
+            'contact' => [
+                'label' => $contactLabel !== '' ? $contactLabel : 'Contacto',
+                'channel' => 'Cobertura',
+                'identifier' => $patient['hc_number'] ?? null,
+            ],
+            'meta' => $meta,
+            'links' => $solicitudId > 0 ? ['crm' => '/solicitudes/' . $solicitudId . '/crm'] : [],
+            'channels' => ['Correo', 'Cobertura'],
+            'author' => [
+                'name' => $row['autor_nombre'] ?? 'Sistema',
+                'initials' => $this->initials($row['autor_nombre'] ?? 'Sistema'),
+            ],
+            'timestamp' => $date?->getTimestamp() ?? 0,
+            'created_at' => $this->formatIso($date),
+            'relative_time' => $this->formatRelative($date),
+            'direction' => 'outgoing',
+            'related' => $solicitudId > 0 ? [
+                'type' => 'solicitud',
+                'id' => $solicitudId,
+            ] : null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function buildCoberturaBody(array $row): string
+    {
+        $bodyText = $this->sanitizeString($row['body_text'] ?? '');
+        if ($bodyText !== '') {
+            return $bodyText;
+        }
+
+        $bodyHtml = $this->sanitizeString($row['body_html'] ?? '');
+        if ($bodyHtml === '') {
+            return '';
+        }
+
+        $text = trim(strip_tags($bodyHtml));
+        if ($text === '') {
+            return '';
+        }
+
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     /**
@@ -913,6 +1061,7 @@ SQL;
             'sources' => [
                 'solicitudes' => true,
                 'examenes' => true,
+                'cobertura' => true,
                 'tickets' => true,
                 'whatsapp' => true,
             ],
@@ -928,6 +1077,7 @@ SQL;
                 'mailbox_compose_enabled',
                 'mailbox_source_solicitudes',
                 'mailbox_source_examenes',
+                'mailbox_source_cobertura',
                 'mailbox_source_tickets',
                 'mailbox_source_whatsapp',
                 'mailbox_limit',
@@ -943,6 +1093,7 @@ SQL;
         $config['sources'] = [
             'solicitudes' => $this->optionAsBool($options['mailbox_source_solicitudes'] ?? null, true),
             'examenes' => $this->optionAsBool($options['mailbox_source_examenes'] ?? null, true),
+            'cobertura' => $this->optionAsBool($options['mailbox_source_cobertura'] ?? null, true),
             'tickets' => $this->optionAsBool($options['mailbox_source_tickets'] ?? null, true),
             'whatsapp' => $this->optionAsBool($options['mailbox_source_whatsapp'] ?? null, true),
         ];
@@ -951,6 +1102,7 @@ SQL;
             $config['sources'] = [
                 'solicitudes' => true,
                 'examenes' => true,
+                'cobertura' => true,
                 'tickets' => true,
                 'whatsapp' => true,
             ];

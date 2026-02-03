@@ -26,6 +26,14 @@ return function (Router $router) {
         (new BillingController($pdo))->dashboardData();
     });
 
+    $router->get('/billing/honorarios', function (\PDO $pdo) {
+        (new BillingController($pdo))->honorarios();
+    });
+
+    $router->post('/billing/honorarios-data', function (\PDO $pdo) {
+        (new BillingController($pdo))->honorariosData();
+    });
+
     $router->post('/billing/no-facturados/crear', function (\PDO $pdo) {
         (new BillingController($pdo))->crearDesdeNoFacturado();
     });

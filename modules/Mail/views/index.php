@@ -23,6 +23,7 @@ $escape = static fn($value): string => htmlspecialchars((string) ($value ?? ''),
 $sourceBadges = [
     'solicitudes' => 'badge bg-primary',
     'examenes' => 'badge bg-info',
+    'cobertura' => 'badge bg-warning text-dark',
     'tickets' => 'badge bg-secondary',
     'whatsapp' => 'badge bg-success',
 ];
@@ -165,7 +166,7 @@ $composeEnabled = (bool) ($config['compose_enabled'] ?? true);
                                             <input type="checkbox" value="<?= $escape($message['uid']) ?>">
                                         </td>
                                         <td class="mailbox-star">
-                                            <i class="fa <?= in_array($message['source'], ['solicitudes', 'examenes'], true) ? 'fa-star text-yellow' : 'fa-star-o text-yellow' ?>"></i>
+                                            <i class="fa <?= in_array($message['source'], ['solicitudes', 'examenes', 'cobertura'], true) ? 'fa-star text-yellow' : 'fa-star-o text-yellow' ?>"></i>
                                         </td>
                                         <td>
                                             <p class="mailbox-name mb-0 fs-16 fw-600">

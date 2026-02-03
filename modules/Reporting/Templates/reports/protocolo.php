@@ -293,41 +293,25 @@ ob_start();
             </tr>
         <?php } ?>
         <?php
-        if (!empty($cirujano2_data) && !empty($cirujano2_data['nombre'])) {
+        $hasCirujano2 = !empty($cirujano2_data) && !empty($cirujano2_data['nombre']);
+        $hasAyudante = !empty($ayudante_data) && !empty($ayudante_data['nombre']);
+
+        if ($hasCirujano2 || $hasAyudante) {
+            $prof = $hasCirujano2 ? $cirujano2_data : $ayudante_data;
             ?>
             <tr>
-                <td class='blanco' style='height: 75' colspan='5'><?php
-                    if (!empty($cirujano2_data) && !empty($cirujano2_data['nombre'])) {
-                        echo strtoupper($cirujano2_data['nombre']);
-                    } elseif (!empty($ayudante_data['nombre'])) {
-                        echo strtoupper($ayudante_data['nombre']);
-                    } else {
-                        echo '';
-                    }
-                    ?></td>
+                <td class='blanco' style='height: 75' colspan='5'><?php echo strtoupper($prof['nombre'] ?? ''); ?></td>
+                <td class='blanco' colspan='5'><?php echo strtoupper($prof['especialidad'] ?? ''); ?></td>
                 <td class='blanco' colspan='5'><?php
-                    if (!empty($cirujano2_data) && !empty($cirujano2_data['especialidad'])) {
-                        echo strtoupper($cirujano2_data['especialidad']);
-                    } elseif (!empty($ayudante_data['especialidad'])) {
-                        echo strtoupper($ayudante_data['especialidad']);
-                    } else {
-                        echo '';
-                    }
-                    ?></td>
-                <td class='blanco' colspan='5'><?php
-                    if (!empty($cirujano2_data) && !empty($cirujano2_data['signature_path'])) {
-                        echo "<img src='" . htmlspecialchars($cirujano2_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
-                    } elseif (!empty($ayudante_data['signature_path'])) {
-                        echo "<img src='" . htmlspecialchars($ayudante_data['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+                    if (!empty($prof['signature_path'])) {
+                        echo "<img src='" . htmlspecialchars($prof['signature_path']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                     } else {
                         echo ' ';
                     }
                     ?></td>
                 <td class='blanco' colspan='5'><?php
-                    if (!empty($cirujano2_data) && !empty($cirujano2_data['firma'])) {
-                        echo "<img src='" . htmlspecialchars($cirujano2_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
-                    } elseif (!empty($ayudante_data['firma'])) {
-                        echo "<img src='" . htmlspecialchars($ayudante_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+                    if (!empty($prof['firma'])) {
+                        echo "<img src='" . htmlspecialchars($prof['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
                     } else {
                         echo ' ';
                     }

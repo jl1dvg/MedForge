@@ -1319,6 +1319,13 @@ $reporting = array_merge(
                 </section>
                 <section class="crm-offcanvas-section">
                     <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Correos de cobertura</h6>
+                        <small class="text-muted" id="crmCoberturaResumen"></small>
+                    </div>
+                    <div id="crmCoberturaList" class="list-group mb-3"></div>
+                </section>
+                <section class="crm-offcanvas-section">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
                         <h6 class="mb-0">Documentos adjuntos</h6>
                         <small class="text-muted" id="crmAdjuntosResumen"></small>
                     </div>
@@ -1513,28 +1520,35 @@ $reporting = array_merge(
                 </div>
             </form>
             <div class="crm-scrollable flex-grow-1 overflow-auto">
-                <section class="crm-offcanvas-section">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Notas internas</h6>
-                        <small class="text-muted" id="crmNotasResumen"></small>
+            <section class="crm-offcanvas-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Notas internas</h6>
+                    <small class="text-muted" id="crmNotasResumen"></small>
+                </div>
+                <div id="crmNotasList" class="list-group mb-3"></div>
+                <form id="crmNotaForm">
+                    <label for="crmNotaTexto" class="form-label">Agregar nota</label>
+                    <textarea id="crmNotaTexto" class="form-control mb-2" rows="3"
+                              placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
+                        </button>
                     </div>
-                    <div id="crmNotasList" class="list-group mb-3"></div>
-                    <form id="crmNotaForm">
-                        <label for="crmNotaTexto" class="form-label">Agregar nota</label>
-                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3"
-                                  placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
-                        <div class="d-flex justify-content-end">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
-                            </button>
-                        </div>
-                    </form>
-                </section>
-                <section class="crm-offcanvas-section">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Documentos adjuntos</h6>
-                        <small class="text-muted" id="crmAdjuntosResumen"></small>
-                    </div>
+                </form>
+            </section>
+            <section class="crm-offcanvas-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Correos de cobertura</h6>
+                    <small class="text-muted" id="crmCoberturaResumen"></small>
+                </div>
+                <div id="crmCoberturaList" class="list-group mb-3"></div>
+            </section>
+            <section class="crm-offcanvas-section">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Documentos adjuntos</h6>
+                    <small class="text-muted" id="crmAdjuntosResumen"></small>
+                </div>
                     <div id="crmAdjuntosList" class="list-group mb-3"></div>
                     <form id="crmAdjuntoForm" class="row g-2 align-items-end" enctype="multipart/form-data">
                         <div class="col-sm-7">

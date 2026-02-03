@@ -12,6 +12,7 @@ use Modules\CRM\Services\LeadCrmCoreService;
 use Modules\WhatsApp\Services\Messenger as WhatsAppMessenger;
 use Modules\WhatsApp\WhatsAppModule;
 use Modules\Solicitudes\Services\CalendarBlockService;
+use Modules\Solicitudes\Services\CoberturaMailLogService;
 use Modules\Solicitudes\Services\SolicitudEstadoService;
 use Helpers\JsonLogger;
 use PDO;
@@ -91,6 +92,8 @@ class SolicitudCrmService
                 !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null,
                 null
             );
+            $mailLogService = new CoberturaMailLogService($this->pdo);
+            $coberturaMails = $mailLogService->fetchBySolicitud($solicitudId, 5);
 
             return [
                 'detalle' => $detalle,
@@ -102,6 +105,7 @@ class SolicitudCrmService
                 'crm_resumen' => $crmResumen,
                 'project' => $project,
                 'bloqueos_agenda' => $this->calendarBlocks->listarPorSolicitud($solicitudId),
+                'cobertura_mails' => $coberturaMails,
             ];
         } catch (Throwable $exception) {
             throw new RuntimeException(
