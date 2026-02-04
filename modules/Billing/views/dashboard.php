@@ -118,7 +118,41 @@ array_push(
             top: 0;
             background: #f8fafc;
         }
+
+        .dashboard-loader-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2050;
+            background: rgba(15, 23, 42, 0.2);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(1px);
+        }
+
+        .dashboard-loader-overlay.is-visible {
+            display: flex;
+        }
+
+        .dashboard-loader-card {
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #0f172a;
+            font-weight: 600;
+        }
     </style>
+
+    <div id="billing-dashboard-loader" class="dashboard-loader-overlay" aria-live="polite" aria-busy="true">
+        <div class="dashboard-loader-card">
+            <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
+            <span>Cargando datos del dashboard...</span>
+        </div>
+    </div>
 
     <div class="dashboard-header">
         <div>
@@ -271,9 +305,13 @@ array_push(
                 <option value="privado">Privado</option>
                 <option value="particular">Particular</option>
                 <option value="publico">Público</option>
+                <option value="fundacional">Fundacional</option>
             </select>
             <button type="button" class="btn btn-primary" id="procedimientos-refresh">
                 <i class="mdi mdi-refresh"></i> Actualizar
+            </button>
+            <button type="button" class="btn btn-outline-primary" id="procedimientos-export">
+                <i class="mdi mdi-file-export"></i> Exportar detalle CSV
             </button>
         </div>
     </div>
@@ -365,6 +403,7 @@ array_push(
                         <thead>
                         <tr>
                             <th>Categoría</th>
+                            <th>Cantidad</th>
                             <th>Total anual</th>
                             <th>%</th>
                             <th>Mes pico</th>
@@ -373,7 +412,50 @@ array_push(
                         </thead>
                         <tbody id="table-proc-summary">
                         <tr>
-                            <td colspan="5" class="text-center text-muted">Sin datos para este periodo</td>
+                            <td colspan="6" class="text-center text-muted">Sin datos para este periodo</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="box">
+                <div class="box-header with-border d-flex align-items-center gap-2 flex-wrap">
+                    <h4 class="box-title dashboard-section-title mb-0">Detalle de procedimientos</h4>
+                    <div class="ms-auto d-flex gap-2">
+                        <select class="form-select form-select-sm" id="proc-detail-category" style="min-width: 180px;">
+                            <option value="">Todas las categorías</option>
+                            <option value="Cirugía">Cirugía</option>
+                            <option value="Consulta Externa">Consulta Externa</option>
+                            <option value="Exámenes">Exámenes</option>
+                            <option value="PNI">PNI</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="proc-detail-refresh">Ver detalle</button>
+                    </div>
+                </div>
+                <div class="box-body table-responsive" style="max-height: 420px;">
+                    <table class="table table-hover table-sm table-sticky mb-0">
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Form ID</th>
+                            <th>Paciente</th>
+                            <th>Afiliación</th>
+                            <th>Tipo cliente</th>
+                            <th>Categoría</th>
+                            <th>Código</th>
+                            <th>Detalle</th>
+                            <th>Valor</th>
+                        </tr>
+                        </thead>
+                        <tbody id="table-proc-detail">
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">Sin datos para este periodo</td>
                         </tr>
                         </tbody>
                     </table>
