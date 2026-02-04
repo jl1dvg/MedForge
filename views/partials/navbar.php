@@ -194,7 +194,7 @@ if (!function_exists('isTreeOpen')) {
                             <?php if ($canAccessSolicitudesDashboard): ?>
                                 <li class="<?= isActive('/solicitudes/dashboard') ?>">
                                     <a href="/solicitudes/dashboard">
-                                        <i class="mdi mdi-chart-box"></i>Dashboard solicitudes
+                                        <i class="mdi mdi-chart-timeline"></i>Dashboard solicitudes
                                     </a>
                                 </li>
                             <?php endif; ?>
@@ -211,7 +211,7 @@ if (!function_exists('isTreeOpen')) {
                             <?php if ($canAccessCirugiasDashboard): ?>
                                 <li class="<?= isActive('/cirugias/dashboard') ?>">
                                     <a href="/cirugias/dashboard">
-                                        <i class="mdi mdi-chart-box"></i>Dashboard quirúrgico
+                                        <i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico
                                     </a>
                                 </li>
                             <?php endif; ?>
@@ -339,7 +339,7 @@ if (!function_exists('isTreeOpen')) {
                                     </li>
                                     <li class="<?= isActivePrefix('/mail-templates') ?>">
                                         <a href="/mail-templates/cobertura">
-                                            <i class="mdi mdi-email-edit-outline"></i>Plantillas de correo
+                                            <i class="mdi mdi-email-variant"></i>Plantillas de correo
                                         </a>
                                     </li>
                                 <?php endif; ?>

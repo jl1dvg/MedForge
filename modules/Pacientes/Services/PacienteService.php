@@ -441,12 +441,21 @@ class PacienteService
         string $sexo,
         string $celular
     ): void {
+        $fname = trim($fname);
+        $mname = trim($mname);
+        $lname = trim($lname);
+        $lname2 = trim($lname2);
+        $afiliacion = trim($afiliacion);
+        $fechaNacimiento = trim($fechaNacimiento);
+        $sexo = trim($sexo);
+        $celular = trim($celular);
+
         $stmt = $this->db->prepare(
             <<<'SQL'
             UPDATE patient_data
-            SET fname = :fname,
+            SET fname = COALESCE(NULLIF(:fname, ''), fname),
                 mname = :mname,
-                lname = :lname,
+                lname = COALESCE(NULLIF(:lname, ''), lname),
                 lname2 = :lname2,
                 afiliacion = :afiliacion,
                 fecha_nacimiento = :fecha_nacimiento,

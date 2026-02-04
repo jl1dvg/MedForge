@@ -147,29 +147,14 @@ class GuardarProyeccionController
         $procedimiento = $data['procedimiento_proyectado'];
         $doctor = $data['doctor'] ?? null;
 
-        // Descomponer nombre completo si faltan campos descompuestos
-        if (
-            (!isset($data['fname']) || empty($data['fname'])) ||
-            (!isset($data['lname']) || empty($data['lname'])) ||
-            (!isset($data['mname']) || empty($data['mname'])) ||
-            (!isset($data['lname2']) || empty($data['lname2']))
-        ) {
-            if (isset($data['nombre_completo'])) {
-                $partes = explode(' ', trim($data['nombre_completo']));
-                $data['fname'] = $partes[0] ?? null;
-                $data['mname'] = $partes[1] ?? null;
-                $data['lname'] = $partes[2] ?? null;
-                $data['lname2'] = isset($partes[3]) ? implode(' ', array_slice($partes, 3)) : null;
-            } else {
-                error_log("❌ Faltan nombres descompuestos y tampoco se recibió 'nombre_completo'. Datos: " . json_encode($data));
-            }
+        // Normalizar nombres sin reparsear nombre_completo para evitar inversiones inconsistentes.
+        $data['fname'] = trim((string) ($data['fname'] ?? ''));
+        $data['mname'] = trim((string) ($data['mname'] ?? ''));
+        $data['lname2'] = trim((string) ($data['lname2'] ?? ''));
+        $data['lname'] = trim((string) ($data['lname'] ?? ''));
+        if ($data['lname'] === '') {
+            $data['lname'] = 'DESCONOCIDO';
         }
-
-        // Proteger campos de nombre para evitar nulos
-        $data['lname'] = $data['lname'] ?? 'DESCONOCIDO';
-        $data['fname'] = $data['fname'] ?? '';
-        $data['mname'] = $data['mname'] ?? '';
-        $data['lname2'] = $data['lname2'] ?? '';
 
         // Guardar datos del paciente SIEMPRE antes de crear o actualizar la visita
         $this->upsertPatientData($hcNumber, $data);
@@ -412,10 +397,10 @@ class GuardarProyeccionController
     private function buildPatientFields(array $data): array
     {
         $baseFields = [
-            'lname' => $data['lname'] ?? 'DESCONOCIDO',
-            'lname2' => $data['lname2'] ?? '',
-            'fname' => $data['fname'] ?? '',
-            'mname' => $data['mname'] ?? '',
+            'lname' => (($lname = trim((string) ($data['lname'] ?? ''))) !== '') ? $lname : 'DESCONOCIDO',
+            'lname2' => trim((string) ($data['lname2'] ?? '')),
+            'fname' => trim((string) ($data['fname'] ?? '')),
+            'mname' => trim((string) ($data['mname'] ?? '')),
         ];
 
         $optionalFields = [
