@@ -28,6 +28,14 @@ return function (Router $router) {
         (new ExamenController($pdo))->enviarRecordatorios();
     });
 
+    $router->get('/examenes/api/estado', function (\PDO $pdo) {
+        (new ExamenController($pdo))->apiEstadoGet();
+    });
+
+    $router->post('/examenes/api/estado', function (\PDO $pdo) {
+        (new ExamenController($pdo))->apiEstadoPost();
+    });
+
     $router->get('/examenes/turnero-data', function (\PDO $pdo) {
         (new ExamenController($pdo))->turneroData();
     });

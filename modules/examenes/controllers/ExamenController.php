@@ -541,12 +541,435 @@ class ExamenController extends BaseController
         }
     }
 
+    public function obtenerEstadosPorHc(string $hcNumber): array
+    {
+        $examenes = $this->examenModel->obtenerEstadosPorHc($hcNumber);
+        $examenes = array_map([$this, 'transformExamenRow'], $examenes);
+        $examenes = $this->estadoService->enrichExamenes($examenes);
+
+        return [
+            'success' => true,
+            'hcNumber' => $hcNumber,
+            'total' => count($examenes),
+            'examenes' => $examenes,
+        ];
+    }
+
+    public function actualizarExamenParcial(int $id, array $campos): array
+    {
+        return $this->examenModel->actualizarExamenParcial($id, $campos);
+    }
+
+    public function apiEstadoGet(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $hcNumber = $_GET['hcNumber'] ?? $_GET['hc_number'] ?? null;
+        if (!$hcNumber) {
+            $this->json(['success' => false, 'message' => 'Parámetro hcNumber requerido'], 400);
+            return;
+        }
+
+        try {
+            $this->json($this->obtenerEstadosPorHc((string) $hcNumber));
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'message' => 'Error al obtener exámenes'], 500);
+        }
+    }
+
+    public function apiEstadoPost(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'message' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        if ($id <= 0 && isset($payload['examen_id'])) {
+            $id = (int) $payload['examen_id'];
+        }
+
+        if ($id <= 0) {
+            $this->json(['success' => false, 'message' => 'Parámetro id requerido para actualizar el examen'], 400);
+            return;
+        }
+
+        $campos = [
+            'estado' => $payload['estado'] ?? null,
+            'doctor' => $payload['doctor'] ?? null,
+            'solicitante' => $payload['solicitante'] ?? null,
+            'consulta_fecha' => $payload['consulta_fecha'] ?? ($payload['fecha'] ?? null),
+            'prioridad' => $payload['prioridad'] ?? null,
+            'observaciones' => $payload['observaciones'] ?? ($payload['observacion'] ?? null),
+            'examen_nombre' => $payload['examen_nombre'] ?? ($payload['examen'] ?? null),
+            'examen_codigo' => $payload['examen_codigo'] ?? null,
+            'lateralidad' => $payload['lateralidad'] ?? ($payload['ojo'] ?? null),
+            'turno' => $payload['turno'] ?? null,
+        ];
+
+        try {
+            $resultado = $this->actualizarExamenParcial($id, $campos);
+            $status = (!is_array($resultado) || ($resultado['success'] ?? false) === false) ? 422 : 200;
+            $this->json(is_array($resultado) ? $resultado : ['success' => false], $status);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'message' => 'Error al actualizar el examen'], 500);
+        }
+    }
+
     public function prefactura(): void
     {
         $this->requireAuth();
 
-        http_response_code(200);
-        echo '<p class="text-muted">La prefactura no está disponible para las solicitudes de exámenes.</p>';
+        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
+        $formId = trim((string) ($_GET['form_id'] ?? ''));
+        $examenId = isset($_GET['examen_id']) ? (int) $_GET['examen_id'] : null;
+
+        if ($hcNumber === '' || $formId === '') {
+            http_response_code(400);
+            echo '<p class="text-danger">Faltan parámetros para mostrar el detalle del examen.</p>';
+            return;
+        }
+
+        $viewData = $this->obtenerDatosParaVista($hcNumber, $formId, $examenId);
+        if (empty($viewData['examen'])) {
+            http_response_code(404);
+            echo '<p class="text-danger">No se encontraron datos para el examen seleccionado.</p>';
+            return;
+        }
+
+        ob_start();
+        include __DIR__ . '/../views/prefactura_detalle.php';
+        echo ob_get_clean();
+    }
+
+    private function obtenerDatosParaVista(string $hcNumber, string $formId, ?int $examenId = null): array
+    {
+        $examen = $this->examenModel->obtenerExamenPorFormHc($formId, $hcNumber, $examenId);
+        if (!$examen) {
+            return ['examen' => null];
+        }
+
+        $paciente = $this->pacienteService->getPatientDetails($hcNumber);
+        $consulta = $this->examenModel->obtenerConsultaPorFormHc($formId, $hcNumber) ?? [];
+        $examenesRelacionados = $this->examenModel->obtenerExamenesPorFormHc($formId, $hcNumber);
+
+        $crmResumen = [];
+        try {
+            $crmResumen = $this->crmService->obtenerResumen((int) $examen['id']);
+        } catch (Throwable $e) {
+            $crmResumen = [];
+        }
+
+        $imagenesSolicitadas = $this->extraerImagenesSolicitadas(
+            $consulta['examenes'] ?? null,
+            $examenesRelacionados,
+            $crmResumen['adjuntos'] ?? []
+        );
+
+        $diagnosticos = [];
+        if (isset($consulta['diagnosticos']) && is_string($consulta['diagnosticos'])) {
+            $decodedDx = json_decode($consulta['diagnosticos'], true);
+            if (is_array($decodedDx)) {
+                $diagnosticos = $decodedDx;
+            }
+        }
+
+        $trazabilidad = $this->construirTrazabilidad($examen, $crmResumen);
+
+        return [
+            'examen' => $examen,
+            'paciente' => is_array($paciente) ? $paciente : [],
+            'consulta' => $consulta,
+            'diagnostico' => $diagnosticos,
+            'imagenes_solicitadas' => $imagenesSolicitadas,
+            'trazabilidad' => $trazabilidad,
+            'crm' => $crmResumen,
+        ];
+    }
+
+    private function extraerImagenesSolicitadas($rawExamenes, array $examenesRelacionados, array $adjuntosCrm): array
+    {
+        $items = [];
+        if (is_string($rawExamenes) && trim($rawExamenes) !== '') {
+            $decoded = json_decode($rawExamenes, true);
+            if (is_array($decoded)) {
+                $items = $decoded;
+            }
+        } elseif (is_array($rawExamenes)) {
+            $items = $rawExamenes;
+        }
+
+        if (!is_array($items)) {
+            $items = [];
+        }
+
+        $normalizedAdjuntos = [];
+        foreach ($adjuntosCrm as $adjunto) {
+            $normalizedAdjuntos[] = [
+                'raw' => $adjunto,
+                'search' => $this->normalizarTexto(
+                    ($adjunto['descripcion'] ?? '') . ' ' . ($adjunto['nombre_original'] ?? '')
+                ),
+            ];
+        }
+
+        $buildRecord = function ($item, bool $allowNonImage) use ($examenesRelacionados, $normalizedAdjuntos) {
+            $nombre = null;
+            $codigo = null;
+            $fuente = 'Consulta';
+            $fecha = null;
+
+            if (is_array($item)) {
+                $nombre = trim((string) ($item['nombre'] ?? $item['examen'] ?? $item['descripcion'] ?? ''));
+                $codigo = trim((string) ($item['codigo'] ?? $item['id'] ?? $item['code'] ?? ''));
+                $fuente = trim((string) ($item['fuente'] ?? $item['origen'] ?? 'Consulta')) ?: 'Consulta';
+                $fecha = $item['fecha'] ?? null;
+            } elseif (is_string($item)) {
+                $nombre = trim($item);
+            }
+
+            if ($nombre === null || $nombre === '') {
+                return null;
+            }
+
+            if (!$allowNonImage && !$this->esEstudioImagen($nombre, $codigo)) {
+                return null;
+            }
+
+            $nombreNorm = $this->normalizarTexto($nombre);
+            $match = null;
+            foreach ($examenesRelacionados as $rel) {
+                $relNorm = $this->normalizarTexto($rel['examen_nombre'] ?? '');
+                if ($relNorm === '') {
+                    continue;
+                }
+                if ($relNorm === $nombreNorm || str_contains($relNorm, $nombreNorm) || str_contains($nombreNorm, $relNorm)) {
+                    $match = $rel;
+                    break;
+                }
+            }
+
+            $estado = $match['estado'] ?? 'Solicitado';
+            $fuenteFinal = $fuente;
+            if (($fuenteFinal === '' || $fuenteFinal === 'Consulta') && !empty($match['solicitante'])) {
+                $fuenteFinal = (string) $match['solicitante'];
+            }
+            $fechaFinal = $match['consulta_fecha'] ?? $fecha ?? $match['created_at'] ?? null;
+
+            $evidencias = [];
+            foreach ($normalizedAdjuntos as $adjunto) {
+                $search = $adjunto['search'] ?? '';
+                if ($search === '' || !str_contains($search, $nombreNorm)) {
+                    continue;
+                }
+
+                $raw = $adjunto['raw'] ?? [];
+                $evidencias[] = [
+                    'url' => $raw['url'] ?? null,
+                    'descripcion' => $raw['descripcion'] ?? null,
+                    'nombre' => $raw['nombre_original'] ?? null,
+                ];
+            }
+
+            return [
+                'nombre' => $nombre,
+                'codigo' => $codigo !== '' ? $codigo : null,
+                'estado' => $estado,
+                'fuente' => $fuenteFinal !== '' ? $fuenteFinal : 'Consulta',
+                'fecha' => $fechaFinal,
+                'evidencias' => $evidencias,
+                'evidencias_count' => count($evidencias),
+            ];
+        };
+
+        $records = [];
+        $seen = [];
+        foreach ($items as $item) {
+            $record = $buildRecord($item, false);
+            if (!$record) {
+                continue;
+            }
+            $key = $this->normalizarTexto(($record['nombre'] ?? '') . '|' . ($record['codigo'] ?? ''));
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $records[] = $record;
+        }
+
+        if ($records === []) {
+            foreach ($items as $item) {
+                $record = $buildRecord($item, true);
+                if (!$record) {
+                    continue;
+                }
+                $key = $this->normalizarTexto(($record['nombre'] ?? '') . '|' . ($record['codigo'] ?? ''));
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $records[] = $record;
+            }
+        }
+
+        return $records;
+    }
+
+    private function construirTrazabilidad(array $examen, array $crmResumen): array
+    {
+        $eventos = [];
+
+        if (!empty($examen['created_at'])) {
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'estado',
+                $examen['created_at'],
+                'Examen registrado',
+                'Estado inicial: ' . ((string) ($examen['estado'] ?? 'Pendiente')),
+                null
+            );
+        }
+
+        if (!empty($examen['updated_at']) && ($examen['updated_at'] ?? null) !== ($examen['created_at'] ?? null)) {
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'estado',
+                $examen['updated_at'],
+                'Actualización operativa',
+                'Último estado reportado: ' . ((string) ($examen['estado'] ?? 'Pendiente')),
+                null
+            );
+        }
+
+        foreach (($crmResumen['notas'] ?? []) as $nota) {
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'nota',
+                $nota['created_at'] ?? null,
+                'Nota CRM',
+                (string) ($nota['nota'] ?? ''),
+                $nota['autor_nombre'] ?? null
+            );
+        }
+
+        foreach (($crmResumen['tareas'] ?? []) as $tarea) {
+            $titulo = trim((string) ($tarea['titulo'] ?? 'Tarea CRM'));
+            $estado = trim((string) ($tarea['estado'] ?? 'pendiente'));
+            $descripcion = $titulo . ' · Estado: ' . $estado;
+            if (!empty($tarea['due_date'])) {
+                $descripcion .= ' · Vence: ' . (string) $tarea['due_date'];
+            }
+
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'tarea',
+                $tarea['updated_at'] ?? ($tarea['created_at'] ?? null),
+                'Tarea CRM',
+                $descripcion,
+                $tarea['assigned_name'] ?? null
+            );
+        }
+
+        foreach (($crmResumen['adjuntos'] ?? []) as $adjunto) {
+            $descripcion = trim((string) ($adjunto['descripcion'] ?? ''));
+            $nombre = trim((string) ($adjunto['nombre_original'] ?? 'Documento'));
+            $texto = $descripcion !== '' ? $descripcion : $nombre;
+
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'adjunto',
+                $adjunto['created_at'] ?? null,
+                'Adjunto CRM',
+                $texto,
+                $adjunto['subido_por_nombre'] ?? null
+            );
+        }
+
+        foreach (($crmResumen['mail_events'] ?? []) as $mailEvent) {
+            $eventos[] = $this->crearEventoTrazabilidad(
+                'correo',
+                $mailEvent['created_at'] ?? null,
+                'Correo saliente',
+                (string) ($mailEvent['subject'] ?? 'Sin asunto'),
+                $mailEvent['sent_by_name'] ?? null
+            );
+        }
+
+        usort(
+            $eventos,
+            static function (array $a, array $b): int {
+                return strtotime((string) ($b['fecha'] ?? '')) <=> strtotime((string) ($a['fecha'] ?? ''));
+            }
+        );
+
+        return array_values(array_filter($eventos));
+    }
+
+    private function crearEventoTrazabilidad(string $tipo, $fecha, string $titulo, string $detalle, ?string $autor): array
+    {
+        return [
+            'tipo' => $tipo,
+            'fecha' => $fecha,
+            'titulo' => $titulo,
+            'detalle' => $detalle,
+            'autor' => $autor,
+        ];
+    }
+
+    private function esEstudioImagen(string $nombre, ?string $codigo = null): bool
+    {
+        $texto = $this->normalizarTexto($nombre . ' ' . ($codigo ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        $keywords = [
+            'oct',
+            'tomografia',
+            'retinografia',
+            'angiografia',
+            'ecografia',
+            'ultrasonido',
+            'biometria',
+            'campimetria',
+            'paquimetria',
+            'resonancia',
+            'tac',
+            'rx',
+            'rayos x',
+            'fotografia',
+            'imagen',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (str_contains($texto, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizarTexto(string $texto): string
+    {
+        $texto = trim($texto);
+        if ($texto === '') {
+            return '';
+        }
+
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($texto, \Normalizer::FORM_D);
+            if (is_string($normalized)) {
+                $texto = preg_replace('/\p{Mn}/u', '', $normalized) ?? $texto;
+            }
+        }
+
+        $texto = function_exists('mb_strtolower')
+            ? mb_strtolower($texto, 'UTF-8')
+            : strtolower($texto);
+        $texto = preg_replace('/[^a-z0-9\s]/u', ' ', $texto) ?? $texto;
+        $texto = preg_replace('/\s+/', ' ', $texto) ?? $texto;
+
+        return trim($texto);
     }
 
     private function getRequestBody(): array

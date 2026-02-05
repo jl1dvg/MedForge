@@ -289,9 +289,21 @@ function normalizarTexto(texto) {
   return (texto || "").toString().toLowerCase();
 }
 
+function normalizarAfiliacion(afiliacion) {
+  const raw = (afiliacion || "").toString().trim().toUpperCase();
+  if (!raw) return "";
+  if (raw.includes("ISSFA")) return "ISSFA";
+  if (raw.includes("ISSPOL")) return "ISSPOL";
+  return raw;
+}
+
 async function obtenerProcedimientosDesdeApi(afiliacion) {
   await (window.configCIVE ? window.configCIVE.ready : Promise.resolve());
-  const clave = afiliacion && afiliacion !== "" ? afiliacion : "__general__";
+  const afiliacionNormalizada = normalizarAfiliacion(afiliacion);
+  const clave =
+    afiliacionNormalizada && afiliacionNormalizada !== ""
+      ? afiliacionNormalizada
+      : "__general__";
   const ttl = window.configCIVE
     ? window.configCIVE.get("proceduresCacheTtlMs", 300000)
     : 300000;
@@ -303,7 +315,7 @@ async function obtenerProcedimientosDesdeApi(afiliacion) {
   let data;
   try {
     data = await window.CiveApiClient.get("/procedimientos/listar.php", {
-      query: { afiliacion },
+      query: { afiliacion: afiliacionNormalizada },
       cacheKey: `procedimientos:${clave}`,
       cacheTtlMs: ttl,
       useCache: true,
@@ -326,7 +338,7 @@ async function obtenerProcedimientosDesdeApi(afiliacion) {
 function obtenerAfiliacion() {
   const afiliacionElement = document.querySelector(".media-body p span b");
   if (afiliacionElement) {
-    return afiliacionElement.innerText.trim().toUpperCase();
+    return normalizarAfiliacion(afiliacionElement.innerText);
   }
   return "";
 }

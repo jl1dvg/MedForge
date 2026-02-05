@@ -159,6 +159,297 @@ class ExamenModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public function obtenerEstadosPorHc(string $hcNumber): array
+    {
+        $sql = "SELECT
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                ce.doctor,
+                ce.solicitante,
+                ce.estado,
+                ce.prioridad,
+                ce.lateralidad,
+                ce.observaciones,
+                ce.turno,
+                ce.consulta_fecha,
+                ce.created_at,
+                ce.updated_at,
+                detalles.pipeline_stage AS crm_pipeline_stage,
+                detalles.fuente AS crm_fuente,
+                detalles.contacto_email AS crm_contacto_email,
+                detalles.contacto_telefono AS crm_contacto_telefono,
+                detalles.responsable_id AS crm_responsable_id,
+                detalles.crm_lead_id AS crm_lead_id,
+                responsable.nombre AS crm_responsable_nombre,
+                responsable.profile_photo AS crm_responsable_avatar,
+                pd.afiliacion,
+                pd.celular AS paciente_celular,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+            FROM consulta_examenes ce
+            INNER JOIN patient_data pd ON pd.hc_number = ce.hc_number
+            LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
+            LEFT JOIN users responsable ON responsable.id = detalles.responsable_id
+            WHERE ce.hc_number = :hc
+            ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':hc' => $hcNumber]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function obtenerExamenPorFormHc(string $formId, string $hcNumber, ?int $examenId = null): ?array
+    {
+        $sql = "SELECT
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                ce.doctor,
+                ce.solicitante,
+                ce.estado,
+                ce.prioridad,
+                ce.lateralidad,
+                ce.observaciones,
+                ce.turno,
+                ce.consulta_fecha,
+                ce.created_at,
+                ce.updated_at,
+                pd.afiliacion,
+                pd.celular AS paciente_celular,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                detalles.crm_lead_id AS crm_lead_id,
+                detalles.pipeline_stage AS crm_pipeline_stage,
+                detalles.fuente AS crm_fuente,
+                detalles.contacto_email AS crm_contacto_email,
+                detalles.contacto_telefono AS crm_contacto_telefono,
+                detalles.responsable_id AS crm_responsable_id,
+                responsable.nombre AS crm_responsable_nombre,
+                responsable.profile_photo AS crm_responsable_avatar,
+                COALESCE(notas.total_notas, 0) AS crm_total_notas,
+                COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
+                COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
+                COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
+                tareas.proximo_vencimiento AS crm_proximo_vencimiento
+            FROM consulta_examenes ce
+            INNER JOIN patient_data pd ON pd.hc_number = ce.hc_number
+            LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
+            LEFT JOIN users responsable ON responsable.id = detalles.responsable_id
+            LEFT JOIN (
+                SELECT examen_id, COUNT(*) AS total_notas
+                FROM examen_crm_notas
+                GROUP BY examen_id
+            ) notas ON notas.examen_id = ce.id
+            LEFT JOIN (
+                SELECT examen_id, COUNT(*) AS total_adjuntos
+                FROM examen_crm_adjuntos
+                GROUP BY examen_id
+            ) adjuntos ON adjuntos.examen_id = ce.id
+            LEFT JOIN (
+                SELECT source_ref_id,
+                       COUNT(*) AS tareas_total,
+                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, ' 23:59:59')) END) AS proximo_vencimiento
+                FROM crm_tasks
+                WHERE source_module = 'examenes'
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = ce.id
+            WHERE ce.form_id = :form_id
+              AND ce.hc_number = :hc_number";
+
+        $params = [
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ];
+
+        if ($examenId !== null && $examenId > 0) {
+            $sql .= " AND ce.id = :id";
+            $params[':id'] = $examenId;
+        }
+
+        $sql .= " ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC
+                  LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($row && isset($row['full_name'])) {
+            $row['full_name'] = trim((string) $row['full_name']) !== ''
+                ? trim((string) $row['full_name'])
+                : null;
+        }
+
+        return $row;
+    }
+
+    public function obtenerExamenesPorFormHc(string $formId, string $hcNumber): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                ce.estado,
+                ce.solicitante,
+                ce.consulta_fecha,
+                ce.created_at
+             FROM consulta_examenes ce
+             WHERE ce.form_id = :form_id
+               AND ce.hc_number = :hc_number
+             ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function obtenerConsultaPorFormHc(string $formId, string $hcNumber): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                form_id,
+                hc_number,
+                fecha,
+                motivo_consulta,
+                enfermedad_actual,
+                examen_fisico,
+                plan,
+                diagnosticos,
+                examenes
+             FROM consulta_data
+             WHERE form_id = :form_id
+               AND hc_number = :hc_number
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        return $row ?: null;
+    }
+
+    public function actualizarExamenParcial(int $id, array $campos): array
+    {
+        $limpiar = static function ($valor) {
+            if (is_string($valor)) {
+                $valor = trim($valor);
+                if ($valor === '' || strtoupper($valor) === 'SELECCIONE') {
+                    return null;
+                }
+                return $valor;
+            }
+
+            return $valor === '' ? null : $valor;
+        };
+
+        $normalizarFecha = static function ($valor): ?string {
+            $valor = is_string($valor) ? trim($valor) : $valor;
+            if (!$valor) {
+                return null;
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', (string) $valor)) {
+                return strlen((string) $valor) === 10 ? $valor . ' 00:00:00' : (string) $valor;
+            }
+
+            if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', (string) $valor)) {
+                $format = strlen((string) $valor) === 19 ? 'Y-m-d\TH:i:s' : 'Y-m-d\TH:i';
+                $date = \DateTime::createFromFormat($format, (string) $valor);
+                if ($date instanceof \DateTime) {
+                    return $date->format('Y-m-d H:i:s');
+                }
+            }
+
+            $formats = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
+            foreach ($formats as $format) {
+                $date = \DateTime::createFromFormat($format, (string) $valor);
+                if ($date instanceof \DateTime) {
+                    return $date->format('Y-m-d H:i:s');
+                }
+            }
+
+            return null;
+        };
+
+        $permitidos = [
+            'estado',
+            'doctor',
+            'solicitante',
+            'consulta_fecha',
+            'prioridad',
+            'observaciones',
+            'examen_nombre',
+            'examen_codigo',
+            'lateralidad',
+            'turno',
+        ];
+
+        $set = [];
+        $params = [':id' => $id];
+
+        foreach ($permitidos as $campo) {
+            if (!array_key_exists($campo, $campos)) {
+                continue;
+            }
+
+            $valor = $campos[$campo];
+            if ($campo === 'consulta_fecha') {
+                $valor = $normalizarFecha($valor);
+            } elseif ($campo === 'prioridad') {
+                $valor = is_string($valor) ? strtoupper(trim($valor)) : $valor;
+            } elseif ($campo === 'turno') {
+                $valor = is_numeric($valor) ? (int) $valor : null;
+            } else {
+                $valor = $limpiar($valor);
+            }
+
+            $set[] = "{$campo} = :{$campo}";
+            $params[":{$campo}"] = $valor;
+        }
+
+        if (empty($set)) {
+            return ['success' => false, 'message' => 'No se enviaron campos para actualizar'];
+        }
+
+        $sql = 'UPDATE consulta_examenes SET ' . implode(', ', $set) . ' WHERE id = :id';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->rowCount();
+
+        $stmtDatos = $this->db->prepare(
+            "SELECT
+                ce.*,
+                pd.afiliacion,
+                pd.celular AS paciente_celular,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name
+             FROM consulta_examenes ce
+             LEFT JOIN patient_data pd ON pd.hc_number = ce.hc_number
+             WHERE ce.id = :id"
+        );
+        $stmtDatos->execute([':id' => $id]);
+        $row = $stmtDatos->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        return [
+            'success' => true,
+            'message' => 'Examen actualizado correctamente',
+            'rows_affected' => $rows,
+            'data' => $row,
+        ];
+    }
+
     public function actualizarEstado(int $id, string $estado): array
     {
         $this->db->beginTransaction();

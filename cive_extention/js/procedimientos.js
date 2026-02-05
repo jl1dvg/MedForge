@@ -273,7 +273,16 @@ function ejecutarProtocoloEnPagina(item) {
         });
     }
 
-    function seleccionarOpcion() {
+    function normalizarTexto(texto) {
+        return (texto || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function seleccionarOpcion(valorEsperado = '') {
         return new Promise((resolve, reject) => {
             // Verificar que el selector existe y es accesible antes de intentar realizar operaciones
             if (document.querySelector('input.select2-search__field') === null) {
@@ -292,10 +301,18 @@ function ejecutarProtocoloEnPagina(item) {
                 .then((resultados) => {
                     console.log(`${LOG_PREFIX} Seleccionando opción`);
                     resaltarElemento(searchField, 'red');
-                    const highlighted = document.querySelector('.select2-container--open .select2-results__option--highlighted')
-                        || resultados[0];
-                    if (highlighted) {
-                        highlighted.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true}));
+                    const valorNormalizado = normalizarTexto(valorEsperado);
+                    const highlighted = document.querySelector('.select2-container--open .select2-results__option--highlighted');
+                    const coincidenciaExacta = valorNormalizado
+                        ? resultados.find((opcion) => normalizarTexto(opcion.textContent) === valorNormalizado)
+                        : null;
+                    const coincidenciaParcial = !coincidenciaExacta && valorNormalizado
+                        ? resultados.find((opcion) => normalizarTexto(opcion.textContent).includes(valorNormalizado))
+                        : null;
+
+                    const opcionSeleccionada = coincidenciaExacta || coincidenciaParcial || highlighted || resultados[0];
+                    if (opcionSeleccionada) {
+                        opcionSeleccionada.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true}));
                         setTimeout(resolve, 250);
                         return;
                     }
@@ -616,7 +633,7 @@ Se dan indicaciones médicas, cuidado de la herida y actividades permitidas y re
 Se prescribe medicación por vía oral
 Se indica al paciente que debe acudir a una consulta de control en las próximas 24 horas`
 
-    function ejecutarTecnicos(item, nombreCirujano) {
+    function ejecutarTecnicos(item, medicoSeleccionado) {
         if (!Array.isArray(item.tecnicos)) return Promise.resolve();
 
         return item.tecnicos.reduce((promise, tecnico) => {
@@ -624,10 +641,17 @@ Se indica al paciente que debe acudir a una consulta de control en las próximas
                 return abrirYBuscarSelect2(tecnico.selector, tecnico.funcion)
                     .then(() => seleccionarOpcion())
                     .then(() => {
-                        const valor = (tecnico.nombre === 'cirujano_principal') ? nombreCirujano : tecnico.nombre;
+                        const valor = (tecnico.nombre === 'cirujano_principal')
+                            ? medicoSeleccionado.apellidos
+                            : tecnico.nombre;
                         return abrirYBuscarSelect2(tecnico.trabajador, valor);
                     })
-                    .then(() => seleccionarOpcion())
+                    .then(() => {
+                        const valorEsperado = (tecnico.nombre === 'cirujano_principal')
+                            ? medicoSeleccionado.nombreCompleto
+                            : tecnico.nombre;
+                        return seleccionarOpcion(valorEsperado);
+                    })
                     .then(() => delay(SELECT2_INTERACTION_PAUSE_MS))
                     .catch(error => console.error(`Error procesando técnico ${tecnico.nombre}:`, error));
             });
@@ -635,9 +659,9 @@ Se indica al paciente que debe acudir a una consulta de control en las próximas
     }
 
 
-    function ejecutarFaseInicial(item, apellidosMedico) {
+    function ejecutarFaseInicial(item, medicoSeleccionado) {
         return ejecutarAcciones(item)
-            .then(() => ejecutarTecnicos(item, apellidosMedico))
+            .then(() => ejecutarTecnicos(item, medicoSeleccionado))
             .then(() => ejecutarCodigos(item, ojoATratar.sigla))
             .then(() => llenarCampoTexto(SELECTORS.datosCirugia, textoDictado));
     }
@@ -658,7 +682,12 @@ Se indica al paciente que debe acudir a una consulta de control en las próximas
             .then(() => hacerClickEnBoton('#consultaActual', 1));
     }
 
-    ejecutarFaseInicial(item, apellidosMedico)
+    const medicoSeleccionado = {
+        nombreCompleto: nombreCompleto !== 'Nombre no encontrado' ? nombreCompleto : apellidosMedico,
+        apellidos: apellidosMedico,
+    };
+
+    ejecutarFaseInicial(item, medicoSeleccionado)
         .then(() => ejecutarFaseFinal(item))
         .then(() => {
             Swal.fire({
@@ -683,4 +712,3 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('[CIVE EXT] Campo piepagina marcado como solo lectura al cargar.');
     }
 });
-

@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return Array.isArray(data) ? [...data] : [];
         }
 
-        const keys = ['full_name', 'hc_number', 'examen', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
+        const keys = ['full_name', 'hc_number', 'examen', 'examen_nombre', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
 
         return (Array.isArray(data) ? data : []).filter(item =>
             keys.some(key => {
@@ -341,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const avatarHtml = renderResponsableAvatar(responsable, item?.crm_responsable_avatar);
             const prioridadLabel = item?.prioridad || semaforo.label;
 
-            const detalleProcedimiento = item?.examen || 'Sin examen';
+            const detalleProcedimiento = item?.examen_nombre || item?.examen || 'Sin examen';
             const detalleDoctor = item?.doctor || 'Sin doctor';
             const detalleAfiliacion = item?.afiliacion || 'Sin afiliación';
 
