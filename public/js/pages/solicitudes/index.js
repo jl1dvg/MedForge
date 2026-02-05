@@ -1256,11 +1256,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const cargarKanban = (filtros = {}) => {
         const filtrosSeleccionados = obtenerFiltros();
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugKanban = ['1', 'true', 'yes'].includes((urlParams.get('debug_kanban') || '').toLowerCase());
+        const kanbanUrl = `${config.basePath}/kanban-data${debugKanban ? '?debug=1' : ''}`;
         console.groupCollapsed('%cKANBAN ▶ Filtros aplicados', 'color:#0b7285');
         console.log(filtros);
         console.groupEnd();
 
-        return fetch(`${config.basePath}/kanban-data`, {
+        return fetch(kanbanUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),
@@ -1271,7 +1274,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     let serverMsg = '';
                     try {
                         const data = await errorProbe.json();
-                        serverMsg = data?.error || JSON.stringify(data);
+                        if (data?.error) {
+                            const ref = data?.error_ref ? ` (ref: ${data.error_ref})` : '';
+                            const debug = data?.debug?.message
+                                ? ` [${data?.debug?.type || 'Error'}] ${data.debug.message}`
+                                : '';
+                            serverMsg = `${data.error}${ref}${debug}`;
+                        } else {
+                            serverMsg = JSON.stringify(data);
+                        }
                     } catch (_) {
                         try {
                             serverMsg = await errorProbe.text();

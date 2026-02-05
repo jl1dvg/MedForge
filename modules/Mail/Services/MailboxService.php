@@ -66,7 +66,14 @@ class MailboxService
         }
 
         if (in_array('examenes', $sources, true)) {
-            $entries = array_merge($entries, $this->fetchExamenNotes($limit));
+            $entries = array_merge(
+                $entries,
+                $this->fetchExamenNotes($limit),
+                $this->fetchExamenTasks($limit),
+                $this->fetchExamenStatusEvents($limit),
+                $this->fetchExamenCalendarBlocks($limit),
+                $this->fetchExamenMailEvents($limit)
+            );
         }
 
         if (in_array('cobertura', $sources, true)) {
@@ -376,6 +383,208 @@ SQL;
     /**
      * @return array<int, array<string, mixed>>
      */
+    private function fetchExamenTasks(int $limit): array
+    {
+        $sql = <<<SQL
+SELECT
+    t.id,
+    t.title AS titulo,
+    t.description AS descripcion,
+    t.status AS estado_tarea,
+    t.assigned_to,
+    t.created_by,
+    COALESCE(t.due_date, DATE(t.due_at)) AS due_date,
+    t.created_at,
+    t.updated_at,
+    t.completed_at,
+    asignado.nombre AS assigned_name,
+    creador.nombre AS created_name,
+    e.id AS examen_id,
+    e.estado,
+    e.prioridad,
+    e.examen_nombre,
+    e.doctor,
+    e.hc_number,
+    e.form_id,
+    pd.fname,
+    pd.mname,
+    pd.lname,
+    pd.lname2,
+    pd.celular
+FROM crm_tasks t
+INNER JOIN consulta_examenes e
+    ON t.source_module = 'examenes'
+   AND t.source_ref_id = CAST(e.id AS CHAR)
+LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
+LEFT JOIN users asignado ON asignado.id = t.assigned_to
+LEFT JOIN users creador ON creador.id = t.created_by
+ORDER BY COALESCE(t.updated_at, t.created_at) DESC, t.id DESC
+LIMIT :limit
+SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        return array_map(fn(array $row): array => $this->mapExamenTaskRow($row), $rows);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchExamenStatusEvents(int $limit): array
+    {
+        $sql = <<<SQL
+SELECT
+    l.id,
+    l.examen_id,
+    l.estado_anterior,
+    l.estado_nuevo,
+    l.changed_by,
+    l.origen,
+    l.observacion,
+    l.changed_at,
+    u.nombre AS changed_by_name,
+    e.estado,
+    e.prioridad,
+    e.examen_nombre,
+    e.doctor,
+    e.hc_number,
+    e.form_id,
+    pd.fname,
+    pd.mname,
+    pd.lname,
+    pd.lname2,
+    pd.celular
+FROM examen_estado_log l
+INNER JOIN consulta_examenes e ON e.id = l.examen_id
+LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
+LEFT JOIN users u ON u.id = l.changed_by
+ORDER BY l.changed_at DESC, l.id DESC
+LIMIT :limit
+SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        return array_map(fn(array $row): array => $this->mapExamenStatusRow($row), $rows);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchExamenCalendarBlocks(int $limit): array
+    {
+        $sql = <<<SQL
+SELECT
+    b.id,
+    b.examen_id,
+    b.doctor AS bloqueo_doctor,
+    b.sala,
+    b.fecha_inicio,
+    b.fecha_fin,
+    b.motivo,
+    b.created_by,
+    b.created_at,
+    u.nombre AS created_by_name,
+    e.estado,
+    e.prioridad,
+    e.examen_nombre,
+    e.doctor,
+    e.hc_number,
+    e.form_id,
+    pd.fname,
+    pd.mname,
+    pd.lname,
+    pd.lname2,
+    pd.celular
+FROM examen_crm_calendar_blocks b
+INNER JOIN consulta_examenes e ON e.id = b.examen_id
+LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
+LEFT JOIN users u ON u.id = b.created_by
+ORDER BY b.created_at DESC, b.id DESC
+LIMIT :limit
+SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        return array_map(fn(array $row): array => $this->mapExamenBlockRow($row), $rows);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchExamenMailEvents(int $limit): array
+    {
+        $sql = <<<SQL
+SELECT
+    eml.id,
+    eml.examen_id,
+    eml.form_id,
+    eml.hc_number,
+    eml.to_emails,
+    eml.cc_emails,
+    eml.subject,
+    eml.body_text,
+    eml.body_html,
+    eml.channel,
+    eml.status,
+    eml.error_message,
+    eml.sent_at,
+    eml.created_at,
+    eml.sent_by_user_id,
+    u.nombre AS autor_nombre,
+    e.estado,
+    e.prioridad,
+    e.examen_nombre,
+    e.doctor,
+    e.hc_number AS examen_hc_number,
+    pd.fname,
+    pd.mname,
+    pd.lname,
+    pd.lname2,
+    pd.celular
+FROM examen_mail_log eml
+INNER JOIN consulta_examenes e ON e.id = eml.examen_id
+LEFT JOIN patient_data pd ON pd.hc_number = COALESCE(eml.hc_number, e.hc_number)
+LEFT JOIN users u ON u.id = eml.sent_by_user_id
+ORDER BY COALESCE(eml.sent_at, eml.created_at) DESC, eml.id DESC
+LIMIT :limit
+SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        return array_map(fn(array $row): array => $this->mapExamenMailRow($row), $rows);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     private function fetchCoberturaMails(int $limit): array
     {
         $sql = <<<SQL
@@ -598,6 +807,272 @@ SQL;
             'related' => [
                 'type' => 'examen',
                 'id' => (int) $row['examen_id'],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapExamenTaskRow(array $row): array
+    {
+        $date = $this->parseDate($row['updated_at'] ?? ($row['created_at'] ?? null));
+        $patient = $this->formatPatient($row);
+        $examenId = (int) ($row['examen_id'] ?? 0);
+        $titulo = $this->sanitizeString($row['titulo'] ?? '');
+        $descripcion = $this->sanitizeString($row['descripcion'] ?? '');
+        $estadoTarea = $this->sanitizeString($row['estado_tarea'] ?? '');
+        $dueDate = $this->sanitizeString($row['due_date'] ?? '');
+        $examenNombre = $this->sanitizeString($row['examen_nombre'] ?? '');
+
+        $subjectParts = [
+            $examenNombre !== '' ? $examenNombre : ('Examen #' . $examenId),
+            $titulo !== '' ? 'Tarea: ' . $titulo : 'Tarea CRM',
+        ];
+        $subject = implode(' · ', array_filter($subjectParts));
+
+        $bodyParts = array_filter([
+            $titulo !== '' ? 'Título: ' . $titulo : null,
+            $estadoTarea !== '' ? 'Estado: ' . $estadoTarea : null,
+            $dueDate !== '' ? 'Fecha límite: ' . $dueDate : null,
+            $descripcion !== '' ? 'Descripción: ' . $descripcion : null,
+        ]);
+        $body = implode("\n", $bodyParts);
+
+        $meta = array_filter([
+            'Estado examen' => $row['estado'] ?? null,
+            'Prioridad' => $row['prioridad'] ?? null,
+            'Estado tarea' => $estadoTarea !== '' ? $estadoTarea : null,
+            'Vence' => $dueDate !== '' ? $dueDate : null,
+            'Asignado' => $row['assigned_name'] ?? null,
+            'Creada por' => $row['created_name'] ?? null,
+            'HC' => $row['hc_number'] ?? null,
+        ]);
+
+        return [
+            'uid' => 'examen-task:' . $examenId . ':' . (int) $row['id'],
+            'source' => 'examenes',
+            'source_label' => 'Exámenes CRM',
+            'category' => 'Tarea CRM',
+            'subject' => $subject !== '' ? $subject : 'Tarea de examen',
+            'snippet' => $this->truncate($body),
+            'body' => $body,
+            'patient' => $patient,
+            'contact' => [
+                'label' => $patient['name'],
+                'channel' => 'Exámenes',
+                'identifier' => $patient['hc_number'] ?? null,
+            ],
+            'meta' => $meta,
+            'links' => [
+                'crm' => '/examenes/' . $examenId . '/crm',
+            ],
+            'channels' => ['CRM', 'Exámenes', 'Tareas'],
+            'author' => [
+                'name' => $row['created_name'] ?? ($row['assigned_name'] ?? 'Sistema'),
+                'initials' => $this->initials($row['created_name'] ?? ($row['assigned_name'] ?? 'Sistema')),
+            ],
+            'timestamp' => $date?->getTimestamp() ?? 0,
+            'created_at' => $this->formatIso($date),
+            'relative_time' => $this->formatRelative($date),
+            'direction' => null,
+            'related' => [
+                'type' => 'examen',
+                'id' => $examenId,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapExamenStatusRow(array $row): array
+    {
+        $date = $this->parseDate($row['changed_at'] ?? null);
+        $patient = $this->formatPatient($row);
+        $examenId = (int) ($row['examen_id'] ?? 0);
+        $estadoAnterior = $this->sanitizeString($row['estado_anterior'] ?? '');
+        $estadoNuevo = $this->sanitizeString($row['estado_nuevo'] ?? '');
+        $origen = $this->sanitizeString($row['origen'] ?? '');
+        $observacion = $this->sanitizeString($row['observacion'] ?? '');
+        $examenNombre = $this->sanitizeString($row['examen_nombre'] ?? '');
+
+        $body = implode("\n", array_filter([
+            ($estadoAnterior !== '' || $estadoNuevo !== '')
+                ? 'Transición: ' . ($estadoAnterior !== '' ? $estadoAnterior : '—') . ' → ' . ($estadoNuevo !== '' ? $estadoNuevo : '—')
+                : null,
+            $observacion !== '' ? 'Observación: ' . $observacion : null,
+        ]));
+
+        $meta = array_filter([
+            'Estado anterior' => $estadoAnterior !== '' ? $estadoAnterior : null,
+            'Estado nuevo' => $estadoNuevo !== '' ? $estadoNuevo : null,
+            'Origen' => $origen !== '' ? $origen : null,
+            'HC' => $row['hc_number'] ?? null,
+        ]);
+
+        return [
+            'uid' => 'examen-status:' . $examenId . ':' . (int) $row['id'],
+            'source' => 'examenes',
+            'source_label' => 'Exámenes CRM',
+            'category' => 'Cambio de estado',
+            'subject' => ($examenNombre !== '' ? $examenNombre : ('Examen #' . $examenId)) . ' · Estado actualizado',
+            'snippet' => $this->truncate($body),
+            'body' => $body,
+            'patient' => $patient,
+            'contact' => [
+                'label' => $patient['name'],
+                'channel' => 'Exámenes',
+                'identifier' => $patient['hc_number'] ?? null,
+            ],
+            'meta' => $meta,
+            'links' => [
+                'crm' => '/examenes/' . $examenId . '/crm',
+            ],
+            'channels' => ['CRM', 'Exámenes', 'Estados'],
+            'author' => [
+                'name' => $row['changed_by_name'] ?? 'Sistema',
+                'initials' => $this->initials($row['changed_by_name'] ?? 'Sistema'),
+            ],
+            'timestamp' => $date?->getTimestamp() ?? 0,
+            'created_at' => $this->formatIso($date),
+            'relative_time' => $this->formatRelative($date),
+            'direction' => null,
+            'related' => [
+                'type' => 'examen',
+                'id' => $examenId,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapExamenBlockRow(array $row): array
+    {
+        $date = $this->parseDate($row['created_at'] ?? ($row['fecha_inicio'] ?? null));
+        $patient = $this->formatPatient($row);
+        $examenId = (int) ($row['examen_id'] ?? 0);
+        $inicio = $this->sanitizeString($row['fecha_inicio'] ?? '');
+        $fin = $this->sanitizeString($row['fecha_fin'] ?? '');
+        $doctor = $this->sanitizeString($row['bloqueo_doctor'] ?? '');
+        $sala = $this->sanitizeString($row['sala'] ?? '');
+        $motivo = $this->sanitizeString($row['motivo'] ?? '');
+        $examenNombre = $this->sanitizeString($row['examen_nombre'] ?? '');
+
+        $body = implode("\n", array_filter([
+            ($inicio !== '' || $fin !== '') ? 'Rango: ' . ($inicio !== '' ? $inicio : '—') . ' → ' . ($fin !== '' ? $fin : '—') : null,
+            $doctor !== '' ? 'Doctor: ' . $doctor : null,
+            $sala !== '' ? 'Sala: ' . $sala : null,
+            $motivo !== '' ? 'Motivo: ' . $motivo : null,
+        ]));
+
+        $meta = array_filter([
+            'Inicio' => $inicio !== '' ? $inicio : null,
+            'Fin' => $fin !== '' ? $fin : null,
+            'Doctor' => $doctor !== '' ? $doctor : null,
+            'Sala' => $sala !== '' ? $sala : null,
+            'Motivo' => $motivo !== '' ? $motivo : null,
+            'HC' => $row['hc_number'] ?? null,
+        ]);
+
+        return [
+            'uid' => 'examen-block:' . $examenId . ':' . (int) $row['id'],
+            'source' => 'examenes',
+            'source_label' => 'Exámenes CRM',
+            'category' => 'Bloqueo agenda',
+            'subject' => ($examenNombre !== '' ? $examenNombre : ('Examen #' . $examenId)) . ' · Bloqueo de agenda',
+            'snippet' => $this->truncate($body),
+            'body' => $body,
+            'patient' => $patient,
+            'contact' => [
+                'label' => $patient['name'],
+                'channel' => 'Exámenes',
+                'identifier' => $patient['hc_number'] ?? null,
+            ],
+            'meta' => $meta,
+            'links' => [
+                'crm' => '/examenes/' . $examenId . '/crm',
+            ],
+            'channels' => ['CRM', 'Exámenes', 'Agenda'],
+            'author' => [
+                'name' => $row['created_by_name'] ?? 'Sistema',
+                'initials' => $this->initials($row['created_by_name'] ?? 'Sistema'),
+            ],
+            'timestamp' => $date?->getTimestamp() ?? 0,
+            'created_at' => $this->formatIso($date),
+            'relative_time' => $this->formatRelative($date),
+            'direction' => null,
+            'related' => [
+                'type' => 'examen',
+                'id' => $examenId,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapExamenMailRow(array $row): array
+    {
+        $createdAt = $row['sent_at'] ?: $row['created_at'] ?? null;
+        $date = $this->parseDate($createdAt ? (string) $createdAt : null);
+        if (!empty($row['examen_hc_number']) && empty($row['hc_number'])) {
+            $row['hc_number'] = $row['examen_hc_number'];
+        }
+        $patient = $this->formatPatient($row);
+        $subject = $this->sanitizeString($row['subject'] ?? '');
+        $body = $this->buildCoberturaBody($row);
+        $status = $this->sanitizeString($row['status'] ?? '');
+        $examenId = (int) ($row['examen_id'] ?? 0);
+
+        $contactLabel = $patient['name'] ?? '';
+        if ($contactLabel === '' || $contactLabel === 'Paciente sin nombre') {
+            $contactLabel = $this->sanitizeString($row['to_emails'] ?? '');
+        }
+
+        $meta = array_filter([
+            'Estado' => $status !== '' ? $status : null,
+            'Canal' => $row['channel'] ?? null,
+            'Para' => $row['to_emails'] ?? null,
+            'CC' => $row['cc_emails'] ?? null,
+            'Error' => $row['error_message'] ?? null,
+        ]);
+
+        return [
+            'uid' => 'examen-mail:' . $examenId . ':' . (int) $row['id'],
+            'source' => 'examenes',
+            'source_label' => 'Exámenes CRM',
+            'category' => strtolower($status) === 'failed' ? 'Correo fallido' : 'Correo enviado',
+            'subject' => $subject !== '' ? $subject : 'Notificación de examen',
+            'snippet' => $this->truncate($body),
+            'body' => $body,
+            'patient' => $patient,
+            'contact' => [
+                'label' => $contactLabel !== '' ? $contactLabel : 'Contacto',
+                'channel' => 'Exámenes',
+                'identifier' => $patient['hc_number'] ?? null,
+            ],
+            'meta' => $meta,
+            'links' => [
+                'crm' => '/examenes/' . $examenId . '/crm',
+            ],
+            'channels' => ['Correo', 'Exámenes', 'CRM'],
+            'author' => [
+                'name' => $row['autor_nombre'] ?? 'Sistema',
+                'initials' => $this->initials($row['autor_nombre'] ?? 'Sistema'),
+            ],
+            'timestamp' => $date?->getTimestamp() ?? 0,
+            'created_at' => $this->formatIso($date),
+            'relative_time' => $this->formatRelative($date),
+            'direction' => 'outgoing',
+            'related' => [
+                'type' => 'examen',
+                'id' => $examenId,
             ],
         ];
     }

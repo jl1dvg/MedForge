@@ -20,6 +20,14 @@ return function (Router $router) {
         (new ExamenController($pdo))->kanbanData();
     });
 
+    $router->post('/examenes/reportes/pdf', function (\PDO $pdo) {
+        (new ExamenController($pdo))->reportePdf();
+    });
+
+    $router->post('/examenes/reportes/excel', function (\PDO $pdo) {
+        (new ExamenController($pdo))->reporteExcel();
+    });
+
     $router->post('/examenes/actualizar-estado', function (\PDO $pdo) {
         (new ExamenController($pdo))->actualizarEstado();
     });
@@ -51,9 +59,22 @@ return function (Router $router) {
     $router->post('/examenes/{id}/crm', function (\PDO $pdo, $examenId) {
         (new ExamenController($pdo))->crmGuardarDetalles((int) $examenId);
     });
+    $router->post('/examenes/{id}/crm/bootstrap', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmBootstrap((int) $examenId);
+    });
+    $router->get('/examenes/{id}/crm/checklist-state', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmChecklistState((int) $examenId);
+    });
+    $router->post('/examenes/{id}/crm/checklist', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmActualizarChecklist((int) $examenId);
+    });
 
     $router->post('/examenes/{id}/crm/notas', function (\PDO $pdo, $examenId) {
         (new ExamenController($pdo))->crmAgregarNota((int) $examenId);
+    });
+
+    $router->post('/examenes/{id}/crm/bloqueo', function (\PDO $pdo, $examenId) {
+        (new ExamenController($pdo))->crmRegistrarBloqueo((int) $examenId);
     });
 
     $router->post('/examenes/{id}/crm/tareas', function (\PDO $pdo, $examenId) {

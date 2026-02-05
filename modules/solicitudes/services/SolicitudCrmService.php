@@ -1081,14 +1081,18 @@ class SolicitudCrmService
         string $etapaSlug,
         bool $completado,
         ?int $usuarioId,
-        array $userPermissions = []
+        array $userPermissions = [],
+        bool $force = false,
+        ?string $nota = null
     ): array {
         $resultado = $this->estadoService->actualizarEtapa(
             $solicitudId,
             $etapaSlug,
             $completado,
             $usuarioId,
-            $userPermissions
+            $userPermissions,
+            $force,
+            $nota
         );
 
         $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];

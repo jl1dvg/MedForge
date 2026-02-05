@@ -327,7 +327,20 @@ class SolicitudController extends BaseController
                 ],
             ]);
         } catch (Throwable $e) {
-            $this->json([
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_kanban',
+                'No se pudo cargar el tablero de solicitudes',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                    'filtros' => $filtros,
+                    'payload_keys' => array_keys($payload),
+                ]
+            );
+
+            $response = [
                 'data' => [],
                 'options' => [
                     'afiliaciones' => [],
@@ -346,7 +359,23 @@ class SolicitudController extends BaseController
                     ],
                 ],
                 'error' => 'No se pudo cargar la información de solicitudes',
-            ], 500);
+                'error_ref' => $errorId,
+            ];
+
+            if (
+                isset($_GET['debug'])
+                && in_array((string) $_GET['debug'], ['1', 'true', 'yes'], true)
+            ) {
+                $response['debug'] = [
+                    'type' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => explode("\n", $e->getTraceAsString()),
+                ];
+            }
+
+            $this->json($response, 500);
         }
     }
 
@@ -1326,8 +1355,16 @@ class SolicitudController extends BaseController
     {
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
-        if (empty($row['fecha_programada']) && !empty($row['derivacion_fecha_vigencia'])) {
-            $row['fecha_programada'] = $row['derivacion_fecha_vigencia'];
+        $fechaProgramada = $this->parseDate($row['fecha_programada'] ?? null);
+        $fechaDerivacion = $this->parseDate($row['derivacion_fecha_vigencia'] ?? null);
+
+        if (!$fechaProgramada && $fechaDerivacion instanceof DateTimeImmutable) {
+            $row['fecha_programada'] = $fechaDerivacion->format('Y-m-d H:i:s');
+        } elseif ($fechaProgramada instanceof DateTimeImmutable && $fechaDerivacion instanceof DateTimeImmutable) {
+            $ahora = new DateTimeImmutable('now');
+            if ($fechaProgramada < $ahora && $fechaDerivacion >= $ahora) {
+                $row['fecha_programada'] = $fechaDerivacion->format('Y-m-d H:i:s');
+            }
         }
 
         return array_merge($row, $this->computeOperationalMetadata($row));
@@ -1470,8 +1507,17 @@ class SolicitudController extends BaseController
             return $value;
         }
 
+        $raw = trim((string)$value);
+        if ($raw === '') {
+            return null;
+        }
+
+        if ($raw === '0000-00-00' || $raw === '0000-00-00 00:00:00') {
+            return null;
+        }
+
         try {
-            return new DateTimeImmutable((string)$value);
+            return new DateTimeImmutable($raw);
         } catch (\Exception $e) {
             return null;
         }
@@ -1652,7 +1698,8 @@ class SolicitudController extends BaseController
                 ));
             }
 
-            $resultado = $this->estadoService->actualizarEtapa(
+            // Mantiene la paridad Kanban/CRM: al mover etapa también sincroniza estado de tareas CRM.
+            $resultado = $this->crmService->syncChecklistStage(
                 $id,
                 $estado,
                 $completado,

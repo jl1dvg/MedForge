@@ -14,6 +14,8 @@ if (class_exists(__NAMESPACE__ . '\\SolicitudModel', false)) {
 class SolicitudModel
 {
     protected $db;
+    /** @var array<string, bool>|null */
+    private ?array $solicitudColumns = null;
 
     public function __construct(PDO $pdo)
     {
@@ -22,6 +24,12 @@ class SolicitudModel
 
     public function obtenerEstadosPorHc(string $hcNumber): array
     {
+        $pedidoOrigenIdExpr = $this->selectSolicitudColumn('pedido_origen_id');
+        $pedidoOrigenExpr = $this->selectSolicitudColumn('pedido_origen');
+        $derivacionPedidoIdExpr = $this->selectSolicitudColumn('derivacion_pedido_id');
+        $derivacionLateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $derivacionPrefacturaExpr = $this->selectSolicitudColumn('derivacion_prefactura');
+
         $sql = "
             SELECT 
                 sp.id,
@@ -34,8 +42,8 @@ class SolicitudModel
                 sp.fecha,
                 sp.duracion,
                 sp.ojo,
-                sp.pedido_origen_id,
-                sp.pedido_origen,
+                {$pedidoOrigenIdExpr},
+                {$pedidoOrigenExpr},
                 sp.prioridad,
                 sp.producto,
                 sp.observacion,
@@ -45,9 +53,9 @@ class SolicitudModel
                 sp.lente_observacion,
                 sp.incision,
                 sp.estado,
-                sp.derivacion_pedido_id,
-                sp.derivacion_lateralidad,
-                sp.derivacion_prefactura,
+                {$derivacionPedidoIdExpr},
+                {$derivacionLateralidadExpr},
+                {$derivacionPrefacturaExpr},
                 sp.created_at
             FROM solicitud_procedimiento sp
             WHERE sp.hc_number = :hcNumber
@@ -159,6 +167,90 @@ class SolicitudModel
 
     public function fetchSolicitudesConDetallesFiltrado(array $filtros = []): array
     {
+        $pedidoOrigenIdExpr = $this->selectSolicitudColumn('pedido_origen_id');
+        $pedidoOrigenExpr = $this->selectSolicitudColumn('pedido_origen');
+        $secuenciaExpr = $this->selectSolicitudColumn('secuencia');
+        $turnoExpr = $this->selectSolicitudColumn('turno');
+        $derivacionPedidoIdExpr = $this->selectSolicitudColumn('derivacion_pedido_id');
+        $derivacionLateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $hasDerivacionPedidoId = $this->hasSolicitudColumn('derivacion_pedido_id');
+        $hasDerivacionVigenciaSel = $this->hasSolicitudColumn('derivacion_fecha_vigencia_sel');
+        $toUnicodeExpr = static fn(string $expr): string => "CAST({$expr} AS CHAR) COLLATE utf8mb4_unicode_ci";
+        $nonEmptyExpr = static fn(string $expr): string => "NULLIF(TRIM(" . $toUnicodeExpr($expr) . "), '' COLLATE utf8mb4_unicode_ci)";
+        $normalizedDateExpr = static fn(string $expr): string => "NULLIF(NULLIF(NULLIF(TRIM(" . $toUnicodeExpr($expr) . "), '' COLLATE utf8mb4_unicode_ci), '0000-00-00' COLLATE utf8mb4_unicode_ci), '0000-00-00 00:00:00' COLLATE utf8mb4_unicode_ci)";
+        $normalizedVigenciaRawExpr = $normalizedDateExpr('fecha_vigencia');
+
+        $derivacionSelectionJoin = '';
+        $derivacionSelectionPedidoExpr = 'NULL';
+        $derivacionSelectionVigenciaExpr = 'NULL';
+
+        if ($hasDerivacionPedidoId || $hasDerivacionVigenciaSel) {
+            $whereParts = [];
+            if ($hasDerivacionPedidoId) {
+                $whereParts[] = '(' . $nonEmptyExpr('s2.`derivacion_pedido_id`') . ' IS NOT NULL)';
+            }
+            if ($hasDerivacionVigenciaSel) {
+                $whereParts[] = '(' . $normalizedDateExpr('s2.`derivacion_fecha_vigencia_sel`') . ' IS NOT NULL)';
+            }
+
+            $whereLatestSelection = implode(' OR ', $whereParts);
+            $pedidoSelect = $hasDerivacionPedidoId ? 's1.`derivacion_pedido_id`' : 'NULL';
+            $vigenciaSelect = $hasDerivacionVigenciaSel ? 's1.`derivacion_fecha_vigencia_sel`' : 'NULL';
+
+            $derivacionSelectionJoin = "
+            LEFT JOIN (
+                SELECT
+                    s1.form_id,
+                    s1.hc_number,
+                    {$pedidoSelect} AS pedido_id_sel,
+                    {$vigenciaSelect} AS vigencia_sel
+                FROM solicitud_procedimiento s1
+                INNER JOIN (
+                    SELECT form_id, hc_number, MAX(id) AS max_id
+                    FROM solicitud_procedimiento s2
+                    WHERE {$whereLatestSelection}
+                    GROUP BY form_id, hc_number
+                ) latest_sel ON latest_sel.max_id = s1.id
+            ) derivacion_sel ON " . $toUnicodeExpr('derivacion_sel.form_id') . " = " . $toUnicodeExpr('sp.form_id') . " AND " . $toUnicodeExpr('derivacion_sel.hc_number') . " = " . $toUnicodeExpr('sp.hc_number');
+
+            if ($hasDerivacionPedidoId) {
+                $derivacionSelectionPedidoExpr = $nonEmptyExpr('derivacion_sel.pedido_id_sel');
+            }
+
+            if ($hasDerivacionVigenciaSel) {
+                $derivacionSelectionVigenciaExpr = $normalizedDateExpr('derivacion_sel.vigencia_sel');
+            }
+        }
+
+        $lookupParts = ['sp.form_id'];
+        if ($hasDerivacionPedidoId) {
+            $lookupParts = [
+                $nonEmptyExpr('sp.`derivacion_pedido_id`'),
+            ];
+            if ($derivacionSelectionPedidoExpr !== 'NULL') {
+                $lookupParts[] = $derivacionSelectionPedidoExpr;
+            }
+            $lookupParts[] = 'sp.form_id';
+        }
+        $derivacionLookupFormExpr = $toUnicodeExpr('COALESCE(' . implode(', ', $lookupParts) . ')');
+
+        $joinedVigenciaMaxExpr = "NULLIF(
+            GREATEST(
+                COALESCE(" . $normalizedDateExpr('derivacion_nueva.fecha_vigencia') . ", '1000-01-01' COLLATE utf8mb4_unicode_ci),
+                COALESCE(" . $normalizedDateExpr('derivacion_legacy.fecha_vigencia') . ", '1000-01-01' COLLATE utf8mb4_unicode_ci)
+            ),
+            '1000-01-01' COLLATE utf8mb4_unicode_ci
+        )";
+
+        $vigenciaParts = [$joinedVigenciaMaxExpr];
+        if ($hasDerivacionVigenciaSel) {
+            array_unshift($vigenciaParts, $normalizedDateExpr('sp.`derivacion_fecha_vigencia_sel`'));
+        }
+        if ($derivacionSelectionVigenciaExpr !== 'NULL') {
+            array_splice($vigenciaParts, 1, 0, [$derivacionSelectionVigenciaExpr]);
+        }
+        $derivacionVigenciaExpr = 'COALESCE(' . implode(', ', $vigenciaParts) . ')';
+
         $sql = "SELECT
                 sp.id,
                 sp.hc_number,
@@ -179,18 +271,18 @@ class SolicitudModel
                 COALESCE(cd.fecha, sp.fecha, sp.created_at) AS fecha_programada,
                 sp.duracion,
                 sp.ojo,
-                sp.pedido_origen_id,
-                sp.pedido_origen,
+                {$pedidoOrigenIdExpr},
+                {$pedidoOrigenExpr},
                 sp.prioridad,
                 sp.producto,
                 sp.observacion,
-                sp.secuencia,
+                {$secuenciaExpr},
                 sp.created_at,
                 pd.fecha_caducidad,
                 cd.diagnosticos,
-                sp.turno,
-                sp.derivacion_pedido_id,
-                sp.derivacion_lateralidad,
+                {$turnoExpr},
+                {$derivacionPedidoIdExpr},
+                {$derivacionLateralidadExpr},
                 detalles.pipeline_stage AS crm_pipeline_stage,
                 detalles.fuente AS crm_fuente,
                 detalles.contacto_email AS crm_contacto_email,
@@ -212,14 +304,28 @@ class SolicitudModel
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
                 COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento,
-                COALESCE(derivacion_nueva.fecha_vigencia, derivacion_legacy.fecha_vigencia) AS derivacion_fecha_vigencia
+                {$derivacionVigenciaExpr} AS derivacion_fecha_vigencia
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
+            {$derivacionSelectionJoin}
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
-            LEFT JOIN derivaciones_forms derivacion_nueva ON derivacion_nueva.iess_form_id = sp.form_id
-            LEFT JOIN derivaciones_form_id derivacion_legacy ON derivacion_legacy.form_id = sp.form_id AND derivacion_legacy.hc_number = sp.hc_number
+            LEFT JOIN (
+                SELECT
+                    iess_form_id,
+                    MAX({$normalizedVigenciaRawExpr}) AS fecha_vigencia
+                FROM derivaciones_forms
+                GROUP BY iess_form_id
+            ) derivacion_nueva ON {$toUnicodeExpr('derivacion_nueva.iess_form_id')} = {$derivacionLookupFormExpr}
+            LEFT JOIN (
+                SELECT
+                    form_id,
+                    hc_number,
+                    MAX({$normalizedVigenciaRawExpr}) AS fecha_vigencia
+                FROM derivaciones_form_id
+                GROUP BY form_id, hc_number
+            ) derivacion_legacy ON {$toUnicodeExpr('derivacion_legacy.form_id')} = {$derivacionLookupFormExpr} AND {$toUnicodeExpr('derivacion_legacy.hc_number')} = {$toUnicodeExpr('sp.hc_number')}
             LEFT JOIN (
                 SELECT solicitud_id, COUNT(*) AS total_notas
                 FROM solicitud_crm_notas
@@ -420,14 +526,20 @@ class SolicitudModel
 
     public function obtenerDerivacionPreseleccion(int $solicitudId): ?array
     {
+        $codigoExpr = $this->selectSolicitudColumn('derivacion_codigo');
+        $pedidoExpr = $this->selectSolicitudColumn('derivacion_pedido_id');
+        $lateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $vigenciaExpr = $this->selectSolicitudColumn('derivacion_fecha_vigencia_sel');
+        $prefacturaExpr = $this->selectSolicitudColumn('derivacion_prefactura');
+
         $stmt = $this->db->prepare(
             "SELECT
-                derivacion_codigo,
-                derivacion_pedido_id,
-                derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel,
-                derivacion_prefactura
-             FROM solicitud_procedimiento
+                {$codigoExpr},
+                {$pedidoExpr},
+                {$lateralidadExpr},
+                {$vigenciaExpr},
+                {$prefacturaExpr}
+             FROM solicitud_procedimiento sp
              WHERE id = :id
              LIMIT 1"
         );
@@ -441,15 +553,21 @@ class SolicitudModel
 
     public function obtenerDerivacionPreseleccionPorFormHc(string $formId, string $hcNumber): ?array
     {
+        $codigoExpr = $this->selectSolicitudColumn('derivacion_codigo');
+        $pedidoExpr = $this->selectSolicitudColumn('derivacion_pedido_id');
+        $lateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $vigenciaExpr = $this->selectSolicitudColumn('derivacion_fecha_vigencia_sel');
+        $prefacturaExpr = $this->selectSolicitudColumn('derivacion_prefactura');
+
         $stmt = $this->db->prepare(
             "SELECT
                 id,
-                derivacion_codigo,
-                derivacion_pedido_id,
-                derivacion_lateralidad,
-                derivacion_fecha_vigencia_sel,
-                derivacion_prefactura
-             FROM solicitud_procedimiento
+                {$codigoExpr},
+                {$pedidoExpr},
+                {$lateralidadExpr},
+                {$vigenciaExpr},
+                {$prefacturaExpr}
+             FROM solicitud_procedimiento sp
              WHERE form_id = :form_id
                AND hc_number = :hc
              ORDER BY id DESC
@@ -468,23 +586,38 @@ class SolicitudModel
 
     public function guardarDerivacionPreseleccion(int $solicitudId, array $data): bool
     {
+        $set = [];
+        $params = [':id' => $solicitudId];
+
+        if ($this->hasSolicitudColumn('derivacion_codigo')) {
+            $set[] = 'derivacion_codigo = :codigo';
+            $params[':codigo'] = $data['derivacion_codigo'] ?? null;
+        }
+        if ($this->hasSolicitudColumn('derivacion_pedido_id')) {
+            $set[] = 'derivacion_pedido_id = :pedido_id';
+            $params[':pedido_id'] = $data['derivacion_pedido_id'] ?? null;
+        }
+        if ($this->hasSolicitudColumn('derivacion_lateralidad')) {
+            $set[] = 'derivacion_lateralidad = :lateralidad';
+            $params[':lateralidad'] = $data['derivacion_lateralidad'] ?? null;
+        }
+        if ($this->hasSolicitudColumn('derivacion_fecha_vigencia_sel')) {
+            $set[] = 'derivacion_fecha_vigencia_sel = :vigencia';
+            $params[':vigencia'] = $data['derivacion_fecha_vigencia_sel'] ?? null;
+        }
+        if ($this->hasSolicitudColumn('derivacion_prefactura')) {
+            $set[] = 'derivacion_prefactura = :prefactura';
+            $params[':prefactura'] = $data['derivacion_prefactura'] ?? null;
+        }
+
+        if ($set === []) {
+            return false;
+        }
+
         $stmt = $this->db->prepare(
-            "UPDATE solicitud_procedimiento
-             SET derivacion_codigo = :codigo,
-                 derivacion_pedido_id = :pedido_id,
-                 derivacion_lateralidad = :lateralidad,
-                 derivacion_fecha_vigencia_sel = :vigencia,
-                 derivacion_prefactura = :prefactura
-             WHERE id = :id"
+            'UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id'
         );
-        $stmt->execute([
-            ':codigo' => $data['derivacion_codigo'] ?? null,
-            ':pedido_id' => $data['derivacion_pedido_id'] ?? null,
-            ':lateralidad' => $data['derivacion_lateralidad'] ?? null,
-            ':vigencia' => $data['derivacion_fecha_vigencia_sel'] ?? null,
-            ':prefactura' => $data['derivacion_prefactura'] ?? null,
-            ':id' => $solicitudId,
-        ]);
+        $stmt->execute($params);
 
         return $stmt->rowCount() > 0;
     }
@@ -1119,6 +1252,43 @@ class SolicitudModel
         $service = new LeadConfigurationService($this->db);
 
         return $service->getSources();
+    }
+
+    private function selectSolicitudColumn(string $column, ?string $alias = null): string
+    {
+        $alias = $alias ?? $column;
+
+        if ($this->hasSolicitudColumn($column)) {
+            return 'sp.' . $this->quoteIdentifier($column) . ' AS ' . $this->quoteIdentifier($alias);
+        }
+
+        return 'NULL AS ' . $this->quoteIdentifier($alias);
+    }
+
+    private function hasSolicitudColumn(string $column): bool
+    {
+        if ($this->solicitudColumns === null) {
+            $this->solicitudColumns = [];
+            try {
+                $stmt = $this->db->query('SHOW COLUMNS FROM solicitud_procedimiento');
+                $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                foreach ($rows as $row) {
+                    $field = (string) ($row['Field'] ?? '');
+                    if ($field !== '') {
+                        $this->solicitudColumns[$field] = true;
+                    }
+                }
+            } catch (\Throwable) {
+                $this->solicitudColumns = [];
+            }
+        }
+
+        return isset($this->solicitudColumns[$column]);
+    }
+
+    private function quoteIdentifier(string $identifier): string
+    {
+        return '`' . str_replace('`', '``', $identifier) . '`';
     }
 
 }

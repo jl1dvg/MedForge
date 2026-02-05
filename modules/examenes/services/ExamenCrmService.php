@@ -28,6 +28,9 @@ class ExamenCrmService
     private CrmTaskService $taskService;
     private CrmProjectService $projectService;
     private WhatsAppMessenger $whatsapp;
+    private ExamenCalendarBlockService $calendarBlocks;
+    private ExamenMailLogService $mailLogService;
+    private ExamenEstadoService $estadoService;
 
     public function __construct(PDO $pdo)
     {
@@ -39,6 +42,9 @@ class ExamenCrmService
         $this->taskService = new CrmTaskService($pdo);
         $this->projectService = new CrmProjectService($pdo);
         $this->whatsapp = WhatsAppModule::messenger($pdo);
+        $this->calendarBlocks = new ExamenCalendarBlockService($pdo);
+        $this->mailLogService = new ExamenMailLogService($pdo);
+        $this->estadoService = new ExamenEstadoService();
     }
 
     public function obtenerResponsables(): array
@@ -93,6 +99,178 @@ class ExamenCrmService
             'lead' => $lead,
             'crm_resumen' => $crmResumen,
             'project' => $project,
+            'bloqueos_agenda' => $this->calendarBlocks->listarPorExamen($examenId),
+            'mail_events' => $this->mailLogService->fetchByExamen($examenId, 20),
+        ];
+    }
+
+    public function registrarBloqueoAgenda(int $examenId, array $payload, ?int $usuarioId = null): array
+    {
+        $bloqueo = $this->calendarBlocks->registrar($examenId, $payload, $usuarioId);
+        $resumen = $this->obtenerResumen($examenId);
+        $resumen['ultimo_bloqueo'] = $bloqueo;
+
+        return $resumen;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string> $userPermissions
+     * @return array<string, mixed>
+     */
+    public function bootstrapChecklist(int $examenId, array $payload, ?int $usuarioId, array $userPermissions = []): array
+    {
+        $detalle = $this->obtenerDetalleExamen($examenId);
+        if (!$detalle) {
+            throw new RuntimeException('Examen no encontrado', 404);
+        }
+
+        $hcNumber = $this->normalizarTexto($payload['hc_number'] ?? $detalle['hc_number'] ?? null);
+        if (!$hcNumber) {
+            throw new RuntimeException('Falta el número de historia clínica para sincronizar el CRM', 422);
+        }
+
+        $leadId = $this->sincronizarLead(
+            $examenId,
+            $detalle,
+            [
+                'hc_number' => $hcNumber,
+                'crm_lead_id' => $detalle['crm_lead_id'] ?? null,
+                'etapa' => $detalle['crm_pipeline_stage'] ?? null,
+            ],
+            $usuarioId
+        );
+
+        $project = $this->ensureCrmProject($examenId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+
+        $this->persistCrmMap($examenId, $leadId);
+
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $checklist = $this->buildChecklist($examenId, $existingTasks, $userPermissions);
+        $tasks = $this->syncChecklistTasks($examenId, $detalle, $leadId, $projectId, $checklist, $usuarioId);
+
+        $refreshedTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $checklist = $this->buildChecklist($examenId, $refreshedTasks, $userPermissions);
+        $progress = $this->computeChecklistProgress($checklist);
+
+        return [
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'tasks' => $tasks,
+            'checklist' => $checklist,
+            'checklist_progress' => $progress,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $userPermissions
+     * @return array<string, mixed>
+     */
+    public function checklistState(int $examenId, array $userPermissions = []): array
+    {
+        $detalle = $this->obtenerDetalleExamen($examenId);
+        if (!$detalle) {
+            throw new RuntimeException('Examen no encontrado', 404);
+        }
+
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $checklist = $this->buildChecklist($examenId, $existingTasks, $userPermissions);
+        $progress = $this->computeChecklistProgress($checklist);
+
+        $tasks = [];
+        foreach ($existingTasks as $taskKey => $task) {
+            $tasks[] = $this->formatChecklistTask($task, (string) $taskKey);
+        }
+
+        return [
+            'lead_id' => !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null,
+            'project_id' => !empty($detalle['crm_project_id']) ? (int) $detalle['crm_project_id'] : null,
+            'tasks' => $tasks,
+            'checklist' => $checklist,
+            'checklist_progress' => $progress,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $userPermissions
+     * @return array<string, mixed>
+     */
+    public function syncChecklistStage(
+        int $examenId,
+        string $etapaSlug,
+        bool $completado,
+        ?int $usuarioId,
+        array $userPermissions = []
+    ): array {
+        $detalle = $this->obtenerDetalleExamen($examenId);
+        if (!$detalle) {
+            throw new RuntimeException('Examen no encontrado', 404);
+        }
+
+        $slugNormalizado = $this->estadoService->normalizeSlug($etapaSlug);
+        $stage = $this->findChecklistStage($slugNormalizado);
+        if (!$stage) {
+            throw new RuntimeException('Etapa inválida para el checklist de exámenes', 422);
+        }
+
+        $leadId = !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null;
+        if (!$leadId && !empty($detalle['hc_number'])) {
+            $leadId = $this->sincronizarLead(
+                $examenId,
+                $detalle,
+                [
+                    'hc_number' => $detalle['hc_number'],
+                    'etapa' => $slugNormalizado,
+                ],
+                $usuarioId
+            );
+        }
+
+        $project = $this->ensureCrmProject($examenId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+        $this->persistCrmMap($examenId, $leadId);
+
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $checklist = $this->buildChecklist($examenId, $existingTasks, $userPermissions);
+
+        $targetIndex = null;
+        foreach ($checklist as $index => $item) {
+            if (($item['slug'] ?? null) === $slugNormalizado) {
+                $targetIndex = $index;
+                break;
+            }
+        }
+
+        if ($targetIndex === null) {
+            throw new RuntimeException('No se pudo ubicar la etapa solicitada en el checklist', 422);
+        }
+
+        $checklist[$targetIndex]['completed'] = $completado;
+        $checklist[$targetIndex]['checked'] = $completado;
+        $checklist[$targetIndex]['completado'] = $completado;
+
+        $tasks = $this->syncChecklistTasks($examenId, $detalle, $leadId, $projectId, $checklist, $usuarioId);
+        $refreshedTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $checklist = $this->buildChecklist($examenId, $refreshedTasks, $userPermissions);
+        $progress = $this->computeChecklistProgress($checklist);
+
+        $kanbanStage = $this->resolveKanbanFromChecklist($checklist);
+        if ($kanbanStage) {
+            $this->actualizarEstadoExamenDesdeChecklist($examenId, $kanbanStage, $usuarioId);
+        }
+
+        return [
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'tasks' => $tasks,
+            'checklist' => $checklist,
+            'checklist_progress' => $progress,
+            'kanban_estado' => $kanbanStage['slug'] ?? null,
+            'kanban_estado_label' => $kanbanStage['label'] ?? null,
         ];
     }
 
@@ -210,7 +388,7 @@ class ExamenCrmService
     }
 
     /**
-     * @return array{name?:string,email?:string,hc_number?:string,descripcion?:string}|null
+     * @return array{name?:string,email?:string,hc_number?:string,form_id?:string,descripcion?:string}|null
      */
     public function obtenerContactoPaciente(int $examenId): ?array
     {
@@ -223,6 +401,7 @@ class ExamenCrmService
             'name' => $this->normalizarTexto($detalle['paciente_nombre'] ?? null),
             'email' => $this->normalizarTexto($detalle['crm_contacto_email'] ?? null),
             'hc_number' => $this->normalizarTexto($detalle['hc_number'] ?? null),
+            'form_id' => $this->normalizarTexto($detalle['form_id'] ?? null),
             'descripcion' => $this->normalizarTexto($detalle['examen_nombre'] ?? null),
         ], static fn($value) => $value !== null && $value !== '');
 
@@ -1178,6 +1357,442 @@ class ExamenCrmService
     }
 
     /**
+     * @param array<string, array<string, mixed>> $tasksByKey
+     * @param array<int, string> $userPermissions
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildChecklist(int $examenId, array $tasksByKey, array $userPermissions = []): array
+    {
+        $stages = $this->estadoService->getStages();
+        $checklist = [];
+
+        $primerPendienteOrden = null;
+        foreach ($stages as $stage) {
+            if (!($stage['required'] ?? false)) {
+                continue;
+            }
+
+            $slug = (string) ($stage['slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+
+            $taskKey = $this->buildTaskKey($examenId, $slug);
+            $task = $tasksByKey[$taskKey] ?? null;
+            $completed = ($task['status'] ?? '') === 'completada';
+
+            if (!$completed && $primerPendienteOrden === null) {
+                $primerPendienteOrden = (int) ($stage['order'] ?? 0);
+            }
+        }
+
+        foreach ($stages as $stage) {
+            $slug = (string) ($stage['slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+
+            $taskKey = $this->buildTaskKey($examenId, $slug);
+            $task = $tasksByKey[$taskKey] ?? null;
+            $completed = ($task['status'] ?? '') === 'completada';
+            $order = (int) ($stage['order'] ?? 0);
+            $required = (bool) ($stage['required'] ?? false);
+            $canToggle = true;
+            if ($required && $primerPendienteOrden !== null && $order > $primerPendienteOrden) {
+                $canToggle = false;
+            }
+
+            $checklist[] = [
+                'slug' => $slug,
+                'label' => (string) ($stage['label'] ?? $slug),
+                'column' => $stage['column'] ?? $slug,
+                'order' => $order,
+                'required' => $required,
+                'completed' => $completed,
+                'checked' => $completed,
+                'completado' => $completed,
+                'completado_at' => $task['completed_at'] ?? null,
+                'task_id' => isset($task['id']) ? (int) $task['id'] : null,
+                'can_toggle' => $canToggle || in_array('examenes.checklist.override', $userPermissions, true),
+            ];
+        }
+
+        usort(
+            $checklist,
+            static fn(array $a, array $b): int => (int) ($a['order'] ?? 0) <=> (int) ($b['order'] ?? 0)
+        );
+
+        return $checklist;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @param array<string, mixed> $fallback
+     * @return array<string, mixed>
+     */
+    private function computeChecklistProgress(array $checklist, array $fallback = []): array
+    {
+        if (empty($checklist)) {
+            return $fallback;
+        }
+
+        $total = count($checklist);
+        $completed = 0;
+        $next = null;
+
+        foreach ($checklist as $item) {
+            if (!empty($item['completed'])) {
+                $completed++;
+                continue;
+            }
+
+            if ($next === null) {
+                $next = $item;
+            }
+        }
+
+        $percent = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
+        if ($next === null && (!empty($fallback['next_slug']) || !empty($fallback['next_label']))) {
+            $next = [
+                'slug' => $fallback['next_slug'] ?? null,
+                'label' => $fallback['next_label'] ?? null,
+            ];
+        }
+
+        return [
+            'total' => $total,
+            'completed' => $completed,
+            'percent' => $percent,
+            'next_slug' => $next['slug'] ?? null,
+            'next_label' => $next['label'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @return array<int, array<string, mixed>>
+     */
+    private function syncChecklistTasks(
+        int $examenId,
+        array $detalle,
+        ?int $leadId,
+        ?int $projectId,
+        array $checklist,
+        ?int $usuarioId
+    ): array {
+        $companyId = $this->resolveCompanyId();
+        $existingTasks = $this->fetchChecklistTasks($examenId, $companyId);
+        $tasks = [];
+
+        foreach ($checklist as $item) {
+            $slug = $item['slug'] ?? null;
+            if (!$slug) {
+                continue;
+            }
+
+            $taskKey = $this->buildTaskKey($examenId, (string) $slug);
+            $desiredStatus = !empty($item['completed']) ? 'completada' : 'pendiente';
+            $task = $existingTasks[$taskKey] ?? null;
+
+            if (!$task) {
+                $task = $this->fetchChecklistTaskByKey($examenId, $companyId, $taskKey);
+            }
+
+            $payload = [
+                'project_id' => $projectId,
+                'entity_type' => 'examen',
+                'entity_id' => (string) $examenId,
+                'lead_id' => $leadId,
+                'hc_number' => $detalle['hc_number'] ?? null,
+                'patient_id' => $detalle['hc_number'] ?? null,
+                'form_id' => $detalle['form_id'] ?? null,
+                'source_module' => 'examenes',
+                'source_ref_id' => (string) $examenId,
+                'title' => $item['label'] ?? (string) $slug,
+                'description' => 'Checklist de examen',
+                'status' => $desiredStatus,
+                'metadata' => [
+                    'task_key' => $taskKey,
+                    'checklist_slug' => (string) $slug,
+                    'checklist_label' => $item['label'] ?? (string) $slug,
+                ],
+            ];
+
+            if (!$task) {
+                $task = $this->taskService->create($payload, $companyId, $usuarioId ?? 0);
+            } else {
+                $updatePayload = [
+                    'status' => $desiredStatus,
+                    'title' => $payload['title'],
+                    'description' => $payload['description'],
+                    'project_id' => $projectId,
+                    'lead_id' => $leadId,
+                    'metadata' => $payload['metadata'],
+                ];
+
+                $task = $this->taskService->update(
+                    (int) $task['id'],
+                    $companyId,
+                    $updatePayload,
+                    $usuarioId
+                ) ?? $task;
+            }
+
+            if (!empty($task)) {
+                $tasks[] = $this->formatChecklistTask($task, $taskKey);
+            }
+        }
+
+        return $tasks;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function fetchChecklistTasks(int $examenId, int $companyId): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                id,
+                title,
+                status,
+                due_at,
+                due_date,
+                completed_at,
+                metadata,
+                JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+             FROM crm_tasks
+             WHERE company_id = :company_id
+               AND source_module = 'examenes'
+               AND source_ref_id = :source_ref_id"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $examenId, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $tasks = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = $row['task_key'] ?? null;
+            $meta = null;
+            if (!$key && !empty($row['metadata'])) {
+                $meta = json_decode((string) $row['metadata'], true);
+                if (is_array($meta) && !empty($meta['task_key'])) {
+                    $key = (string) $meta['task_key'];
+                }
+            }
+
+            if (!$key && is_array($meta) && !empty($meta['checklist_slug'])) {
+                $key = $this->buildTaskKey($examenId, (string) $meta['checklist_slug']);
+            }
+
+            if (!$key) {
+                continue;
+            }
+
+            $tasks[$key] = $row;
+        }
+
+        return $tasks;
+    }
+
+    private function fetchChecklistTaskByKey(int $examenId, int $companyId, string $taskKey): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT
+                id,
+                title,
+                status,
+                due_at,
+                due_date,
+                completed_at,
+                metadata,
+                JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) AS task_key
+             FROM crm_tasks
+             WHERE company_id = :company_id
+               AND source_module = 'examenes'
+               AND source_ref_id = :source_ref_id
+               AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.task_key')) = :task_key
+             LIMIT 1"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':source_ref_id', (string) $examenId, PDO::PARAM_STR);
+        $stmt->bindValue(':task_key', $taskKey, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function buildTaskKey(int $examenId, string $slug): string
+    {
+        return 'examen:' . $examenId . ':kanban:' . $slug;
+    }
+
+    private function persistCrmMap(int $examenId, ?int $leadId): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO examen_crm_detalles (examen_id, crm_lead_id)
+             VALUES (:examen_id, :crm_lead_id)
+             ON DUPLICATE KEY UPDATE
+                crm_lead_id = VALUES(crm_lead_id)'
+        );
+        $stmt->bindValue(':examen_id', $examenId, PDO::PARAM_INT);
+        $stmt->bindValue(':crm_lead_id', $leadId, $leadId ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->execute();
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function formatChecklistTask(array $task, string $taskKey): array
+    {
+        $checklistSlug = null;
+        if (!empty($task['metadata'])) {
+            $meta = json_decode((string) $task['metadata'], true);
+            if (is_array($meta) && !empty($meta['checklist_slug'])) {
+                $checklistSlug = (string) $meta['checklist_slug'];
+            }
+        }
+
+        return [
+            'id' => (int) ($task['id'] ?? 0),
+            'title' => $task['title'] ?? '',
+            'status' => $task['status'] ?? '',
+            'task_key' => $taskKey,
+            'checklist_slug' => $checklistSlug,
+            'due_at' => $task['due_at'] ?? null,
+            'due_date' => $task['due_date'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findChecklistStage(string $slug): ?array
+    {
+        foreach ($this->estadoService->getStages() as $stage) {
+            if (($stage['slug'] ?? '') === $slug) {
+                return $stage;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @return array<string, mixed>|null
+     */
+    private function resolveKanbanFromChecklist(array $checklist): ?array
+    {
+        if ($checklist === []) {
+            return null;
+        }
+
+        usort(
+            $checklist,
+            static fn(array $a, array $b): int => (int) ($a['order'] ?? 0) <=> (int) ($b['order'] ?? 0)
+        );
+
+        $selected = $checklist[0];
+        foreach ($checklist as $item) {
+            if (!($item['required'] ?? false) && empty($item['completed'])) {
+                continue;
+            }
+
+            if (!empty($item['completed'])) {
+                $selected = $item;
+                continue;
+            }
+
+            if (!($item['required'] ?? false)) {
+                continue;
+            }
+
+            break;
+        }
+
+        return [
+            'slug' => $selected['slug'] ?? null,
+            'label' => $selected['label'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $kanbanStage
+     */
+    private function actualizarEstadoExamenDesdeChecklist(
+        int $examenId,
+        array $kanbanStage,
+        ?int $changedBy = null
+    ): void
+    {
+        $slug = isset($kanbanStage['slug']) ? (string) $kanbanStage['slug'] : '';
+        if ($slug === '') {
+            return;
+        }
+
+        $labelMap = [
+            'recibido' => 'Recibido',
+            'llamado' => 'Llamado',
+            'revision-cobertura' => 'Revision de cobertura',
+            'listo-para-agenda' => 'Listo para agenda',
+            'completado' => 'Completado',
+        ];
+
+        $estado = $labelMap[$slug] ?? (string) ($kanbanStage['label'] ?? $slug);
+        $stmtPrevio = $this->pdo->prepare('SELECT estado FROM consulta_examenes WHERE id = :id LIMIT 1');
+        $stmtPrevio->bindValue(':id', $examenId, PDO::PARAM_INT);
+        $stmtPrevio->execute();
+        $estadoAnterior = $stmtPrevio->fetchColumn();
+        $estadoAnterior = $estadoAnterior !== false ? trim((string) $estadoAnterior) : null;
+
+        if ($estadoAnterior !== null && strcasecmp($estadoAnterior, $estado) === 0) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare('UPDATE consulta_examenes SET estado = :estado WHERE id = :id');
+        $stmt->bindValue(':estado', $estado, PDO::PARAM_STR);
+        $stmt->bindValue(':id', $examenId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $this->registrarCambioEstadoChecklist($examenId, $estadoAnterior, $estado, $changedBy);
+    }
+
+    private function registrarCambioEstadoChecklist(
+        int $examenId,
+        ?string $estadoAnterior,
+        string $estadoNuevo,
+        ?int $changedBy = null
+    ): void {
+        $nuevo = trim($estadoNuevo);
+        if ($nuevo === '') {
+            return;
+        }
+
+        $anterior = $estadoAnterior !== null ? trim($estadoAnterior) : null;
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO examen_estado_log
+                    (examen_id, estado_anterior, estado_nuevo, changed_by, origen, observacion)
+                 VALUES
+                    (:examen_id, :estado_anterior, :estado_nuevo, :changed_by, :origen, :observacion)'
+            );
+            $stmt->bindValue(':examen_id', $examenId, PDO::PARAM_INT);
+            $stmt->bindValue(':estado_anterior', $anterior !== '' ? $anterior : null, $anterior !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(':estado_nuevo', $nuevo, PDO::PARAM_STR);
+            $stmt->bindValue(':changed_by', $changedBy, $changedBy !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmt->bindValue(':origen', 'crm_checklist', PDO::PARAM_STR);
+            $stmt->bindValue(':observacion', 'Actualización desde checklist de CRM', PDO::PARAM_STR);
+            $stmt->execute();
+        } catch (Throwable $exception) {
+            error_log('No se pudo registrar examen_estado_log (checklist) para examen #' . $examenId . ': ' . $exception->getMessage());
+        }
+    }
+
+    /**
      * @param array<string, mixed> $detalle
      * @return array<string, mixed>|null
      */
@@ -1209,6 +1824,6 @@ class ExamenCrmService
 
     private function resolveCompanyId(): int
     {
-        return 1;
+        return isset($_SESSION['company_id']) ? (int) $_SESSION['company_id'] : 1;
     }
 }

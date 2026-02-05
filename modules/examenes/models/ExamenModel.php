@@ -341,7 +341,13 @@ class ExamenModel
         return $row ?: null;
     }
 
-    public function actualizarExamenParcial(int $id, array $campos): array
+    public function actualizarExamenParcial(
+        int $id,
+        array $campos,
+        ?int $changedBy = null,
+        ?string $origen = null,
+        ?string $observacion = null
+    ): array
     {
         $limpiar = static function ($valor) {
             if (is_string($valor)) {
@@ -399,6 +405,15 @@ class ExamenModel
 
         $set = [];
         $params = [':id' => $id];
+        $estadoAnterior = null;
+
+        if (array_key_exists('estado', $campos)) {
+            $stmtEstado = $this->db->prepare('SELECT estado FROM consulta_examenes WHERE id = :id LIMIT 1');
+            $stmtEstado->bindValue(':id', $id, PDO::PARAM_INT);
+            $stmtEstado->execute();
+            $value = $stmtEstado->fetchColumn();
+            $estadoAnterior = $value !== false ? trim((string) $value) : null;
+        }
 
         foreach ($permitidos as $campo) {
             if (!array_key_exists($campo, $campos)) {
@@ -442,6 +457,18 @@ class ExamenModel
         $stmtDatos->execute([':id' => $id]);
         $row = $stmtDatos->fetch(PDO::FETCH_ASSOC) ?: null;
 
+        if ($row && array_key_exists('estado', $campos)) {
+            $estadoNuevo = trim((string) ($row['estado'] ?? ''));
+            $this->registrarCambioEstado(
+                $id,
+                $estadoAnterior,
+                $estadoNuevo,
+                $changedBy,
+                $origen ?? 'api_estado',
+                $observacion
+            );
+        }
+
         return [
             'success' => true,
             'message' => 'Examen actualizado correctamente',
@@ -450,7 +477,13 @@ class ExamenModel
         ];
     }
 
-    public function actualizarEstado(int $id, string $estado): array
+    public function actualizarEstado(
+        int $id,
+        string $estado,
+        ?int $changedBy = null,
+        ?string $origen = null,
+        ?string $observacion = null
+    ): array
     {
         $this->db->beginTransaction();
 
@@ -503,6 +536,15 @@ class ExamenModel
             $datosStmt->bindValue(':id', $id, PDO::PARAM_INT);
             $datosStmt->execute();
             $datos = $datosStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $this->registrarCambioEstado(
+                $id,
+                isset($datosPrevios['estado']) ? (string) $datosPrevios['estado'] : null,
+                isset($datos['estado']) ? (string) $datos['estado'] : $estado,
+                $changedBy,
+                $origen ?? 'kanban',
+                $observacion
+            );
 
             $this->db->commit();
 
@@ -602,7 +644,14 @@ class ExamenModel
         return $resultados;
     }
 
-    public function llamarTurno(?int $id, ?int $turno, string $nuevoEstado = 'Llamado'): ?array
+    public function llamarTurno(
+        ?int $id,
+        ?int $turno,
+        string $nuevoEstado = 'Llamado',
+        ?int $changedBy = null,
+        ?string $origen = null,
+        ?string $observacion = null
+    ): ?array
     {
         $this->db->beginTransaction();
 
@@ -651,6 +700,15 @@ class ExamenModel
             $detallesStmt->execute();
             $detalles = $detallesStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
+            $this->registrarCambioEstado(
+                (int) $registro['id'],
+                isset($registro['estado']) ? (string) $registro['estado'] : null,
+                isset($detalles['estado']) ? (string) $detalles['estado'] : $nuevoEstado,
+                $changedBy,
+                $origen ?? 'turnero',
+                $observacion
+            );
+
             $this->db->commit();
 
             return $detalles;
@@ -687,6 +745,51 @@ class ExamenModel
         }
 
         return $siguiente;
+    }
+
+    private function registrarCambioEstado(
+        int $examenId,
+        ?string $estadoAnterior,
+        ?string $estadoNuevo,
+        ?int $changedBy = null,
+        ?string $origen = null,
+        ?string $observacion = null
+    ): void {
+        $nuevo = trim((string) ($estadoNuevo ?? ''));
+        if ($nuevo === '') {
+            return;
+        }
+
+        $anterior = $estadoAnterior !== null ? trim((string) $estadoAnterior) : null;
+        if ($anterior !== null && strcasecmp($anterior, $nuevo) === 0) {
+            return;
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                'INSERT INTO examen_estado_log
+                    (examen_id, estado_anterior, estado_nuevo, changed_by, origen, observacion)
+                 VALUES
+                    (:examen_id, :estado_anterior, :estado_nuevo, :changed_by, :origen, :observacion)'
+            );
+            $stmt->bindValue(':examen_id', $examenId, PDO::PARAM_INT);
+            $stmt->bindValue(
+                ':estado_anterior',
+                $anterior !== '' ? $anterior : null,
+                $anterior !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+            );
+            $stmt->bindValue(':estado_nuevo', $nuevo, PDO::PARAM_STR);
+            $stmt->bindValue(':changed_by', $changedBy, $changedBy !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmt->bindValue(':origen', $origen !== null && $origen !== '' ? $origen : null, $origen !== null && $origen !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmt->bindValue(
+                ':observacion',
+                $observacion !== null && trim($observacion) !== '' ? trim($observacion) : null,
+                $observacion !== null && trim($observacion) !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+            );
+            $stmt->execute();
+        } catch (\Throwable $exception) {
+            error_log('No se pudo registrar examen_estado_log para examen #' . $examenId . ': ' . $exception->getMessage());
+        }
     }
 
     public function listarUsuariosAsignables(): array

@@ -9,6 +9,7 @@ import {
     getDataStore,
     setDataStore,
     getEstadosMeta,
+    getReportingConfig,
     setEstadosMeta,
     resolveAttr,
     resolveId,
@@ -18,7 +19,11 @@ import {
 
 document.addEventListener('DOMContentLoaded', () => {
     const config = getKanbanConfig();
+    const normalizedBasePath = config.basePath && config.basePath !== '/'
+        ? config.basePath.replace(/\/+$/, '')
+        : '';
     const realtimeConfig = getRealtimeConfig();
+    const reportingConfig = getReportingConfig();
     const rawDesktopDismiss = Number(realtimeConfig.auto_dismiss_seconds);
     const desktopDismissSeconds = Number.isFinite(rawDesktopDismiss) && rawDesktopDismiss >= 0 ? rawDesktopDismiss : 0;
     const rawToastDismiss = Number(realtimeConfig.toast_auto_dismiss_seconds);
@@ -115,9 +120,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
+    const exportPdfButton = document.getElementById('examenesExportPdfButton');
 
     const VIEW_DEFAULT = 'kanban';
     let currentView = localStorage.getItem(STORAGE_KEY_VIEW) === 'table' ? 'table' : VIEW_DEFAULT;
+
+    const normalizeFormats = (formats) => {
+        if (!Array.isArray(formats)) {
+            return ['pdf', 'excel'];
+        }
+
+        const normalized = formats
+            .map(format => String(format).trim().toLowerCase())
+            .filter(format => ['pdf', 'excel'].includes(format));
+
+        return normalized.length ? Array.from(new Set(normalized)) : ['pdf', 'excel'];
+    };
+
+    const enabledFormats = normalizeFormats(reportingConfig?.formats);
+    const quickMetricsConfig = reportingConfig?.quickMetrics && typeof reportingConfig.quickMetrics === 'object'
+        ? reportingConfig.quickMetrics
+        : {};
+
+    const resolveQuickMetric = (metric) => {
+        if (!metric) {
+            return '';
+        }
+        if (Object.keys(quickMetricsConfig).length === 0) {
+            return metric;
+        }
+        return quickMetricsConfig[metric] ? metric : '';
+    };
 
     const ESCAPE_MAP = {
         '&': '&amp;',
@@ -134,6 +167,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return String(value).replace(/[&<>"'`]/g, character => ESCAPE_MAP[character]);
+    };
+
+    const resolveExamenNombre = (payload = {}) => {
+        const canonical = (payload?.examen_nombre ?? '').toString().trim();
+        if (canonical !== '') {
+            return canonical;
+        }
+
+        return (payload?.examen ?? '').toString().trim();
     };
 
     const normalizeEstado = (value) => {
@@ -210,25 +252,30 @@ document.addEventListener('DOMContentLoaded', () => {
             return Array.isArray(data) ? [...data] : [];
         }
 
-        const keys = ['full_name', 'hc_number', 'examen', 'examen_nombre', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
+        const keys = ['full_name', 'hc_number', 'examen_nombre', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
 
         return (Array.isArray(data) ? data : []).filter(item =>
-            keys.some(key => {
+            (resolveExamenNombre(item).toLowerCase().includes(term))
+            || keys.some(key => {
                 const value = item?.[key];
                 return value && value.toString().toLowerCase().includes(term);
             })
         );
     };
 
-    const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle }) => {
+    const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle, metricKey }) => {
+        const metricAttr = metricKey ? ` data-metric-key="${escapeHtml(metricKey)}"` : '';
+        const actionClass = metricKey ? ' overview-card-actionable' : '';
+        const icon = metricKey ? '<span class="overview-card-action" aria-hidden="true"><i class="mdi mdi-file-pdf-box"></i></span>' : '';
         return `
-            <div class="overview-card">
+            <div class="overview-card${actionClass}"${metricAttr}>
                 <h6>${escapeHtml(title)}</h6>
                 <div class="d-flex justify-content-between align-items-end">
                     <span class="count">${escapeHtml(String(count))}</span>
                     ${badge ? `<span class="badge ${escapeHtml(badgeClass)}">${escapeHtml(badge)}</span>` : ''}
                 </div>
                 ${subtitle ? `<div class="meta">${escapeHtml(subtitle)}</div>` : ''}
+                ${icon}
             </div>
         `;
     };
@@ -286,6 +333,13 @@ document.addEventListener('DOMContentLoaded', () => {
             subtitle: pendientes ? 'Revisar avances y documentación' : 'Sin pendientes en este rango',
         }));
 
+        const metricKeyBySlug = Object.entries(quickMetricsConfig).reduce((acc, [key, metricConfig]) => {
+            if (metricConfig?.estado) {
+                acc[normalizeEstado(metricConfig.estado)] = key;
+            }
+            return acc;
+        }, {});
+
         Object.entries(estadosMeta).forEach(([slug, meta]) => {
             // Omitir estados excluidos en el overview
             if (OVERVIEW_EXCLUDED_STATES.has(slug)) return;
@@ -297,6 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 badge: `${porcentaje}%`,
                 badgeClass: `text-bg-${escapeHtml(meta?.color || 'secondary')}`,
                 subtitle: count ? 'Exámenes en esta etapa' : 'Sin tarjetas en la columna',
+                metricKey: metricKeyBySlug[slug],
             }));
         });
 
@@ -341,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const avatarHtml = renderResponsableAvatar(responsable, item?.crm_responsable_avatar);
             const prioridadLabel = item?.prioridad || semaforo.label;
 
-            const detalleProcedimiento = item?.examen_nombre || item?.examen || 'Sin examen';
+            const detalleProcedimiento = resolveExamenNombre(item) || 'Sin examen';
             const detalleDoctor = item?.doctor || 'Sin doctor';
             const detalleAfiliacion = item?.afiliacion || 'Sin afiliación';
 
@@ -436,6 +491,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    if (overviewContainer) {
+        overviewContainer.addEventListener('click', event => {
+            const target = event.target.closest('.overview-card-actionable[data-metric-key]');
+            if (!target || !overviewContainer.contains(target)) {
+                return;
+            }
+
+            const metricKey = target.dataset.metricKey || '';
+            const title = target.querySelector('h6')?.textContent?.trim() || 'Exportar reporte';
+            openExportModal({ quickMetric: metricKey, title: `Quick report: ${title}` });
+        });
+    }
+
+    if (exportPdfButton) {
+        exportPdfButton.addEventListener('click', () => {
+            openExportModal({ title: 'Exportar reporte de exámenes' });
+        });
+    }
+
     switchView(currentView, false);
 
     let searchDebounce = null;
@@ -455,6 +529,250 @@ document.addEventListener('DOMContentLoaded', () => {
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
         search: searchInput?.value ?? '',
     });
+
+    const normalizeDatePart = (value) => {
+        if (!value) return '';
+        const trimmed = value.trim();
+        const match = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (match) {
+            return `${match[3]}-${match[2]}-${match[1]}`;
+        }
+        return trimmed;
+    };
+
+    const parseDateRange = (rangeText) => {
+        if (!rangeText || !rangeText.includes(' - ')) {
+            const single = normalizeDatePart(rangeText || '');
+            return { from: single || '', to: single || '' };
+        }
+        const [from, to] = rangeText.split(' - ');
+        return {
+            from: normalizeDatePart(from),
+            to: normalizeDatePart(to),
+        };
+    };
+
+    const buildReportPayload = ({ quickMetric = '', format = 'pdf' } = {}) => {
+        const filtros = obtenerFiltros();
+        const range = parseDateRange(filtros.fechaTexto);
+
+        return {
+            filters: {
+                search: filtros.search,
+                doctor: filtros.doctor,
+                afiliacion: filtros.afiliacion,
+                prioridad: filtros.prioridad,
+                date_from: range.from,
+                date_to: range.to,
+            },
+            quickMetric: quickMetric || null,
+            format,
+        };
+    };
+
+    const extractFilename = (contentDisposition, fallbackName) => {
+        if (!contentDisposition) {
+            return fallbackName;
+        }
+        const match = contentDisposition.match(/filename="([^"]+)"/i);
+        return match?.[1] || fallbackName;
+    };
+
+    const exportExamenesPdf = async ({ quickMetric = '' } = {}) => {
+        const payload = buildReportPayload({ quickMetric, format: 'pdf' });
+        const reportBasePath = normalizedBasePath || '/examenes';
+        const response = await fetch(`${reportBasePath}/reportes/pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!response.ok || !contentType.includes('application/pdf')) {
+            let mensaje = 'No se pudo generar el reporte.';
+            try {
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data?.error) {
+                        mensaje = data.error;
+                    }
+                } else {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                }
+            } catch (error) {
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                } catch (_) {
+                    mensaje = 'No se pudo generar el reporte.';
+                }
+            }
+            throw new Error(mensaje);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const opened = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = 'reporte_examenes.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    };
+
+    const exportExamenesExcel = async ({ quickMetric = '' } = {}) => {
+        const payload = buildReportPayload({ quickMetric, format: 'excel' });
+        const reportBasePath = normalizedBasePath || '/examenes';
+        const response = await fetch(`${reportBasePath}/reportes/excel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!response.ok || !contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
+            let mensaje = 'No se pudo generar el reporte.';
+            try {
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (data?.error) {
+                        mensaje = data.error;
+                    }
+                } else {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                }
+            } catch (error) {
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        mensaje = text;
+                    }
+                } catch (_) {
+                    mensaje = 'No se pudo generar el reporte.';
+                }
+            }
+            throw new Error(mensaje);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const filename = extractFilename(
+            response.headers.get('content-disposition'),
+            'reporte_examenes.xlsx'
+        );
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    };
+
+    const openExportModal = ({ quickMetric = '', title = 'Exportar reporte' } = {}) => {
+        const resolvedQuickMetric = resolveQuickMetric(quickMetric);
+        const formats = enabledFormats;
+
+        if (typeof Swal === 'undefined') {
+            if (formats.length === 1) {
+                const format = formats[0];
+                if (window.confirm(`${title}\n¿Generar ${format.toUpperCase()} con los filtros actuales?`)) {
+                    if (format === 'excel') {
+                        exportExamenesExcel({ quickMetric: resolvedQuickMetric })
+                            .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
+                    } else {
+                        exportExamenesPdf({ quickMetric: resolvedQuickMetric })
+                            .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+                    }
+                }
+                return;
+            }
+
+            if (window.confirm(`${title}\n¿Generar reporte con los filtros actuales?`)) {
+                const chosen = window.prompt(`Formato (${formats.join('/')}):`, formats[0] || 'pdf');
+                const format = (chosen || '').toLowerCase();
+                if (!formats.includes(format)) {
+                    showToast('Formato no habilitado.', false);
+                    return;
+                }
+                if (format === 'excel') {
+                    exportExamenesExcel({ quickMetric: resolvedQuickMetric })
+                        .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
+                } else {
+                    exportExamenesPdf({ quickMetric: resolvedQuickMetric })
+                        .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+                }
+            }
+            return;
+        }
+
+        const formatOptions = formats.map((format, index) => `
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="exportFormat" id="exportFormat-${format}" value="${format}" ${index === 0 ? 'checked' : ''}>
+                <label class="form-check-label" for="exportFormat-${format}">
+                    ${format === 'excel' ? 'Excel (.xlsx)' : 'PDF (tabla)'}
+                </label>
+            </div>
+        `).join('');
+
+        Swal.fire({
+            title,
+            html: `
+                <div class="text-start">
+                    ${formatOptions}
+                    <hr class="my-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="exportUseFilters" checked disabled>
+                        <label class="form-check-label" for="exportUseFilters">Usar filtros actuales</label>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Exportar',
+            cancelButtonText: 'Cancelar',
+            width: 420,
+            focusConfirm: false,
+            preConfirm: () => {
+                const selected = document.querySelector('input[name="exportFormat"]:checked');
+                return selected ? selected.value : (formats[0] || 'pdf');
+            },
+        }).then(result => {
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            const format = result.value || (formats[0] || 'pdf');
+            if (!formats.includes(format)) {
+                showToast('Formato no habilitado.', false);
+                return;
+            }
+            if (format === 'excel') {
+                exportExamenesExcel({ quickMetric: resolvedQuickMetric })
+                    .then(() => showToast('Reporte Excel generado.', true))
+                    .catch(error => showToast(error?.message || 'No se pudo generar el Excel', false));
+                return;
+            }
+
+            exportExamenesPdf({ quickMetric: resolvedQuickMetric })
+                .then(() => showToast('Reporte PDF generado.', true))
+                .catch(error => showToast(error?.message || 'No se pudo generar el PDF', false));
+        });
+    };
 
     const cargarKanban = (filtros = {}) => {
         console.groupCollapsed('%cKANBAN ▶ Filtros aplicados', 'color:#0b7285');
@@ -586,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 notificationPanel.pushRealtime({
                     dedupeKey: `new-${data?.form_id ?? data?.secuencia ?? Date.now()}`,
                     title: nombre,
-                    message: data?.examen || data?.tipo || 'Nuevo examen registrada',
+                    message: resolveExamenNombre(data) || data?.tipo || 'Nuevo examen registrado',
                     meta: [
                         data?.doctor ? `Dr(a). ${data.doctor}` : '',
                         data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
@@ -617,7 +935,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title: paciente,
                         message: `Estado actualizado: ${estadoAnterior} → ${nuevoEstado}`,
                         meta: [
-                            data?.examen || '',
+                            resolveExamenNombre(data) || '',
                             data?.doctor ? `Dr(a). ${data.doctor}` : '',
                             data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
                         ],
@@ -648,7 +966,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title: paciente,
                         message: `CRM actualizado · ${etapa}`,
                         meta: [
-                            data?.examen || '',
+                            resolveExamenNombre(data) || '',
                             data?.doctor ? `Dr(a). ${data.doctor}` : '',
                             responsable ? `Responsable: ${responsable}` : '',
                             data?.fuente ? `Fuente: ${data.fuente}` : '',
@@ -679,7 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         title: paciente,
                         message: 'Recordatorio de cirugía',
                         meta: [
-                            data?.examen || '',
+                            resolveExamenNombre(data) || '',
                             data?.doctor ? `Dr(a). ${data.doctor}` : '',
                             data?.quirofano ? `Quirófano: ${data.quirofano}` : '',
                             data?.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',

@@ -3,6 +3,7 @@
 namespace Modules\Mail\Controllers;
 
 use Core\BaseController;
+use Modules\Examenes\Services\ExamenMailLogService;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Mail\Services\MailboxService;
 use Modules\Mail\Services\NotificationMailer;
@@ -17,6 +18,7 @@ class MailboxController extends BaseController
     private MailboxService $mailbox;
     private SolicitudCrmService $solicitudCrm;
     private ExamenCrmService $examenCrm;
+    private ExamenMailLogService $examenMailLog;
     private NotificationMailer $mailer;
     /** @var array<string, mixed> */
     private array $mailboxConfig = [];
@@ -28,6 +30,7 @@ class MailboxController extends BaseController
         $this->mailbox = new MailboxService($pdo);
         $this->solicitudCrm = new SolicitudCrmService($pdo);
         $this->examenCrm = new ExamenCrmService($pdo);
+        $this->examenMailLog = new ExamenMailLogService($pdo);
         $this->mailer = new NotificationMailer($pdo);
         $this->mailboxConfig = $this->mailbox->getConfig();
     }
@@ -141,6 +144,7 @@ class MailboxController extends BaseController
             $link = null;
             $emailContext = null;
             $shouldNotify = $this->shouldNotifyPatient($payload, $message);
+            $notificationResult = null;
             switch ($targetType) {
                 case 'solicitud':
                     $this->solicitudCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
@@ -161,7 +165,11 @@ class MailboxController extends BaseController
             }
 
             if ($emailContext !== null && $shouldNotify) {
-                $this->notifyPatient($emailContext, $targetType, $targetId, $message);
+                $notificationResult = $this->notifyPatient($emailContext, $targetType, $targetId, $message);
+            }
+
+            if ($targetType === 'examen' && is_array($notificationResult)) {
+                $this->registrarExamenMailEvent($targetId, $emailContext, $notificationResult);
             }
 
             $this->respondComposeSuccess('Mensaje registrado correctamente.', $link);
@@ -199,13 +207,14 @@ class MailboxController extends BaseController
     }
 
     /**
-     * @param array{name?:string,email?:string,hc_number?:string,descripcion?:string}|null $context
+     * @param array{name?:string,email?:string,hc_number?:string,form_id?:string,descripcion?:string}|null $context
+     * @return array<string, mixed>
      */
-    private function notifyPatient(?array $context, string $targetType, int $targetId, string $body): void
+    private function notifyPatient(?array $context, string $targetType, int $targetId, string $body): array
     {
         $email = trim((string) ($context['email'] ?? ''));
         if ($email === '') {
-            return;
+            return ['attempted' => false];
         }
 
         $cleanBody = $this->stripPatientPrefix($body);
@@ -227,24 +236,78 @@ class MailboxController extends BaseController
             $messageLines[] = 'Historia clínica: ' . $context['hc_number'];
         }
 
+        $bodyText = implode("\n", $messageLines);
+        $resultPayload = [
+            'attempted' => true,
+            'channel' => 'email',
+            'to_email' => $email,
+            'subject' => $subject,
+            'body_text' => $bodyText,
+            'status' => 'failed',
+            'error' => null,
+            'sent_at' => null,
+        ];
+
         try {
             $profileService = new MailProfileService($this->pdo);
             $profileSlug = $profileService->getProfileSlugForContext('crm');
             $result = $this->mailer->sendPatientUpdate(
                 $email,
                 $subject,
-                implode("\n", $messageLines),
+                $bodyText,
                 [],
                 [],
                 false,
                 $profileSlug
             );
-            if (!$result['success']) {
+
+            if (($result['success'] ?? false) === true) {
+                $resultPayload['status'] = 'sent';
+                $resultPayload['sent_at'] = date('Y-m-d H:i:s');
+            } else {
                 $message = $result['error'] ?? 'No se pudo enviar el correo de notificación';
-                throw new RuntimeException($message);
+                $resultPayload['error'] = (string) $message;
+                error_log('No se pudo notificar al paciente (' . $targetType . ' #' . $targetId . ' a ' . $email . '): ' . $message);
             }
         } catch (Throwable $exception) {
+            $resultPayload['error'] = $exception->getMessage();
             error_log('No se pudo notificar al paciente (' . $targetType . ' #' . $targetId . ' a ' . $email . '): ' . $exception->getMessage());
+        }
+
+        return $resultPayload;
+    }
+
+    /**
+     * @param array{name?:string,email?:string,hc_number?:string,form_id?:string,descripcion?:string}|null $context
+     * @param array<string, mixed> $notification
+     */
+    private function registrarExamenMailEvent(int $examenId, ?array $context, array $notification): void
+    {
+        if (!($notification['attempted'] ?? false)) {
+            return;
+        }
+
+        $toEmail = trim((string) ($notification['to_email'] ?? ($context['email'] ?? '')));
+        if ($toEmail === '') {
+            return;
+        }
+
+        try {
+            $this->examenMailLog->create([
+                'examen_id' => $examenId,
+                'form_id' => $context['form_id'] ?? null,
+                'hc_number' => $context['hc_number'] ?? null,
+                'to_emails' => $toEmail,
+                'subject' => $notification['subject'] ?? ('Actualización de Examen #' . $examenId),
+                'body_text' => $notification['body_text'] ?? null,
+                'channel' => $notification['channel'] ?? 'email',
+                'sent_by_user_id' => $this->getCurrentUserId(),
+                'status' => $notification['status'] ?? 'failed',
+                'error_message' => $notification['error'] ?? null,
+                'sent_at' => $notification['sent_at'] ?? null,
+            ]);
+        } catch (Throwable $exception) {
+            error_log('No se pudo registrar examen_mail_log para examen #' . $examenId . ': ' . $exception->getMessage());
         }
     }
 

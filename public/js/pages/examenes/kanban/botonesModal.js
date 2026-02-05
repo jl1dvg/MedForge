@@ -136,7 +136,7 @@ export function inicializarBotonesModal() {
     if (revisarBtn && revisarBtn.dataset.listenerAttached !== 'true') {
         revisarBtn.dataset.listenerAttached = 'true';
         revisarBtn.addEventListener('click', () => {
-            const estado = revisarBtn.dataset.estado || 'Revisión Códigos';
+            const estado = revisarBtn.dataset.estado || 'Revisión de cobertura';
             actualizarDesdeBoton(estado).catch(() => {});
         });
     }

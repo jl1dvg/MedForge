@@ -2,7 +2,7 @@
 
 namespace Modules\Reporting\Services\Definitions;
 
-use Controllers\ExamenesController;
+use Controllers\SolicitudController;
 use InvalidArgumentException;
 use Modules\Reporting\Support\SolicitudDataFormatter;
 use PDO;
@@ -10,11 +10,11 @@ use RuntimeException;
 
 abstract class AbstractSolicitudReport implements ReportDefinitionInterface
 {
-    protected ExamenesController $solicitudController;
+    protected SolicitudController $solicitudController;
 
     public function __construct(protected PDO $pdo)
     {
-        $this->solicitudController = new ExamenesController($pdo);
+        $this->solicitudController = new SolicitudController($pdo);
     }
 
     /**

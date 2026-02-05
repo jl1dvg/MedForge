@@ -120,13 +120,13 @@ function slugifyEstado(value) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-    // Normalizar slugs conocidos que difieren entre front y back.
-    if (raw === 'revision-de-cobertura') {
-        return 'revision-codigos';
-    }
-
-    if (raw === 'revision-cobertura') {
-        return 'revision-codigos';
+    if (
+        raw === 'revision-de-cobertura'
+        || raw === 'revision-cobertura'
+        || raw === 'revision-de-codigos'
+        || raw === 'revision-codigos'
+    ) {
+        return 'revision-cobertura';
     }
 
     return raw;
@@ -280,7 +280,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.hc = examen.hc_number ?? '';
         tarjeta.dataset.form = examen.form_id ?? '';
         tarjeta.dataset.codigo = examen.examen_codigo ?? '';
-        const examenNombre = examen.examen || examen.examen_nombre || 'Sin examen';
+        const examenNombre = examen.examen_nombre || examen.examen || 'Sin examen';
         const estadoBase = examen.kanban_estado ?? examen.estado;
         const estadoSlug = slugifyEstado(estadoBase);
         const estadoLabel =
@@ -342,7 +342,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const pasosTotales = checklistProgress.total ?? (Array.isArray(checklist) ? checklist.length : 0) ?? 0;
         const pasosCompletos = checklistProgress.completed ?? 0;
         const porcentaje = checklistProgress.percent ?? (pasosTotales ? Math.round((pasosCompletos / pasosTotales) * 100) : 0);
-        const pendientesCriticos = ['revision-codigos', 'espera-documentos', 'apto-oftalmologo', 'apto-anestesia'];
+        const pendientesCriticos = ['revision-cobertura', 'espera-documentos', 'apto-oftalmologo', 'apto-anestesia'];
 
         const checklistPreview = checklist.map(item => {
             const slug = slugifyEstado(item.slug);

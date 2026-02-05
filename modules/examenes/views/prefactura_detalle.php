@@ -166,6 +166,24 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
                         </div>
                     </div>
                 </div>
+                <div class="col-12">
+                    <div class="card border" id="prefacturaChecklistCard" data-examen-id="<?= htmlspecialchars((string) ($examen['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                <h6 class="card-title mb-0">Checklist operativo (CRM)</h6>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="prefacturaChecklistBootstrapBtn">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Sincronizar
+                                </button>
+                            </div>
+                            <div class="progress mb-2" style="height: 8px;">
+                                <div class="progress-bar" id="prefacturaChecklistProgressBar" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <div class="small text-muted mb-2" id="prefacturaChecklistProgressText">Cargando checklist...</div>
+                            <div id="prefacturaChecklistList" class="d-flex flex-column gap-2"></div>
+                            <div class="text-muted small d-none" id="prefacturaChecklistEmpty">Sin checklist disponible.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -294,3 +312,154 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
         </div>
     </div>
 </div>
+<script>
+    (function () {
+        const card = document.getElementById('prefacturaChecklistCard');
+        if (!card) {
+            return;
+        }
+
+        const examenId = card.dataset.examenId || '';
+        if (!examenId) {
+            return;
+        }
+
+        const list = document.getElementById('prefacturaChecklistList');
+        const empty = document.getElementById('prefacturaChecklistEmpty');
+        const progressBar = document.getElementById('prefacturaChecklistProgressBar');
+        const progressText = document.getElementById('prefacturaChecklistProgressText');
+        const bootstrapBtn = document.getElementById('prefacturaChecklistBootstrapBtn');
+
+        const buildUrl = (suffix) => `/examenes/${encodeURIComponent(String(examenId))}${suffix}`;
+
+        const setProgress = (data = {}) => {
+            const total = Number(data.total ?? 0);
+            const completed = Number(data.completed ?? 0);
+            const percent = Number(data.percent ?? (total > 0 ? (completed / total) * 100 : 0));
+
+            if (progressBar) {
+                progressBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+                progressBar.setAttribute('aria-valuenow', String(percent));
+            }
+
+            if (progressText) {
+                progressText.textContent = `${completed}/${total} completadas · ${percent.toFixed(1)}%`;
+            }
+        };
+
+        const renderChecklist = (checklist = [], progress = {}) => {
+            if (!list || !empty) {
+                return;
+            }
+
+            list.innerHTML = '';
+            setProgress(progress);
+
+            if (!Array.isArray(checklist) || checklist.length === 0) {
+                empty.classList.remove('d-none');
+                return;
+            }
+
+            empty.classList.add('d-none');
+            checklist.forEach((item) => {
+                const wrapper = document.createElement('label');
+                wrapper.className = 'd-flex align-items-center gap-2 border rounded p-2';
+
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'form-check-input m-0';
+                input.checked = Boolean(item.completed || item.completado || item.checked || item.completado_at);
+                input.disabled = item.can_toggle === false;
+
+                const text = document.createElement('span');
+                text.className = 'small flex-grow-1';
+                text.textContent = item.label || item.slug || 'Etapa';
+
+                const meta = document.createElement('span');
+                meta.className = 'badge text-bg-light text-dark border';
+                meta.textContent = input.checked ? 'Completada' : 'Pendiente';
+
+                input.addEventListener('change', async () => {
+                    input.disabled = true;
+                    try {
+                        const response = await fetch(buildUrl('/crm/checklist'), {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                etapa_slug: item.slug,
+                                completado: input.checked,
+                            }),
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok || !data.success) {
+                            throw new Error(data.error || 'No se pudo sincronizar el checklist');
+                        }
+                        renderChecklist(data.checklist || checklist, data.checklist_progress || progress);
+                    } catch (error) {
+                        input.checked = !input.checked;
+                        if (progressText) {
+                            progressText.textContent = error?.message || 'No se pudo sincronizar el checklist.';
+                        }
+                    } finally {
+                        input.disabled = false;
+                    }
+                });
+
+                wrapper.appendChild(input);
+                wrapper.appendChild(text);
+                wrapper.appendChild(meta);
+                list.appendChild(wrapper);
+            });
+        };
+
+        const loadChecklist = async () => {
+            if (progressText) {
+                progressText.textContent = 'Cargando checklist...';
+            }
+            try {
+                const response = await fetch(buildUrl('/crm/checklist-state'), {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'No se pudo cargar el checklist');
+                }
+                renderChecklist(data.checklist || [], data.checklist_progress || {});
+            } catch (error) {
+                if (empty) {
+                    empty.classList.remove('d-none');
+                    empty.textContent = error?.message || 'No se pudo cargar el checklist.';
+                }
+            }
+        };
+
+        if (bootstrapBtn) {
+            bootstrapBtn.addEventListener('click', async () => {
+                bootstrapBtn.disabled = true;
+                try {
+                    const response = await fetch(buildUrl('/crm/bootstrap'), {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({}),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.error || 'No se pudo sincronizar el checklist con CRM');
+                    }
+                    renderChecklist(data.checklist || [], data.checklist_progress || {});
+                } catch (error) {
+                    if (progressText) {
+                        progressText.textContent = error?.message || 'No se pudo sincronizar el checklist con CRM.';
+                    }
+                } finally {
+                    bootstrapBtn.disabled = false;
+                }
+            });
+        }
+
+        loadChecklist();
+    })();
+</script>

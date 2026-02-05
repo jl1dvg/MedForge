@@ -2,6 +2,7 @@
 /** @var string $username */
 /** @var string $pageTitle */
 /** @var array $realtime */
+/** @var array $reporting */
 
 $realtime = array_merge(
     [
@@ -32,6 +33,14 @@ array_push(
     'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
+);
+
+$reporting = array_merge(
+    [
+        'formats' => ['pdf', 'excel'],
+        'quickMetrics' => [],
+    ],
+    $reporting ?? []
 );
 ?>
 <div class="content-header">
@@ -118,6 +127,34 @@ array_push(
         .overview-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 12px 35px rgba(37, 99, 235, 0.12);
+        }
+
+        .overview-card-actionable {
+            cursor: pointer;
+            position: relative;
+        }
+
+        .overview-card-actionable::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 14px;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .overview-card-actionable:hover::after {
+            opacity: 1;
+        }
+
+        .overview-card-action {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            color: #ef4444;
+            font-size: 1rem;
         }
 
         .overview-card h6 {
@@ -546,6 +583,9 @@ array_push(
             <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#examenesFilters" aria-expanded="false" aria-controls="examenesFilters">
                 <i class="mdi mdi-filter-variant"></i> Filtros
             </button>
+            <button class="btn btn-outline-danger" type="button" id="examenesExportPdfButton">
+                <i class="mdi mdi-file-pdf-box"></i> Exportar PDF
+            </button>
             <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
                 <i class="mdi mdi-bell-outline"></i> Avisos
             </button>
@@ -676,6 +716,7 @@ array_push(
             storageKeyView: 'examenes:view-mode',
             dataKey: '__examenesKanban',
             estadosMetaKey: '__examenesEstadosMeta',
+            reporting: <?= json_encode($reporting, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>,
             selectors: {
                 prefix: 'examenes',
             },
@@ -754,6 +795,20 @@ array_push(
                                         <select id="crmResponsable" name="responsable_id" class="form-select">
                                             <option value="">Sin asignar</option>
                                         </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="crmLeadIdInput" class="form-label">Lead CRM vinculado</label>
+                                        <div class="input-group">
+                                            <input type="number" min="1" id="crmLeadIdInput" class="form-control" placeholder="Se asigna automáticamente">
+                                            <button type="button" class="btn btn-outline-secondary" id="crmLeadOpen" title="Abrir lead en CRM" data-preserve-disabled="true">
+                                                <i class="mdi mdi-open-in-new"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger" id="crmLeadUnlink" title="Desvincular lead" data-preserve-disabled="true">
+                                                <i class="mdi mdi-link-off"></i>
+                                            </button>
+                                        </div>
+                                        <input type="hidden" id="crmLeadId" name="crm_lead_id">
+                                        <small class="form-text text-muted" id="crmLeadHelp">Sin lead vinculado. Al guardar se creará automáticamente.</small>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="crmFuente" class="form-label">Fuente / convenio</label>
@@ -868,160 +923,41 @@ array_push(
                         </div>
                     </form>
                 </section>
-            </div>
-        </div>
-    </div>
-
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
-        <div class="offcanvas-header">
-            <div>
-                <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM del examen</h5>
-                <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar" data-preserve-disabled="true"></button>
-        </div>
-        <div class="offcanvas-body d-flex flex-column gap-3">
-            <div id="crmLoading" class="alert alert-info d-none" role="status">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-                    <span>Cargando información CRM...</span>
-                </div>
-            </div>
-            <div id="crmError" class="alert alert-danger d-none" role="alert"></div>
-            <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
-            <form id="crmDetalleForm" class="border rounded p-3">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="crmPipeline" class="form-label">Etapa CRM</label>
-                        <select id="crmPipeline" name="pipeline_stage" class="form-select">
-                            <option value="">Recibido</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmResponsable" class="form-label">Responsable principal</label>
-                        <select id="crmResponsable" name="responsable_id" class="form-select">
-                            <option value="">Sin asignar</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmLeadIdInput" class="form-label">Lead CRM vinculado</label>
-                        <div class="input-group">
-                            <input type="number" min="1" id="crmLeadIdInput" class="form-control" placeholder="Se asigna automáticamente">
-                            <button type="button" class="btn btn-outline-secondary" id="crmLeadOpen" title="Abrir lead en CRM">
-                                <i class="mdi mdi-open-in-new"></i>
-                            </button>
-                            <button type="button" class="btn btn-outline-danger" id="crmLeadUnlink" title="Desvincular lead">
-                                <i class="mdi mdi-link-off"></i>
-                            </button>
-                        </div>
-                        <input type="hidden" id="crmLeadId" name="crm_lead_id">
-                        <small class="form-text text-muted" id="crmLeadHelp">Sin lead vinculado. Al guardar se creará automáticamente.</small>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmFuente" class="form-label">Fuente / convenio</label>
-                        <input type="text" id="crmFuente" name="fuente" class="form-control" list="crmFuenteOptions" placeholder="Ej. aseguradora, referido, campaña">
-                        <datalist id="crmFuenteOptions"></datalist>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmSeguidores" class="form-label">Seguidores</label>
-                        <select id="crmSeguidores" name="seguidores[]" class="form-select" multiple></select>
-                        <small class="text-muted">Usuarios que acompañan el caso y reciben alertas.</small>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmContactoEmail" class="form-label">Correo de contacto</label>
-                        <input type="email" id="crmContactoEmail" name="contacto_email" class="form-control" placeholder="correo@ejemplo.com">
-                    </div>
-                    <div class="col-md-6">
-                        <label for="crmContactoTelefono" class="form-label">Teléfono de contacto</label>
-                        <input type="text" id="crmContactoTelefono" name="contacto_telefono" class="form-control" placeholder="+593 ...">
-                    </div>
-                </div>
-                <div class="mt-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Campos personalizados</label>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo">
-                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
-                        </button>
-                    </div>
-                    <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
-                </div>
-                <div class="d-flex justify-content-end mt-3">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
-                    </button>
-                </div>
-            </form>
-            <div class="crm-scrollable flex-grow-1 overflow-auto">
                 <section class="crm-offcanvas-section">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Notas internas</h6>
-                        <small class="text-muted" id="crmNotasResumen"></small>
+                        <h6 class="mb-0">Bloqueo de agenda</h6>
+                        <small class="text-muted" id="crmBloqueosResumen"></small>
                     </div>
-                    <div id="crmNotasList" class="list-group mb-3"></div>
-                    <form id="crmNotaForm">
-                        <label for="crmNotaTexto" class="form-label">Agregar nota</label>
-                        <textarea id="crmNotaTexto" class="form-control mb-2" rows="3" placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
-                        <div class="d-flex justify-content-end">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
-                            </button>
-                        </div>
-                    </form>
-                </section>
-                <section class="crm-offcanvas-section">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Documentos adjuntos</h6>
-                        <small class="text-muted" id="crmAdjuntosResumen"></small>
-                    </div>
-                    <div id="crmAdjuntosList" class="list-group mb-3"></div>
-                    <form id="crmAdjuntoForm" class="row g-2 align-items-end" enctype="multipart/form-data">
-                        <div class="col-sm-7">
-                            <label for="crmAdjuntoArchivo" class="form-label">Archivo</label>
-                            <input type="file" id="crmAdjuntoArchivo" name="archivo" class="form-control" required>
-                        </div>
-                        <div class="col-sm-5">
-                            <label for="crmAdjuntoDescripcion" class="form-label">Descripción</label>
-                            <input type="text" id="crmAdjuntoDescripcion" name="descripcion" class="form-control" placeholder="Consentimiento, póliza, etc.">
-                        </div>
-                        <div class="col-12 d-flex justify-content-end">
-                            <button type="submit" class="btn btn-outline-primary">
-                                <i class="mdi mdi-upload me-1"></i>Subir documento
-                            </button>
-                        </div>
-                    </form>
-                </section>
-                <section class="crm-offcanvas-section">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Tareas y recordatorios</h6>
-                        <small class="text-muted" id="crmTareasResumen"></small>
-                    </div>
-                    <div id="crmTareasList" class="list-group mb-3"></div>
-                    <form id="crmTareaForm" class="row g-2">
+                    <div id="crmBloqueosList" class="list-group mb-3"></div>
+                    <form id="crmBloqueoForm" class="row g-2">
                         <div class="col-md-6">
-                            <label for="crmTareaTitulo" class="form-label">Título</label>
-                            <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente" required>
+                            <label for="crmBloqueoInicio" class="form-label">Inicio</label>
+                            <input type="datetime-local" id="crmBloqueoInicio" class="form-control" required>
                         </div>
                         <div class="col-md-6">
-                            <label for="crmTareaAsignado" class="form-label">Responsable</label>
-                            <select id="crmTareaAsignado" class="form-select">
-                                <option value="">Sin asignar</option>
-                            </select>
+                            <label for="crmBloqueoFin" class="form-label">Fin</label>
+                            <input type="datetime-local" id="crmBloqueoFin" class="form-control">
+                            <small class="text-muted">Si se omite, se toma la duración indicada.</small>
                         </div>
                         <div class="col-md-6">
-                            <label for="crmTareaFecha" class="form-label">Fecha límite</label>
-                            <input type="date" id="crmTareaFecha" class="form-control">
+                            <label for="crmBloqueoDuracion" class="form-label">Duración (min)</label>
+                            <input type="number" min="15" step="5" id="crmBloqueoDuracion" class="form-control" placeholder="60">
                         </div>
                         <div class="col-md-6">
-                            <label for="crmTareaRecordatorio" class="form-label">Recordatorio</label>
-                            <input type="datetime-local" id="crmTareaRecordatorio" class="form-control">
+                            <label for="crmBloqueoSala" class="form-label">Sala / quirófano</label>
+                            <input type="text" id="crmBloqueoSala" class="form-control" placeholder="Sala 1, Láser, etc.">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="crmBloqueoDoctor" class="form-label">Doctor</label>
+                            <input type="text" id="crmBloqueoDoctor" class="form-control" placeholder="Nombre del médico">
                         </div>
                         <div class="col-12">
-                            <label for="crmTareaDescripcion" class="form-label">Descripción</label>
-                            <textarea id="crmTareaDescripcion" class="form-control" rows="2" placeholder="Detalles de la tarea"></textarea>
+                            <label for="crmBloqueoMotivo" class="form-label">Motivo</label>
+                            <input type="text" id="crmBloqueoMotivo" class="form-control" placeholder="Reserva de sala, valoración, etc.">
                         </div>
                         <div class="col-12 d-flex justify-content-end">
-                            <button type="submit" class="btn btn-outline-success">
-                                <i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea
+                            <button type="submit" class="btn btn-outline-dark">
+                                <i class="mdi mdi-calendar-lock-outline me-1"></i>Bloquear horario
                             </button>
                         </div>
                     </form>
@@ -1065,7 +1001,7 @@ array_push(
                 <button type="button" class="btn btn-outline-info" id="btnSolicitarExamenesPrequirurgicos">
                     <i class="mdi mdi-file-document-multiple-outline me-1"></i> Solicitar exámenes prequirúrgicos
                 </button>
-                <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión Códigos">✅ Códigos Revisado</button>
+                <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión de cobertura">✅ Cobertura revisada</button>
                 <button type="button" class="btn btn-warning" id="btnSolicitarCobertura" data-estado="Docs Completos">
                     <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
                 </button>

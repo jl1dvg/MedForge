@@ -56,6 +56,7 @@ function computeConfig() {
         storageKeyView: raw.storageKeyView || `${key}:view-mode`,
         dataKey: raw.dataKey || `__${key}Kanban`,
         estadosMetaKey: raw.estadosMetaKey || `__${key}EstadosMeta`,
+        reporting: raw.reporting || {},
         selectors: {
             prefix: selectors.prefix || key,
             viewAttr: selectors.viewAttr || `data-${key}-view`,
@@ -136,6 +137,11 @@ export function getEstadosMeta() {
         return meta;
     }
     return {};
+}
+
+export function getReportingConfig() {
+    const config = ensureConfig();
+    return config.reporting || {};
 }
 
 export function setEstadosMeta(meta) {

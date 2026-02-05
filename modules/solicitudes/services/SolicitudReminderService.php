@@ -4,8 +4,8 @@ namespace Modules\Solicitudes\Services;
 
 use DateInterval;
 use DateTimeImmutable;
+use Models\SolicitudModel;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Examenes\Models\ExamenesModel;
 use PDO;
 
 class SolicitudReminderService
@@ -83,14 +83,14 @@ class SolicitudReminderService
 
     private PDO $pdo;
     private PusherConfigService $pusher;
-    private ExamenesModel $solicitudModel;
+    private SolicitudModel $solicitudModel;
     private string $cachePath;
 
     public function __construct(PDO $pdo, PusherConfigService $pusher)
     {
         $this->pdo = $pdo;
         $this->pusher = $pusher;
-        $this->solicitudModel = new ExamenesModel($pdo);
+        $this->solicitudModel = new SolicitudModel($pdo);
         $this->cachePath = BASE_PATH . self::CACHE_FILENAME;
     }
 

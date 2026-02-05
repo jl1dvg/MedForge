@@ -43,6 +43,15 @@ class ExamenEstadoService
     {
         $slug = $slug ?? '';
         $base = strtolower(trim($slug));
+        $base = strtr($base, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
         $base = str_replace(['_', '  '], ['-', ' '], $base);
         $base = preg_replace('/[^\p{L}\p{N}\-\s]/u', '', $base) ?? '';
         $base = preg_replace('/\s+/', '-', $base) ?? '';
@@ -56,6 +65,8 @@ class ExamenEstadoService
             'en-atención' => 'revision-cobertura',
             'revision-de-cobertura' => 'revision-cobertura',
             'revision-cobertura' => 'revision-cobertura',
+            'revision-de-codigos' => 'revision-cobertura',
+            'revision-codigos' => 'revision-cobertura',
             'revision-coberturas' => 'revision-cobertura',
             'cobertura' => 'revision-cobertura',
             'listo-para-agenda' => 'listo-para-agenda',

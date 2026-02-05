@@ -4,7 +4,7 @@ namespace Controllers;
 
 require_once dirname(__DIR__) . '/modules/Reporting/Support/LegacyLoader.php';
 
-use Controllers\ExamenesController;
+use Controllers\SolicitudController;
 use Helpers\PdfGenerator;
 use Models\ProtocoloModel;
 use Modules\Consulta\Services\ConsultaReportService;
@@ -23,7 +23,7 @@ class PdfController
 {
     private PDO $db;
     private ProtocoloModel $protocoloModel;
-    private ExamenesController $solicitudController; // ✅ nueva propiedad
+    private SolicitudController $solicitudController;
     private ConsultaReportService $consultaReportService;
     private ReportingReportController $reportController;
     private ProtocolReportService $protocolReportService;
@@ -33,7 +33,7 @@ class PdfController
     {
         $this->db = $pdo;
         $this->protocoloModel = new ProtocoloModel($pdo);
-        $this->solicitudController = new ExamenesController($this->db);
+        $this->solicitudController = new SolicitudController($this->db);
         $this->consultaReportService = new ConsultaReportService($this->db);
         $this->reportService = new ReportService();
         $this->reportController = new ReportingReportController($this->db, $this->reportService);

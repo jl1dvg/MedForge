@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
 
-use Controllers\ExamenesController;
+use Controllers\SolicitudController;
 
-$controller = new ExamenesController($pdo);
+$controller = new SolicitudController($pdo);
 
 $filtros = [
     'afiliacion' => $_POST['afiliacion'] ?? '',
@@ -26,5 +26,3 @@ echo json_encode([
         'doctores' => $doctores
     ]
 ], JSON_UNESCAPED_UNICODE);
-// 🧠 Depuración temporal
-file_put_contents(__DIR__ . '/debug_filtros.log', date('Y-m-d H:i:s') . ' ' . json_encode($_POST) . PHP_EOL, FILE_APPEND);

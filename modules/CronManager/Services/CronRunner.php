@@ -1055,12 +1055,15 @@ class CronRunner
         }
 
         $bootstrap = BASE_PATH . '/modules/solicitudes/index.php';
-        $model = BASE_PATH . '/modules/solicitudes/models/ExamenesModel.php';
+        $model = BASE_PATH . '/modules/solicitudes/models/SolicitudModel.php';
+        $legacyModel = BASE_PATH . '/modules/solicitudes/models/ExamenesModel.php';
 
         if (is_file($bootstrap)) {
             require_once $bootstrap;
         } elseif (is_file($model)) {
             require_once $model;
+        } elseif (is_file($legacyModel)) {
+            require_once $legacyModel;
         }
 
         $this->solicitudesLoaded = true;

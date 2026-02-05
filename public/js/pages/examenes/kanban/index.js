@@ -14,8 +14,13 @@ const slugifyEstado = value => {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-    if (raw === 'revision-de-cobertura' || raw === 'revision-cobertura') {
-        return 'revision-codigos';
+    if (
+        raw === 'revision-de-cobertura'
+        || raw === 'revision-cobertura'
+        || raw === 'revision-de-codigos'
+        || raw === 'revision-codigos'
+    ) {
+        return 'revision-cobertura';
     }
 
     return raw;
