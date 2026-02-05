@@ -95,6 +95,9 @@ if (!empty($derivacionId)) {
 }
 
 $slaStatus = strtolower(trim((string)($solicitud['sla_status'] ?? '')));
+if ($slaStatus === 'vencido' && !empty($derivacion['fecha_vigencia']) && !$derivacionVencida) {
+    $slaStatus = 'en_rango';
+}
 $defaultSlaBadges = [
         'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
         'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],

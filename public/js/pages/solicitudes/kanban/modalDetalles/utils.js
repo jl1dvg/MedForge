@@ -147,15 +147,49 @@ export function formatHoursRemaining(value) {
     return rounded >= 0 ? `Quedan ${label}` : `Retraso ${label}`;
 }
 
+function parseDateValue(value) {
+    if (!value) {
+        return null;
+    }
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+
+    return parsed;
+}
+
+function resolveSlaStatusWithDerivacion(solicitud = {}) {
+    const status = (solicitud.sla_status || "").toString().trim().toLowerCase();
+    const derivacionDate = parseDateValue(solicitud.derivacion_fecha_vigencia);
+
+    if (status === "vencido" && derivacionDate && derivacionDate.getTime() >= Date.now()) {
+        return "en_rango";
+    }
+
+    return status;
+}
+
 export function buildSlaInfo(solicitud = {}) {
-    const estado = (solicitud.sla_status || "").toString().trim();
+    const estado = resolveSlaStatusWithDerivacion(solicitud);
     const meta = SLA_META[estado] || SLA_META.sin_fecha;
-    const deadline = formatIsoDate(solicitud.sla_deadline, null);
-    const hours = formatHoursRemaining(
+    const derivacionDate = parseDateValue(solicitud.derivacion_fecha_vigencia);
+    const shouldUseDerivacionDeadline = Boolean(
+        derivacionDate && estado === "en_rango" && (solicitud.sla_status || "").toString().trim().toLowerCase() === "vencido"
+    );
+    const deadlineSource = shouldUseDerivacionDeadline
+        ? derivacionDate.toISOString()
+        : solicitud.sla_deadline;
+    const deadline = formatIsoDate(deadlineSource, null);
+    let hoursSource =
         typeof solicitud.sla_hours_remaining === "number"
             ? solicitud.sla_hours_remaining
-            : Number.parseFloat(solicitud.sla_hours_remaining)
-    );
+            : Number.parseFloat(solicitud.sla_hours_remaining);
+    if (shouldUseDerivacionDeadline && derivacionDate) {
+        hoursSource = (derivacionDate.getTime() - Date.now()) / 3600000;
+    }
+    const hours = formatHoursRemaining(hoursSource);
     const detailParts = [];
     if (deadline) {
         detailParts.push(`Vence ${deadline}`);

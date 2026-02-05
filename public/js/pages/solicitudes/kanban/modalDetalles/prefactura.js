@@ -19,6 +19,7 @@ import {
 } from "./state.js";
 import {initSigcenterPanel} from "./sigcenter.js";
 import {findSolicitudById} from "./store.js";
+import {getDataStore} from "../config.js";
 
 export function relocateExamenesPrequirurgicosButton(content) {
     const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
@@ -195,6 +196,38 @@ export function abrirPrefactura({hc, formId, solicitudId}) {
             );
             if (derivacionResult.status === "fulfilled") {
                 renderDerivacionContent(derivacionContainer, derivacionResult.value);
+                const derivacion = derivacionResult.value?.derivacion || null;
+                const vigencia = derivacion?.fecha_vigencia || null;
+                if (vigencia) {
+                    const store = getDataStore();
+                    const target = Array.isArray(store)
+                        ? store.find(
+                            (item) =>
+                                String(item.id) === String(solicitudId) ||
+                                String(item.form_id) === String(formId)
+                        )
+                        : null;
+                    if (target && typeof target === "object") {
+                        target.derivacion_fecha_vigencia = vigencia;
+
+                        const vigenciaDate = new Date(vigencia);
+                        if (!Number.isNaN(vigenciaDate.getTime())) {
+                            const isVigente = vigenciaDate.getTime() >= Date.now();
+                            if (
+                                String(target.sla_status || "").toLowerCase() === "vencido" &&
+                                isVigente
+                            ) {
+                                target.sla_status = "en_rango";
+                                target.sla_deadline = vigenciaDate.toISOString();
+                                target.sla_hours_remaining =
+                                    (vigenciaDate.getTime() - Date.now()) / 3600000;
+                            }
+                        }
+
+                        updateKanbanCardSla(target);
+                        renderEstadoContext(solicitudId);
+                    }
+                }
             } else {
                 console.warn(
                     "⚠️ Derivación no disponible:",
