@@ -483,6 +483,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return SLA_META[normalized] || SLA_META.sin_fecha;
     };
 
+    const resolveSlaStatus = (item = {}) => {
+        const normalized = (item?.sla_status || '').toString().trim().toLowerCase();
+        if (normalized !== 'vencido') {
+            return normalized;
+        }
+
+        const vigencia = parseLocalDate(item?.derivacion_fecha_vigencia);
+        if (!vigencia) {
+            return normalized;
+        }
+
+        return vigencia.getTime() >= Date.now() ? 'en_rango' : normalized;
+    };
+
     const getPrioridadMeta = (prioridad) => {
         const normalized = (prioridad || '').toString().trim().toLowerCase();
         return PRIORIDAD_META[normalized] || PRIORIDAD_META.normal;
@@ -824,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? 'text-bg-primary'
                 : prioridadMeta.badgeClass;
             const prioridadOrigen = item?.prioridad_origen === 'manual' ? 'Prioridad manual' : 'Regla automática';
-            const slaMeta = getSlaMeta(item?.sla_status);
+            const slaMeta = getSlaMeta(resolveSlaStatus(item));
             const slaDeadlineLabel = formatIsoDate(item?.sla_deadline);
             const slaHoursLabel = formatHours(item?.sla_hours_remaining);
             const slaSummaryParts = [];

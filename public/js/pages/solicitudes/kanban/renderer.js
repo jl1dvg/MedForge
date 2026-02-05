@@ -381,6 +381,33 @@ function getSlaMeta(status) {
     return SLA_META[normalized] || SLA_META.sin_fecha;
 }
 
+function parseDateValue(value) {
+    if (!value) {
+        return null;
+    }
+
+    const raw = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(raw.getTime())) {
+        return null;
+    }
+
+    return raw;
+}
+
+function resolveSlaStatus(item = {}) {
+    const normalized = (item?.sla_status || "").toString().trim().toLowerCase();
+    if (normalized !== "vencido") {
+        return normalized;
+    }
+
+    const derivacionVigencia = parseDateValue(item?.derivacion_fecha_vigencia);
+    if (!derivacionVigencia) {
+        return normalized;
+    }
+
+    return derivacionVigencia.getTime() >= Date.now() ? "en_rango" : normalized;
+}
+
 export function updateKanbanCardSla(solicitud = {}) {
     if (!solicitud) {
         return;
@@ -408,7 +435,7 @@ export function updateKanbanCardSla(solicitud = {}) {
     if (!badge) {
         return;
     }
-    const slaMeta = getSlaMeta(solicitud.sla_status);
+    const slaMeta = getSlaMeta(resolveSlaStatus(solicitud));
     badge.className = slaMeta.badgeClass;
     badge.innerHTML = `<i class="mdi ${escapeHtml(
         slaMeta.icon
@@ -501,9 +528,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
     data.forEach((solicitud) => {
         const tarjeta = document.createElement("div");
 
+        const resolvedSlaStatus = resolveSlaStatus(solicitud);
         const isCriticalAlert =
             Boolean(solicitud.alert_reprogramacion) ||
-            String(solicitud.sla_status ?? "").trim() === "vencido";
+            resolvedSlaStatus === "vencido";
 
         const isWarningAlert =
             !isCriticalAlert &&
@@ -549,7 +577,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const edadDias = fechaBase
             ? Math.max(0, Math.floor((hoy - fechaBase) / (1000 * 60 * 60 * 24)))
             : 0;
-        const slaMeta = getSlaMeta(solicitud.sla_status);
+        const slaMeta = getSlaMeta(resolvedSlaStatus);
         const slaBadgeHtml = `<span class="${escapeHtml(
             slaMeta.badgeClass
         )}"><i class="mdi ${escapeHtml(slaMeta.icon)} me-1"></i>${escapeHtml(
