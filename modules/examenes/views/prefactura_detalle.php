@@ -122,7 +122,7 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
         <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel" aria-labelledby="prefactura-tab-resumen-tab">
             <div class="row g-3">
                 <div class="col-lg-6">
-                    <div class="card border h-100">
+                    <div class="card border">
                         <div class="card-body">
                             <h6 class="card-title">Detalle del examen</h6>
                             <ul class="list-group list-group-flush small">
@@ -137,7 +137,7 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
                     </div>
                 </div>
                 <div class="col-lg-6">
-                    <div class="card border h-100">
+                    <div class="card border">
                         <div class="card-body">
                             <h6 class="card-title">Contexto de consulta</h6>
                             <p class="small mb-2"><strong>Motivo:</strong> <?= htmlspecialchars((string) ($consulta['motivo_consulta'] ?? 'No disponible'), ENT_QUOTES, 'UTF-8') ?></p>
