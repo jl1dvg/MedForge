@@ -123,6 +123,32 @@ sort($estadoOpciones);
             </button>
         </div>
         <div class="box-body">
+            <?php
+            $totalInformados = 0;
+            $totalNoInformados = 0;
+            foreach ($imagenesRealizadas as $row) {
+                $informado = !empty($row['informe_id']);
+                if ($informado) {
+                    $totalInformados++;
+                } else {
+                    $totalNoInformados++;
+                }
+            }
+            ?>
+            <ul class="nav nav-tabs mb-3" id="tabInformes">
+                <li class="nav-item">
+                    <button class="nav-link active" type="button" data-tab="no-informados">
+                        No informados
+                        <span class="badge badge-secondary-light ms-1"><?= (int) $totalNoInformados ?></span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" type="button" data-tab="informados">
+                        Informados
+                        <span class="badge badge-success-light ms-1"><?= (int) $totalInformados ?></span>
+                    </button>
+                </li>
+            </ul>
             <form class="row g-2 align-items-end mb-3" method="get" id="filtrosImagenes">
                 <div class="col-sm-6 col-md-2">
                     <label class="form-label">Desde</label>
@@ -199,12 +225,14 @@ sort($estadoOpciones);
                         $tipoExamen = $tipoParsed['texto'];
                         $ojoExamen = $tipoParsed['ojo'];
                         ?>
+                        <?php $informado = !empty($row['informe_id']); ?>
                         <tr data-id="<?= (int)($row['id'] ?? 0) ?>"
                             data-form-id="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-hc-number="<?= htmlspecialchars((string)($row['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-afiliacion="<?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
-                            data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>">
+                            data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
+                            data-informado="<?= $informado ? '1' : '0' ?>">
                             <td><?= htmlspecialchars($fechaUi, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <?php
@@ -323,6 +351,28 @@ sort($estadoOpciones);
             });
             populateSelect(document.getElementById('filtroAfiliacion'), afiliaciones);
             populateSelect(document.getElementById('filtroTipoExamen'), examenes);
+
+            function applyTabFilter(tab) {
+                const showInformados = tab === 'informados';
+                rows.forEach(function (row) {
+                    const informado = (row.dataset.informado || '0') === '1';
+                    const visible = showInformados ? informado : !informado;
+                    row.style.display = visible ? '' : 'none';
+                });
+                if (dataTable) {
+                    dataTable.columns.adjust();
+                }
+            }
+
+            document.querySelectorAll('#tabInformes [data-tab]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    document.querySelectorAll('#tabInformes .nav-link').forEach(function (item) {
+                        item.classList.remove('active');
+                    });
+                    btn.classList.add('active');
+                    applyTabFilter(btn.getAttribute('data-tab'));
+                });
+            });
 
             const modalEl = document.getElementById('modalInformeImagen');
             const templateContainer = document.getElementById('informeTemplateContainer');
@@ -546,7 +596,8 @@ sort($estadoOpciones);
                         hc_number: informeContext.hcNumber,
                         tipo_examen: informeContext.tipoRaw,
                         plantilla: informeContext.plantilla,
-                        payload: payload
+                        payload: payload,
+                        firmante_id: payload.firmante_id || ''
                     }).then(function (res) {
                         if (!res || !res.success) {
                             setEstado('No se pudo guardar el informe.');
@@ -580,9 +631,15 @@ sort($estadoOpciones);
                 dataTable = $('#tablaImagenesRealizadas').DataTable({
                     order: [[0, 'desc']],
                     language: {url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
-                    pageLength: 25
+                    pageLength: 25,
+                    autoWidth: false,
+                    initComplete: function () {
+                        $('#tablaImagenesRealizadas').css('width', '100%').removeAttr('style');
+                    }
                 });
             }
+
+            applyTabFilter('no-informados');
 
             function ajustarTabla() {
                 if (dataTable) {

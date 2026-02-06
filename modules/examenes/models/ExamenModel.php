@@ -796,7 +796,13 @@ class ExamenModel
     {
         $service = new LeadConfigurationService($this->db);
 
-        return $service->getAssignableUsers();
+        $usuarios = $service->getAssignableUsers();
+        $filtrados = array_filter($usuarios, static function (array $usuario): bool {
+            $especialidad = trim((string) ($usuario['especialidad'] ?? ''));
+            return $especialidad === 'Cirujano Oftalmólogo';
+        });
+
+        return array_values($filtrados);
     }
 
     public function obtenerFuentesCrm(): array
@@ -837,9 +843,13 @@ class ExamenModel
                 NULL AS examen_codigo,
                 NULL AS imagen_ruta,
                 NULL AS imagen_nombre,
-                pp.estado_agenda
+                pp.estado_agenda,
+                ii.id AS informe_id,
+                ii.firmado_por AS informe_firmado_por,
+                ii.updated_at AS informe_actualizado
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+            LEFT JOIN imagenes_informes ii ON ii.form_id = pp.form_id
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
               AND LOWER(TRIM(pp.estado_agenda)) <> 'agendado'
@@ -898,7 +908,7 @@ class ExamenModel
     public function obtenerInformeImagen(string $formId): ?array
     {
         $stmt = $this->db->prepare(
-            'SELECT id, form_id, hc_number, tipo_examen, plantilla, payload_json, created_by, updated_by, created_at, updated_at
+            'SELECT id, form_id, hc_number, tipo_examen, plantilla, payload_json, firmado_por, created_by, updated_by, created_at, updated_at
              FROM imagenes_informes
              WHERE form_id = :form_id
              LIMIT 1'
@@ -916,18 +926,20 @@ class ExamenModel
         string $tipoExamen,
         string $plantilla,
         string $payloadJson,
-        ?int $userId
+        ?int $userId,
+        ?int $firmadoPor
     ): bool {
         $stmt = $this->db->prepare(
             'INSERT INTO imagenes_informes
-                (form_id, hc_number, tipo_examen, plantilla, payload_json, created_by, updated_by)
+                (form_id, hc_number, tipo_examen, plantilla, payload_json, firmado_por, created_by, updated_by)
              VALUES
-                (:form_id, :hc_number, :tipo_examen, :plantilla, :payload_json, :created_by, :updated_by)
+                (:form_id, :hc_number, :tipo_examen, :plantilla, :payload_json, :firmado_por, :created_by, :updated_by)
              ON DUPLICATE KEY UPDATE
                 hc_number = VALUES(hc_number),
                 tipo_examen = VALUES(tipo_examen),
                 plantilla = VALUES(plantilla),
                 payload_json = VALUES(payload_json),
+                firmado_por = VALUES(firmado_por),
                 updated_by = VALUES(updated_by),
                 updated_at = CURRENT_TIMESTAMP'
         );
@@ -936,6 +948,7 @@ class ExamenModel
         $stmt->bindValue(':tipo_examen', $tipoExamen, PDO::PARAM_STR);
         $stmt->bindValue(':plantilla', $plantilla, PDO::PARAM_STR);
         $stmt->bindValue(':payload_json', $payloadJson, PDO::PARAM_STR);
+        $stmt->bindValue(':firmado_por', $firmadoPor, $firmadoPor !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':created_by', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $stmt->bindValue(':updated_by', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
         return $stmt->execute();

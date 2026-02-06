@@ -2,6 +2,7 @@
 /** @var array<int, array{id: string, label: string, text: string}> $checkboxes */
 ?>
 <div class="informe-template" data-informe-template="eco">
+    <?php include __DIR__ . '/_firmante.php'; ?>
     <div class="row g-3">
         <div class="col-md-6">
             <label class="form-label" for="inputOD">OD</label>

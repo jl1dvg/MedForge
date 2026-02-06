@@ -193,7 +193,7 @@ class LeadConfigurationService
      */
     public function getAssignableUsers(): array
     {
-        $stmt = $this->pdo->query('SELECT id, nombre, email, profile_photo FROM users ORDER BY nombre');
+        $stmt = $this->pdo->query('SELECT id, nombre, email, profile_photo, especialidad FROM users ORDER BY nombre');
         $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         return array_map(function (array $usuario): array {

@@ -1434,6 +1434,9 @@ class ExamenController extends BaseController
                 $payload = $decoded;
             }
         }
+        if (is_array($payload) && !isset($payload['firmante_id']) && isset($informe['firmado_por'])) {
+            $payload['firmante_id'] = $informe['firmado_por'];
+        }
 
         $this->json([
             'success' => true,
@@ -1457,6 +1460,7 @@ class ExamenController extends BaseController
         $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
         $plantilla = trim((string) ($payload['plantilla'] ?? ''));
         $data = $payload['payload'] ?? null;
+        $firmanteId = isset($payload['firmante_id']) ? (int) $payload['firmante_id'] : 0;
 
         if (is_object($data)) {
             $data = (array) $data;
@@ -1483,6 +1487,8 @@ class ExamenController extends BaseController
             return;
         }
 
+        $firmanteId = $firmanteId > 0 ? $firmanteId : null;
+
         try {
             $ok = $this->examenModel->guardarInformeImagen(
                 $formId,
@@ -1490,7 +1496,8 @@ class ExamenController extends BaseController
                 $tipoExamen,
                 $plantilla,
                 $payloadJson,
-                $this->getCurrentUserId()
+                $this->getCurrentUserId(),
+                $firmanteId
             );
             $this->json(['success' => $ok]);
         } catch (Throwable $e) {
@@ -1524,6 +1531,7 @@ class ExamenController extends BaseController
 
         header('Content-Type: text/html; charset=utf-8');
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
+        $usuariosFirmantes = $this->examenModel->listarUsuariosAsignables();
         include $view;
     }
 
