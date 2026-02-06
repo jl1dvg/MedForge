@@ -16,6 +16,30 @@ return function (Router $router) {
         (new ExamenController($pdo))->prefactura();
     });
 
+    $router->get('/imagenes/examenes-realizados', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesRealizadas();
+    });
+
+    $router->post('/imagenes/examenes-realizados/actualizar', function (\PDO $pdo) {
+        (new ExamenController($pdo))->actualizarImagenRealizada();
+    });
+
+    $router->post('/imagenes/examenes-realizados/eliminar', function (\PDO $pdo) {
+        (new ExamenController($pdo))->eliminarImagenRealizada();
+    });
+
+    $router->get('/imagenes/informes/datos', function (\PDO $pdo) {
+        (new ExamenController($pdo))->informeDatos();
+    });
+
+    $router->post('/imagenes/informes/guardar', function (\PDO $pdo) {
+        (new ExamenController($pdo))->informeGuardar();
+    });
+
+    $router->get('/imagenes/informes/plantilla', function (\PDO $pdo) {
+        (new ExamenController($pdo))->informePlantilla();
+    });
+
     $router->post('/examenes/kanban-data', function (\PDO $pdo) {
         (new ExamenController($pdo))->kanbanData();
     });

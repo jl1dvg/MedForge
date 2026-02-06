@@ -1,0 +1,77 @@
+[
+  {
+    "id": "edema_cornea",
+    "label": "Edema de Córnea",
+    "text": "ACUMULACIÓN DE LÍQUIDO EN LA CÓRNEA"
+  },
+  {
+    "id": "distrofia_endotelial",
+    "label": "Distrofia Endotelial",
+    "text": "ANORMALIDADES EN EL ENDOTELIO CORNEAL"
+  },
+  {
+    "id": "queratocono",
+    "label": "Queratocono",
+    "text": "ADELGAZAMIENTO Y CONO CORNEAL"
+  },
+  {
+    "id": "opacidad_cornea",
+    "label": "Opacidad de Córnea",
+    "text": "ÁREAS OPACAS O TURBIAS EN LA CÓRNEA"
+  },
+  {
+    "id": "desgarro_descemet",
+    "label": "Desgarro de Descemet",
+    "text": "RUPTURA EN LA MEMBRANA DE DESCEMET"
+  },
+  {
+    "id": "infiltrados_cornea",
+    "label": "Infiltrados en Córnea",
+    "text": "ACUMULACIÓN DE CÉLULAS INFLAMATORIAS EN LA CÓRNEA"
+  },
+  {
+    "id": "leucoma",
+    "label": "Leucoma",
+    "text": "CICATRIZ BLANQUECINA EN LA CÓRNEA"
+  },
+  {
+    "id": "queratitis",
+    "label": "Queratitis",
+    "text": "INFLAMACIÓN DE LA CÓRNEA"
+  },
+  {
+    "id": "pannus_cornea",
+    "label": "Pannus en Córnea",
+    "text": "INVASIÓN VASCULAR EN LA CÓRNEA"
+  },
+  {
+    "id": "distrofia_estromal",
+    "label": "Distrofia Estromal",
+    "text": "ANORMALIDADES EN EL ESTROMA CORNEAL"
+  },
+  {
+    "id": "degeneracion_marginal",
+    "label": "Degeneración Marginal",
+    "text": "DEGENERACIÓN DE LOS MÁRGENES CORNEALES"
+  },
+  {
+    "id": "escleritis",
+    "label": "Escleritis",
+    "text": "INFLAMACIÓN DE LA ESCLERA"
+  },
+  {
+    "id": "episcleritis",
+    "label": "Episcleritis",
+    "text": "INFLAMACIÓN DE LA EPISCLERA"
+  },
+  {
+    "id": "melanosis_escleral",
+    "label": "Melanosis Escleral",
+    "text": "PIGMENTACIÓN ANORMAL EN LA ESCLERA"
+  },
+  {
+    "id": "perforacion_cornea",
+    "label": "Perforación de Córnea",
+    "text": "RUPTURA COMPLETA DE LA CÓRNEA"
+  }
+]

@@ -805,4 +805,139 @@ class ExamenModel
 
         return $service->getSources();
     }
+
+    /**
+     * @param array{
+     *     fecha_inicio?: string,
+     *     fecha_fin?: string,
+     *     afiliacion?: string,
+     *     tipo_examen?: string,
+     *     paciente?: string,
+     *     estado_agenda?: string
+     * } $filters
+     */
+    public function fetchImagenesRealizadas(array $filters = []): array
+    {
+        $sql = "SELECT
+                pp.id,
+                pp.form_id,
+                pp.hc_number,
+                CASE
+                    WHEN pp.fecha IS NOT NULL AND pp.hora IS NOT NULL
+                        THEN CONCAT(pp.fecha, ' ', pp.hora)
+                    WHEN pp.fecha IS NOT NULL
+                        THEN pp.fecha
+                    ELSE NULL
+                END AS fecha_examen,
+                COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación') AS afiliacion,
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number) AS cedula,
+                NULLIF(TRIM(pp.procedimiento_proyectado), '') AS tipo_examen,
+                NULL AS examen_nombre,
+                NULL AS examen_codigo,
+                NULL AS imagen_ruta,
+                NULL AS imagen_nombre,
+                pp.estado_agenda
+            FROM procedimiento_proyectado pp
+            LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+            WHERE pp.estado_agenda IS NOT NULL
+              AND TRIM(pp.estado_agenda) <> ''
+              AND LOWER(TRIM(pp.estado_agenda)) <> 'agendado'
+              AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";
+
+        $params = [];
+
+        if (!empty($filters['fecha_inicio']) && !empty($filters['fecha_fin'])) {
+            $sql .= " AND pp.fecha BETWEEN :fecha_inicio AND :fecha_fin";
+            $params[':fecha_inicio'] = $filters['fecha_inicio'];
+            $params[':fecha_fin'] = $filters['fecha_fin'];
+        }
+
+        if (!empty($filters['afiliacion'])) {
+            $sql .= " AND COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '') LIKE :afiliacion";
+            $params[':afiliacion'] = '%' . $filters['afiliacion'] . '%';
+        }
+
+        if (!empty($filters['tipo_examen'])) {
+            $sql .= " AND TRIM(pp.procedimiento_proyectado) LIKE :tipo_examen";
+            $params[':tipo_examen'] = '%' . $filters['tipo_examen'] . '%';
+        }
+
+        if (!empty($filters['paciente'])) {
+            $sql .= " AND (pd.hc_number LIKE :paciente OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente)";
+            $params[':paciente'] = '%' . $filters['paciente'] . '%';
+        }
+
+        if (!empty($filters['estado_agenda'])) {
+            $sql .= " AND TRIM(pp.estado_agenda) = :estado_agenda";
+            $params[':estado_agenda'] = $filters['estado_agenda'];
+        }
+
+        $sql .= " ORDER BY pp.fecha DESC, pp.hora DESC, pp.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
+    public function actualizarProcedimientoProyectado(int $id, string $tipoExamen): bool
+    {
+        $stmt = $this->db->prepare('UPDATE procedimiento_proyectado SET procedimiento_proyectado = :tipo_examen WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        $stmt->bindValue(':tipo_examen', $tipoExamen, PDO::PARAM_STR);
+        return $stmt->execute();
+    }
+
+    public function eliminarProcedimientoProyectado(int $id): bool
+    {
+        $stmt = $this->db->prepare('DELETE FROM procedimiento_proyectado WHERE id = :id');
+        $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+        return $stmt->execute();
+    }
+
+    public function obtenerInformeImagen(string $formId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, form_id, hc_number, tipo_examen, plantilla, payload_json, created_by, updated_by, created_at, updated_at
+             FROM imagenes_informes
+             WHERE form_id = :form_id
+             LIMIT 1'
+        );
+        $stmt->bindValue(':form_id', $formId, PDO::PARAM_STR);
+        $stmt->execute();
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function guardarInformeImagen(
+        string $formId,
+        ?string $hcNumber,
+        string $tipoExamen,
+        string $plantilla,
+        string $payloadJson,
+        ?int $userId
+    ): bool {
+        $stmt = $this->db->prepare(
+            'INSERT INTO imagenes_informes
+                (form_id, hc_number, tipo_examen, plantilla, payload_json, created_by, updated_by)
+             VALUES
+                (:form_id, :hc_number, :tipo_examen, :plantilla, :payload_json, :created_by, :updated_by)
+             ON DUPLICATE KEY UPDATE
+                hc_number = VALUES(hc_number),
+                tipo_examen = VALUES(tipo_examen),
+                plantilla = VALUES(plantilla),
+                payload_json = VALUES(payload_json),
+                updated_by = VALUES(updated_by),
+                updated_at = CURRENT_TIMESTAMP'
+        );
+        $stmt->bindValue(':form_id', $formId, PDO::PARAM_STR);
+        $stmt->bindValue(':hc_number', $hcNumber, $hcNumber !== null ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':tipo_examen', $tipoExamen, PDO::PARAM_STR);
+        $stmt->bindValue(':plantilla', $plantilla, PDO::PARAM_STR);
+        $stmt->bindValue(':payload_json', $payloadJson, PDO::PARAM_STR);
+        $stmt->bindValue(':created_by', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':updated_by', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        return $stmt->execute();
+    }
 }

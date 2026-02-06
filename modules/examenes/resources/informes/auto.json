@@ -1,0 +1,57 @@
+[
+  {
+    "id": "dln",
+    "label": "DLN",
+    "text": "Patrón de fluorescencia homogéneo y uniforme en todo el fondo de ojo, sin áreas de hiper o hipofluorescencia significativa. Mácula presenta una intensidad de autofluorescencia normal, y epitelio pigmentario de la retina continuo y sin irregularidades. Nervio óptico con bordes bien definidos sin signos de hiperfluorescencia. Los vasos aparecen sin alteraciones, manteniendo su trayecto y calibre normales."
+  },
+  {
+    "id": "hiperautofluorescencia",
+    "label": "Hiperautofluorescencia",
+    "text": "AUMENTO ANORMAL DE LA AUTOFLOURESCENCIA"
+  },
+  {
+    "id": "hipoautofluorescencia",
+    "label": "Hipoautofluorescencia",
+    "text": "DISMINUCIÓN ANORMAL DE LA AUTOFLOURESCENCIA"
+  },
+  {
+    "id": "drusen",
+    "label": "Drusen",
+    "text": "DEPÓSITOS AMARILLOS EN LA RETINA"
+  },
+  {
+    "id": "atrofia_geografica",
+    "label": "Atrofia Geográfica",
+    "text": "Se observa un patrón irregular en la región macular con áreas de hipofluorescencia bien delimitadas, indicativas de atrofia geográfica del EPR. El área afectada tiene bordes definidos, sin fluorescencia anormal fuera de la región macular. El nervio óptico y los vasos retinianos son normales. No hay hiperfluorescencia ni otros cambios patológicos fuera de las áreas de atrofia."
+  },
+  {
+    "id": "placas_de_hiperautofluorescencia",
+    "label": "Placas de Hiperautofluorescencia",
+    "text": "PLACAS ÁREAS DE AUMENTO DE AUTOFLOURESCENCIA"
+  },
+  {
+    "id": "retinitis_pigmentosa",
+    "label": "S&P",
+    "text": "El examen de autofluorescencia muestra un patrón de sal y pimienta en la periferia, indicando variaciones en la acumulación de lipofuscina en el epitelio pigmentario de la retina. La mácula tiene autofluorescencia normal, el epitelio pigmentario central es continuo, y el nervio óptico y los vasos retinianos no presentan alteraciones."
+  },
+  {
+    "id": "enfermedad_de_best",
+    "label": "Enfermedad de Best",
+    "text": "LESIONES AUTOFLOURESCENTES EN EL EPR"
+  },
+  {
+    "id": "dmri",
+    "label": "DMRI",
+    "text": "DEGENERACIÓN MACULAR RELACIONADA CON LA EDAD"
+  },
+  {
+    "id": "coloboma",
+    "label": "Coloboma",
+    "text": "DEFECTO CONGÉNITO EN EL OJO"
+  },
+  {
+    "id": "distrofia_coroidal_central_serosa",
+    "label": "Distrofia Coroidal Central Serosa",
+    "text": "ACUMULACIÓN DE LÍQUIDO SUBRETINIANO"
+  }
+]

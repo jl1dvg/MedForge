@@ -1345,6 +1345,293 @@ class ExamenController extends BaseController
         return trim($texto);
     }
 
+    private function mapearPlantillaInforme(string $tipoExamen): ?string
+    {
+        $texto = $this->normalizarTexto($tipoExamen);
+        if ($texto === '') {
+            return null;
+        }
+
+        if (str_contains($texto, 'angio')) {
+            return 'angio';
+        }
+        if (str_contains($texto, 'angulo')) {
+            return 'angulo';
+        }
+        if (str_contains($texto, 'auto') || str_contains($texto, 'autorefrac')) {
+            return 'auto';
+        }
+        if (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'topograf')) {
+            return 'cornea';
+        }
+        if (str_contains($texto, 'campo visual') || str_contains($texto, 'campimet') || preg_match('/\bcv\b/', $texto)) {
+            return 'cv';
+        }
+        if (str_contains($texto, 'eco') || str_contains($texto, 'ecografia')) {
+            return 'eco';
+        }
+        if (str_contains($texto, 'oct')) {
+            return 'octm';
+        }
+        if (str_contains($texto, 'retino') || str_contains($texto, 'retin')) {
+            return 'retino';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array{id: string, label: string, text: string}>
+     */
+    private function obtenerChecklistInforme(string $plantilla): array
+    {
+        $base = dirname(__DIR__) . '/resources/informes/';
+        $file = $base . $plantilla . '.json';
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $json = file_get_contents($file);
+        if ($json === false) {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter($decoded, static function ($item): bool {
+            return is_array($item);
+        }));
+    }
+
+    public function informeDatos(): void
+    {
+        $this->requireAuth();
+
+        $formId = trim((string) ($_GET['form_id'] ?? ''));
+        $tipoExamen = trim((string) ($_GET['tipo_examen'] ?? ''));
+
+        if ($formId === '' || $tipoExamen === '') {
+            $this->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
+            return;
+        }
+
+        $informe = $this->examenModel->obtenerInformeImagen($formId);
+        $plantilla = $informe['plantilla'] ?? null;
+        if ($plantilla === null) {
+            $plantilla = $this->mapearPlantillaInforme($tipoExamen);
+        }
+        if ($plantilla === null) {
+            $this->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+            return;
+        }
+        $payload = null;
+        if ($informe && isset($informe['payload_json'])) {
+            $decoded = json_decode((string) $informe['payload_json'], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $payload = $decoded;
+            }
+        }
+
+        $this->json([
+            'success' => true,
+            'plantilla' => $plantilla,
+            'payload' => $payload,
+            'exists' => $informe !== null,
+            'updated_at' => $informe['updated_at'] ?? null,
+        ]);
+    }
+
+    public function informeGuardar(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
+        $plantilla = trim((string) ($payload['plantilla'] ?? ''));
+        $data = $payload['payload'] ?? null;
+
+        if (is_object($data)) {
+            $data = (array) $data;
+        }
+
+        if ($formId === '' || $tipoExamen === '' || !is_array($data)) {
+            $this->json(['success' => false, 'error' => 'Datos incompletos para guardar'], 422);
+            return;
+        }
+
+        $plantillaEsperada = $this->mapearPlantillaInforme($tipoExamen);
+        if ($plantillaEsperada === null) {
+            $this->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 422);
+            return;
+        }
+
+        if ($plantilla === '' || $plantilla !== $plantillaEsperada) {
+            $plantilla = $plantillaEsperada;
+        }
+
+        $payloadJson = json_encode($data, JSON_UNESCAPED_UNICODE);
+        if ($payloadJson === false) {
+            $this->json(['success' => false, 'error' => 'No se pudo serializar el informe'], 500);
+            return;
+        }
+
+        try {
+            $ok = $this->examenModel->guardarInformeImagen(
+                $formId,
+                $hcNumber !== '' ? $hcNumber : null,
+                $tipoExamen,
+                $plantilla,
+                $payloadJson,
+                $this->getCurrentUserId()
+            );
+            $this->json(['success' => $ok]);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo guardar el informe'], 500);
+        }
+    }
+
+    public function informePlantilla(): void
+    {
+        $this->requireAuth();
+
+        $plantilla = trim((string) ($_GET['plantilla'] ?? ''));
+        $tipoExamen = trim((string) ($_GET['tipo_examen'] ?? ''));
+
+        if ($plantilla === '' && $tipoExamen !== '') {
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+        }
+
+        if ($plantilla === '') {
+            http_response_code(404);
+            echo 'Plantilla no encontrada';
+            return;
+        }
+
+        $view = __DIR__ . '/../views/informes/' . $plantilla . '.php';
+        if (!is_file($view)) {
+            http_response_code(404);
+            echo 'Plantilla no disponible';
+            return;
+        }
+
+        header('Content-Type: text/html; charset=utf-8');
+        $checkboxes = $this->obtenerChecklistInforme($plantilla);
+        include $view;
+    }
+
+
+    public function imagenesRealizadas(): void
+    {
+        $this->requireAuth();
+
+        $filters = $this->buildImagenesRealizadasFilters();
+        $rows = $this->examenModel->fetchImagenesRealizadas($filters);
+
+        $this->render(
+            __DIR__ . '/../views/imagenes_realizadas.php',
+            [
+                'pageTitle' => 'Imágenes · Procedimientos proyectados',
+                'imagenesRealizadas' => $rows,
+                'filters' => $filters,
+            ]
+        );
+    }
+
+    /**
+     * @return array{
+     *     fecha_inicio: string,
+     *     fecha_fin: string,
+     *     afiliacion: string,
+     *     tipo_examen: string,
+     *     paciente: string,
+     *     estado_agenda: string
+     * }
+     */
+    private function buildImagenesRealizadasFilters(): array
+    {
+        $fechaInicio = trim((string) ($_GET['fecha_inicio'] ?? ''));
+        $fechaFin = trim((string) ($_GET['fecha_fin'] ?? ''));
+
+        $fechaInicio = $this->normalizeDateFilter($fechaInicio, 'first day of this month');
+        $fechaFin = $this->normalizeDateFilter($fechaFin, 'last day of this month');
+
+        return [
+            'fecha_inicio' => $fechaInicio,
+            'fecha_fin' => $fechaFin,
+            'afiliacion' => trim((string) ($_GET['afiliacion'] ?? '')),
+            'tipo_examen' => trim((string) ($_GET['tipo_examen'] ?? '')),
+            'paciente' => trim((string) ($_GET['paciente'] ?? '')),
+            'estado_agenda' => trim((string) ($_GET['estado_agenda'] ?? '')),
+        ];
+    }
+
+    private function normalizeDateFilter(string $input, string $fallback): string
+    {
+        if ($input !== '') {
+            $date = \DateTime::createFromFormat('Y-m-d', $input);
+            if ($date instanceof \DateTime) {
+                return $date->format('Y-m-d');
+            }
+        }
+
+        return (new \DateTime($fallback))->format('Y-m-d');
+    }
+
+    public function actualizarImagenRealizada(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
+
+        if ($id <= 0 || $tipoExamen === '') {
+            $this->json(['success' => false, 'error' => 'Datos incompletos para actualizar'], 422);
+            return;
+        }
+
+        try {
+            $ok = $this->examenModel->actualizarProcedimientoProyectado($id, $tipoExamen);
+            $this->json(['success' => $ok]);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo actualizar el procedimiento'], 500);
+        }
+    }
+
+    public function eliminarImagenRealizada(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+
+        if ($id <= 0) {
+            $this->json(['success' => false, 'error' => 'ID inválido'], 422);
+            return;
+        }
+
+        try {
+            $ok = $this->examenModel->eliminarProcedimientoProyectado($id);
+            $this->json(['success' => $ok]);
+        } catch (Throwable $e) {
+            $this->json(['success' => false, 'error' => 'No se pudo eliminar el procedimiento'], 500);
+        }
+    }
+
     private function getRequestBody(): array
     {
         if ($this->bodyCache !== null) {

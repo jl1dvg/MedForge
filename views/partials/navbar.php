@@ -182,7 +182,7 @@ if (!function_exists('isTreeOpen')) {
                         <a href="#">
                             <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span
                                         class="path3"></span></i>
-                            <span>Operaciones clínicas</span>
+                            <span>Coordinación quirúrgica</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
@@ -198,11 +198,6 @@ if (!function_exists('isTreeOpen')) {
                                     </a>
                                 </li>
                             <?php endif; ?>
-                            <li class="<?= isActive('/examenes') ?>">
-                                <a href="/examenes">
-                                    <i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)
-                                </a>
-                            </li>
                             <li class="<?= isActive('/cirugias') ?>">
                                 <a href="/cirugias">
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
@@ -251,6 +246,27 @@ if (!function_exists('isTreeOpen')) {
                             <li class="<?= isActive('/insumos/lentes') ?>">
                                 <a href="/insumos/lentes">
                                     <i class="mdi mdi-glasses"></i>Catálogo de Lentes
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+
+                    <li class="treeview<?= isTreeOpen(['/examenes', '/imagenes/examenes-realizados']) ?>">
+                        <a href="#">
+                            <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
+                            <span>Imágenes</span>
+                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
+                        </a>
+                        <ul class="treeview-menu">
+                            <li class="<?= isActive('/examenes') ?>">
+                                <a href="/examenes">
+                                    <i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)
+                                </a>
+                            </li>
+                            <li class="<?= isActive('/imagenes/examenes-realizados') ?>">
+                                <a href="/imagenes/examenes-realizados">
+                                    <i class="mdi mdi-file-image"></i>Exámenes realizados
                                 </a>
                             </li>
                         </ul>
