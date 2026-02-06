@@ -63,9 +63,33 @@ $parseProcedimiento = static function (string $raw): array {
     ];
 
     return [
-            'texto' => $texto,
-            'ojo' => $ojoMap[$ojo] ?? $ojo,
+        'texto' => $texto,
+        'ojo' => $ojoMap[$ojo] ?? $ojo,
     ];
+};
+
+$badgePalette = [
+    'badge-primary-light',
+    'badge-success-light',
+    'badge-info-light',
+    'badge-warning-light',
+    'badge-danger-light',
+    'badge-secondary-light',
+];
+
+$resolveBadgeClass = static function (string $value) use ($badgePalette): string {
+    $normalized = trim(mb_strtolower($value, 'UTF-8'));
+    if ($normalized === '') {
+        return 'badge-secondary-light';
+    }
+    $hash = 0;
+    $len = mb_strlen($normalized, 'UTF-8');
+    for ($i = 0; $i < $len; $i++) {
+        $char = mb_substr($normalized, $i, 1, 'UTF-8');
+        $hash = ($hash * 31 + ord($char)) % 997;
+    }
+    $index = $hash % count($badgePalette);
+    return $badgePalette[$index];
 };
 
 $estadoOpciones = [];
@@ -160,7 +184,7 @@ sort($estadoOpciones);
                         <th>Imagen</th>
                         <th>Procedimiento</th>
                         <th>Ojo</th>
-                        <th style="min-width: 260px;">Acciones</th>
+                        <th>Acciones</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -182,7 +206,15 @@ sort($estadoOpciones);
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>">
                             <td><?= htmlspecialchars($fechaUi, ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><?= htmlspecialchars((string)($row['afiliacion'] ?? 'Sin afiliación'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td>
+                                <?php
+                                $afiliacionText = (string)($row['afiliacion'] ?? 'Sin afiliación');
+                                $afiliacionBadge = $resolveBadgeClass($afiliacionText);
+                                ?>
+                                <span class="badge <?= htmlspecialchars($afiliacionBadge, ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($afiliacionText, ENT_QUOTES, 'UTF-8') ?>
+                                </span>
+                            </td>
                             <td><?= htmlspecialchars((string)($row['full_name'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars((string)($row['cedula'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
@@ -197,17 +229,17 @@ sort($estadoOpciones);
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <span class="badge badge-primary-light tipo-examen-label">
+                                <?php
+                                $examenBadge = $resolveBadgeClass($tipoExamen);
+                                ?>
+                                <span class="badge <?= htmlspecialchars($examenBadge, ENT_QUOTES, 'UTF-8') ?> tipo-examen-label">
                                     <?= htmlspecialchars($tipoExamen !== '' ? $tipoExamen : 'No definido', ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </td>
                             <td><?= htmlspecialchars($ojoExamen !== '' ? $ojoExamen : '—', ENT_QUOTES, 'UTF-8') ?></td>
-                            <td class="d-flex flex-wrap gap-1">
-                                <button type="button" class="btn btn-sm btn-info btn-informe">
-                                    <i class="mdi mdi-information-outline"></i> Informar
-                                </button>
-                                <button type="button" class="btn btn-sm btn-secondary btn-print-item">
-                                    <i class="mdi mdi-printer"></i> Imprimir
+                            <td>
+                                <button type="button" class="btn btn-sm btn-success btn-print-item">
+                                    <i class="mdi mdi-printer"></i>
                                 </button>
                             </td>
                         </tr>
@@ -493,9 +525,11 @@ sort($estadoOpciones);
                     });
             }
 
-            document.querySelectorAll('.btn-informe').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    const row = btn.closest('tr');
+            document.querySelectorAll('#tablaImagenesRealizadas tbody tr').forEach(function (row) {
+                row.addEventListener('click', function (event) {
+                    if (event.target.closest('button, a, input, select, textarea, label')) {
+                        return;
+                    }
                     abrirInformeModal(row);
                 });
             });
