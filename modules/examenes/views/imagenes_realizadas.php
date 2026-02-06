@@ -230,6 +230,7 @@ sort($estadoOpciones);
                             data-form-id="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-hc-number="<?= htmlspecialchars((string)($row['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-afiliacion="<?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                            data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
                             data-informado="<?= $informado ? '1' : '0' ?>">
@@ -277,6 +278,11 @@ sort($estadoOpciones);
             </div>
         </div>
     </div>
+<style>
+    .table-group-row td {
+        background-color: #f8f9fa;
+    }
+</style>
 </section>
 
 <div class="modal fade" id="modalInformeImagen" tabindex="-1" aria-hidden="true" aria-labelledby="modalInformeImagenLabel">
@@ -362,6 +368,7 @@ sort($estadoOpciones);
                 if (dataTable) {
                     dataTable.columns.adjust();
                 }
+                applyPatientGrouping();
             }
 
             document.querySelectorAll('#tabInformes [data-tab]').forEach(function (btn) {
@@ -626,6 +633,72 @@ sort($estadoOpciones);
                 });
             }
 
+            function escapeHtml(value) {
+                return String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function getPacienteGroup(row) {
+                const hc = (row.dataset.hcNumber || '').trim();
+                const paciente = (row.dataset.paciente || '').trim();
+                if (hc) {
+                    return {
+                        key: 'HC:' + hc,
+                        label: paciente ? (paciente + ' · HC ' + hc) : ('HC ' + hc)
+                    };
+                }
+                if (paciente) {
+                    return {
+                        key: 'PAC:' + paciente,
+                        label: paciente
+                    };
+                }
+                return {
+                    key: 'SIN',
+                    label: 'Paciente sin identificar'
+                };
+            }
+
+            function applyPatientGrouping() {
+                const tbody = document.querySelector('#tablaImagenesRealizadas tbody');
+                if (!tbody) return;
+                tbody.querySelectorAll('tr.table-group-row').forEach(function (row) {
+                    row.remove();
+                });
+
+                const rows = Array.from(tbody.querySelectorAll('tr[data-id]'))
+                    .filter(function (row) {
+                        return row.style.display !== 'none';
+                    });
+                if (!rows.length) return;
+
+                const counts = new Map();
+                rows.forEach(function (row) {
+                    const group = getPacienteGroup(row);
+                    counts.set(group.key, (counts.get(group.key) || 0) + 1);
+                });
+
+                let lastKey = null;
+                rows.forEach(function (row) {
+                    const group = getPacienteGroup(row);
+                    if (group.key === lastKey) return;
+                    lastKey = group.key;
+                    const tr = document.createElement('tr');
+                    tr.className = 'table-group-row';
+                    const td = document.createElement('td');
+                    td.colSpan = row.children.length;
+                    const count = counts.get(group.key) || 0;
+                    td.innerHTML = '<strong>' + escapeHtml(group.label) + '</strong>' +
+                        '<span class="text-muted small ms-2">' + count + ' exámenes en esta página</span>';
+                    tr.appendChild(td);
+                    row.parentNode.insertBefore(tr, row);
+                });
+            }
+
             let dataTable = null;
             if (window.jQuery && $.fn.DataTable) {
                 dataTable = $('#tablaImagenesRealizadas').DataTable({
@@ -637,9 +710,13 @@ sort($estadoOpciones);
                         $('#tablaImagenesRealizadas').css('width', '100%').removeAttr('style');
                     }
                 });
+                $('#tablaImagenesRealizadas').on('draw.dt', function () {
+                    applyPatientGrouping();
+                });
             }
 
             applyTabFilter('no-informados');
+            applyPatientGrouping();
 
             function ajustarTabla() {
                 if (dataTable) {
