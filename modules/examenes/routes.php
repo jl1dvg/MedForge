@@ -40,6 +40,10 @@ return function (Router $router) {
         (new ExamenController($pdo))->informePlantilla();
     });
 
+    $router->get('/imagenes/informes/012b/pdf', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imprimirInforme012B();
+    });
+
     $router->post('/examenes/kanban-data', function (\PDO $pdo) {
         (new ExamenController($pdo))->kanbanData();
     });

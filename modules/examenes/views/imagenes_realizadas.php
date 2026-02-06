@@ -668,7 +668,7 @@ sort($estadoOpciones);
                     const formId = (row.dataset.formId || '').trim();
                     const hcNumber = (row.dataset.hcNumber || '').trim();
                     if (!formId || !hcNumber) return;
-                    const url = '/examenes/prefactura?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId);
+                    const url = '/imagenes/informes/012b/pdf?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId);
                     window.open(url, '_blank', 'noopener');
                 });
             });

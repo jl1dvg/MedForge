@@ -111,11 +111,11 @@ class ExamenController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtros = [
-            'afiliacion' => trim((string) ($payload['afiliacion'] ?? '')),
-            'doctor' => trim((string) ($payload['doctor'] ?? '')),
-            'prioridad' => trim((string) ($payload['prioridad'] ?? '')),
-            'estado' => trim((string) ($payload['estado'] ?? '')),
-            'fechaTexto' => trim((string) ($payload['fechaTexto'] ?? '')),
+            'afiliacion' => trim((string)($payload['afiliacion'] ?? '')),
+            'doctor' => trim((string)($payload['doctor'] ?? '')),
+            'prioridad' => trim((string)($payload['prioridad'] ?? '')),
+            'estado' => trim((string)($payload['estado'] ?? '')),
+            'fechaTexto' => trim((string)($payload['fechaTexto'] ?? '')),
         ];
 
         $kanbanPreferences = $this->leadConfig->getKanbanPreferences(LeadConfigurationService::CONTEXT_EXAMENES);
@@ -126,7 +126,7 @@ class ExamenController extends BaseController
             $examenes = array_map([$this, 'transformExamenRow'], $examenes);
             $examenes = $this->estadoService->enrichExamenes($examenes);
             $examenes = $this->ordenarExamenes($examenes, $kanbanPreferences['sort'] ?? 'fecha_desc');
-            $examenes = $this->limitarExamenesPorEstado($examenes, (int) ($kanbanPreferences['column_limit'] ?? 0));
+            $examenes = $this->limitarExamenesPorEstado($examenes, (int)($kanbanPreferences['column_limit'] ?? 0));
 
             $responsables = $this->leadConfig->getAssignableUsers();
             $responsables = array_map([$this, 'transformResponsable'], $responsables);
@@ -189,8 +189,8 @@ class ExamenController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'pdf')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'pdf')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'pdf') {
@@ -296,8 +296,8 @@ class ExamenController extends BaseController
 
         $payload = $this->getRequestBody();
         $filtersInput = isset($payload['filters']) && is_array($payload['filters']) ? $payload['filters'] : [];
-        $quickMetric = isset($payload['quickMetric']) ? trim((string) $payload['quickMetric']) : '';
-        $format = strtolower(trim((string) ($payload['format'] ?? 'excel')));
+        $quickMetric = isset($payload['quickMetric']) ? trim((string)$payload['quickMetric']) : '';
+        $format = strtolower(trim((string)($payload['format'] ?? 'excel')));
         $allowedFormats = $this->settingsService->getReportFormats();
 
         if ($format !== 'excel') {
@@ -425,7 +425,7 @@ class ExamenController extends BaseController
             );
             $this->json(['success' => true] + $resultado);
         } catch (RuntimeException $e) {
-            $status = (int) ($e->getCode() ?: 422);
+            $status = (int)($e->getCode() ?: 422);
             if ($status < 400 || $status >= 500) {
                 $status = 422;
             }
@@ -449,7 +449,7 @@ class ExamenController extends BaseController
             );
             $this->json(['success' => true] + $resultado);
         } catch (RuntimeException $e) {
-            $status = (int) ($e->getCode() ?: 422);
+            $status = (int)($e->getCode() ?: 422);
             if ($status < 400 || $status >= 500) {
                 $status = 422;
             }
@@ -467,8 +467,8 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $etapa = trim((string) ($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
-        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+        $etapa = trim((string)($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
+        $completado = isset($payload['completado']) ? (bool)$payload['completado'] : true;
 
         if ($etapa === '') {
             $this->json(['success' => false, 'error' => 'Etapa requerida'], 422);
@@ -575,7 +575,7 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $nota = trim((string) ($payload['nota'] ?? ''));
+        $nota = trim((string)($payload['nota'] ?? ''));
 
         if ($nota === '') {
             $this->json(['success' => false, 'error' => 'La nota no puede estar vacía'], 422);
@@ -617,8 +617,8 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
-        $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
+        $tareaId = isset($payload['tarea_id']) ? (int)$payload['tarea_id'] : 0;
+        $estado = isset($payload['estado']) ? (string)$payload['estado'] : '';
 
         if ($tareaId <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
@@ -647,15 +647,15 @@ class ExamenController extends BaseController
         }
 
         $archivo = $_FILES['archivo'];
-        if ((int) ($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
+        if ((int)($archivo['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || empty($archivo['tmp_name'])) {
             $this->json(['success' => false, 'error' => 'El archivo es inválido'], 422);
             return;
         }
 
-        $descripcion = isset($_POST['descripcion']) ? trim((string) $_POST['descripcion']) : null;
-        $nombreOriginal = (string) ($archivo['name'] ?? 'adjunto');
-        $mimeType = isset($archivo['type']) ? (string) $archivo['type'] : null;
-        $tamano = isset($archivo['size']) ? (int) $archivo['size'] : null;
+        $descripcion = isset($_POST['descripcion']) ? trim((string)$_POST['descripcion']) : null;
+        $nombreOriginal = (string)($archivo['name'] ?? 'adjunto');
+        $mimeType = isset($archivo['type']) ? (string)$archivo['type'] : null;
+        $tamano = isset($archivo['size']) ? (int)$archivo['size'] : null;
 
         $carpetaBase = rtrim(PUBLIC_PATH . '/' . self::STORAGE_PATH . '/' . $examenId, '/');
         if (!is_dir($carpetaBase) && !mkdir($carpetaBase, 0775, true) && !is_dir($carpetaBase)) {
@@ -706,10 +706,10 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        $estado = trim((string) ($payload['estado'] ?? ''));
-        $origen = trim((string) ($payload['origen'] ?? 'kanban'));
-        $observacion = isset($payload['observacion']) ? trim((string) $payload['observacion']) : null;
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
+        $estado = trim((string)($payload['estado'] ?? ''));
+        $origen = trim((string)($payload['origen'] ?? 'kanban'));
+        $observacion = isset($payload['observacion']) ? trim((string)$payload['observacion']) : null;
 
         if ($id <= 0 || $estado === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos'], 422);
@@ -752,7 +752,7 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $horas = isset($payload['horas']) ? (int) $payload['horas'] : 24;
+        $horas = isset($payload['horas']) ? (int)$payload['horas'] : 24;
 
         $scheduler = new ExamenReminderService($this->pdo, $this->pusherConfig);
         $enviados = $scheduler->dispatchUpcoming($horas);
@@ -773,23 +773,23 @@ class ExamenController extends BaseController
 
         $estados = [];
         if (!empty($_GET['estado'])) {
-            $estados = array_values(array_filter(array_map('trim', explode(',', (string) $_GET['estado']))));
+            $estados = array_values(array_filter(array_map('trim', explode(',', (string)$_GET['estado']))));
         }
 
         try {
             $examenes = $this->examenModel->fetchTurneroExamenes($estados);
 
             foreach ($examenes as &$examen) {
-                $nombreCompleto = trim((string) ($examen['full_name'] ?? ''));
+                $nombreCompleto = trim((string)($examen['full_name'] ?? ''));
                 $examen['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-                $examen['turno'] = isset($examen['turno']) ? (int) $examen['turno'] : null;
-                $estadoNormalizado = $this->normalizarEstadoTurnero((string) ($examen['estado'] ?? ''));
+                $examen['turno'] = isset($examen['turno']) ? (int)$examen['turno'] : null;
+                $estadoNormalizado = $this->normalizarEstadoTurnero((string)($examen['estado'] ?? ''));
                 $examen['estado'] = $estadoNormalizado ?? ($examen['estado'] ?? null);
                 $examen['hora'] = null;
                 $examen['fecha'] = null;
 
                 if (!empty($examen['created_at'])) {
-                    $timestamp = strtotime((string) $examen['created_at']);
+                    $timestamp = strtotime((string)$examen['created_at']);
                     if ($timestamp !== false) {
                         $examen['hora'] = date('H:i', $timestamp);
                         $examen['fecha'] = date('d/m/Y', $timestamp);
@@ -818,9 +818,9 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : null;
-        $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $id = isset($payload['id']) ? (int)$payload['id'] : null;
+        $turno = isset($payload['turno']) ? (int)$payload['turno'] : null;
+        $estadoSolicitado = isset($payload['estado']) ? trim((string)$payload['estado']) : 'Llamado';
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -847,14 +847,14 @@ class ExamenController extends BaseController
                 return;
             }
 
-            $nombreCompleto = trim((string) ($registro['full_name'] ?? ''));
+            $nombreCompleto = trim((string)($registro['full_name'] ?? ''));
             $registro['full_name'] = $nombreCompleto !== '' ? $nombreCompleto : 'Paciente sin nombre';
-            $registro['estado'] = $this->normalizarEstadoTurnero((string) ($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
+            $registro['estado'] = $this->normalizarEstadoTurnero((string)($registro['estado'] ?? '')) ?? ($registro['estado'] ?? null);
 
             try {
                 $this->pusherConfig->trigger(
                     [
-                        'id' => (int) ($registro['id'] ?? $id ?? 0),
+                        'id' => (int)($registro['id'] ?? $id ?? 0),
                         'turno' => $registro['turno'] ?? $turno,
                         'estado' => $registro['estado'] ?? $estadoNormalizado,
                         'hc_number' => $registro['hc_number'] ?? null,
@@ -872,7 +872,7 @@ class ExamenController extends BaseController
                     $notificationError,
                     [
                         'registro' => [
-                            'id' => (int) ($registro['id'] ?? $id ?? 0),
+                            'id' => (int)($registro['id'] ?? $id ?? 0),
                             'turno' => $registro['turno'] ?? $turno,
                             'estado' => $registro['estado'] ?? $estadoNormalizado,
                         ],
@@ -917,9 +917,9 @@ class ExamenController extends BaseController
     }
 
     public function actualizarExamenParcial(
-        int $id,
-        array $campos,
-        ?int $changedBy = null,
+        int     $id,
+        array   $campos,
+        ?int    $changedBy = null,
         ?string $origen = null,
         ?string $observacion = null
     ): array
@@ -941,7 +941,7 @@ class ExamenController extends BaseController
         }
 
         try {
-            $this->json($this->obtenerEstadosPorHc((string) $hcNumber));
+            $this->json($this->obtenerEstadosPorHc((string)$hcNumber));
         } catch (Throwable $e) {
             $this->json(['success' => false, 'message' => 'Error al obtener exámenes'], 500);
         }
@@ -955,9 +955,9 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
         if ($id <= 0 && isset($payload['examen_id'])) {
-            $id = (int) $payload['examen_id'];
+            $id = (int)$payload['examen_id'];
         }
 
         if ($id <= 0) {
@@ -984,7 +984,7 @@ class ExamenController extends BaseController
                 $campos,
                 $this->getCurrentUserId(),
                 'api_estado',
-                isset($payload['observacion']) ? trim((string) $payload['observacion']) : null
+                isset($payload['observacion']) ? trim((string)$payload['observacion']) : null
             );
             $status = (!is_array($resultado) || ($resultado['success'] ?? false) === false) ? 422 : 200;
             $this->json(is_array($resultado) ? $resultado : ['success' => false], $status);
@@ -997,9 +997,9 @@ class ExamenController extends BaseController
     {
         $this->requireAuth();
 
-        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
-        $formId = trim((string) ($_GET['form_id'] ?? ''));
-        $examenId = isset($_GET['examen_id']) ? (int) $_GET['examen_id'] : null;
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $examenId = isset($_GET['examen_id']) ? (int)$_GET['examen_id'] : null;
 
         if ($hcNumber === '' || $formId === '') {
             http_response_code(400);
@@ -1032,7 +1032,7 @@ class ExamenController extends BaseController
 
         $crmResumen = [];
         try {
-            $crmResumen = $this->crmService->obtenerResumen((int) $examen['id']);
+            $crmResumen = $this->crmService->obtenerResumen((int)$examen['id']);
         } catch (Throwable $e) {
             $crmResumen = [];
         }
@@ -1097,9 +1097,9 @@ class ExamenController extends BaseController
             $fecha = null;
 
             if (is_array($item)) {
-                $nombre = trim((string) ($item['nombre'] ?? $item['examen'] ?? $item['descripcion'] ?? ''));
-                $codigo = trim((string) ($item['codigo'] ?? $item['id'] ?? $item['code'] ?? ''));
-                $fuente = trim((string) ($item['fuente'] ?? $item['origen'] ?? 'Consulta')) ?: 'Consulta';
+                $nombre = trim((string)($item['nombre'] ?? $item['examen'] ?? $item['descripcion'] ?? ''));
+                $codigo = trim((string)($item['codigo'] ?? $item['id'] ?? $item['code'] ?? ''));
+                $fuente = trim((string)($item['fuente'] ?? $item['origen'] ?? 'Consulta')) ?: 'Consulta';
                 $fecha = $item['fecha'] ?? null;
             } elseif (is_string($item)) {
                 $nombre = trim($item);
@@ -1129,7 +1129,7 @@ class ExamenController extends BaseController
             $estado = $match['estado'] ?? 'Solicitado';
             $fuenteFinal = $fuente;
             if (($fuenteFinal === '' || $fuenteFinal === 'Consulta') && !empty($match['solicitante'])) {
-                $fuenteFinal = (string) $match['solicitante'];
+                $fuenteFinal = (string)$match['solicitante'];
             }
             $fechaFinal = $match['consulta_fecha'] ?? $fecha ?? $match['created_at'] ?? null;
 
@@ -1201,7 +1201,7 @@ class ExamenController extends BaseController
                 'estado',
                 $examen['created_at'],
                 'Examen registrado',
-                'Estado inicial: ' . ((string) ($examen['estado'] ?? 'Pendiente')),
+                'Estado inicial: ' . ((string)($examen['estado'] ?? 'Pendiente')),
                 null
             );
         }
@@ -1211,7 +1211,7 @@ class ExamenController extends BaseController
                 'estado',
                 $examen['updated_at'],
                 'Actualización operativa',
-                'Último estado reportado: ' . ((string) ($examen['estado'] ?? 'Pendiente')),
+                'Último estado reportado: ' . ((string)($examen['estado'] ?? 'Pendiente')),
                 null
             );
         }
@@ -1221,17 +1221,17 @@ class ExamenController extends BaseController
                 'nota',
                 $nota['created_at'] ?? null,
                 'Nota CRM',
-                (string) ($nota['nota'] ?? ''),
+                (string)($nota['nota'] ?? ''),
                 $nota['autor_nombre'] ?? null
             );
         }
 
         foreach (($crmResumen['tareas'] ?? []) as $tarea) {
-            $titulo = trim((string) ($tarea['titulo'] ?? 'Tarea CRM'));
-            $estado = trim((string) ($tarea['estado'] ?? 'pendiente'));
+            $titulo = trim((string)($tarea['titulo'] ?? 'Tarea CRM'));
+            $estado = trim((string)($tarea['estado'] ?? 'pendiente'));
             $descripcion = $titulo . ' · Estado: ' . $estado;
             if (!empty($tarea['due_date'])) {
-                $descripcion .= ' · Vence: ' . (string) $tarea['due_date'];
+                $descripcion .= ' · Vence: ' . (string)$tarea['due_date'];
             }
 
             $eventos[] = $this->crearEventoTrazabilidad(
@@ -1244,8 +1244,8 @@ class ExamenController extends BaseController
         }
 
         foreach (($crmResumen['adjuntos'] ?? []) as $adjunto) {
-            $descripcion = trim((string) ($adjunto['descripcion'] ?? ''));
-            $nombre = trim((string) ($adjunto['nombre_original'] ?? 'Documento'));
+            $descripcion = trim((string)($adjunto['descripcion'] ?? ''));
+            $nombre = trim((string)($adjunto['nombre_original'] ?? 'Documento'));
             $texto = $descripcion !== '' ? $descripcion : $nombre;
 
             $eventos[] = $this->crearEventoTrazabilidad(
@@ -1262,7 +1262,7 @@ class ExamenController extends BaseController
                 'correo',
                 $mailEvent['created_at'] ?? null,
                 'Correo saliente',
-                (string) ($mailEvent['subject'] ?? 'Sin asunto'),
+                (string)($mailEvent['subject'] ?? 'Sin asunto'),
                 $mailEvent['sent_by_name'] ?? null
             );
         }
@@ -1270,7 +1270,7 @@ class ExamenController extends BaseController
         usort(
             $eventos,
             static function (array $a, array $b): int {
-                return strtotime((string) ($b['fecha'] ?? '')) <=> strtotime((string) ($a['fecha'] ?? ''));
+                return strtotime((string)($b['fecha'] ?? '')) <=> strtotime((string)($a['fecha'] ?? ''));
             }
         );
 
@@ -1410,8 +1410,8 @@ class ExamenController extends BaseController
     {
         $this->requireAuth();
 
-        $formId = trim((string) ($_GET['form_id'] ?? ''));
-        $tipoExamen = trim((string) ($_GET['tipo_examen'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $tipoExamen = trim((string)($_GET['tipo_examen'] ?? ''));
 
         if ($formId === '' || $tipoExamen === '') {
             $this->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
@@ -1429,7 +1429,7 @@ class ExamenController extends BaseController
         }
         $payload = null;
         if ($informe && isset($informe['payload_json'])) {
-            $decoded = json_decode((string) $informe['payload_json'], true);
+            $decoded = json_decode((string)$informe['payload_json'], true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 $payload = $decoded;
             }
@@ -1455,15 +1455,15 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $formId = trim((string) ($payload['form_id'] ?? ''));
-        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
-        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
-        $plantilla = trim((string) ($payload['plantilla'] ?? ''));
+        $formId = trim((string)($payload['form_id'] ?? ''));
+        $hcNumber = trim((string)($payload['hc_number'] ?? ''));
+        $tipoExamen = trim((string)($payload['tipo_examen'] ?? ''));
+        $plantilla = trim((string)($payload['plantilla'] ?? ''));
         $data = $payload['payload'] ?? null;
-        $firmanteId = isset($payload['firmante_id']) ? (int) $payload['firmante_id'] : 0;
+        $firmanteId = isset($payload['firmante_id']) ? (int)$payload['firmante_id'] : 0;
 
         if (is_object($data)) {
-            $data = (array) $data;
+            $data = (array)$data;
         }
 
         if ($formId === '' || $tipoExamen === '' || !is_array($data)) {
@@ -1509,11 +1509,11 @@ class ExamenController extends BaseController
     {
         $this->requireAuth();
 
-        $plantilla = trim((string) ($_GET['plantilla'] ?? ''));
-        $tipoExamen = trim((string) ($_GET['tipo_examen'] ?? ''));
+        $plantilla = trim((string)($_GET['plantilla'] ?? ''));
+        $tipoExamen = trim((string)($_GET['tipo_examen'] ?? ''));
 
         if ($plantilla === '' && $tipoExamen !== '') {
-            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+            $plantilla = (string)($this->mapearPlantillaInforme($tipoExamen) ?? '');
         }
 
         if ($plantilla === '') {
@@ -1533,6 +1533,419 @@ class ExamenController extends BaseController
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->examenModel->listarUsuariosAsignables();
         include $view;
+    }
+
+    public function imprimirInforme012B(): void
+    {
+        $this->requireAuth();
+
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            http_response_code(400);
+            echo '<p class="text-danger">Faltan parámetros para generar el informe.</p>';
+            return;
+        }
+
+        $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($formId, $hcNumber);
+        if (!$procedimiento) {
+            http_response_code(404);
+            echo '<p class="text-danger">No se encontró el procedimiento solicitado.</p>';
+            return;
+        }
+
+        $paciente = $this->pacienteService->getPatientDetails($hcNumber);
+        $informe = $this->examenModel->obtenerInformeImagen($formId);
+
+        $payload = null;
+        if ($informe && isset($informe['payload_json'])) {
+            $decoded = json_decode((string)$informe['payload_json'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $payload = $decoded;
+            }
+        }
+
+        $tipoExamen = trim((string)($procedimiento['procedimiento_proyectado'] ?? ($informe['tipo_examen'] ?? '')));
+        $plantilla = $informe['plantilla'] ?? null;
+        if ($plantilla === null && $tipoExamen !== '') {
+            $plantilla = $this->mapearPlantillaInforme($tipoExamen);
+        }
+
+        $parsed = $this->parseProcedimientoImagen($tipoExamen);
+        $descripcionBase = $parsed['texto'] !== '' ? $parsed['texto'] : $tipoExamen;
+        $descripcion = $descripcionBase;
+
+        $codigoTarifario = $this->extraerCodigoTarifario($descripcionBase);
+        if ($codigoTarifario !== null) {
+            $tarifario = $this->obtenerTarifarioPorCodigo($codigoTarifario);
+            if ($tarifario) {
+                $nombreTarifario = trim((string) ($tarifario['descripcion'] ?? ($tarifario['short_description'] ?? '')));
+                if ($nombreTarifario !== '') {
+                    $descripcion = $nombreTarifario . ' (' . $tarifario['codigo'] . ')';
+                }
+            }
+        }
+
+        if ($parsed['ojo'] !== '') {
+            $descripcion = trim($descripcion . ' - ' . $parsed['ojo']);
+        }
+
+        $hallazgos = $this->construirHallazgosInforme($payload, $plantilla);
+        $conclusiones = $this->construirConclusionesInforme($payload);
+
+        [$fechaInforme, $horaInforme] = $this->resolverFechaHoraInforme(
+            $informe['updated_at'] ?? null,
+            $procedimiento['fecha'] ?? null,
+            $procedimiento['hora'] ?? null
+        );
+
+        $fechaNacimiento = $paciente['fecha_nacimiento'] ?? ($paciente['dob'] ?? ($paciente['DOB'] ?? null));
+        $edad = $this->pacienteService->calcularEdad($fechaNacimiento, $fechaInforme);
+
+        $patient = [
+            'afiliacion' => $procedimiento['afiliacion'] ?? ($paciente['afiliacion'] ?? ''),
+            'hc_number' => $paciente['hc_number'] ?? $hcNumber,
+            'archive_number' => $paciente['hc_number'] ?? $hcNumber,
+            'lname' => $paciente['lname'] ?? '',
+            'lname2' => $paciente['lname2'] ?? '',
+            'fname' => $paciente['fname'] ?? '',
+            'mname' => $paciente['mname'] ?? '',
+            'sexo' => $paciente['sexo'] ?? ($paciente['sex'] ?? ''),
+            'fecha_nacimiento' => $fechaNacimiento ?? '',
+            'edad' => $edad !== null ? (string)$edad : '',
+        ];
+
+        $firmanteId = null;
+        if (is_array($payload) && isset($payload['firmante_id'])) {
+            $firmanteId = (int)$payload['firmante_id'];
+        }
+        if (!$firmanteId && !empty($informe['firmado_por'])) {
+            $firmanteId = (int)$informe['firmado_por'];
+        }
+
+        $firmante = $this->obtenerDatosFirmante($firmanteId);
+
+        $reportService = new ReportService();
+        $filename = '012B_' . ($patient['hc_number'] ?: $hcNumber) . '_' . date('Ymd_His') . '.pdf';
+
+        try {
+            $pdf = $reportService->renderPdf('012B', [
+                'patient' => $patient,
+                'examen' => [
+                    'descripcion' => $descripcion,
+                    'tipo_examen' => $tipoExamen,
+                ],
+                'informe' => [
+                    'hallazgos' => $hallazgos,
+                    'conclusiones' => $conclusiones,
+                    'fecha' => $fechaInforme,
+                    'hora' => $horaInforme,
+                ],
+                'firmante' => $firmante,
+            ], [
+                'destination' => 'S',
+                'filename' => $filename,
+            ]);
+
+            if (strncmp($pdf, '%PDF-', 5) !== 0) {
+                JsonLogger::log(
+                    'imagenes_informes',
+                    'Informe 012B devolvió contenido no-PDF',
+                    null,
+                    [
+                        'user_id' => $this->getCurrentUserId(),
+                        'preview' => substr($pdf, 0, 200),
+                    ]
+                );
+                http_response_code(500);
+                echo '<p class="text-danger">No se pudo generar el PDF.</p>';
+                return;
+            }
+
+            if (!headers_sent()) {
+                if (ob_get_length()) {
+                    ob_clean();
+                }
+                header('Content-Length: ' . strlen($pdf));
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename="' . $filename . '"');
+                header('X-Content-Type-Options: nosniff');
+            }
+
+            echo $pdf;
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_informes',
+                'Informe 012B falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                    'form_id' => $formId,
+                ]
+            );
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo generar el informe (ref: ' . $errorId . ').</p>';
+        }
+    }
+
+    /**
+     * @return array{texto: string, ojo: string}
+     */
+    private function parseProcedimientoImagen(?string $raw): array
+    {
+        $texto = trim((string)($raw ?? ''));
+        $ojo = '';
+
+        if ($texto !== '' && preg_match('/\s-\s(AMBOS OJOS|IZQUIERDO|DERECHO|OD|OI|AO)\s*$/i', $texto, $match)) {
+            $ojo = strtoupper(trim($match[1]));
+            $texto = trim(substr($texto, 0, -strlen($match[0])));
+        }
+
+        if ($texto !== '') {
+            $partes = preg_split('/\s-\s/', $texto) ?: [];
+            if (isset($partes[0]) && strcasecmp(trim($partes[0]), 'IMAGENES') === 0) {
+                array_shift($partes);
+            }
+            if (isset($partes[0]) && preg_match('/^IMA[-_]/i', trim($partes[0]))) {
+                array_shift($partes);
+            }
+            $texto = trim(implode(' - ', array_map('trim', $partes)));
+        }
+
+        $ojoMap = [
+            'OD' => 'Derecho',
+            'OI' => 'Izquierdo',
+            'AO' => 'Ambos ojos',
+            'DERECHO' => 'Derecho',
+            'IZQUIERDO' => 'Izquierdo',
+            'AMBOS OJOS' => 'Ambos ojos',
+        ];
+
+        return [
+            'texto' => $texto,
+            'ojo' => $ojoMap[$ojo] ?? $ojo,
+        ];
+    }
+
+    private function construirHallazgosInforme(?array $payload, ?string $plantilla): string
+    {
+        if (!$payload || !is_array($payload)) {
+            return '';
+        }
+
+        $plantilla = $plantilla ?? '';
+
+        if ($plantilla === 'octm') {
+            $defecto = 'Arquitectura retiniana bien definida, fóvea con depresión central bien delineada, epitelio pigmentario continuo y uniforme, membrana limitante interna es hiporreflectiva y continua, células de Müller están bien alineadas sin signos de edema o tracción.';
+            $ctmOd = trim((string)($payload['inputOD'] ?? ''));
+            $ctmOi = trim((string)($payload['inputOI'] ?? ''));
+            $textOd = trim((string)($payload['textOD'] ?? ''));
+            $textOi = trim((string)($payload['textOI'] ?? ''));
+
+            if ($ctmOd !== '' && $textOd === '') {
+                $textOd = $defecto;
+            }
+            if ($ctmOi !== '' && $textOi === '') {
+                $textOi = $defecto;
+            }
+
+            $lines = [];
+            if ($ctmOd !== '') {
+                $lines[] = 'GROSOR FOVEAL PROMEDIO OJO DERECHO: ' . $ctmOd . 'um';
+            }
+            if ($ctmOi !== '') {
+                $lines[] = 'GROSOR FOVEAL PROMEDIO OJO IZQUIERDO: ' . $ctmOi . 'um';
+            }
+
+            if ($textOd !== '' || $textOi !== '') {
+                $lines[] = 'LAS IMÁGENES SON SUGESTIVAS DE:';
+                if ($textOd !== '') {
+                    $lines[] = '**Ojo Derecho: **' . $textOd;
+                }
+                if ($textOi !== '') {
+                    $lines[] = '**Ojo Izquierdo: **' . $textOi;
+                }
+            }
+
+            return trim(implode("\n", $lines));
+        }
+
+        $od = trim((string)($payload['inputOD'] ?? ''));
+        $oi = trim((string)($payload['inputOI'] ?? ''));
+
+        if ($plantilla === 'angulo') {
+            if ($od !== '' && !preg_match('/°$/', $od)) {
+                $od .= '°';
+            }
+            if ($oi !== '' && !preg_match('/°$/', $oi)) {
+                $oi .= '°';
+            }
+        }
+
+        $lines = [];
+        if ($od !== '') {
+            $lines[] = '**Ojo Derecho: **' . $od;
+        }
+        if ($oi !== '') {
+            $lines[] = '**Ojo Izquierdo: **' . $oi;
+        }
+
+        return trim(implode("\n", $lines));
+    }
+
+    private function construirConclusionesInforme(?array $payload): string
+    {
+        if (!$payload || !is_array($payload)) {
+            return '';
+        }
+
+        $keys = [
+            'conclusiones',
+            'conclusion',
+            'conclusion_general',
+            'conclusionGeneral',
+            'conclusiones_generales',
+            'conclusion_texto',
+            'conclusionTexto',
+            'diagnostico',
+            'observaciones',
+        ];
+
+        foreach ($keys as $key) {
+            if (!isset($payload[$key])) {
+                continue;
+            }
+            $value = trim((string)$payload[$key]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function resolverFechaHoraInforme(?string $updatedAt, ?string $fechaExamen, ?string $horaExamen): array
+    {
+        $fecha = '';
+        $hora = '';
+
+        if ($updatedAt) {
+            $timestamp = strtotime($updatedAt);
+            if ($timestamp !== false) {
+                $fecha = date('Y-m-d', $timestamp);
+                $hora = date('H:i', $timestamp);
+            }
+        }
+
+        if ($fecha === '' && $fechaExamen) {
+            $fecha = (string)$fechaExamen;
+        }
+
+        if ($hora === '' && $horaExamen) {
+            $hora = substr((string)$horaExamen, 0, 5);
+        }
+
+        if ($fecha === '') {
+            $fecha = date('Y-m-d');
+        }
+
+        if ($hora === '') {
+            $hora = date('H:i');
+        }
+
+        return [$fecha, $hora];
+    }
+
+    private function extraerCodigoTarifario(string $texto): ?string
+    {
+        if (preg_match('/\b(\d{3,})\b/', $texto, $match)) {
+            return $match[1];
+        }
+
+        return null;
+    }
+
+    private function obtenerTarifarioPorCodigo(string $codigo): ?array
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT codigo, descripcion, short_description FROM tarifario_2014 WHERE codigo = :codigo LIMIT 1'
+        );
+        $stmt->bindValue(':codigo', $codigo, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            return $row;
+        }
+
+        $codigoSinCeros = ltrim($codigo, '0');
+        if ($codigoSinCeros === '' || $codigoSinCeros === $codigo) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT codigo, descripcion, short_description FROM tarifario_2014 WHERE codigo = :codigo LIMIT 1'
+        );
+        $stmt->bindValue(':codigo', $codigoSinCeros, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row ?: null;
+    }
+
+    /**
+     * @return array{nombres: string, apellido1: string, apellido2: string, documento: string}
+     */
+    private function obtenerDatosFirmante(?int $firmanteId): array
+    {
+        if (!$firmanteId) {
+            return [
+                'nombres' => '',
+                'apellido1' => '',
+                'apellido2' => '',
+                'documento' => '',
+                'registro' => '',
+                'firma' => '',
+                'signature_path' => '',
+            ];
+        }
+
+        $stmt = $this->pdo->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
+        $stmt->bindValue(':id', $firmanteId, PDO::PARAM_INT);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $nombres = trim((string)($row['first_name'] ?? ''));
+        $segundoNombre = trim((string)($row['middle_name'] ?? ''));
+        if ($segundoNombre !== '') {
+            $nombres = trim($nombres . ' ' . $segundoNombre);
+        }
+
+        $apellido1 = trim((string)($row['last_name'] ?? ''));
+        $apellido2 = trim((string)($row['second_last_name'] ?? ''));
+
+        $documento = trim((string)($row['cedula'] ?? ''));
+        $registro = trim((string)($row['registro'] ?? ''));
+
+        return [
+            'nombres' => $nombres,
+            'apellido1' => $apellido1,
+            'apellido2' => $apellido2,
+            'documento' => $documento,
+            'registro' => $registro,
+            'firma' => (string)($row['firma'] ?? ''),
+            'signature_path' => (string)($row['signature_path'] ?? ''),
+        ];
     }
 
 
@@ -1565,8 +1978,8 @@ class ExamenController extends BaseController
      */
     private function buildImagenesRealizadasFilters(): array
     {
-        $fechaInicio = trim((string) ($_GET['fecha_inicio'] ?? ''));
-        $fechaFin = trim((string) ($_GET['fecha_fin'] ?? ''));
+        $fechaInicio = trim((string)($_GET['fecha_inicio'] ?? ''));
+        $fechaFin = trim((string)($_GET['fecha_fin'] ?? ''));
 
         $fechaInicio = $this->normalizeDateFilter($fechaInicio, 'first day of this month');
         $fechaFin = $this->normalizeDateFilter($fechaFin, 'last day of this month');
@@ -1574,10 +1987,10 @@ class ExamenController extends BaseController
         return [
             'fecha_inicio' => $fechaInicio,
             'fecha_fin' => $fechaFin,
-            'afiliacion' => trim((string) ($_GET['afiliacion'] ?? '')),
-            'tipo_examen' => trim((string) ($_GET['tipo_examen'] ?? '')),
-            'paciente' => trim((string) ($_GET['paciente'] ?? '')),
-            'estado_agenda' => trim((string) ($_GET['estado_agenda'] ?? '')),
+            'afiliacion' => trim((string)($_GET['afiliacion'] ?? '')),
+            'tipo_examen' => trim((string)($_GET['tipo_examen'] ?? '')),
+            'paciente' => trim((string)($_GET['paciente'] ?? '')),
+            'estado_agenda' => trim((string)($_GET['estado_agenda'] ?? '')),
         ];
     }
 
@@ -1601,8 +2014,8 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
+        $tipoExamen = trim((string)($payload['tipo_examen'] ?? ''));
 
         if ($id <= 0 || $tipoExamen === '') {
             $this->json(['success' => false, 'error' => 'Datos incompletos para actualizar'], 422);
@@ -1625,7 +2038,7 @@ class ExamenController extends BaseController
         }
 
         $payload = $this->getRequestBody();
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
+        $id = isset($payload['id']) ? (int)$payload['id'] : 0;
 
         if ($id <= 0) {
             $this->json(['success' => false, 'error' => 'ID inválido'], 422);
@@ -1670,11 +2083,11 @@ class ExamenController extends BaseController
      */
     private function sanitizeReportFilters(array $filters): array
     {
-        $search = trim((string) ($filters['search'] ?? ''));
-        $doctor = trim((string) ($filters['doctor'] ?? ''));
-        $afiliacion = trim((string) ($filters['afiliacion'] ?? ''));
-        $prioridad = trim((string) ($filters['prioridad'] ?? ''));
-        $estado = trim((string) ($filters['estado'] ?? ''));
+        $search = trim((string)($filters['search'] ?? ''));
+        $doctor = trim((string)($filters['doctor'] ?? ''));
+        $afiliacion = trim((string)($filters['afiliacion'] ?? ''));
+        $prioridad = trim((string)($filters['prioridad'] ?? ''));
+        $estado = trim((string)($filters['estado'] ?? ''));
 
         $allowedPriorities = ['normal', 'pendiente', 'urgente'];
         if ($prioridad !== '' && !in_array(strtolower($prioridad), $allowedPriorities, true)) {
@@ -1685,7 +2098,7 @@ class ExamenController extends BaseController
         $dateTo = $this->normalizeDateInput($filters['date_to'] ?? null);
 
         if (!$dateFrom && !$dateTo && !empty($filters['fechaTexto'])) {
-            [$dateFrom, $dateTo] = $this->parseDateRange((string) $filters['fechaTexto']);
+            [$dateFrom, $dateTo] = $this->parseDateRange((string)$filters['fechaTexto']);
         }
 
         return [
@@ -1705,7 +2118,7 @@ class ExamenController extends BaseController
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
         if ($value === '') {
             return null;
         }
@@ -1777,8 +2190,8 @@ class ExamenController extends BaseController
                 }
 
                 $haystack = function_exists('mb_strtolower')
-                    ? mb_strtolower((string) $value, 'UTF-8')
-                    : strtolower((string) $value);
+                    ? mb_strtolower((string)$value, 'UTF-8')
+                    : strtolower((string)$value);
 
                 if (str_contains($haystack, $term)) {
                     return true;
@@ -1849,7 +2262,7 @@ class ExamenController extends BaseController
             $estadoSlug = $this->estadoService->normalizeSlug($metricConfig['estado']);
             return array_values(array_filter($examenes, function (array $row) use ($estadoSlug): bool {
                 $rawEstado = $row['kanban_estado'] ?? ($row['estado'] ?? '');
-                $estadoActual = $this->estadoService->normalizeSlug((string) $rawEstado);
+                $estadoActual = $this->estadoService->normalizeSlug((string)$rawEstado);
 
                 return $estadoActual === $estadoSlug;
             }));
@@ -1932,7 +2345,7 @@ class ExamenController extends BaseController
             $estadoSlug = $this->estadoService->normalizeSlug($filters['estado']);
             $examenes = array_values(array_filter(
                 $examenes,
-                fn(array $row): bool => $this->estadoService->normalizeSlug((string) ($row['kanban_estado'] ?? ($row['estado'] ?? ''))) === $estadoSlug
+                fn(array $row): bool => $this->estadoService->normalizeSlug((string)($row['kanban_estado'] ?? ($row['estado'] ?? ''))) === $estadoSlug
             ));
         }
 
@@ -1960,7 +2373,7 @@ class ExamenController extends BaseController
 
     private function getCurrentUserId(): ?int
     {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
     }
 
     private function transformExamenRow(array $row): array
@@ -1995,7 +2408,7 @@ class ExamenController extends BaseController
         if ($fechaReferencia) {
             $dt = $this->parseFecha($fechaReferencia);
             if ($dt) {
-                $dias = max(0, (int) floor((time() - $dt->getTimestamp()) / 86400));
+                $dias = max(0, (int)floor((time() - $dt->getTimestamp()) / 86400));
             }
         }
 
@@ -2105,7 +2518,7 @@ class ExamenController extends BaseController
 
         foreach ($examenes as $examen) {
             $estadoBase = $examen['kanban_estado'] ?? $examen['estado'] ?? 'Pendiente';
-            $estado = strtolower(trim((string) $estadoBase));
+            $estado = strtolower(trim((string)$estadoBase));
             $contadores[$estado] = ($contadores[$estado] ?? 0) + 1;
 
             if ($contadores[$estado] <= $limitePorColumna) {

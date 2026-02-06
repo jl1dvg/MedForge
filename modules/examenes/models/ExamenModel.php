@@ -905,6 +905,21 @@ class ExamenModel
         return $stmt->execute();
     }
 
+    public function obtenerProcedimientoProyectadoPorFormHc(string $formId, string $hcNumber): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT pp.id, pp.form_id, pp.hc_number, pp.procedimiento_proyectado, pp.fecha, pp.hora, pp.afiliacion, pp.estado_agenda
+             FROM procedimiento_proyectado pp
+             WHERE pp.form_id = :form_id AND pp.hc_number = :hc_number
+             LIMIT 1'
+        );
+        $stmt->bindValue(':form_id', $formId, PDO::PARAM_STR);
+        $stmt->bindValue(':hc_number', $hcNumber, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     public function obtenerInformeImagen(string $formId): ?array
     {
         $stmt = $this->db->prepare(
