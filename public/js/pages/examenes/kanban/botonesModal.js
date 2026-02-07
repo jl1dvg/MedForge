@@ -141,19 +141,6 @@ export function inicializarBotonesModal() {
         });
     }
 
-    const examenesBtn = document.getElementById('btnSolicitarExamenesPrequirurgicos');
-    if (examenesBtn && examenesBtn.dataset.listenerAttached !== 'true') {
-        examenesBtn.dataset.listenerAttached = 'true';
-        examenesBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-
-            const tarjeta = obtenerTarjetaActiva();
-            imprimirExamenesPrequirurgicos(tarjeta);
-        });
-    }
-
     const coberturaBtn = document.getElementById('btnSolicitarCobertura');
     if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
         coberturaBtn.dataset.listenerAttached = 'true';

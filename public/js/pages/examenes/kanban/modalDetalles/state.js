@@ -1,5 +1,5 @@
 import { findExamenById } from "./store.js";
-import { escapeHtml, formatIsoDate } from "./utils.js";
+import { escapeHtml, formatIsoDate, resolveDerivacionStatus } from "./utils.js";
 
 export function resetEstadoContext() {
     const container = document.getElementById("prefacturaState");
@@ -59,6 +59,19 @@ export function renderEstadoContext(examenId) {
         return;
     }
 
+    const derivacionVigencia =
+        examen.derivacion_fecha_vigencia ||
+        examen.derivacion_fecha_vigencia_sel ||
+        null;
+    const derivacionStatus =
+        examen.derivacion_status || resolveDerivacionStatus(derivacionVigencia);
+    const derivacionLabel =
+        derivacionStatus === "vigente"
+            ? "Vigente"
+            : derivacionStatus === "vencida"
+                ? "Vencida"
+                : "Sin derivación";
+
     container.classList.remove("d-none");
     container.innerHTML = `
         <div class="card border-0 shadow-sm">
@@ -69,6 +82,7 @@ export function renderEstadoContext(examenId) {
                     <div class="col-md-4"><strong>Responsable:</strong> ${escapeHtml(examen.crm_responsable_nombre || "Sin responsable")}</div>
                     <div class="col-md-4"><strong>Prioridad:</strong> ${escapeHtml(examen.prioridad || "Normal")}</div>
                     <div class="col-md-4"><strong>Fuente:</strong> ${escapeHtml(examen.crm_fuente || "Consulta")}</div>
+                    <div class="col-md-4"><strong>Derivación:</strong> ${escapeHtml(derivacionLabel)}</div>
                     <div class="col-md-4"><strong>Fecha:</strong> ${escapeHtml(formatIsoDate(examen.consulta_fecha || examen.created_at))}</div>
                 </div>
             </div>

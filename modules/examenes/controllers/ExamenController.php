@@ -993,6 +993,246 @@ class ExamenController extends BaseController
         }
     }
 
+    public function derivacionDetalle(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
+        $formId = trim((string) ($_GET['form_id'] ?? ''));
+        $examenId = isset($_GET['examen_id']) ? (int) $_GET['examen_id'] : null;
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Faltan parámetros para consultar la derivación.',
+                ],
+                400
+            );
+            return;
+        }
+
+        try {
+            $derivacion = $this->ensureDerivacion($formId, $hcNumber, $examenId);
+        } catch (Throwable $e) {
+            $this->json(
+                [
+                    'success' => true,
+                    'has_derivacion' => false,
+                    'derivacion_status' => 'error',
+                    'derivacion' => null,
+                ],
+                200
+            );
+            return;
+        }
+
+        if (!$derivacion) {
+            $this->json(
+                [
+                    'success' => true,
+                    'has_derivacion' => false,
+                    'derivacion_status' => 'missing',
+                    'message' => 'No hay derivación registrada para este examen.',
+                    'derivacion' => null,
+                ]
+            );
+            return;
+        }
+
+        $vigenciaStatus = $this->resolveDerivacionVigenciaStatus(
+            isset($derivacion['fecha_vigencia']) && is_string($derivacion['fecha_vigencia'])
+                ? $derivacion['fecha_vigencia']
+                : null
+        );
+        $estadoSugerido = null;
+        if ($vigenciaStatus) {
+            $examen = $this->examenModel->obtenerExamenPorFormHc($formId, $hcNumber, $examenId);
+            if ($examen) {
+                $estadoSugerido = $this->resolveEstadoPorDerivacion($vigenciaStatus, (string) ($examen['estado'] ?? ''));
+                if ($estadoSugerido) {
+                    $this->actualizarEstadoPorFormHc(
+                        $formId,
+                        $hcNumber,
+                        $estadoSugerido,
+                        $this->getCurrentUserId(),
+                        'derivacion_vigencia',
+                        'Actualizado por vigencia de derivación'
+                    );
+                }
+            }
+        }
+
+        $this->json(
+            [
+                'success' => true,
+                'has_derivacion' => true,
+                'derivacion_status' => 'ok',
+                'message' => null,
+                'derivacion' => $derivacion,
+                'vigencia_status' => $vigenciaStatus,
+                'estado_sugerido' => $estadoSugerido,
+            ]
+        );
+    }
+
+    public function derivacionPreseleccion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $hcNumber = trim((string) ($payload['hc_number'] ?? $_POST['hc_number'] ?? ''));
+        $formId = trim((string) ($payload['form_id'] ?? $_POST['form_id'] ?? ''));
+        $examenId = isset($payload['examen_id'])
+            ? (int) $payload['examen_id']
+            : (isset($_POST['examen_id']) ? (int) $_POST['examen_id'] : null);
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Faltan parámetros para consultar derivaciones disponibles.',
+                ],
+                400
+            );
+            return;
+        }
+
+        $seleccion = null;
+        if ($examenId) {
+            $seleccion = $this->examenModel->obtenerDerivacionPreseleccion($examenId);
+        }
+
+        if (!$seleccion) {
+            $seleccion = $this->examenModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        }
+
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            $this->json([
+                'success' => true,
+                'selected' => [
+                    'codigo_derivacion' => $seleccion['derivacion_codigo'] ?? null,
+                    'pedido_id_mas_antiguo' => $seleccion['derivacion_pedido_id'] ?? null,
+                    'lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+                    'fecha_vigencia' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+                    'prefactura' => $seleccion['derivacion_prefactura'] ?? null,
+                ],
+                'needs_selection' => false,
+                'options' => [],
+            ]);
+            return;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_index_admisiones_hc.py';
+        if (!is_file($script)) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se encontró el script de admisiones.',
+                ],
+                500
+            );
+            return;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s --group --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $rawOutput = trim(implode("\n", $output));
+        $parsed = null;
+
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string) $output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'No se pudo interpretar la respuesta del scraper de admisiones.',
+                    'raw_output' => $rawOutput,
+                    'exit_code' => $exitCode,
+                ],
+                500
+            );
+            return;
+        }
+
+        $grouped = $parsed['grouped'] ?? [];
+        $options = [];
+        foreach ($grouped as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $data = $item['data'] ?? [];
+            $options[] = [
+                'codigo_derivacion' => $item['codigo_derivacion'] ?? null,
+                'pedido_id_mas_antiguo' => $item['pedido_id_mas_antiguo'] ?? null,
+                'lateralidad' => $item['lateralidad'] ?? null,
+                'fecha_vigencia' => $data['fecha_grupo'] ?? null,
+                'prefactura' => $data['prefactura'] ?? null,
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'selected' => null,
+            'needs_selection' => true,
+            'options' => $options,
+        ]);
+    }
+
+    public function guardarDerivacionPreseleccion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $examenId = isset($payload['examen_id']) ? (int) $payload['examen_id'] : null;
+        $codigo = trim((string) ($payload['codigo_derivacion'] ?? ''));
+        $pedidoId = trim((string) ($payload['pedido_id_mas_antiguo'] ?? ''));
+        $lateralidad = trim((string) ($payload['lateralidad'] ?? ''));
+        $vigencia = trim((string) ($payload['fecha_vigencia'] ?? ''));
+        $prefactura = trim((string) ($payload['prefactura'] ?? ''));
+
+        if (!$examenId || $codigo === '' || $pedidoId === '') {
+            $this->json(
+                [
+                    'success' => false,
+                    'message' => 'Datos incompletos para guardar la derivación seleccionada.',
+                ],
+                422
+            );
+            return;
+        }
+
+        $saved = $this->examenModel->guardarDerivacionPreseleccion($examenId, [
+            'derivacion_codigo' => $codigo,
+            'derivacion_pedido_id' => $pedidoId,
+            'derivacion_lateralidad' => $lateralidad !== '' ? $lateralidad : null,
+            'derivacion_fecha_vigencia_sel' => $vigencia !== '' ? $vigencia : null,
+            'derivacion_prefactura' => $prefactura !== '' ? $prefactura : null,
+        ]);
+
+        $this->json([
+            'success' => $saved,
+        ]);
+    }
+
     public function prefactura(): void
     {
         $this->requireAuth();
@@ -1024,6 +1264,33 @@ class ExamenController extends BaseController
         $examen = $this->examenModel->obtenerExamenPorFormHc($formId, $hcNumber, $examenId);
         if (!$examen) {
             return ['examen' => null];
+        }
+
+        $examenIdValue = isset($examen['id']) ? (int) $examen['id'] : 0;
+        if ($examenIdValue > 0) {
+            $this->ensureDerivacionPreseleccionAuto($hcNumber, $formId, $examenIdValue);
+        }
+
+        $derivacion = null;
+        try {
+            $derivacion = $this->ensureDerivacion($formId, $hcNumber, $examenIdValue > 0 ? $examenIdValue : null);
+        } catch (Throwable $e) {
+            $derivacion = null;
+        }
+
+        $fechaVigencia = $derivacion['fecha_vigencia'] ?? ($examen['derivacion_fecha_vigencia_sel'] ?? null);
+        $vigenciaStatus = $this->resolveDerivacionVigenciaStatus(is_string($fechaVigencia) ? $fechaVigencia : null);
+        $estadoSugerido = $this->resolveEstadoPorDerivacion($vigenciaStatus, (string) ($examen['estado'] ?? ''));
+        if ($estadoSugerido) {
+            $this->actualizarEstadoPorFormHc(
+                $formId,
+                $hcNumber,
+                $estadoSugerido,
+                $this->getCurrentUserId(),
+                'derivacion_vigencia',
+                'Actualizado por vigencia de derivación'
+            );
+            $examen['estado'] = $estadoSugerido;
         }
 
         $paciente = $this->pacienteService->getPatientDetails($hcNumber);
@@ -1061,6 +1328,8 @@ class ExamenController extends BaseController
             'imagenes_solicitadas' => $imagenesSolicitadas,
             'trazabilidad' => $trazabilidad,
             'crm' => $crmResumen,
+            'derivacion' => $derivacion,
+            'derivacion_vigencia' => $vigenciaStatus,
         ];
     }
 
@@ -2414,6 +2683,15 @@ class ExamenController extends BaseController
 
         $row['dias_transcurridos'] = $dias;
 
+        if (!empty($row['derivacion_fecha_vigencia_sel']) && empty($row['derivacion_fecha_vigencia'])) {
+            $row['derivacion_fecha_vigencia'] = $row['derivacion_fecha_vigencia_sel'];
+        }
+        $row['derivacion_status'] = $this->resolveDerivacionVigenciaStatus(
+            isset($row['derivacion_fecha_vigencia']) && is_string($row['derivacion_fecha_vigencia'])
+                ? $row['derivacion_fecha_vigencia']
+                : null
+        );
+
         return $row;
     }
 
@@ -2471,6 +2749,211 @@ class ExamenController extends BaseController
         }
 
         return $valorB <=> $valorA;
+    }
+
+    private function resolveDerivacionVigenciaStatus(?string $fechaVigencia): ?string
+    {
+        if (!$fechaVigencia) {
+            return null;
+        }
+
+        $dt = $this->parseFecha($fechaVigencia);
+        if (!$dt) {
+            return null;
+        }
+
+        $hoy = new \DateTimeImmutable('today');
+        return $dt >= $hoy ? 'vigente' : 'vencida';
+    }
+
+    private function resolveEstadoPorDerivacion(?string $vigenciaStatus, string $estadoActual): ?string
+    {
+        if (!$vigenciaStatus) {
+            return null;
+        }
+
+        $slug = $this->estadoService->normalizeSlug($estadoActual);
+        if ($slug === '') {
+            $slug = 'recibido';
+        }
+        if ($slug === 'completado') {
+            return null;
+        }
+
+        if ($vigenciaStatus === 'vencida') {
+            return $slug !== 'revision-cobertura' ? 'Revisión de cobertura' : null;
+        }
+
+        if ($vigenciaStatus === 'vigente') {
+            if (in_array($slug, ['recibido', 'llamado', 'revision-cobertura'], true)) {
+                return 'Listo para agenda';
+            }
+        }
+
+        return null;
+    }
+
+    private function actualizarEstadoPorFormHc(
+        string $formId,
+        string $hcNumber,
+        string $estado,
+        ?int $changedBy = null,
+        ?string $origen = null,
+        ?string $observacion = null
+    ): void {
+        if ($formId === '' || $hcNumber === '') {
+            return;
+        }
+
+        $examenes = $this->examenModel->obtenerExamenesPorFormHc($formId, $hcNumber);
+        foreach ($examenes as $registro) {
+            $id = isset($registro['id']) ? (int) $registro['id'] : 0;
+            if ($id <= 0) {
+                continue;
+            }
+            $this->actualizarExamenParcial($id, ['estado' => $estado], $changedBy, $origen, $observacion);
+        }
+    }
+
+    private function ensureDerivacionPreseleccionAuto(string $hcNumber, string $formId, int $examenId): void
+    {
+        $seleccion = $this->examenModel->obtenerDerivacionPreseleccion($examenId);
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            return;
+        }
+
+        $seleccion = $this->examenModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        if (!empty($seleccion['derivacion_pedido_id'])) {
+            $this->examenModel->guardarDerivacionPreseleccion($examenId, [
+                'derivacion_codigo' => $seleccion['derivacion_codigo'] ?? null,
+                'derivacion_pedido_id' => $seleccion['derivacion_pedido_id'] ?? null,
+                'derivacion_lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+                'derivacion_fecha_vigencia_sel' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+                'derivacion_prefactura' => $seleccion['derivacion_prefactura'] ?? null,
+            ]);
+            return;
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_index_admisiones_hc.py';
+        if (!is_file($script)) {
+            return;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s --group --quiet 2>&1',
+            escapeshellarg($script),
+            escapeshellarg($hcNumber)
+        );
+
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+
+        $parsed = null;
+        for ($i = count($output) - 1; $i >= 0; $i--) {
+            $line = trim((string) $output[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $decoded = json_decode($line, true);
+            if (is_array($decoded)) {
+                $parsed = $decoded;
+                break;
+            }
+        }
+
+        if (!$parsed) {
+            return;
+        }
+
+        $grouped = $parsed['grouped'] ?? [];
+        $options = [];
+        foreach ($grouped as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $data = $item['data'] ?? [];
+            $options[] = [
+                'codigo_derivacion' => $item['codigo_derivacion'] ?? null,
+                'pedido_id_mas_antiguo' => $item['pedido_id_mas_antiguo'] ?? null,
+                'lateralidad' => $item['lateralidad'] ?? null,
+                'fecha_vigencia' => $data['fecha_grupo'] ?? null,
+                'prefactura' => $data['prefactura'] ?? null,
+            ];
+        }
+
+        if (count($options) !== 1) {
+            return;
+        }
+
+        $option = $options[0];
+        $pedidoId = trim((string) ($option['pedido_id_mas_antiguo'] ?? ''));
+        $codigo = trim((string) ($option['codigo_derivacion'] ?? ''));
+
+        if ($pedidoId === '' || $codigo === '') {
+            return;
+        }
+
+        $this->examenModel->guardarDerivacionPreseleccion($examenId, [
+            'derivacion_codigo' => $codigo,
+            'derivacion_pedido_id' => $pedidoId,
+            'derivacion_lateralidad' => $option['lateralidad'] ?? null,
+            'derivacion_fecha_vigencia_sel' => $option['fecha_vigencia'] ?? null,
+            'derivacion_prefactura' => $option['prefactura'] ?? null,
+        ]);
+    }
+
+    /**
+     * Verifica derivación; si no existe, intenta scrapear y reconsultar.
+     */
+    private function ensureDerivacion(string $formId, string $hcNumber, ?int $examenId = null): ?array
+    {
+        $seleccion = null;
+        if ($examenId) {
+            $seleccion = $this->examenModel->obtenerDerivacionPreseleccion($examenId);
+        }
+        if (!$seleccion) {
+            $seleccion = $this->examenModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+        }
+
+        $lookupFormId = $seleccion['derivacion_pedido_id'] ?? $formId;
+        $hasSelection = !empty($seleccion['derivacion_pedido_id']);
+
+        if ($hasSelection) {
+            $derivacion = $this->examenModel->obtenerDerivacionPorFormId((string) $lookupFormId);
+            if ($derivacion !== false && $derivacion) {
+                return $derivacion;
+            }
+        } else {
+            $derivacion = $this->examenModel->obtenerDerivacionPorFormId($formId);
+            if ($derivacion !== false && $derivacion) {
+                return $derivacion;
+            }
+        }
+
+        $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
+        if (!is_file($script)) {
+            return null;
+        }
+
+        $cmd = sprintf(
+            'python3 %s %s %s',
+            escapeshellarg($script),
+            escapeshellarg($lookupFormId),
+            escapeshellarg($hcNumber)
+        );
+
+        try {
+            @exec($cmd);
+        } catch (Throwable $e) {
+            // Silenciar para no romper flujo
+        }
+
+        $derivacion = $this->examenModel->obtenerDerivacionPorFormId((string) $lookupFormId);
+        if ($derivacion === false) {
+            return null;
+        }
+        return $derivacion ?: null;
     }
 
     private function parseFecha($valor): ?\DateTimeImmutable

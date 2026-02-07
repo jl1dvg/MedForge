@@ -10,6 +10,7 @@ $trazabilidad = $viewData['trazabilidad'] ?? [];
 $crm = $viewData['crm'] ?? [];
 $crmDetalle = $crm['detalle'] ?? [];
 $crmAdjuntos = $crm['adjuntos'] ?? [];
+$derivacion = $viewData['derivacion'] ?? [];
 
 if (empty($examen)) {
     echo '<p class="text-muted mb-0">No se encontraron detalles para este examen.</p>';
@@ -64,6 +65,43 @@ $totalNotas = (int) (($crmDetalle['crm_total_notas'] ?? $examen['crm_total_notas
 $totalAdjuntos = (int) (($crmDetalle['crm_total_adjuntos'] ?? $examen['crm_total_adjuntos'] ?? 0));
 $tareasPendientes = (int) (($crmDetalle['crm_tareas_pendientes'] ?? $examen['crm_tareas_pendientes'] ?? 0));
 $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_total'] ?? 0));
+
+$hasDerivacion = !empty($derivacion['cod_derivacion']);
+$vigenciaTexto = 'No disponible';
+$vigenciaBadge = null;
+$derivacionVencida = false;
+if (!empty($derivacion['fecha_vigencia'])) {
+    try {
+        $vigencia = new DateTime($derivacion['fecha_vigencia']);
+        $hoy = new DateTime();
+        $intervalo = (int) $hoy->diff($vigencia)->format('%r%a');
+        $derivacionVencida = $intervalo < 0;
+
+        if ($intervalo >= 60) {
+            $vigenciaBadge = ['color' => 'success', 'texto' => 'Vigente', 'icon' => 'bi-check-circle'];
+        } elseif ($intervalo >= 30) {
+            $vigenciaBadge = ['color' => 'info', 'texto' => 'Vigente', 'icon' => 'bi-info-circle'];
+        } elseif ($intervalo >= 15) {
+            $vigenciaBadge = ['color' => 'warning', 'texto' => 'Por vencer', 'icon' => 'bi-hourglass-split'];
+        } elseif ($intervalo >= 0) {
+            $vigenciaBadge = ['color' => 'danger', 'texto' => 'Urgente', 'icon' => 'bi-exclamation-triangle'];
+        } else {
+            $vigenciaBadge = ['color' => 'dark', 'texto' => 'Vencida', 'icon' => 'bi-x-circle'];
+        }
+
+        $vigenciaTexto = "<strong>Días para caducar:</strong> {$intervalo} días";
+    } catch (Exception $e) {
+        $vigenciaTexto = 'No disponible';
+    }
+}
+
+$archivoHref = null;
+$derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
+if (!empty($derivacionId)) {
+    $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
+} elseif (!empty($derivacion['archivo_derivacion_path'])) {
+    $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
+}
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -112,6 +150,9 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="prefactura-tab-imagenes-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-imagenes" type="button" role="tab" aria-controls="prefactura-tab-imagenes" aria-selected="false">Imágenes solicitadas</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="prefactura-tab-derivacion-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-derivacion" type="button" role="tab" aria-controls="prefactura-tab-derivacion" aria-selected="false">Derivación</button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="prefactura-tab-trazabilidad-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-trazabilidad" type="button" role="tab" aria-controls="prefactura-tab-trazabilidad" aria-selected="false">Trazabilidad</button>
@@ -263,6 +304,94 @@ $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_to
             <?php else: ?>
                 <p class="text-muted small mb-0">Aún no se han cargado evidencias locales para este examen.</p>
             <?php endif; ?>
+        </div>
+
+        <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
+            <div id="prefacturaDerivacionContent">
+                <?php if (!$hasDerivacion): ?>
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body d-flex flex-column gap-2">
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <span class="badge bg-secondary">Sin derivación</span>
+                                <span class="text-muted">Seguro particular: requiere autorización.</span>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
+                                Solicitar autorización
+                            </button>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <?php if (!empty($archivoHref) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
+                        <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
+                            <div>
+                                <strong>📎 Derivación:</strong>
+                                <span class="text-muted ms-1">Documento adjunto disponible.</span>
+                            </div>
+                            <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
+                               href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank"
+                               rel="noopener">
+                                <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+                            </a>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="box box-outline-primary">
+                        <div class="box-header">
+                            <h5 class="box-title"><strong>📌 Información de la Derivación</strong></h5>
+                        </div>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item"><i class="bi bi-upc-scan"></i> <strong>Código Derivación:</strong>
+                                <?= htmlspecialchars($derivacion['cod_derivacion'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                            </li>
+                            <li class="list-group-item"><i class="bi bi-calendar-check"></i> <strong>Fecha Registro:</strong>
+                                <?= htmlspecialchars($derivacion['fecha_registro'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                            </li>
+                            <li class="list-group-item"><i class="bi bi-calendar-event"></i> <strong>Fecha Vigencia:</strong>
+                                <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
+                                <?php if ($vigenciaBadge): ?>
+                                    <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
+                                        <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </li>
+                            <li class="list-group-item">
+                                <i class="bi bi-clipboard2-pulse"></i>
+                                <strong>Diagnóstico:</strong>
+                                <?php if (!empty($derivacion['diagnosticos']) && is_array($derivacion['diagnosticos'])): ?>
+                                    <ul class="mb-0 mt-2">
+                                        <?php foreach ($derivacion['diagnosticos'] as $dx): ?>
+                                            <li>
+                                                <span class="text-primary">
+                                                    <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                                — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                                <?php if (!empty($dx['lateralidad'])): ?>
+                                                    (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                <?php elseif (!empty($derivacion['diagnostico'])): ?>
+                                    <?php
+                                    $items = array_filter(array_map('trim', explode(';', $derivacion['diagnostico'])));
+                                    ?>
+                                    <ul class="mb-0 mt-2">
+                                        <?php foreach ($items as $item): ?>
+                                            <li><?= htmlspecialchars($item, ENT_QUOTES, 'UTF-8') ?></li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                <?php else: ?>
+                                    <span class="text-muted">No disponible</span>
+                                <?php endif; ?>
+                            </li>
+                        </ul>
+                        <div class="box-body"></div>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="tab-pane fade" id="prefactura-tab-trazabilidad" role="tabpanel" aria-labelledby="prefactura-tab-trazabilidad-tab">

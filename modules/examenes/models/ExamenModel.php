@@ -10,6 +10,8 @@ use PDO;
 class ExamenModel
 {
     private PDO $db;
+    /** @var array<string, bool>|null */
+    private ?array $examenColumns = null;
 
     public function __construct(PDO $pdo)
     {
@@ -18,6 +20,12 @@ class ExamenModel
 
     public function fetchExamenesConDetallesFiltrado(array $filtros = []): array
     {
+        $derivacionCodigoExpr = $this->selectExamenColumn('derivacion_codigo');
+        $derivacionPedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
+        $derivacionLateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
+        $derivacionVigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
+        $derivacionPrefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
+
         $sql = "SELECT
                 ce.id,
                 ce.hc_number,
@@ -33,6 +41,11 @@ class ExamenModel
                 ce.prioridad,
                 ce.lateralidad,
                 ce.observaciones,
+                {$derivacionCodigoExpr} AS derivacion_codigo,
+                {$derivacionPedidoExpr} AS derivacion_pedido_id,
+                {$derivacionLateralidadExpr} AS derivacion_lateralidad,
+                {$derivacionVigenciaExpr} AS derivacion_fecha_vigencia_sel,
+                {$derivacionPrefacturaExpr} AS derivacion_prefactura,
                 ce.turno,
                 ce.consulta_fecha,
                 ce.created_at,
@@ -161,6 +174,12 @@ class ExamenModel
 
     public function obtenerEstadosPorHc(string $hcNumber): array
     {
+        $derivacionCodigoExpr = $this->selectExamenColumn('derivacion_codigo');
+        $derivacionPedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
+        $derivacionLateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
+        $derivacionVigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
+        $derivacionPrefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
+
         $sql = "SELECT
                 ce.id,
                 ce.hc_number,
@@ -173,6 +192,11 @@ class ExamenModel
                 ce.prioridad,
                 ce.lateralidad,
                 ce.observaciones,
+                {$derivacionCodigoExpr} AS derivacion_codigo,
+                {$derivacionPedidoExpr} AS derivacion_pedido_id,
+                {$derivacionLateralidadExpr} AS derivacion_lateralidad,
+                {$derivacionVigenciaExpr} AS derivacion_fecha_vigencia_sel,
+                {$derivacionPrefacturaExpr} AS derivacion_prefactura,
                 ce.turno,
                 ce.consulta_fecha,
                 ce.created_at,
@@ -203,6 +227,12 @@ class ExamenModel
 
     public function obtenerExamenPorFormHc(string $formId, string $hcNumber, ?int $examenId = null): ?array
     {
+        $derivacionCodigoExpr = $this->selectExamenColumn('derivacion_codigo');
+        $derivacionPedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
+        $derivacionLateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
+        $derivacionVigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
+        $derivacionPrefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
+
         $sql = "SELECT
                 ce.id,
                 ce.hc_number,
@@ -215,6 +245,11 @@ class ExamenModel
                 ce.prioridad,
                 ce.lateralidad,
                 ce.observaciones,
+                {$derivacionCodigoExpr} AS derivacion_codigo,
+                {$derivacionPedidoExpr} AS derivacion_pedido_id,
+                {$derivacionLateralidadExpr} AS derivacion_lateralidad,
+                {$derivacionVigenciaExpr} AS derivacion_fecha_vigencia_sel,
+                {$derivacionPrefacturaExpr} AS derivacion_prefactura,
                 ce.turno,
                 ce.consulta_fecha,
                 ce.created_at,
@@ -339,6 +374,148 @@ class ExamenModel
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         return $row ?: null;
+    }
+
+    public function obtenerDerivacionPorFormId(string $formId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                rf.id AS derivacion_id,
+                r.referral_code AS cod_derivacion,
+                r.referral_code AS codigo_derivacion,
+                f.iess_form_id AS form_id,
+                f.hc_number,
+                f.fecha_creacion,
+                f.fecha_registro,
+                COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                f.referido,
+                f.diagnostico,
+                f.sede,
+                f.parentesco,
+                f.archivo_derivacion_path
+             FROM derivaciones_forms f
+             LEFT JOIN derivaciones_referral_forms rf ON rf.form_id = f.id
+             LEFT JOIN derivaciones_referrals r ON r.id = rf.referral_id
+             WHERE f.iess_form_id = ?
+             ORDER BY COALESCE(rf.linked_at, f.updated_at) DESC, f.id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([$formId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row !== false) {
+            $row['id'] = $row['derivacion_id'] ?? null;
+            return $row;
+        }
+
+        $stmtLegacy = $this->db->prepare("SELECT * FROM derivaciones_form_id WHERE form_id = ?");
+        $stmtLegacy->execute([$formId]);
+        return $stmtLegacy->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function obtenerDerivacionPreseleccion(int $examenId): ?array
+    {
+        $codigoExpr = $this->selectExamenColumn('derivacion_codigo');
+        $pedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
+        $lateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
+        $vigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
+        $prefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                {$codigoExpr} AS derivacion_codigo,
+                {$pedidoExpr} AS derivacion_pedido_id,
+                {$lateralidadExpr} AS derivacion_lateralidad,
+                {$vigenciaExpr} AS derivacion_fecha_vigencia_sel,
+                {$prefacturaExpr} AS derivacion_prefactura
+             FROM consulta_examenes ce
+             WHERE ce.id = :id
+             LIMIT 1"
+        );
+        $stmt->execute([':id' => $examenId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return $row;
+    }
+
+    public function obtenerDerivacionPreseleccionPorFormHc(string $formId, string $hcNumber): ?array
+    {
+        $codigoExpr = $this->selectExamenColumn('derivacion_codigo');
+        $pedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
+        $lateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
+        $vigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
+        $prefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                ce.id,
+                {$codigoExpr} AS derivacion_codigo,
+                {$pedidoExpr} AS derivacion_pedido_id,
+                {$lateralidadExpr} AS derivacion_lateralidad,
+                {$vigenciaExpr} AS derivacion_fecha_vigencia_sel,
+                {$prefacturaExpr} AS derivacion_prefactura
+             FROM consulta_examenes ce
+             WHERE ce.form_id = :form_id
+               AND ce.hc_number = :hc
+             ORDER BY ce.id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc' => $hcNumber,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        return $row;
+    }
+
+    public function guardarDerivacionPreseleccion(int $examenId, array $data): bool
+    {
+        $base = $this->obtenerExamenBasico($examenId);
+        if (!$base) {
+            return false;
+        }
+
+        $set = [];
+        $params = [
+            ':form_id' => $base['form_id'],
+            ':hc_number' => $base['hc_number'],
+        ];
+
+        if ($this->hasExamenColumn('derivacion_codigo')) {
+            $set[] = 'derivacion_codigo = :codigo';
+            $params[':codigo'] = $data['derivacion_codigo'] ?? null;
+        }
+        if ($this->hasExamenColumn('derivacion_pedido_id')) {
+            $set[] = 'derivacion_pedido_id = :pedido_id';
+            $params[':pedido_id'] = $data['derivacion_pedido_id'] ?? null;
+        }
+        if ($this->hasExamenColumn('derivacion_lateralidad')) {
+            $set[] = 'derivacion_lateralidad = :lateralidad';
+            $params[':lateralidad'] = $data['derivacion_lateralidad'] ?? null;
+        }
+        if ($this->hasExamenColumn('derivacion_fecha_vigencia_sel')) {
+            $set[] = 'derivacion_fecha_vigencia_sel = :vigencia';
+            $params[':vigencia'] = $data['derivacion_fecha_vigencia_sel'] ?? null;
+        }
+        if ($this->hasExamenColumn('derivacion_prefactura')) {
+            $set[] = 'derivacion_prefactura = :prefactura';
+            $params[':prefactura'] = $data['derivacion_prefactura'] ?? null;
+        }
+
+        if ($set === []) {
+            return false;
+        }
+
+        $stmt = $this->db->prepare(
+            'UPDATE consulta_examenes SET ' . implode(', ', $set) . ' WHERE form_id = :form_id AND hc_number = :hc_number'
+        );
+        $stmt->execute($params);
+
+        return $stmt->rowCount() > 0;
     }
 
     public function actualizarExamenParcial(
@@ -475,6 +652,70 @@ class ExamenModel
             'rows_affected' => $rows,
             'data' => $row,
         ];
+    }
+
+    private function obtenerExamenBasico(int $examenId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT id, form_id, hc_number
+             FROM consulta_examenes
+             WHERE id = :id
+             LIMIT 1"
+        );
+        $stmt->execute([':id' => $examenId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+
+        return [
+            'id' => (int) ($row['id'] ?? $examenId),
+            'form_id' => (string) ($row['form_id'] ?? ''),
+            'hc_number' => (string) ($row['hc_number'] ?? ''),
+        ];
+    }
+
+    private function selectExamenColumn(string $column, string $alias = 'ce', string $fallback = 'NULL'): string
+    {
+        if ($this->hasExamenColumn($column)) {
+            return sprintf('%s.`%s`', $alias, $column);
+        }
+        return $fallback;
+    }
+
+    private function hasExamenColumn(string $column): bool
+    {
+        $columns = $this->loadExamenColumns();
+        return isset($columns[$column]);
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function loadExamenColumns(): array
+    {
+        if ($this->examenColumns !== null) {
+            return $this->examenColumns;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT column_name
+             FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'consulta_examenes'"
+        );
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $this->examenColumns = [];
+        foreach ($rows as $name) {
+            if (!is_string($name)) {
+                continue;
+            }
+            $this->examenColumns[$name] = true;
+        }
+
+        return $this->examenColumns;
     }
 
     public function actualizarEstado(

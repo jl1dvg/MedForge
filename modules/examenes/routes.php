@@ -64,6 +64,14 @@ return function (Router $router) {
         (new ExamenController($pdo))->enviarRecordatorios();
     });
 
+    $router->post('/examenes/derivacion-preseleccion', function (\PDO $pdo) {
+        (new ExamenController($pdo))->derivacionPreseleccion();
+    });
+
+    $router->post('/examenes/derivacion-preseleccion/guardar', function (\PDO $pdo) {
+        (new ExamenController($pdo))->guardarDerivacionPreseleccion();
+    });
+
     $router->get('/examenes/api/estado', function (\PDO $pdo) {
         (new ExamenController($pdo))->apiEstadoGet();
     });
@@ -74,6 +82,10 @@ return function (Router $router) {
 
     $router->get('/examenes/turnero-data', function (\PDO $pdo) {
         (new ExamenController($pdo))->turneroData();
+    });
+
+    $router->get('/examenes/derivacion', function (\PDO $pdo) {
+        (new ExamenController($pdo))->derivacionDetalle();
     });
 
     $router->post('/examenes/turnero-llamar', function (\PDO $pdo) {
