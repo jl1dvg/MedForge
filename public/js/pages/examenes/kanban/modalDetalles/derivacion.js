@@ -261,34 +261,7 @@ export async function asegurarPreseleccionDerivacion({ hc, formId, examenId }) {
     }
 
     if (typeof Swal === "undefined") {
-        const listado = options
-            .map((option, index) => {
-                const value = option.pedido_id_mas_antiguo || "-";
-                const codigo = option.codigo_derivacion || "Sin código";
-                return `${index + 1}) ${codigo} · Pedido ${value}`;
-            })
-            .join("\n");
-        const input = window.prompt(
-            `Selecciona la derivación (escribe el número):\n${listado}`,
-            "1"
-        );
-        if (!input) {
-            return null;
-        }
-        const idx = Number.parseInt(input, 10) - 1;
-        const chosen = options[idx];
-        if (!chosen) {
-            return null;
-        }
-        await guardarPreseleccionDerivacion({
-            examen_id: examenId,
-            codigo_derivacion: chosen.codigo_derivacion,
-            pedido_id_mas_antiguo: chosen.pedido_id_mas_antiguo,
-            lateralidad: chosen.lateralidad,
-            fecha_vigencia: chosen.fecha_vigencia,
-            prefactura: chosen.prefactura,
-        });
-        return chosen;
+        throw new Error("No se puede seleccionar derivación sin SweetAlert.");
     }
 
     const selectedValue = String(options[0]?.pedido_id_mas_antiguo || "");

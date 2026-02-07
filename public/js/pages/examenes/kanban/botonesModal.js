@@ -4,6 +4,13 @@ import { showToast } from './toast.js';
 const PREQUIRURGICO_DEBOUNCE_MS = 900;
 let lastPrequirurgicoOpenAt = 0;
 let prequirurgicoOpening = false;
+const COBERTURA_DEBOUNCE_MS = 1200;
+let lastCoberturaMailAt = 0;
+let coberturaInProgress = false;
+let coberturaMailModalReady = false;
+let coberturaMailSending = false;
+let coberturaEditorReady = false;
+const coberturaTemplateCache = new Map();
 
 function obtenerTarjetaActiva() {
     return document.querySelector('.kanban-card.view-details.active');
@@ -41,6 +48,88 @@ function abrirEnNuevaPestana(url) {
     return false;
 }
 
+function request(url, options = {}) {
+    const config = {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {},
+        ...options,
+    };
+
+    if (config.body && !(config.body instanceof FormData)) {
+        config.headers = {
+            "Content-Type": "application/json",
+            ...config.headers,
+        };
+        config.body = JSON.stringify(config.body);
+    }
+
+    return fetch(url, config).then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.success === false || data.ok === false) {
+            throw new Error(data.error || data.message || "No se pudo completar la solicitud");
+        }
+        return data;
+    });
+}
+
+function shouldDebounce(lastTime, windowMs) {
+    const now = Date.now();
+    return now - lastTime < windowMs;
+}
+
+function buildAbsoluteUrl(url) {
+    if (!url) {
+        return "";
+    }
+    if (/^https?:\/\//i.test(url)) {
+        return url;
+    }
+    if (url.startsWith("//")) {
+        return `${window.location.protocol}${url}`;
+    }
+    const normalized = url.startsWith("/") ? url : `/${url}`;
+    return `${window.location.origin}${normalized}`;
+}
+
+function buildTemplatePayload(data) {
+    return {
+        afiliacion: data.afiliacion || "",
+        nombre: data.nombre || "",
+        hc_number: data.hcNumber || "",
+        procedimiento: data.procedimiento || "",
+        plan: data.plan || "",
+        form_id: data.formId || "",
+        pdf_url: data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : "",
+        template_key: data.templateKey || "",
+    };
+}
+
+async function fetchCoberturaTemplate(data) {
+    const cacheKey = JSON.stringify({
+        afiliacion: data.afiliacion || "",
+        formId: data.formId || "",
+        templateKey: data.templateKey || "",
+    });
+    if (coberturaTemplateCache.has(cacheKey)) {
+        return coberturaTemplateCache.get(cacheKey);
+    }
+
+    try {
+        const result = await request("/mail-templates/cobertura/resolve", {
+            method: "POST",
+            body: buildTemplatePayload(data),
+        });
+        const template = result?.template || null;
+        coberturaTemplateCache.set(cacheKey, template);
+        return template;
+    } catch (error) {
+        console.warn("No se pudo resolver la plantilla de cobertura", error);
+        coberturaTemplateCache.set(cacheKey, null);
+        return null;
+    }
+}
+
 function buildCoberturaUrl(formId, hcNumber, pages) {
     if (!formId || !hcNumber) {
         return '';
@@ -57,6 +146,269 @@ function buildCoberturaUrl(formId, hcNumber, pages) {
     }
 
     return `/reports/cobertura/pdf?${params.toString()}`;
+}
+
+function getCoberturaMailData() {
+    const container = document.getElementById("prefacturaCoberturaData");
+    if (!container) {
+        return null;
+    }
+
+    return {
+        derivacionVencida: container.dataset.derivacionVencida === "1",
+        afiliacion: container.dataset.afiliacion || "",
+        nombre: container.dataset.nombre || "",
+        hcNumber: container.dataset.hc || "",
+        procedimiento: container.dataset.procedimiento || "",
+        plan: container.dataset.plan || "",
+        formId: container.dataset.formId || "",
+        derivacionPdf: container.dataset.derivacionPdf || "",
+        templateKey: container.dataset.templateKey || "",
+        examenId: container.dataset.examenId || "",
+    };
+}
+
+function getCoberturaMailModalElements() {
+    const modal = document.getElementById("coberturaMailModal");
+    if (!modal || !window.bootstrap) {
+        return null;
+    }
+
+    return {
+        modal,
+        form: modal.querySelector("[data-cobertura-mail-form]"),
+        to: modal.querySelector("[data-cobertura-mail-to]"),
+        cc: modal.querySelector("[data-cobertura-mail-cc]"),
+        subject: modal.querySelector("[data-cobertura-mail-subject]"),
+        body: modal.querySelector("[data-cobertura-mail-body]"),
+        attachment: modal.querySelector("[data-cobertura-mail-attachment]"),
+        pdfLink: modal.querySelector("[data-cobertura-mail-pdf]"),
+        sendButton: modal.querySelector("[data-cobertura-mail-send]"),
+    };
+}
+
+function ensureCoberturaEditor() {
+    if (coberturaEditorReady) {
+        return;
+    }
+
+    if (!window.CKEDITOR) {
+        return;
+    }
+
+    const textarea = document.getElementById("coberturaMailBody");
+    if (!textarea) {
+        return;
+    }
+
+    if (!CKEDITOR.instances.coberturaMailBody) {
+        CKEDITOR.replace("coberturaMailBody", {
+            toolbar: [
+                { name: "basicstyles", items: ["Bold", "Italic", "Underline"] },
+                { name: "links", items: ["Link", "Unlink"] },
+                { name: "paragraph", items: ["BulletedList", "NumberedList"] },
+                { name: "clipboard", items: ["Undo", "Redo"] },
+                { name: "editing", items: ["RemoveFormat"] },
+            ],
+            removePlugins: "elementspath",
+            resize_enabled: false,
+        });
+    }
+
+    coberturaEditorReady = true;
+}
+
+function getCoberturaEditorInstance() {
+    if (!window.CKEDITOR) {
+        return null;
+    }
+    return CKEDITOR.instances.coberturaMailBody || null;
+}
+
+function ensureCoberturaMailModal() {
+    if (coberturaMailModalReady) {
+        return;
+    }
+
+    const elements = getCoberturaMailModalElements();
+    if (!elements || !elements.form) {
+        return;
+    }
+
+    coberturaMailModalReady = true;
+    elements.form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (coberturaMailSending) {
+            return;
+        }
+
+        const editor = getCoberturaEditorInstance();
+        const subject = elements.subject?.value?.trim() || "";
+        const body = editor ? editor.getData().trim() : (elements.body?.value?.trim() || "");
+        const to = elements.to?.value?.trim() || "";
+        const cc = elements.cc?.value?.trim() || "";
+        const attachment = elements.attachment?.files?.[0] ?? null;
+
+        if (!subject || !body) {
+            showToast("Completa el asunto y el mensaje antes de enviar.", false);
+            return;
+        }
+
+        coberturaMailSending = true;
+        if (elements.sendButton) {
+            elements.sendButton.disabled = true;
+        }
+
+        try {
+            const coberturaData = getCoberturaMailData() || {};
+            const formData = new FormData();
+            formData.append("subject", subject);
+            formData.append("body", body);
+            formData.append("to", to);
+            formData.append("cc", cc);
+            if (coberturaData.examenId) {
+                formData.append("examen_id", coberturaData.examenId);
+            }
+            if (coberturaData.formId) {
+                formData.append("form_id", coberturaData.formId);
+            }
+            if (coberturaData.hcNumber) {
+                formData.append("hc_number", coberturaData.hcNumber);
+            }
+            if (coberturaData.afiliacion) {
+                formData.append("afiliacion", coberturaData.afiliacion);
+            }
+            if (coberturaData.templateKey) {
+                formData.append("template_key", coberturaData.templateKey);
+            }
+            if (coberturaData.derivacionPdf) {
+                formData.append("derivacion_pdf", buildAbsoluteUrl(coberturaData.derivacionPdf));
+            }
+            if (attachment) {
+                formData.append("attachment", attachment);
+            }
+            if (editor) {
+                formData.append("is_html", "1");
+            }
+            const response = await request("/examenes/cobertura-mail", {
+                method: "POST",
+                body: formData,
+            });
+            showToast("Correo enviado.", true);
+            updateCoberturaMailStatus(response);
+            const instance =
+                window.bootstrap.Modal.getInstance(elements.modal) ??
+                new window.bootstrap.Modal(elements.modal);
+            instance.hide();
+        } catch (error) {
+            console.error("No se pudo enviar el correo de cobertura", error);
+            showToast(error?.message || "No se pudo enviar el correo de cobertura.", false);
+        } finally {
+            coberturaMailSending = false;
+            if (elements.sendButton) {
+                elements.sendButton.disabled = false;
+            }
+        }
+    });
+}
+
+function openCoberturaMailModal({ subject, body, derivacionPdf, recipients }) {
+    const elements = getCoberturaMailModalElements();
+    if (!elements) {
+        return false;
+    }
+
+    ensureCoberturaMailModal();
+    ensureCoberturaEditor();
+    const editor = getCoberturaEditorInstance();
+
+    const destinatarios = recipients || {};
+    if (elements.to) {
+        elements.to.value = destinatarios.to || "";
+    }
+    if (elements.cc) {
+        elements.cc.value = destinatarios.cc || "";
+    }
+    if (elements.subject) {
+        elements.subject.value = subject || "";
+    }
+    if (editor) {
+        editor.setData(body || "");
+    } else if (elements.body) {
+        elements.body.value = body || "";
+    }
+    if (elements.attachment) {
+        elements.attachment.value = "";
+    }
+
+    if (elements.pdfLink) {
+        if (derivacionPdf) {
+            elements.pdfLink.href = derivacionPdf;
+            elements.pdfLink.classList.remove("d-none");
+        } else {
+            elements.pdfLink.classList.add("d-none");
+        }
+    }
+
+    const instance =
+        window.bootstrap.Modal.getInstance(elements.modal) ??
+        new window.bootstrap.Modal(elements.modal);
+    instance.show();
+
+    return true;
+}
+
+async function abrirCoberturaMail() {
+    if (coberturaInProgress || shouldDebounce(lastCoberturaMailAt, COBERTURA_DEBOUNCE_MS)) {
+        return { opened: true };
+    }
+
+    const data = getCoberturaMailData();
+    if (!data) {
+        return { opened: false, error: "No hay información suficiente para armar el correo de cobertura." };
+    }
+
+    if (!data.afiliacion) {
+        return { opened: false, error: "No se encontró la afiliación necesaria para armar el correo." };
+    }
+
+    const template = await fetchCoberturaTemplate(data);
+    if (!template) {
+        return { opened: false, error: "No hay plantilla configurada para esta afiliación." };
+    }
+
+    const subject = template.subject || "";
+    const body = template.body_html || template.body_text || "";
+    const pdfUrl = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : "";
+    const recipients = {
+        to: template.recipients_to || "",
+        cc: template.recipients_cc || "",
+    };
+
+    coberturaInProgress = true;
+    lastCoberturaMailAt = Date.now();
+    const opened = openCoberturaMailModal({
+        subject,
+        body,
+        derivacionPdf: pdfUrl,
+        recipients,
+    });
+    if (!opened) {
+        coberturaInProgress = false;
+        return { opened: false, error: "No se pudo abrir el formulario de correo de cobertura." };
+    }
+
+    if (data.derivacionPdf) {
+        showToast("Adjunta el PDF de la derivación antes de enviar el correo (usa el enlace en el modal).", true);
+    } else {
+        showToast("No se encontró el PDF de la derivación para adjuntar.", false);
+    }
+
+    window.setTimeout(() => {
+        coberturaInProgress = false;
+    }, COBERTURA_DEBOUNCE_MS);
+
+    return { opened: true };
 }
 
 function imprimirExamenesPrequirurgicos(tarjeta) {
@@ -152,4 +504,82 @@ export function inicializarBotonesModal() {
             actualizarDesdeBoton(estado).catch(() => {});
         });
     }
+}
+
+function updateCoberturaMailStatus(payload = {}) {
+    const statusLabel = buildCoberturaMailStatusLabel(payload);
+    if (!statusLabel) {
+        return;
+    }
+
+    const prefacturaStatus = document.getElementById("prefacturaCoberturaMailStatus");
+    if (prefacturaStatus) {
+        prefacturaStatus.textContent = statusLabel;
+        prefacturaStatus.classList.remove("d-none");
+        if (payload?.sent_at) {
+            prefacturaStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            prefacturaStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+
+    const modalStatus = document.getElementById("coberturaMailModalStatus");
+    if (modalStatus) {
+        modalStatus.textContent = statusLabel;
+        modalStatus.classList.remove("d-none");
+        if (payload?.sent_at) {
+            modalStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            modalStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+}
+
+function buildCoberturaMailStatusLabel(payload) {
+    const sentAt = payload?.sent_at || payload?.sentAt || "";
+    if (!sentAt) {
+        return "";
+    }
+
+    const sentBy = payload?.sent_by_name || payload?.sentByName || "";
+    const formattedDate = formatCoberturaDateTime(sentAt);
+    if (!formattedDate) {
+        return "";
+    }
+
+    return sentBy
+        ? `Cobertura solicitada el ${formattedDate} por ${sentBy}`
+        : `Cobertura solicitada el ${formattedDate}`;
+}
+
+function formatCoberturaDateTime(value) {
+    if (!value) {
+        return "";
+    }
+
+    const normalized = value.replace(" ", "T");
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const pad = (num) => String(num).padStart(2, "0");
+    return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function attachPrefacturaCoberturaMail() {
+    const button = document.getElementById("btnPrefacturaSolicitarCoberturaMail");
+    if (!button || button.dataset.listenerAttached === "true") {
+        return;
+    }
+
+    button.dataset.listenerAttached = "true";
+    button.addEventListener("click", async () => {
+        const result = await abrirCoberturaMail();
+        if (!result.opened) {
+            showToast(result.error || "No hay información suficiente para armar el correo de cobertura.", false);
+        }
+    });
 }

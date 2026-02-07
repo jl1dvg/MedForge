@@ -9,9 +9,13 @@ use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Examenes\Services\ExamenEstadoService;
+use Modules\Examenes\Services\ExamenMailLogService;
 use Modules\Examenes\Services\ExamenReportExcelService;
 use Modules\Examenes\Services\ExamenReminderService;
 use Modules\Examenes\Services\ExamenSettingsService;
+use Modules\Mail\Services\MailProfileService;
+use Modules\Mail\Services\NotificationMailer;
+use Modules\MailTemplates\Services\CoberturaMailTemplateService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Reporting\Services\ReportService;
@@ -32,6 +36,8 @@ class ExamenController extends BaseController
 
     private const PUSHER_CHANNEL = 'examenes-kanban';
     private const STORAGE_PATH = 'uploads/examenes';
+    private const COBERTURA_MAIL_TO = 'cespinoza@cive.ec';
+    private const COBERTURA_MAIL_CC = ['oespinoza@cive.ec'];
 
     public function __construct(PDO $pdo)
     {
@@ -1254,9 +1260,236 @@ class ExamenController extends BaseController
             return;
         }
 
+        $afiliacion = trim((string)($viewData['paciente']['afiliacion'] ?? ($viewData['examen']['afiliacion'] ?? '')));
+        $templateService = new CoberturaMailTemplateService($this->pdo);
+        $baseTemplateKey = $templateService->resolveTemplateKey($afiliacion);
+        $examenTemplateKey = $baseTemplateKey ? $baseTemplateKey . '_examenes' : null;
+        $templateKey = null;
+        $templateAvailable = false;
+        if ($examenTemplateKey && $templateService->hasEnabledTemplate($examenTemplateKey)) {
+            $templateKey = $examenTemplateKey;
+            $templateAvailable = true;
+        } elseif ($baseTemplateKey && $templateService->hasEnabledTemplate($baseTemplateKey)) {
+            $templateKey = $baseTemplateKey;
+            $templateAvailable = true;
+        }
+        $viewData['coberturaTemplateKey'] = $templateKey;
+        $viewData['coberturaTemplateAvailable'] = $templateAvailable;
+        $viewData['coberturaMailLog'] = null;
+        $examenIdValue = isset($viewData['examen']['id']) ? (int) $viewData['examen']['id'] : null;
+        if ($examenIdValue) {
+            $mailLogService = new ExamenMailLogService($this->pdo);
+            $viewData['coberturaMailLog'] = $mailLogService->fetchLatestByExamen($examenIdValue);
+        }
+
         ob_start();
         include __DIR__ . '/../views/prefactura_detalle.php';
         echo ob_get_clean();
+    }
+
+    public function enviarCoberturaMail(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $subject = trim((string)($payload['subject'] ?? $_POST['subject'] ?? ''));
+        $body = trim((string)($payload['body'] ?? $_POST['body'] ?? ''));
+        $toRaw = trim((string)($payload['to'] ?? $_POST['to'] ?? ''));
+        $ccRaw = trim((string)($payload['cc'] ?? $_POST['cc'] ?? ''));
+        $isHtml = filter_var($payload['is_html'] ?? $_POST['is_html'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $examenId = isset($payload['examen_id'])
+            ? (int) $payload['examen_id']
+            : (isset($_POST['examen_id']) ? (int) $_POST['examen_id'] : null);
+        $formId = trim((string)($payload['form_id'] ?? $_POST['form_id'] ?? ''));
+        $hcNumber = trim((string)($payload['hc_number'] ?? $_POST['hc_number'] ?? ''));
+        $afiliacion = trim((string)($payload['afiliacion'] ?? $_POST['afiliacion'] ?? ''));
+        $templateKey = trim((string)($payload['template_key'] ?? $_POST['template_key'] ?? ''));
+        $derivacionPdf = trim((string)($payload['derivacion_pdf'] ?? $_POST['derivacion_pdf'] ?? ''));
+        $currentUserId = $this->getCurrentUserId();
+
+        JsonLogger::log(
+            'examenes_mail',
+            'Cobertura mail ▶ Payload recibido',
+            null,
+            [
+                'examen_id' => $examenId,
+                'form_id' => $formId !== '' ? $formId : null,
+                'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                'user_id' => $currentUserId,
+            ]
+        );
+
+        if ($formId !== '' && $hcNumber !== '') {
+            $stmt = $this->pdo->prepare(
+                "SELECT id FROM consulta_examenes
+                 WHERE form_id = :form_id AND hc_number = :hc
+                 ORDER BY id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute([
+                ':form_id' => $formId,
+                ':hc' => $hcNumber,
+            ]);
+            $resolved = $stmt->fetchColumn();
+            if ($resolved !== false) {
+                $resolvedId = (int) $resolved;
+                if ($examenId && $examenId !== $resolvedId) {
+                    JsonLogger::log(
+                        'examenes_mail',
+                        'Cobertura mail ▶ examen_id corregido',
+                        null,
+                        [
+                            'examen_id_payload' => $examenId,
+                            'examen_id_resolved' => $resolvedId,
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                            'user_id' => $currentUserId,
+                        ]
+                    );
+                }
+                $examenId = $resolvedId;
+            }
+        }
+
+        JsonLogger::log(
+            'examenes_mail',
+            'Cobertura mail ▶ Examen resuelto',
+            null,
+            [
+                'examen_id' => $examenId,
+                'form_id' => $formId !== '' ? $formId : null,
+                'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+                'user_id' => $currentUserId,
+            ]
+        );
+
+        if ($subject === '' || $body === '') {
+            $this->json(['success' => false, 'error' => 'Asunto y mensaje son obligatorios'], 422);
+            return;
+        }
+
+        $toList = $this->parseCoberturaEmails($toRaw);
+        $ccList = $this->parseCoberturaEmails($ccRaw);
+        if ($toList === []) {
+            $toList = [self::COBERTURA_MAIL_TO];
+        }
+
+        $attachment = $this->getCoberturaAttachment();
+        $attachments = $attachment ? [$attachment] : [];
+
+        $profileService = new MailProfileService($this->pdo);
+        $profileSlug = $profileService->getProfileSlugForContext('examenes');
+        $mailer = new NotificationMailer($this->pdo, $profileSlug);
+        $toList = array_values(array_unique($toList));
+        $ccList = array_values(array_unique(array_merge($ccList, self::COBERTURA_MAIL_CC)));
+        $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml, $profileSlug);
+        $sentAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $bodyText = $this->formatCoberturaMailBodyText($body, $isHtml);
+        $mailLogService = new ExamenMailLogService($this->pdo);
+        $mailLogPayload = [
+            'examen_id' => $examenId ?: null,
+            'form_id' => $formId !== '' ? $formId : null,
+            'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+            'to_emails' => implode(', ', $toList),
+            'cc_emails' => $ccList !== [] ? implode(', ', $ccList) : null,
+            'subject' => $subject,
+            'body_text' => $bodyText !== '' ? $bodyText : null,
+            'body_html' => $isHtml ? $body : null,
+            'channel' => 'email',
+            'sent_by_user_id' => $currentUserId,
+            'status' => 'sent',
+            'error_message' => null,
+            'sent_at' => $sentAt,
+        ];
+
+        if (!($result['success'] ?? false)) {
+            $mailLogPayload['status'] = 'failed';
+            $mailLogPayload['error_message'] = $result['error'] ?? 'No se pudo enviar el correo';
+            try {
+                $mailLogService->create($mailLogPayload);
+            } catch (Throwable $e) {
+                JsonLogger::log(
+                    'examenes_mail',
+                    'No se pudo guardar el log de correo fallido',
+                    $e,
+                    [
+                        'examen_id' => $examenId,
+                        'user_id' => $currentUserId,
+                    ]
+                );
+            }
+            $this->json(
+                ['success' => false, 'error' => $result['error'] ?? 'No se pudo enviar el correo'],
+                500
+            );
+            return;
+        }
+
+        $mailLogId = null;
+        try {
+            $mailLogId = $mailLogService->create($mailLogPayload);
+        } catch (Throwable $e) {
+            JsonLogger::log(
+                'examenes_mail',
+                'No se pudo guardar el log de correo enviado',
+                $e,
+                [
+                    'examen_id' => $examenId,
+                    'user_id' => $currentUserId,
+                ]
+            );
+        }
+
+        if ($examenId) {
+            $notaLineas = [
+                'Cobertura solicitada por correo',
+                'Para: ' . implode(', ', $toList),
+            ];
+            if ($ccList !== []) {
+                $notaLineas[] = 'CC: ' . implode(', ', $ccList);
+            }
+            $notaLineas[] = 'Asunto: ' . $subject;
+            if ($templateKey !== '') {
+                $notaLineas[] = 'Plantilla: ' . $templateKey;
+            }
+            if ($derivacionPdf !== '') {
+                $notaLineas[] = 'PDF derivación: ' . $derivacionPdf;
+            }
+
+            try {
+                $this->crmService->registrarNota($examenId, implode("\n", $notaLineas), $currentUserId);
+            } catch (Throwable $e) {
+                JsonLogger::log(
+                    'examenes_mail',
+                    'No se pudo registrar la nota de cobertura enviada',
+                    $e,
+                    [
+                        'examen_id' => $examenId,
+                        'user_id' => $currentUserId,
+                    ]
+                );
+            }
+        }
+
+        $sentByName = null;
+        if ($mailLogId) {
+            $mailLog = $mailLogService->fetchById($mailLogId);
+            $sentByName = $mailLog['sent_by_name'] ?? null;
+            $sentAt = $mailLog['sent_at'] ?? $sentAt;
+        }
+
+        $this->json([
+            'success' => true,
+            'ok' => true,
+            'mail_log_id' => $mailLogId,
+            'sent_at' => $sentAt,
+            'sent_by' => $currentUserId,
+            'sent_by_name' => $sentByName,
+            'template_key' => $templateKey !== '' ? $templateKey : null,
+        ]);
     }
 
     private function obtenerDatosParaVista(string $hcNumber, string $formId, ?int $examenId = null): array
@@ -3010,6 +3243,81 @@ class ExamenController extends BaseController
         }
 
         return $filtrados;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function parseCoberturaEmails(string $raw): array
+    {
+        if ($raw === '') {
+            return [];
+        }
+
+        $candidates = preg_split('/[;,]+/', $raw) ?: [];
+        $emails = [];
+        foreach ($candidates as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            if (!filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+            $emails[] = strtolower($candidate);
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    /**
+     * @return array{path: string, name?: string, type?: string, size?: int}|null
+     */
+    private function getCoberturaAttachment(): ?array
+    {
+        if (empty($_FILES['attachment']) || !is_array($_FILES['attachment'])) {
+            return null;
+        }
+
+        $file = $_FILES['attachment'];
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+
+        $tmpName = (string)($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            return null;
+        }
+
+        $name = trim((string)($file['name'] ?? ''));
+        $type = trim((string)($file['type'] ?? ''));
+
+        $attachment = ['path' => $tmpName];
+        if ($name !== '') {
+            $attachment['name'] = $name;
+        }
+        if ($type !== '') {
+            $attachment['type'] = $type;
+        }
+        if (isset($file['size'])) {
+            $attachment['size'] = (int) $file['size'];
+        }
+
+        return $attachment;
+    }
+
+    private function formatCoberturaMailBodyText(string $body, bool $isHtml): string
+    {
+        if (!$isHtml) {
+            return $body;
+        }
+
+        $text = trim(strip_tags($body));
+        if ($text === '') {
+            return '';
+        }
+
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     private function normalizarEstadoTurnero(string $estado): ?string

@@ -14,6 +14,7 @@ import {
     resetPatientSummary,
 } from "./state.js";
 import { resolveDerivacionStatus } from "./utils.js";
+import { attachPrefacturaCoberturaMail } from "../botonesModal.js";
 
 export function abrirPrefactura({ hc, formId, examenId }) {
     if (!hc || !formId) {
@@ -65,6 +66,7 @@ export function abrirPrefactura({ hc, formId, examenId }) {
             content.innerHTML = html;
             renderPatientSummaryFallback(examenId || examen?.id);
             renderEstadoContext(examenId || examen?.id);
+            attachPrefacturaCoberturaMail();
 
             const derivacionContainer = content.querySelector(
                 "#prefacturaDerivacionContent"

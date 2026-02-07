@@ -75,6 +75,44 @@ class ExamenMailLogService
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function fetchLatestByExamen(int $examenId): ?array
+    {
+        $rows = $this->fetchByExamen($examenId, 1);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function fetchById(int $id): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT eml.id, eml.examen_id, eml.form_id, eml.hc_number, eml.to_emails, eml.cc_emails, eml.subject,
+                        eml.body_text, eml.body_html, eml.channel, eml.sent_by_user_id, eml.status, eml.error_message,
+                        eml.sent_at, eml.created_at, u.nombre AS sent_by_name
+                 FROM examen_mail_log eml
+                 LEFT JOIN users u ON u.id = eml.sent_by_user_id
+                 WHERE eml.id = :id
+                 LIMIT 1'
+            );
+            $stmt->bindValue(':id', $id, PDO::PARAM_INT);
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        } catch (Throwable $exception) {
+            return null;
+        }
+
+        if (!$row) {
+            return null;
+        }
+
+        return $this->normalizeRow($row);
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */

@@ -48,6 +48,10 @@ return function (Router $router) {
         (new ExamenController($pdo))->kanbanData();
     });
 
+    $router->post('/examenes/cobertura-mail', function (\PDO $pdo) {
+        (new ExamenController($pdo))->enviarCoberturaMail();
+    });
+
     $router->post('/examenes/reportes/pdf', function (\PDO $pdo) {
         (new ExamenController($pdo))->reportePdf();
     });

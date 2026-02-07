@@ -95,7 +95,19 @@ class CoberturaMailTemplateController extends BaseController
         }
 
         $afiliacion = trim((string)($payload['afiliacion'] ?? ''));
-        $template = $this->service->getTemplateForAffiliation($afiliacion);
+        $templateKey = trim((string)($payload['template_key'] ?? ''));
+        $template = null;
+
+        if ($templateKey !== '') {
+            $candidate = $this->service->findTemplate($templateKey);
+            if ($candidate && (int)($candidate['enabled'] ?? 0) === 1) {
+                $template = $candidate;
+            }
+        }
+
+        if (!$template) {
+            $template = $this->service->getTemplateForAffiliation($afiliacion);
+        }
         if (!$template) {
             $this->json(['success' => false, 'message' => 'No hay plantilla configurada para esta afiliación.'], 404);
             return;

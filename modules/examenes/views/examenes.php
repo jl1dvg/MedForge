@@ -1015,4 +1015,6 @@ $reporting = array_merge(
 <?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
     <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
 <?php endif; ?>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="<?= asset('assets/vendor_components/ckeditor/ckeditor.js') ?>"></script>
 <script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>

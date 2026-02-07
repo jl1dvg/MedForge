@@ -102,6 +102,43 @@ if (!empty($derivacionId)) {
 } elseif (!empty($derivacion['archivo_derivacion_path'])) {
     $archivoHref = '/' . ltrim($derivacion['archivo_derivacion_path'], '/');
 }
+
+$coberturaTemplateKey = $viewData['coberturaTemplateKey'] ?? null;
+$coberturaTemplateAvailable = (bool) ($viewData['coberturaTemplateAvailable'] ?? false);
+$examenCoberturaMail = $coberturaTemplateAvailable;
+$examenCoberturaMailStyle = $derivacionVencida ? 'warning' : 'info';
+$examenCoberturaMailTitle = $derivacionVencida ? 'Derivación vencida' : 'Solicitar cobertura adicional';
+$examenCoberturaMailMessage = $derivacionVencida
+    ? 'Afiliación: ' . htmlspecialchars($afiliacion, ENT_QUOTES, 'UTF-8') . '. Solicita un nuevo código por correo adjuntando la derivación.'
+    : 'Si la derivación no tiene autorizaciones completas o necesitas otro código, puedes solicitar cobertura por correo.';
+$coberturaHcNumber = $examen['hc_number'] ?? $paciente['hc_number'] ?? '';
+$coberturaFormId = $examen['form_id'] ?? $consulta['form_id'] ?? '';
+$coberturaProcedimiento = trim((string) ($examen['examen_nombre'] ?? ''));
+if (!empty($derivacion['cod_derivacion'])) {
+    $coberturaProcedimiento = trim($coberturaProcedimiento . ' · Derivación ' . $derivacion['cod_derivacion']);
+}
+$coberturaPlan = $consulta['plan'] ?? '';
+$coberturaMailLog = $viewData['coberturaMailLog'] ?? null;
+$coberturaMailSentLabel = '';
+$coberturaMailSentAt = '';
+$coberturaMailSentBy = '';
+if (!empty($coberturaMailLog['sent_at'])) {
+    try {
+        $sentAt = new DateTime($coberturaMailLog['sent_at']);
+        $coberturaMailSentAt = $sentAt->format('d-m-Y H:i');
+    } catch (Exception $e) {
+        $coberturaMailSentAt = (string) $coberturaMailLog['sent_at'];
+    }
+}
+if (!empty($coberturaMailLog['sent_by_name'])) {
+    $coberturaMailSentBy = (string) $coberturaMailLog['sent_by_name'];
+}
+if ($coberturaMailSentAt !== '') {
+    $coberturaMailSentLabel = 'Cobertura solicitada el ' . $coberturaMailSentAt;
+    if ($coberturaMailSentBy !== '') {
+        $coberturaMailSentLabel .= ' por ' . $coberturaMailSentBy;
+    }
+}
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -159,8 +196,53 @@ if (!empty($derivacionId)) {
         </li>
     </ul>
 
+    <div id="prefacturaCoberturaData"
+         class="d-none"
+         data-derivacion-vencida="<?= $derivacionVencida ? '1' : '0' ?>"
+         data-afiliacion="<?= htmlspecialchars($afiliacion, ENT_QUOTES, 'UTF-8') ?>"
+         data-nombre="<?= htmlspecialchars($nombrePaciente !== '' ? $nombrePaciente : 'Paciente', ENT_QUOTES, 'UTF-8') ?>"
+         data-hc="<?= htmlspecialchars((string) $coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
+         data-procedimiento="<?= htmlspecialchars((string) $coberturaProcedimiento, ENT_QUOTES, 'UTF-8') ?>"
+         data-plan="<?= htmlspecialchars((string) $coberturaPlan, ENT_QUOTES, 'UTF-8') ?>"
+         data-form-id="<?= htmlspecialchars((string) $coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
+         data-derivacion-pdf="<?= htmlspecialchars((string) ($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+         data-template-key="<?= htmlspecialchars((string) ($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+         data-examen-id="<?= htmlspecialchars((string) ($examen['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+
     <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="prefacturaTabsContent">
         <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel" aria-labelledby="prefactura-tab-resumen-tab">
+            <?php if ($examenCoberturaMail): ?>
+                <div class="alert alert-<?= $examenCoberturaMailStyle ?> border d-flex flex-column gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-envelope-exclamation"></i>
+                        <div>
+                            <div class="fw-semibold"><?= $examenCoberturaMailTitle ?></div>
+                            <small class="text-muted">
+                                <?= $examenCoberturaMailMessage ?>
+                            </small>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-warning btn-sm"
+                                id="btnPrefacturaSolicitarCoberturaMail">
+                            <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
+                        </button>
+                        <?php if ($archivoHref): ?>
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
+                               target="_blank" rel="noopener">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                    <div id="prefacturaCoberturaMailStatus"
+                         class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
+                         data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
+                         data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
+                        <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                </div>
+            <?php endif; ?>
             <div class="row g-3">
                 <div class="col-lg-6">
                     <div class="card border">
@@ -441,6 +523,67 @@ if (!empty($derivacionId)) {
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="coberturaMailModal" tabindex="-1" aria-labelledby="coberturaMailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="coberturaMailModalLabel">Solicitar cobertura por correo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form data-cobertura-mail-form>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="coberturaMailTo">Para</label>
+                            <input type="text" class="form-control" id="coberturaMailTo" name="to"
+                                   data-cobertura-mail-to placeholder="correo1@cive.ec, correo2@cive.ec">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="coberturaMailCc">CC</label>
+                            <input type="text" class="form-control" id="coberturaMailCc" name="cc"
+                                   data-cobertura-mail-cc placeholder="correo@cive.ec">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="coberturaMailSubject">Asunto</label>
+                            <input type="text" class="form-control" id="coberturaMailSubject" name="subject"
+                                   data-cobertura-mail-subject required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="coberturaMailBody">Mensaje</label>
+                            <textarea class="form-control" id="coberturaMailBody" rows="8" name="body"
+                                      data-cobertura-mail-body required></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="coberturaMailAttachment">Adjuntar archivo</label>
+                            <input type="file" class="form-control" id="coberturaMailAttachment" name="attachment"
+                                   data-cobertura-mail-attachment accept="application/pdf">
+                            <a class="btn btn-outline-secondary btn-sm d-none mt-2" data-cobertura-mail-pdf
+                               href="#" target="_blank" rel="noopener">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                            </a>
+                        </div>
+                        <div class="col-12">
+                            <div id="coberturaMailModalStatus"
+                                 class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
+                                 data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
+                                 data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success" data-cobertura-mail-send>
+                        <i class="bi bi-send me-1"></i> Enviar correo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     (function () {
         const card = document.getElementById('prefacturaChecklistCard');
