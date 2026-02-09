@@ -52,6 +52,10 @@ return function (Router $router) {
         (new ExamenController($pdo))->enviarCoberturaMail();
     });
 
+    $router->get('/examenes/cobertura-012a/pdf', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imprimirCobertura012A();
+    });
+
     $router->post('/examenes/reportes/pdf', function (\PDO $pdo) {
         (new ExamenController($pdo))->reportePdf();
     });

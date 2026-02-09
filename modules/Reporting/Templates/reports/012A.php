@@ -1,61 +1,342 @@
 <?php
 
+use Helpers\OpenAIHelper;
+
+// Inicializa el helper de OpenAI (requiere que el autoload/bootstrapping ya esté cargado antes)
+$ai = null;
+if (class_exists(OpenAIHelper::class)) {
+    $ai = new OpenAIHelper();
+}
+$AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
+
 $layout = __DIR__ . '/../layouts/base.php';
+// Normalizar inputs (preferir $data del ReportService)
 $data = is_array($data ?? null) ? $data : [];
-$patientData = $data['patient'] ?? [];
-$examen = $data['examen'] ?? [];
-$informe = $data['informe'] ?? [];
-$firmante = $data['firmante'] ?? [];
-
+$paciente = $data['paciente'] ?? ($paciente ?? []);
+$consulta = $data['consulta'] ?? ($consulta ?? []);
+$diagnostico = $data['diagnostico'] ?? ($diagnostico ?? []);
+$dx_derivacion = $data['dx_derivacion'] ?? ($dx_derivacion ?? []);
+$solicitud = $data['solicitud'] ?? ($solicitud ?? []);
 $patient = [
-        'afiliacion' => $patientData['afiliacion'] ?? '',
-        'hc_number' => $patientData['hc_number'] ?? '',
-        'archive_number' => $patientData['archive_number'] ?? ($patientData['hc_number'] ?? ''),
-        'lname' => $patientData['lname'] ?? '',
-        'lname2' => $patientData['lname2'] ?? '',
-        'fname' => $patientData['fname'] ?? '',
-        'mname' => $patientData['mname'] ?? '',
-        'sexo' => $patientData['sexo'] ?? '',
-        'fecha_nacimiento' => $patientData['fecha_nacimiento'] ?? '',
-        'edad' => $patientData['edad'] ?? '',
+        'afiliacion' => $paciente['afiliacion'] ?? '',
+        'hc_number' => $paciente['hc_number'] ?? '',
+        'archive_number' => $paciente['hc_number'] ?? '',
+        'lname' => $paciente['lname'] ?? '',
+        'lname2' => $paciente['lname2'] ?? '',
+        'fname' => $paciente['fname'] ?? '',
+        'mname' => $paciente['mname'] ?? '',
+        'sexo' => $paciente['sexo'] ?? '',
+        'fecha_nacimiento' => $paciente['fecha_nacimiento'] ?? '',
+        'edad' => $edadPaciente ?? '',
 ];
-
-$descripcionExamen = trim((string)($examen['descripcion'] ?? ''));
-$hallazgos = trim((string)($informe['hallazgos'] ?? ''));
-$conclusiones = trim((string)($informe['conclusiones'] ?? ''));
-$fechaInforme = trim((string)($informe['fecha'] ?? ''));
-$horaInforme = trim((string)($informe['hora'] ?? ''));
-
-$resolveAsset = static function (?string $path): string {
-    $path = trim((string)($path ?? ''));
-    if ($path === '') {
-        return '';
-    }
-    if (function_exists('asset')) {
-        return (string)asset($path);
-    }
-    return $path;
-};
-
-$firmaSrc = $resolveAsset($firmante['signature_path'] ?? '');
-$selloSrc = $resolveAsset($firmante['firma'] ?? '');
-
-if ($hallazgos === '') {
-    $hallazgos = 'Sin hallazgos registrados.';
-}
-
-if ($conclusiones === '') {
-    $conclusiones = "En resumen, es fundamental seguir las indicaciones del médico especialista. Si surgieran dudas o
-preguntas, siempre debemos comunicarnos con el médico para obtener
-claridad. Trabajar en colaboración con el médico nos permitirá obtener los mejores resultados y mantener
-una buena salud a largo plazo.";
-}
 
 ob_start();
 include __DIR__ . '/../partials/patient_header.php';
 $header = ob_get_clean();
 
+$doctorFirstName = trim((string)($consulta['doctor_fname'] ?? ''));
+$doctorMiddleName = trim((string)($consulta['doctor_mname'] ?? ''));
+$doctorLastName = trim((string)($consulta['doctor_lname'] ?? ''));
+$doctorSecondLastName = trim((string)($consulta['doctor_lname2'] ?? ''));
+
+$motivoConsulta = trim((string)($consulta['motivo_consulta'] ?? $consulta['motivo'] ?? ''));
+$enfermedadActual = trim((string)($consulta['enfermedad_actual'] ?? ''));
+$reason = trim($motivoConsulta . ' ' . $enfermedadActual);
+
+// Fecha/Hora de la consulta (preferir datos del propio registro $consulta)
+$fechaConsulta = trim((string)($consulta['fecha'] ?? ''));
+$horaConsulta = '';
+
+// Si $consulta['fecha'] viene vacío, intentar inferir desde created_at (consulta o solicitud)
+$createdAtRaw = trim((string)($consulta['created_at'] ?? $solicitud['created_at'] ?? ''));
+
+// Si tenemos fecha pero no hora, intentar extraer la hora desde created_at
+if ($fechaConsulta !== '' && $createdAtRaw !== '') {
+    $createdTs = strtotime($createdAtRaw);
+    if ($createdTs) {
+        $horaConsulta = date('H:i', $createdTs);
+    }
+}
+
+// Si no hay fecha, intentar calcularla desde created_at
+if ($fechaConsulta === '' && $createdAtRaw !== '') {
+    $createdTs = strtotime($createdAtRaw);
+    if ($createdTs) {
+        $fechaConsulta = date('Y-m-d', $createdTs);
+        $horaConsulta = date('H:i', $createdTs);
+    }
+}
+
+// Fallbacks legacy
+if ($fechaConsulta === '') {
+    $fechaConsulta = (string)($solicitud['created_at_date'] ?? '');
+}
+if ($horaConsulta === '') {
+    $horaConsulta = (string)($solicitud['created_at_time'] ?? '');
+}
+
+// Edad paciente (fallbacks)
+$fechaNacimientoRaw = trim((string)($paciente['fecha_nacimiento'] ?? ($paciente['dob'] ?? ($paciente['DOB'] ?? ''))));
+$edadPaciente = trim((string)($paciente['edad'] ?? ''));
+if ($edadPaciente === '' && $fechaNacimientoRaw !== '') {
+    try {
+        $fechaRef = $fechaConsulta !== '' ? $fechaConsulta : 'now';
+        $edadPaciente = (string)(new DateTime($fechaNacimientoRaw))->diff(new DateTime($fechaRef))->y;
+    } catch (Exception $e) {
+        $edadPaciente = '';
+    }
+}
+$patient['edad'] = $edadPaciente;
+
+$examenesRelacionados = $data['examenes_relacionados'] ?? ($data['examenes'] ?? []);
+$imagenesSolicitadas = $data['imagenes_solicitadas'] ?? ($data['imagenes'] ?? []);
+
+// --- DIAGNÓSTICOS ---
+// Regla solicitada:
+// 1) Primero diagnósticos desde DERIVACIÓN ($dx_derivacion: string con ';')
+// 2) Luego completar con diagnósticos normalizados ($diagnostico: array con dx_code/descripcion)
+// 3) No repetir (dedupe por code+desc)
+// 4) Máximo 6 (el formato 002 solo muestra 6)
+
+$diagnosticoItems = [];
+$seenDx = [];
+
+$pushDx = function (string $code, string $desc) use (&$diagnosticoItems, &$seenDx) {
+    $code = trim($code);
+    $desc = trim($desc);
+    if ($code === '' && $desc === '') {
+        return;
+    }
+    $k = mb_strtoupper($code . '|' . $desc);
+    if (isset($seenDx[$k])) {
+        return;
+    }
+    $seenDx[$k] = true;
+    $diagnosticoItems[] = [
+            'dx_code' => $code,
+            'descripcion' => $desc,
+    ];
+};
+
+$parseDxLine = function (string $line): array {
+    $line = trim($line);
+    if ($line === '') {
+        return ['', ''];
+    }
+    $code = '';
+    $desc = $line;
+    // Formato típico: "H25 - CATARATA SENIL"
+    if (preg_match('/^\s*([A-Z][0-9A-Z\.]+)\s*[-–]\s*(.+)\s*$/u', $line, $m)) {
+        $code = trim($m[1]);
+        $desc = trim($m[2]);
+    }
+    return [$code, $desc];
+};
+
+// 1) Diagnósticos desde DERIVACIÓN (string separada por ';')
+$dxDerivacionStr = '';
+if (is_array($dx_derivacion) && !empty($dx_derivacion[0]['diagnostico'])) {
+    $dxDerivacionStr = (string)$dx_derivacion[0]['diagnostico'];
+}
+$dxDerivacionStr = trim($dxDerivacionStr);
+if ($dxDerivacionStr !== '') {
+    $dxDerivacionStr = preg_replace("/\r\n|\r/", "\n", $dxDerivacionStr);
+    $parts = array_filter(array_map('trim', preg_split('/\s*;\s*/', $dxDerivacionStr)));
+    foreach ($parts as $p) {
+        if ($p === '') {
+            continue;
+        }
+        [$code, $desc] = $parseDxLine($p);
+        $pushDx($code, $desc);
+        if (count($diagnosticoItems) >= 6) {
+            break;
+        }
+    }
+}
+
+// 2) Completar con diagnósticos normalizados ($diagnostico)
+if (is_array($diagnostico) && count($diagnosticoItems) < 6) {
+    foreach ($diagnostico as $dx) {
+        if (!is_array($dx)) {
+            continue;
+        }
+        $code = (string)($dx['dx_code'] ?? $dx['codigo'] ?? '');
+        $desc = (string)($dx['descripcion'] ?? $dx['descripcion_dx'] ?? $dx['nombre'] ?? '');
+        $pushDx($code, $desc);
+        if (count($diagnosticoItems) >= 6) {
+            break;
+        }
+    }
+}
+$diagnosticoTexto = [];
+foreach ($diagnosticoItems as $item) {
+    $codigo = trim((string)($item['dx_code'] ?? $item['codigo'] ?? ''));
+    $descripcion = trim((string)($item['descripcion'] ?? $item['descripcion_dx'] ?? $item['nombre'] ?? ''));
+
+    if ($codigo === '' && $descripcion === '') {
+        continue;
+    }
+
+    $diagnosticoTexto[] = trim($descripcion . ($codigo !== '' ? ' CIE10: ' . $codigo : ''));
+}
+
+$consultaPlan = trim((string)($consulta['plan'] ?? ''));
+$consultaDiagnosticoPlan = trim((string)($consulta['diagnostico_plan'] ?? ''));
+$consultaRecomendaciones = trim((string)($consulta['recomen_no_farmaco'] ?? ''));
+$consultaSignosAlarma = trim((string)($consulta['signos_alarma'] ?? ''));
+$consultaVigenciaReceta = trim((string)($consulta['vigencia_receta'] ?? ''));
+
+$planLineas = array_values(array_filter([
+        $consultaDiagnosticoPlan !== '' ? 'Diagnóstico/Plan: ' . $consultaDiagnosticoPlan : '',
+        $consultaPlan !== '' ? 'Plan terapéutico: ' . $consultaPlan : '',
+        $consultaRecomendaciones !== '' ? 'Recomendaciones: ' . $consultaRecomendaciones : '',
+        $consultaSignosAlarma !== '' ? 'Signos de alarma: ' . $consultaSignosAlarma : '',
+        $consultaVigenciaReceta !== '' ? 'Vigencia receta: ' . $consultaVigenciaReceta : '',
+], static fn($line) => trim($line) !== ''));
+$planTratamiento = implode(PHP_EOL, $planLineas);
+
+$normalizarTexto = static function (string $value): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    $value = str_replace(["\r", "\n", "\t"], ' ', $value);
+    $value = preg_replace('/\s+/', ' ', $value);
+    $value = preg_replace('/[^a-z0-9 ]/u', '', $value);
+    return trim($value ?? '');
+};
+
+$estudiosRaw = [];
+if (is_array($examenesRelacionados)) {
+    foreach ($examenesRelacionados as $rel) {
+        if (!is_array($rel)) {
+            continue;
+        }
+        $nombre = trim((string)($rel['examen_nombre'] ?? $rel['nombre'] ?? $rel['examen'] ?? ''));
+        if ($nombre === '') {
+            continue;
+        }
+        $estudiosRaw[] = [
+            'nombre' => $nombre,
+            'codigo' => trim((string)($rel['examen_codigo'] ?? $rel['codigo'] ?? '')),
+            'estado' => trim((string)($rel['kanban_estado'] ?? $rel['estado'] ?? '')),
+        ];
+    }
+}
+if (is_array($imagenesSolicitadas)) {
+    foreach ($imagenesSolicitadas as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $nombre = trim((string)($item['nombre'] ?? $item['examen'] ?? $item['descripcion'] ?? ''));
+        if ($nombre === '') {
+            continue;
+        }
+        $estudiosRaw[] = [
+            'nombre' => $nombre,
+            'codigo' => trim((string)($item['codigo'] ?? $item['id'] ?? '')),
+            'estado' => trim((string)($item['estado'] ?? '')),
+        ];
+    }
+}
+
+$estudios = [];
+$seenEstudios = [];
+foreach ($estudiosRaw as $estudio) {
+    $key = $normalizarTexto(($estudio['codigo'] ?? '') . '|' . ($estudio['nombre'] ?? ''));
+    if ($key === '' || isset($seenEstudios[$key])) {
+        continue;
+    }
+    $seenEstudios[$key] = true;
+    $estudios[] = $estudio;
+}
+
+$estudiosPendientes = [];
+$aprobados = ['listo-para-agenda', 'completado', 'atendido'];
+foreach ($estudios as $estudio) {
+    $estado = trim((string)($estudio['estado'] ?? ''));
+    $slug = $normalizarTexto($estado);
+    $slug = str_replace(' ', '-', $slug);
+    $isApproved = in_array($slug, $aprobados, true) || str_contains($slug, 'aprob');
+    if (!$isApproved) {
+        $estudiosPendientes[] = $estudio;
+    }
+}
+if ($estudiosPendientes === []) {
+    $estudiosPendientes = $estudios;
+}
+
+$estudiosLineas = [];
+foreach ($estudiosPendientes as $estudio) {
+    $nombre = trim((string)($estudio['nombre'] ?? ''));
+    if ($nombre === '') {
+        continue;
+    }
+    $codigo = trim((string)($estudio['codigo'] ?? ''));
+    $linea = $codigo !== '' ? ($codigo . ' - ' . $nombre) : $nombre;
+    $estudiosLineas[] = $linea;
+}
+$estudiosTexto = $estudiosLineas !== [] ? implode(PHP_EOL, $estudiosLineas) : 'Sin estudios pendientes registrados.';
+
+$motivoSolicitud = trim((string)($consulta['motivo_solicitud'] ?? ''));
+if ($motivoSolicitud === '') {
+    $motivoSolicitud = $planTratamiento !== '' ? $planTratamiento : ($reason !== '' ? $reason : 'SE SOLICITA EXÁMENES PARA CONTINUAR TRATAMIENTO');
+}
+
+$resumenLineas = [];
+if ($motivoConsulta !== '') {
+    $resumenLineas[] = 'Motivo: ' . $motivoConsulta;
+}
+if ($enfermedadActual !== '') {
+    $resumenLineas[] = 'Enfermedad actual: ' . $enfermedadActual;
+}
+$examenFisico = trim((string)($consulta['examen_fisico'] ?? $consulta['examenFisico'] ?? ''));
+if ($examenFisico !== '') {
+    $resumenLineas[] = 'Examen físico: ' . $examenFisico;
+}
+if ($consultaPlan !== '') {
+    $resumenLineas[] = 'Plan: ' . $consultaPlan;
+}
+$resumenClinico = $resumenLineas !== [] ? implode(PHP_EOL, $resumenLineas) : ($planTratamiento !== '' ? $planTratamiento : 'Sin resumen clínico registrado.');
+
+$doctorNombreCompleto = trim((string)($consulta['doctor'] ?? $consulta['doctor_nombre'] ?? $consulta['doctor_name'] ?? ''));
+if ($doctorNombreCompleto === '') {
+    $doctorNombreCompleto = trim(implode(' ', array_filter([
+        $doctorFirstName,
+        $doctorMiddleName,
+        $doctorLastName,
+        $doctorSecondLastName,
+    ])));
+}
+
+$doctorDocumento = trim((string)($consulta['doctor_documento'] ?? $consulta['doctor_cedula'] ?? $consulta['doctor_ci'] ?? $consulta['doctor_identificacion'] ?? ''));
+$doctorNombres = '';
+$doctorApellido1 = '';
+$doctorApellido2 = '';
+if ($doctorNombreCompleto !== '') {
+    $partes = preg_split('/\s+/', $doctorNombreCompleto, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $total = count($partes);
+    if ($total >= 3) {
+        $doctorApellido2 = $partes[$total - 1];
+        $doctorApellido1 = $partes[$total - 2];
+        $doctorNombres = implode(' ', array_slice($partes, 0, $total - 2));
+    } elseif ($total === 2) {
+        $doctorNombres = $partes[0];
+        $doctorApellido1 = $partes[1];
+    } else {
+        $doctorNombres = $partes[0] ?? '';
+    }
+}
+
+$fechaProfesional = $fechaConsulta !== '' ? $fechaConsulta : date('Y-m-d');
+$horaProfesional = $horaConsulta !== '' ? $horaConsulta : date('H:i');
+
+$dxSlots = array_pad($diagnosticoItems, 6, ['dx_code' => '', 'descripcion' => '']);
 ob_start();
+//echo '<pre>';
+//var_dump($data);
+//echo '</pre>';
 ?>
     <table>
         <colgroup>
@@ -75,7 +356,7 @@ ob_start();
             <td colspan="5" class="verde">EMERGENCIA</td>
             <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="7" class="verde">CONSULTA EXTERNA</td>
-            <td colspan="2" class="blanco"> X&nbsp;</td>
+            <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="7" class="verde">HOSPITALIZACIÓN</td>
             <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="17" class="blanco">OFTALMOLOGIA</td>
@@ -109,48 +390,159 @@ ob_start();
             <td colspan="7" class="verde">PROCEDIMIENTO</td>
             <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="3" class="verde">OTRO</td>
-            <td colspan="2" class="blanco">&nbsp;X</td>
+            <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="5" class="verde">SEDACIÓN</td>
             <td colspan="2" class="verde">SI</td>
             <td colspan="2" class="blanco">&nbsp;</td>
             <td colspan="2" class="verde">NO</td>
-            <td colspan="2" class="blanco" style="border-right: none"> X </td>
+            <td colspan="2" class="blanco" style="border-right: none">&nbsp;</td>
         </tr>
         <tr>
             <td colspan="8" class="verde">DESCRIPCIÓN</td>
             <td colspan="63" class="blanco" style="border-right: none; text-align: left">
-                Informe
-                de <?= htmlspecialchars($descripcionExamen !== '' ? $descripcionExamen : 'Imágenes', ENT_QUOTES, 'UTF-8') ?>
+                <?php
+                $estudiosSafe = htmlspecialchars($estudiosTexto, ENT_QUOTES, 'UTF-8');
+                $estudiosSafe = str_replace(["\r\n", "\n", "\r"], '<br>', $estudiosSafe);
+                echo $estudiosSafe;
+                ?>
         </tr>
     </table>
     <table>
         <tr>
-            <td class="morado">D. HALLAZGOS POR IMAGENOLOGÍA</td>
+            <td colspan="40" class="morado">D. MOTIVO DE LA SOLICITUD</td>
+            <td colspan="31" class="morado" style="font-weight: normal; font-size: 6pt; text-align: right">
+                REGISTRAR
+                LAS
+                RAZONES PARA SOLICITAR
+                EL ESTUDIO
+            </td>
         </tr>
         <tr>
-            <td class="blanco" style="border-right: none; text-align: left">
+            <td colspan="10" class="verde"><font class="font6">FUM</font><font
+                        class="font5"><br>(aaaa-mm-dd)</font>
+            </td>
+            <td colspan="12" class="blanco">&nbsp;</td>
+            <td colspan="14" class="verde">PACIENTE CONTAMINADO</td>
+            <td colspan="2" class="verde">SI</td>
+            <td colspan="2" class="blanco">&nbsp;</td>
+            <td colspan="2" class="verde">NO</td>
+            <td colspan="2" class="blanco">X</td>
+            <td colspan="27" class="blanco">&nbsp;</td>
+        </tr>
+        <tr>
+            <td colspan="71" class="blanco" style="text-align: left;">
                 <?php
-                $hallazgosSafe = htmlspecialchars($hallazgos, ENT_QUOTES, 'UTF-8');
-                $hallazgosSafe = preg_replace('/\*\*(.+?)\*\*/', '<b>$1</b>', $hallazgosSafe);
-                $hallazgosSafe = str_replace(["\r\n", "\n", "\r"], "</td></tr><tr><td class='blanco_left'>", $hallazgosSafe);
-                echo wordwrap($hallazgosSafe, 155, "</td></tr><tr><td class='blanco_left'>");
+                $motivoSafe = htmlspecialchars($motivoSolicitud, ENT_QUOTES, 'UTF-8');
+                $motivoSafe = str_replace(["\r\n", "\n", "\r"], '<br>', $motivoSafe);
+                echo $motivoSafe;
+                ?>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="71" class="blanco">&nbsp;</td>
+        </tr>
+        <tr>
+            <td colspan="71" class="blanco">&nbsp;</td>
+        </tr>
+    </table>
+    <table>
+        <tr>
+            <td class="morado">E. RESUMEN CLÍNICO ACTUAL
+                <span style="font-weight: normal; font-size: 6pt; text-align: right">
+                REGISTRAR DE MANERA OBLIGATORIA EL CUADRO CLÍNICO ACTUAL DEL PACIENTE
+            </span>
+            </td>
+        </tr>
+        <tr>
+            <td class="blanco_left">
+                <?php
+                $resumenSafe = htmlspecialchars($resumenClinico, ENT_QUOTES, 'UTF-8');
+                $resumenSafe = str_replace(["\r\n", "\n", "\r"], "</td></tr><tr><td class='blanco_left'>", $resumenSafe);
+                echo wordwrap($resumenSafe, 165, "</td></tr><tr><td class='blanco_left'>", true);
                 ?>
             </td>
         </tr>
     </table>
     <table>
-        <tr>
-            <td class="morado">E. CONCLUSIONES Y SUGERENCIAS</td>
-        </tr>
-        <tr>
-            <td class="blanco" style="border-right: none; text-align: left">
-                <?php echo wordwrap(htmlspecialchars($conclusiones, ENT_QUOTES, 'UTF-8'), 155, "</TD></TR><TR><td colspan=\"71\" class=\"blanco\" style=\"border-right: none; text-align: left\">"); ?>
-            </td>
-        </tr>
+        <TR>
+            <TD class="morado" width="2%">F.</TD>
+            <TD class="morado" width="17.5%">DIAGN&Oacute;STICOS</TD>
+            <TD class="morado" width="17.5%" style="font-weight: normal; font-size: 6pt">PRE= PRESUNTIVO
+                DEF=
+                DEFINITIVO
+            </TD>
+            <TD class="morado" width="6%" style="font-size: 6pt; text-align: center">CIE</TD>
+            <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">PRE</TD>
+            <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">DEF</TD>
+            <TD class="morado" width="2%"><BR></TD>
+            <TD class="morado" width="17.5%"><BR></TD>
+            <TD class="morado" width="17.5%"><BR></TD>
+            <TD class="morado" width="6%" style="font-size: 6pt; text-align: center">CIE</TD>
+            <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">PRE</TD>
+            <TD class="morado" width="3.5%" style="font-size: 6pt; text-align: center">DEF</TD>
+        </TR>
+        <?php
+        $dx0 = $dxSlots[0] ?? [];
+        $dx1 = $dxSlots[1] ?? [];
+        $dx2 = $dxSlots[2] ?? [];
+        $dx3 = $dxSlots[3] ?? [];
+        $dx4 = $dxSlots[4] ?? [];
+        $dx5 = $dxSlots[5] ?? [];
+
+        $dxDesc0 = trim((string)($dx0['descripcion'] ?? ''));
+        $dxDesc1 = trim((string)($dx1['descripcion'] ?? ''));
+        $dxDesc2 = trim((string)($dx2['descripcion'] ?? ''));
+        $dxDesc3 = trim((string)($dx3['descripcion'] ?? ''));
+        $dxDesc4 = trim((string)($dx4['descripcion'] ?? ''));
+        $dxDesc5 = trim((string)($dx5['descripcion'] ?? ''));
+
+        $dxCode0 = trim((string)($dx0['dx_code'] ?? ''));
+        $dxCode1 = trim((string)($dx1['dx_code'] ?? ''));
+        $dxCode2 = trim((string)($dx2['dx_code'] ?? ''));
+        $dxCode3 = trim((string)($dx3['dx_code'] ?? ''));
+        $dxCode4 = trim((string)($dx4['dx_code'] ?? ''));
+        $dxCode5 = trim((string)($dx5['dx_code'] ?? ''));
+        ?>
+        <TR>
+            <td class="verde">1.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc0, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode0, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc0 !== '' ? 'x' : '' ?></td>
+            <td class="verde">4.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc3, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode3, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc3 !== '' ? 'x' : '' ?></td>
+        </TR>
+        <TR>
+            <td class="verde">2.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc1, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode1, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc1 !== '' ? 'x' : '' ?></td>
+            <td class="verde">5.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc4, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode4, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc4 !== '' ? 'x' : '' ?></td>
+        </TR>
+        <TR>
+            <td class="verde">3.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc2, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode2, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc2 !== '' ? 'x' : '' ?></td>
+            <td class="verde">6.</td>
+            <td colspan="2" class="blanco" style="text-align: left"><?= htmlspecialchars($dxDesc5, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="blanco"><?= htmlspecialchars($dxCode5, ENT_QUOTES, 'UTF-8') ?></td>
+            <td class="amarillo"></td>
+            <td class="amarillo"><?= $dxDesc5 !== '' ? 'x' : '' ?></td>
+        </TR>
     </table>
     <table>
         <tr>
-            <td colspan="71" class="morado">F. DATOS DEL PROFESIONAL RESPONSABLE</td>
+            <td colspan="71" class="morado">G. DATOS DEL PROFESIONAL RESPONSABLE</td>
         </tr>
         <tr class="xl78">
             <td colspan="8" class="verde">FECHA<br>
@@ -165,14 +557,11 @@ ob_start();
         </tr>
         <tr>
             <td colspan="8"
-                class="blanco"><?= htmlspecialchars($fechaInforme !== '' ? $fechaInforme : date('Y/m/d'), ENT_QUOTES, 'UTF-8') ?></td>
-            <td colspan="7" class="blanco"><?= htmlspecialchars($horaInforme, ENT_QUOTES, 'UTF-8') ?></td>
-            <td colspan="21"
-                class="blanco"><?= htmlspecialchars((string)($firmante['nombres'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-            <td colspan="19"
-                class="blanco"><?= htmlspecialchars((string)($firmante['apellido1'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-            <td colspan="16"
-                class="blanco"><?= htmlspecialchars((string)($firmante['apellido2'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                class="blanco"><?= htmlspecialchars($fechaProfesional, ENT_QUOTES, 'UTF-8') ?></td>
+            <td colspan="7" class="blanco"><?= htmlspecialchars($horaProfesional, ENT_QUOTES, 'UTF-8') ?></td>
+            <td colspan="21" class="blanco"><?= htmlspecialchars($doctorNombres, ENT_QUOTES, 'UTF-8') ?></td>
+            <td colspan="19" class="blanco"><?= htmlspecialchars($doctorApellido1, ENT_QUOTES, 'UTF-8') ?></td>
+            <td colspan="16" class="blanco"><?= htmlspecialchars($doctorApellido2, ENT_QUOTES, 'UTF-8') ?></td>
         </tr>
         <tr>
             <td colspan="15" class="verde">NÚMERO DE DOCUMENTO DE IDENTIFICACIÓN</td>
@@ -181,40 +570,25 @@ ob_start();
         </tr>
         <tr>
             <td colspan="15" class="blanco"
-                style="height: 40px"><?= htmlspecialchars((string)($firmante['documento'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-            <td colspan="26" class="blanco">
-                <?php if ($firmaSrc !== ''): ?>
-                    <img src="<?= htmlspecialchars($firmaSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Firma"
-                         style="max-height: 35px;">
-                <?php endif; ?>
-            </td>
-            <td colspan="30" class="blanco">
-                <?php if ($selloSrc !== ''): ?>
-                    <img src="<?= htmlspecialchars($selloSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Sello"
-                         style="max-height: 35px;">
-                <?php endif; ?>
-            </td>
+                style="height: 40px"><?= htmlspecialchars($doctorDocumento, ENT_QUOTES, 'UTF-8') ?></td>
+            <td colspan="26" class="blanco">&nbsp;</td>
+            <td colspan="30" class="blanco">&nbsp;</td>
         </tr>
     </table>
     <table style="border: none">
-        <tr>
-            <td colspan="9" style="text-align: justify; font-size: 6pt">
-                La aproximación diagnóstica emitida en el presente informe, constituye tan solo una prueba
-                complementaria al diagnóstico clínico definitivo, motivo por el cual se recomienda correlacionar con
-                antecedentes clínicos/quirúrgicos, datos clínicos, exámenes de laboratorio complementarios, así como
-                seguimiento imagenológico del paciente.
-            </td>
-        </tr>
         <TR>
-            <TD colspan="6" HEIGHT=24 ALIGN=LEFT VALIGN=M><B><FONT SIZE=1
-                                                                   COLOR="#000000">SNS-MSP/HCU-form.012B/2021</FONT></B>
+            <TD colspan="6" HEIGHT=24 ALIGN=LEFT VALIGN=TOP><B><FONT SIZE=1 COLOR="#000000">SNS-MSP /
+                        HCU-form.012A
+                        /
+                        2008</FONT></B>
             </TD>
-            <TD colspan="3" ALIGN=RIGHT VALIGN=TOP><B><FONT SIZE=3 COLOR="#000000">IMAGENOLOGÍA - INFORME</FONT></B>
+            <TD colspan="3" ALIGN=RIGHT VALIGN=TOP><B><FONT SIZE=3 COLOR="#000000">IMAGENOLOGIA
+                        SOLICITUD</FONT></B>
             </TD>
         </TR>
     </TABLE>
 <?php
 $content = ob_get_clean();
-$title = 'Formulario 012B - Imagenes';
+$title = 'Formulario 012A - Imagenes';
 
 include $layout;

@@ -9,6 +9,13 @@
           </advancedOptions>
         </fileTransfer>
       </webServer>
+      <webServer id="1844be32-998d-44a3-a017-12044cf9468f" name="NAS">
+        <fileTransfer rootFolder="/volume1/Imagenes" accessType="SFTP" host="190.110.204.74" port="2222" sshConfigId="f2f0aa1d-406f-4cb9-b903-be7e81b986f4" sshConfig="agsuper@190.110.204.74:2222 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
     </option>
   </component>
 </project>

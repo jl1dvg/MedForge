@@ -6,6 +6,7 @@ $consulta = $viewData['consulta'] ?? [];
 $paciente = $viewData['paciente'] ?? [];
 $diagnosticos = $viewData['diagnostico'] ?? [];
 $imagenesSolicitadas = $viewData['imagenes_solicitadas'] ?? [];
+$examenesRelacionados = $viewData['examenes_relacionados'] ?? [];
 $trazabilidad = $viewData['trazabilidad'] ?? [];
 $crm = $viewData['crm'] ?? [];
 $crmDetalle = $crm['detalle'] ?? [];
@@ -65,6 +66,48 @@ $totalNotas = (int) (($crmDetalle['crm_total_notas'] ?? $examen['crm_total_notas
 $totalAdjuntos = (int) (($crmDetalle['crm_total_adjuntos'] ?? $examen['crm_total_adjuntos'] ?? 0));
 $tareasPendientes = (int) (($crmDetalle['crm_tareas_pendientes'] ?? $examen['crm_tareas_pendientes'] ?? 0));
 $tareasTotal = (int) (($crmDetalle['crm_tareas_total'] ?? $examen['crm_tareas_total'] ?? 0));
+
+
+$mapEstadoEstudio = static function (?string $estado): array {
+    $raw = trim((string)($estado ?? ''));
+    $key = function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw);
+
+    if ($key !== '' && strpos($key, 'aprobad') !== false) {
+        return ['label' => 'Aprobado', 'class' => 'bg-success text-white'];
+    }
+    if ($key !== '' && strpos($key, 'rechaz') !== false) {
+        return ['label' => 'Rechazado', 'class' => 'bg-danger text-white'];
+    }
+    if ($key !== '' && (strpos($key, 'pend') !== false || strpos($key, 'revision') !== false || strpos($key, 'recibid') !== false)) {
+        return ['label' => 'Pendiente', 'class' => 'bg-warning text-dark'];
+    }
+
+    return ['label' => 'Sin respuesta', 'class' => 'bg-secondary text-white'];
+};
+
+$imagenResumen = [
+    'total' => 0,
+    'aprobados' => 0,
+    'pendientes' => 0,
+    'rechazados' => 0,
+    'sin_respuesta' => 0,
+];
+
+foreach ($imagenesSolicitadas as &$imagenItem) {
+    $meta = $mapEstadoEstudio($imagenItem['estado'] ?? null);
+    $imagenItem['estado_badge'] = $meta;
+    $imagenResumen['total']++;
+    if ($meta['label'] === 'Aprobado') {
+        $imagenResumen['aprobados']++;
+    } elseif ($meta['label'] === 'Pendiente') {
+        $imagenResumen['pendientes']++;
+    } elseif ($meta['label'] === 'Rechazado') {
+        $imagenResumen['rechazados']++;
+    } else {
+        $imagenResumen['sin_respuesta']++;
+    }
+}
+unset($imagenItem);
 
 $hasDerivacion = !empty($derivacion['cod_derivacion']);
 $vigenciaTexto = 'No disponible';
@@ -277,10 +320,10 @@ if ($coberturaMailSentAt !== '') {
                             <?php if (!empty($diagnosticos) && is_array($diagnosticos)): ?>
                                 <ul class="mb-0 small">
                                     <?php foreach ($diagnosticos as $dx): ?>
-                                        <li>
-                                            <?= htmlspecialchars((string) ($dx['dx_code'] ?? $dx['codigo'] ?? 'DX'), ENT_QUOTES, 'UTF-8') ?> -
-                                            <?= htmlspecialchars((string) ($dx['descripcion'] ?? $dx['label'] ?? 'Sin descripción'), ENT_QUOTES, 'UTF-8') ?>
-                                        </li>
+                                            <li>
+                                                <?= htmlspecialchars((string) ($dx['dx_code'] ?? $dx['codigo'] ?? 'DX'), ENT_QUOTES, 'UTF-8') ?> -
+                                                <?= htmlspecialchars((string) ($dx['descripcion'] ?? $dx['label'] ?? 'Sin descripción'), ENT_QUOTES, 'UTF-8') ?>
+                                            </li>
                                     <?php endforeach; ?>
                                 </ul>
                             <?php else: ?>
@@ -311,61 +354,73 @@ if ($coberturaMailSentAt !== '') {
         </div>
 
         <div class="tab-pane fade" id="prefactura-tab-imagenes" role="tabpanel" aria-labelledby="prefactura-tab-imagenes-tab">
-            <h6 class="mb-3">Estudios de imagen solicitados</h6>
-            <?php if (!empty($imagenesSolicitadas)): ?>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle">
+            <?php if (!empty($examenesRelacionados)): ?>
+                <h6 class="mb-3">Exámenes vinculados a la solicitud</h6>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm align-middle" id="prefacturaExamenesRelacionados">
                         <thead>
                         <tr>
-                            <th>Estudio</th>
+                            <th>Examen</th>
                             <th>Estado</th>
-                            <th>Fuente</th>
-                            <th>Fecha</th>
-                            <th>Evidencia</th>
+                            <th>Vigencia</th>
+                            <th>Acciones</th>
                         </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($imagenesSolicitadas as $item): ?>
-                            <tr>
+                        <?php foreach ($examenesRelacionados as $rel): ?>
+                            <?php if (!is_array($rel)) { continue; } ?>
+                            <?php
+                            $estadoLabelRel = (string)($rel['kanban_estado_label'] ?? $rel['estado'] ?? 'Pendiente');
+                            $estadoSlugRel = strtolower(trim((string)($rel['kanban_estado'] ?? $rel['estado'] ?? '')));
+                            $estadoSlugRel = str_replace([' ', '_'], '-', $estadoSlugRel);
+                            $aprobadoRel = in_array($estadoSlugRel, ['listo-para-agenda', 'completado'], true);
+                            $vigenciaRel = $rel['derivacion_status'] ?? null;
+                            $vigenciaTexto = $vigenciaRel === 'vencida' ? 'Sin vigencia' : ($vigenciaRel === 'vigente' ? 'Vigente' : '—');
+                            $vigenciaBadgeClass = $vigenciaRel === 'vencida' ? 'danger' : ($vigenciaRel === 'vigente' ? 'success' : 'secondary');
+                            ?>
+                            <tr data-examen-row
+                                data-examen-id="<?= htmlspecialchars((string)($rel['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-examen-form="<?= htmlspecialchars((string)($rel['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                data-examen-estado="<?= htmlspecialchars($estadoSlugRel, ENT_QUOTES, 'UTF-8') ?>">
                                 <td>
-                                    <div class="fw-semibold"><?= htmlspecialchars((string) ($item['nombre'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <?php if (!empty($item['codigo'])): ?>
-                                        <small class="text-muted">Código: <?= htmlspecialchars((string) $item['codigo'], ENT_QUOTES, 'UTF-8') ?></small>
+                                    <div class="fw-semibold"><?= htmlspecialchars((string)($rel['examen_nombre'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php if (!empty($rel['examen_codigo'])): ?>
+                                        <small class="text-muted">Código: <?= htmlspecialchars((string)$rel['examen_codigo'], ENT_QUOTES, 'UTF-8') ?></small>
                                     <?php endif; ?>
                                 </td>
-                                <td><span class="badge bg-light text-dark border"><?= htmlspecialchars((string) ($item['estado'] ?? 'Solicitado'), ENT_QUOTES, 'UTF-8') ?></span></td>
-                                <td><?= htmlspecialchars((string) ($item['fuente'] ?? 'Consulta'), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>
-                                    <?php
-                                    $fechaItem = $item['fecha'] ?? null;
-                                    if ($fechaItem) {
-                                        try {
-                                            echo htmlspecialchars((new DateTime((string) $fechaItem))->format('d-m-Y H:i'), ENT_QUOTES, 'UTF-8');
-                                        } catch (Exception $e) {
-                                            echo htmlspecialchars((string) $fechaItem, ENT_QUOTES, 'UTF-8');
-                                        }
-                                    } else {
-                                        echo '<span class="text-muted">No disponible</span>';
-                                    }
-                                    ?>
+                                    <span class="badge <?= $aprobadoRel ? 'bg-success text-white' : 'bg-warning text-dark' ?>" data-examen-estado-label>
+                                        <?= htmlspecialchars($estadoLabelRel, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
                                 </td>
                                 <td>
-                                    <?php if (!empty($item['evidencias_count'])): ?>
-                                        <span class="badge bg-success"><?= htmlspecialchars((string) $item['evidencias_count'], ENT_QUOTES, 'UTF-8') ?> archivo(s)</span>
-                                    <?php else: ?>
-                                        <span class="text-muted small">Sin evidencia directa</span>
-                                    <?php endif; ?>
+                                    <span class="badge bg-<?= $vigenciaBadgeClass ?>">
+                                        <?= htmlspecialchars($vigenciaTexto, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-success"
+                                                data-examen-action="aprobar"
+                                                <?= $aprobadoRel ? 'disabled' : '' ?>>
+                                            Aprobar
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-warning"
+                                                data-examen-action="pendiente"
+                                                <?= !$aprobadoRel ? 'disabled' : '' ?>>
+                                            Pendiente
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
-            <?php else: ?>
-                <div class="alert alert-light border text-muted mb-3">
-                    No se identificaron estudios de imagen en la consulta. Se muestran únicamente los datos operativos disponibles.
-                </div>
             <?php endif; ?>
+
 
             <h6 class="mb-2 mt-4">Evidencia local (adjuntos CRM)</h6>
             <?php if (!empty($crmAdjuntos)): ?>
@@ -388,7 +443,7 @@ if ($coberturaMailSentAt !== '') {
             <?php endif; ?>
         </div>
 
-        <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
+<div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
             <div id="prefacturaDerivacionContent">
                 <?php if (!$hasDerivacion): ?>
                     <div class="card border-0 shadow-sm">
@@ -445,15 +500,15 @@ if ($coberturaMailSentAt !== '') {
                                 <?php if (!empty($derivacion['diagnosticos']) && is_array($derivacion['diagnosticos'])): ?>
                                     <ul class="mb-0 mt-2">
                                         <?php foreach ($derivacion['diagnosticos'] as $dx): ?>
-                                            <li>
-                                                <span class="text-primary">
-                                                    <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
-                                                </span>
-                                                — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                                                <?php if (!empty($dx['lateralidad'])): ?>
-                                                    (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
-                                                <?php endif; ?>
-                                            </li>
+                                                <li>
+                                                    <span class="text-primary">
+                                                        <?= htmlspecialchars($dx['dx_code'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
+                                                    — <?= htmlspecialchars($dx['descripcion'] ?? ($dx['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                                    <?php if (!empty($dx['lateralidad'])): ?>
+                                                        (<?= htmlspecialchars($dx['lateralidad'], ENT_QUOTES, 'UTF-8') ?>)
+                                                    <?php endif; ?>
+                                                </li>
                                         <?php endforeach; ?>
                                     </ul>
                                 <?php elseif (!empty($derivacion['diagnostico'])): ?>
@@ -478,6 +533,27 @@ if ($coberturaMailSentAt !== '') {
 
         <div class="tab-pane fade" id="prefactura-tab-trazabilidad" role="tabpanel" aria-labelledby="prefactura-tab-trazabilidad-tab">
             <h6 class="mb-3">Historial operativo del examen</h6>
+            <?php if (!empty($imagenesSolicitadas)): ?>
+                <div class="card border-0 bg-light mb-3">
+                    <div class="card-body py-2">
+                        <div class="small text-uppercase text-muted mb-2">Trazabilidad por estudio</div>
+                        <div class="d-flex flex-column gap-1">
+                            <?php foreach ($imagenesSolicitadas as $item): ?>
+                                <?php $badge = $item['estado_badge'] ?? ['label' => 'Sin respuesta', 'class' => 'bg-secondary text-white']; ?>
+                                <div class="d-flex justify-content-between align-items-center small">
+                                    <span><?= htmlspecialchars((string)($item['nombre'] ?? 'Estudio'), ENT_QUOTES, 'UTF-8') ?></span>
+                                    <span class="d-flex align-items-center gap-2">
+                                        <span class="badge <?= htmlspecialchars((string)$badge['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string)$badge['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="text-muted">
+                                            <?= !empty($item['fecha']) ? htmlspecialchars((string)$item['fecha'], ENT_QUOTES, 'UTF-8') : 'Sin fecha' ?>
+                                        </span>
+                                    </span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
             <?php if (!empty($trazabilidad)): ?>
                 <div class="list-group list-group-flush">
                     <?php foreach ($trazabilidad as $evento): ?>
@@ -524,6 +600,86 @@ if ($coberturaMailSentAt !== '') {
     </div>
 </div>
 
+
+<script>
+    document.addEventListener('change', function (event) {
+        if (event.target && event.target.id === 'prefacturaImagenesSoloPendientes') {
+            const onlyPending = Boolean(event.target.checked);
+            document.querySelectorAll('#prefactura-tab-imagenes tbody tr[data-estudio-estado]').forEach((row) => {
+                const estado = (row.getAttribute('data-estudio-estado') || '').toLowerCase();
+                row.classList.toggle('d-none', onlyPending && estado !== 'pendiente');
+            });
+        }
+    });
+
+    document.addEventListener('click', async function (event) {
+        const button = event.target.closest('[data-examen-action]');
+        if (!button) {
+            return;
+        }
+
+        const row = button.closest('[data-examen-row]');
+        if (!row) {
+            return;
+        }
+
+        const examenId = row.getAttribute('data-examen-id') || '';
+        const formId = row.getAttribute('data-examen-form') || '';
+        const action = button.getAttribute('data-examen-action') || '';
+        const estadoDestino = action === 'aprobar' ? 'Listo para agenda' : 'Revisión de cobertura';
+
+        button.disabled = true;
+        try {
+            const response = await fetch('/examenes/actualizar-estado', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: examenId ? Number.parseInt(examenId, 10) : null,
+                    form_id: formId || undefined,
+                    estado: estadoDestino,
+                    etapa: estadoDestino,
+                    completado: true,
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'No se pudo actualizar el estado');
+            }
+
+            const estadoLabel = data.estado_label || data.estado || estadoDestino;
+            const estadoSlug = (data.estado_slug || data.kanban_estado || estadoLabel || '').toString().toLowerCase().replace(/\s+/g, '-');
+            const aprobado = ['listo-para-agenda', 'completado'].includes(estadoSlug);
+            row.setAttribute('data-examen-estado', estadoSlug);
+
+            const badge = row.querySelector('[data-examen-estado-label]');
+            if (badge) {
+                badge.textContent = estadoLabel;
+                badge.classList.remove('bg-success', 'bg-warning', 'text-white', 'text-dark');
+                if (aprobado) {
+                    badge.classList.add('bg-success', 'text-white');
+                } else {
+                    badge.classList.add('bg-warning', 'text-dark');
+                }
+            }
+
+            row.querySelectorAll('[data-examen-action="aprobar"]').forEach((btn) => {
+                btn.disabled = aprobado;
+            });
+            row.querySelectorAll('[data-examen-action="pendiente"]').forEach((btn) => {
+                btn.disabled = !aprobado;
+            });
+
+            if (typeof window.aplicarFiltros === 'function') {
+                window.aplicarFiltros();
+            }
+        } catch (error) {
+            console.error('No se pudo actualizar el estado del examen', error);
+        } finally {
+            button.disabled = false;
+        }
+    });
+</script>
+
 <div class="modal fade" id="coberturaMailModal" tabindex="-1" aria-labelledby="coberturaMailModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -558,10 +714,16 @@ if ($coberturaMailSentAt !== '') {
                             <label class="form-label" for="coberturaMailAttachment">Adjuntar archivo</label>
                             <input type="file" class="form-control" id="coberturaMailAttachment" name="attachment"
                                    data-cobertura-mail-attachment accept="application/pdf">
-                            <a class="btn btn-outline-secondary btn-sm d-none mt-2" data-cobertura-mail-pdf
-                               href="#" target="_blank" rel="noopener">
-                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
-                            </a>
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <a class="btn btn-outline-secondary btn-sm d-none" data-cobertura-mail-pdf
+                                   href="#" target="_blank" rel="noopener">
+                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                                </a>
+                                <a class="btn btn-outline-primary btn-sm d-none" data-cobertura-mail-012a
+                                   href="#" target="_blank" rel="noopener">
+                                    <i class="bi bi-file-earmark-text me-1"></i> Descargar 012A
+                                </a>
+                            </div>
                         </div>
                         <div class="col-12">
                             <div id="coberturaMailModalStatus"

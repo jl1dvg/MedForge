@@ -627,6 +627,13 @@ $reporting = array_merge(
                             <option value="urgente">🔴 Urgente (&gt; 7 días)</option>
                         </select>
                     </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="kanbanPendientesFilter" class="form-label">Cobertura</label>
+                        <select id="kanbanPendientesFilter" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="1">Con pendientes</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>

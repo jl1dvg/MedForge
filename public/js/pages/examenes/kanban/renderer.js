@@ -132,6 +132,15 @@ function slugifyEstado(value) {
     return raw;
 }
 
+
+function coberturaBadgeMeta(estadoCobertura) {
+    const key = (estadoCobertura || '').toString().trim().toLowerCase();
+    if (key === 'aprobados' || key === 'aprobado') return { label: 'Aprobado', cls: 'bg-success text-white' };
+    if (key === 'pendientes' || key === 'pendiente') return { label: 'Pendiente', cls: 'bg-warning text-dark' };
+    if (key === 'rechazados' || key === 'rechazado') return { label: 'Rechazado', cls: 'bg-danger text-white' };
+    return { label: 'Sin respuesta', cls: 'bg-secondary text-white' };
+}
+
 function estadoLabelFromSlug(slug) {
     if (!slug) {
         return 'Sin estado';
@@ -296,6 +305,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.aseguradora = examen.aseguradora ?? examen.aseguradoraNombre ?? '';
         tarjeta.dataset.examenNombre = examenNombre;
         tarjeta.dataset.prefacturaTrigger = 'kanban';
+        tarjeta.dataset.pendientesEstudios = String(examen.pendientes_estudios_total || 0);
 
         const fecha = examen.consulta_fecha
             ? new Date(examen.consulta_fecha)
@@ -330,7 +340,18 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const lateralidad = examen.lateralidad || '—';
         const observaciones = examen.observaciones || 'Sin nota';
 
+        const resumenEstudios = examen.resumen_estudios || {};
+        const pendientesEstudios = Number.parseInt(examen.pendientes_estudios_total ?? resumenEstudios.pendientes ?? 0, 10) || 0;
+        const resumenBadge = Number.parseInt(resumenEstudios.total ?? 0, 10) > 0
+            ? `<span class="badge bg-light text-dark border">Estudios ${escapeHtml(`${resumenEstudios.total || 0} · A:${resumenEstudios.aprobados || 0} · P:${resumenEstudios.pendientes || 0} · R:${resumenEstudios.rechazados || 0}`)}</span>`
+            : '';
+        const pendientesBadge = pendientesEstudios > 0
+            ? `<span class="badge bg-warning text-dark">Pendientes: ${escapeHtml(String(pendientesEstudios))}</span>`
+            : '';
+
         const badges = [
+            resumenBadge,
+            pendientesBadge,
             formatBadge('Notas', totalNotas, '<i class="mdi mdi-note-text-outline"></i>'),
             formatBadge('Adjuntos', totalAdjuntos, '<i class="mdi mdi-paperclip"></i>'),
             formatBadge('Tareas', `${tareasPendientes}/${tareasTotal}`, '<i class="mdi mdi-format-list-checks"></i>'),

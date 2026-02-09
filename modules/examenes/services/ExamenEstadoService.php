@@ -12,6 +12,7 @@ class ExamenEstadoService
         'recibido' => ['label' => 'Recibido', 'color' => 'primary'],
         'llamado' => ['label' => 'Llamado', 'color' => 'warning'],
         'revision-cobertura' => ['label' => '⚠️ Cobertura', 'color' => 'info'],
+        'parcial' => ['label' => '🌓 Parcial', 'color' => 'warning'],
         'listo-para-agenda' => ['label' => '✅ Listo', 'color' => 'dark'],
         'completado' => ['label' => 'Completado', 'color' => 'secondary'],
     ];
@@ -23,6 +24,7 @@ class ExamenEstadoService
         ['slug' => 'recibido', 'label' => 'Recibido', 'order' => 10, 'column' => 'recibido', 'required' => true],
         ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
         ['slug' => 'revision-cobertura', 'label' => '⚠ Revisión de cobertura', 'order' => 30, 'column' => 'revision-cobertura', 'required' => true],
+        ['slug' => 'parcial', 'label' => '🌓 Parcial', 'order' => 35, 'column' => 'parcial', 'required' => false],
         ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 40, 'column' => 'listo-para-agenda', 'required' => true],
         ['slug' => 'completado', 'label' => 'Completado', 'order' => 50, 'column' => 'completado', 'required' => false],
     ];
@@ -69,6 +71,8 @@ class ExamenEstadoService
             'revision-codigos' => 'revision-cobertura',
             'revision-coberturas' => 'revision-cobertura',
             'cobertura' => 'revision-cobertura',
+            'parcial' => 'parcial',
+            'parciales' => 'parcial',
             'listo-para-agenda' => 'listo-para-agenda',
             'listo-para-agendar' => 'listo-para-agenda',
             'agenda' => 'listo-para-agenda',

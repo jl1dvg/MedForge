@@ -122,6 +122,7 @@ class ExamenController extends BaseController
             'prioridad' => trim((string)($payload['prioridad'] ?? '')),
             'estado' => trim((string)($payload['estado'] ?? '')),
             'fechaTexto' => trim((string)($payload['fechaTexto'] ?? '')),
+            'con_pendientes' => (string)($payload['con_pendientes'] ?? ''),
         ];
 
         $kanbanPreferences = $this->leadConfig->getKanbanPreferences(LeadConfigurationService::CONTEXT_EXAMENES);
@@ -131,6 +132,13 @@ class ExamenController extends BaseController
             $examenes = $this->examenModel->fetchExamenesConDetallesFiltrado($filtros);
             $examenes = array_map([$this, 'transformExamenRow'], $examenes);
             $examenes = $this->estadoService->enrichExamenes($examenes);
+            $examenes = $this->agruparExamenesPorSolicitud($examenes);
+            if (in_array(strtolower(trim((string)($filtros['con_pendientes'] ?? ''))), ['1', 'true', 'si', 'sí', 'yes'], true)) {
+                $examenes = array_values(array_filter(
+                    $examenes,
+                    static fn(array $item): bool => (int)($item['pendientes_estudios_total'] ?? 0) > 0
+                ));
+            }
             $examenes = $this->ordenarExamenes($examenes, $kanbanPreferences['sort'] ?? 'fecha_desc');
             $examenes = $this->limitarExamenesPorEstado($examenes, (int)($kanbanPreferences['column_limit'] ?? 0));
 
@@ -1253,38 +1261,38 @@ class ExamenController extends BaseController
             return;
         }
 
-        $viewData = $this->obtenerDatosParaVista($hcNumber, $formId, $examenId);
-        if (empty($viewData['examen'])) {
-            http_response_code(404);
-            echo '<p class="text-danger">No se encontraron datos para el examen seleccionado.</p>';
-            return;
-        }
+            $viewData = $this->obtenerDatosParaVista($hcNumber, $formId, $examenId);
+            if (empty($viewData['examen'])) {
+                http_response_code(404);
+                echo '<p class="text-danger">No se encontraron datos para el examen seleccionado.</p>';
+                return;
+            }
 
-        $afiliacion = trim((string)($viewData['paciente']['afiliacion'] ?? ($viewData['examen']['afiliacion'] ?? '')));
-        $templateService = new CoberturaMailTemplateService($this->pdo);
-        $baseTemplateKey = $templateService->resolveTemplateKey($afiliacion);
-        $examenTemplateKey = $baseTemplateKey ? $baseTemplateKey . '_examenes' : null;
-        $templateKey = null;
-        $templateAvailable = false;
-        if ($examenTemplateKey && $templateService->hasEnabledTemplate($examenTemplateKey)) {
-            $templateKey = $examenTemplateKey;
-            $templateAvailable = true;
-        } elseif ($baseTemplateKey && $templateService->hasEnabledTemplate($baseTemplateKey)) {
-            $templateKey = $baseTemplateKey;
-            $templateAvailable = true;
-        }
-        $viewData['coberturaTemplateKey'] = $templateKey;
-        $viewData['coberturaTemplateAvailable'] = $templateAvailable;
-        $viewData['coberturaMailLog'] = null;
-        $examenIdValue = isset($viewData['examen']['id']) ? (int) $viewData['examen']['id'] : null;
-        if ($examenIdValue) {
-            $mailLogService = new ExamenMailLogService($this->pdo);
-            $viewData['coberturaMailLog'] = $mailLogService->fetchLatestByExamen($examenIdValue);
-        }
+            $afiliacion = trim((string)($viewData['paciente']['afiliacion'] ?? ($viewData['examen']['afiliacion'] ?? '')));
+            $templateService = new CoberturaMailTemplateService($this->pdo);
+            $baseTemplateKey = $templateService->resolveTemplateKey($afiliacion);
+            $examenTemplateKey = $baseTemplateKey ? $baseTemplateKey . '_examenes' : null;
+            $templateKey = null;
+            $templateAvailable = false;
+            if ($examenTemplateKey && $templateService->hasEnabledTemplate($examenTemplateKey)) {
+                $templateKey = $examenTemplateKey;
+                $templateAvailable = true;
+            } elseif ($baseTemplateKey && $templateService->hasEnabledTemplate($baseTemplateKey)) {
+                $templateKey = $baseTemplateKey;
+                $templateAvailable = true;
+            }
+            $viewData['coberturaTemplateKey'] = $templateKey;
+            $viewData['coberturaTemplateAvailable'] = $templateAvailable;
+            $viewData['coberturaMailLog'] = null;
+            $examenIdValue = isset($viewData['examen']['id']) ? (int) $viewData['examen']['id'] : null;
+            if ($examenIdValue) {
+                $mailLogService = new ExamenMailLogService($this->pdo);
+                $viewData['coberturaMailLog'] = $mailLogService->fetchLatestByExamen($examenIdValue);
+            }
 
-        ob_start();
-        include __DIR__ . '/../views/prefactura_detalle.php';
-        echo ob_get_clean();
+            ob_start();
+            include __DIR__ . '/../views/prefactura_detalle.php';
+            echo ob_get_clean();
     }
 
     public function enviarCoberturaMail(): void
@@ -1377,8 +1385,17 @@ class ExamenController extends BaseController
             $toList = [self::COBERTURA_MAIL_TO];
         }
 
+        $attachments = [];
+        $generatedFiles = [];
+        $autoAttachment = $this->buildCobertura012AAttachment($formId, $hcNumber, $examenId);
+        if ($autoAttachment) {
+            $attachments[] = $autoAttachment;
+            $generatedFiles[] = $autoAttachment['path'];
+        }
         $attachment = $this->getCoberturaAttachment();
-        $attachments = $attachment ? [$attachment] : [];
+        if ($attachment) {
+            $attachments[] = $attachment;
+        }
 
         $profileService = new MailProfileService($this->pdo);
         $profileSlug = $profileService->getProfileSlugForContext('examenes');
@@ -1386,6 +1403,11 @@ class ExamenController extends BaseController
         $toList = array_values(array_unique($toList));
         $ccList = array_values(array_unique(array_merge($ccList, self::COBERTURA_MAIL_CC)));
         $result = $mailer->sendPatientUpdate($toList, $subject, $body, $ccList, $attachments, $isHtml, $profileSlug);
+        foreach ($generatedFiles as $path) {
+            if ($path !== '' && is_file($path)) {
+                @unlink($path);
+            }
+        }
         $sentAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $bodyText = $this->formatCoberturaMailBodyText($body, $isHtml);
         $mailLogService = new ExamenMailLogService($this->pdo);
@@ -1529,6 +1551,14 @@ class ExamenController extends BaseController
         $paciente = $this->pacienteService->getPatientDetails($hcNumber);
         $consulta = $this->examenModel->obtenerConsultaPorFormHc($formId, $hcNumber) ?? [];
         $examenesRelacionados = $this->examenModel->obtenerExamenesPorFormHc($formId, $hcNumber);
+        $examenesRelacionados = array_map([$this, 'transformExamenRow'], $examenesRelacionados);
+        $examenesRelacionados = $this->estadoService->enrichExamenes($examenesRelacionados);
+        foreach ($examenesRelacionados as &$rel) {
+            if (empty($rel['derivacion_status']) && $vigenciaStatus) {
+                $rel['derivacion_status'] = $vigenciaStatus;
+            }
+        }
+        unset($rel);
 
         $crmResumen = [];
         try {
@@ -1559,6 +1589,7 @@ class ExamenController extends BaseController
             'consulta' => $consulta,
             'diagnostico' => $diagnosticos,
             'imagenes_solicitadas' => $imagenesSolicitadas,
+            'examenes_relacionados' => $examenesRelacionados,
             'trazabilidad' => $trazabilidad,
             'crm' => $crmResumen,
             'derivacion' => $derivacion,
@@ -2191,6 +2222,50 @@ class ExamenController extends BaseController
             http_response_code(500);
             echo '<p class="text-danger">No se pudo generar el informe (ref: ' . $errorId . ').</p>';
         }
+    }
+
+    public function imprimirCobertura012A(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $examenId = isset($_GET['examen_id']) ? (int)$_GET['examen_id'] : null;
+
+        if ($hcNumber === '' || $formId === '') {
+            http_response_code(400);
+            echo '<p class="text-danger">Faltan parámetros para generar el formulario 012A.</p>';
+            return;
+        }
+
+        $attachment = $this->buildCobertura012AAttachment($formId, $hcNumber, $examenId);
+        if (!$attachment || empty($attachment['path']) || !is_file($attachment['path'])) {
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo generar el formulario 012A.</p>';
+            return;
+        }
+
+        $filename = $attachment['name'] ?? ('012A_' . $hcNumber . '_' . date('Ymd_His') . '.pdf');
+        $content = @file_get_contents($attachment['path']);
+        @unlink($attachment['path']);
+
+        if ($content === false || $content === '') {
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo leer el formulario 012A.</p>';
+            return;
+        }
+
+        if (!headers_sent()) {
+            if (ob_get_length()) {
+                ob_clean();
+            }
+            header('Content-Length: ' . strlen($content));
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        echo $content;
     }
 
     /**
@@ -2928,6 +3003,122 @@ class ExamenController extends BaseController
         return $row;
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $examenes
+     * @return array<int, array<string, mixed>>
+     */
+    private function agruparExamenesPorSolicitud(array $examenes): array
+    {
+        $agrupados = [];
+
+        foreach ($examenes as $examen) {
+            $formId = trim((string)($examen['form_id'] ?? ''));
+            $hcNumber = trim((string)($examen['hc_number'] ?? ''));
+            if ($formId === '' || $hcNumber === '') {
+                continue;
+            }
+
+            $key = $formId . '|' . $hcNumber;
+            $estadoEstudio = $this->normalizarEstadoCoberturaEstudio((string)($examen['estado'] ?? ''));
+
+            if (!isset($agrupados[$key])) {
+                $agrupados[$key] = $examen;
+                $agrupados[$key]['estudios'] = [];
+                $agrupados[$key]['resumen_estudios'] = [
+                    'total' => 0,
+                    'aprobados' => 0,
+                    'pendientes' => 0,
+                    'rechazados' => 0,
+                    'sin_respuesta' => 0,
+                ];
+                $agrupados[$key]['kanban_rank'] = $this->rankEstadoKanban((string)($examen['kanban_estado'] ?? $examen['estado'] ?? ''));
+            }
+
+            $agrupados[$key]['resumen_estudios']['total']++;
+            if (isset($agrupados[$key]['resumen_estudios'][$estadoEstudio])) {
+                $agrupados[$key]['resumen_estudios'][$estadoEstudio]++;
+            }
+
+            $agrupados[$key]['estudios'][] = [
+                'id' => $examen['id'] ?? null,
+                'codigo' => $examen['examen_codigo'] ?? null,
+                'nombre' => $examen['examen_nombre'] ?? null,
+                'estado' => $examen['estado'] ?? null,
+                'estado_cobertura' => $estadoEstudio,
+                'updated_at' => $examen['updated_at'] ?? ($examen['consulta_fecha'] ?? $examen['created_at'] ?? null),
+            ];
+
+            $rank = $this->rankEstadoKanban((string)($examen['kanban_estado'] ?? $examen['estado'] ?? ''));
+            if ($rank < (int)$agrupados[$key]['kanban_rank']) {
+                $agrupados[$key]['kanban_rank'] = $rank;
+                $agrupados[$key]['estado'] = $examen['estado'] ?? $agrupados[$key]['estado'];
+                $agrupados[$key]['kanban_estado'] = $examen['kanban_estado'] ?? $agrupados[$key]['kanban_estado'] ?? $agrupados[$key]['estado'];
+                $agrupados[$key]['kanban_estado_label'] = $examen['kanban_estado_label'] ?? $agrupados[$key]['kanban_estado_label'] ?? $agrupados[$key]['estado'];
+            }
+        }
+
+        foreach ($agrupados as &$item) {
+            $total = (int)($item['resumen_estudios']['total'] ?? 0);
+            $aprobados = (int)($item['resumen_estudios']['aprobados'] ?? 0);
+            $pendientes = (int)($item['resumen_estudios']['pendientes'] ?? 0);
+            $rechazados = (int)($item['resumen_estudios']['rechazados'] ?? 0);
+            $sinRespuesta = (int)($item['resumen_estudios']['sin_respuesta'] ?? 0);
+            $noAprobados = $pendientes + $rechazados + $sinRespuesta;
+
+            if ($total > 0 && $aprobados > 0 && $noAprobados > 0) {
+                $item['estado'] = 'Parcial';
+                $item['kanban_estado'] = 'parcial';
+                $item['kanban_estado_label'] = 'Parcial';
+            } elseif ($total > 0 && $aprobados === $total) {
+                $item['estado'] = 'Listo para agenda';
+                $item['kanban_estado'] = 'listo-para-agenda';
+                $item['kanban_estado_label'] = 'Listo para agenda';
+            }
+
+            $pendientesTotal = $pendientes + $sinRespuesta;
+            $item['alert_pendientes_estudios'] = $pendientesTotal > 0;
+            $item['pendientes_estudios_total'] = $pendientesTotal;
+            unset($item['kanban_rank']);
+        }
+        unset($item);
+
+        return array_values($agrupados);
+    }
+
+    private function normalizarEstadoCoberturaEstudio(string $estado): string
+    {
+        $value = function_exists('mb_strtolower') ? mb_strtolower(trim($estado), 'UTF-8') : strtolower(trim($estado));
+        if ($value === '') {
+            return 'sin_respuesta';
+        }
+        if (str_contains($value, 'aprobad')) {
+            return 'aprobados';
+        }
+        if (str_contains($value, 'rechaz')) {
+            return 'rechazados';
+        }
+        if (str_contains($value, 'pend') || str_contains($value, 'revision') || str_contains($value, 'recibid')) {
+            return 'pendientes';
+        }
+
+        return 'sin_respuesta';
+    }
+
+    private function rankEstadoKanban(string $estado): int
+    {
+        $slug = $this->estadoService->normalizeSlug($estado);
+        $rank = [
+            'recibido' => 0,
+            'llamado' => 1,
+            'revision-cobertura' => 2,
+            'parcial' => 3,
+            'listo-para-agenda' => 4,
+            'completado' => 5,
+        ];
+
+        return $rank[$slug] ?? 99;
+    }
+
     private function transformResponsable(array $usuario): array
     {
         $usuario['avatar'] = $this->formatProfilePhoto($usuario['avatar'] ?? ($usuario['profile_photo'] ?? null));
@@ -3268,6 +3459,118 @@ class ExamenController extends BaseController
         }
 
         return array_values(array_unique($emails));
+    }
+
+    /**
+     * @return array{path: string, name?: string, type?: string, size?: int}|null
+     */
+    private function buildCobertura012AAttachment(string $formId, string $hcNumber, ?int $examenId): ?array
+    {
+        if ($formId === '' || $hcNumber === '') {
+            return null;
+        }
+
+        try {
+            $viewData = $this->obtenerDatosParaVista($hcNumber, $formId, $examenId);
+        } catch (Throwable $e) {
+            JsonLogger::log(
+                'examenes_mail',
+                'No se pudo construir datos para 012A',
+                $e,
+                [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'examen_id' => $examenId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+            return null;
+        }
+
+        if (empty($viewData['examen'])) {
+            return null;
+        }
+
+        $dxDerivacion = [];
+        if (!empty($viewData['derivacion']['diagnostico'])) {
+            $dxDerivacion[] = ['diagnostico' => $viewData['derivacion']['diagnostico']];
+        }
+
+        $payload = [
+            'paciente' => $viewData['paciente'] ?? [],
+            'consulta' => $viewData['consulta'] ?? [],
+            'diagnostico' => $viewData['diagnostico'] ?? [],
+            'dx_derivacion' => $dxDerivacion,
+            'solicitud' => [
+                'created_at' => $viewData['examen']['created_at'] ?? null,
+                'created_at_date' => $viewData['examen']['created_at'] ?? null,
+                'created_at_time' => $viewData['examen']['created_at'] ?? null,
+            ],
+            'examenes_relacionados' => $viewData['examenes_relacionados'] ?? [],
+            'imagenes_solicitadas' => $viewData['imagenes_solicitadas'] ?? [],
+        ];
+
+        $filename = '012A_' . ($hcNumber !== '' ? $hcNumber : 'paciente') . '_' . date('Ymd_His') . '.pdf';
+        $reportService = new ReportService();
+
+        try {
+            $pdf = $reportService->renderPdf('012A', $payload, [
+                'destination' => 'S',
+                'filename' => $filename,
+            ]);
+        } catch (Throwable $e) {
+            JsonLogger::log(
+                'examenes_mail',
+                'No se pudo generar PDF 012A',
+                $e,
+                [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'examen_id' => $examenId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+            return null;
+        }
+
+        if (strncmp($pdf, '%PDF-', 5) !== 0) {
+            JsonLogger::log(
+                'examenes_mail',
+                'Contenido 012A no es PDF',
+                null,
+                [
+                    'preview' => substr($pdf, 0, 200),
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'examen_id' => $examenId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+            return null;
+        }
+
+        $tmpBase = tempnam(sys_get_temp_dir(), 'mf_012a_');
+        if ($tmpBase === false) {
+            return null;
+        }
+        $tmpPath = $tmpBase;
+        if (!str_ends_with($tmpBase, '.pdf')) {
+            $candidate = $tmpBase . '.pdf';
+            if (@rename($tmpBase, $candidate)) {
+                $tmpPath = $candidate;
+            }
+        }
+        if (@file_put_contents($tmpPath, $pdf) === false) {
+            @unlink($tmpPath);
+            return null;
+        }
+
+        return [
+            'path' => $tmpPath,
+            'name' => $filename,
+            'type' => 'application/pdf',
+            'size' => strlen($pdf),
+        ];
     }
 
     /**

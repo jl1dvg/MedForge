@@ -42,6 +42,15 @@ function agruparPorEstado(examenes) {
     return agrupadas;
 }
 
+
+function togglePendientesCoberturaColumn(data = []) {
+    const hasPendientes = (Array.isArray(data) ? data : []).some(item => Number(item?.pendientes_estudios_total ?? 0) > 0);
+    const col = document.getElementById('kanban-revision-cobertura')?.closest('.kanban-column');
+    if (col) {
+        col.classList.toggle('d-none', !hasPendientes);
+    }
+}
+
 function actualizarContadores(agrupadas) {
     const total = Object.values(agrupadas).reduce((acc, items) => acc + items.length, 0);
     const { columnLimit } = getCrmKanbanPreferences();
@@ -70,6 +79,7 @@ export function initKanban(data = []) {
 
     const agrupadas = agruparPorEstado(data);
     actualizarContadores(agrupadas);
+    togglePendientesCoberturaColumn(data);
 
     inicializarModalDetalles();
     inicializarBotonesModal();

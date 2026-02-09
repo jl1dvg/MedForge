@@ -39,12 +39,12 @@ export function actualizarEstadoExamen(
             examenes.find(s => String(s.id) === String(id));
 
         if (encontrada) {
-            encontrada.estado = estadoLabel || encontrada.estado;
-            encontrada.estado_label = estadoLabel || encontrada.estado_label || estadoLabel;
-            if (estadoSlug) {
-                encontrada.kanban_estado = estadoSlug;
-                encontrada.kanban_estado_label =
-                    encontrada.kanban_estado_label || estadoLabel || encontrada.estado;
+                encontrada.estado = estadoLabel || encontrada.estado;
+                encontrada.estado_label = estadoLabel || encontrada.estado_label || estadoLabel;
+                if (estadoSlug) {
+                    encontrada.kanban_estado = estadoSlug;
+                    encontrada.kanban_estado_label =
+                        encontrada.kanban_estado_label || estadoLabel || encontrada.estado;
             }
         }
     }
@@ -94,11 +94,11 @@ export function actualizarEstadoExamen(
                     examenes.find(s => String(s.id) === String(id));
 
                 if (encontrada) {
-                    encontrada.estado = estadoRespuestaSlug || estadoRespuesta;
-                    encontrada.estado_label = estadoRespuestaLabel || estadoRespuesta;
-                    encontrada.kanban_estado = estadoRespuestaSlug || estadoRespuesta;
-                    encontrada.kanban_estado_label =
-                        data.estado_label ?? data.kanban_estado_label ?? estadoRespuestaLabel ?? estadoRespuesta;
+                        encontrada.estado = estadoRespuestaSlug || estadoRespuesta;
+                        encontrada.estado_label = estadoRespuestaLabel || estadoRespuesta;
+                        encontrada.kanban_estado = estadoRespuestaSlug || estadoRespuesta;
+                        encontrada.kanban_estado_label =
+                            data.estado_label ?? data.kanban_estado_label ?? estadoRespuestaLabel ?? estadoRespuesta;
                     if (data.checklist !== undefined) {
                         encontrada.checklist = data.checklist;
                     }
@@ -108,7 +108,6 @@ export function actualizarEstadoExamen(
                     if (data.kanban_next !== undefined) {
                         encontrada.kanban_next = data.kanban_next;
                     }
-
                     if (data.turno !== undefined) {
                         encontrada.turno = data.turno;
                     }

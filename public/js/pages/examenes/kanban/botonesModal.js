@@ -148,6 +148,23 @@ function buildCoberturaUrl(formId, hcNumber, pages) {
     return `/reports/cobertura/pdf?${params.toString()}`;
 }
 
+function buildCobertura012AUrl(formId, hcNumber, examenId) {
+    if (!formId || !hcNumber) {
+        return '';
+    }
+
+    const params = new URLSearchParams({
+        form_id: formId,
+        hc_number: hcNumber,
+    });
+
+    if (examenId) {
+        params.set('examen_id', examenId);
+    }
+
+    return `/examenes/cobertura-012a/pdf?${params.toString()}`;
+}
+
 function getCoberturaMailData() {
     const container = document.getElementById("prefacturaCoberturaData");
     if (!container) {
@@ -183,6 +200,7 @@ function getCoberturaMailModalElements() {
         body: modal.querySelector("[data-cobertura-mail-body]"),
         attachment: modal.querySelector("[data-cobertura-mail-attachment]"),
         pdfLink: modal.querySelector("[data-cobertura-mail-pdf]"),
+        pdf012aLink: modal.querySelector("[data-cobertura-mail-012a]"),
         sendButton: modal.querySelector("[data-cobertura-mail-send]"),
     };
 }
@@ -321,6 +339,7 @@ function openCoberturaMailModal({ subject, body, derivacionPdf, recipients }) {
     ensureCoberturaMailModal();
     ensureCoberturaEditor();
     const editor = getCoberturaEditorInstance();
+    const data = getCoberturaMailData() || {};
 
     const destinatarios = recipients || {};
     if (elements.to) {
@@ -347,6 +366,16 @@ function openCoberturaMailModal({ subject, body, derivacionPdf, recipients }) {
             elements.pdfLink.classList.remove("d-none");
         } else {
             elements.pdfLink.classList.add("d-none");
+        }
+    }
+
+    if (elements.pdf012aLink) {
+        const link012a = buildCobertura012AUrl(data?.formId, data?.hcNumber, data?.examenId);
+        if (link012a) {
+            elements.pdf012aLink.href = link012a;
+            elements.pdf012aLink.classList.remove("d-none");
+        } else {
+            elements.pdf012aLink.classList.add("d-none");
         }
     }
 

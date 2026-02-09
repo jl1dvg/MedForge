@@ -526,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
         afiliacion: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
         doctor: document.getElementById('kanbanDoctorFilter')?.value ?? '',
         prioridad: document.getElementById('kanbanSemaforoFilter')?.value ?? '',
+        con_pendientes: document.getElementById('kanbanPendientesFilter')?.value ?? '',
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
         search: searchInput?.value ?? '',
     });
@@ -841,7 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.aplicarFiltros = () => cargarKanban(obtenerFiltros());
 
-    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter', 'kanbanSemaforoFilter'].forEach(id => {
+    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter', 'kanbanSemaforoFilter', 'kanbanPendientesFilter'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener('change', () => window.aplicarFiltros());
