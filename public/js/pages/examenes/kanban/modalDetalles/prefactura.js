@@ -1,6 +1,10 @@
 import { getDataStore, getTableBodySelector } from "../config.js";
 import { showToast } from "../toast.js";
-import { loadExamenCore } from "./api.js";
+import {
+    buildEstadoApiCandidates,
+    fetchWithFallback,
+    loadExamenCore
+} from "./api.js";
 import {
     asegurarPreseleccionDerivacion,
     buildDerivacionMissingHtml,
@@ -64,6 +68,7 @@ export function abrirPrefactura({ hc, formId, examenId }) {
 
             const { html, examen } = coreResult.value;
             content.innerHTML = html;
+            bindExamenAcciones(content);
             renderPatientSummaryFallback(examenId || examen?.id);
             renderEstadoContext(examenId || examen?.id);
             attachPrefacturaCoberturaMail();
@@ -125,4 +130,62 @@ export function abrirPrefactura({ hc, formId, examenId }) {
         },
         { once: true }
     );
+}
+
+function bindExamenAcciones(root) {
+    const table = root.querySelector("#prefacturaExamenesRelacionados");
+    if (!table) return;
+
+    table.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-examen-action]");
+        if (!button) return;
+
+        const row = button.closest("[data-examen-row]");
+        if (!row) return;
+
+        const action = button.getAttribute("data-examen-action");
+        const examenId = row.getAttribute("data-examen-id");
+        if (!examenId) return;
+
+        const nextEstado = action === "aprobar" ? "listo-para-agenda" : "revision-cobertura";
+        const estadoLabel = action === "aprobar" ? "Listo para agenda" : "Revisión de cobertura";
+        const badgeClass = action === "aprobar" ? "bg-success text-white" : "bg-warning text-dark";
+
+        const approveBtn = row.querySelector('[data-examen-action="aprobar"]');
+        const pendingBtn = row.querySelector('[data-examen-action="pendiente"]');
+        if (approveBtn) approveBtn.disabled = true;
+        if (pendingBtn) pendingBtn.disabled = true;
+
+        try {
+            const urls = buildEstadoApiCandidates();
+            const response = await fetchWithFallback(urls, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
+                body: JSON.stringify({ id: examenId, estado: nextEstado }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || data?.error || "No se pudo actualizar el estado");
+            }
+
+            row.setAttribute("data-examen-estado", nextEstado);
+            const badge = row.querySelector("[data-examen-estado-label]");
+            if (badge) {
+                badge.className = `badge ${badgeClass}`;
+                badge.textContent = estadoLabel;
+            }
+            if (approveBtn) approveBtn.disabled = action === "aprobar";
+            if (pendingBtn) pendingBtn.disabled = action === "pendiente";
+
+            if (typeof window.aplicarFiltros === "function") {
+                window.aplicarFiltros();
+            }
+        } catch (error) {
+            console.error("❌ Error actualizando estado:", error);
+            showToast(error?.message || "No se pudo actualizar el estado.", false);
+            if (approveBtn) approveBtn.disabled = false;
+            if (pendingBtn) pendingBtn.disabled = false;
+        }
+    });
 }

@@ -385,6 +385,17 @@ sort($estadoOpciones);
 
             let activeTab = 'no-informados';
 
+            function refreshTabCounts() {
+                const totalInformados = rows.filter(function (row) {
+                    return (row.dataset.informado || '0') === '1';
+                }).length;
+                const totalNoInformados = rows.length - totalInformados;
+                const badgeNo = document.querySelector('#tabInformes [data-tab="no-informados"] .badge');
+                const badgeSi = document.querySelector('#tabInformes [data-tab="informados"] .badge');
+                if (badgeNo) badgeNo.textContent = String(totalNoInformados);
+                if (badgeSi) badgeSi.textContent = String(totalInformados);
+            }
+
             function applyTabFilter(tab) {
                 activeTab = tab;
                 const showInformados = tab === 'informados';
@@ -397,6 +408,7 @@ sort($estadoOpciones);
                     dataTable.columns.adjust();
                 }
                 applyPatientGrouping();
+                refreshTabCounts();
             }
 
             document.querySelectorAll('#tabInformes [data-tab]').forEach(function (btn) {
@@ -661,7 +673,8 @@ sort($estadoOpciones);
                             hcNumber: hcNumber,
                             tipoRaw: tipoRaw,
                             plantilla: res.plantilla,
-                            payload: res.payload || null
+                            payload: res.payload || null,
+                            row: row
                         };
 
                         return fetch('/imagenes/informes/plantilla?plantilla=' + encodeURIComponent(res.plantilla));
@@ -750,6 +763,19 @@ sort($estadoOpciones);
                             return;
                         }
                         setEstado('Informe guardado.');
+                        if (informeContext && informeContext.row) {
+                            const row = informeContext.row;
+                            row.dataset.informado = '1';
+                            const checkbox = row.querySelector('.row-select');
+                            if (checkbox) {
+                                checkbox.disabled = false;
+                            }
+                            const printBtn = row.querySelector('.btn-print-item');
+                            if (printBtn) {
+                                printBtn.disabled = false;
+                            }
+                            applyTabFilter(activeTab);
+                        }
                         if (modalInstance) {
                             modalInstance.hide();
                         }

@@ -349,6 +349,24 @@ export function renderKanban(data, callbackEstadoActualizado) {
             ? `<span class="badge bg-warning text-dark">Pendientes: ${escapeHtml(String(pendientesEstudios))}</span>`
             : '';
 
+        const estudios = Array.isArray(examen.estudios) ? examen.estudios : [];
+        const estudiosHtml = estudios.length
+            ? `<div class="kanban-estudios mt-2">
+                <div class="small text-muted mb-1">Exámenes solicitados</div>
+                <div class="d-flex flex-column gap-1">
+                    ${estudios.map((item) => {
+                        const nombre = item?.nombre || item?.examen_nombre || item?.examen || 'Examen';
+                        const codigo = item?.codigo ? ` (${item.codigo})` : '';
+                        const badge = coberturaBadgeMeta(item?.estado_cobertura || item?.estado || '');
+                        return `<div class="d-flex justify-content-between align-items-center small">
+                            <span>${escapeHtml(`${nombre}${codigo}`)}</span>
+                            <span class="badge ${escapeHtml(badge.cls)}">${escapeHtml(badge.label)}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>`
+            : '';
+
         const badges = [
             resumenBadge,
             pendientesBadge,
@@ -426,6 +444,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 </div>
                 <div class="crm-badges">${badges}</div>
             </div>
+            ${estudiosHtml}
             ${checklistHtml}
         `;
 
