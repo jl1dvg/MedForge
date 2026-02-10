@@ -2,7 +2,7 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
-      <webServer id="8bf43557-4c1e-4f36-aab1-7c2c3a654009" name="MedForge">
+      <webServer id="8bf43557-4c1e-4f36-aab1-7c2c3a654009" name="MedForge" url="http://190.110.204.74">
         <fileTransfer rootFolder="/medforge" accessType="SFTP" host="access793096920.webspace-data.io" port="22" sshConfigId="abd10fac-89d7-4127-a6de-00d5ff01e8f1" sshConfig="u98115706@access793096920.webspace-data.io:22 password">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
@@ -10,7 +10,7 @@
         </fileTransfer>
       </webServer>
       <webServer id="1844be32-998d-44a3-a017-12044cf9468f" name="NAS">
-        <fileTransfer rootFolder="/volume1/Imagenes" accessType="SFTP" host="190.110.204.74" port="2222" sshConfigId="f2f0aa1d-406f-4cb9-b903-be7e81b986f4" sshConfig="agsuper@190.110.204.74:2222 password">
+        <fileTransfer rootFolder="/volume1/Imagenes" accessType="SFTP" host="190.110.204.74" port="2222" sshConfigId="f2f0aa1d-406f-4cb9-b903-be7e81b986f4" sshConfig="usersftp@190.110.204.74:2222 agent" authAgent="true">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>

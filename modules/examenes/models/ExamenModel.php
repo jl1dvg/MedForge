@@ -332,6 +332,7 @@ class ExamenModel
                 ce.examen_codigo,
                 ce.examen_nombre,
                 ce.estado,
+                ce.doctor,
                 ce.solicitante,
                 ce.consulta_fecha,
                 ce.created_at
@@ -348,22 +349,72 @@ class ExamenModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public function obtenerDoctorProcedimientoProyectado(string $formId, string $hcNumber): ?string
+    {
+        $stmt = $this->db->prepare(
+            "SELECT pp.doctor
+             FROM procedimiento_proyectado pp
+             WHERE pp.form_id = :form_id
+               AND pp.hc_number = :hc_number
+               AND pp.doctor IS NOT NULL
+               AND TRIM(pp.doctor) <> ''
+             ORDER BY pp.id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ]);
+
+        $value = $stmt->fetchColumn();
+        if ($value === false) {
+            $stmt = $this->db->prepare(
+                "SELECT pp.doctor
+                 FROM procedimiento_proyectado pp
+                 WHERE pp.hc_number = :hc_number
+                   AND pp.doctor IS NOT NULL
+                   AND TRIM(pp.doctor) <> ''
+                   AND pp.doctor NOT LIKE '%optometría%'
+                 ORDER BY pp.form_id DESC, pp.id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute([
+                ':hc_number' => $hcNumber,
+            ]);
+            $value = $stmt->fetchColumn();
+        }
+
+        if ($value === false) {
+            return null;
+        }
+
+        $doctor = trim((string) $value);
+        return $doctor !== '' ? $doctor : null;
+    }
+
     public function obtenerConsultaPorFormHc(string $formId, string $hcNumber): ?array
     {
         $stmt = $this->db->prepare(
             "SELECT
-                form_id,
-                hc_number,
-                fecha,
-                motivo_consulta,
-                enfermedad_actual,
-                examen_fisico,
-                plan,
-                diagnosticos,
-                examenes
-             FROM consulta_data
-             WHERE form_id = :form_id
-               AND hc_number = :hc_number
+                cd.*,
+                pp.doctor AS procedimiento_doctor,
+                u.id AS doctor_user_id,
+                u.first_name AS doctor_fname,
+                u.middle_name AS doctor_mname,
+                u.last_name AS doctor_lname,
+                u.second_last_name AS doctor_lname2,
+                u.cedula AS doctor_cedula,
+                u.signature_path AS doctor_signature_path,
+                u.firma AS doctor_firma,
+                u.nombre AS doctor_nombre
+             FROM consulta_data cd
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+             LEFT JOIN users u
+                ON UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+             WHERE cd.form_id = :form_id
+               AND cd.hc_number = :hc_number
              LIMIT 1"
         );
         $stmt->execute([

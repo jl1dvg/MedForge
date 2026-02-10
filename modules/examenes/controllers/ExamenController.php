@@ -13,6 +13,7 @@ use Modules\Examenes\Services\ExamenMailLogService;
 use Modules\Examenes\Services\ExamenReportExcelService;
 use Modules\Examenes\Services\ExamenReminderService;
 use Modules\Examenes\Services\ExamenSettingsService;
+use Modules\Examenes\Services\NasImagenesService;
 use Modules\Mail\Services\MailProfileService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\MailTemplates\Services\CoberturaMailTemplateService;
@@ -21,6 +22,7 @@ use Modules\Pacientes\Services\PacienteService;
 use Modules\Reporting\Services\ReportService;
 use PDO;
 use RuntimeException;
+use setasign\Fpdi\Tcpdf\Fpdi;
 use Throwable;
 
 class ExamenController extends BaseController
@@ -32,6 +34,7 @@ class ExamenController extends BaseController
     private ExamenSettingsService $settingsService;
     private LeadConfigurationService $leadConfig;
     private PusherConfigService $pusherConfig;
+    private NasImagenesService $nasImagenesService;
     private ?array $bodyCache = null;
 
     private const PUSHER_CHANNEL = 'examenes-kanban';
@@ -49,6 +52,7 @@ class ExamenController extends BaseController
         $this->settingsService = new ExamenSettingsService($pdo);
         $this->leadConfig = new LeadConfigurationService($pdo);
         $this->pusherConfig = new PusherConfigService($pdo);
+        $this->nasImagenesService = new NasImagenesService();
     }
 
     public function index(): void
@@ -1550,6 +1554,12 @@ class ExamenController extends BaseController
 
         $paciente = $this->pacienteService->getPatientDetails($hcNumber);
         $consulta = $this->examenModel->obtenerConsultaPorFormHc($formId, $hcNumber) ?? [];
+        if (empty(trim((string)($consulta['doctor'] ?? '')))) {
+            $doctorFromJoin = trim((string)($consulta['doctor_nombre'] ?? $consulta['procedimiento_doctor'] ?? ''));
+            if ($doctorFromJoin !== '') {
+                $consulta['doctor'] = $doctorFromJoin;
+            }
+        }
         $examenesRelacionados = $this->examenModel->obtenerExamenesPorFormHc($formId, $hcNumber);
         $examenesRelacionados = array_map([$this, 'transformExamenRow'], $examenesRelacionados);
         $examenesRelacionados = $this->estadoService->enrichExamenes($examenesRelacionados);
@@ -1559,6 +1569,37 @@ class ExamenController extends BaseController
             }
         }
         unset($rel);
+
+        $consultaSolicitante = trim((string)($consulta['solicitante'] ?? ''));
+        if ($consultaSolicitante === '') {
+            foreach ($examenesRelacionados as $rel) {
+                $candidate = trim((string)($rel['solicitante'] ?? ''));
+                if ($candidate !== '') {
+                    $consultaSolicitante = $candidate;
+                    break;
+                }
+            }
+            if ($consultaSolicitante !== '') {
+                $consulta['solicitante'] = $consultaSolicitante;
+            }
+        }
+
+        if (empty(trim((string)($consulta['doctor'] ?? '')))) {
+            $doctor = '';
+            foreach ($examenesRelacionados as $rel) {
+                $candidate = trim((string)($rel['doctor'] ?? $rel['solicitante'] ?? ''));
+                if ($candidate !== '') {
+                    $doctor = $candidate;
+                    break;
+                }
+            }
+            if ($doctor === '') {
+                $doctor = $this->examenModel->obtenerDoctorProcedimientoProyectado($formId, $hcNumber) ?? '';
+            }
+            if ($doctor !== '') {
+                $consulta['doctor'] = $doctor;
+            }
+        }
 
         $crmResumen = [];
         try {
@@ -2065,6 +2106,7 @@ class ExamenController extends BaseController
         header('Content-Type: text/html; charset=utf-8');
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->examenModel->listarUsuariosAsignables();
+        $firmanteDefaultId = $this->getCurrentUserId();
         include $view;
     }
 
@@ -2080,12 +2122,149 @@ class ExamenController extends BaseController
             echo '<p class="text-danger">Faltan parámetros para generar el informe.</p>';
             return;
         }
+        try {
+            $result = $this->renderInforme012B($formId, $hcNumber);
+            $this->emitPdf($result['pdf'], $result['filename'], true);
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_informes',
+                'Informe 012B falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                    'form_id' => $formId,
+                ]
+            );
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo generar el informe (ref: ' . $errorId . ').</p>';
+        }
+    }
 
+    public function imprimirInforme012BPaquete(): void
+    {
+        $this->requireAuth();
+
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            http_response_code(400);
+            echo '<p class="text-danger">Faltan parámetros para generar el paquete.</p>';
+            return;
+        }
+
+        try {
+            $result = $this->buildPaqueteInformes([
+                ['form_id' => $formId, 'hc_number' => $hcNumber],
+            ]);
+            $this->emitPdf($result['pdf'], $result['filename'], false);
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_informes',
+                'Paquete 012B falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                ]
+            );
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo generar el paquete (ref: ' . $errorId . ').</p>';
+        }
+    }
+
+    public function imprimirInforme012BPaqueteSeleccion(): void
+    {
+        $this->requireAuth();
+
+        $payload = $this->getRequestBody();
+        $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
+
+        if (empty($items)) {
+            http_response_code(422);
+            $this->json(['success' => false, 'error' => 'No se recibieron exámenes para el paquete.']);
+            return;
+        }
+
+        try {
+            $result = $this->buildPaqueteInformes($items);
+            $this->emitPdf($result['pdf'], $result['filename'], false);
+        } catch (RuntimeException $e) {
+            http_response_code(422);
+            $this->json(['success' => false, 'error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_informes',
+                'Paquete 012B falló',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+            http_response_code(500);
+            $this->json(['success' => false, 'error' => 'No se pudo generar el paquete (ref: ' . $errorId . ').']);
+        }
+    }
+
+    public function imprimirCobertura012A(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $examenId = isset($_GET['examen_id']) ? (int)$_GET['examen_id'] : null;
+
+        if ($hcNumber === '' || $formId === '') {
+            http_response_code(400);
+            echo '<p class="text-danger">Faltan parámetros para generar el formulario 012A.</p>';
+            return;
+        }
+
+        $attachment = $this->buildCobertura012AAttachment($formId, $hcNumber, $examenId);
+        if (!$attachment || empty($attachment['path']) || !is_file($attachment['path'])) {
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo generar el formulario 012A.</p>';
+            return;
+        }
+
+        $filename = $attachment['name'] ?? ('012A_' . $hcNumber . '_' . date('Ymd_His') . '.pdf');
+        $content = @file_get_contents($attachment['path']);
+        @unlink($attachment['path']);
+
+        if ($content === false || $content === '') {
+            http_response_code(500);
+            echo '<p class="text-danger">No se pudo leer el formulario 012A.</p>';
+            return;
+        }
+
+        if (!headers_sent()) {
+            if (ob_get_length()) {
+                ob_clean();
+            }
+            header('Content-Length: ' . strlen($content));
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        echo $content;
+    }
+
+    /**
+     * @return array{pdf: string, filename: string, fecha: string|null, hc_number: string}
+     */
+    private function renderInforme012B(string $formId, string $hcNumber): array
+    {
         $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($formId, $hcNumber);
         if (!$procedimiento) {
-            http_response_code(404);
-            echo '<p class="text-danger">No se encontró el procedimiento solicitado.</p>';
-            return;
+            throw new RuntimeException('No se encontró el procedimiento solicitado.');
         }
 
         $paciente = $this->pacienteService->getPatientDetails($hcNumber);
@@ -2162,110 +2341,223 @@ class ExamenController extends BaseController
         $reportService = new ReportService();
         $filename = '012B_' . ($patient['hc_number'] ?: $hcNumber) . '_' . date('Ymd_His') . '.pdf';
 
-        try {
-            $pdf = $reportService->renderPdf('012B', [
-                'patient' => $patient,
-                'examen' => [
-                    'descripcion' => $descripcion,
-                    'tipo_examen' => $tipoExamen,
-                ],
-                'informe' => [
-                    'hallazgos' => $hallazgos,
-                    'conclusiones' => $conclusiones,
-                    'fecha' => $fechaInforme,
-                    'hora' => $horaInforme,
-                ],
-                'firmante' => $firmante,
-            ], [
-                'destination' => 'S',
-                'filename' => $filename,
-            ]);
+        $pdf = $reportService->renderPdf('012B', [
+            'patient' => $patient,
+            'examen' => [
+                'descripcion' => $descripcion,
+                'tipo_examen' => $tipoExamen,
+            ],
+            'informe' => [
+                'hallazgos' => $hallazgos,
+                'conclusiones' => $conclusiones,
+                'fecha' => $fechaInforme,
+                'hora' => $horaInforme,
+            ],
+            'firmante' => $firmante,
+        ], [
+            'destination' => 'S',
+            'filename' => $filename,
+        ]);
 
-            if (strncmp($pdf, '%PDF-', 5) !== 0) {
-                JsonLogger::log(
-                    'imagenes_informes',
-                    'Informe 012B devolvió contenido no-PDF',
-                    null,
-                    [
-                        'user_id' => $this->getCurrentUserId(),
-                        'preview' => substr($pdf, 0, 200),
-                    ]
-                );
-                http_response_code(500);
-                echo '<p class="text-danger">No se pudo generar el PDF.</p>';
-                return;
-            }
-
-            if (!headers_sent()) {
-                if (ob_get_length()) {
-                    ob_clean();
-                }
-                header('Content-Length: ' . strlen($pdf));
-                header('Content-Type: application/pdf');
-                header('Content-Disposition: inline; filename="' . $filename . '"');
-                header('X-Content-Type-Options: nosniff');
-            }
-
-            echo $pdf;
-        } catch (Throwable $e) {
-            $errorId = bin2hex(random_bytes(6));
-            JsonLogger::log(
-                'imagenes_informes',
-                'Informe 012B falló',
-                $e,
-                [
-                    'error_id' => $errorId,
-                    'user_id' => $this->getCurrentUserId(),
-                    'form_id' => $formId,
-                ]
-            );
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo generar el informe (ref: ' . $errorId . ').</p>';
+        if (strncmp($pdf, '%PDF-', 5) !== 0) {
+            throw new RuntimeException('El informe 012B no generó un PDF válido.');
         }
+
+        return [
+            'pdf' => $pdf,
+            'filename' => $filename,
+            'fecha' => $fechaInforme ?: null,
+            'hc_number' => $patient['hc_number'] ?: $hcNumber,
+        ];
     }
 
-    public function imprimirCobertura012A(): void
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array{pdf: string, filename: string}
+     */
+    private function buildPaqueteInformes(array $items): array
     {
-        $this->requireAuth();
-
-        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
-        $formId = trim((string)($_GET['form_id'] ?? ''));
-        $examenId = isset($_GET['examen_id']) ? (int)$_GET['examen_id'] : null;
-
-        if ($hcNumber === '' || $formId === '') {
-            http_response_code(400);
-            echo '<p class="text-danger">Faltan parámetros para generar el formulario 012A.</p>';
-            return;
+        $normalizados = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $formId = trim((string)($item['form_id'] ?? ''));
+            $hcNumber = trim((string)($item['hc_number'] ?? ''));
+            if ($formId === '' || $hcNumber === '') {
+                continue;
+            }
+            $key = $formId . '|' . $hcNumber;
+            $normalizados[$key] = ['form_id' => $formId, 'hc_number' => $hcNumber];
         }
 
-        $attachment = $this->buildCobertura012AAttachment($formId, $hcNumber, $examenId);
-        if (!$attachment || empty($attachment['path']) || !is_file($attachment['path'])) {
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo generar el formulario 012A.</p>';
-            return;
+        if (empty($normalizados)) {
+            throw new RuntimeException('No se recibieron exámenes válidos.');
         }
 
-        $filename = $attachment['name'] ?? ('012A_' . $hcNumber . '_' . date('Ymd_His') . '.pdf');
-        $content = @file_get_contents($attachment['path']);
-        @unlink($attachment['path']);
-
-        if ($content === false || $content === '') {
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo leer el formulario 012A.</p>';
-            return;
+        $items = array_values($normalizados);
+        $hcBase = $items[0]['hc_number'];
+        foreach ($items as $item) {
+            if ($item['hc_number'] !== $hcBase) {
+                throw new RuntimeException('Los exámenes seleccionados deben ser del mismo paciente.');
+            }
         }
 
+        $tempFiles = [];
+        $pdf = new Fpdi();
+        $pdf->SetAutoPageBreak(false, 0);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+
+        $fechaReferencia = null;
+        $timestampRef = null;
+
+        foreach ($items as $item) {
+            $rendered = $this->renderInforme012B($item['form_id'], $item['hc_number']);
+
+            $timestamp = $this->parseTimestamp($rendered['fecha'] ?? null);
+            if ($timestamp !== null && ($timestampRef === null || $timestamp > $timestampRef)) {
+                $timestampRef = $timestamp;
+                $fechaReferencia = $rendered['fecha'];
+            }
+
+            $tmpPdf = $this->writeTempFile($rendered['pdf'], 'pdf');
+            $tempFiles[] = $tmpPdf;
+            $this->appendPdfFile($pdf, $tmpPdf);
+
+            $files = $this->nasImagenesService->listFiles($item['hc_number'], $item['form_id']);
+            foreach ($files as $file) {
+                $name = $file['name'] ?? '';
+                if ($name === '') {
+                    continue;
+                }
+                $opened = $this->nasImagenesService->openFile($item['hc_number'], $item['form_id'], $name);
+                if (!$opened) {
+                    continue;
+                }
+                $tmpFile = $this->writeTempStream($opened['stream'], $opened['ext']);
+                $tempFiles[] = $tmpFile;
+                fclose($opened['stream']);
+
+                if (($opened['ext'] ?? '') === 'pdf') {
+                    $this->appendPdfFile($pdf, $tmpFile);
+                } else {
+                    $this->appendImageFile($pdf, $tmpFile);
+                }
+            }
+        }
+
+        $filename = $this->buildPaqueteFilename($hcBase, $fechaReferencia);
+        $content = $pdf->Output($filename, 'S');
+
+        foreach ($tempFiles as $tmp) {
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
+        }
+
+        if (strncmp($content, '%PDF-', 5) !== 0) {
+            throw new RuntimeException('El paquete no generó un PDF válido.');
+        }
+
+        return ['pdf' => $content, 'filename' => $filename];
+    }
+
+    private function emitPdf(string $content, string $filename, bool $inline): void
+    {
         if (!headers_sent()) {
             if (ob_get_length()) {
                 ob_clean();
             }
             header('Content-Length: ' . strlen($content));
             header('Content-Type: application/pdf');
-            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"');
             header('X-Content-Type-Options: nosniff');
         }
-
         echo $content;
+    }
+
+    private function parseTimestamp(?string $value): ?int
+    {
+        $value = trim((string)($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+        $timestamp = strtotime($value);
+        return $timestamp !== false ? $timestamp : null;
+    }
+
+    private function buildPaqueteFilename(string $hcNumber, ?string $fechaReferencia): string
+    {
+        $timestamp = $this->parseTimestamp($fechaReferencia) ?? time();
+        $mes = date('m', $timestamp);
+        $anio = date('Y', $timestamp);
+        return 'IMAGENES_' . $hcNumber . '_' . $mes . '-' . $anio . '.pdf';
+    }
+
+    private function writeTempFile(string $content, string $ext): string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
+        if ($base === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+        $path = $base . '.' . $ext;
+        rename($base, $path);
+        file_put_contents($path, $content);
+        return $path;
+    }
+
+    /**
+     * @param resource $stream
+     */
+    private function writeTempStream($stream, string $ext): string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
+        if ($base === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+        $path = $base . '.' . $ext;
+        rename($base, $path);
+        $dest = fopen($path, 'wb');
+        if (!$dest) {
+            throw new RuntimeException('No se pudo escribir archivo temporal.');
+        }
+        stream_copy_to_stream($stream, $dest);
+        fclose($dest);
+        return $path;
+    }
+
+    private function appendPdfFile(Fpdi $pdf, string $path): void
+    {
+        $pageCount = $pdf->setSourceFile($path);
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $tplId = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tplId);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tplId);
+        }
+    }
+
+    private function appendImageFile(Fpdi $pdf, string $path): void
+    {
+        $info = @getimagesize($path);
+        $width = $info[0] ?? 0;
+        $height = $info[1] ?? 0;
+        $orientation = ($width > $height) ? 'L' : 'P';
+
+        $pdf->AddPage($orientation);
+        $pageWidth = $pdf->getPageWidth();
+        $pageHeight = $pdf->getPageHeight();
+        if ($width > 0 && $height > 0) {
+            $ratio = min($pageWidth / $width, $pageHeight / $height);
+            $renderWidth = $width * $ratio;
+            $renderHeight = $height * $ratio;
+            $x = ($pageWidth - $renderWidth) / 2;
+            $y = ($pageHeight - $renderHeight) / 2;
+            $pdf->Image($path, $x, $y, $renderWidth, $renderHeight);
+        } else {
+            $pdf->Image($path, 0, 0, $pageWidth, $pageHeight);
+        }
     }
 
     /**
@@ -2541,6 +2833,96 @@ class ExamenController extends BaseController
                 'filters' => $filters,
             ]
         );
+    }
+
+    public function imagenesNasList(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(['success' => false, 'error' => 'Faltan parámetros para consultar imágenes.'], 422);
+            return;
+        }
+
+        if (!$this->nasImagenesService->isAvailable()) {
+            $this->json([
+                'success' => false,
+                'error' => $this->nasImagenesService->getLastError() ?? 'NAS no disponible.',
+            ], 500);
+            return;
+        }
+
+        $files = $this->nasImagenesService->listFiles($hcNumber, $formId);
+        $error = $this->nasImagenesService->getLastError();
+
+        $files = array_map(function (array $file) use ($hcNumber, $formId) {
+            $name = $file['name'] ?? '';
+            $url = '';
+            if ($name !== '') {
+                $url = '/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                    . '&form_id=' . rawurlencode($formId)
+                    . '&file=' . rawurlencode($name);
+            }
+            $file['url'] = $url;
+            return $file;
+        }, $files);
+
+        $this->json([
+            'success' => $error === null,
+            'files' => $files,
+            'error' => $error,
+        ]);
+    }
+
+    public function imagenesNasFile(): void
+    {
+        $this->requireAuth();
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+        $filename = trim((string)($_GET['file'] ?? ''));
+
+        if ($hcNumber === '' || $formId === '' || $filename === '') {
+            http_response_code(422);
+            echo 'Parámetros incompletos';
+            return;
+        }
+
+        if (!$this->nasImagenesService->isAvailable()) {
+            http_response_code(500);
+            echo $this->nasImagenesService->getLastError() ?? 'NAS no disponible.';
+            return;
+        }
+
+        $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
+        if (!$opened || empty($opened['stream'])) {
+            http_response_code(404);
+            echo $this->nasImagenesService->getLastError() ?? 'Archivo no encontrado.';
+            return;
+        }
+
+        $type = $opened['type'] ?? 'application/octet-stream';
+        $size = (int)($opened['size'] ?? 0);
+        $name = $opened['name'] ?? $filename;
+        $stream = $opened['stream'];
+
+        if (!headers_sent()) {
+            if (ob_get_length()) {
+                ob_clean();
+            }
+            header('Content-Type: ' . $type);
+            if ($size > 0) {
+                header('Content-Length: ' . $size);
+            }
+            header('Content-Disposition: inline; filename="' . $name . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        fpassthru($stream);
+        fclose($stream);
     }
 
     /**

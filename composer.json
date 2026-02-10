@@ -15,6 +15,7 @@
     "tecnickcom/tcpdf": "^6.10",
     "setasign/fpdi-tcpdf": "^2.3",
     "pusher/pusher-php-server": "^7.2",
-    "phpmailer/phpmailer": "^7.0"
+    "phpmailer/phpmailer": "^7.0",
+    "phpseclib/phpseclib": "^3.0"
   }
 }

@@ -20,6 +20,14 @@ return function (Router $router) {
         (new ExamenController($pdo))->imagenesRealizadas();
     });
 
+    $router->get('/imagenes/examenes-realizados/nas/list', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesNasList();
+    });
+
+    $router->get('/imagenes/examenes-realizados/nas/file', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesNasFile();
+    });
+
     $router->post('/imagenes/examenes-realizados/actualizar', function (\PDO $pdo) {
         (new ExamenController($pdo))->actualizarImagenRealizada();
     });
@@ -42,6 +50,12 @@ return function (Router $router) {
 
     $router->get('/imagenes/informes/012b/pdf', function (\PDO $pdo) {
         (new ExamenController($pdo))->imprimirInforme012B();
+    });
+    $router->get('/imagenes/informes/012b/paquete', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imprimirInforme012BPaquete();
+    });
+    $router->post('/imagenes/informes/012b/paquete/seleccion', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imprimirInforme012BPaqueteSeleccion();
     });
 
     $router->post('/examenes/kanban-data', function (\PDO $pdo) {

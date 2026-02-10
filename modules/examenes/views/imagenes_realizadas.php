@@ -203,6 +203,7 @@ sort($estadoOpciones);
                 <table id="tablaImagenesRealizadas" class="table table-striped table-hover align-middle">
                     <thead>
                     <tr>
+                        <th class="text-center">Sel</th>
                         <th>Fecha</th>
                         <th>Afiliación</th>
                         <th>Paciente</th>
@@ -229,11 +230,17 @@ sort($estadoOpciones);
                         <tr data-id="<?= (int)($row['id'] ?? 0) ?>"
                             data-form-id="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-hc-number="<?= htmlspecialchars((string)($row['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                            data-fecha-examen="<?= htmlspecialchars((string)($row['fecha_examen'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-afiliacion="<?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
                             data-informado="<?= $informado ? '1' : '0' ?>">
+                            <td class="text-center select-cell">
+                                <div class="form-check d-inline-flex justify-content-center">
+                                    <input type="checkbox" class="form-check-input row-select" <?= $informado ? '' : 'disabled' ?>>
+                                </div>
+                            </td>
                             <td><?= htmlspecialchars($fechaUi, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <?php
@@ -247,15 +254,9 @@ sort($estadoOpciones);
                             <td><?= htmlspecialchars((string)($row['full_name'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars((string)($row['cedula'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
-                                <?php if ($imagenRuta !== ''): ?>
-                                    <a href="/public/<?= htmlspecialchars($imagenRuta, ENT_QUOTES, 'UTF-8') ?>"
-                                       target="_blank" rel="noopener">
-                                        <i class="mdi mdi-file-image text-info"></i>
-                                        <?= htmlspecialchars($imagenNombre !== '' ? $imagenNombre : 'Ver imagen', ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
-                                <?php else: ?>
-                                    <span class="text-muted">Sin imagen adjunta</span>
-                                <?php endif; ?>
+                                <button type="button" class="btn btn-sm btn-outline-info btn-view-nas">
+                                    <i class="mdi mdi-folder-image"></i> Ver imágenes
+                                </button>
                             </td>
                             <td>
                                 <?php
@@ -267,7 +268,7 @@ sort($estadoOpciones);
                             </td>
                             <td><?= htmlspecialchars($ojoExamen !== '' ? $ojoExamen : '—', ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-success btn-print-item">
+                                <button type="button" class="btn btn-sm btn-success btn-print-item" <?= $informado ? '' : 'disabled' ?>>
                                     <i class="mdi mdi-printer"></i>
                                 </button>
                             </td>
@@ -282,6 +283,19 @@ sort($estadoOpciones);
     .table-group-row td {
         background-color: #f8f9fa;
     }
+    #tablaImagenesRealizadas .row-select {
+        appearance: auto;
+        -webkit-appearance: checkbox;
+        width: 18px;
+        height: 18px;
+        opacity: 1;
+        margin: 0;
+        cursor: pointer;
+    }
+    #tablaImagenesRealizadas .select-cell {
+        cursor: pointer;
+        vertical-align: middle;
+    }
 </style>
 </section>
 
@@ -292,9 +306,20 @@ sort($estadoOpciones);
                 <h5 class="modal-title" id="modalInformeImagenLabel">Informar examen</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
-            <div class="modal-body" style="min-height: 70vh;">
-                <div id="informeTemplateContainer"></div>
+        <div class="modal-body" style="min-height: 70vh;">
+            <div class="mb-3">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h6 class="mb-0">Imágenes del NAS</h6>
+                    <span class="text-muted small" id="informeImagenesStatus"></span>
+                </div>
+                <div id="informeImagenesContainer" class="row g-2 mt-1"></div>
             </div>
+            <div id="informeLoader" class="d-none text-center text-muted small py-2">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Cargando informe...
+            </div>
+            <div id="informeTemplateContainer"></div>
+        </div>
             <div class="modal-footer">
                 <span class="text-muted small me-auto" id="informeEstado"></span>
                 <button type="button" class="btn btn-primary" id="btnGuardarInforme">Guardar informe</button>
@@ -358,7 +383,10 @@ sort($estadoOpciones);
             populateSelect(document.getElementById('filtroAfiliacion'), afiliaciones);
             populateSelect(document.getElementById('filtroTipoExamen'), examenes);
 
+            let activeTab = 'no-informados';
+
             function applyTabFilter(tab) {
+                activeTab = tab;
                 const showInformados = tab === 'informados';
                 rows.forEach(function (row) {
                     const informado = (row.dataset.informado || '0') === '1';
@@ -385,6 +413,9 @@ sort($estadoOpciones);
             const templateContainer = document.getElementById('informeTemplateContainer');
             const btnGuardarInforme = document.getElementById('btnGuardarInforme');
             const estadoInforme = document.getElementById('informeEstado');
+            const imagenesContainer = document.getElementById('informeImagenesContainer');
+            const imagenesStatus = document.getElementById('informeImagenesStatus');
+            const informeLoader = document.getElementById('informeLoader');
             const modalInstance = window.bootstrap && modalEl ? new bootstrap.Modal(modalEl) : null;
             let informeContext = null;
 
@@ -392,6 +423,87 @@ sort($estadoOpciones);
                 if (estadoInforme) {
                     estadoInforme.textContent = texto || '';
                 }
+            }
+
+            function setImagenesStatus(texto) {
+                if (imagenesStatus) {
+                    imagenesStatus.textContent = texto || '';
+                }
+            }
+
+            function setInformeLoading(loading) {
+                if (!informeLoader) return;
+                informeLoader.classList.toggle('d-none', !loading);
+            }
+
+            function renderImagenesNas(files) {
+                if (!imagenesContainer) return;
+                imagenesContainer.innerHTML = '';
+                if (!files || !files.length) {
+                    imagenesContainer.innerHTML = '<div class="text-muted small">No se encontraron archivos en el NAS.</div>';
+                    return;
+                }
+
+                files.forEach(function (file) {
+                    const col = document.createElement('div');
+                    col.className = 'col-6 col-md-4 col-lg-3';
+                    const card = document.createElement('div');
+                    card.className = 'border rounded p-2 h-100';
+                    const name = file.name || 'Archivo';
+                    const ext = (file.ext || '').toLowerCase();
+                    const url = file.url || '#';
+
+                    if (['png', 'jpg', 'jpeg'].includes(ext)) {
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.target = '_blank';
+                        link.rel = 'noopener';
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.alt = name;
+                        img.className = 'img-fluid rounded mb-2';
+                        img.style.maxHeight = '140px';
+                        link.appendChild(img);
+                        card.appendChild(link);
+                    } else {
+                        const icon = document.createElement('div');
+                        icon.className = 'd-flex align-items-center gap-2 mb-2';
+                        icon.innerHTML = '<i class="mdi mdi-file-pdf text-danger"></i><span class="small">PDF</span>';
+                        card.appendChild(icon);
+                    }
+
+                    const linkName = document.createElement('a');
+                    linkName.href = url;
+                    linkName.target = '_blank';
+                    linkName.rel = 'noopener';
+                    linkName.className = 'small d-block text-truncate';
+                    linkName.textContent = name;
+                    card.appendChild(linkName);
+
+                    col.appendChild(card);
+                    imagenesContainer.appendChild(col);
+                });
+            }
+
+            function cargarImagenesNas(formId, hcNumber) {
+                if (!imagenesContainer) return;
+                imagenesContainer.innerHTML = '';
+                setImagenesStatus('Cargando imágenes...');
+                fetch('/imagenes/examenes-realizados/nas/list?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId))
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.success) {
+                            renderImagenesNas([]);
+                            setImagenesStatus(res && res.error ? res.error : 'No se pudieron cargar las imágenes.');
+                            return;
+                        }
+                        renderImagenesNas(res.files || []);
+                        setImagenesStatus('');
+                    })
+                    .catch(function () {
+                        renderImagenesNas([]);
+                        setImagenesStatus('Error al conectar con el NAS.');
+                    });
             }
 
             function cssEscape(value) {
@@ -522,7 +634,12 @@ sort($estadoOpciones);
                     return;
                 }
 
+                if (formId && hcNumber) {
+                    cargarImagenesNas(formId, hcNumber);
+                }
+
                 setEstado('Cargando plantilla...');
+                setInformeLoading(true);
                 if (btnGuardarInforme) {
                     btnGuardarInforme.disabled = true;
                 }
@@ -535,6 +652,7 @@ sort($estadoOpciones);
                         if (!res || !res.success) {
                             alert((res && res.error) ? res.error : 'No se pudo cargar la plantilla.');
                             setEstado('');
+                            setInformeLoading(false);
                             return;
                         }
 
@@ -569,12 +687,14 @@ sort($estadoOpciones);
                         if (btnGuardarInforme) {
                             btnGuardarInforme.disabled = false;
                         }
+                        setInformeLoading(false);
                         if (modalInstance) {
                             modalInstance.show();
                         }
                     })
                     .catch(function () {
                         setEstado('');
+                        setInformeLoading(false);
                         if (btnGuardarInforme) {
                             btnGuardarInforme.disabled = false;
                         }
@@ -587,6 +707,25 @@ sort($estadoOpciones);
                     if (event.target.closest('button, a, input, select, textarea, label')) {
                         return;
                     }
+                    abrirInformeModal(row);
+                });
+            });
+
+            document.querySelectorAll('#tablaImagenesRealizadas tbody .select-cell').forEach(function (cell) {
+                cell.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const checkbox = cell.querySelector('.row-select');
+                    if (!checkbox || checkbox.disabled) return;
+                    checkbox.checked = !checkbox.checked;
+                });
+            });
+
+            document.querySelectorAll('.btn-view-nas').forEach(function (btn) {
+                btn.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    const row = btn.closest('tr');
+                    if (!row) return;
                     abrirInformeModal(row);
                 });
             });
@@ -625,6 +764,11 @@ sort($estadoOpciones);
                     if (templateContainer) {
                         templateContainer.innerHTML = '';
                     }
+                    if (imagenesContainer) {
+                        imagenesContainer.innerHTML = '';
+                    }
+                    setImagenesStatus('');
+                    setInformeLoading(false);
                     if (btnGuardarInforme) {
                         btnGuardarInforme.disabled = false;
                     }
@@ -663,6 +807,112 @@ sort($estadoOpciones);
                 };
             }
 
+            function getSelectedRowsByGroup(groupKey) {
+                return Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-group-key]'))
+                    .filter(function (row) {
+                        return row.dataset.groupKey === groupKey;
+                    })
+                    .filter(function (row) {
+                        const checkbox = row.querySelector('.row-select');
+                        return checkbox && checkbox.checked;
+                    });
+            }
+
+            function getGroupRows(groupKey) {
+                return Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-group-key]'))
+                    .filter(function (row) {
+                        return row.dataset.groupKey === groupKey;
+                    });
+            }
+
+            function toggleGroupSelection(groupKey, shouldSelect) {
+                const rows = getGroupRows(groupKey);
+                rows.forEach(function (row) {
+                    const checkbox = row.querySelector('.row-select');
+                    if (!checkbox || checkbox.disabled) return;
+                    checkbox.checked = shouldSelect;
+                });
+            }
+
+            function allGroupSelected(groupKey) {
+                const rows = getGroupRows(groupKey);
+                if (!rows.length) return false;
+                return rows.every(function (row) {
+                    const checkbox = row.querySelector('.row-select');
+                    return checkbox && checkbox.checked;
+                });
+            }
+
+            function buildItemsPayload(rows) {
+                return rows.map(function (row) {
+                    return {
+                        form_id: (row.dataset.formId || '').trim(),
+                        hc_number: (row.dataset.hcNumber || '').trim(),
+                        fecha_examen: (row.dataset.fechaExamen || '').trim()
+                    };
+                }).filter(function (item) {
+                    return item.form_id && item.hc_number;
+                });
+            }
+
+            function setButtonLoading(btn, loading, label) {
+                if (!btn) return;
+                if (!btn.dataset.originalHtml) {
+                    btn.dataset.originalHtml = btn.innerHTML;
+                }
+                if (loading) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
+                        (label || 'Generando...');
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = btn.dataset.originalHtml;
+                }
+            }
+
+            function descargarPaquete(items, triggerBtn) {
+                if (!items.length) {
+                    alert('Selecciona al menos un examen informado.');
+                    return;
+                }
+                let filename = 'paquete.pdf';
+                setButtonLoading(triggerBtn, true);
+                fetch('/imagenes/informes/012b/paquete/seleccion', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({items: items})
+                })
+                    .then(function (res) {
+                        if (!res.ok) {
+                            return res.json().then(function (data) {
+                                throw new Error(data && data.error ? data.error : 'No se pudo generar el paquete.');
+                            });
+                        }
+                        const disposition = res.headers.get('Content-Disposition') || '';
+                        const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                        if (match && match[1]) {
+                            filename = match[1];
+                        }
+                        return res.blob();
+                    })
+                    .then(function (blob) {
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                    })
+                    .catch(function (err) {
+                        alert(err.message || 'No se pudo generar el paquete.');
+                    })
+                    .finally(function () {
+                        setButtonLoading(triggerBtn, false);
+                    });
+            }
+
             function applyPatientGrouping() {
                 const tbody = document.querySelector('#tablaImagenesRealizadas tbody');
                 if (!tbody) return;
@@ -679,6 +929,7 @@ sort($estadoOpciones);
                 const counts = new Map();
                 rows.forEach(function (row) {
                     const group = getPacienteGroup(row);
+                    row.dataset.groupKey = group.key;
                     counts.set(group.key, (counts.get(group.key) || 0) + 1);
                 });
 
@@ -692,20 +943,53 @@ sort($estadoOpciones);
                     const td = document.createElement('td');
                     td.colSpan = row.children.length;
                     const count = counts.get(group.key) || 0;
-                    td.innerHTML = '<strong>' + escapeHtml(group.label) + '</strong>' +
-                        '<span class="text-muted small ms-2">' + count + ' exámenes en esta página</span>';
+                    let extra = '<span class="text-muted small ms-2">' + count + ' exámenes en esta página</span>';
+                    if (activeTab === 'informados') {
+                        extra += '<button type="button" class="btn btn-sm btn-outline-secondary ms-3 btn-seleccionar-grupo" data-group-key="' +
+                            escapeHtml(group.key) + '">Seleccionar todo</button>';
+                        extra += '<button type="button" class="btn btn-sm btn-outline-primary ms-2 btn-descargar-grupo" data-group-key="' +
+                            escapeHtml(group.key) + '">Descargar PDF paciente</button>';
+                    }
+                    td.innerHTML = '<strong>' + escapeHtml(group.label) + '</strong>' + extra;
                     tr.appendChild(td);
                     row.parentNode.insertBefore(tr, row);
+                });
+
+                tbody.querySelectorAll('.btn-seleccionar-grupo').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const groupKey = btn.getAttribute('data-group-key') || '';
+                        const selectAll = !allGroupSelected(groupKey);
+                        toggleGroupSelection(groupKey, selectAll);
+                        btn.textContent = selectAll ? 'Quitar selección' : 'Seleccionar todo';
+                    });
+                });
+
+                tbody.querySelectorAll('.btn-descargar-grupo').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const groupKey = btn.getAttribute('data-group-key') || '';
+                        const selectedRows = getSelectedRowsByGroup(groupKey);
+                        const items = buildItemsPayload(selectedRows);
+                        if (!items.length) {
+                            alert('Selecciona los exámenes informados que deseas descargar.');
+                            return;
+                        }
+                        descargarPaquete(items, btn);
+                    });
                 });
             }
 
             let dataTable = null;
             if (window.jQuery && $.fn.DataTable) {
                 dataTable = $('#tablaImagenesRealizadas').DataTable({
-                    order: [[0, 'desc']],
+                    order: [[1, 'desc']],
                     language: {url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
                     pageLength: 25,
                     autoWidth: false,
+                    deferRender: true,
+                    processing: true,
+                    columnDefs: [
+                        {targets: 0, orderable: false, searchable: false}
+                    ],
                     initComplete: function () {
                         $('#tablaImagenesRealizadas').css('width', '100%').removeAttr('style');
                     }
@@ -742,11 +1026,14 @@ sort($estadoOpciones);
                 btn.addEventListener('click', function () {
                     const row = btn.closest('tr');
                     if (!row) return;
+                    if ((row.dataset.informado || '0') !== '1') {
+                        alert('El examen todavía no está informado.');
+                        return;
+                    }
                     const formId = (row.dataset.formId || '').trim();
                     const hcNumber = (row.dataset.hcNumber || '').trim();
                     if (!formId || !hcNumber) return;
-                    const url = '/imagenes/informes/012b/pdf?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId);
-                    window.open(url, '_blank', 'noopener');
+                    descargarPaquete([{form_id: formId, hc_number: hcNumber}], btn);
                 });
             });
 

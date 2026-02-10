@@ -37,8 +37,12 @@ class NasImagenesService
             return true;
         }
 
-        if ($this->host && $this->username && $this->password && !function_exists('ssh2_connect')) {
-            $this->lastError = 'Extensión ssh2 no disponible en PHP.';
+        if ($this->host && $this->username && $this->password && class_exists('\\phpseclib3\\Net\\SFTP')) {
+            return true;
+        }
+
+        if ($this->host && $this->username && $this->password) {
+            $this->lastError = 'SFTP no disponible en este servidor.';
             return false;
         }
 
@@ -71,6 +75,10 @@ class NasImagenesService
 
         if ($this->host && $this->username && $this->password && function_exists('ssh2_connect')) {
             return $this->listFilesSftp($path);
+        }
+
+        if ($this->host && $this->username && $this->password && class_exists('\\phpseclib3\\Net\\SFTP')) {
+            return $this->listFilesPhpseclib($path);
         }
 
         $this->lastError = 'NAS no disponible.';
@@ -123,6 +131,10 @@ class NasImagenesService
             return $this->openFileSftp($path, $filename);
         }
 
+        if ($this->host && $this->username && $this->password && class_exists('\\phpseclib3\\Net\\SFTP')) {
+            return $this->openFilePhpseclib($path, $filename);
+        }
+
         $this->lastError = 'NAS no disponible.';
         return null;
     }
@@ -130,10 +142,13 @@ class NasImagenesService
     private function readEnv(string $key): ?string
     {
         $value = getenv($key);
-        if ($value === false) {
+        if ($value === false || $value === null || $value === '') {
+            $value = $_ENV[$key] ?? $_SERVER[$key] ?? null;
+        }
+        if ($value === null) {
             return null;
         }
-        $value = trim($value);
+        $value = trim((string) $value);
         return $value !== '' ? $value : null;
     }
 
@@ -265,6 +280,57 @@ class NasImagenesService
     }
 
     /**
+     * @return array<int, array{name: string, size: int, mtime: int, ext: string, type: string}>
+     */
+    private function listFilesPhpseclib(string $path): array
+    {
+        $sftp = $this->connectPhpseclib();
+        if (!$sftp) {
+            return [];
+        }
+
+        [$listing, $warning] = $this->withWarningTrap(
+            static fn() => $sftp->rawlist($path),
+            'Error al listar archivos en NAS'
+        );
+        if ($warning) {
+            return [];
+        }
+        if ($listing === false) {
+            $this->lastError = 'Carpeta no encontrada en NAS.';
+            return [];
+        }
+
+        $files = [];
+        foreach ($listing as $name => $meta) {
+            if ($name === '.' || $name === '..') {
+                continue;
+            }
+            if (!is_array($meta)) {
+                continue;
+            }
+            $type = $meta['type'] ?? null;
+            if ($type !== null && (int)$type !== 1) {
+                continue;
+            }
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if (!$this->isAllowedExtension($ext)) {
+                continue;
+            }
+            $files[] = [
+                'name' => $name,
+                'size' => (int)($meta['size'] ?? 0),
+                'mtime' => (int)($meta['mtime'] ?? 0),
+                'ext' => $ext,
+                'type' => $this->mapMime($ext),
+            ];
+        }
+
+        usort($files, static fn($a, $b) => ($b['mtime'] ?? 0) <=> ($a['mtime'] ?? 0));
+        return $files;
+    }
+
+    /**
      * @return array{stream: resource, size: int, ext: string, type: string, name: string}|null
      */
     private function openFileSftp(string $path, string $filename): ?array
@@ -310,6 +376,131 @@ class NasImagenesService
             'type' => $this->mapMime($ext),
             'name' => $filename,
         ];
+    }
+
+    /**
+     * @return array{stream: resource, size: int, ext: string, type: string, name: string}|null
+     */
+    private function openFilePhpseclib(string $path, string $filename): ?array
+    {
+        $sftp = $this->connectPhpseclib();
+        if (!$sftp) {
+            return null;
+        }
+
+        $remotePath = $path . '/' . $filename;
+        [$stat, $warning] = $this->withWarningTrap(
+            static fn() => $sftp->stat($remotePath),
+            'Error al consultar archivo en NAS'
+        );
+        if ($warning) {
+            return null;
+        }
+        if ($stat === false) {
+            $this->lastError = 'Archivo no encontrado.';
+            return null;
+        }
+
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (!$this->isAllowedExtension($ext)) {
+            $this->lastError = 'Extensión no permitida.';
+            return null;
+        }
+
+        [$content, $warning] = $this->withWarningTrap(
+            static fn() => $sftp->get($remotePath),
+            'Error al descargar archivo en NAS'
+        );
+        if ($warning) {
+            return null;
+        }
+        if ($content === false) {
+            $this->lastError = 'No se pudo leer el archivo.';
+            return null;
+        }
+
+        $stream = fopen('php://temp', 'rb+');
+        if (!$stream) {
+            $this->lastError = 'No se pudo crear buffer temporal.';
+            return null;
+        }
+        fwrite($stream, $content);
+        rewind($stream);
+
+        return [
+            'stream' => $stream,
+            'size' => (int)($stat['size'] ?? strlen((string)$content)),
+            'ext' => $ext,
+            'type' => $this->mapMime($ext),
+            'name' => $filename,
+        ];
+    }
+
+    private function connectPhpseclib(): ?\phpseclib3\Net\SFTP
+    {
+        if (!$this->host || !$this->username || !$this->password) {
+            $this->lastError = 'NAS no configurado.';
+            return null;
+        }
+
+        if (!class_exists('\\phpseclib3\\Net\\SFTP')) {
+            $this->lastError = 'phpseclib no disponible.';
+            return null;
+        }
+
+        [$sftp, $warning] = $this->withWarningTrap(
+            fn() => new \phpseclib3\Net\SFTP($this->host, $this->port),
+            'No se pudo iniciar sesión SFTP'
+        );
+        if ($warning || !$sftp) {
+            return null;
+        }
+
+        [$logged, $warning] = $this->withWarningTrap(
+            fn() => $sftp->login($this->username, $this->password),
+            'No se pudo autenticar en NAS'
+        );
+        if ($warning || !$logged) {
+            if (!$this->lastError) {
+                $this->lastError = 'No se pudo autenticar en NAS.';
+            }
+            return null;
+        }
+
+        return $sftp;
+    }
+
+    /**
+     * @template T
+     * @param callable(): T $fn
+     * @return array{0: T|null, 1: string|null}
+     */
+    private function withWarningTrap(callable $fn, string $context): array
+    {
+        $warning = null;
+        set_error_handler(function (int $errno, string $errstr) use (&$warning): bool {
+            $warning = $errstr;
+            return true;
+        });
+
+        try {
+            $result = $fn();
+        } catch (\Throwable $e) {
+            $warning = $e->getMessage();
+            $result = null;
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($warning) {
+            if (str_contains($warning, 'Expected NET_SFTP_VERSION')) {
+                $this->lastError = 'El servidor NAS no tiene SFTP habilitado o el puerto no es SSH.';
+            } else {
+                $this->lastError = $context . ': ' . $warning;
+            }
+        }
+
+        return [$result, $warning];
     }
 
     private function isAllowedExtension(string $ext): bool
