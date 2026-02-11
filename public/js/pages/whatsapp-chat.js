@@ -110,6 +110,12 @@
         var detailHc = root.querySelector('[data-detail-hc]');
         var detailLast = root.querySelector('[data-detail-last]');
         var detailUnread = root.querySelector('[data-detail-unread]');
+        var detailHandoff = root.querySelector('[data-detail-handoff]');
+        var detailNotes = root.querySelector('[data-detail-notes]');
+        var needsHumanBadge = root.querySelector('[data-chat-needs-human]');
+        var copyNumberButton = root.querySelector('[data-action-copy-number]');
+        var openChatLink = root.querySelector('[data-action-open-chat]');
+        var selectedNumber = '';
 
         function getConversationEndpoint(id) {
             return endpoints.conversation.replace('{id}', String(id));
@@ -188,6 +194,19 @@
                 strong.textContent = title;
                 nameLink.appendChild(strong);
                 pTop.appendChild(nameLink);
+
+                var badgeWrap = createElement('span', 'ms-2');
+                if (conversation.needs_human) {
+                    var handoffBadge = createElement('span', 'badge bg-warning-light text-warning me-1', 'Agente');
+                    badgeWrap.appendChild(handoffBadge);
+                }
+                if (conversation.unread_count && conversation.unread_count > 0) {
+                    var unreadBadge = createElement('span', 'badge bg-primary-light text-primary', String(conversation.unread_count));
+                    badgeWrap.appendChild(unreadBadge);
+                }
+                if (badgeWrap.childNodes.length) {
+                    pTop.appendChild(badgeWrap);
+                }
 
                 var timeSpan = createElement('span', 'float-end fs-10', timeText);
                 pTop.appendChild(timeSpan);
@@ -340,6 +359,7 @@
             }
 
             subtitle.textContent = conversation.wa_number || '';
+            selectedNumber = conversation.wa_number || '';
 
             if (lastSeenElement) {
                 if (conversation.last_message_at) {
@@ -360,6 +380,14 @@
                     unreadIndicator.classList.remove('d-none');
                 } else {
                     unreadIndicator.classList.add('d-none');
+                }
+            }
+
+            if (needsHumanBadge) {
+                if (conversation.needs_human) {
+                    needsHumanBadge.classList.remove('d-none');
+                } else {
+                    needsHumanBadge.classList.add('d-none');
                 }
             }
 
@@ -392,6 +420,61 @@
                 var detailUnreadCount = summary && summary.unread_count ? summary.unread_count : 0;
                 detailUnread.textContent = detailUnreadCount > 0 ? String(detailUnreadCount) : '0';
             }
+
+            if (detailHandoff) {
+                detailHandoff.textContent = conversation.needs_human ? 'Pendiente de agente' : 'Automático';
+            }
+
+            if (detailNotes) {
+                detailNotes.textContent = conversation.handoff_notes || '—';
+            }
+
+            if (openChatLink) {
+                if (selectedNumber) {
+                    openChatLink.href = buildWaMe(selectedNumber);
+                    openChatLink.classList.remove('disabled');
+                } else {
+                    openChatLink.href = '#';
+                    openChatLink.classList.add('disabled');
+                }
+            }
+
+            if (copyNumberButton) {
+                copyNumberButton.disabled = !selectedNumber;
+            }
+        }
+
+        function buildWaMe(number) {
+            var digits = (number || '').replace(/\D+/g, '');
+            if (!digits) {
+                return '#';
+            }
+
+            return 'https://wa.me/' + digits;
+        }
+
+        function copyToClipboard(text) {
+            if (!text) {
+                return;
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).catch(function () {});
+                return;
+            }
+
+            var temp = document.createElement('textarea');
+            temp.value = text;
+            temp.setAttribute('readonly', '');
+            temp.style.position = 'absolute';
+            temp.style.left = '-9999px';
+            document.body.appendChild(temp);
+            temp.select();
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+            }
+            document.body.removeChild(temp);
         }
 
         function loadConversations() {
@@ -625,6 +708,15 @@
                 state.search = event.target.value.trim();
                 loadConversations();
             }, 300));
+        }
+
+        if (copyNumberButton) {
+            copyNumberButton.addEventListener('click', function () {
+                if (!selectedNumber) {
+                    return;
+                }
+                copyToClipboard(selectedNumber);
+            });
         }
 
         var refreshTimerId = null;

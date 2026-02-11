@@ -107,14 +107,25 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <p class="fs-16" data-chat-title>Selecciona una conversación</p>
                                         <p class="fs-12 mb-0" data-chat-subtitle>El historial aparecerá cuando elijas un
                                             contacto.</p>
+                                        <div class="mt-1">
+                                            <span class="badge bg-warning-light text-warning d-none" data-chat-needs-human>Requiere agente</span>
+                                        </div>
                                         <p class="fs-12 mb-0" data-chat-last-seen></p>
                                     </div>
-                                    <div>
+                                    <div class="d-flex align-items-center gap-2">
                                         <ul class="list-inline mb-0 fs-18">
                                             <li class="list-inline-item"><span
                                                         class="badge bg-primary-light text-primary d-none"
                                                         data-unread-indicator></span></li>
                                         </ul>
+                                        <div class="btn-group btn-group-sm" role="group" data-chat-actions>
+                                            <a class="btn btn-outline-primary disabled" href="#" target="_blank" rel="noopener" data-action-open-chat>
+                                                <i class="mdi mdi-whatsapp"></i>
+                                            </a>
+                                            <button class="btn btn-outline-secondary" type="button" data-action-copy-number disabled>
+                                                <i class="mdi mdi-content-copy"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -155,7 +166,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                     </div>
                 </div>
                 <div class="col-xxxl-4 col-lg-5 col-12">
-                    <div class="box h-100">
+                    <div class="box">
                         <div class="box-header no-border">
                             <h4 class="box-title">Resumen de la integración</h4>
                         </div>
@@ -201,6 +212,10 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                 <dd class="col-6" data-detail-last>—</dd>
                                 <dt class="col-6 text-muted">Mensajes sin leer</dt>
                                 <dd class="col-6" data-detail-unread>—</dd>
+                                <dt class="col-6 text-muted">Estado</dt>
+                                <dd class="col-6" data-detail-handoff>—</dd>
+                                <dt class="col-6 text-muted">Notas</dt>
+                                <dd class="col-6" data-detail-notes>—</dd>
                             </dl>
                         </div>
                     </div>
