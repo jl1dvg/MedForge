@@ -22,7 +22,7 @@ flowchart TD
 
     C --> D{Mensaje es de agente?}
     D -->|Sí: TOMAR/IGNORAR| E[HandoffService::handleAgentReply]
-    E --> F{TOMAR_{id}?}
+    E --> F{Es TOMAR_id?}
     F -->|Sí| G[Asignar handoff + conversation.assigned_user_id]
     F -->|No| H[Registrar evento ignore]
     G --> I[Bot no responde]
