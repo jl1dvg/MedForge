@@ -12,6 +12,40 @@ $integrationWarnings = $integrationWarnings ?? [];
 $isIntegrationReady = $isIntegrationReady ?? (($config['enabled'] ?? false) && empty($integrationErrors ?? []));
 $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
 ?>
+<style>
+    #whatsapp-template-modal .modal-body {
+        max-height: calc(100vh - 220px);
+        overflow-y: auto;
+    }
+    #whatsapp-template-modal .whatsapp-template-preview .preview-card {
+        max-height: 45vh;
+        overflow-y: auto;
+    }
+    .whatsapp-template-preview {
+        background: #f5f7fb;
+        border-radius: 16px;
+        padding: 14px;
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+    }
+    .whatsapp-template-preview .preview-card {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        white-space: pre-line;
+        font-size: 14px;
+    }
+    .whatsapp-template-preview .preview-button {
+        border: 1px solid rgba(13, 110, 253, 0.2);
+        color: #0d6efd;
+        border-radius: 999px;
+        padding: 4px 10px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 12px;
+        background: #f8fbff;
+    }
+</style>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -139,6 +173,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     <th>Idioma</th>
                                     <th>Estado</th>
                                     <th>Calidad</th>
+                                    <th>Observación</th>
                                     <th>Actualizada</th>
                                     <th class="text-end">Acciones</th>
                                 </tr>
@@ -162,8 +197,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
 
 <div class="modal fade" id="whatsapp-template-modal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <form data-template-form>
+        <form class="modal-content" data-template-form>
                 <div class="modal-header">
                     <h5 class="modal-title">Nueva plantilla</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -205,16 +239,80 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                         <label class="form-check-label" for="template-allow-category-change">Permitir que Meta ajuste la categoría automáticamente</label>
                     </div>
                     <div class="mt-4">
-                        <label for="template-components" class="form-label">Componentes (JSON)</label>
-                        <textarea class="form-control font-monospace" id="template-components" data-field="components" rows="10" placeholder='[
-    {
-        "type": "BODY",
-        "text": "Hola {{1}}, tu cita es el {{2}} a las {{3}}."
-    }
-]'></textarea>
-                        <small class="text-muted d-block mt-2">
-                            Incluye los componentes en formato JSON siguiendo la estructura oficial de Meta. Puedes añadir HEADER, BODY, FOOTER y BUTTONS.
-                        </small>
+                        <div class="row g-3">
+                            <div class="col-lg-7">
+                                <div class="card border-0 bg-light mb-3">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <h6 class="mb-2">Encabezado</h6>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-insert-variable="header">
+                                                <i class="mdi mdi-plus"></i> Variable
+                                            </button>
+                                        </div>
+                                        <select class="form-select form-select-sm" data-builder-header-type>
+                                            <option value="none">Sin encabezado</option>
+                                            <option value="text">Texto</option>
+                                        </select>
+                                        <div class="mt-2 d-none" data-builder-header-text>
+                                            <input type="text" class="form-control form-control-sm" placeholder="Ej: Confirmación de cita"
+                                                   data-builder-header-input>
+                                            <small class="text-muted">Usa {{1}} para variables.</small>
+                                        </div>
+                                        <small class="text-warning d-none" data-builder-header-warning>Encabezado multimedia no editable desde aquí.</small>
+                                    </div>
+                                </div>
+
+                                <div class="card border-0 bg-light mb-3">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <h6 class="mb-2">Cuerpo</h6>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-insert-variable="body">
+                                                <i class="mdi mdi-plus"></i> Variable
+                                            </button>
+                                        </div>
+                                        <textarea class="form-control form-control-sm" rows="4" placeholder="Ej: Hola {{1}}, tu cita es el {{2}} a las {{3}}."
+                                                  data-builder-body></textarea>
+                                        <small class="text-muted">Este campo es obligatorio.</small>
+                                    </div>
+                                </div>
+
+                                <div class="card border-0 bg-light mb-3">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <h6 class="mb-2">Pie de página</h6>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-insert-variable="footer">
+                                                <i class="mdi mdi-plus"></i> Variable
+                                            </button>
+                                        </div>
+                                        <input type="text" class="form-control form-control-sm" placeholder="Ej: Equipo MedForge"
+                                               data-builder-footer>
+                                        <small class="text-muted">Opcional.</small>
+                                    </div>
+                                </div>
+
+                                <div class="card border-0 bg-light">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <h6 class="mb-0">Botones</h6>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" data-builder-add-button>
+                                                <i class="mdi mdi-plus"></i> Agregar botón
+                                            </button>
+                                        </div>
+                                        <div class="small text-muted mb-2">Máximo 3 botones.</div>
+                                        <div class="vstack gap-2" data-builder-buttons></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-5">
+                                <div class="whatsapp-template-preview">
+                                    <div class="small text-muted mb-2">Vista previa</div>
+                                    <div class="preview-card" data-builder-preview>
+                                        Completa los campos para ver la vista previa.
+                                    </div>
+                                    <div class="small text-muted mt-2">Las variables se muestran como {{1}}.</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer d-flex justify-content-between">
@@ -224,8 +322,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                         <button type="submit" class="btn btn-primary">Guardar</button>
                     </div>
                 </div>
-            </form>
-        </div>
+        </form>
     </div>
 </div>
 
@@ -244,8 +341,9 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                     </div>
                     <span class="badge bg-primary-light text-primary fw-600" data-preview-status></span>
                 </div>
-                <div class="border rounded p-3 bg-light">
-                    <pre class="mb-0" data-preview-json></pre>
+                <div class="small text-muted mb-2" data-preview-reason></div>
+                <div class="whatsapp-template-preview">
+                    <div class="preview-card" data-preview-bubble></div>
                 </div>
             </div>
             <div class="modal-footer">

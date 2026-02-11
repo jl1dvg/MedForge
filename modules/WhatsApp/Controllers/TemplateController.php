@@ -151,7 +151,9 @@ class TemplateController extends BaseController
         $this->requirePermission(['whatsapp.templates.manage', 'whatsapp.manage', 'settings.manage', 'administrativo']);
 
         try {
-            $this->templates->deleteTemplate($templateId);
+            $payload = $this->getBody();
+            $name = isset($payload['name']) ? trim((string) $payload['name']) : '';
+            $this->templates->deleteTemplate($templateId, $name);
             $this->json(['ok' => true]);
         } catch (RuntimeException $exception) {
             $this->json(['ok' => false, 'error' => $exception->getMessage()], 400);

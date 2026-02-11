@@ -26,7 +26,7 @@ class TemplateManager
 
         $query = [
             'limit' => isset($filters['limit']) ? max(1, (int) $filters['limit']) : 100,
-            'fields' => 'id,name,category,language,status,quality_score,components,last_updated_time',
+            'fields' => 'id,name,category,language,status,quality_score,components,last_updated_time,rejected_reason',
         ];
 
         $response = $this->request(
@@ -50,6 +50,7 @@ class TemplateManager
                 'language' => (string) ($template['language'] ?? ''),
                 'status' => (string) ($template['status'] ?? ''),
                 'quality_score' => $template['quality_score']['score'] ?? $template['quality_score'] ?? null,
+                'rejected_reason' => $template['rejected_reason'] ?? null,
                 'last_updated_time' => $template['last_updated_time'] ?? null,
                 'components' => $template['components'] ?? [],
             ];
@@ -120,29 +121,39 @@ class TemplateManager
             throw new RuntimeException('El identificador de la plantilla es obligatorio.');
         }
 
-        $body = $this->sanitizePayload($payload, false);
+        $body = $this->sanitizePayload($payload, true);
 
         $config = $this->ensureConfigured();
 
         return $this->request(
             'POST',
-            'message_templates/' . $templateId,
+            $config['business_account_id'] . '/message_templates',
             $body,
             [],
             $config
         );
     }
 
-    public function deleteTemplate(string $templateId): bool
+    public function deleteTemplate(string $templateId, ?string $templateName = null): bool
     {
         $templateId = trim($templateId);
-        if ($templateId === '') {
-            throw new RuntimeException('El identificador de la plantilla es obligatorio.');
+        $templateName = trim((string) $templateName);
+        if ($templateName === '') {
+            $templateName = $templateId;
+        }
+        if ($templateName === '') {
+            throw new RuntimeException('El nombre de la plantilla es obligatorio.');
         }
 
         $config = $this->ensureConfigured();
 
-        $this->request('DELETE', 'message_templates/' . $templateId, null, [], $config);
+        $this->request(
+            'DELETE',
+            $config['business_account_id'] . '/message_templates',
+            null,
+            ['name' => $templateName],
+            $config
+        );
 
         return true;
     }
@@ -358,8 +369,23 @@ class TemplateManager
         }
 
         if ($statusCode < 200 || $statusCode >= 300) {
-            $message = $decoded['error']['message'] ?? 'WhatsApp Cloud API respondió con un error.';
-            $code = $decoded['error']['code'] ?? $statusCode;
+            $error = is_array($decoded['error'] ?? null) ? $decoded['error'] : [];
+            $message = $error['message'] ?? 'WhatsApp Cloud API respondió con un error.';
+            $userMessage = $error['error_user_msg'] ?? '';
+            $details = $error['error_data']['details'] ?? ($error['error_user_title'] ?? '');
+            $code = $error['code'] ?? $statusCode;
+
+            $extra = [];
+            if (is_string($userMessage) && $userMessage !== '') {
+                $extra[] = $userMessage;
+            }
+            if (is_string($details) && $details !== '') {
+                $extra[] = $details;
+            }
+
+            if (!empty($extra)) {
+                $message .= ' (' . implode(' | ', $extra) . ')';
+            }
 
             throw new RuntimeException($message, (int) $code);
         }

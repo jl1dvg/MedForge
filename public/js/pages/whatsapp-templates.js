@@ -59,6 +59,32 @@
         return '<span class="badge ' + entry.classes + '">' + entry.label + '</span>';
     }
 
+    function formatObservation(template) {
+        if (!template) {
+            return '—';
+        }
+
+        var status = (template.status || '').toUpperCase();
+        var reason = template.rejected_reason || template.rejection_reason || template.reason || '';
+
+        if (status === 'REJECTED') {
+            if (reason) {
+                return '<span class="text-danger small" title="' + escapeHtml(reason) + '">' + escapeHtml(reason) + '</span>';
+            }
+            return '<span class="text-danger small">Rechazada por Meta</span>';
+        }
+
+        if (status === 'PENDING') {
+            return '<span class="text-warning small">Pendiente de aprobación</span>';
+        }
+
+        if (status === 'IN_APPEAL') {
+            return '<span class="text-info small">En apelación</span>';
+        }
+
+        return '—';
+    }
+
     function formatDate(value) {
         if (!value) {
             return '—';
@@ -174,7 +200,16 @@
         var fieldName = modalElement ? modalElement.querySelector('[data-field="name"]') : null;
         var fieldLanguage = modalElement ? modalElement.querySelector('[data-field="language"]') : null;
         var fieldCategory = modalElement ? modalElement.querySelector('[data-field="category"]') : null;
-        var fieldComponents = modalElement ? modalElement.querySelector('[data-field="components"]') : null;
+        var headerTypeSelect = modalElement ? modalElement.querySelector('[data-builder-header-type]') : null;
+        var headerTextWrapper = modalElement ? modalElement.querySelector('[data-builder-header-text]') : null;
+        var headerInput = modalElement ? modalElement.querySelector('[data-builder-header-input]') : null;
+        var headerWarning = modalElement ? modalElement.querySelector('[data-builder-header-warning]') : null;
+        var bodyInput = modalElement ? modalElement.querySelector('[data-builder-body]') : null;
+        var footerInput = modalElement ? modalElement.querySelector('[data-builder-footer]') : null;
+        var addButton = modalElement ? modalElement.querySelector('[data-builder-add-button]') : null;
+        var buttonsContainer = modalElement ? modalElement.querySelector('[data-builder-buttons]') : null;
+        var builderPreview = modalElement ? modalElement.querySelector('[data-builder-preview]') : null;
+        var insertVariableButtons = modalElement ? modalElement.querySelectorAll('[data-insert-variable]') : [];
         var fieldAllowCategoryChange = modalElement ? modalElement.querySelector('[data-field="allow_category_change"]') : null;
         var submitButton = modalElement ? modalElement.querySelector('button[type="submit"]') : null;
 
@@ -183,7 +218,9 @@
         var previewName = previewElement ? previewElement.querySelector('[data-preview-name]') : null;
         var previewLanguage = previewElement ? previewElement.querySelector('[data-preview-language]') : null;
         var previewStatus = previewElement ? previewElement.querySelector('[data-preview-status]') : null;
-        var previewJson = previewElement ? previewElement.querySelector('[data-preview-json]') : null;
+        var previewBubble = previewElement ? previewElement.querySelector('[data-preview-bubble]') : null;
+        var previewReason = previewElement ? previewElement.querySelector('[data-preview-reason]') : null;
+
 
         function setLoading(isLoading) {
             state.loading = isLoading;
@@ -268,6 +305,10 @@
                 qualityCell.innerHTML = formatQuality(template.quality_score);
                 tr.appendChild(qualityCell);
 
+                var observationCell = document.createElement('td');
+                observationCell.innerHTML = formatObservation(template);
+                tr.appendChild(observationCell);
+
                 var updatedCell = document.createElement('td');
                 updatedCell.textContent = formatDate(template.last_updated_time);
                 tr.appendChild(updatedCell);
@@ -331,6 +372,7 @@
                             status: template.status || '',
                             quality_score: template.quality_score || '',
                             components: template.components || [],
+                            rejected_reason: template.rejected_reason || template.rejection_reason || template.reason || '',
                             last_updated_time: template.last_updated_time || ''
                         };
                     });
@@ -349,7 +391,7 @@
         }
 
         function resetFormForCreate() {
-            if (!modalForm || !fieldName || !fieldLanguage || !fieldCategory || !fieldComponents || !deleteButton) {
+            if (!modalForm || !fieldName || !fieldLanguage || !fieldCategory || !deleteButton) {
                 return;
             }
 
@@ -361,13 +403,15 @@
                 delete fieldName.dataset.originalValue;
             }
 
-            fieldComponents.value = '';
             if (fieldAllowCategoryChange) {
                 fieldAllowCategoryChange.checked = false;
             }
 
+            resetBuilder();
+
             deleteButton.hidden = true;
             deleteButton.dataset.templateId = '';
+            deleteButton.dataset.templateName = '';
             if (modalTitle) {
                 modalTitle.textContent = 'Nueva plantilla';
             }
@@ -408,17 +452,16 @@
                 fieldCategory.value = template.category || '';
             }
 
-            if (fieldComponents) {
-                fieldComponents.value = JSON.stringify(template.components || [], null, 2);
-            }
-
             if (fieldAllowCategoryChange) {
                 fieldAllowCategoryChange.checked = Boolean(template.allow_category_change);
             }
 
+            hydrateBuilderFromComponents(template.components || []);
+
             if (deleteButton) {
                 deleteButton.hidden = false;
                 deleteButton.dataset.templateId = template.id || '';
+                deleteButton.dataset.templateName = template.name || '';
             }
 
             if (modalTitle) {
@@ -449,22 +492,377 @@
                 previewStatus.innerHTML = formatStatus(template.status);
             }
 
-            if (previewJson) {
-                previewJson.textContent = JSON.stringify(template.components || [], null, 2);
+            if (previewReason) {
+                previewReason.innerHTML = formatObservation(template);
+            }
+
+            if (previewBubble) {
+                previewBubble.innerHTML = buildPreviewHtmlFromComponents(template.components || []);
             }
 
             previewModal.show();
         }
 
+        function resetBuilder() {
+            if (headerTypeSelect) {
+                headerTypeSelect.value = 'none';
+            }
+            if (headerInput) {
+                headerInput.value = '';
+            }
+            if (headerTextWrapper) {
+                headerTextWrapper.classList.add('d-none');
+            }
+            if (headerWarning) {
+                headerWarning.classList.add('d-none');
+            }
+            if (bodyInput) {
+                bodyInput.value = '';
+            }
+            if (footerInput) {
+                footerInput.value = '';
+            }
+            if (buttonsContainer) {
+                buttonsContainer.innerHTML = '';
+            }
+            renderBuilderPreview();
+        }
+
+        function getNextVariableNumber(text) {
+            var regex = /\{\{\s*(\d+)\s*\}\}/g;
+            var max = 0;
+            var match;
+            while ((match = regex.exec(text)) !== null) {
+                var num = parseInt(match[1], 10);
+                if (!isNaN(num) && num > max) {
+                    max = num;
+                }
+            }
+            return max + 1;
+        }
+
+        function insertVariable(target) {
+            if (!target) {
+                return;
+            }
+            var value = target.value || '';
+            var next = getNextVariableNumber(value);
+            var token = '{{' + next + '}}';
+
+            if (typeof target.selectionStart === 'number') {
+                var start = target.selectionStart;
+                var end = target.selectionEnd;
+                target.value = value.substring(0, start) + token + value.substring(end);
+                target.selectionStart = target.selectionEnd = start + token.length;
+            } else {
+                target.value = value + (value ? ' ' : '') + token;
+            }
+
+            renderBuilderPreview();
+        }
+
+        function buildComponents() {
+            var components = [];
+
+            var headerType = headerTypeSelect ? headerTypeSelect.value : 'none';
+            var headerText = headerInput ? headerInput.value.trim() : '';
+            if (headerType === 'text' && headerText !== '') {
+                components.push({
+                    type: 'HEADER',
+                    format: 'TEXT',
+                    text: headerText
+                });
+            }
+
+            var bodyText = bodyInput ? bodyInput.value.trim() : '';
+            if (bodyText !== '') {
+                components.push({
+                    type: 'BODY',
+                    text: bodyText
+                });
+            }
+
+            var footerText = footerInput ? footerInput.value.trim() : '';
+            if (footerText !== '') {
+                components.push({
+                    type: 'FOOTER',
+                    text: footerText
+                });
+            }
+
+            var buttons = collectButtons();
+            if (buttons.length) {
+                components.push({
+                    type: 'BUTTONS',
+                    buttons: buttons
+                });
+            }
+
+            return components;
+        }
+
+        function collectButtons() {
+            if (!buttonsContainer) {
+                return [];
+            }
+
+            var rows = buttonsContainer.querySelectorAll('[data-button-row]');
+            var buttons = [];
+
+            rows.forEach(function (row) {
+                var typeSelect = row.querySelector('[data-button-type]');
+                var labelInput = row.querySelector('[data-button-label]');
+                var urlInput = row.querySelector('[data-button-url]');
+                var phoneInput = row.querySelector('[data-button-phone]');
+
+                var type = typeSelect ? typeSelect.value : 'QUICK_REPLY';
+                var label = labelInput ? labelInput.value.trim() : '';
+
+                if (!label) {
+                    return;
+                }
+
+                if (type === 'URL') {
+                    var url = urlInput ? urlInput.value.trim() : '';
+                    if (!url) {
+                        return;
+                    }
+                    buttons.push({
+                        type: 'URL',
+                        text: label,
+                        url: url
+                    });
+                } else if (type === 'PHONE_NUMBER') {
+                    var phone = phoneInput ? phoneInput.value.trim() : '';
+                    if (!phone) {
+                        return;
+                    }
+                    buttons.push({
+                        type: 'PHONE_NUMBER',
+                        text: label,
+                        phone_number: phone
+                    });
+                } else {
+                    buttons.push({
+                        type: 'QUICK_REPLY',
+                        text: label
+                    });
+                }
+            });
+
+            return buttons;
+        }
+
+        function buildPreviewHtmlFromComponents(components) {
+            if (!components || !components.length) {
+                return '<span class="text-muted">Sin contenido para previsualizar.</span>';
+            }
+
+            var header = '';
+            var body = '';
+            var footer = '';
+            var buttons = [];
+
+            components.forEach(function (component) {
+                if (!component || !component.type) {
+                    return;
+                }
+                var type = String(component.type).toUpperCase();
+                if (type === 'HEADER' && component.text) {
+                    header = component.text;
+                } else if (type === 'BODY' && component.text) {
+                    body = component.text;
+                } else if (type === 'FOOTER' && component.text) {
+                    footer = component.text;
+                } else if (type === 'BUTTONS' && Array.isArray(component.buttons)) {
+                    buttons = component.buttons;
+                }
+            });
+
+            var html = '';
+            if (header) {
+                html += '<div class="fw-600 mb-2">' + escapeHtml(header) + '</div>';
+            }
+            if (body) {
+                html += '<div class="mb-2">' + escapeHtml(body) + '</div>';
+            }
+            if (footer) {
+                html += '<div class="text-muted small">' + escapeHtml(footer) + '</div>';
+            }
+            if (buttons.length) {
+                html += '<div class="mt-2 d-grid gap-1">';
+                buttons.forEach(function (button) {
+                    var label = button.text || 'Botón';
+                    html += '<div class="preview-button">' + escapeHtml(label) + '</div>';
+                });
+                html += '</div>';
+            }
+
+            return html || '<span class="text-muted">Sin contenido para previsualizar.</span>';
+        }
+
+        function renderBuilderPreview() {
+            if (!builderPreview) {
+                return;
+            }
+
+            var components = buildComponents();
+            builderPreview.innerHTML = buildPreviewHtmlFromComponents(components);
+        }
+
+        function createButtonRow(data) {
+            var row = document.createElement('div');
+            row.className = 'border rounded p-2';
+            row.setAttribute('data-button-row', '1');
+
+            var top = document.createElement('div');
+            top.className = 'd-flex flex-wrap align-items-center gap-2 mb-2';
+
+            var typeSelect = document.createElement('select');
+            typeSelect.className = 'form-select form-select-sm w-auto';
+            typeSelect.setAttribute('data-button-type', '1');
+            [
+                { value: 'QUICK_REPLY', label: 'Respuesta rápida' },
+                { value: 'URL', label: 'Enlace' },
+                { value: 'PHONE_NUMBER', label: 'Teléfono' }
+            ].forEach(function (optionData) {
+                var option = document.createElement('option');
+                option.value = optionData.value;
+                option.textContent = optionData.label;
+                typeSelect.appendChild(option);
+            });
+
+            var labelInput = document.createElement('input');
+            labelInput.type = 'text';
+            labelInput.className = 'form-control form-control-sm flex-grow-1';
+            labelInput.placeholder = 'Texto del botón';
+            labelInput.setAttribute('data-button-label', '1');
+
+            var removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'btn btn-outline-danger btn-sm';
+            removeButton.innerHTML = '<i class="mdi mdi-close"></i>';
+
+            top.appendChild(typeSelect);
+            top.appendChild(labelInput);
+            top.appendChild(removeButton);
+
+            var urlInput = document.createElement('input');
+            urlInput.type = 'text';
+            urlInput.className = 'form-control form-control-sm';
+            urlInput.placeholder = 'https://tusitio.com/{{1}}';
+            urlInput.setAttribute('data-button-url', '1');
+
+            var phoneInput = document.createElement('input');
+            phoneInput.type = 'text';
+            phoneInput.className = 'form-control form-control-sm';
+            phoneInput.placeholder = '+593...';
+            phoneInput.setAttribute('data-button-phone', '1');
+
+            row.appendChild(top);
+            row.appendChild(urlInput);
+            row.appendChild(phoneInput);
+
+            function syncButtonFields() {
+                var type = typeSelect.value;
+                urlInput.classList.toggle('d-none', type !== 'URL');
+                phoneInput.classList.toggle('d-none', type !== 'PHONE_NUMBER');
+            }
+
+            typeSelect.addEventListener('change', function () {
+                syncButtonFields();
+                renderBuilderPreview();
+            });
+            labelInput.addEventListener('input', renderBuilderPreview);
+            urlInput.addEventListener('input', renderBuilderPreview);
+            phoneInput.addEventListener('input', renderBuilderPreview);
+            removeButton.addEventListener('click', function () {
+                row.remove();
+                renderBuilderPreview();
+            });
+
+            if (data) {
+                typeSelect.value = data.type || 'QUICK_REPLY';
+                labelInput.value = data.text || '';
+                if (data.type === 'URL') {
+                    urlInput.value = data.url || '';
+                } else if (data.type === 'PHONE_NUMBER') {
+                    phoneInput.value = data.phone_number || '';
+                }
+            }
+
+            syncButtonFields();
+
+            return row;
+        }
+
+        function hydrateBuilderFromComponents(components) {
+            resetBuilder();
+
+            if (!Array.isArray(components)) {
+                return;
+            }
+
+            var headerFound = false;
+
+            components.forEach(function (component) {
+                if (!component || !component.type) {
+                    return;
+                }
+                var type = String(component.type).toUpperCase();
+
+                if (type === 'HEADER') {
+                    headerFound = true;
+                    var format = String(component.format || 'TEXT').toUpperCase();
+                    if (format === 'TEXT') {
+                        if (headerTypeSelect) {
+                            headerTypeSelect.value = 'text';
+                        }
+                        if (headerTextWrapper) {
+                            headerTextWrapper.classList.remove('d-none');
+                        }
+                        if (headerInput) {
+                            headerInput.value = component.text || '';
+                        }
+                        if (headerWarning) {
+                            headerWarning.classList.add('d-none');
+                        }
+                    } else if (headerWarning) {
+                        headerWarning.classList.remove('d-none');
+                    }
+                }
+
+                if (type === 'BODY' && bodyInput) {
+                    bodyInput.value = component.text || '';
+                }
+
+                if (type === 'FOOTER' && footerInput) {
+                    footerInput.value = component.text || '';
+                }
+
+                if (type === 'BUTTONS' && Array.isArray(component.buttons) && buttonsContainer) {
+                    component.buttons.forEach(function (button) {
+                        var row = createButtonRow(button);
+                        buttonsContainer.appendChild(row);
+                    });
+                }
+            });
+
+            if (!headerFound && headerWarning) {
+                headerWarning.classList.add('d-none');
+            }
+
+            renderBuilderPreview();
+        }
+
         function gatherPayload() {
-            if (!fieldName || !fieldLanguage || !fieldCategory || !fieldComponents) {
+            if (!fieldName || !fieldLanguage || !fieldCategory) {
                 throw new Error('El formulario no está completo.');
             }
 
             var name = fieldName.value.trim();
             var language = fieldLanguage.value.trim();
             var category = fieldCategory.value.trim();
-            var componentsRaw = fieldComponents.value.trim();
 
             if (!name) {
                 throw new Error('El nombre de la plantilla es obligatorio.');
@@ -478,13 +876,13 @@
                 throw new Error('Selecciona una categoría.');
             }
 
-            var components = [];
-            if (componentsRaw !== '') {
-                components = parseJson(componentsRaw, []);
+            if (!bodyInput || bodyInput.value.trim() === '') {
+                throw new Error('El cuerpo del mensaje es obligatorio.');
             }
 
-            if (!Array.isArray(components) || components.length === 0) {
-                throw new Error('Debes proporcionar al menos un componente válido en formato JSON.');
+            var components = buildComponents();
+            if (!components.length) {
+                throw new Error('Debes completar el cuerpo del mensaje.');
             }
 
             return {
@@ -546,6 +944,7 @@
             }
 
             var templateId = deleteButton.dataset.templateId;
+            var templateName = deleteButton.dataset.templateName || '';
             if (!templateId) {
                 return;
             }
@@ -557,7 +956,12 @@
             var endpoint = endpoints.delete.replace('{id}', encodeURIComponent(templateId));
             deleteButton.disabled = true;
 
-            fetchJson(endpoint, buildRequestOptions({}))
+            var payload = {};
+            if (templateName) {
+                payload.name = templateName;
+            }
+
+            fetchJson(endpoint, buildRequestOptions(payload))
                 .then(function (response) {
                     if (!response.ok) {
                         throw new Error(response.body && response.body.error ? response.body.error : 'No fue posible eliminar la plantilla.');
@@ -609,6 +1013,60 @@
 
         if (categoryFilter) {
             categoryFilter.addEventListener('change', applyFilters);
+        }
+
+        if (headerTypeSelect) {
+            headerTypeSelect.addEventListener('change', function () {
+                var value = headerTypeSelect.value;
+                if (headerTextWrapper) {
+                    headerTextWrapper.classList.toggle('d-none', value !== 'text');
+                }
+                if (headerWarning) {
+                    headerWarning.classList.add('d-none');
+                }
+                renderBuilderPreview();
+            });
+        }
+
+        if (headerInput) {
+            headerInput.addEventListener('input', renderBuilderPreview);
+        }
+
+        if (bodyInput) {
+            bodyInput.addEventListener('input', renderBuilderPreview);
+        }
+
+        if (footerInput) {
+            footerInput.addEventListener('input', renderBuilderPreview);
+        }
+
+        if (addButton && buttonsContainer) {
+            addButton.addEventListener('click', function () {
+                var rows = buttonsContainer.querySelectorAll('[data-button-row]');
+                if (rows.length >= 3) {
+                    showFeedback(modalFeedback, 'warning', 'Solo puedes agregar hasta 3 botones.');
+                    return;
+                }
+                hideFeedback(modalFeedback);
+                var row = createButtonRow();
+                buttonsContainer.appendChild(row);
+                renderBuilderPreview();
+            });
+        }
+
+        if (insertVariableButtons && insertVariableButtons.length) {
+            insertVariableButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var target = button.getAttribute('data-insert-variable');
+                    if (target === 'header') {
+                        insertVariable(headerInput);
+                    } else if (target === 'body') {
+                        insertVariable(bodyInput);
+                    } else if (target === 'footer') {
+                        insertVariable(footerInput);
+                    }
+                });
+            });
         }
 
         if (tableBody) {
