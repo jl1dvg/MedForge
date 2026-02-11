@@ -5,6 +5,56 @@
 $brand = trim((string)($config['brand'] ?? 'MedForge')) ?: 'MedForge';
 $phoneNumber = $config['phone_number_id'] ?? '';
 ?>
+<style>
+    .whatsapp-patient-results {
+        border-radius: 12px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .whatsapp-patient-results .list-group-item {
+        border: 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        padding: 10px 12px;
+        transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .whatsapp-patient-results .list-group-item:last-child {
+        border-bottom: 0;
+    }
+    .whatsapp-patient-results .list-group-item:hover {
+        background-color: #f6f9ff;
+        box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.1);
+    }
+    .whatsapp-patient-results .patient-name {
+        font-weight: 600;
+        color: #1f2a44;
+    }
+    .whatsapp-patient-results .patient-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .whatsapp-patient-results .badge {
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+    .whatsapp-patient-results .badge-soft {
+        background-color: #eef2ff;
+        color: #2b3a67;
+        border: 1px solid rgba(43, 58, 103, 0.15);
+    }
+    .whatsapp-patient-results .badge-soft-success {
+        background-color: #e8f7ef;
+        color: #1b7f4f;
+        border: 1px solid rgba(27, 127, 79, 0.15);
+    }
+    .whatsapp-patient-results .badge-soft-muted {
+        background-color: #f3f4f6;
+        color: #6b7280;
+        border: 1px solid rgba(107, 114, 128, 0.2);
+    }
+</style>
 <section class="content">
     <div
             class="row"
@@ -13,6 +63,8 @@ $phoneNumber = $config['phone_number_id'] ?? '';
             data-endpoint-list="/whatsapp/api/conversations"
             data-endpoint-conversation="/whatsapp/api/conversations/{id}"
             data-endpoint-send="/whatsapp/api/messages"
+            data-endpoint-patients="/whatsapp/api/patients"
+            data-endpoint-templates="/whatsapp/api/chat-templates"
             data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
     >
         <div class="col-lg-3 col-12">
@@ -55,6 +107,13 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                 <form class="p-10" data-new-conversation-form>
                                     <h5 class="mb-3">Iniciar conversación</h5>
                                     <div class="mb-2">
+                                        <label for="patientSearch" class="form-label">Buscar paciente</label>
+                                        <input type="search" class="form-control form-control-sm" id="patientSearch"
+                                               placeholder="Nombre, historia clínica o teléfono" autocomplete="off"
+                                               data-patient-search>
+                                        <div class="list-group mt-2 d-none whatsapp-patient-results" data-patient-results></div>
+                                    </div>
+                                    <div class="mb-2">
                                         <label for="waNumber" class="form-label">Número de WhatsApp</label>
                                         <input type="text" class="form-control form-control-sm" id="waNumber"
                                                name="wa_number" placeholder="+593..." required>
@@ -69,11 +128,25 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <textarea class="form-control form-control-sm" id="waMessage" name="message"
                                                   rows="4" placeholder="Escribe el primer mensaje" required></textarea>
                                     </div>
-                                    <div class="form-check mb-3">
-                                        <input class="form-check-input" type="checkbox" value="1" id="waPreview"
-                                               name="preview_url">
-                                        <label class="form-check-label" for="waPreview">Permitir vista previa de
-                                            enlaces</label>
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="waUseTemplate"
+                                               data-template-toggle>
+                                        <label class="form-check-label" for="waUseTemplate">Enviar plantilla oficial</label>
+                                    </div>
+                                    <div class="d-none" data-template-panel>
+                                        <div class="mb-2">
+                                            <label for="waTemplate" class="form-label">Plantilla</label>
+                                            <select class="form-select form-select-sm" id="waTemplate" data-template-select>
+                                                <option value="">Selecciona una plantilla</option>
+                                            </select>
+                                        </div>
+                                        <div class="mb-3" data-template-fields></div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Vista previa</label>
+                                            <div class="border rounded p-2 bg-light small" data-template-preview style="white-space: pre-line;">
+                                                Selecciona una plantilla para ver la vista previa.
+                                            </div>
+                                        </div>
                                     </div>
                                     <button type="submit"
                                             class="btn btn-primary btn-sm w-100" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
@@ -99,8 +172,10 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                     <div class="box">
                         <div class="box-header">
                             <div class="media align-items-top p-0" data-chat-header>
-                                <div class="avatar avatar-lg status-success mx-0 d-flex align-items-center justify-content-center bg-primary-light text-primary">
-                                    <i class="mdi mdi-whatsapp"></i>
+                                <div class="avatar avatar-lg status-success mx-0 d-flex align-items-center justify-content-center bg-primary-light text-primary"
+                                     data-chat-avatar>
+                                    <img class="d-none w-p100 h-p100 rounded-circle" alt="Avatar" data-chat-avatar-img>
+                                    <span class="fw-600" data-chat-avatar-initials>WA</span>
                                 </div>
                                 <div class="d-lg-flex d-block justify-content-between align-items-center w-p100">
                                     <div class="media-body mb-lg-0 mb-20">
@@ -149,15 +224,18 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                   data-message-form>
                         <textarea class="form-control b-0 py-10" id="chatMessage" rows="2"
                                   placeholder="Escribe algo..." <?= $isIntegrationEnabled ? '' : 'disabled'; ?> required></textarea>
-                                <div class="d-flex justify-content-between align-items-center mt-md-0 mt-30">
-                                    <div class="form-check me-2 mb-0">
-                                        <input class="form-check-input" type="checkbox" value="1"
-                                               id="chatPreview" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
-                                        <label class="form-check-label" for="chatPreview">Link Preview</label>
+                                <div class="d-flex flex-wrap justify-content-between align-items-center mt-md-0 mt-30 gap-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-attachment-trigger <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
+                                            <i class="mdi mdi-paperclip"></i>
+                                        </button>
+                                        <input type="file" class="d-none" data-attachment-input
+                                               accept="image/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                                        <div class="small text-muted d-none" data-attachment-preview></div>
                                     </div>
                                     <button type="submit"
-                                            class="waves-effect waves-circle btn btn-circle btn-primary" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
-                                        <i class="mdi mdi-send"></i>
+                                            class="btn btn-primary" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
+                                        Enviar
                                     </button>
                                 </div>
                             </form>

@@ -35,6 +35,14 @@ return static function (Router $router): void {
         (new TemplateController($pdo))->listTemplates();
     });
 
+    $router->get('/whatsapp/api/patients', static function (\PDO $pdo): void {
+        (new ChatController($pdo))->searchPatients();
+    });
+
+    $router->get('/whatsapp/api/chat-templates', static function (\PDO $pdo): void {
+        (new ChatController($pdo))->listAvailableTemplates();
+    });
+
     $router->post('/whatsapp/api/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->createTemplate();
     });

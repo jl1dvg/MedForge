@@ -50,6 +50,14 @@
         return url + separator + '_=' + Date.now();
     }
 
+    function containsUrl(text) {
+        if (!text) {
+            return false;
+        }
+
+        return /(https?:\/\/|www\.)\S+/i.test(text);
+    }
+
     function resetContainer(container, placeholder) {
         if (!container) {
             return;
@@ -82,7 +90,9 @@
         var endpoints = {
             list: root.getAttribute('data-endpoint-list') || '',
             conversation: root.getAttribute('data-endpoint-conversation') || '',
-            send: root.getAttribute('data-endpoint-send') || ''
+            send: root.getAttribute('data-endpoint-send') || '',
+            patients: root.getAttribute('data-endpoint-patients') || '',
+            templates: root.getAttribute('data-endpoint-templates') || ''
         };
 
         var enabled = root.getAttribute('data-enabled') === '1';
@@ -99,11 +109,17 @@
         var composer = root.querySelector('[data-chat-composer]');
         var messageForm = root.querySelector('[data-message-form]');
         var messageInput = root.querySelector('#chatMessage');
-        var previewCheckbox = root.querySelector('#chatPreview');
         var errorAlert = root.querySelector('[data-chat-error]');
         var searchInput = root.querySelector('[data-conversation-search]');
         var newConversationForm = root.querySelector('[data-new-conversation-form]');
         var newConversationFeedback = root.querySelector('[data-new-conversation-feedback]');
+        var patientSearchInput = root.querySelector('[data-patient-search]');
+        var patientResults = root.querySelector('[data-patient-results]');
+        var templateToggle = root.querySelector('[data-template-toggle]');
+        var templatePanel = root.querySelector('[data-template-panel]');
+        var templateSelect = root.querySelector('[data-template-select]');
+        var templateFieldsContainer = root.querySelector('[data-template-fields]');
+        var templatePreview = root.querySelector('[data-template-preview]');
         var detailName = root.querySelector('[data-detail-name]');
         var detailNumber = root.querySelector('[data-detail-number]');
         var detailPatient = root.querySelector('[data-detail-patient]');
@@ -115,7 +131,18 @@
         var needsHumanBadge = root.querySelector('[data-chat-needs-human]');
         var copyNumberButton = root.querySelector('[data-action-copy-number]');
         var openChatLink = root.querySelector('[data-action-open-chat]');
+        var headerAvatar = root.querySelector('[data-chat-avatar]');
+        var headerAvatarImg = root.querySelector('[data-chat-avatar-img]');
+        var headerAvatarInitials = root.querySelector('[data-chat-avatar-initials]');
+        var attachmentTrigger = root.querySelector('[data-attachment-trigger]');
+        var attachmentInput = root.querySelector('[data-attachment-input]');
+        var attachmentPreview = root.querySelector('[data-attachment-preview]');
         var selectedNumber = '';
+        var pendingAttachment = null;
+        var templatesLoaded = false;
+        var templateState = null;
+        var templateFieldInputs = {};
+        var templateCache = {};
 
         function getConversationEndpoint(id) {
             return endpoints.conversation.replace('{id}', String(id));
@@ -170,8 +197,14 @@
                     avatarEl.alt = '...';
                 } else {
                     avatarEl = createElement('span', 'avatar avatar-lg bg-primary-light d-inline-flex align-items-center justify-content-center');
-                    var icon = createElement('i', 'mdi mdi-account text-primary');
-                    avatarEl.appendChild(icon);
+                    var initials = computeInitials(conversation.display_name || conversation.patient_full_name || conversation.wa_number);
+                    if (initials) {
+                        avatarEl.textContent = initials;
+                        avatarEl.classList.add('fw-600', 'text-primary');
+                    } else {
+                        var icon = createElement('i', 'mdi mdi-account text-primary');
+                        avatarEl.appendChild(icon);
+                    }
                 }
                 a.appendChild(avatarEl);
                 media.appendChild(a);
@@ -361,6 +394,8 @@
             subtitle.textContent = conversation.wa_number || '';
             selectedNumber = conversation.wa_number || '';
 
+            updateHeaderAvatar(conversation);
+
             if (lastSeenElement) {
                 if (conversation.last_message_at) {
                     lastSeenElement.textContent = 'Último mensaje: ' + formatDate(conversation.last_message_at);
@@ -442,6 +477,54 @@
             if (copyNumberButton) {
                 copyNumberButton.disabled = !selectedNumber;
             }
+        }
+
+        function updateHeaderAvatar(conversation) {
+            if (!headerAvatar) {
+                return;
+            }
+
+            var avatarUrl = conversation.avatar_url || '';
+            if (avatarUrl && headerAvatarImg) {
+                headerAvatarImg.src = appendCacheBuster(avatarUrl);
+                headerAvatarImg.classList.remove('d-none');
+                if (headerAvatarInitials) {
+                    headerAvatarInitials.classList.add('d-none');
+                }
+                return;
+            }
+
+            if (headerAvatarImg) {
+                headerAvatarImg.classList.add('d-none');
+            }
+
+            if (headerAvatarInitials) {
+                var initials = computeInitials(conversation.display_name || conversation.patient_full_name || conversation.wa_number);
+                headerAvatarInitials.textContent = initials || 'WA';
+                headerAvatarInitials.classList.remove('d-none');
+            }
+        }
+
+        function computeInitials(value) {
+            if (!value) {
+                return '';
+            }
+
+            var clean = String(value).trim();
+            if (!clean) {
+                return '';
+            }
+
+            var parts = clean.split(/\s+/).filter(Boolean);
+            if (!parts.length) {
+                return '';
+            }
+
+            if (parts.length === 1) {
+                return parts[0].substring(0, 2).toUpperCase();
+            }
+
+            return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
         }
 
         function buildWaMe(number) {
@@ -577,6 +660,23 @@
                 return Promise.reject(new Error('No hay un endpoint configurado para enviar mensajes.'));
             }
 
+            if (payload instanceof FormData) {
+                return fetch(endpoints.send, {
+                    method: 'POST',
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                    body: payload
+                }).then(function (response) {
+                    return response.json();
+                }).then(function (data) {
+                    if (!data.ok) {
+                        throw new Error(data.error || 'No fue posible enviar el mensaje.');
+                    }
+
+                    return data.data || {};
+                });
+            }
+
             return fetch(endpoints.send, {
                 method: 'POST',
                 headers: {
@@ -608,11 +708,39 @@
                 var waNumber = (formData.get('wa_number') || '').toString().trim();
                 var displayName = (formData.get('display_name') || '').toString().trim();
                 var message = (formData.get('message') || '').toString().trim();
-                var preview = formData.get('preview_url') ? true : false;
+                var preview = containsUrl(message);
+                var useTemplate = templateToggle ? templateToggle.checked : false;
+                var templatePayload = null;
 
-                if (!waNumber || !message) {
+                if (useTemplate) {
+                    var templateId = templateSelect ? templateSelect.value : '';
+                    if (!templateId || !templateState || !templateState.template) {
+                        if (newConversationFeedback) {
+                            newConversationFeedback.textContent = 'Selecciona una plantilla para continuar.';
+                            newConversationFeedback.classList.remove('text-success');
+                            newConversationFeedback.classList.add('text-danger');
+                        }
+                        return;
+                    }
+
+                    var templateBuild = buildTemplatePayload();
+                    if (!templateBuild || templateBuild.error) {
+                        if (newConversationFeedback) {
+                            newConversationFeedback.textContent = templateBuild && templateBuild.error
+                                ? templateBuild.error
+                                : 'No fue posible preparar la plantilla.';
+                            newConversationFeedback.classList.remove('text-success');
+                            newConversationFeedback.classList.add('text-danger');
+                        }
+                        return;
+                    }
+
+                    templatePayload = templateBuild.payload;
+                }
+
+                if (!waNumber || (!message && !templatePayload)) {
                     if (newConversationFeedback) {
-                        newConversationFeedback.textContent = 'Debes indicar un número y un mensaje inicial.';
+                        newConversationFeedback.textContent = 'Debes indicar un número y un mensaje o plantilla.';
                         newConversationFeedback.classList.remove('text-success');
                         newConversationFeedback.classList.add('text-danger');
                     }
@@ -626,12 +754,18 @@
                     newConversationFeedback.classList.add('text-muted');
                 }
 
-                sendMessage({
+                var payload = {
                     wa_number: waNumber,
                     display_name: displayName,
                     message: message,
                     preview_url: preview
-                }).then(function (result) {
+                };
+
+                if (templatePayload) {
+                    payload.template = templatePayload;
+                }
+
+                sendMessage(payload).then(function (result) {
                     if (newConversationFeedback) {
                         newConversationFeedback.textContent = 'Mensaje enviado correctamente.';
                         newConversationFeedback.classList.remove('text-danger');
@@ -639,6 +773,15 @@
                     }
 
                     newConversationForm.reset();
+                    if (templatePanel) {
+                        templatePanel.classList.add('d-none');
+                    }
+                    if (templateToggle) {
+                        templateToggle.checked = false;
+                    }
+                    templateState = null;
+                    renderTemplateFields();
+                    renderTemplatePreview();
                     loadConversations().then(function () {
                         if (result.conversation && result.conversation.id) {
                             openConversation(result.conversation.id);
@@ -665,9 +808,9 @@
                 }
 
                 var text = messageInput ? messageInput.value.trim() : '';
-                var preview = previewCheckbox ? previewCheckbox.checked : false;
+                var preview = containsUrl(text);
 
-                if (!text) {
+                if (!text && !pendingAttachment) {
                     if (errorAlert) {
                         errorAlert.textContent = 'El mensaje no puede estar vacío.';
                         errorAlert.classList.remove('d-none');
@@ -680,14 +823,26 @@
                     errorAlert.classList.add('d-none');
                 }
 
-                sendMessage({
-                    conversation_id: state.selectedId,
-                    message: text,
-                    preview_url: preview
-                }).then(function () {
+                var payload;
+                if (pendingAttachment && attachmentInput && attachmentInput.files && attachmentInput.files[0]) {
+                    payload = new FormData();
+                    payload.append('conversation_id', String(state.selectedId));
+                    payload.append('message', text);
+                    payload.append('preview_url', preview ? '1' : '');
+                    payload.append('attachment', attachmentInput.files[0]);
+                } else {
+                    payload = {
+                        conversation_id: state.selectedId,
+                        message: text,
+                        preview_url: preview
+                    };
+                }
+
+                sendMessage(payload).then(function () {
                     if (messageInput) {
                         messageInput.value = '';
                     }
+                    clearAttachment();
                     loadConversations().then(function () {
                         openConversation(state.selectedId, {silent: true});
                     });
@@ -708,6 +863,555 @@
                 state.search = event.target.value.trim();
                 loadConversations();
             }, 300));
+        }
+
+        if (messageInput) {
+            messageInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    if (messageForm) {
+                        messageForm.dispatchEvent(new Event('submit', {cancelable: true}));
+                    }
+                }
+            });
+        }
+
+        if (attachmentTrigger && attachmentInput) {
+            attachmentTrigger.addEventListener('click', function () {
+                if (attachmentInput.disabled) {
+                    return;
+                }
+                attachmentInput.click();
+            });
+
+            attachmentInput.addEventListener('change', function () {
+                if (attachmentInput.files && attachmentInput.files[0]) {
+                    pendingAttachment = attachmentInput.files[0];
+                    showAttachmentPreview(pendingAttachment);
+                } else {
+                    clearAttachment();
+                }
+            });
+        }
+
+        if (attachmentPreview) {
+            attachmentPreview.addEventListener('click', function () {
+                clearAttachment();
+            });
+        }
+
+        if (patientSearchInput && patientResults) {
+            patientSearchInput.addEventListener('input', debounce(function (event) {
+                var query = event.target.value.trim();
+                if (!query) {
+                    patientResults.innerHTML = '';
+                    patientResults.classList.add('d-none');
+                    return;
+                }
+                loadPatients(query);
+            }, 350));
+        }
+
+        if (templateSelect) {
+            templateSelect.addEventListener('change', function () {
+                var templateId = templateSelect.value;
+                if (!templateId || !templateCache[templateId]) {
+                    templateState = null;
+                    renderTemplateFields();
+                    renderTemplatePreview();
+                    return;
+                }
+
+                renderTemplateEditor(templateCache[templateId]);
+            });
+        }
+
+        if (templateToggle) {
+            templateToggle.addEventListener('change', function () {
+                if (!templatePanel) {
+                    return;
+                }
+                if (templateToggle.checked) {
+                    templatePanel.classList.remove('d-none');
+                    if (!templatesLoaded) {
+                        loadTemplates();
+                    }
+                    if (templateSelect && templateSelect.value && templateCache[templateSelect.value]) {
+                        renderTemplateEditor(templateCache[templateSelect.value]);
+                    }
+                    var messageField = newConversationForm ? newConversationForm.querySelector('[name="message"]') : null;
+                    if (messageField) {
+                        messageField.removeAttribute('required');
+                    }
+                } else {
+                    templatePanel.classList.add('d-none');
+                    var messageFieldOff = newConversationForm ? newConversationForm.querySelector('[name="message"]') : null;
+                    if (messageFieldOff) {
+                        messageFieldOff.setAttribute('required', 'required');
+                    }
+                }
+            });
+        }
+
+        function showAttachmentPreview(file) {
+            if (!attachmentPreview) {
+                return;
+            }
+
+            attachmentPreview.textContent = file ? 'Adjunto: ' + file.name + ' (clic para quitar)' : '';
+            if (file) {
+                attachmentPreview.classList.remove('d-none');
+            } else {
+                attachmentPreview.classList.add('d-none');
+            }
+        }
+
+        function clearAttachment() {
+            pendingAttachment = null;
+            if (attachmentInput) {
+                attachmentInput.value = '';
+            }
+            showAttachmentPreview(null);
+        }
+
+        function loadPatients(query) {
+            if (!endpoints.patients) {
+                return;
+            }
+
+            var url = endpoints.patients;
+            var separator = url.indexOf('?') === -1 ? '?' : '&';
+            var requestUrl = url + separator + 'search=' + encodeURIComponent(query);
+
+            fetch(requestUrl, {
+                headers: {
+                    'Accept': 'application/json'
+                },
+                cache: 'no-store',
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json();
+            }).then(function (payload) {
+                if (!patientResults) {
+                    return;
+                }
+
+                if (!payload || !payload.ok || !Array.isArray(payload.data)) {
+                    patientResults.innerHTML = '';
+                    patientResults.classList.add('d-none');
+                    return;
+                }
+
+                renderPatientResults(payload.data);
+            }).catch(function () {
+                if (patientResults) {
+                    patientResults.innerHTML = '';
+                    patientResults.classList.add('d-none');
+                }
+            });
+        }
+
+        function renderPatientResults(items) {
+            if (!patientResults) {
+                return;
+            }
+
+            patientResults.innerHTML = '';
+
+            if (!items.length) {
+                patientResults.classList.add('d-none');
+                return;
+            }
+
+            items.forEach(function (item) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'list-group-item list-group-item-action';
+
+                var row = document.createElement('div');
+                row.className = 'd-flex align-items-center justify-content-between gap-2';
+
+                var left = document.createElement('div');
+                left.className = 'd-flex align-items-center gap-2';
+
+                var icon = document.createElement('i');
+                icon.className = 'mdi mdi-account-circle text-primary fs-18';
+                left.appendChild(icon);
+
+                var info = document.createElement('div');
+                var name = document.createElement('div');
+                name.className = 'patient-name';
+                name.textContent = item.full_name || 'Paciente';
+                info.appendChild(name);
+
+                var meta = document.createElement('div');
+                meta.className = 'patient-meta';
+
+                if (item.hc_number) {
+                    var hcBadge = document.createElement('span');
+                    hcBadge.className = 'badge badge-soft';
+                    hcBadge.textContent = 'HC ' + item.hc_number;
+                    meta.appendChild(hcBadge);
+                }
+
+                if (item.phone) {
+                    var phoneBadge = document.createElement('span');
+                    phoneBadge.className = 'badge badge-soft-success';
+                    var phoneIcon = document.createElement('i');
+                    phoneIcon.className = 'mdi mdi-phone me-1';
+                    phoneBadge.appendChild(phoneIcon);
+                    phoneBadge.appendChild(document.createTextNode(item.phone));
+                    meta.appendChild(phoneBadge);
+                } else {
+                    var noPhoneBadge = document.createElement('span');
+                    noPhoneBadge.className = 'badge badge-soft-muted';
+                    noPhoneBadge.textContent = 'Sin teléfono';
+                    meta.appendChild(noPhoneBadge);
+                }
+
+                info.appendChild(meta);
+                left.appendChild(info);
+                row.appendChild(left);
+
+                var action = document.createElement('span');
+                action.className = 'text-muted small';
+                var actionIcon = document.createElement('i');
+                actionIcon.className = 'mdi mdi-arrow-right';
+                action.appendChild(actionIcon);
+                row.appendChild(action);
+
+                button.appendChild(row);
+
+                button.addEventListener('click', function () {
+                    var waNumberField = newConversationForm ? newConversationForm.querySelector('[name="wa_number"]') : null;
+                    var nameField = newConversationForm ? newConversationForm.querySelector('[name="display_name"]') : null;
+                    if (waNumberField && item.phone) {
+                        waNumberField.value = item.phone;
+                    }
+                    if (nameField && item.full_name) {
+                        nameField.value = item.full_name;
+                    }
+                    patientResults.innerHTML = '';
+                    patientResults.classList.add('d-none');
+                });
+
+                patientResults.appendChild(button);
+            });
+
+            patientResults.classList.remove('d-none');
+        }
+
+        function buildFieldKey(type, index, placeholder) {
+            return type + ':' + String(index) + ':' + String(placeholder);
+        }
+
+        function extractPlaceholders(text) {
+            if (!text) {
+                return [];
+            }
+
+            var matches = text.match(/\{\{\s*(\d+)\s*\}\}/g);
+            if (!matches) {
+                return [];
+            }
+
+            var values = {};
+            matches.forEach(function (match) {
+                var num = match.replace(/[^\d]/g, '');
+                if (num) {
+                    values[num] = true;
+                }
+            });
+
+            return Object.keys(values).map(function (value) {
+                return parseInt(value, 10);
+            }).sort(function (a, b) {
+                return a - b;
+            });
+        }
+
+        function buildTemplateState(template) {
+            var components = Array.isArray(template.components) ? template.components : [];
+            var fields = [];
+            var requirements = [];
+
+            components.forEach(function (component, componentIndex) {
+                if (!component || !component.type) {
+                    return;
+                }
+
+                var type = String(component.type).toUpperCase();
+
+                if (type === 'BODY' || type === 'HEADER' || type === 'FOOTER') {
+                    var text = component.text || '';
+                    var placeholders = extractPlaceholders(text);
+                    if (placeholders.length) {
+                        requirements.push({
+                            type: type,
+                            index: componentIndex,
+                            subType: null,
+                            placeholders: placeholders,
+                            sourceText: text
+                        });
+
+                        placeholders.forEach(function (placeholder) {
+                            var labelPrefix = type === 'BODY' ? 'Cuerpo' : (type === 'HEADER' ? 'Encabezado' : 'Pie');
+                            fields.push({
+                                key: buildFieldKey(type, componentIndex, placeholder),
+                                label: labelPrefix + ' · Variable ' + placeholder,
+                                type: type,
+                                index: componentIndex,
+                                placeholder: placeholder
+                            });
+                        });
+                    }
+                }
+
+                if (type === 'BUTTONS') {
+                    var buttons = Array.isArray(component.buttons) ? component.buttons : [];
+                    buttons.forEach(function (button, buttonIndex) {
+                        if (!button || !button.type) {
+                            return;
+                        }
+
+                        var buttonType = String(button.type).toUpperCase();
+                        if (buttonType !== 'URL') {
+                            return;
+                        }
+
+                        var url = button.url || '';
+                        var urlPlaceholders = extractPlaceholders(url);
+                        if (!urlPlaceholders.length) {
+                            return;
+                        }
+
+                        var buttonLabel = button.text || 'Botón ' + (buttonIndex + 1);
+                        requirements.push({
+                            type: 'BUTTON',
+                            index: buttonIndex,
+                            subType: 'URL',
+                            placeholders: urlPlaceholders,
+                            sourceText: url,
+                            label: buttonLabel
+                        });
+
+                        urlPlaceholders.forEach(function (placeholder) {
+                            fields.push({
+                                key: buildFieldKey('BUTTON', buttonIndex, placeholder),
+                                label: buttonLabel + ' · Variable ' + placeholder,
+                                type: 'BUTTON',
+                                index: buttonIndex,
+                                placeholder: placeholder,
+                                subType: 'URL'
+                            });
+                        });
+                    });
+                }
+            });
+
+            return {
+                template: template,
+                components: components,
+                fields: fields,
+                requirements: requirements
+            };
+        }
+
+        function renderTemplateEditor(template) {
+            templateState = buildTemplateState(template);
+            renderTemplateFields();
+            renderTemplatePreview();
+        }
+
+        function renderTemplateFields() {
+            if (!templateFieldsContainer) {
+                return;
+            }
+
+            templateFieldsContainer.innerHTML = '';
+            templateFieldInputs = {};
+
+            if (!templateState || !templateState.fields.length) {
+                var empty = document.createElement('div');
+                empty.className = 'small text-muted';
+                empty.textContent = templateState ? 'Esta plantilla no requiere variables.' : 'Selecciona una plantilla.';
+                templateFieldsContainer.appendChild(empty);
+                return;
+            }
+
+            templateState.fields.forEach(function (field) {
+                var wrapper = document.createElement('div');
+                wrapper.className = 'mb-2';
+
+                var label = document.createElement('label');
+                label.className = 'form-label small';
+                label.textContent = field.label;
+                wrapper.appendChild(label);
+
+                var input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control form-control-sm';
+                input.setAttribute('data-template-field', field.key);
+                input.addEventListener('input', renderTemplatePreview);
+                wrapper.appendChild(input);
+
+                templateFieldInputs[field.key] = input;
+                templateFieldsContainer.appendChild(wrapper);
+            });
+        }
+
+        function getTemplateFieldValue(type, index, placeholder) {
+            var key = buildFieldKey(type, index, placeholder);
+            var input = templateFieldInputs[key];
+            if (!input) {
+                return '';
+            }
+            return input.value.trim();
+        }
+
+        function applyTemplateText(text, type, index) {
+            return String(text || '').replace(/\{\{\s*(\d+)\s*\}\}/g, function (match, num) {
+                var value = getTemplateFieldValue(type, index, num);
+                return value !== '' ? value : '[' + num + ']';
+            });
+        }
+
+        function renderTemplatePreview() {
+            if (!templatePreview) {
+                return;
+            }
+
+            if (!templateState || !templateState.components) {
+                templatePreview.textContent = 'Selecciona una plantilla para ver la vista previa.';
+                return;
+            }
+
+            var lines = [];
+
+            templateState.components.forEach(function (component, componentIndex) {
+                if (!component || !component.type) {
+                    return;
+                }
+
+                var type = String(component.type).toUpperCase();
+                if (type === 'HEADER' && component.text) {
+                    lines.push(applyTemplateText(component.text, 'HEADER', componentIndex));
+                }
+                if (type === 'BODY' && component.text) {
+                    lines.push(applyTemplateText(component.text, 'BODY', componentIndex));
+                }
+                if (type === 'FOOTER' && component.text) {
+                    lines.push(applyTemplateText(component.text, 'FOOTER', componentIndex));
+                }
+                if (type === 'BUTTONS' && Array.isArray(component.buttons)) {
+                    var buttonLabels = component.buttons.map(function (button, buttonIndex) {
+                        if (!button || !button.text) {
+                            return 'Botón ' + (buttonIndex + 1);
+                        }
+                        return button.text;
+                    });
+                    if (buttonLabels.length) {
+                        lines.push('Botones: ' + buttonLabels.join(' · '));
+                    }
+                }
+            });
+
+            if (!lines.length) {
+                templatePreview.textContent = 'Vista previa no disponible para esta plantilla.';
+                return;
+            }
+
+            templatePreview.textContent = lines.join('\n');
+        }
+
+        function buildTemplatePayload() {
+            if (!templateState || !templateState.template) {
+                return null;
+            }
+
+            var components = [];
+            var errors = [];
+
+            templateState.requirements.forEach(function (requirement) {
+                var params = [];
+                requirement.placeholders.forEach(function (placeholder) {
+                    var value = getTemplateFieldValue(requirement.type, requirement.index, placeholder);
+                    if (!value) {
+                        errors.push('Completa la variable ' + placeholder + ' de ' + (requirement.label || requirement.type));
+                    } else {
+                        params.push({ type: 'TEXT', text: value });
+                    }
+                });
+
+                if (params.length) {
+                    var entry = { type: requirement.type };
+                    if (requirement.subType) {
+                        entry.sub_type = requirement.subType;
+                    }
+                    if (requirement.index !== null && typeof requirement.index !== 'undefined') {
+                        entry.index = requirement.index;
+                    }
+                    entry.parameters = params;
+                    components.push(entry);
+                }
+            });
+
+            if (errors.length) {
+                return { error: errors[0] };
+            }
+
+            var template = templateState.template;
+            var payload = {
+                name: template.name,
+                language: template.language
+            };
+
+            if (template.category) {
+                payload.category = template.category;
+            }
+
+            if (components.length) {
+                payload.components = components;
+            }
+
+            return { payload: payload };
+        }
+
+        function loadTemplates() {
+            if (!endpoints.templates || !templateSelect) {
+                return;
+            }
+
+            var url = new URL(endpoints.templates, window.location.origin);
+            url.searchParams.set('limit', '250');
+
+            fetch(url.toString(), {
+                headers: {
+                    'Accept': 'application/json'
+                },
+                cache: 'no-store',
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json();
+            }).then(function (payload) {
+                if (!payload || !payload.ok || !Array.isArray(payload.data)) {
+                    return;
+                }
+
+                templateCache = {};
+                templateSelect.innerHTML = '<option value="">Selecciona una plantilla</option>';
+                payload.data.forEach(function (template) {
+                    if (!template || !template.id) {
+                        return;
+                    }
+                    templateCache[template.id] = template;
+                    var option = document.createElement('option');
+                    option.value = template.id;
+                    option.textContent = template.name + ' (' + template.language + ')';
+                    templateSelect.appendChild(option);
+                });
+                templatesLoaded = true;
+            }).catch(function () {});
         }
 
         if (copyNumberButton) {

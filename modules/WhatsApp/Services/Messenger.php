@@ -419,6 +419,50 @@ class Messenger
      * @param string|array<int, string> $recipients
      * @param array<string, mixed> $options
      */
+    public function sendAudioMessage($recipients, string $url, array $options = []): bool
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return false;
+        }
+
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+
+        $recipients = PhoneNumberFormatter::normalizeRecipients($recipients, $config);
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $allSucceeded = true;
+        foreach ($recipients as $recipient) {
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'to' => $recipient,
+                'type' => 'audio',
+                'audio' => [
+                    'link' => $url,
+                ],
+            ];
+
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'audio', '[Audio]', $payload, $waMessageId);
+            }
+
+            $allSucceeded = ($response !== null) && $allSucceeded;
+        }
+
+        return $allSucceeded;
+    }
+
+    /**
+     * @param string|array<int, string> $recipients
+     * @param array<string, mixed> $options
+     */
     public function sendLocationMessage($recipients, float $latitude, float $longitude, array $options = []): bool
     {
         $config = $this->settings->get();
