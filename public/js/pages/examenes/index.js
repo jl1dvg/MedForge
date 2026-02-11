@@ -869,6 +869,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
+    const dateFilterInput = document.getElementById('kanbanDateFilter');
+    if (dateFilterInput && !dateFilterInput.value) {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const pad = (value) => String(value).padStart(2, '0');
+        const formatDate = (date) => `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
+        dateFilterInput.value = `${formatDate(start)} - ${formatDate(now)}`;
+    }
+
     if (realtimeConfig.enabled) {
         if (typeof Pusher === 'undefined') {
             notificationPanel.setIntegrationWarning('Pusher no está disponible. Verifica que el script se haya cargado correctamente.');

@@ -333,6 +333,61 @@ class ConversationRepository
         )->execute([':id' => $conversationId]);
     }
 
+    public function closeConversation(int $conversationId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET needs_human = 0, handoff_notes = NULL, handoff_role_id = NULL, assigned_user_id = NULL, assigned_at = NULL, unread_count = 0, updated_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute([':id' => $conversationId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function deleteConversation(int $conversationId): bool
+    {
+        if ($conversationId <= 0) {
+            return false;
+        }
+
+        $this->pdo->beginTransaction();
+
+        try {
+            $stmt = $this->pdo->prepare('SELECT wa_number FROM whatsapp_conversations WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $conversationId]);
+            $waNumber = $stmt->fetchColumn();
+
+            if ($waNumber === false) {
+                $this->pdo->rollBack();
+
+                return false;
+            }
+
+            $this->pdo->prepare(
+                'DELETE FROM whatsapp_handoff_events WHERE handoff_id IN (SELECT id FROM whatsapp_handoffs WHERE conversation_id = :id)'
+            )->execute([':id' => $conversationId]);
+
+            $this->pdo->prepare('DELETE FROM whatsapp_handoffs WHERE conversation_id = :id')
+                ->execute([':id' => $conversationId]);
+
+            $this->pdo->prepare('DELETE FROM whatsapp_inbox_messages WHERE wa_number = :wa_number')
+                ->execute([':wa_number' => $waNumber]);
+
+            $stmt = $this->pdo->prepare('DELETE FROM whatsapp_conversations WHERE id = :id');
+            $stmt->execute([':id' => $conversationId]);
+            $deleted = $stmt->rowCount() > 0;
+
+            $this->pdo->commit();
+
+            return $deleted;
+        } catch (\Throwable $exception) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            return false;
+        }
+    }
+
     public function updateMessageStatus(string $waMessageId, string $status, ?string $timestamp = null): void
     {
         $waMessageId = trim($waMessageId);

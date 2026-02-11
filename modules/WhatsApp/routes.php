@@ -43,6 +43,14 @@ return static function (Router $router): void {
         (new ChatController($pdo))->transferConversation((int) $conversationId);
     });
 
+    $router->post('/whatsapp/api/conversations/{conversationId}/close', static function (\PDO $pdo, string $conversationId): void {
+        (new ChatController($pdo))->closeConversation((int) $conversationId);
+    });
+
+    $router->post('/whatsapp/api/conversations/{conversationId}/delete', static function (\PDO $pdo, string $conversationId): void {
+        (new ChatController($pdo))->deleteConversation((int) $conversationId);
+    });
+
     $router->get('/whatsapp/api/templates', static function (\PDO $pdo): void {
         (new TemplateController($pdo))->listTemplates();
     });

@@ -1274,16 +1274,20 @@ class ExamenController extends BaseController
 
             $afiliacion = trim((string)($viewData['paciente']['afiliacion'] ?? ($viewData['examen']['afiliacion'] ?? '')));
             $templateService = new CoberturaMailTemplateService($this->pdo);
-            $baseTemplateKey = $templateService->resolveTemplateKey($afiliacion);
-            $examenTemplateKey = $baseTemplateKey ? $baseTemplateKey . '_examenes' : null;
-            $templateKey = null;
+            $templateKey = $templateService->resolveImagenesTemplateKey($afiliacion);
             $templateAvailable = false;
-            if ($examenTemplateKey && $templateService->hasEnabledTemplate($examenTemplateKey)) {
-                $templateKey = $examenTemplateKey;
+            if ($templateKey && $templateService->hasEnabledTemplate($templateKey)) {
                 $templateAvailable = true;
-            } elseif ($baseTemplateKey && $templateService->hasEnabledTemplate($baseTemplateKey)) {
-                $templateKey = $baseTemplateKey;
-                $templateAvailable = true;
+            } else {
+                $baseTemplateKey = $templateService->resolveTemplateKey($afiliacion);
+                $examenTemplateKey = $baseTemplateKey ? $baseTemplateKey . '_examenes' : null;
+                if ($examenTemplateKey && $templateService->hasEnabledTemplate($examenTemplateKey)) {
+                    $templateKey = $examenTemplateKey;
+                    $templateAvailable = true;
+                } elseif ($baseTemplateKey && $templateService->hasEnabledTemplate($baseTemplateKey)) {
+                    $templateKey = $baseTemplateKey;
+                    $templateAvailable = true;
+                }
             }
             $viewData['coberturaTemplateKey'] = $templateKey;
             $viewData['coberturaTemplateAvailable'] = $templateAvailable;

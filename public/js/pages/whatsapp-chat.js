@@ -96,7 +96,9 @@
             templates: root.getAttribute('data-endpoint-templates') || '',
             agents: root.getAttribute('data-endpoint-agents') || '',
             assign: root.getAttribute('data-endpoint-assign') || '',
-            transfer: root.getAttribute('data-endpoint-transfer') || ''
+            transfer: root.getAttribute('data-endpoint-transfer') || '',
+            close: root.getAttribute('data-endpoint-close') || '',
+            remove: root.getAttribute('data-endpoint-delete') || ''
         };
 
         var enabled = root.getAttribute('data-enabled') === '1';
@@ -138,6 +140,8 @@
         var needsHumanBadge = root.querySelector('[data-chat-needs-human]');
         var copyNumberButton = root.querySelector('[data-action-copy-number]');
         var openChatLink = root.querySelector('[data-action-open-chat]');
+        var closeConversationButton = root.querySelector('[data-action-close-conversation]');
+        var deleteConversationButton = root.querySelector('[data-action-delete-conversation]');
         var headerAvatar = root.querySelector('[data-chat-avatar]');
         var headerAvatarImg = root.querySelector('[data-chat-avatar-img]');
         var headerAvatarInitials = root.querySelector('[data-chat-avatar-initials]');
@@ -174,6 +178,14 @@
             return endpoints.transfer.replace('{id}', String(id));
         }
 
+        function getCloseEndpoint(id) {
+            return endpoints.close.replace('{id}', String(id));
+        }
+
+        function getDeleteEndpoint(id) {
+            return endpoints.remove.replace('{id}', String(id));
+        }
+
         function toggleComposer(disabled) {
             if (!composer) {
                 return;
@@ -183,6 +195,77 @@
             composer.querySelectorAll('textarea, input, button').forEach(function (element) {
                 element.disabled = shouldDisable;
             });
+        }
+
+        function resetConversationView() {
+            state.selectedId = null;
+            selectedNumber = '';
+
+            if (titleElement) {
+                titleElement.textContent = 'Selecciona una conversación';
+            }
+            if (subtitle) {
+                subtitle.textContent = 'El historial aparecerá cuando elijas un contacto.';
+            }
+            if (lastSeenElement) {
+                lastSeenElement.textContent = '';
+            }
+            if (detailName) {
+                detailName.textContent = 'Selecciona una conversación';
+            }
+            if (detailNumber) {
+                detailNumber.textContent = 'El número aparecerá aquí.';
+            }
+            if (detailPatient) {
+                detailPatient.textContent = '—';
+            }
+            if (detailHc) {
+                detailHc.textContent = '—';
+            }
+            if (detailLast) {
+                detailLast.textContent = '—';
+            }
+            if (detailUnread) {
+                detailUnread.textContent = '—';
+            }
+            if (detailHandoff) {
+                detailHandoff.textContent = '—';
+            }
+            if (detailNotes) {
+                detailNotes.textContent = '—';
+            }
+            if (openChatLink) {
+                openChatLink.href = '#';
+                openChatLink.classList.add('disabled');
+            }
+            if (copyNumberButton) {
+                copyNumberButton.disabled = true;
+            }
+            if (closeConversationButton) {
+                closeConversationButton.disabled = true;
+            }
+            if (deleteConversationButton) {
+                deleteConversationButton.disabled = true;
+            }
+            if (needsHumanBadge) {
+                needsHumanBadge.classList.add('d-none');
+            }
+            if (unreadIndicator) {
+                unreadIndicator.classList.add('d-none');
+            }
+            if (headerAvatarImg) {
+                headerAvatarImg.classList.add('d-none');
+            }
+            if (headerAvatarInitials) {
+                headerAvatarInitials.textContent = 'WA';
+                headerAvatarInitials.classList.remove('d-none');
+            }
+
+            renderMessages({ messages: [] });
+            toggleComposer(true);
+            renderConversations();
+            updateHandoffPanel(null);
+            renderAgentOptions(null);
         }
 
         function updateHandoffPanel(conversation) {
@@ -367,6 +450,45 @@
                     errorAlert.textContent = error.message || 'No fue posible transferir la conversación.';
                     errorAlert.classList.remove('d-none');
                 }
+            });
+        }
+
+        function closeConversation(conversationId) {
+            return fetch(getCloseEndpoint(conversationId), {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload || !payload.ok) {
+                        var error = payload && payload.error ? payload.error : 'No fue posible cerrar la conversación.';
+                        throw new Error(error);
+                    }
+                    return payload.data;
+                });
+            }).then(function (conversation) {
+                applyConversationUpdate(conversation);
+                return openConversation(conversationId, { silent: true });
+            });
+        }
+
+        function deleteConversation(conversationId) {
+            return fetch(getDeleteEndpoint(conversationId), {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload || !payload.ok) {
+                        var error = payload && payload.error ? payload.error : 'No fue posible eliminar la conversación.';
+                        throw new Error(error);
+                    }
+                    return payload.data;
+                });
             });
         }
 
@@ -792,6 +914,14 @@
 
             if (copyNumberButton) {
                 copyNumberButton.disabled = !selectedNumber;
+            }
+
+            if (closeConversationButton) {
+                closeConversationButton.disabled = !state.selectedId;
+            }
+
+            if (deleteConversationButton) {
+                deleteConversationButton.disabled = !state.selectedId;
             }
 
             updateHandoffPanel(conversation);
@@ -1765,6 +1895,52 @@
 
                 var note = transferNoteInput ? transferNoteInput.value.trim() : '';
                 transferConversation(state.selectedId, targetId, note);
+            });
+        }
+
+        if (closeConversationButton) {
+            closeConversationButton.addEventListener('click', function () {
+                if (!state.selectedId || !endpoints.close) {
+                    return;
+                }
+
+                var shouldClose = window.confirm('¿Deseas cerrar esta conversación? Se limpiará la asignación y se marcará como atendida.');
+                if (!shouldClose) {
+                    return;
+                }
+
+                closeConversation(state.selectedId).catch(function (error) {
+                    if (errorAlert) {
+                        errorAlert.textContent = error.message || 'No fue posible cerrar la conversación.';
+                        errorAlert.classList.remove('d-none');
+                    }
+                });
+            });
+        }
+
+        if (deleteConversationButton) {
+            deleteConversationButton.addEventListener('click', function () {
+                if (!state.selectedId || !endpoints.remove) {
+                    return;
+                }
+
+                var conversationId = state.selectedId;
+                var shouldDelete = window.confirm('¿Eliminar la conversación y su historial? Esta acción no se puede deshacer.');
+                if (!shouldDelete) {
+                    return;
+                }
+
+                deleteConversation(conversationId).then(function () {
+                    state.conversations = state.conversations.filter(function (item) {
+                        return item.id !== conversationId;
+                    });
+                    resetConversationView();
+                }).catch(function (error) {
+                    if (errorAlert) {
+                        errorAlert.textContent = error.message || 'No fue posible eliminar la conversación.';
+                        errorAlert.classList.remove('d-none');
+                    }
+                });
             });
         }
 

@@ -93,6 +93,7 @@ $imagenResumen = [
     'sin_respuesta' => 0,
 ];
 
+$pendientesList = [];
 foreach ($imagenesSolicitadas as &$imagenItem) {
     $meta = $mapEstadoEstudio($imagenItem['estado'] ?? null);
     $imagenItem['estado_badge'] = $meta;
@@ -101,13 +102,17 @@ foreach ($imagenesSolicitadas as &$imagenItem) {
         $imagenResumen['aprobados']++;
     } elseif ($meta['label'] === 'Pendiente') {
         $imagenResumen['pendientes']++;
+        $pendientesList[] = trim((string)($imagenItem['nombre'] ?? 'Estudio')) . (!empty($imagenItem['codigo']) ? ' (' . $imagenItem['codigo'] . ')' : '') . ' - Pendiente';
     } elseif ($meta['label'] === 'Rechazado') {
         $imagenResumen['rechazados']++;
+        $pendientesList[] = trim((string)($imagenItem['nombre'] ?? 'Estudio')) . (!empty($imagenItem['codigo']) ? ' (' . $imagenItem['codigo'] . ')' : '') . ' - Rechazado';
     } else {
         $imagenResumen['sin_respuesta']++;
+        $pendientesList[] = trim((string)($imagenItem['nombre'] ?? 'Estudio')) . (!empty($imagenItem['codigo']) ? ' (' . $imagenItem['codigo'] . ')' : '') . ' - Sin respuesta';
     }
 }
 unset($imagenItem);
+$pendientesTexto = $pendientesList !== [] ? "- " . implode("\n- ", $pendientesList) : 'Sin pendientes.';
 
 $hasDerivacion = !empty($derivacion['cod_derivacion']);
 $vigenciaTexto = 'No disponible';
@@ -247,6 +252,7 @@ if ($coberturaMailSentAt !== '') {
          data-hc="<?= htmlspecialchars((string) $coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
          data-procedimiento="<?= htmlspecialchars((string) $coberturaProcedimiento, ENT_QUOTES, 'UTF-8') ?>"
          data-plan="<?= htmlspecialchars((string) $coberturaPlan, ENT_QUOTES, 'UTF-8') ?>"
+         data-examenes-pendientes="<?= htmlspecialchars($pendientesTexto, ENT_QUOTES, 'UTF-8') ?>"
          data-form-id="<?= htmlspecialchars((string) $coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
          data-derivacion-pdf="<?= htmlspecialchars((string) ($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"
          data-template-key="<?= htmlspecialchars((string) ($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"

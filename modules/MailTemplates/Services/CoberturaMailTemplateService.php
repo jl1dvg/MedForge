@@ -72,6 +72,69 @@ class CoberturaMailTemplateService
         ],
     ];
 
+    private const IMAGE_RULES = [
+        [
+            'key' => 'solicitud_imagenes_msp',
+            'priority' => 100,
+            'exact' => [
+                'msp',
+                'ministerio de salud',
+                'salud publica',
+                'red publica',
+            ],
+            'contains' => [
+                'msp',
+                'ministerio de salud',
+                'salud publica',
+                'red publica',
+                'red publica integral',
+                'red publica integral de salud',
+            ],
+        ],
+        [
+            'key' => 'solicitud_imagenes_isspol',
+            'priority' => 90,
+            'exact' => ['isspol'],
+            'contains' => ['isspol', 'policia', 'policia nacional', 'seguro policial'],
+        ],
+        [
+            'key' => 'solicitud_imagenes_issfa',
+            'priority' => 80,
+            'exact' => ['issfa'],
+            'contains' => ['issfa', 'ffaa', 'fuerzas armadas'],
+        ],
+        [
+            'key' => 'solicitud_imagenes_iess',
+            'priority' => 10,
+            'exact' => [
+                'contribuyente voluntario',
+                'conyuge',
+                'conyuge pensionista',
+                'seguro campesino',
+                'seguro general por montepio',
+                'seguro general tiempo parcial',
+                'iess',
+                'hijos dependientes',
+                'seguro campesino jubilado',
+                'seguro general',
+                'seguro general jubilado',
+            ],
+            'contains' => [
+                'contribuyente voluntario',
+                'conyuge',
+                'conyuge pensionista',
+                'seguro campesino',
+                'seguro general por montepio',
+                'seguro general tiempo parcial',
+                'iess',
+                'hijos dependientes',
+                'seguro campesino jubilado',
+                'seguro general',
+                'seguro general jubilado',
+            ],
+        ],
+    ];
+
     private MailTemplateModel $templates;
 
     public function __construct(PDO $pdo)
@@ -87,6 +150,33 @@ class CoberturaMailTemplateService
         }
 
         $rules = $this->sortedRules();
+        foreach ($rules as $rule) {
+            foreach ($rule['exact'] as $matcher) {
+                if ($normalized === $matcher) {
+                    return $rule['key'];
+                }
+            }
+        }
+
+        foreach ($rules as $rule) {
+            foreach ($rule['contains'] as $matcher) {
+                if ($matcher !== '' && str_contains($normalized, $matcher)) {
+                    return $rule['key'];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public function resolveImagenesTemplateKey(string $afiliacion): ?string
+    {
+        $normalized = $this->normalize($afiliacion);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $rules = $this->sortedRules(self::IMAGE_RULES);
         foreach ($rules as $rule) {
             foreach ($rule['exact'] as $matcher) {
                 if ($normalized === $matcher) {
@@ -167,6 +257,8 @@ class CoberturaMailTemplateService
             '{PLAN}' => $payload['PLAN'] ?? 'Plan de consulta',
             '{FORM_ID}' => $payload['FORM_ID'] ?? '—',
             '{PDF_URL}' => $pdfUrl,
+            '{EXAMENES_PENDIENTES}' => $payload['EXAMENES_PENDIENTES'] ?? '—',
+            '{EXAMENES_PENDIENTES_HTML}' => $payload['EXAMENES_PENDIENTES_HTML'] ?? ($payload['EXAMENES_PENDIENTES'] ?? '—'),
         ];
     }
 
@@ -197,9 +289,9 @@ class CoberturaMailTemplateService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function sortedRules(): array
+    private function sortedRules(?array $rules = null): array
     {
-        $rules = self::RULES;
+        $rules = $rules ?? self::RULES;
         usort($rules, static fn(array $a, array $b): int => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
 
         $normalized = [];

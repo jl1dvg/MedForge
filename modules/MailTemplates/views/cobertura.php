@@ -30,6 +30,8 @@ $inlineScripts[] = <<<'JS'
         '{HC}': '0102030405',
         '{PROC}': 'Cirugía de catarata',
         '{PLAN}': 'Control post operatorio',
+        '{EXAMENES_PENDIENTES}': '- OCT MACULAR (281032) - Pendiente\n- ANGIOGRAFIA RETINAL (281021) - Sin respuesta',
+        '{EXAMENES_PENDIENTES_HTML}': '- OCT MACULAR (281032) - Pendiente<br>- ANGIOGRAFIA RETINAL (281021) - Sin respuesta',
         '{FORM_ID}': 'FORM-12345',
         '{PDF_URL}': 'https://www.cive.ec/derivaciones/FORM-12345.pdf',
     };
@@ -246,6 +248,8 @@ JS;
                         <span class="badge bg-light text-dark">{HC}</span>
                         <span class="badge bg-light text-dark">{PROC}</span>
                         <span class="badge bg-light text-dark">{PLAN}</span>
+                        <span class="badge bg-light text-dark">{EXAMENES_PENDIENTES}</span>
+                        <span class="badge bg-light text-dark">{EXAMENES_PENDIENTES_HTML}</span>
                         <span class="badge bg-light text-dark">{FORM_ID}</span>
                         <span class="badge bg-light text-dark">{PDF_URL}</span>
                     </div>

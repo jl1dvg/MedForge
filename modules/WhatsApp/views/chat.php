@@ -73,6 +73,8 @@ $phoneNumber = $config['phone_number_id'] ?? '';
             data-endpoint-agents="/whatsapp/api/agents"
             data-endpoint-assign="/whatsapp/api/conversations/{id}/assign"
             data-endpoint-transfer="/whatsapp/api/conversations/{id}/transfer"
+            data-endpoint-close="/whatsapp/api/conversations/{id}/close"
+            data-endpoint-delete="/whatsapp/api/conversations/{id}/delete"
             data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
             data-current-user-id="<?= $currentUserId; ?>"
             data-current-role-id="<?= $currentRoleId; ?>"
@@ -204,12 +206,18 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                                         class="badge bg-primary-light text-primary d-none"
                                                         data-unread-indicator></span></li>
                                         </ul>
-                                        <div class="btn-group btn-group-sm" role="group" data-chat-actions>
-                                            <a class="btn btn-outline-primary disabled" href="#" target="_blank" rel="noopener" data-action-open-chat>
+                                        <div class="btn-group" role="group" data-chat-actions>
+                                            <a class="btn btn-outline-success disabled" href="#" target="_blank" rel="noopener" data-action-open-chat>
                                                 <i class="mdi mdi-whatsapp"></i>
                                             </a>
                                             <button class="btn btn-outline-secondary" type="button" data-action-copy-number disabled>
                                                 <i class="mdi mdi-content-copy"></i>
+                                            </button>
+                                            <button class="btn btn-outline-warning" type="button" data-action-close-conversation disabled title="Cerrar conversación">
+                                                <i class="mdi mdi-check-circle-outline"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" type="button" data-action-delete-conversation disabled title="Eliminar conversación">
+                                                <i class="mdi mdi-delete-circle"></i>
                                             </button>
                                         </div>
                                     </div>

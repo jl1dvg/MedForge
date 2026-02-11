@@ -118,6 +118,8 @@ class CoberturaMailTemplateController extends BaseController
             'HC' => trim((string)($payload['hc_number'] ?? '—')),
             'PROC' => trim((string)($payload['procedimiento'] ?? 'Procedimiento solicitado')),
             'PLAN' => trim((string)($payload['plan'] ?? 'Plan de consulta')),
+            'EXAMENES_PENDIENTES' => trim((string)($payload['examenes_pendientes'] ?? '')),
+            'EXAMENES_PENDIENTES_HTML' => trim((string)($payload['examenes_pendientes_html'] ?? '')),
             'FORM_ID' => trim((string)($payload['form_id'] ?? '—')),
             'PDF_URL' => trim((string)($payload['pdf_url'] ?? '')),
         ]);

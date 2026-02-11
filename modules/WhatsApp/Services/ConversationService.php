@@ -304,6 +304,23 @@ class ConversationService
         return $this->getHandoffService()->transferConversation($conversationId, $userId, $notes);
     }
 
+    public function closeConversation(int $conversationId): bool
+    {
+        if ($conversationId <= 0) {
+            return false;
+        }
+
+        $this->getHandoffService()->resolveConversation($conversationId);
+        $this->markConversationAsRead($conversationId);
+
+        return true;
+    }
+
+    public function deleteConversation(int $conversationId): bool
+    {
+        return $this->repository->deleteConversation($conversationId);
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */

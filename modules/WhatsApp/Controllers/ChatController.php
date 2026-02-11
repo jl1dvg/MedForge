@@ -229,6 +229,53 @@ class ChatController extends BaseController
         $this->json(['ok' => true, 'data' => $conversation]);
     }
 
+    public function closeConversation(int $conversationId): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $summary = $this->conversations->getConversationSummary($conversationId);
+        if ($summary === null) {
+            $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        $closed = $this->conversations->closeConversation($conversationId);
+        if (!$closed) {
+            $this->json(['ok' => false, 'error' => 'No fue posible cerrar la conversación.'], 500);
+
+            return;
+        }
+
+        $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+        $this->json(['ok' => true, 'data' => $conversation]);
+    }
+
+    public function deleteConversation(int $conversationId): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $summary = $this->conversations->getConversationSummary($conversationId);
+        if ($summary === null) {
+            $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        $deleted = $this->conversations->deleteConversation($conversationId);
+        if (!$deleted) {
+            $this->json(['ok' => false, 'error' => 'No fue posible eliminar la conversación.'], 500);
+
+            return;
+        }
+
+        $this->json(['ok' => true, 'data' => ['id' => $conversationId]]);
+    }
+
     private function resolveAgent(int $userId): ?array
     {
         $agents = $this->conversations->listAgents();
