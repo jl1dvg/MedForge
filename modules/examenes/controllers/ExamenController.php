@@ -1935,6 +1935,9 @@ class ExamenController extends BaseController
         if (str_contains($texto, 'auto') || str_contains($texto, 'autorefrac')) {
             return 'auto';
         }
+        if (str_contains($texto, 'biometria') || str_contains($texto, 'biometr')) {
+            return 'biometria';
+        }
         if (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'topograf')) {
             return 'cornea';
         }
@@ -2636,6 +2639,44 @@ class ExamenController extends BaseController
                 }
                 if ($textOi !== '') {
                     $lines[] = '**Ojo Izquierdo: **' . $textOi;
+                }
+            }
+
+            return trim(implode("\n", $lines));
+        }
+
+        if ($plantilla === 'biometria') {
+            $odCamara = trim((string)($payload['camaraOD'] ?? ''));
+            $odCristalino = trim((string)($payload['cristalinoOD'] ?? ''));
+            $odAxial = trim((string)($payload['axialOD'] ?? ''));
+            $oiCamara = trim((string)($payload['camaraOI'] ?? ''));
+            $oiCristalino = trim((string)($payload['cristalinoOI'] ?? ''));
+            $oiAxial = trim((string)($payload['axialOI'] ?? ''));
+
+            $lines = [];
+            if ($odCamara !== '' || $odCristalino !== '' || $odAxial !== '') {
+                $lines[] = '**Ojo Derecho:**';
+                if ($odCamara !== '') {
+                    $lines[] = 'Cámara anterior: ' . $odCamara;
+                }
+                if ($odCristalino !== '') {
+                    $lines[] = 'Cristalino: ' . $odCristalino;
+                }
+                if ($odAxial !== '') {
+                    $lines[] = 'Longitud axial: ' . $odAxial;
+                }
+            }
+
+            if ($oiCamara !== '' || $oiCristalino !== '' || $oiAxial !== '') {
+                $lines[] = '**Ojo Izquierdo:**';
+                if ($oiCamara !== '') {
+                    $lines[] = 'Cámara anterior: ' . $oiCamara;
+                }
+                if ($oiCristalino !== '') {
+                    $lines[] = 'Cristalino: ' . $oiCristalino;
+                }
+                if ($oiAxial !== '') {
+                    $lines[] = 'Longitud axial: ' . $oiAxial;
                 }
             }
 

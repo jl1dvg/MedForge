@@ -45,7 +45,8 @@ class WhatsAppSettings
      *     data_consent_message: string,
      *     data_consent_yes_keywords: array<int, string>,
      *     data_consent_no_keywords: array<int, string>,
-     *     data_protection_flow: array<string, mixed>
+     *     data_protection_flow: array<string, mixed>,
+     *     template_languages: string
      * }
      */
     public function get(): array
@@ -72,6 +73,7 @@ class WhatsAppSettings
             'data_consent_yes_keywords' => ['si', 'acepto', 'confirmo', 'confirmar'],
             'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
             'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
+            'template_languages' => '',
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -91,6 +93,7 @@ class WhatsAppSettings
                     'whatsapp_data_consent_message',
                     'whatsapp_data_consent_yes_keywords',
                     'whatsapp_data_consent_no_keywords',
+                    'whatsapp_template_languages',
                     'whatsapp_autoresponder_flow',
                     'companyname',
                 ]);
@@ -144,6 +147,11 @@ class WhatsAppSettings
                 $noKeywords = $this->normalizeKeywordList($options['whatsapp_data_consent_no_keywords'] ?? null);
                 if (!empty($noKeywords)) {
                     $config['data_consent_no_keywords'] = $noKeywords;
+                }
+
+                $templateLanguages = $options['whatsapp_template_languages'] ?? '';
+                if (is_string($templateLanguages) && trim($templateLanguages) !== '') {
+                    $config['template_languages'] = $templateLanguages;
                 }
 
                 $brand = trim((string) ($options['companyname'] ?? ''));

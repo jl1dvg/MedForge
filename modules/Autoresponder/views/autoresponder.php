@@ -1210,6 +1210,3 @@ switch ($statusType) {
         </div>
     </div>
 </template>
-
-
-$inboxBootstrapJson = htmlspecialchars(json_encode($inboxMessages ?? [], JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8');

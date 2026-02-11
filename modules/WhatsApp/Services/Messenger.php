@@ -64,12 +64,13 @@ class Messenger
                 ],
             ];
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
-                $this->conversations->recordOutgoing($recipient, 'text', $message, $payload);
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'text', $message, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -160,12 +161,13 @@ class Messenger
                 ];
             }
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
-                $this->conversations->recordOutgoing($recipient, 'interactive_buttons', $message, $payload);
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'interactive_buttons', $message, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -294,12 +296,13 @@ class Messenger
                 ];
             }
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
-                $this->conversations->recordOutgoing($recipient, 'interactive_list', $message, $payload);
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'interactive_list', $message, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -343,13 +346,14 @@ class Messenger
                 $payload['image']['caption'] = $caption;
             }
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
                 $preview = $caption !== '' ? $caption : '[Imagen]';
-                $this->conversations->recordOutgoing($recipient, 'image', $preview, $payload);
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'image', $preview, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -398,13 +402,14 @@ class Messenger
                 $payload['document']['filename'] = $filename;
             }
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
                 $preview = $filename !== '' ? $filename : '[Documento]';
-                $this->conversations->recordOutgoing($recipient, 'document', $preview, $payload);
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'document', $preview, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -449,13 +454,14 @@ class Messenger
                 $payload['location']['address'] = $address;
             }
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
                 $preview = sprintf('[Ubicación] %.6f, %.6f', $latitude, $longitude);
-                $this->conversations->recordOutgoing($recipient, 'location', $preview, $payload);
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'location', $preview, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -508,13 +514,14 @@ class Messenger
                 'template' => $payloadTemplate,
             ];
 
-            $sent = $this->transport->send($config, $payload);
-            if ($sent) {
+            $response = $this->transport->send($config, $payload);
+            if ($response !== null) {
                 $preview = '[Plantilla] ' . $name;
-                $this->conversations->recordOutgoing($recipient, 'template', $preview, $payload);
+                $waMessageId = $this->extractMessageId($response);
+                $this->conversations->recordOutgoing($recipient, 'template', $preview, $payload, $waMessageId);
             }
 
-            $allSucceeded = $sent && $allSucceeded;
+            $allSucceeded = ($response !== null) && $allSucceeded;
         }
 
         return $allSucceeded;
@@ -609,5 +616,25 @@ class Messenger
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $response
+     */
+    private function extractMessageId(array $response): ?string
+    {
+        if (isset($response['messages']) && is_array($response['messages']) && !empty($response['messages'][0]['id'])) {
+            $id = (string) $response['messages'][0]['id'];
+
+            return $id !== '' ? $id : null;
+        }
+
+        if (!empty($response['message_id'])) {
+            $id = (string) $response['message_id'];
+
+            return $id !== '' ? $id : null;
+        }
+
+        return null;
     }
 }

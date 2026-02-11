@@ -627,42 +627,73 @@
             }, 300));
         }
 
-        var autoRefreshId = null;
+        var refreshTimerId = null;
         var isRefreshing = false;
+        var refreshBaseMs = 5000;
+        var refreshMaxMs = 30000;
+        var refreshIntervalMs = refreshBaseMs;
 
-        function startAutoRefresh() {
-            if (autoRefreshId !== null) {
+        function scheduleRefresh(delay) {
+            if (refreshTimerId !== null) {
+                window.clearTimeout(refreshTimerId);
+            }
+
+            refreshTimerId = window.setTimeout(runAutoRefresh, delay);
+        }
+
+        function runAutoRefresh() {
+            if (document.hidden) {
+                scheduleRefresh(refreshIntervalMs);
                 return;
             }
 
-            autoRefreshId = window.setInterval(function () {
-                if (isRefreshing) {
-                    return;
-                }
+            if (isRefreshing) {
+                scheduleRefresh(refreshIntervalMs);
+                return;
+            }
 
-                isRefreshing = true;
+            isRefreshing = true;
 
-                var promises = [loadConversations()];
-                if (state.selectedId) {
-                    promises.push(openConversation(state.selectedId, {silent: true}));
-                }
+            var promises = [loadConversations()];
+            if (state.selectedId) {
+                promises.push(openConversation(state.selectedId, {silent: true}));
+            }
 
-                Promise.all(promises).catch(function (error) {
-                    console.error('Error durante la actualización automática del chat', error);
-                }).finally(function () {
-                    isRefreshing = false;
-                });
-            }, 5000);
+            Promise.all(promises).then(function () {
+                refreshIntervalMs = refreshBaseMs;
+            }).catch(function (error) {
+                console.error('Error durante la actualización automática del chat', error);
+                refreshIntervalMs = Math.min(refreshMaxMs, Math.round(refreshIntervalMs * 1.7));
+            }).finally(function () {
+                isRefreshing = false;
+                scheduleRefresh(refreshIntervalMs);
+            });
+        }
+
+        function startAutoRefresh() {
+            if (refreshTimerId !== null) {
+                return;
+            }
+
+            refreshIntervalMs = refreshBaseMs;
+            scheduleRefresh(refreshIntervalMs);
         }
 
         function stopAutoRefresh() {
-            if (autoRefreshId !== null) {
-                window.clearInterval(autoRefreshId);
-                autoRefreshId = null;
+            if (refreshTimerId !== null) {
+                window.clearTimeout(refreshTimerId);
+                refreshTimerId = null;
             }
         }
 
         window.addEventListener('beforeunload', stopAutoRefresh);
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
 
         toggleComposer(true);
         loadConversations();

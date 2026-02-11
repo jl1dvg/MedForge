@@ -68,22 +68,21 @@ class TemplateManager
      */
     public function listLanguages(): array
     {
+        $config = $this->settings->get();
+        $custom = $this->normalizeLanguageEntries($config['template_languages'] ?? null);
+
+        if (!empty($custom)) {
+            usort($custom, static function (array $a, array $b): int {
+                return strcmp($a['name'], $b['name']);
+            });
+
+            return $custom;
+        }
+
         // Nota: No existe el endpoint /{waba_id}/message_templates_languages en Graph API.
         // Para el selector del UI usamos una lista estática de idiomas admitidos por WhatsApp Cloud API.
-        // Puedes ampliar esta lista según lo necesites (ver documentación oficial).
-        $languages = [
-            ['code' => 'es',    'name' => 'Español'],
-            ['code' => 'es_AR', 'name' => 'Español (Argentina)'],
-            ['code' => 'es_ES', 'name' => 'Español (España)'],
-            ['code' => 'en',    'name' => 'English'],
-            ['code' => 'en_US', 'name' => 'English (US)'],
-            ['code' => 'en_GB', 'name' => 'English (UK)'],
-            ['code' => 'pt_BR', 'name' => 'Português (Brasil)'],
-            ['code' => 'pt_PT', 'name' => 'Português (Portugal)'],
-            ['code' => 'fr',    'name' => 'Français'],
-            ['code' => 'de',    'name' => 'Deutsch'],
-            ['code' => 'it',    'name' => 'Italiano'],
-        ];
+        // Puedes ampliar esta lista según lo necesites (ver documentación oficial) o definirla en configuración.
+        $languages = self::defaultLanguages();
 
         usort($languages, static function (array $a, array $b): int {
             return strcmp($a['name'], $b['name']);
@@ -366,5 +365,100 @@ class TemplateManager
         }
 
         return $decoded;
+    }
+
+    /**
+     * @return array<int, array{code: string, name: string}>
+     */
+    private static function defaultLanguages(): array
+    {
+        return [
+            ['code' => 'es',    'name' => 'Español'],
+            ['code' => 'es_AR', 'name' => 'Español (Argentina)'],
+            ['code' => 'es_ES', 'name' => 'Español (España)'],
+            ['code' => 'en',    'name' => 'English'],
+            ['code' => 'en_US', 'name' => 'English (US)'],
+            ['code' => 'en_GB', 'name' => 'English (UK)'],
+            ['code' => 'pt_BR', 'name' => 'Português (Brasil)'],
+            ['code' => 'pt_PT', 'name' => 'Português (Portugal)'],
+            ['code' => 'fr',    'name' => 'Français'],
+            ['code' => 'de',    'name' => 'Deutsch'],
+            ['code' => 'it',    'name' => 'Italiano'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function defaultLanguageMap(): array
+    {
+        $map = [];
+        foreach (self::defaultLanguages() as $entry) {
+            if (!empty($entry['code'])) {
+                $map[$entry['code']] = $entry['name'];
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param mixed $raw
+     * @return array<int, array{code: string, name: string}>
+     */
+    private function normalizeLanguageEntries($raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $raw = $decoded;
+            } else {
+                $raw = preg_split('/[\n,]+/', $raw) ?: [];
+            }
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $map = self::defaultLanguageMap();
+        $normalized = [];
+
+        foreach ($raw as $entry) {
+            $code = '';
+            $name = '';
+
+            if (is_string($entry)) {
+                $entry = trim($entry);
+                if ($entry === '') {
+                    continue;
+                }
+
+                $parts = preg_split('/\s*[:|]\s*/', $entry, 2);
+                $code = isset($parts[0]) ? trim($parts[0]) : '';
+                $name = isset($parts[1]) ? trim($parts[1]) : '';
+            } elseif (is_array($entry)) {
+                $code = trim((string) ($entry['code'] ?? $entry['value'] ?? ''));
+                $name = trim((string) ($entry['name'] ?? $entry['label'] ?? ''));
+            } else {
+                continue;
+            }
+
+            if ($code === '') {
+                continue;
+            }
+
+            if ($name === '') {
+                $name = $map[$code] ?? $code;
+            }
+
+            $normalized[$code] = ['code' => $code, 'name' => $name];
+        }
+
+        return array_values($normalized);
     }
 }

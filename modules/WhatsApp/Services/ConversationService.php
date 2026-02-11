@@ -5,6 +5,7 @@ namespace Modules\WhatsApp\Services;
 use DateTimeImmutable;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ConversationRepository;
+use Modules\WhatsApp\Repositories\InboxRepository;
 use Modules\WhatsApp\Support\PhoneNumberFormatter;
 use PDO;
 use Throwable;
@@ -12,11 +13,13 @@ use Throwable;
 class ConversationService
 {
     private ConversationRepository $repository;
+    private InboxRepository $inbox;
     private WhatsAppSettings $settings;
 
     public function __construct(PDO $pdo)
     {
         $this->repository = new ConversationRepository($pdo);
+        $this->inbox = new InboxRepository($pdo);
         $this->settings = new WhatsAppSettings($pdo);
     }
 
@@ -76,13 +79,26 @@ class ConversationService
             'increment_unread' => 1,
         ]);
 
+        $bodyForInbox = $body;
+        if ($bodyForInbox === null || trim((string) $bodyForInbox) === '') {
+            $bodyForInbox = '[' . $type . ']';
+        }
+
+        $this->inbox->recordIncoming($number, $type, (string) $bodyForInbox, $messageId !== '' ? $messageId : null, $message);
+
         return true;
     }
 
     /**
      * @param array<string, mixed> $payload
      */
-    public function recordOutgoing(string $waNumber, string $messageType, ?string $body, array $payload = []): int
+    public function recordOutgoing(
+        string $waNumber,
+        string $messageType,
+        ?string $body,
+        array $payload = [],
+        ?string $waMessageId = null
+    ): int
     {
         $number = $this->normalizeNumber($waNumber);
         if ($number === null) {
@@ -94,13 +110,20 @@ class ConversationService
         $source = isset($payload['source']) ? strtolower((string) $payload['source']) : '';
         $clearHandoff = (bool) ($payload['clear_handoff'] ?? false) || $source === 'human';
 
+        $resolvedMessageId = $waMessageId ?? (isset($payload['wa_message_id']) ? (string) $payload['wa_message_id'] : null);
+        if ($resolvedMessageId !== null && trim($resolvedMessageId) === '') {
+            $resolvedMessageId = null;
+        }
+
         $this->repository->insertMessage($conversationId, [
+            'wa_message_id' => $resolvedMessageId,
             'direction' => 'outbound',
             'message_type' => $messageType,
             'body' => $body,
             'raw_payload' => $payload,
             'message_timestamp' => $timestamp,
             'sent_at' => $timestamp,
+            'status' => 'sent',
         ]);
 
         $this->repository->touchConversation($conversationId, [
@@ -115,7 +138,37 @@ class ConversationService
             $this->repository->setHandoffFlag($conversationId, false, null);
         }
 
+        $bodyForInbox = $body;
+        if ($bodyForInbox === null || trim((string) $bodyForInbox) === '') {
+            $bodyForInbox = '[' . $messageType . ']';
+        }
+
+        $payloadForInbox = $payload;
+        if ($resolvedMessageId !== null) {
+            $payloadForInbox['wa_message_id'] = $resolvedMessageId;
+        }
+        $payloadForInbox['status'] = 'sent';
+
+        $this->inbox->recordOutgoing($number, $messageType, (string) $bodyForInbox, $payloadForInbox);
+
         return $conversationId;
+    }
+
+    public function updateMessageStatus(string $waMessageId, ?string $status, $timestamp = null): void
+    {
+        $waMessageId = trim($waMessageId);
+        if ($waMessageId === '') {
+            return;
+        }
+
+        $normalizedStatus = $status !== null ? strtolower(trim((string) $status)) : '';
+        if ($normalizedStatus === '') {
+            return;
+        }
+
+        $resolvedTimestamp = $this->resolveTimestamp($timestamp);
+
+        $this->repository->updateMessageStatus($waMessageId, $normalizedStatus, $resolvedTimestamp);
     }
 
     /**

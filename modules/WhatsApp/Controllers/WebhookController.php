@@ -37,6 +37,7 @@ class WebhookController extends BaseController
     private DataProtectionFlow $dataProtection;
     private ConversationService $conversations;
     private ?ScenarioEngine $scenarioEngine = null;
+    private bool $flowHandlesConsent = false;
 
     public function __construct(PDO $pdo)
     {
@@ -56,6 +57,7 @@ class WebhookController extends BaseController
             $this->flow['meta'] = [];
         }
         $this->flow['meta']['brand'] = $brand;
+        $this->flowHandlesConsent = $this->resolveFlowHandlesConsent($this->flow);
         $this->verifyToken = $this->resolveVerifyToken($config);
         $patientLookup = new PatientLookupService($pdo);
         $consentRepository = new ContactConsentRepository($pdo);
@@ -120,6 +122,10 @@ class WebhookController extends BaseController
             return;
         }
 
+        foreach ($this->extractStatuses($payload) as $status) {
+            $this->applyStatusUpdate($status);
+        }
+
         foreach ($this->extractMessages($payload) as $message) {
             $this->respondToMessage($message);
         }
@@ -142,6 +148,7 @@ class WebhookController extends BaseController
 
                 $value = $change['value'];
                 $metadata = is_array($value['metadata'] ?? null) ? $value['metadata'] : [];
+                $contacts = $this->mapContacts($value['contacts'] ?? []);
 
                 foreach (($value['messages'] ?? []) as $message) {
                     if (!is_array($message)) {
@@ -149,12 +156,86 @@ class WebhookController extends BaseController
                     }
 
                     $message['metadata'] = $metadata;
+                    $from = isset($message['from']) ? (string) $message['from'] : '';
+                    if ($from !== '' && isset($contacts[$from])) {
+                        $message['profile'] = ['name' => $contacts[$from]];
+                    }
                     $messages[] = $message;
                 }
             }
         }
 
         return $messages;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function extractStatuses(array $payload): array
+    {
+        $statuses = [];
+
+        foreach (($payload['entry'] ?? []) as $entry) {
+            foreach (($entry['changes'] ?? []) as $change) {
+                if (!isset($change['value']) || !is_array($change['value'])) {
+                    continue;
+                }
+
+                $value = $change['value'];
+                foreach (($value['statuses'] ?? []) as $status) {
+                    if (!is_array($status)) {
+                        continue;
+                    }
+
+                    $statuses[] = $status;
+                }
+            }
+        }
+
+        return $statuses;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $contacts
+     * @return array<string, string>
+     */
+    private function mapContacts(array $contacts): array
+    {
+        $map = [];
+
+        foreach ($contacts as $contact) {
+            if (!is_array($contact)) {
+                continue;
+            }
+
+            $waId = isset($contact['wa_id']) ? trim((string) $contact['wa_id']) : '';
+            $name = isset($contact['profile']['name']) ? trim((string) $contact['profile']['name']) : '';
+
+            if ($waId === '' || $name === '') {
+                continue;
+            }
+
+            $map[$waId] = $name;
+            $map['+' . ltrim($waId, '+')] = $name;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     */
+    private function applyStatusUpdate(array $status): void
+    {
+        $messageId = isset($status['id']) ? trim((string) $status['id']) : '';
+        $state = isset($status['status']) ? (string) $status['status'] : null;
+        $timestamp = $status['timestamp'] ?? null;
+
+        if ($messageId === '' || $state === null || $state === '') {
+            return;
+        }
+
+        $this->conversations->updateMessageStatus($messageId, $state, $timestamp);
     }
 
     /**
@@ -193,7 +274,7 @@ class WebhookController extends BaseController
             }
         }
 
-        if ($this->dataProtection->handle($sender, $keyword, $message, $text)) {
+        if (!$this->flowHandlesConsent && $this->dataProtection->handle($sender, $keyword, $message, $text)) {
             return;
         }
 
@@ -410,5 +491,40 @@ class WebhookController extends BaseController
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 
         return $text;
+    }
+
+    /**
+     * @param array<string, mixed> $flow
+     */
+    private function resolveFlowHandlesConsent(array $flow): bool
+    {
+        foreach (($flow['scenarios'] ?? []) as $scenario) {
+            if (!is_array($scenario)) {
+                continue;
+            }
+
+            foreach (($scenario['actions'] ?? []) as $action) {
+                if (!is_array($action)) {
+                    continue;
+                }
+
+                if (($action['type'] ?? null) === 'store_consent') {
+                    return true;
+                }
+            }
+
+            foreach (($scenario['conditions'] ?? []) as $condition) {
+                if (!is_array($condition)) {
+                    continue;
+                }
+
+                $type = $condition['type'] ?? null;
+                if ($type === 'has_consent' || $type === 'is_first_time') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

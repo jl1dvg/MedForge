@@ -262,4 +262,35 @@ class ConversationRepository
             ':id' => $conversationId,
         ]);
     }
+
+    public function updateMessageStatus(string $waMessageId, string $status, ?string $timestamp = null): void
+    {
+        $waMessageId = trim($waMessageId);
+        if ($waMessageId === '') {
+            return;
+        }
+
+        $fields = ['status = :status'];
+        $params = [
+            ':status' => $status,
+            ':wa_message_id' => $waMessageId,
+        ];
+
+        if ($timestamp !== null && $timestamp !== '') {
+            if ($status === 'sent') {
+                $fields[] = 'sent_at = COALESCE(sent_at, :timestamp)';
+            } elseif ($status === 'delivered') {
+                $fields[] = 'delivered_at = COALESCE(delivered_at, :timestamp)';
+            } elseif ($status === 'read') {
+                $fields[] = 'read_at = COALESCE(read_at, :timestamp)';
+            }
+            $params[':timestamp'] = $timestamp;
+        }
+
+        $fields[] = 'updated_at = NOW()';
+
+        $sql = 'UPDATE whatsapp_messages SET ' . implode(', ', $fields) . ' WHERE wa_message_id = :wa_message_id';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+    }
 }

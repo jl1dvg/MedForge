@@ -11,22 +11,23 @@ class CloudApiTransport implements TransportInterface
     /**
      * @param array<string, string> $config
      * @param array<string, mixed> $payload
+     * @return array<string, mixed>|null
      */
-    public function send(array $config, array $payload): bool
+    public function send(array $config, array $payload)
     {
         $endpoint = self::GRAPH_BASE_URL . rtrim($config['api_version'], '/') . '/' . $config['phone_number_id'] . '/messages';
         $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE);
         if ($encoded === false) {
             error_log('No fue posible codificar el payload de WhatsApp Cloud API.');
 
-            return false;
+            return null;
         }
 
         $handle = curl_init($endpoint);
         if ($handle === false) {
             error_log('No fue posible iniciar la solicitud cURL para WhatsApp Cloud API.');
 
-            return false;
+            return null;
         }
 
         curl_setopt_array($handle, [
@@ -46,7 +47,7 @@ class CloudApiTransport implements TransportInterface
             curl_close($handle);
             error_log('Error en la solicitud a WhatsApp Cloud API: ' . $error);
 
-            return false;
+            return null;
         }
 
         $httpCode = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
@@ -55,9 +56,14 @@ class CloudApiTransport implements TransportInterface
         if ($httpCode < 200 || $httpCode >= 300) {
             error_log('WhatsApp Cloud API respondió con código ' . $httpCode . ': ' . $response);
 
-            return false;
+            return null;
         }
 
-        return true;
+        $decoded = json_decode($response, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        return ['raw' => $response];
     }
 }
