@@ -8,6 +8,7 @@ use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\InboxRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Services\TemplateManager;
+use Modules\Usuarios\Models\RolModel;
 use PDO;
 use function array_reverse;
 use function is_array;
@@ -64,7 +65,14 @@ class AutoresponderController extends BaseController
         $inboxRepository = new InboxRepository($this->pdo);
         $inboxMessages = array_reverse($inboxRepository->fetchRecent(25));
 
-        $this->render(BASE_PATH . '/modules/Autoresponder/views/autoresponder.php', [
+        $roles = [];
+        try {
+            $roles = (new RolModel($this->pdo))->all();
+        } catch (Throwable $exception) {
+            $roles = [];
+        }
+
+        $this->render(BASE_PATH . '/modules/Autoresponder/views/autoresponder_flow.php', [
             'pageTitle' => 'Flujo de autorespuesta de WhatsApp',
             'config' => $config,
             'brand' => $brand,
@@ -75,7 +83,8 @@ class AutoresponderController extends BaseController
             'templates' => $templates,
             'templatesError' => $templatesError,
             'inboxMessages' => $inboxMessages,
-            'scripts' => ['js/pages/whatsapp-autoresponder.js', 'js/pages/whatsapp-inbox.js'],
+            'roles' => $roles,
+            'scripts' => ['js/pages/whatsapp-autoresponder.js'],
             'styles' => ['css/pages/whatsapp-autoresponder.css'],
         ]);
     }

@@ -108,16 +108,31 @@ $prepareTemplateCatalog = static function (array $templates) use ($extractPlaceh
 $templateCatalog = $prepareTemplateCatalog($templates ?? []);
 $templatesJson = htmlspecialchars(json_encode($templateCatalog, JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8');
 
+$rolesCatalog = [];
+foreach (($roles ?? []) as $role) {
+    if (!is_array($role)) {
+        continue;
+    }
+    $roleId = isset($role['id']) ? (int) $role['id'] : 0;
+    $roleName = isset($role['name']) ? trim((string) $role['name']) : '';
+    if ($roleId <= 0 || $roleName === '') {
+        continue;
+    }
+    $rolesCatalog[] = ['id' => $roleId, 'name' => $roleName];
+}
+
 $editorState = [
     'variables' => $editorFlow['variables'] ?? [],
     'scenarios' => $editorFlow['scenarios'] ?? [],
     'menu' => $editorFlow['menu'] ?? [],
+    'settings' => $editorFlow['settings'] ?? [],
 ];
 
 $autoresponderBootstrap = [
     'brand' => $brand,
     'flow' => $editorState,
     'contract' => $contract,
+    'roles' => $rolesCatalog,
     'api' => [
         'publish' => '/whatsapp/api/flowmaker/publish',
     ],
@@ -266,9 +281,61 @@ switch ($statusType) {
                         <div class="alert alert-danger d-none" data-validation-errors role="alert"></div>
                         <div class="alert alert-success d-none" data-submit-feedback role="alert"></div>
 
+                        <div class="flow-card mb-4 flow-card--guide">
+                            <div class="flow-card__header">
+                                <div>
+                                    <h5 class="mb-1">Guía rápida del Flow</h5>
+                                    <p class="flow-card__meta mb-0">Crea el recorrido con cards: <strong>Cuando</strong> → <strong>Entonces</strong>.</p>
+                                </div>
+                                <span class="badge bg-info-light text-info">Tutorial</span>
+                            </div>
+                            <div class="flow-card__body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-lg-7">
+                                        <ol class="flow-guide">
+                                            <li><strong>Escenarios:</strong> define condiciones (Cuando) y acciones (Entonces). Se ejecuta el primero que cumpla.</li>
+                                            <li><strong>Menú principal:</strong> se envía cuando el usuario escribe “hola”, “menú” o similares.</li>
+                                            <li><strong>Variables:</strong> conecta datos como cédula, nombre o teléfono para reutilizarlos en respuestas.</li>
+                                            <li><strong>Simulador:</strong> prueba un mensaje y valida qué escenario se activaría.</li>
+                                        </ol>
+                                        <div class="mt-3">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" data-setting-free-mode>
+                                                <label class="form-check-label">Modo libre (sin validaciones automáticas)</label>
+                                            </div>
+                                            <div class="small text-muted mt-1">
+                                                Desactiva el flujo automático de consentimiento/identificación para que todo sea controlado por escenarios.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12 col-lg-5">
+                                        <div class="flow-example">
+                                            <div class="flow-example__title">Ejemplo rápido</div>
+                                            <div class="flow-example__item">
+                                                <span class="badge bg-primary-light text-primary">Cuando</span>
+                                                <span>El mensaje contiene “agendar”.</span>
+                                            </div>
+                                            <div class="flow-example__item">
+                                                <span class="badge bg-success-light text-success">Entonces</span>
+                                                <span>Enviar botones + guardar estado <code>agendar_cita</code>.</span>
+                                            </div>
+                                            <div class="flow-example__item">
+                                                <span class="badge bg-warning-light text-warning">Tip</span>
+                                                <span>Ordena escenarios de mayor prioridad a menor.</span>
+                                            </div>
+                                            <div class="flow-example__item">
+                                                <span class="badge bg-secondary-light text-secondary">Variables</span>
+                                                <span><code>{{brand}}</code>, <code>{{context.cedula}}</code>, <code>{{context.patient.full_name}}</code></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="flow-grid">
                             <div class="flow-column">
-                                <div class="flow-card mb-4" data-scenarios-panel>
+                                <div class="flow-card mb-4 flow-card--scenarios" data-scenarios-panel>
                                     <div class="flow-card__header">
                                         <div>
                                             <h5 class="mb-1">Escenarios</h5>
@@ -288,7 +355,7 @@ switch ($statusType) {
                                     </div>
                                 </div>
 
-                                <div class="flow-card mb-4" data-menu-panel>
+                                <div class="flow-card mb-4 flow-card--menu" data-menu-panel>
                                     <div class="flow-card__header">
                                         <div>
                                             <h5 class="mb-1">Menú principal</h5>
@@ -303,7 +370,30 @@ switch ($statusType) {
                             </div>
 
                             <div class="flow-column">
-                                <div class="flow-card mb-4" data-variables-panel>
+                                <div class="flow-card mb-4 flow-card--stages" data-stages-panel>
+                                    <div class="flow-card__header">
+                                        <div>
+                                            <h5 class="mb-1">Etapas del recorrido</h5>
+                                            <p class="flow-card__meta mb-0">Agrupa escenarios por etapa y personaliza el nombre visible.</p>
+                                        </div>
+                                        <div class="flow-actions">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-action="reset-stages">
+                                                <i class="mdi mdi-restore"></i> Restaurar
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" data-action="add-stage">
+                                                <i class="mdi mdi-plus me-1"></i>Agregar etapa
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="flow-card__body">
+                                        <div class="small text-muted mb-2">
+                                            Estas etapas alimentan el selector de escenarios y el mapa del flujo. Puedes renombrarlas o agregar nuevas.
+                                        </div>
+                                        <div class="d-flex flex-column gap-2" data-stages-editor></div>
+                                    </div>
+                                </div>
+
+                                <div class="flow-card mb-4 flow-card--variables" data-variables-panel>
                                     <div class="flow-card__header">
                                         <div>
                                             <h5 class="mb-1">Variables</h5>
@@ -316,7 +406,7 @@ switch ($statusType) {
                                     <div class="flow-card__body" data-variable-list></div>
                                 </div>
 
-                                <div class="flow-card" data-simulation-panel>
+                                <div class="flow-card flow-card--simulation" data-simulation-panel>
                                     <div class="flow-card__header">
                                         <div>
                                             <h5 class="mb-1">Simulador</h5>
@@ -411,6 +501,31 @@ switch ($statusType) {
                 <input class="form-check-input" type="checkbox" data-variable-persist>
                 <label class="form-check-label small">Persistir</label>
             </div>
+        </div>
+    </div>
+</template>
+
+<template id="stage-row-template">
+    <div class="stage-row border rounded-3 p-3" data-stage-row>
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                    <span class="badge bg-primary-light text-primary" data-stage-type></span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <label class="form-label small text-muted">Nombre de etapa</label>
+                        <input type="text" class="form-control form-control-sm" data-stage-label>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label small text-muted">Descripción</label>
+                        <input type="text" class="form-control form-control-sm" data-stage-description placeholder="¿Qué ocurre en esta etapa?">
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-outline-danger btn-sm" data-action="remove-stage">
+                <i class="mdi mdi-close"></i>
+            </button>
         </div>
     </div>
 </template>

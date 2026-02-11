@@ -23,6 +23,7 @@
     const templateCatalogInput = form.querySelector('[data-template-catalog]');
 
     const templates = {
+        stageRow: document.getElementById('stage-row-template'),
         variableRow: document.getElementById('variable-row-template'),
         scenarioCard: document.getElementById('scenario-card-template'),
         conditionRow: document.getElementById('condition-row-template'),
@@ -71,6 +72,7 @@
         {value: 'set_context', label: 'Guardar en contexto', help: 'Almacena pares clave-valor disponibles en mensajes futuros.'},
         {value: 'store_consent', label: 'Guardar consentimiento', help: 'Registra si el paciente aceptó o rechazó la autorización.'},
         {value: 'lookup_patient', label: 'Validar cédula en BD', help: 'Busca al paciente usando la cédula o historia clínica proporcionada.'},
+        {value: 'handoff_agent', label: 'Derivar a agente', help: 'Marca la conversación para atención humana y define el equipo responsable.'},
         {value: 'conditional', label: 'Condicional', help: 'Divide el flujo en acciones alternativas según una condición.'},
         {value: 'goto_menu', label: 'Redirigir al menú', help: 'Envía nuevamente el mensaje de menú configurado más abajo.'},
         {value: 'upsert_patient_from_context', label: 'Guardar paciente con datos actuales', help: 'Crea o actualiza el paciente con los datos capturados en contexto.'},
@@ -87,9 +89,11 @@
         {value: 'custom', label: 'Personalizado', description: 'Escenarios especiales o adicionales.'},
     ];
 
+    let ALLOWED_STAGE_VALUES = BASE_SCENARIO_STAGE_OPTIONS.map((option) => option.value);
+
     let SCENARIO_STAGE_OPTIONS = BASE_SCENARIO_STAGE_OPTIONS.slice();
 
-    const SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu']);
+    const SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu', 'handoff_agent']);
     const ADVANCED_ACTION_TYPES = new Set(['send_sequence', 'send_list', 'send_template', 'set_context', 'conditional', 'upsert_patient_from_context']);
     const BASIC_CONDITION_TYPES = new Set(['always', 'message_in', 'message_contains']);
 
@@ -296,6 +300,153 @@
     function getScenarioStageOption(value) {
         const normalized = resolveScenarioStage(value);
         return SCENARIO_STAGE_OPTIONS.find((option) => option.value === normalized) || SCENARIO_STAGE_OPTIONS[SCENARIO_STAGE_OPTIONS.length - 1];
+    }
+
+    function normalizeStageKey(value) {
+        if (typeof value !== 'string') {
+            return '';
+        }
+        return slugify(value.trim());
+    }
+
+    function humanizeStageValue(value) {
+        if (!value) {
+            return '';
+        }
+        return value
+            .toString()
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function ensureUniqueStageValue(baseValue, existingValues, currentValue) {
+        const normalizedBase = baseValue && baseValue.trim() !== '' ? baseValue.trim() : 'etapa';
+        const registry = new Set((existingValues || []).filter(Boolean));
+        if (currentValue) {
+            registry.delete(currentValue);
+        }
+        let candidate = normalizedBase;
+        let suffix = 1;
+        while (registry.has(candidate)) {
+            candidate = `${normalizedBase}_${suffix}`;
+            suffix += 1;
+        }
+        return candidate;
+    }
+
+    function ensureStageSettings(rawStages) {
+        const overrides = new Map();
+        if (Array.isArray(rawStages)) {
+            rawStages.forEach((stage) => {
+                if (!stage || typeof stage !== 'object') {
+                    return;
+                }
+                const rawValue = stage.value ?? stage.id ?? stage.key ?? stage.label ?? stage.name ?? '';
+                const value = normalizeStageKey(String(rawValue));
+                if (!value) {
+                    return;
+                }
+                const labelSource = typeof stage.label === 'string' && stage.label.trim() !== ''
+                    ? stage.label.trim()
+                    : typeof stage.name === 'string' && stage.name.trim() !== ''
+                        ? stage.name.trim()
+                        : humanizeStageValue(value);
+                const description = typeof stage.description === 'string' ? stage.description.trim() : '';
+                overrides.set(value, {value, label: labelSource, description});
+            });
+        }
+
+        const baseOptions = BASE_SCENARIO_STAGE_OPTIONS.filter((option) => ALLOWED_STAGE_VALUES.includes(option.value));
+        const stageEntries = [];
+        const stageMap = new Map();
+        let fallbackEntry = null;
+
+        baseOptions.forEach((option) => {
+            const override = overrides.get(option.value);
+            const entry = {
+                value: option.value,
+                label: override?.label || option.label,
+                description: override?.description || option.description,
+                locked: true,
+            };
+            if (option.value === 'custom') {
+                fallbackEntry = entry;
+                stageMap.set(entry.value, entry);
+                return;
+            }
+
+            stageEntries.push(entry);
+            stageMap.set(entry.value, entry);
+        });
+
+        overrides.forEach((override) => {
+            if (stageMap.has(override.value)) {
+                return;
+            }
+            stageEntries.push({
+                ...override,
+                locked: false,
+            });
+            stageMap.set(override.value, override);
+        });
+
+        if (!stageMap.has('custom')) {
+            const fallback = BASE_SCENARIO_STAGE_OPTIONS.find((option) => option.value === 'custom');
+            fallbackEntry = {
+                value: 'custom',
+                label: fallback?.label || 'Personalizado',
+                description: fallback?.description || '',
+                locked: true,
+            };
+        }
+
+        if (fallbackEntry) {
+            stageEntries.push(fallbackEntry);
+        }
+
+        return stageEntries;
+    }
+
+    function setStageOptions(stageEntries) {
+        const normalizedEntries = [];
+        const seen = new Set();
+        (Array.isArray(stageEntries) ? stageEntries : []).forEach((stage) => {
+            if (!stage || typeof stage !== 'object') {
+                return;
+            }
+            const value = normalizeStageKey(String(stage.value || ''));
+            if (!value || seen.has(value)) {
+                return;
+            }
+            const label = typeof stage.label === 'string' && stage.label.trim() !== ''
+                ? stage.label.trim()
+                : humanizeStageValue(value);
+            const description = typeof stage.description === 'string' ? stage.description.trim() : '';
+            normalizedEntries.push({
+                value,
+                label,
+                description,
+                locked: Boolean(stage.locked),
+            });
+            seen.add(value);
+        });
+
+        if (!seen.has('custom')) {
+            const fallback = BASE_SCENARIO_STAGE_OPTIONS.find((option) => option.value === 'custom');
+            normalizedEntries.push({
+                value: 'custom',
+                label: fallback?.label || 'Personalizado',
+                description: fallback?.description || '',
+                locked: true,
+            });
+        }
+
+        SCENARIO_STAGE_OPTIONS = normalizedEntries.map((entry) => ({
+            value: entry.value,
+            label: entry.label,
+            description: entry.description,
+        }));
+        STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
     }
 
     function escapeSelector(value) {
@@ -713,8 +864,10 @@
         templateCatalogInput.name = '';
     }
 
+
     const bootstrapPayload = parseBootstrap();
     const bootstrapContract = bootstrapPayload && bootstrapPayload.contract ? bootstrapPayload.contract : null;
+    const roleCatalog = Array.isArray(bootstrapPayload && bootstrapPayload.roles) ? bootstrapPayload.roles : [];
     applyContractConstraints(bootstrapContract);
     const publishEndpoint = bootstrapPayload && bootstrapPayload.api && bootstrapPayload.api.publish
         ? bootstrapPayload.api.publish
@@ -725,6 +878,7 @@
     const replayMessages = [];
     let menuPreviewNode = null;
 
+    const stagesPanel = form.querySelector('[data-stages-editor]');
     const variablesPanel = form.querySelector('[data-variable-list]');
     const scenariosPanel = form.querySelector('[data-scenario-list]');
     const journeyMapCard = form.querySelector('[data-journey-map-card]');
@@ -732,6 +886,7 @@
     const menuPanel = form.querySelector('[data-menu-editor]');
     const scenarioSummaryContainer = form.querySelector('[data-scenario-summary]');
     const suggestedScenariosContainer = form.querySelector('[data-suggested-scenarios]');
+    const freeModeToggle = form.querySelector('[data-setting-free-mode]');
     const scenarioModeToggle = form.querySelector('[data-scenario-mode-toggle]');
     const expandAllScenariosButton = form.querySelector('[data-action="expand-all-scenarios"]');
     const collapseAllScenariosButton = form.querySelector('[data-action="collapse-all-scenarios"]');
@@ -750,6 +905,8 @@
 
     const simulateButton = form.querySelector('[data-action="simulate-flow"]');
     const addScenarioButton = form.querySelector('[data-action="add-scenario"]');
+    const addStageButton = form.querySelector('[data-action="add-stage"]');
+    const resetStagesButton = form.querySelector('[data-action="reset-stages"]');
     const resetVariablesButton = form.querySelector('[data-action="reset-variables"]');
     const resetMenuButton = form.querySelector('[data-action="reset-menu"]');
 
@@ -759,6 +916,38 @@
             const scenario = createDefaultScenario();
             state.scenarios.push(scenario);
             setScenarioExpanded(scenario.id, true);
+            renderScenarios();
+        });
+    }
+
+    if (addStageButton) {
+        addStageButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            state.settings = state.settings || {};
+            state.settings.stages = Array.isArray(state.settings.stages) ? state.settings.stages : [];
+            const stageEntry = createCustomStageEntry('Nueva etapa');
+            const customIndex = state.settings.stages.findIndex((entry) => entry && entry.value === 'custom');
+            if (customIndex >= 0) {
+                state.settings.stages.splice(customIndex, 0, stageEntry);
+            } else {
+                state.settings.stages.push(stageEntry);
+            }
+            setStageOptions(state.settings.stages);
+            renderStages();
+            renderScenarios();
+        });
+    }
+
+    if (resetStagesButton) {
+        resetStagesButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            state.settings = state.settings || {};
+            state.settings.stages = JSON.parse(JSON.stringify(defaults.settings?.stages || []));
+            if (!Array.isArray(state.settings.stages) || state.settings.stages.length === 0) {
+                state.settings.stages = ensureStageSettings([]);
+            }
+            setStageOptions(state.settings.stages);
+            renderStages();
             renderScenarios();
         });
     }
@@ -872,11 +1061,20 @@
         await publishFlow(payload);
     });
 
+    renderStages();
     renderVariables();
     renderScenarios();
     renderMenu();
     renderSuggestedScenarios();
     setupSimulationPanel();
+
+    if (freeModeToggle) {
+        freeModeToggle.checked = Boolean(state.settings?.free_mode);
+        freeModeToggle.addEventListener('change', () => {
+            state.settings = state.settings || {};
+            state.settings.free_mode = freeModeToggle.checked;
+        });
+    }
 
     function parseBootstrap() {
         if (!flowBootstrap) {
@@ -911,7 +1109,8 @@
             : [];
 
         if (allowedStages.length > 0) {
-            const filteredOptions = BASE_SCENARIO_STAGE_OPTIONS.filter((option) => allowedStages.includes(option.value));
+            ALLOWED_STAGE_VALUES = Array.from(new Set([...allowedStages, 'custom']));
+            const filteredOptions = BASE_SCENARIO_STAGE_OPTIONS.filter((option) => ALLOWED_STAGE_VALUES.includes(option.value));
             SCENARIO_STAGE_OPTIONS = filteredOptions.length > 0 ? filteredOptions : BASE_SCENARIO_STAGE_OPTIONS.slice();
             STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
         }
@@ -940,6 +1139,9 @@
             );
         }
 
+        const stageEntries = ensureStageSettings(payload.settings?.stages);
+        setStageOptions(stageEntries);
+
         const scenarios = Array.isArray(payload.scenarios) && payload.scenarios.length > 0
             ? payload.scenarios.map((scenario) => cloneScenario(scenario))
             : [createDefaultScenario()];
@@ -952,6 +1154,10 @@
             variables,
             scenarios,
             menu,
+            settings: {
+                free_mode: Boolean(payload.settings?.free_mode),
+                stages: stageEntries,
+            },
         };
     }
 
@@ -1003,6 +1209,131 @@
             }
 
             variablesPanel.appendChild(clone);
+        });
+    }
+
+    function renderStages() {
+        if (!stagesPanel || !templates.stageRow) {
+            return;
+        }
+
+        state.settings = state.settings || {};
+        if (!Array.isArray(state.settings.stages) || state.settings.stages.length === 0) {
+            state.settings.stages = ensureStageSettings([]);
+        }
+
+        stagesPanel.innerHTML = '';
+
+        state.settings.stages.forEach((stage) => {
+            const clone = templates.stageRow.content.firstElementChild.cloneNode(true);
+            clone.classList.toggle('stage-row--custom', !stage.locked);
+
+            const typeBadge = clone.querySelector('[data-stage-type]');
+            const keyLabel = clone.querySelector('[data-stage-key]');
+            const labelInput = clone.querySelector('[data-stage-label]');
+            const descriptionInput = clone.querySelector('[data-stage-description]');
+            const removeButton = clone.querySelector('[data-action="remove-stage"]');
+
+            const stageLabel = typeof stage.label === 'string' && stage.label.trim() !== ''
+                ? stage.label.trim()
+                : humanizeStageValue(stage.value);
+            stage.label = stageLabel;
+            stage.description = typeof stage.description === 'string' ? stage.description.trim() : '';
+            stage.value = normalizeStageKey(String(stage.value || '')) || ensureUniqueStageValue('etapa', state.settings.stages.map((entry) => entry.value));
+
+            if (typeBadge) {
+                typeBadge.textContent = stage.locked ? 'Base' : 'Personalizada';
+                typeBadge.classList.toggle('bg-primary-light', stage.locked);
+                typeBadge.classList.toggle('text-primary', stage.locked);
+                typeBadge.classList.toggle('bg-success-light', !stage.locked);
+                typeBadge.classList.toggle('text-success', !stage.locked);
+            }
+
+            if (keyLabel) {
+                keyLabel.textContent = `ID: ${stage.value}`;
+            }
+
+            if (labelInput) {
+                labelInput.value = stage.label;
+                labelInput.addEventListener('input', () => {
+                    stage.label = labelInput.value;
+                });
+                labelInput.addEventListener('change', () => {
+                    const trimmed = labelInput.value.trim();
+                    stage.label = trimmed !== '' ? trimmed : (stage.locked ? humanizeStageValue(stage.value) : 'Etapa sin nombre');
+                    labelInput.value = stage.label;
+
+                    if (!stage.locked) {
+                        const existingValues = state.settings.stages.map((entry) => entry.value);
+                        const nextBase = normalizeStageKey(stage.label) || stage.value;
+                        const nextValue = ensureUniqueStageValue(nextBase, existingValues, stage.value);
+                        if (nextValue && nextValue !== stage.value) {
+                            updateScenarioStageValue(stage.value, nextValue);
+                            stage.value = nextValue;
+                            if (keyLabel) {
+                                keyLabel.textContent = `ID: ${stage.value}`;
+                            }
+                        }
+                    }
+
+                    refreshStageViews();
+                });
+            }
+
+            if (descriptionInput) {
+                descriptionInput.value = stage.description || '';
+                descriptionInput.addEventListener('input', () => {
+                    stage.description = descriptionInput.value;
+                });
+                descriptionInput.addEventListener('change', () => {
+                    stage.description = descriptionInput.value.trim();
+                    refreshStageViews();
+                });
+            }
+
+            if (removeButton) {
+                if (stage.locked) {
+                    removeButton.setAttribute('disabled', 'disabled');
+                    removeButton.classList.add('d-none');
+                } else {
+                    removeButton.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        state.settings.stages = state.settings.stages.filter((entry) => entry !== stage);
+                        updateScenarioStageValue(stage.value, 'custom');
+                        setStageOptions(state.settings.stages);
+                        renderStages();
+                        renderScenarios();
+                    });
+                }
+            }
+
+            stagesPanel.appendChild(clone);
+        });
+
+        setStageOptions(state.settings.stages);
+    }
+
+    function refreshStageViews() {
+        setStageOptions(state.settings?.stages || []);
+        renderScenarios();
+        renderJourneyMap();
+    }
+
+    function updateScenarioStageValue(previousValue, nextValue) {
+        const oldValue = typeof previousValue === 'string' ? previousValue.trim().toLowerCase() : '';
+        const replacement = typeof nextValue === 'string' && nextValue.trim() !== '' ? nextValue.trim().toLowerCase() : 'custom';
+
+        state.scenarios.forEach((scenario) => {
+            if (!scenario || typeof scenario !== 'object') {
+                return;
+            }
+            const currentRaw = scenario.stage || scenario.stage_id || scenario.stageId || '';
+            const currentValue = typeof currentRaw === 'string' ? currentRaw.trim().toLowerCase() : '';
+            if (currentValue === oldValue) {
+                scenario.stage = replacement;
+                scenario.stage_id = replacement;
+                scenario.stageId = replacement;
+            }
         });
     }
 
@@ -2247,6 +2578,9 @@
                     } else if (action.type === 'lookup_patient') {
                         action.field = action.field || 'cedula';
                         action.source = action.source || 'message';
+                    } else if (action.type === 'handoff_agent') {
+                        action.role_id = action.role_id || '';
+                        action.note = action.note || '';
                     } else if (action.type === 'conditional') {
                         action.condition = action.condition || {type: 'patient_found', value: true};
                         action.then = Array.isArray(action.then) ? action.then : [];
@@ -2540,6 +2874,61 @@
 
             container.appendChild(fieldSelect);
             container.appendChild(sourceSelect);
+
+            return;
+        }
+
+        if (action.type === 'handoff_agent') {
+            const info = document.createElement('div');
+            info.className = 'alert alert-info small';
+            info.textContent = 'Marca la conversación para atención humana. Puedes seleccionar el equipo responsable.';
+            container.appendChild(info);
+
+            const label = document.createElement('label');
+            label.className = 'form-label small text-muted';
+            label.textContent = 'Equipo / rol';
+            container.appendChild(label);
+
+            const select = document.createElement('select');
+            select.className = 'form-select form-select-sm mb-2';
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Sin equipo específico';
+            select.appendChild(defaultOption);
+
+            if (Array.isArray(roleCatalog)) {
+                roleCatalog.forEach((role) => {
+                    if (!role || !role.id) {
+                        return;
+                    }
+                    const option = document.createElement('option');
+                    option.value = String(role.id);
+                    option.textContent = role.name || ('Rol ' + role.id);
+                    select.appendChild(option);
+                });
+            }
+
+            select.value = action.role_id ? String(action.role_id) : '';
+            select.addEventListener('change', () => {
+                action.role_id = select.value ? parseInt(select.value, 10) : '';
+            });
+
+            const noteLabel = document.createElement('label');
+            noteLabel.className = 'form-label small text-muted';
+            noteLabel.textContent = 'Nota (opcional)';
+
+            const noteInput = document.createElement('input');
+            noteInput.type = 'text';
+            noteInput.className = 'form-control form-control-sm';
+            noteInput.placeholder = 'Ej: derivar a coordinación quirúrgica';
+            noteInput.value = action.note || '';
+            noteInput.addEventListener('input', () => {
+                action.note = noteInput.value;
+            });
+
+            container.appendChild(select);
+            container.appendChild(noteLabel);
+            container.appendChild(noteInput);
 
             return;
         }
@@ -3807,6 +4196,13 @@
                 titleInput.value = option.title || '';
                 titleInput.addEventListener('input', () => {
                     option.title = titleInput.value;
+                    if (idInput && idInput.value.trim() === '' && option.title) {
+                        const generated = slugify(option.title);
+                        if (generated) {
+                            idInput.value = generated;
+                            option.id = generated;
+                        }
+                    }
                     renderMenuPreview();
                 });
             }
@@ -4338,10 +4734,24 @@
 
         normalizeMenu();
 
+        const stagePayload = Array.isArray(state.settings?.stages)
+            ? state.settings.stages
+                .map((stage) => ({
+                    value: normalizeStageKey(String(stage.value || '')),
+                    label: typeof stage.label === 'string' ? stage.label.trim() : '',
+                    description: typeof stage.description === 'string' ? stage.description.trim() : '',
+                }))
+                .filter((stage) => stage.value !== '')
+            : [];
+
         return {
             variables: variablesPayload,
             scenarios: state.scenarios.map((scenario) => prepareScenarioPayload(scenario)),
             menu: state.menu,
+            settings: {
+                free_mode: Boolean(state.settings?.free_mode),
+                stages: stagePayload,
+            },
         };
     }
 
@@ -4847,6 +5257,22 @@
         scenario.stageId = scenario.stage;
 
         return scenario;
+    }
+
+    function createCustomStageEntry(label) {
+        const baseLabel = typeof label === 'string' && label.trim() !== '' ? label.trim() : 'Nueva etapa';
+        const existingValues = Array.isArray(state.settings?.stages)
+            ? state.settings.stages.map((entry) => entry.value)
+            : [];
+        const baseValue = normalizeStageKey(baseLabel) || 'etapa';
+        const value = ensureUniqueStageValue(baseValue, existingValues);
+
+        return {
+            value,
+            label: baseLabel,
+            description: '',
+            locked: false,
+        };
     }
 
     function createDefaultMenu() {

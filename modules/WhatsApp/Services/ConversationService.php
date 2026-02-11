@@ -3,6 +3,8 @@
 namespace Modules\WhatsApp\Services;
 
 use DateTimeImmutable;
+use Core\Permissions;
+use Modules\Notifications\Services\PusherConfigService;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ConversationRepository;
 use Modules\WhatsApp\Repositories\InboxRepository;
@@ -15,12 +17,15 @@ class ConversationService
     private ConversationRepository $repository;
     private InboxRepository $inbox;
     private WhatsAppSettings $settings;
+    private ?PusherConfigService $pusher = null;
+    private ?HandoffService $handoffs = null;
 
     public function __construct(PDO $pdo)
     {
         $this->repository = new ConversationRepository($pdo);
         $this->inbox = new InboxRepository($pdo);
         $this->settings = new WhatsAppSettings($pdo);
+        $this->pusher = new PusherConfigService($pdo);
     }
 
     public function ensureConversation(string $waNumber, array $attributes = []): int
@@ -135,7 +140,7 @@ class ConversationService
         ]);
 
         if ($clearHandoff) {
-            $this->repository->setHandoffFlag($conversationId, false, null);
+            $this->clearHandoff($conversationId);
         }
 
         $bodyForInbox = $body;
@@ -188,6 +193,12 @@ class ConversationService
                 'patient_full_name' => $row['patient_full_name'] ?? null,
                 'needs_human' => (bool) ($row['needs_human'] ?? false),
                 'handoff_notes' => $row['handoff_notes'] ?? null,
+                'handoff_role_id' => isset($row['handoff_role_id']) ? (int) $row['handoff_role_id'] : null,
+                'handoff_role_name' => $row['handoff_role_name'] ?? null,
+                'assigned_user_id' => isset($row['assigned_user_id']) ? (int) $row['assigned_user_id'] : null,
+                'assigned_user_name' => $row['assigned_user_name'] ?? null,
+                'assigned_at' => $this->formatIsoDate($row['assigned_at'] ?? null),
+                'handoff_requested_at' => $this->formatIsoDate($row['handoff_requested_at'] ?? null),
                 'unread_count' => (int) ($row['unread_count'] ?? 0),
                 'last_message' => [
                     'at' => $this->formatIsoDate($row['last_message_at'] ?? $row['updated_at'] ?? $row['created_at'] ?? null),
@@ -234,6 +245,12 @@ class ConversationService
             'patient_full_name' => $conversation['patient_full_name'] ?? null,
             'needs_human' => (bool) ($conversation['needs_human'] ?? false),
             'handoff_notes' => $conversation['handoff_notes'] ?? null,
+            'handoff_role_id' => isset($conversation['handoff_role_id']) ? (int) $conversation['handoff_role_id'] : null,
+            'handoff_role_name' => $conversation['handoff_role_name'] ?? null,
+            'assigned_user_id' => isset($conversation['assigned_user_id']) ? (int) $conversation['assigned_user_id'] : null,
+            'assigned_user_name' => $conversation['assigned_user_name'] ?? null,
+            'assigned_at' => $this->formatIsoDate($conversation['assigned_at'] ?? null),
+            'handoff_requested_at' => $this->formatIsoDate($conversation['handoff_requested_at'] ?? null),
             'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
             'messages' => $mappedMessages,
         ];
@@ -256,18 +273,119 @@ class ConversationService
             'unread_count' => (int) ($conversation['unread_count'] ?? 0),
             'needs_human' => (bool) ($conversation['needs_human'] ?? false),
             'handoff_notes' => $conversation['handoff_notes'] ?? null,
+            'handoff_role_id' => isset($conversation['handoff_role_id']) ? (int) $conversation['handoff_role_id'] : null,
+            'handoff_role_name' => $conversation['handoff_role_name'] ?? null,
+            'assigned_user_id' => isset($conversation['assigned_user_id']) ? (int) $conversation['assigned_user_id'] : null,
+            'assigned_user_name' => $conversation['assigned_user_name'] ?? null,
+            'assigned_at' => $this->formatIsoDate($conversation['assigned_at'] ?? null),
+            'handoff_requested_at' => $this->formatIsoDate($conversation['handoff_requested_at'] ?? null),
         ];
     }
 
-    public function flagForHandoff(string $waNumber, ?string $notes = null): void
+    public function flagForHandoff(string $waNumber, ?string $notes = null, ?int $roleId = null): bool
     {
-        $conversationId = $this->ensureConversation($waNumber);
-        $this->repository->setHandoffFlag($conversationId, true, $notes);
+        $handoffId = $this->getHandoffService()->requestHandoff($waNumber, $notes, $roleId);
+
+        return $handoffId !== null;
     }
 
     public function clearHandoff(int $conversationId): void
     {
-        $this->repository->setHandoffFlag($conversationId, false, null);
+        $this->getHandoffService()->resolveConversation($conversationId);
+    }
+
+    public function assignConversation(int $conversationId, int $userId): bool
+    {
+        return $this->getHandoffService()->assignConversation($conversationId, $userId);
+    }
+
+    public function transferConversation(int $conversationId, int $userId, ?string $notes = null): bool
+    {
+        return $this->getHandoffService()->transferConversation($conversationId, $userId, $notes);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listAgents(?int $roleId = null): array
+    {
+        $sql = 'SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.nombre, u.permisos, u.role_id, r.name AS role_name, r.permissions AS role_permissions ' .
+            'FROM users u LEFT JOIN roles r ON r.id = u.role_id';
+        $params = [];
+        if ($roleId !== null && $roleId > 0) {
+            $sql .= ' WHERE u.role_id = :role_id';
+            $params[':role_id'] = $roleId;
+        }
+        $sql .= ' ORDER BY r.name, u.first_name, u.last_name, u.username';
+
+        $stmt = $this->repository->getPdo()->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        $agents = [];
+        foreach ($rows as $row) {
+            $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
+            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.manage'])) {
+                continue;
+            }
+
+            $name = trim((string) ($row['first_name'] ?? '') . ' ' . (string) ($row['last_name'] ?? ''));
+            if ($name === '') {
+                $name = trim((string) ($row['nombre'] ?? ''));
+            }
+            if ($name === '') {
+                $name = (string) ($row['username'] ?? 'Agente');
+            }
+
+            $agents[] = [
+                'id' => (int) $row['id'],
+                'name' => $name,
+                'email' => $row['email'] ?? null,
+                'role_id' => isset($row['role_id']) ? (int) $row['role_id'] : null,
+                'role_name' => $row['role_name'] ?? null,
+            ];
+        }
+
+        return $agents;
+    }
+
+    private function notifyHandoff(int $conversationId): void
+    {
+        if (!$this->pusher instanceof PusherConfigService) {
+            return;
+        }
+
+        $conversation = $this->repository->findConversationById($conversationId);
+        if ($conversation === null) {
+            return;
+        }
+
+        $payload = [
+            'type' => 'whatsapp_handoff',
+            'conversation_id' => (int) $conversation['id'],
+            'wa_number' => $conversation['wa_number'],
+            'display_name' => $conversation['display_name'] ?? null,
+            'patient_full_name' => $conversation['patient_full_name'] ?? null,
+            'handoff_notes' => $conversation['handoff_notes'] ?? null,
+            'handoff_role_id' => isset($conversation['handoff_role_id']) ? (int) $conversation['handoff_role_id'] : null,
+            'handoff_role_name' => $conversation['handoff_role_name'] ?? null,
+            'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
+        ];
+
+        $this->pusher->trigger($payload, null, PusherConfigService::EVENT_WHATSAPP_HANDOFF);
+    }
+
+    private function getHandoffService(): HandoffService
+    {
+        if (!$this->handoffs instanceof HandoffService) {
+            $this->handoffs = new HandoffService($this->repository->getPdo());
+        }
+
+        return $this->handoffs;
     }
 
     public function markConversationAsRead(int $conversationId): void

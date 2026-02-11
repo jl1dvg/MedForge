@@ -46,7 +46,12 @@ class WhatsAppSettings
      *     data_consent_yes_keywords: array<int, string>,
      *     data_consent_no_keywords: array<int, string>,
      *     data_protection_flow: array<string, mixed>,
-     *     template_languages: string
+     *     template_languages: string,
+     *     handoff_ttl_hours: int,
+     *     handoff_notify_agents: bool,
+     *     handoff_agent_message: string,
+     *     handoff_button_take_label: string,
+     *     handoff_button_ignore_label: string
      * }
      */
     public function get(): array
@@ -74,6 +79,11 @@ class WhatsAppSettings
             'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
             'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
             'template_languages' => '',
+            'handoff_ttl_hours' => 24,
+            'handoff_notify_agents' => true,
+            'handoff_agent_message' => "Paciente {{contact}} necesita asistencia.\nToca para tomar ✅\n\nNota: {{notes}}",
+            'handoff_button_take_label' => 'Tomar',
+            'handoff_button_ignore_label' => 'Ignorar',
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -94,6 +104,11 @@ class WhatsAppSettings
                     'whatsapp_data_consent_yes_keywords',
                     'whatsapp_data_consent_no_keywords',
                     'whatsapp_template_languages',
+                    'whatsapp_handoff_ttl_hours',
+                    'whatsapp_handoff_notify_agents',
+                    'whatsapp_handoff_agent_message',
+                    'whatsapp_handoff_button_take_label',
+                    'whatsapp_handoff_button_ignore_label',
                     'whatsapp_autoresponder_flow',
                     'companyname',
                 ]);
@@ -152,6 +167,28 @@ class WhatsAppSettings
                 $templateLanguages = $options['whatsapp_template_languages'] ?? '';
                 if (is_string($templateLanguages) && trim($templateLanguages) !== '') {
                     $config['template_languages'] = $templateLanguages;
+                }
+
+                $ttl = (int) ($options['whatsapp_handoff_ttl_hours'] ?? 24);
+                if ($ttl > 0) {
+                    $config['handoff_ttl_hours'] = $ttl;
+                }
+
+                $config['handoff_notify_agents'] = ($options['whatsapp_handoff_notify_agents'] ?? '1') === '1';
+
+                $agentMessage = trim((string) ($options['whatsapp_handoff_agent_message'] ?? ''));
+                if ($agentMessage !== '') {
+                    $config['handoff_agent_message'] = $agentMessage;
+                }
+
+                $takeLabel = trim((string) ($options['whatsapp_handoff_button_take_label'] ?? ''));
+                if ($takeLabel !== '') {
+                    $config['handoff_button_take_label'] = $takeLabel;
+                }
+
+                $ignoreLabel = trim((string) ($options['whatsapp_handoff_button_ignore_label'] ?? ''));
+                if ($ignoreLabel !== '') {
+                    $config['handoff_button_ignore_label'] = $ignoreLabel;
                 }
 
                 $brand = trim((string) ($options['companyname'] ?? ''));

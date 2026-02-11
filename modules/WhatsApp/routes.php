@@ -23,12 +23,24 @@ return static function (Router $router): void {
         (new ChatController($pdo))->showConversation((int) $conversationId);
     });
 
+    $router->get('/whatsapp/api/agents', static function (\PDO $pdo): void {
+        (new ChatController($pdo))->listAgents();
+    });
+
     $router->get('/whatsapp/api/inbox', static function (\PDO $pdo): void {
         (new InboxController($pdo))->index();
     });
 
     $router->post('/whatsapp/api/messages', static function (\PDO $pdo): void {
         (new ChatController($pdo))->sendMessage();
+    });
+
+    $router->post('/whatsapp/api/conversations/{conversationId}/assign', static function (\PDO $pdo, string $conversationId): void {
+        (new ChatController($pdo))->assignConversation((int) $conversationId);
+    });
+
+    $router->post('/whatsapp/api/conversations/{conversationId}/transfer', static function (\PDO $pdo, string $conversationId): void {
+        (new ChatController($pdo))->transferConversation((int) $conversationId);
     });
 
     $router->get('/whatsapp/api/templates', static function (\PDO $pdo): void {

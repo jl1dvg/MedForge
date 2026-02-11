@@ -73,6 +73,11 @@ class ScenarioEngine
             $context['state'] = 'inicio';
         }
 
+        $summary = $this->conversations->getConversationSummary($conversationId);
+        if ($summary !== null && !empty($summary['assigned_user_id'])) {
+            return false;
+        }
+
         if ($this->isDuplicateMessage($session, $message)) {
             return true;
         }
@@ -115,7 +120,13 @@ class ScenarioEngine
                 if (!empty($scenario['name'])) {
                     $note .= ': ' . (string) $scenario['name'];
                 }
-                $this->conversations->flagForHandoff($sender, $note);
+                if (!empty($context['handoff_note']) && is_string($context['handoff_note'])) {
+                    $note .= ' · ' . trim($context['handoff_note']);
+                }
+                $roleId = isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id'])
+                    ? (int) $context['handoff_role_id']
+                    : null;
+                $this->conversations->flagForHandoff($sender, $note, $roleId);
             }
 
             $handled = true;
@@ -123,6 +134,25 @@ class ScenarioEngine
         }
 
         if ($handled) {
+            return true;
+        }
+
+        if ($this->handleMenuOption($conversationId, $sender, $text, $message, $context, $facts)) {
+            return true;
+        }
+
+        $normalizedMessage = $facts['message'] ?? '';
+        if (is_string($normalizedMessage) && $this->isMenuKeyword($normalizedMessage)) {
+            $this->sendMenu($sender, $context);
+            $awaiting = isset($context['awaiting_field']) ? 'input' : null;
+            $this->sessions->upsert($conversationId, $sender, [
+                'scenario_id' => 'menu',
+                'node_id' => null,
+                'awaiting' => $awaiting,
+                'context' => $context,
+                'last_payload' => $message,
+            ]);
+
             return true;
         }
 
@@ -492,6 +522,12 @@ class ScenarioEngine
 
             if ($type === 'handoff_agent') {
                 $context['handoff_requested'] = true;
+                if (isset($action['role_id']) && is_numeric($action['role_id'])) {
+                    $context['handoff_role_id'] = (int) $action['role_id'];
+                }
+                if (isset($action['note']) && is_string($action['note'])) {
+                    $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
+                }
                 continue;
             }
         }
@@ -624,6 +660,103 @@ class ScenarioEngine
         if (is_array($message)) {
             $this->dispatchMessage($recipient, $message, $context);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $facts
+     */
+    private function handleMenuOption(
+        int $conversationId,
+        string $sender,
+        string $text,
+        array $message,
+        array $context,
+        array $facts
+    ): bool {
+        $menu = $this->flow['menu'] ?? [];
+        if (empty($menu) || empty($menu['options']) || !is_array($menu['options'])) {
+            return false;
+        }
+
+        $needle = $facts['message'] ?? '';
+        if (!is_string($needle) || $needle === '') {
+            return false;
+        }
+
+        $matched = null;
+        foreach ($menu['options'] as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $candidates = [];
+            if (isset($option['id']) && is_string($option['id']) && $option['id'] !== '') {
+                $candidates[] = $this->normalizeText($option['id']);
+            }
+            if (isset($option['title']) && is_string($option['title']) && $option['title'] !== '') {
+                $candidates[] = $this->normalizeText($option['title']);
+            }
+            if (isset($option['keywords']) && is_array($option['keywords'])) {
+                foreach ($option['keywords'] as $keyword) {
+                    if (!is_string($keyword)) {
+                        continue;
+                    }
+                    $normalized = $this->normalizeText($keyword);
+                    if ($normalized !== '') {
+                        $candidates[] = $normalized;
+                    }
+                }
+            }
+
+            if (in_array($needle, $candidates, true)) {
+                $matched = $option;
+                break;
+            }
+        }
+
+        if ($matched === null) {
+            return false;
+        }
+
+        $result = $this->executeActions($matched['actions'] ?? [], [
+            'conversationId' => $conversationId,
+            'sender' => $sender,
+            'message' => $message,
+            'text' => $text,
+            'context' => $context,
+            'facts' => $facts,
+        ]);
+
+        $context = $result['context'];
+        $awaiting = isset($context['awaiting_field']) ? 'input' : null;
+        $scenarioId = isset($matched['id']) && is_string($matched['id']) && $matched['id'] !== ''
+            ? 'menu:' . $matched['id']
+            : 'menu:option';
+
+        $this->sessions->upsert($conversationId, $sender, [
+            'scenario_id' => $scenarioId,
+            'node_id' => null,
+            'awaiting' => $awaiting,
+            'context' => $context,
+            'last_payload' => $message,
+        ]);
+
+        if (!empty($context['handoff_requested'])) {
+            $note = 'Escalado desde menú';
+            if (!empty($matched['title']) && is_string($matched['title'])) {
+                $note .= ': ' . $matched['title'];
+            }
+            if (!empty($context['handoff_note']) && is_string($context['handoff_note'])) {
+                $note .= ' · ' . trim($context['handoff_note']);
+            }
+            $roleId = isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id'])
+                ? (int) $context['handoff_role_id']
+                : null;
+            $this->conversations->flagForHandoff($sender, $note, $roleId);
+        }
+
+        return true;
     }
 
     /**

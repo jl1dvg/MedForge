@@ -51,7 +51,7 @@ class HandoffRepository
             ':assigned_at' => $data['assigned_at'] ?? null,
             ':assigned_until' => $data['assigned_until'] ?? null,
             ':queued_at' => $data['queued_at'] ?? date('Y-m-d H:i:s'),
-            ':last_activity_at' => $data['last_activity_at'] ?? null,
+            ':last_activity_at' => $data['last_activity_at'] ?? ($data['queued_at'] ?? date('Y-m-d H:i:s')),
             ':notes' => $data['notes'] ?? null,
         ]);
 
@@ -83,7 +83,7 @@ class HandoffRepository
     public function assign(int $handoffId, int $agentId, string $assignedUntil): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_handoffs SET status = \'assigned\', assigned_agent_id = :agent_id, assigned_at = NOW(), assigned_until = :assigned_until, updated_at = NOW() ' .
+            'UPDATE whatsapp_handoffs SET status = \'assigned\', assigned_agent_id = :agent_id, assigned_at = NOW(), assigned_until = :assigned_until, last_activity_at = NOW(), updated_at = NOW() ' .
             'WHERE id = :id AND status = \'queued\' AND assigned_agent_id IS NULL'
         );
         $stmt->execute([
@@ -98,7 +98,7 @@ class HandoffRepository
     public function transfer(int $handoffId, int $agentId, string $assignedUntil, ?string $note = null): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_handoffs SET status = \'assigned\', assigned_agent_id = :agent_id, assigned_at = NOW(), assigned_until = :assigned_until, notes = :notes, updated_at = NOW() WHERE id = :id'
+            'UPDATE whatsapp_handoffs SET status = \'assigned\', assigned_agent_id = :agent_id, assigned_at = NOW(), assigned_until = :assigned_until, notes = :notes, last_activity_at = NOW(), updated_at = NOW() WHERE id = :id'
         );
         $stmt->execute([
             ':agent_id' => $agentId,
@@ -113,7 +113,7 @@ class HandoffRepository
     public function markResolved(int $handoffId, ?string $note = null): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_handoffs SET status = \'resolved\', assigned_until = NULL, notes = :notes, updated_at = NOW() WHERE id = :id'
+            'UPDATE whatsapp_handoffs SET status = \'resolved\', assigned_until = NULL, notes = :notes, last_activity_at = NOW(), updated_at = NOW() WHERE id = :id'
         );
         $stmt->execute([
             ':notes' => $note,
@@ -140,7 +140,7 @@ class HandoffRepository
     public function requeue(int $handoffId): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_handoffs SET status = \'queued\', assigned_agent_id = NULL, assigned_at = NULL, assigned_until = NULL, updated_at = NOW() WHERE id = :id'
+            'UPDATE whatsapp_handoffs SET status = \'queued\', assigned_agent_id = NULL, assigned_at = NULL, assigned_until = NULL, queued_at = NOW(), last_activity_at = NOW(), updated_at = NOW() WHERE id = :id'
         );
         $stmt->execute([':id' => $handoffId]);
 

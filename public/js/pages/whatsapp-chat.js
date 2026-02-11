@@ -82,6 +82,7 @@
         var state = {
             selectedId: null,
             conversations: [],
+            agents: [],
             search: '',
             loadingConversation: false,
             sending: false
@@ -92,10 +93,16 @@
             conversation: root.getAttribute('data-endpoint-conversation') || '',
             send: root.getAttribute('data-endpoint-send') || '',
             patients: root.getAttribute('data-endpoint-patients') || '',
-            templates: root.getAttribute('data-endpoint-templates') || ''
+            templates: root.getAttribute('data-endpoint-templates') || '',
+            agents: root.getAttribute('data-endpoint-agents') || '',
+            assign: root.getAttribute('data-endpoint-assign') || '',
+            transfer: root.getAttribute('data-endpoint-transfer') || ''
         };
 
         var enabled = root.getAttribute('data-enabled') === '1';
+        var currentUserId = parseInt(root.getAttribute('data-current-user-id'), 10) || 0;
+        var currentRoleId = parseInt(root.getAttribute('data-current-role-id'), 10) || 0;
+        var canAssign = root.getAttribute('data-can-assign') === '1';
 
         var listContainer = root.querySelector('[data-conversation-list]');
         var emptyListState = root.querySelector('[data-empty-state]');
@@ -137,6 +144,17 @@
         var attachmentTrigger = root.querySelector('[data-attachment-trigger]');
         var attachmentInput = root.querySelector('[data-attachment-input]');
         var attachmentPreview = root.querySelector('[data-attachment-preview]');
+        var handoffPanel = root.querySelector('[data-handoff-panel]');
+        var handoffBadge = root.querySelector('[data-handoff-badge]');
+        var handoffQueue = root.querySelector('[data-handoff-queue]');
+        var takeConversationButton = root.querySelector('[data-action="take-conversation"]');
+        var transferSelect = root.querySelector('[data-transfer-agent]');
+        var transferButton = root.querySelector('[data-action="transfer-conversation"]');
+        var transferNoteInput = root.querySelector('[data-transfer-note]');
+
+        if (handoffPanel && !canAssign) {
+            handoffPanel.classList.add('d-none');
+        }
         var selectedNumber = '';
         var pendingAttachment = null;
         var templatesLoaded = false;
@@ -148,6 +166,14 @@
             return endpoints.conversation.replace('{id}', String(id));
         }
 
+        function getAssignEndpoint(id) {
+            return endpoints.assign.replace('{id}', String(id));
+        }
+
+        function getTransferEndpoint(id) {
+            return endpoints.transfer.replace('{id}', String(id));
+        }
+
         function toggleComposer(disabled) {
             if (!composer) {
                 return;
@@ -156,6 +182,283 @@
             var shouldDisable = disabled || !enabled;
             composer.querySelectorAll('textarea, input, button').forEach(function (element) {
                 element.disabled = shouldDisable;
+            });
+        }
+
+        function updateHandoffPanel(conversation) {
+            if (!handoffPanel) {
+                return;
+            }
+
+            var needsHuman = Boolean(conversation && conversation.needs_human);
+            var assignedId = conversation && conversation.assigned_user_id ? Number(conversation.assigned_user_id) : 0;
+            var assignedName = conversation && conversation.assigned_user_name ? conversation.assigned_user_name : '';
+            var roleName = conversation && conversation.handoff_role_name ? conversation.handoff_role_name : '';
+
+            if (handoffBadge) {
+                handoffBadge.classList.remove('bg-secondary-light', 'text-secondary', 'bg-warning-light', 'text-warning', 'bg-success-light', 'text-success');
+                if (assignedId) {
+                    handoffBadge.textContent = 'Asignado';
+                    handoffBadge.classList.add('bg-success-light', 'text-success');
+                } else if (needsHuman) {
+                    handoffBadge.textContent = 'Pendiente';
+                    handoffBadge.classList.add('bg-warning-light', 'text-warning');
+                } else {
+                    handoffBadge.textContent = 'Automático';
+                    handoffBadge.classList.add('bg-secondary-light', 'text-secondary');
+                }
+            }
+
+            if (handoffQueue) {
+                var queueText = roleName ? ('Equipo: ' + roleName) : 'Equipo: General';
+                if (assignedId && assignedName) {
+                    queueText += ' · ' + assignedName;
+                }
+                handoffQueue.textContent = queueText;
+            }
+
+            if (takeConversationButton) {
+                var canTake = canAssign && needsHuman && !assignedId;
+                if (conversation && conversation.handoff_role_id && currentRoleId && Number(conversation.handoff_role_id) !== currentRoleId) {
+                    canTake = false;
+                }
+                takeConversationButton.classList.toggle('d-none', !canTake);
+            }
+
+            if (transferSelect && transferButton) {
+                var canTransfer = canAssign && (assignedId === currentUserId || !assignedId);
+                transferSelect.disabled = !canTransfer;
+                transferButton.disabled = !canTransfer;
+            }
+        }
+
+        function renderAgentOptions(conversation) {
+            if (!transferSelect) {
+                return;
+            }
+
+            transferSelect.innerHTML = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Selecciona un agente';
+            transferSelect.appendChild(placeholder);
+
+            var roleFilter = conversation && conversation.handoff_role_id ? Number(conversation.handoff_role_id) : 0;
+
+            state.agents.forEach(function (agent) {
+                if (!agent || !agent.id) {
+                    return;
+                }
+                if (roleFilter && agent.role_id && Number(agent.role_id) !== roleFilter) {
+                    return;
+                }
+                var option = document.createElement('option');
+                option.value = String(agent.id);
+                var label = agent.name || agent.username || 'Agente';
+                if (agent.role_name) {
+                    label += ' · ' + agent.role_name;
+                }
+                option.textContent = label;
+                transferSelect.appendChild(option);
+            });
+        }
+
+        function fetchAgents() {
+            if (!endpoints.agents) {
+                return Promise.resolve();
+            }
+
+            return fetch(endpoints.agents, { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('No fue posible cargar agentes');
+                    }
+                    return response.json();
+                })
+                .then(function (payload) {
+                    if (payload && payload.ok && Array.isArray(payload.data)) {
+                        state.agents = payload.data;
+                        if (state.selectedId) {
+                            var summary = state.conversations.find(function (item) {
+                                return item.id === state.selectedId;
+                            });
+                            renderAgentOptions(summary || null);
+                        }
+                    }
+                })
+                .catch(function () {});
+        }
+
+        function applyConversationUpdate(conversation) {
+            if (!conversation || !conversation.id) {
+                return;
+            }
+
+            var summary = state.conversations.find(function (item) {
+                return item.id === conversation.id;
+            });
+
+            if (summary) {
+                summary.needs_human = conversation.needs_human;
+                summary.handoff_notes = conversation.handoff_notes;
+                summary.handoff_role_id = conversation.handoff_role_id;
+                summary.handoff_role_name = conversation.handoff_role_name;
+                summary.assigned_user_id = conversation.assigned_user_id;
+                summary.assigned_user_name = conversation.assigned_user_name;
+                summary.assigned_at = conversation.assigned_at;
+                summary.handoff_requested_at = conversation.handoff_requested_at;
+            }
+
+            renderConversations();
+            updateHeader(conversation);
+        }
+
+        function assignConversation(conversationId, userId) {
+            return fetch(getAssignEndpoint(conversationId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ user_id: userId }),
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload || !payload.ok) {
+                        var error = payload && payload.error ? payload.error : 'No fue posible asignar la conversación.';
+                        throw new Error(error);
+                    }
+                    return payload.data;
+                });
+            }).then(function (conversation) {
+                applyConversationUpdate(conversation);
+            }).catch(function (error) {
+                if (errorAlert) {
+                    errorAlert.textContent = error.message || 'No fue posible asignar la conversación.';
+                    errorAlert.classList.remove('d-none');
+                }
+            });
+        }
+
+        function transferConversation(conversationId, userId, note) {
+            return fetch(getTransferEndpoint(conversationId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ user_id: userId, note: note || '' }),
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload || !payload.ok) {
+                        var error = payload && payload.error ? payload.error : 'No fue posible transferir la conversación.';
+                        throw new Error(error);
+                    }
+                    return payload.data;
+                });
+            }).then(function (conversation) {
+                if (transferNoteInput) {
+                    transferNoteInput.value = '';
+                }
+                applyConversationUpdate(conversation);
+            }).catch(function (error) {
+                if (errorAlert) {
+                    errorAlert.textContent = error.message || 'No fue posible transferir la conversación.';
+                    errorAlert.classList.remove('d-none');
+                }
+            });
+        }
+
+        function maybeShowDesktopNotification(title, body) {
+            var realtimeConfig = window.MEDF_PusherConfig || {};
+            if (!realtimeConfig.desktop_notifications || typeof window === 'undefined' || !('Notification' in window)) {
+                return;
+            }
+
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().catch(function () {});
+            }
+
+            if (Notification.permission !== 'granted') {
+                return;
+            }
+
+            var notification = new Notification(title, { body: body });
+            var dismissSeconds = realtimeConfig.auto_dismiss_seconds || 0;
+            if (dismissSeconds && dismissSeconds > 0) {
+                setTimeout(function () { notification.close(); }, dismissSeconds * 1000);
+            }
+        }
+
+        function showHandoffToast(message) {
+            if (!message) {
+                return;
+            }
+
+            var toast = document.createElement('div');
+            toast.className = 'alert alert-info alert-dismissible fade show wa-handoff-toast';
+            toast.style.position = 'sticky';
+            toast.style.top = '0.75rem';
+            toast.style.zIndex = '1040';
+            toast.style.maxWidth = '420px';
+            toast.style.margin = '0.5rem auto';
+            toast.innerHTML = '<i class="mdi mdi-whatsapp me-1"></i>' + message;
+
+            var closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'btn-close';
+            closeButton.setAttribute('data-bs-dismiss', 'alert');
+            closeButton.setAttribute('aria-label', 'Cerrar');
+            closeButton.addEventListener('click', function () {
+                toast.remove();
+            });
+            toast.appendChild(closeButton);
+
+            root.prepend(toast);
+
+            setTimeout(function () {
+                if (toast && toast.parentNode) {
+                    toast.remove();
+                }
+            }, 6000);
+        }
+
+        function setupRealtime() {
+            var realtimeConfig = window.MEDF_PusherConfig || {};
+            if (!realtimeConfig.enabled) {
+                return;
+            }
+            if (typeof Pusher === 'undefined' || !realtimeConfig.key) {
+                console.warn('Pusher no está disponible para WhatsApp.');
+                return;
+            }
+
+            var options = { forceTLS: true };
+            if (realtimeConfig.cluster) {
+                options.cluster = realtimeConfig.cluster;
+            }
+
+            var pusher = new Pusher(realtimeConfig.key, options);
+            var channelName = realtimeConfig.channel || 'solicitudes-kanban';
+            var events = realtimeConfig.events || {};
+            var handoffEvent = events.whatsapp_handoff || 'whatsapp.handoff';
+
+            var channel = pusher.subscribe(channelName);
+            channel.bind(handoffEvent, function (data) {
+                if (!data) {
+                    return;
+                }
+
+                if (data.handoff_role_id && currentRoleId && Number(data.handoff_role_id) !== currentRoleId) {
+                    return;
+                }
+
+                var name = data.display_name || data.patient_full_name || data.wa_number || 'Contacto';
+                showHandoffToast('Nueva solicitud de agente: ' + name);
+                maybeShowDesktopNotification('WhatsApp · Nuevo handoff', name);
+
+                loadConversations();
             });
         }
 
@@ -229,8 +532,14 @@
                 pTop.appendChild(nameLink);
 
                 var badgeWrap = createElement('span', 'ms-2');
-                if (conversation.needs_human) {
-                    var handoffBadge = createElement('span', 'badge bg-warning-light text-warning me-1', 'Agente');
+                if (conversation.assigned_user_name) {
+                    var assignedLabel = conversation.assigned_user_name.length > 16
+                        ? conversation.assigned_user_name.slice(0, 15) + '…'
+                        : conversation.assigned_user_name;
+                    var assignedBadge = createElement('span', 'badge bg-success-light text-success me-1', assignedLabel);
+                    badgeWrap.appendChild(assignedBadge);
+                } else if (conversation.needs_human) {
+                    var handoffBadge = createElement('span', 'badge bg-warning-light text-warning me-1', 'Pendiente');
                     badgeWrap.appendChild(handoffBadge);
                 }
                 if (conversation.unread_count && conversation.unread_count > 0) {
@@ -457,7 +766,14 @@
             }
 
             if (detailHandoff) {
-                detailHandoff.textContent = conversation.needs_human ? 'Pendiente de agente' : 'Automático';
+                if (conversation.assigned_user_name) {
+                    detailHandoff.textContent = 'Asignado a ' + conversation.assigned_user_name;
+                } else if (conversation.needs_human) {
+                    var roleLabel = conversation.handoff_role_name ? (' · ' + conversation.handoff_role_name) : '';
+                    detailHandoff.textContent = 'Pendiente de agente' + roleLabel;
+                } else {
+                    detailHandoff.textContent = 'Automático';
+                }
             }
 
             if (detailNotes) {
@@ -477,6 +793,9 @@
             if (copyNumberButton) {
                 copyNumberButton.disabled = !selectedNumber;
             }
+
+            updateHandoffPanel(conversation);
+            renderAgentOptions(conversation);
         }
 
         function updateHeaderAvatar(conversation) {
@@ -1423,6 +1742,32 @@
             });
         }
 
+        if (takeConversationButton) {
+            takeConversationButton.addEventListener('click', function () {
+                if (!state.selectedId || !endpoints.assign) {
+                    return;
+                }
+
+                assignConversation(state.selectedId, currentUserId);
+            });
+        }
+
+        if (transferButton) {
+            transferButton.addEventListener('click', function () {
+                if (!state.selectedId || !endpoints.transfer || !transferSelect) {
+                    return;
+                }
+
+                var targetId = parseInt(transferSelect.value, 10) || 0;
+                if (!targetId) {
+                    return;
+                }
+
+                var note = transferNoteInput ? transferNoteInput.value.trim() : '';
+                transferConversation(state.selectedId, targetId, note);
+            });
+        }
+
         var refreshTimerId = null;
         var isRefreshing = false;
         var refreshBaseMs = 5000;
@@ -1491,7 +1836,11 @@
             }
         });
 
+        setupRealtime();
         toggleComposer(true);
+        if (canAssign) {
+            fetchAgents();
+        }
         loadConversations();
         startAutoRefresh();
     });

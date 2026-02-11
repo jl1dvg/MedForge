@@ -142,6 +142,10 @@ class AutoresponderFlow
             'scenarios' => self::defaultScenarios($brand),
             'menu' => self::defaultMenu($brand),
             'variables' => self::defaultVariables(),
+            'settings' => [
+                'free_mode' => false,
+                'stages' => [],
+            ],
         ];
     }
 
@@ -455,11 +459,13 @@ class AutoresponderFlow
      * @param mixed $scenarios
      * @return array<int, array<string, mixed>>
      */
-    private static function sanitizeScenarios($scenarios, string $brand): array
+    private static function sanitizeScenarios($scenarios, string $brand, bool $freeMode = false, array $settings = []): array
     {
         if (!is_array($scenarios)) {
-            return self::defaultScenarios($brand);
+            return $freeMode ? [] : self::defaultScenarios($brand);
         }
+
+        $allowedStages = self::resolveStageValues($settings);
 
         $normalized = [];
         foreach ($scenarios as $index => $scenario) {
@@ -467,14 +473,16 @@ class AutoresponderFlow
                 continue;
             }
 
-            $normalized[] = self::sanitizeScenario($scenario, $index);
+            $normalized[] = self::sanitizeScenario($scenario, $index, $freeMode, $allowedStages);
         }
 
         if (empty($normalized)) {
-            return self::defaultScenarios($brand);
+            return $freeMode ? [] : self::defaultScenarios($brand);
         }
 
-        $normalized = self::ensureRequiredScenarios($normalized, $brand);
+        if (!$freeMode) {
+            $normalized = self::ensureRequiredScenarios($normalized, $brand);
+        }
 
         return array_values($normalized);
     }
@@ -482,7 +490,7 @@ class AutoresponderFlow
     /**
      * @return array<string, mixed>
      */
-    private static function sanitizeScenario(array $scenario, int $index): array
+    private static function sanitizeScenario(array $scenario, int $index, bool $freeMode, array $allowedStages): array
     {
         $id = isset($scenario['id']) ? self::sanitizeKey((string) $scenario['id']) : '';
         if ($id === '') {
@@ -497,7 +505,9 @@ class AutoresponderFlow
         $description = self::sanitizeLine((string) ($scenario['description'] ?? ''));
 
         $conditions = self::sanitizeScenarioConditions($scenario['conditions'] ?? []);
-        $conditions = self::enforceScenarioGuards($id, $conditions);
+        if (!$freeMode) {
+            $conditions = self::enforceScenarioGuards($id, $conditions);
+        }
         if (empty($conditions)) {
             $conditions = [['type' => 'always']];
         }
@@ -510,7 +520,7 @@ class AutoresponderFlow
         }
 
         $stageValue = $scenario['stage'] ?? $scenario['stage_id'] ?? $scenario['stageId'] ?? null;
-        $stage = self::sanitizeScenarioStage($stageValue, $id);
+        $stage = self::sanitizeScenarioStage($stageValue, $id, $allowedStages);
 
         return [
             'id' => $id,
@@ -598,19 +608,46 @@ class AutoresponderFlow
         return $conditions;
     }
 
-    private static function sanitizeScenarioStage($value, string $scenarioId): string
+    private static function sanitizeScenarioStage($value, string $scenarioId, array $allowedStages = []): string
     {
         if ($value === null) {
             $value = null;
         }
         if (is_string($value)) {
             $normalized = mb_strtolower(trim($value));
-            if (in_array($normalized, self::SCENARIO_STAGE_VALUES, true)) {
+            if (empty($allowedStages)) {
+                $allowedStages = self::SCENARIO_STAGE_VALUES;
+            }
+            if (in_array($normalized, $allowedStages, true)) {
                 return $normalized;
             }
         }
 
         return self::defaultScenarioStage($scenarioId);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function resolveStageValues(array $settings): array
+    {
+        $values = self::SCENARIO_STAGE_VALUES;
+        if (!empty($settings['stages']) && is_array($settings['stages'])) {
+            foreach ($settings['stages'] as $stage) {
+                if (!is_array($stage)) {
+                    continue;
+                }
+                $value = self::sanitizeKey((string) ($stage['value'] ?? $stage['id'] ?? $stage['key'] ?? ''));
+                if ($value === '') {
+                    $value = self::sanitizeKey((string) ($stage['label'] ?? $stage['name'] ?? ''));
+                }
+                if ($value !== '' && !in_array($value, $values, true)) {
+                    $values[] = $value;
+                }
+            }
+        }
+
+        return $values;
     }
 
     private static function defaultScenarioStage(string $scenarioId): string
@@ -845,6 +882,17 @@ class AutoresponderFlow
                     $source = 'message';
                 }
                 $payload['source'] = $source;
+            }
+            if ($type === 'handoff_agent') {
+                $roleId = $action['role_id'] ?? ($action['roleId'] ?? ($action['role'] ?? null));
+                $roleId = is_numeric($roleId) ? (int) $roleId : null;
+                if ($roleId !== null && $roleId > 0) {
+                    $payload['role_id'] = $roleId;
+                }
+                $note = self::sanitizeLine((string) ($action['note'] ?? ($action['notes'] ?? '')));
+                if ($note !== '') {
+                    $payload['note'] = $note;
+                }
             }
 
             return $payload;
@@ -1177,12 +1225,15 @@ class AutoresponderFlow
                 continue;
             }
 
+            $title = self::sanitizeLine((string) ($option['title'] ?? ''));
             $id = self::sanitizeKey((string) ($option['id'] ?? ''));
+            if ($id === '' && $title !== '') {
+                $id = self::sanitizeKey($title);
+            }
             if ($id === '') {
                 continue;
             }
 
-            $title = self::sanitizeLine((string) ($option['title'] ?? ''));
             if ($title === '') {
                 $title = ucfirst(str_replace('_', ' ', $id));
             }
@@ -1190,6 +1241,9 @@ class AutoresponderFlow
             $keywords = self::sanitizeKeywords($option['keywords'] ?? []);
             if (empty($keywords)) {
                 $keywords = [$id];
+                if ($title !== '' && $title !== $id) {
+                    $keywords[] = $title;
+                }
             }
 
             $actions = self::sanitizeScenarioActions($option['actions'] ?? []);
@@ -1321,6 +1375,54 @@ class AutoresponderFlow
     }
 
     /**
+     * @param mixed $settings
+     * @return array<string, mixed>
+     */
+    private static function sanitizeSettings($settings): array
+    {
+        if (!is_array($settings)) {
+            return ['free_mode' => false, 'stages' => []];
+        }
+
+        $normalized = [
+            'free_mode' => !empty($settings['free_mode']),
+            'stages' => [],
+        ];
+
+        $rawStages = $settings['stages'] ?? [];
+        if (is_array($rawStages)) {
+            $map = [];
+            foreach ($rawStages as $stage) {
+                if (!is_array($stage)) {
+                    continue;
+                }
+                $value = self::sanitizeKey((string) ($stage['value'] ?? $stage['id'] ?? $stage['key'] ?? ''));
+                if ($value === '') {
+                    $value = self::sanitizeKey((string) ($stage['label'] ?? $stage['name'] ?? ''));
+                }
+                if ($value === '') {
+                    continue;
+                }
+
+                $label = self::sanitizeLine((string) ($stage['label'] ?? $stage['name'] ?? $value));
+                $description = self::sanitizeLine((string) ($stage['description'] ?? ''));
+
+                if (!isset($map[$value])) {
+                    $map[$value] = [
+                        'value' => $value,
+                        'label' => $label !== '' ? $label : ucfirst(str_replace('_', ' ', $value)),
+                        'description' => $description,
+                    ];
+                }
+            }
+
+            $normalized['stages'] = array_values($map);
+        }
+
+        return $normalized;
+    }
+
+    /**
      * @param array<string, mixed> $overrides
      * @return array<string, mixed>
      */
@@ -1334,6 +1436,8 @@ class AutoresponderFlow
         }
 
         $overrides = self::hydrateLegacySections($overrides, $defaults);
+        $settings = self::sanitizeSettings($overrides['settings'] ?? ($defaults['settings'] ?? []));
+        $freeMode = !empty($settings['free_mode']);
 
         if (isset($overrides['entry']) && is_array($overrides['entry'])) {
             $defaults['entry'] = self::mergeSection($defaults['entry'], $overrides['entry']);
@@ -1348,7 +1452,7 @@ class AutoresponderFlow
         }
 
         if (isset($overrides['scenarios']) && is_array($overrides['scenarios'])) {
-            $defaults['scenarios'] = self::sanitizeScenarios($overrides['scenarios'], $brand);
+            $defaults['scenarios'] = self::sanitizeScenarios($overrides['scenarios'], $brand, $freeMode, $settings);
         }
 
         if (isset($overrides['menu']) && is_array($overrides['menu'])) {
@@ -1359,7 +1463,12 @@ class AutoresponderFlow
             $defaults['variables'] = self::sanitizeVariables($overrides['variables']);
         }
 
+        if (isset($overrides['settings'])) {
+            $defaults['settings'] = $settings;
+        }
+
         $defaults['consent'] = DataProtectionCopy::sanitize($overrides['consent'] ?? [], $brand);
+        $defaults['settings'] = $settings;
 
         return self::finalize($defaults);
     }
@@ -1373,6 +1482,8 @@ class AutoresponderFlow
         $errors = [];
         $brand = trim($brand) !== '' ? $brand : 'MedForge';
         $defaults = self::defaultConfig($brand);
+        $settings = self::sanitizeSettings($flow['settings'] ?? ($defaults['settings'] ?? []));
+        $freeMode = !empty($settings['free_mode']);
 
         $flow = self::hydrateLegacySections($flow, $defaults);
 
@@ -1397,9 +1508,10 @@ class AutoresponderFlow
         $resolved['fallback'] = self::mergeSection($defaults['fallback'], $flow['fallback']);
         $resolved['options'] = self::mergeOptions($defaults['options'], $flow['options']);
         $resolved['consent'] = DataProtectionCopy::sanitize($flow['consent'] ?? [], $brand);
-        $resolved['scenarios'] = self::sanitizeScenarios($flow['scenarios'] ?? $defaults['scenarios'], $brand);
+        $resolved['scenarios'] = self::sanitizeScenarios($flow['scenarios'] ?? $defaults['scenarios'], $brand, $freeMode, $settings);
         $resolved['menu'] = self::mergeMenu($defaults['menu'], $flow['menu'] ?? []);
         $resolved['variables'] = self::sanitizeVariables($flow['variables'] ?? $defaults['variables']);
+        $resolved['settings'] = $settings;
 
         $storage = self::purgeAutomaticKeywords($resolved);
 

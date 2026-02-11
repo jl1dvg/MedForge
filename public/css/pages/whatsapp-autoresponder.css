@@ -633,3 +633,88 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
+
+.flow-card--guide {
+    border-left: 4px solid #0ea5e9;
+    background: #f8fafc;
+}
+
+.flow-card--scenarios {
+    border-left: 4px solid #2563eb;
+}
+
+.flow-card--menu {
+    border-left: 4px solid #14b8a6;
+}
+
+.flow-card--variables {
+    border-left: 4px solid #f59e0b;
+}
+
+.flow-card--stages {
+    border-left: 4px solid #10b981;
+}
+
+.flow-card--simulation {
+    border-left: 4px solid #a855f7;
+}
+
+.flow-card--scenarios .flow-card__header,
+.flow-card--menu .flow-card__header,
+.flow-card--stages .flow-card__header,
+.flow-card--variables .flow-card__header,
+.flow-card--simulation .flow-card__header {
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.85) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+.stage-row {
+    background: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.stage-row--custom {
+    background: #ffffff;
+    border-style: dashed;
+}
+
+.stage-row__key {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    letter-spacing: 0.02em;
+}
+
+.flow-guide {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: #334155;
+}
+
+.flow-guide li {
+    line-height: 1.4;
+}
+
+.flow-example {
+    background: #ffffff;
+    border: 1px dashed rgba(148, 163, 184, 0.6);
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.flow-example__title {
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 0.25rem;
+}
+
+.flow-example__item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #1f2937;
+    font-size: 0.92rem;
+}

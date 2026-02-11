@@ -3,6 +3,11 @@
 /** @var bool $isIntegrationEnabled */
 
 $brand = trim((string)($config['brand'] ?? 'MedForge')) ?: 'MedForge';
+$currentUser = $currentUser ?? null;
+$currentUserId = is_array($currentUser) ? (int)($currentUser['id'] ?? 0) : 0;
+$currentRoleId = is_array($currentUser) ? (int)($currentUser['role_id'] ?? 0) : 0;
+$canAssign = !empty($canAssign);
+$realtime = $realtime ?? null;
 $phoneNumber = $config['phone_number_id'] ?? '';
 ?>
 <style>
@@ -65,7 +70,13 @@ $phoneNumber = $config['phone_number_id'] ?? '';
             data-endpoint-send="/whatsapp/api/messages"
             data-endpoint-patients="/whatsapp/api/patients"
             data-endpoint-templates="/whatsapp/api/chat-templates"
+            data-endpoint-agents="/whatsapp/api/agents"
+            data-endpoint-assign="/whatsapp/api/conversations/{id}/assign"
+            data-endpoint-transfer="/whatsapp/api/conversations/{id}/transfer"
             data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
+            data-current-user-id="<?= $currentUserId; ?>"
+            data-current-role-id="<?= $currentRoleId; ?>"
+            data-can-assign="<?= $canAssign ? '1' : '0'; ?>"
     >
         <div class="col-lg-3 col-12">
             <div class="box">
@@ -295,6 +306,27 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                 <dt class="col-6 text-muted">Notas</dt>
                                 <dd class="col-6" data-detail-notes>—</dd>
                             </dl>
+
+                            <div class="border-top pt-3 mt-3" data-handoff-panel>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0">Asignación</h6>
+                                    <span class="badge bg-secondary-light text-secondary" data-handoff-badge>Sin asignar</span>
+                                </div>
+                                <div class="small text-muted mb-2" data-handoff-queue>Equipo: —</div>
+                                <div class="d-flex gap-2 mb-2">
+                                    <button type="button" class="btn btn-sm btn-primary d-none" data-action="take-conversation">
+                                        <i class="mdi mdi-account-check-outline me-1"></i>Tomar chat
+                                    </button>
+                                </div>
+                                <div>
+                                    <label class="form-label small text-muted">Derivar a agente</label>
+                                    <div class="d-flex gap-2">
+                                        <select class="form-select form-select-sm" data-transfer-agent></select>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="transfer-conversation">Derivar</button>
+                                    </div>
+                                    <input type="text" class="form-control form-control-sm mt-2" placeholder="Nota para el agente (opcional)" data-transfer-note>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -303,3 +335,9 @@ $phoneNumber = $config['phone_number_id'] ?? '';
 
     </div>
 </section>
+
+<?php if (is_array($realtime)): ?>
+    <script>
+        window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+    </script>
+<?php endif; ?>

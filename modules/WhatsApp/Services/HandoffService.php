@@ -42,6 +42,13 @@ class HandoffService
         $notes = $this->sanitizeNotes($notes);
         $conversationId = $this->conversations->upsertConversation($normalized);
         $active = $this->handoffs->findActiveByConversation($conversationId);
+        $resolvedRoleId = $roleId;
+        if ($resolvedRoleId === null && $active !== null && isset($active['handoff_role_id'])) {
+            $resolvedRoleId = (int) $active['handoff_role_id'];
+        }
+        if ($resolvedRoleId !== null && $resolvedRoleId <= 0) {
+            $resolvedRoleId = null;
+        }
 
         if ($active !== null) {
             $isAssigned = (($active['status'] ?? null) === 'assigned') && !empty($active['assigned_agent_id']);
@@ -55,19 +62,22 @@ class HandoffService
             if ($topic !== null && trim($topic) !== '') {
                 $updates['topic'] = trim($topic);
             }
+            if ($priority !== '') {
+                $updates['priority'] = $priority;
+            }
             if (!empty($updates)) {
                 $this->handoffs->update((int) $active['id'], $updates);
             }
 
             if ($isAssigned) {
-                $this->conversations->updateHandoffDetails($conversationId, $notes, $roleId);
+                $this->conversations->updateHandoffDetails($conversationId, $notes, $resolvedRoleId);
             } else {
-                $this->conversations->setHandoffFlag($conversationId, true, $notes, $roleId);
+                $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
             }
             $this->handoffs->insertEvent((int) $active['id'], 'requested', null, $notes);
             if (!$isAssigned) {
                 $this->notifyHandoff($conversationId);
-                $this->notifyAgents($normalized, (int) $active['id'], $roleId, $notes, $conversationId);
+                $this->notifyAgents($normalized, (int) $active['id'], $resolvedRoleId, $notes, $conversationId);
             }
 
             return (int) $active['id'];
@@ -79,15 +89,15 @@ class HandoffService
             'status' => 'queued',
             'priority' => $priority,
             'topic' => $topic,
-            'handoff_role_id' => $roleId,
+            'handoff_role_id' => $resolvedRoleId,
             'queued_at' => date('Y-m-d H:i:s'),
             'notes' => $notes,
         ]);
 
         $this->handoffs->insertEvent($handoffId, 'queued', null, $notes);
-        $this->conversations->setHandoffFlag($conversationId, true, $notes, $roleId);
+        $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
         $this->notifyHandoff($conversationId);
-        $this->notifyAgents($normalized, $handoffId, $roleId, $notes, $conversationId);
+        $this->notifyAgents($normalized, $handoffId, $resolvedRoleId, $notes, $conversationId);
 
         return $handoffId;
     }
@@ -355,20 +365,25 @@ class HandoffService
 
     private function notifyAgents(string $waNumber, int $handoffId, ?int $roleId = null, ?string $notes = null, ?int $conversationId = null): void
     {
+        $config = $this->settings->get();
+        if (empty($config['handoff_notify_agents'])) {
+            return;
+        }
+
         $agents = $this->listNotifiableAgents($roleId);
         if (empty($agents)) {
             return;
         }
 
         $label = $this->resolveConversationLabel($conversationId, $waNumber);
-        $message = 'Paciente ' . $label . " necesita asistencia.\nToca para tomar ✅";
-        if ($notes !== null && $notes !== '') {
-            $message .= "\n\nNota: " . $notes;
-        }
+        $message = $this->buildAgentMessage($label, $notes, $handoffId, $config);
+
+        $takeLabel = $this->resolveButtonLabel($config['handoff_button_take_label'] ?? 'Tomar', 'Tomar');
+        $ignoreLabel = $this->resolveButtonLabel($config['handoff_button_ignore_label'] ?? 'Ignorar', 'Ignorar');
 
         $buttons = [
-            ['id' => 'TOMAR_' . $handoffId, 'title' => 'Tomar'],
-            ['id' => 'IGNORAR_' . $handoffId, 'title' => 'Ignorar'],
+            ['id' => 'TOMAR_' . $handoffId, 'title' => $takeLabel],
+            ['id' => 'IGNORAR_' . $handoffId, 'title' => $ignoreLabel],
         ];
 
         $recipients = [];
@@ -614,8 +629,60 @@ class HandoffService
     private function resolveAssignedUntil(): string
     {
         $now = new DateTimeImmutable('now');
-        $until = $now->modify('+' . self::DEFAULT_TTL_HOURS . ' hours');
+        $config = $this->settings->get();
+        $ttl = isset($config['handoff_ttl_hours']) ? (int) $config['handoff_ttl_hours'] : self::DEFAULT_TTL_HOURS;
+        if ($ttl <= 0) {
+            $ttl = self::DEFAULT_TTL_HOURS;
+        }
+        if ($ttl > 168) {
+            $ttl = 168;
+        }
+        $until = $now->modify('+' . $ttl . ' hours');
 
         return $until->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function buildAgentMessage(string $contact, ?string $notes, int $handoffId, array $config): string
+    {
+        $template = $config['handoff_agent_message'] ?? '';
+        $template = is_string($template) ? trim($template) : '';
+
+        if ($template === '') {
+            $template = "Paciente {{contact}} necesita asistencia.\nToca para tomar ✅\n\nNota: {{notes}}";
+        }
+
+        $notesValue = $notes !== null ? trim($notes) : '';
+
+        $message = str_replace(
+            ['{{contact}}', '{{notes}}', '{{id}}'],
+            [$contact, $notesValue, (string) $handoffId],
+            $template
+        );
+
+        if ($notesValue === '') {
+            $message = preg_replace('/\\n?\\s*Nota:\\s*$/u', '', $message) ?? $message;
+            $message = str_replace('Nota:', '', $message);
+        }
+
+        $message = trim($message);
+
+        return $message === '' ? ('Paciente ' . $contact . ' necesita asistencia.') : $message;
+    }
+
+    private function resolveButtonLabel(string $value, string $fallback): string
+    {
+        $label = trim($value);
+        if ($label === '') {
+            $label = $fallback;
+        }
+
+        if (mb_strlen($label, 'UTF-8') > 20) {
+            $label = mb_substr($label, 0, 20, 'UTF-8');
+        }
+
+        return $label;
     }
 }

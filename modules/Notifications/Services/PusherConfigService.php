@@ -21,6 +21,7 @@ class PusherConfigService
     public const EVENT_EXAMS_EXPIRING = 'exams_expiring';
     public const EVENT_EXAM_REMINDER = 'exam_reminder';
     public const EVENT_TURNERO_UPDATED = 'turnero_updated';
+    public const EVENT_WHATSAPP_HANDOFF = 'whatsapp_handoff';
 
     private const DEFAULT_CHANNEL = 'solicitudes-kanban';
     private const DEFAULT_EVENTS = [
@@ -36,6 +37,7 @@ class PusherConfigService
         self::EVENT_EXAMS_EXPIRING => 'alerta-examenes-por-vencer',
         self::EVENT_EXAM_REMINDER => 'recordatorio-examen',
         self::EVENT_TURNERO_UPDATED => 'turnero.turno-actualizado',
+        self::EVENT_WHATSAPP_HANDOFF => 'whatsapp.handoff',
     ];
 
     private ?SettingsModel $settingsModel = null;

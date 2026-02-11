@@ -93,6 +93,21 @@ if (!function_exists('usuarios_permission_id')) {
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">WhatsApp del agente</label>
+                                <input type="text" name="whatsapp_number" class="form-control" value="<?= usuarios_form_old($usuario, 'whatsapp_number'); ?>" placeholder="+593...">
+                                <small class="text-muted">Se usará para notificaciones de handoff.</small>
+                                <?php if (!empty($errors['whatsapp_number'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['whatsapp_number'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label d-block">Notificaciones WhatsApp</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="whatsapp_notify" name="whatsapp_notify" <?= usuarios_form_checked($usuario, 'whatsapp_notify'); ?>>
+                                    <label class="form-check-label" for="whatsapp_notify">Recibir alertas de handoff</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Nombre *</label>
                                 <input type="text" name="first_name" class="form-control" maxlength="100"
                                        pattern="[A-Za-zÁÉÍÓÚáéíóúÜüÑñ\-'\"\.\s]+"

@@ -14,6 +14,11 @@ class ConversationRepository
         $this->pdo = $pdo;
     }
 
+    public function getPdo(): PDO
+    {
+        return $this->pdo;
+    }
+
     /**
      * @param array<string, mixed> $attributes
      */
@@ -191,7 +196,11 @@ class ConversationRepository
     public function listConversations(string $search = '', int $limit = 25): array
     {
         $search = trim($search);
-        $sql = 'SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, needs_human, handoff_notes, unread_count, created_at, updated_at FROM whatsapp_conversations';
+        $sql = 'SELECT c.id, c.wa_number, c.display_name, c.patient_hc_number, c.patient_full_name, c.last_message_at, c.last_message_direction, c.last_message_type, c.last_message_preview, c.needs_human, c.handoff_notes, c.handoff_role_id, c.assigned_user_id, c.assigned_at, c.handoff_requested_at, c.unread_count, c.created_at, c.updated_at, ' .
+            'COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username) AS assigned_user_name, r.name AS handoff_role_name ' .
+            'FROM whatsapp_conversations c ' .
+            'LEFT JOIN users u ON u.id = c.assigned_user_id ' .
+            'LEFT JOIN roles r ON r.id = c.handoff_role_id';
         $params = [];
 
         if ($search !== '') {
@@ -199,7 +208,7 @@ class ConversationRepository
             $params[':search'] = '%' . $search . '%';
         }
 
-        $sql .= ' ORDER BY COALESCE(last_message_at, updated_at, created_at) DESC, id DESC LIMIT :limit';
+        $sql .= ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC, c.id DESC LIMIT :limit';
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($params as $key => $value) {
@@ -216,7 +225,14 @@ class ConversationRepository
 
     public function findConversationById(int $conversationId): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT id, wa_number, display_name, patient_hc_number, patient_full_name, last_message_at, last_message_direction, last_message_type, last_message_preview, needs_human, handoff_notes, unread_count, created_at, updated_at FROM whatsapp_conversations WHERE id = :id LIMIT 1');
+        $stmt = $this->pdo->prepare(
+            'SELECT c.id, c.wa_number, c.display_name, c.patient_hc_number, c.patient_full_name, c.last_message_at, c.last_message_direction, c.last_message_type, c.last_message_preview, c.needs_human, c.handoff_notes, c.handoff_role_id, c.assigned_user_id, c.assigned_at, c.handoff_requested_at, c.unread_count, c.created_at, c.updated_at, ' .
+            'COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username) AS assigned_user_name, r.name AS handoff_role_name ' .
+            'FROM whatsapp_conversations c ' .
+            'LEFT JOIN users u ON u.id = c.assigned_user_id ' .
+            'LEFT JOIN roles r ON r.id = c.handoff_role_id ' .
+            'WHERE c.id = :id LIMIT 1'
+        );
         $stmt->execute([':id' => $conversationId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -251,16 +267,70 @@ class ConversationRepository
         return $id === false ? null : (int) $id;
     }
 
-    public function setHandoffFlag(int $conversationId, bool $needsHuman, ?string $notes = null): void
+    public function setHandoffFlag(int $conversationId, bool $needsHuman, ?string $notes = null, ?int $roleId = null): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, updated_at = NOW() WHERE id = :id'
+            'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, handoff_role_id = :role_id, ' .
+            'assigned_user_id = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_user_id END, ' .
+            'assigned_at = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_at END, ' .
+            'handoff_requested_at = CASE WHEN :needs_human = 1 THEN NOW() ELSE handoff_requested_at END, ' .
+            'updated_at = NOW() WHERE id = :id'
         );
         $stmt->execute([
             ':needs_human' => $needsHuman ? 1 : 0,
             ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
+            ':role_id' => $roleId,
             ':id' => $conversationId,
         ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function updateHandoffDetails(int $conversationId, ?string $notes = null, ?int $roleId = null): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET needs_human = 1, handoff_notes = :notes, handoff_role_id = :role_id, updated_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute([
+            ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
+            ':role_id' => $roleId,
+            ':id' => $conversationId,
+        ]);
+    }
+
+    public function assignConversation(int $conversationId, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET assigned_user_id = :user_id, assigned_at = COALESCE(assigned_at, NOW()), needs_human = 1, updated_at = NOW() ' .
+            'WHERE id = :id AND (assigned_user_id IS NULL OR assigned_user_id = :user_id)'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':id' => $conversationId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function transferConversation(int $conversationId, int $userId, ?string $notes = null): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET assigned_user_id = :user_id, assigned_at = NOW(), needs_human = 1, handoff_notes = :notes, updated_at = NOW() WHERE id = :id'
+        );
+        $stmt->execute([
+            ':user_id' => $userId,
+            ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
+            ':id' => $conversationId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function clearHandoff(int $conversationId): void
+    {
+        $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET needs_human = 0, handoff_notes = NULL, handoff_role_id = NULL, assigned_user_id = NULL, assigned_at = NULL, updated_at = NOW() WHERE id = :id'
+        )->execute([':id' => $conversationId]);
     }
 
     public function updateMessageStatus(string $waMessageId, string $status, ?string $timestamp = null): void

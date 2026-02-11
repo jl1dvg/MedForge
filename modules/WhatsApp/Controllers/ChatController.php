@@ -2,7 +2,10 @@
 
 namespace Modules\WhatsApp\Controllers;
 
+use Core\Auth;
 use Core\BaseController;
+use Core\Permissions;
+use Modules\Notifications\Services\PusherConfigService;
 use Modules\Shared\Services\SchemaInspector;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Services\ConversationService;
@@ -35,11 +38,18 @@ class ChatController extends BaseController
 
         $config = $this->settings->get();
         $isEnabled = (bool) ($config['enabled'] ?? false);
+        $authUser = Auth::user();
+        $permissions = $authUser['permisos'] ?? [];
+        $canAssign = Permissions::containsAny($permissions, ['whatsapp.chat.assign', 'whatsapp.manage', 'administrativo']);
+        $pusher = new PusherConfigService($this->pdo);
 
         $this->render(BASE_PATH . '/modules/WhatsApp/views/chat.php', [
             'pageTitle' => 'Chat de WhatsApp',
             'config' => $config,
             'isIntegrationEnabled' => $isEnabled,
+            'currentUser' => $authUser,
+            'canAssign' => $canAssign,
+            'realtime' => $pusher->getPublicConfig(),
             'scripts' => ['js/pages/whatsapp-chat.js'],
         ]);
     }
@@ -74,6 +84,161 @@ class ChatController extends BaseController
         }
 
         $this->json(['ok' => true, 'data' => $conversation]);
+    }
+
+    public function listAgents(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $roleId = $this->getQueryInt('role_id');
+        $agents = $this->conversations->listAgents($roleId);
+
+        $this->json(['ok' => true, 'data' => $agents]);
+    }
+
+    public function assignConversation(int $conversationId): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($currentUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
+
+            return;
+        }
+
+        $payload = $this->getBody();
+        $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : $currentUserId;
+
+        if ($targetUserId !== $currentUserId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+            $this->json(['ok' => false, 'error' => 'No tienes permisos para asignar a otro agente'], 403);
+
+            return;
+        }
+
+        $summary = $this->conversations->getConversationSummary($conversationId);
+        if ($summary === null) {
+            $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] !== $targetUserId) {
+            $this->json(['ok' => false, 'error' => 'La conversación ya está asignada a otro agente.'], 409);
+
+            return;
+        }
+
+        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] === $targetUserId) {
+            $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+            $this->json(['ok' => true, 'data' => $conversation]);
+
+            return;
+        }
+
+        $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
+        if ($roleId !== null && $roleId > 0) {
+            $agent = $this->resolveAgent($targetUserId);
+            if ($agent === null) {
+                $this->json(['ok' => false, 'error' => 'El agente seleccionado no es válido.'], 422);
+
+                return;
+            }
+            if (!empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+                $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
+
+                return;
+            }
+        }
+
+        $assigned = $this->conversations->assignConversation($conversationId, $targetUserId);
+        if (!$assigned) {
+            $this->json(['ok' => false, 'error' => 'No fue posible asignar la conversación.'], 409);
+
+            return;
+        }
+
+        $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+        $this->json(['ok' => true, 'data' => $conversation]);
+    }
+
+    public function transferConversation(int $conversationId): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($currentUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
+
+            return;
+        }
+
+        $payload = $this->getBody();
+        $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : 0;
+        $note = isset($payload['note']) ? trim((string) $payload['note']) : null;
+        if ($targetUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Debes indicar un agente para transferir.'], 422);
+
+            return;
+        }
+
+        $summary = $this->conversations->getConversationSummary($conversationId);
+        if ($summary === null) {
+            $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] !== $currentUserId
+            && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+            $this->json(['ok' => false, 'error' => 'Solo el agente asignado puede transferir esta conversación.'], 403);
+
+            return;
+        }
+
+        $agent = $this->resolveAgent($targetUserId);
+        if ($agent === null) {
+            $this->json(['ok' => false, 'error' => 'El agente seleccionado no es válido.'], 422);
+
+            return;
+        }
+
+        $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
+        if ($roleId !== null && $roleId > 0 && !empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId
+            && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+            $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
+
+            return;
+        }
+
+        if (!$this->conversations->transferConversation($conversationId, $targetUserId, $note)) {
+            $this->json(['ok' => false, 'error' => 'No fue posible transferir la conversación.'], 500);
+
+            return;
+        }
+
+        $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+        $this->json(['ok' => true, 'data' => $conversation]);
+    }
+
+    private function resolveAgent(int $userId): ?array
+    {
+        $agents = $this->conversations->listAgents();
+        foreach ($agents as $agent) {
+            if ((int) ($agent['id'] ?? 0) === $userId) {
+                return $agent;
+            }
+        }
+
+        return null;
     }
 
     public function sendMessage(): void

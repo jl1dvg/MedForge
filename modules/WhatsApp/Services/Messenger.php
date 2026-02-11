@@ -65,7 +65,7 @@ class Messenger
             ];
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'text', $message, $payload, $waMessageId);
             }
@@ -162,7 +162,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'interactive_buttons', $message, $payload, $waMessageId);
             }
@@ -297,7 +297,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'interactive_list', $message, $payload, $waMessageId);
             }
@@ -347,7 +347,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $preview = $caption !== '' ? $caption : '[Imagen]';
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'image', $preview, $payload, $waMessageId);
@@ -403,7 +403,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $preview = $filename !== '' ? $filename : '[Documento]';
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'document', $preview, $payload, $waMessageId);
@@ -448,7 +448,7 @@ class Messenger
             ];
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'audio', '[Audio]', $payload, $waMessageId);
             }
@@ -499,7 +499,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
-            if ($response !== null) {
+            if ($response !== null && $this->shouldRecord($options)) {
                 $preview = sprintf('[Ubicación] %.6f, %.6f', $latitude, $longitude);
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'location', $preview, $payload, $waMessageId);
@@ -660,6 +660,14 @@ class Messenger
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function shouldRecord(array $options): bool
+    {
+        return empty($options['skip_record']);
     }
 
     /**

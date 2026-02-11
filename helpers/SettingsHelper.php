@@ -1122,6 +1122,55 @@ class SettingsHelper
                             ),
                         ],
                     ],
+                    [
+                        'id' => 'handoff',
+                        'title' => 'Handoff a agentes',
+                        'description' => 'Define la asignación humana, tiempos de respuesta y notificaciones.',
+                        'fields' => [
+                            self::checkboxField(
+                                'whatsapp_handoff_notify_agents',
+                                'Notificar agentes por WhatsApp',
+                                true,
+                                'Envía un mensaje con botones de tomar/ignorar cuando se solicita asistencia humana.'
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_handoff_ttl_hours',
+                                    'Tiempo máximo por asignación (horas)',
+                                    24,
+                                    'Al vencer, el chat se re-encola automáticamente.'
+                                ),
+                                ['min' => 1, 'max' => 168]
+                            ),
+                            array_merge(
+                                self::textareaField(
+                                    'whatsapp_handoff_agent_message',
+                                    'Mensaje para agentes',
+                                    'Usa {{contact}} para el paciente, {{notes}} para la nota y {{id}} para el ID del handoff.',
+                                    "Paciente {{contact}} necesita asistencia.\\nToca para tomar ✅\\n\\nNota: {{notes}}"
+                                ),
+                                ['rows' => 4]
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_handoff_button_take_label',
+                                    'Etiqueta del botón Tomar',
+                                    false,
+                                    'Etiqueta breve que verá el agente al tomar el chat.'
+                                ),
+                                ['default' => 'Tomar']
+                            ),
+                            array_merge(
+                                self::textField(
+                                    'whatsapp_handoff_button_ignore_label',
+                                    'Etiqueta del botón Ignorar',
+                                    false,
+                                    'Etiqueta breve para descartar la asignación.'
+                                ),
+                                ['default' => 'Ignorar']
+                            ),
+                        ],
+                    ],
                 ],
             ],
             'integrations' => [

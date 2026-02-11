@@ -7,6 +7,7 @@ use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\ConversationService;
+use Modules\WhatsApp\Services\HandoffService;
 use Modules\WhatsApp\Services\PatientLookupService;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Support\DataProtectionFlow;
@@ -36,6 +37,7 @@ class WebhookController extends BaseController
     private array $flow;
     private DataProtectionFlow $dataProtection;
     private ConversationService $conversations;
+    private ?HandoffService $handoffs = null;
     private ?ScenarioEngine $scenarioEngine = null;
     private bool $flowHandlesConsent = false;
 
@@ -248,6 +250,11 @@ class WebhookController extends BaseController
             return;
         }
 
+        $text = $this->extractText($message);
+        if ($this->getHandoffService()->handleAgentReply($sender, $text)) {
+            return;
+        }
+
         try {
             $recorded = $this->conversations->recordIncoming($message);
             if ($recorded === false) {
@@ -257,7 +264,14 @@ class WebhookController extends BaseController
             error_log('No se pudo registrar el mensaje entrante de WhatsApp: ' . $exception->getMessage());
         }
 
-        $text = $this->extractText($message);
+        $conversationId = $this->conversations->findConversationIdByNumber($sender);
+        if ($conversationId !== null) {
+            $summary = $this->conversations->getConversationSummary($conversationId);
+            if ($summary !== null && !empty($summary['assigned_user_id'])) {
+                return;
+            }
+        }
+
         if ($text === null) {
             return;
         }
@@ -498,6 +512,11 @@ class WebhookController extends BaseController
      */
     private function resolveFlowHandlesConsent(array $flow): bool
     {
+        $settings = $flow['settings'] ?? [];
+        if (is_array($settings) && !empty($settings['free_mode'])) {
+            return true;
+        }
+
         foreach (($flow['scenarios'] ?? []) as $scenario) {
             if (!is_array($scenario)) {
                 continue;
@@ -526,5 +545,14 @@ class WebhookController extends BaseController
         }
 
         return false;
+    }
+
+    private function getHandoffService(): HandoffService
+    {
+        if (!$this->handoffs instanceof HandoffService) {
+            $this->handoffs = new HandoffService($this->pdo);
+        }
+
+        return $this->handoffs;
     }
 }

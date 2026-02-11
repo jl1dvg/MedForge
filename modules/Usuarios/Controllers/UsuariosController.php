@@ -9,6 +9,8 @@ use Modules\Usuarios\Models\UsuarioModel;
 use Modules\Usuarios\Support\PermissionRegistry;
 use Modules\Usuarios\Support\SensitiveDataProtector;
 use Modules\Usuarios\Support\UserMediaValidator;
+use Modules\WhatsApp\Config\WhatsAppSettings;
+use Modules\WhatsApp\Support\PhoneNumberFormatter;
 use PDO;
 
 class UsuariosController extends BaseController
@@ -44,6 +46,7 @@ class UsuariosController extends BaseController
     private RolModel $roles;
     private UserMediaValidator $mediaValidator;
     private SensitiveDataProtector $protector;
+    private ?WhatsAppSettings $whatsappSettings = null;
 
     public function __construct(PDO $pdo)
     {
@@ -52,6 +55,7 @@ class UsuariosController extends BaseController
         $this->roles = new RolModel($pdo);
         $this->mediaValidator = new UserMediaValidator();
         $this->protector = new SensitiveDataProtector();
+        $this->whatsappSettings = new WhatsAppSettings($pdo);
     }
 
     public function index(): void
@@ -144,6 +148,8 @@ class UsuariosController extends BaseController
             ]);
             return;
         }
+
+        $data = $this->normalizeWhatsappFields($data);
 
         if (isset($data['password'])) {
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
@@ -241,6 +247,8 @@ class UsuariosController extends BaseController
             ]);
             return;
         }
+
+        $data = $this->normalizeWhatsappFields($data);
 
         if (isset($data['password'])) {
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
@@ -345,6 +353,8 @@ class UsuariosController extends BaseController
         $data = [
             'username' => trim((string) ($_POST['username'] ?? '')),
             'email' => trim((string) ($_POST['email'] ?? '')),
+            'whatsapp_number' => trim((string) ($_POST['whatsapp_number'] ?? '')),
+            'whatsapp_notify' => isset($_POST['whatsapp_notify']) ? 1 : 0,
             'first_name' => $this->normalizeNameInput($_POST['first_name'] ?? ''),
             'middle_name' => $this->normalizeNameInput($_POST['middle_name'] ?? ''),
             'last_name' => $this->normalizeNameInput($_POST['last_name'] ?? ''),
@@ -398,6 +408,15 @@ class UsuariosController extends BaseController
 
         if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors['email'] = 'El correo electrónico no es válido.';
+        }
+
+        $whatsappNumber = trim((string) ($data['whatsapp_number'] ?? ''));
+        if ($whatsappNumber !== '' && $this->normalizeWhatsappNumber($whatsappNumber) === null) {
+            $errors['whatsapp_number'] = 'El número de WhatsApp no es válido.';
+        }
+
+        if (!empty($data['whatsapp_notify']) && $whatsappNumber === '') {
+            $errors['whatsapp_number'] = 'Debes registrar un número para activar notificaciones de WhatsApp.';
         }
 
         if ($data['birth_date'] !== null && !$this->isValidDate($data['birth_date'])) {
@@ -571,6 +590,37 @@ class UsuariosController extends BaseController
 
         $value = (int) $roleId;
         return $value > 0 ? $value : null;
+    }
+
+    private function normalizeWhatsappFields(array $data): array
+    {
+        $raw = trim((string) ($data['whatsapp_number'] ?? ''));
+        if ($raw === '') {
+            $data['whatsapp_number'] = null;
+            $data['whatsapp_notify'] = 0;
+
+            return $data;
+        }
+
+        $normalized = $this->normalizeWhatsappNumber($raw);
+        $data['whatsapp_number'] = $normalized ?? $raw;
+
+        return $data;
+    }
+
+    private function normalizeWhatsappNumber(string $number): ?string
+    {
+        $number = trim($number);
+        if ($number === '') {
+            return null;
+        }
+
+        $settings = $this->whatsappSettings instanceof WhatsAppSettings
+            ? $this->whatsappSettings
+            : new WhatsAppSettings($this->pdo);
+        $config = $settings->get();
+
+        return PhoneNumberFormatter::formatPhoneNumber($number, $config);
     }
 
     private function handleMediaUploads(array $data, ?array $existing): array

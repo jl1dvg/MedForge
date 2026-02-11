@@ -106,6 +106,8 @@ class UsuarioModel
             'username' => '',
             'password' => null,
             'email' => '',
+            'whatsapp_number' => null,
+            'whatsapp_notify' => 0,
             'first_name' => '',
             'middle_name' => '',
             'last_name' => '',

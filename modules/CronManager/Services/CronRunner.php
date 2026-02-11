@@ -19,6 +19,7 @@ use Modules\KPI\Services\KpiCalculationService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
+use Modules\WhatsApp\Services\HandoffService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -194,6 +195,15 @@ class CronRunner
                 'interval' => 600,
                 'callback' => function (): array {
                     return $this->runRemindersTask();
+                },
+            ],
+            [
+                'slug' => 'whatsapp-handoff-requeue',
+                'name' => 'Reencolar handoffs de WhatsApp',
+                'description' => 'Reencola conversaciones cuyo tiempo de asignación expiró.',
+                'interval' => 300,
+                'callback' => function (): array {
+                    return $this->runWhatsappHandoffRequeueTask();
                 },
             ],
             [
@@ -410,6 +420,29 @@ class CronRunner
             'details' => [
                 'sent' => count($sent),
             ],
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runWhatsappHandoffRequeueTask(): array
+    {
+        $service = new HandoffService($this->pdo);
+        $result = $service->requeueExpired();
+        $count = $result['count'] ?? 0;
+
+        if ($count === 0) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No hay handoffs vencidos para reencolar.',
+                'details' => $result,
+            ];
+        }
+
+        return [
+            'message' => sprintf('Se reencolaron %d handoffs vencidos.', $count),
+            'details' => $result,
         ];
     }
 
