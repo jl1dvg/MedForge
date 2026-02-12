@@ -200,10 +200,13 @@ sort($estadoOpciones);
                 </div>
             </form>
             <div class="table-responsive">
-                <table id="tablaImagenesRealizadas" class="table table-striped table-hover align-middle">
+                <table id="tablaImagenesRealizadas" class="table table-lg invoice-archive">
                     <thead>
                     <tr>
-                        <th class="text-center">Sel</th>
+                        <th class="text-center">
+                            <input type="checkbox" class="form-check-input" id="selectAllInformados"
+                                   aria-label="Seleccionar todos">
+                        </th>
                         <th>Fecha</th>
                         <th>Afiliación</th>
                         <th>Paciente</th>
@@ -237,9 +240,9 @@ sort($estadoOpciones);
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
                             data-informado="<?= $informado ? '1' : '0' ?>">
                             <td class="text-center select-cell">
-                                <div class="form-check d-inline-flex justify-content-center">
-                                    <input type="checkbox" class="form-check-input row-select" <?= $informado ? '' : 'disabled' ?>>
-                                </div>
+                                <input type="checkbox" class="form-check-input row-select"
+                                       value="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    <?= $informado ? '' : 'disabled' ?>>
                             </td>
                             <td><?= htmlspecialchars($fechaUi, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
@@ -283,12 +286,21 @@ sort($estadoOpciones);
     .table-group-row td {
         background-color: #f8f9fa;
     }
-    #tablaImagenesRealizadas .row-select {
+    #tablaImagenesRealizadas th:first-child,
+    #tablaImagenesRealizadas td:first-child {
+        width: 44px;
+        min-width: 44px;
+    }
+    #tablaImagenesRealizadas .row-select,
+    #tablaImagenesRealizadas .form-check-input {
         appearance: auto;
         -webkit-appearance: checkbox;
         width: 18px;
         height: 18px;
         opacity: 1;
+        visibility: visible;
+        display: inline-block;
+        position: static;
         margin: 0;
         cursor: pointer;
     }
@@ -384,6 +396,38 @@ sort($estadoOpciones);
             populateSelect(document.getElementById('filtroTipoExamen'), examenes);
 
             let activeTab = 'no-informados';
+            const selectAllInformados = document.getElementById('selectAllInformados');
+
+            function getDataRows() {
+                return Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]'));
+            }
+
+            function getVisibleSelectableRows() {
+                return getDataRows().filter(function (row) {
+                    const visible = row.style.display !== 'none';
+                    const informado = (row.dataset.informado || '0') === '1';
+                    return visible && informado;
+                });
+            }
+
+            function updateSelectAllState() {
+                if (!selectAllInformados) return;
+                const rowsVisible = getVisibleSelectableRows();
+                if (!rowsVisible.length) {
+                    selectAllInformados.checked = false;
+                    selectAllInformados.indeterminate = false;
+                    selectAllInformados.disabled = activeTab !== 'informados';
+                    return;
+                }
+                const total = rowsVisible.length;
+                const checked = rowsVisible.filter(function (row) {
+                    const checkbox = row.querySelector('.row-select');
+                    return checkbox && checkbox.checked;
+                }).length;
+                selectAllInformados.checked = checked > 0 && checked === total;
+                selectAllInformados.indeterminate = checked > 0 && checked < total;
+                selectAllInformados.disabled = activeTab !== 'informados';
+            }
 
             function refreshTabCounts() {
                 const totalInformados = rows.filter(function (row) {
@@ -409,6 +453,7 @@ sort($estadoOpciones);
                 }
                 applyPatientGrouping();
                 refreshTabCounts();
+                updateSelectAllState();
             }
 
             document.querySelectorAll('#tabInformes [data-tab]').forEach(function (btn) {
@@ -420,6 +465,42 @@ sort($estadoOpciones);
                     applyTabFilter(btn.getAttribute('data-tab'));
                 });
             });
+
+            if (selectAllInformados) {
+                selectAllInformados.addEventListener('change', function () {
+                    const shouldSelect = !!selectAllInformados.checked;
+                    getVisibleSelectableRows().forEach(function (row) {
+                        const checkbox = row.querySelector('.row-select');
+                        if (!checkbox || checkbox.disabled) return;
+                        checkbox.checked = shouldSelect;
+                    });
+                    updateSelectAllState();
+                });
+            }
+
+            const tbody = document.querySelector('#tablaImagenesRealizadas tbody');
+            if (tbody) {
+                tbody.addEventListener('click', function (event) {
+                    const cell = event.target.closest && event.target.closest('.select-cell');
+                    if (!cell || !tbody.contains(cell)) return;
+                    const checkbox = cell.querySelector('.row-select');
+                    if (!checkbox || checkbox.disabled) return;
+                    if (event.target && event.target.classList && event.target.classList.contains('row-select')) {
+                        event.stopPropagation();
+                        setTimeout(updateSelectAllState, 0);
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    checkbox.checked = !checkbox.checked;
+                    updateSelectAllState();
+                });
+                tbody.addEventListener('change', function (event) {
+                    if (event.target && event.target.classList && event.target.classList.contains('row-select')) {
+                        updateSelectAllState();
+                    }
+                });
+            }
 
             const modalEl = document.getElementById('modalInformeImagen');
             const templateContainer = document.getElementById('informeTemplateContainer');
@@ -724,16 +805,6 @@ sort($estadoOpciones);
                 });
             });
 
-            document.querySelectorAll('#tablaImagenesRealizadas tbody .select-cell').forEach(function (cell) {
-                cell.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const checkbox = cell.querySelector('.row-select');
-                    if (!checkbox || checkbox.disabled) return;
-                    checkbox.checked = !checkbox.checked;
-                });
-            });
-
             document.querySelectorAll('.btn-view-nas').forEach(function (btn) {
                 btn.addEventListener('click', function (event) {
                     event.preventDefault();
@@ -987,6 +1058,7 @@ sort($estadoOpciones);
                         const selectAll = !allGroupSelected(groupKey);
                         toggleGroupSelection(groupKey, selectAll);
                         btn.textContent = selectAll ? 'Quitar selección' : 'Seleccionar todo';
+                        updateSelectAllState();
                     });
                 });
 
@@ -1014,14 +1086,16 @@ sort($estadoOpciones);
                     deferRender: true,
                     processing: true,
                     columnDefs: [
-                        {targets: 0, orderable: false, searchable: false}
+                        {targets: 0, orderable: false, searchable: false, className: 'text-center select-cell'}
                     ],
                     initComplete: function () {
                         $('#tablaImagenesRealizadas').css('width', '100%').removeAttr('style');
+                        updateSelectAllState();
                     }
                 });
                 $('#tablaImagenesRealizadas').on('draw.dt', function () {
                     applyPatientGrouping();
+                    updateSelectAllState();
                 });
             }
 
