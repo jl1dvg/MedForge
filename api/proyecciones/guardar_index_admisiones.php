@@ -150,6 +150,11 @@ try {
         }
 
         try {
+            $auditType = PHP_SAPI === 'cli' ? 'cron' : 'api';
+            $auditIdentifier = PHP_SAPI === 'cli'
+                ? 'cron:' . basename((string) ($_SERVER['argv'][0] ?? 'unknown_script'))
+                : 'api:' . trim((string) ($_SERVER['REQUEST_URI'] ?? '/api/proyecciones/guardar_index_admisiones.php'));
+
             $patientParams = [
                 ':hc_number' => $item['hcNumber'],
                 ':fname' => $item['fname'] ?? '',
@@ -163,13 +168,17 @@ try {
                 ':afiliacion' => $item['afiliacion'] ?? null,
                 ':celular' => $item['telefono'] ?? null,
                 ':fecha_caducidad' => null,
+                ':created_by_type' => $auditType,
+                ':created_by_identifier' => $auditIdentifier,
+                ':updated_by_type' => $auditType,
+                ':updated_by_identifier' => $auditIdentifier,
             ];
 
             $sqlPatient = "
                 INSERT INTO patient_data
-                    (hc_number, fname, mname, lname, lname2, email, fecha_nacimiento, sexo, ciudad, afiliacion, celular, fecha_caducidad)
+                    (hc_number, fname, mname, lname, lname2, email, fecha_nacimiento, sexo, ciudad, afiliacion, celular, fecha_caducidad, created_by_type, created_by_identifier, updated_by_type, updated_by_identifier)
                 VALUES
-                    (:hc_number, :fname, :mname, :lname, :lname2, :email, :fecha_nacimiento, :sexo, :ciudad, :afiliacion, :celular, :fecha_caducidad)
+                    (:hc_number, :fname, :mname, :lname, :lname2, :email, :fecha_nacimiento, :sexo, :ciudad, :afiliacion, :celular, :fecha_caducidad, :created_by_type, :created_by_identifier, :updated_by_type, :updated_by_identifier)
                 ON DUPLICATE KEY UPDATE
                     fname = IF(VALUES(fname) = '' OR VALUES(fname) IS NULL, fname, VALUES(fname)),
                     mname = IF(VALUES(mname) = '' OR VALUES(mname) IS NULL, mname, VALUES(mname)),
@@ -181,7 +190,10 @@ try {
                     ciudad = IF(VALUES(ciudad) = '' OR VALUES(ciudad) IS NULL, ciudad, VALUES(ciudad)),
                     afiliacion = IF(VALUES(afiliacion) = '' OR VALUES(afiliacion) IS NULL, afiliacion, VALUES(afiliacion)),
                     celular = IF(VALUES(celular) = '' OR VALUES(celular) IS NULL, celular, VALUES(celular)),
-                    fecha_caducidad = IF(VALUES(fecha_caducidad) IS NULL, fecha_caducidad, VALUES(fecha_caducidad))
+                    fecha_caducidad = IF(VALUES(fecha_caducidad) IS NULL, fecha_caducidad, VALUES(fecha_caducidad)),
+                    updated_at = CURRENT_TIMESTAMP,
+                    updated_by_type = VALUES(updated_by_type),
+                    updated_by_identifier = VALUES(updated_by_identifier)
             ";
             $stmtPatient = $pdo->prepare($sqlPatient);
             $stmtPatient->execute($patientParams);

@@ -57,13 +57,21 @@ class GuardarConsultaController
 
             // 1) Upsert patient_data
             if (!empty($data['fechaNacimiento']) || !empty($data['sexo']) || !empty($data['celular']) || !empty($data['ciudad'])) {
-                $sqlPaciente = "INSERT INTO patient_data (hc_number, fecha_nacimiento, sexo, celular, ciudad)
-                            VALUES (:hc, :nac, :sexo, :cel, :ciudad)
+                $auditType = PHP_SAPI === 'cli' ? 'cron' : 'api';
+                $auditIdentifier = PHP_SAPI === 'cli'
+                    ? 'cron:' . basename((string) ($_SERVER['argv'][0] ?? 'unknown_script'))
+                    : 'api:' . trim((string) ($_SERVER['REQUEST_URI'] ?? '/consultas/guardar'));
+
+                $sqlPaciente = "INSERT INTO patient_data (hc_number, fecha_nacimiento, sexo, celular, ciudad, created_by_type, created_by_identifier, updated_by_type, updated_by_identifier)
+                            VALUES (:hc, :nac, :sexo, :cel, :ciudad, :created_by_type, :created_by_identifier, :updated_by_type, :updated_by_identifier)
                             ON DUPLICATE KEY UPDATE
                                 fecha_nacimiento = VALUES(fecha_nacimiento),
                                 sexo = VALUES(sexo),
                                 celular = VALUES(celular),
-                                ciudad = VALUES(ciudad)";
+                                ciudad = VALUES(ciudad),
+                                updated_at = CURRENT_TIMESTAMP,
+                                updated_by_type = VALUES(updated_by_type),
+                                updated_by_identifier = VALUES(updated_by_identifier)";
                 $stmt = $this->db->prepare($sqlPaciente);
                 $stmt->execute([
                     ':hc' => $hcNumber,
@@ -71,6 +79,10 @@ class GuardarConsultaController
                     ':sexo' => $data['sexo'] ?? null,
                     ':cel' => $data['celular'] ?? null,
                     ':ciudad' => $data['ciudad'] ?? null,
+                    ':created_by_type' => $auditType,
+                    ':created_by_identifier' => $auditIdentifier,
+                    ':updated_by_type' => $auditType,
+                    ':updated_by_identifier' => $auditIdentifier,
                 ]);
             }
 

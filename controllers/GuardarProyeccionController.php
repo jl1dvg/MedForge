@@ -368,6 +368,32 @@ class GuardarProyeccionController
             $params[':' . $column] = $value;
         }
 
+        $audit = $this->resolveAuditActor();
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'created_by_type')) {
+            $columns[] = 'created_by_type';
+            $placeholders[] = ':created_by_type';
+            $params[':created_by_type'] = $audit['type'];
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'created_by_identifier')) {
+            $columns[] = 'created_by_identifier';
+            $placeholders[] = ':created_by_identifier';
+            $params[':created_by_identifier'] = $audit['identifier'];
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_type')) {
+            $columns[] = 'updated_by_type';
+            $placeholders[] = ':updated_by_type';
+            $params[':updated_by_type'] = $audit['type'];
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_identifier')) {
+            $columns[] = 'updated_by_identifier';
+            $placeholders[] = ':updated_by_identifier';
+            $params[':updated_by_identifier'] = $audit['identifier'];
+        }
+
         if (count($columns) === 1) {
             return;
         }
@@ -378,6 +404,16 @@ class GuardarProyeccionController
                 '%1$s = IF(VALUES(%1$s) IS NULL OR VALUES(%1$s) = "", %1$s, VALUES(%1$s))',
                 $column
             );
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_at')) {
+            $updates[] = 'updated_at = CURRENT_TIMESTAMP';
+        }
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_type')) {
+            $updates[] = 'updated_by_type = VALUES(updated_by_type)';
+        }
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_identifier')) {
+            $updates[] = 'updated_by_identifier = VALUES(updated_by_identifier)';
         }
 
         $sql = sprintf(
@@ -436,6 +472,37 @@ class GuardarProyeccionController
 
         return $fields;
     }
+
+    /**
+     * @return array{type:string, identifier:string}
+     */
+    private function resolveAuditActor(): array
+    {
+        $sessionUserId = $_SESSION['user_id'] ?? null;
+        if (is_numeric($sessionUserId) && (int) $sessionUserId > 0) {
+            return [
+                'type' => 'user',
+                'identifier' => 'user:' . (string) (int) $sessionUserId,
+            ];
+        }
+
+        if (PHP_SAPI === 'cli') {
+            $script = $_SERVER['argv'][0] ?? 'unknown_script';
+
+            return [
+                'type' => 'cron',
+                'identifier' => 'cron:' . basename((string) $script),
+            ];
+        }
+
+        $requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
+
+        return [
+            'type' => 'api',
+            'identifier' => 'api:' . ($requestUri !== '' ? $requestUri : 'unknown_endpoint'),
+        ];
+    }
+
 
     private function normalizeDateField(?string $value): ?string
     {

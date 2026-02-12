@@ -450,6 +450,8 @@ class PacienteService
         $sexo = trim($sexo);
         $celular = trim($celular);
 
+        $audit = $this->resolveAuditActor();
+
         $stmt = $this->db->prepare(
             <<<'SQL'
             UPDATE patient_data
@@ -460,7 +462,10 @@ class PacienteService
                 afiliacion = :afiliacion,
                 fecha_nacimiento = :fecha_nacimiento,
                 sexo = :sexo,
-                celular = :celular
+                celular = :celular,
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by_type = :updated_by_type,
+                updated_by_identifier = :updated_by_identifier
             WHERE hc_number = :hc_number
             SQL
         );
@@ -474,6 +479,8 @@ class PacienteService
             ':fecha_nacimiento' => $fechaNacimiento,
             ':sexo' => $sexo,
             ':celular' => $celular,
+            ':updated_by_type' => $audit['type'],
+            ':updated_by_identifier' => $audit['identifier'],
             ':hc_number' => $hcNumber,
         ]);
 
@@ -505,6 +512,37 @@ class PacienteService
             'customer_id' => $identity['customer_id'] ?? null,
         ], true);
     }
+
+    /**
+     * @return array{type:string, identifier:string}
+     */
+    private function resolveAuditActor(): array
+    {
+        $sessionUserId = $_SESSION['user_id'] ?? null;
+        if (is_numeric($sessionUserId) && (int) $sessionUserId > 0) {
+            return [
+                'type' => 'user',
+                'identifier' => 'user:' . (string) (int) $sessionUserId,
+            ];
+        }
+
+        if (PHP_SAPI === 'cli') {
+            $script = $_SERVER['argv'][0] ?? 'unknown_script';
+
+            return [
+                'type' => 'cron',
+                'identifier' => 'cron:' . basename((string) $script),
+            ];
+        }
+
+        $requestUri = trim((string) ($_SERVER['REQUEST_URI'] ?? ''));
+
+        return [
+            'type' => 'api',
+            'identifier' => 'api:' . ($requestUri !== '' ? $requestUri : 'unknown_endpoint'),
+        ];
+    }
+
 
     public function getAfiliacionesDisponibles(): array
     {

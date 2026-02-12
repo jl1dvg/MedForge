@@ -6,6 +6,7 @@ namespace Modules\Shared\Services;
 
 use InvalidArgumentException;
 use PDO;
+use PDOException;
 
 /**
  * Coordina la sincronización de identidades de pacientes/clients usando hc_number.
@@ -352,6 +353,8 @@ class PatientIdentityService
      */
     private function insertPatient(string $hcNumber, array $fields): void
     {
+        $this->applyPatientAuditFields($fields, true);
+
         $columns = ['hc_number'];
         $placeholders = [':hc_number'];
         $params = [':hc_number' => $hcNumber];
@@ -383,9 +386,7 @@ class PatientIdentityService
      */
     private function updatePatient(string $hcNumber, array $fields): void
     {
-        if (empty($fields)) {
-            return;
-        }
+        $this->applyPatientAuditFields($fields, false);
 
         $sets = [];
         $params = [':hc' => $hcNumber];
@@ -399,6 +400,70 @@ class PatientIdentityService
             $update = $this->pdo->prepare($sql);
             $update->execute($params);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function applyPatientAuditFields(array &$fields, bool $isInsert): void
+    {
+        $actor = $this->resolveActor();
+
+        if ($isInsert && $this->schemaInspector->tableHasColumn('patient_data', 'created_at')) {
+            $fields['created_at'] = date('Y-m-d H:i:s');
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_at')) {
+            $fields['updated_at'] = date('Y-m-d H:i:s');
+        }
+
+        if ($isInsert && $this->schemaInspector->tableHasColumn('patient_data', 'created_by_type')) {
+            $fields['created_by_type'] = $actor['type'];
+        }
+
+        if ($isInsert && $this->schemaInspector->tableHasColumn('patient_data', 'created_by_identifier')) {
+            $fields['created_by_identifier'] = $actor['identifier'];
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_type')) {
+            $fields['updated_by_type'] = $actor['type'];
+        }
+
+        if ($this->schemaInspector->tableHasColumn('patient_data', 'updated_by_identifier')) {
+            $fields['updated_by_identifier'] = $actor['identifier'];
+        }
+    }
+
+    /**
+     * @return array{type:string, identifier:string}
+     */
+    private function resolveActor(): array
+    {
+        $sessionUserId = $_SESSION['user_id'] ?? null;
+        if (is_numeric($sessionUserId) && (int) $sessionUserId > 0) {
+            return [
+                'type' => 'user',
+                'identifier' => 'user:' . (string) (int) $sessionUserId,
+            ];
+        }
+
+        $phpSapi = PHP_SAPI;
+        if ($phpSapi === 'cli') {
+            $script = $_SERVER['argv'][0] ?? 'unknown_script';
+
+            return [
+                'type' => 'cron',
+                'identifier' => 'cron:' . basename((string) $script),
+            ];
+        }
+
+        $requestUri = $_SERVER['REQUEST_URI'] ?? '';
+        $uri = trim((string) $requestUri);
+
+        return [
+            'type' => 'api',
+            'identifier' => 'api:' . ($uri !== '' ? $uri : 'unknown_endpoint'),
+        ];
     }
 
     private function patientHasSplitNameColumns(): bool
