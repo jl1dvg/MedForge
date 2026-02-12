@@ -177,9 +177,27 @@ if (!empty($scrapingOutput)):
                             alert(`📊 Resultados:\n➕ Nuevos: ${data.nuevos.length}\n⛔ Existentes: ${data.existentes.length}`);
 
                             // Llamada unificada para registrar procedimientos completos
-                            const codigosManual = {
-                                "SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE": "92002"
-                                //"SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE": "92012"
+                            const codigoManual = (procedimiento) => {
+                                const texto = (procedimiento || '').toUpperCase().trim();
+                                if (
+                                    texto.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE') ||
+                                    texto.startsWith('SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE')
+                                ) {
+                                    return '92002';
+                                }
+                                if (
+                                    texto.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA') ||
+                                    texto.startsWith('SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA') ||
+                                    texto.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL') ||
+                                    texto.startsWith('SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL') ||
+                                    texto.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA') ||
+                                    texto.startsWith('SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA') ||
+                                    texto.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES') ||
+                                    texto.startsWith('SER-OFT-007 - REVISION DE EXAMENES')
+                                ) {
+                                    return '92012';
+                                }
+                                return '';
                             };
                             const payloadCompleto = {
                                 procedimientos: seleccionados.map(p => {
@@ -191,7 +209,7 @@ if (!empty($scrapingOutput)):
                                         codigo = match[1];
                                         detalle = match[2].trim();
                                     } else {
-                                        codigo = codigosManual[p.procedimiento] || '';
+                                        codigo = codigoManual(p.procedimiento);
                                         detalle = p.procedimiento;
                                     }
                                     return {

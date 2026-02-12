@@ -66,9 +66,10 @@ class PreviewService
                     $detalle = null;
                     $texto = $p['procInterno'] ?? '';
 
-                    // Consultas específicas (SER-OFT-006 / SER-OFT-003) deben facturarse como 92002
-                    if ($this->esConsultaOftalmo92002($texto)) {
-                        $codigo = '92002';
+                    // Consultas oftalmológicas (SER-OFT-003/004/005/006/007) con códigos diferenciados
+                    $codigoConsulta = $this->obtenerCodigoConsultaOftalmo($texto);
+                    if ($codigoConsulta) {
+                        $codigo = $codigoConsulta;
                         $detalle = $this->detalleConsultaOftalmo($texto);
                         $esConsulta = true;
                     } elseif (isset($p['procInterno']) && preg_match('/-\\s+(\\d{5,6})\\s+-\\s+(.+)$/', $p['procInterno'], $matches)) {
@@ -119,8 +120,9 @@ class PreviewService
 
             $procTexto = $procTexto ?: '';
 
-            // Si es una consulta SER-OFT-006/003, facturar como 92002
-            if ($this->esConsultaOftalmo92002($procTexto)) {
+            // Si es consulta oftalmológica, facturar con el código definido por SER-OFT
+            $codigoConsulta = $this->obtenerCodigoConsultaOftalmo($procTexto);
+            if ($codigoConsulta) {
                 $esConsulta = true;
                 $tarifarioStmt = $this->db->prepare("
                     SELECT valor_facturar_nivel3, descripcion 
@@ -128,12 +130,11 @@ class PreviewService
                     WHERE codigo = :codigo OR codigo = :codigo_sin_0 LIMIT 1
                 ");
 
-                $codigoConsulta = '92002';
                 $detalleConsulta = $this->detalleConsultaOftalmo($procTexto);
                 $tarifa = $this->obtenerTarifaCodigo($tarifarioStmt, $codigoConsulta);
                 $precio = $tarifa['precio'];
                 if ($tarifa['sinResultado']) {
-                    $this->logPreviewDebug('Tarifa no encontrada para consulta 92002 (fallback)', [
+                    $this->logPreviewDebug('Tarifa no encontrada para consulta oftalmo (fallback)', [
                         'codigo' => $codigoConsulta,
                         'detalle' => $detalleConsulta,
                         'texto' => $procTexto,
@@ -552,12 +553,24 @@ class PreviewService
         error_log('[PreviewImagen] ' . $mensaje . ' ' . json_encode($context));
     }
 
-    private function esConsultaOftalmo92002(string $texto): bool
+    private function obtenerCodigoConsultaOftalmo(string $texto): ?string
     {
         $t = strtoupper(trim($texto));
         // tolera sufijos como "... ojo derecho" etc.
-        return str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA')
-            || str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE');
+        if (str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE')) {
+            return '92002';
+        }
+
+        if (
+            str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA')
+            || str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL')
+            || str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA')
+            || str_starts_with($t, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES')
+        ) {
+            return '92012';
+        }
+
+        return null;
     }
 
     private function detalleConsultaOftalmo(string $texto): string

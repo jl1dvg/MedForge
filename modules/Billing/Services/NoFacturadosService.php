@@ -48,8 +48,11 @@ class NoFacturadosService
                   AND (
                         UPPER(pr.procedimiento_proyectado) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
                         OR (
-                            UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
-                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                            UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA%'
+                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL%'
+                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
+                            OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES%'
                         )
                   )
 
@@ -77,8 +80,11 @@ class NoFacturadosService
                   AND (
                         UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
                         OR (
-                            UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
-                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                            UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'
+                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA%'
+                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL%'
+                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'
+                            OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES%'
                         )
                   )
             ) AS base
