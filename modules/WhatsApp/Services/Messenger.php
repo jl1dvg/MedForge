@@ -13,6 +13,14 @@ class Messenger
     private WhatsAppSettings $settings;
     private TransportInterface $transport;
     private ConversationService $conversations;
+    /**
+     * @var array<string, mixed>|null
+     */
+    private ?array $lastTransportError = null;
+    /**
+     * @var array<string, mixed>|null
+     */
+    private ?array $lastTransportResponse = null;
 
     public function __construct(PDO $pdo, ?TransportInterface $transport = null)
     {
@@ -42,6 +50,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $message = MessageSanitizer::sanitize($message);
         if ($message === '') {
             return false;
@@ -65,6 +74,7 @@ class Messenger
             ];
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'text', $message, $payload, $waMessageId);
@@ -88,6 +98,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $message = MessageSanitizer::sanitize($message);
         if ($message === '') {
             return false;
@@ -162,6 +173,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'interactive_buttons', $message, $payload, $waMessageId);
@@ -185,6 +197,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $message = MessageSanitizer::sanitize($message);
         if ($message === '') {
             return false;
@@ -297,6 +310,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'interactive_list', $message, $payload, $waMessageId);
@@ -319,6 +333,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $url = trim($url);
         if ($url === '') {
             return false;
@@ -347,6 +362,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $preview = $caption !== '' ? $caption : '[Imagen]';
                 $waMessageId = $this->extractMessageId($response);
@@ -370,6 +386,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $url = trim($url);
         if ($url === '') {
             return false;
@@ -403,6 +420,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $preview = $filename !== '' ? $filename : '[Documento]';
                 $waMessageId = $this->extractMessageId($response);
@@ -426,6 +444,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $url = trim($url);
         if ($url === '') {
             return false;
@@ -442,13 +461,14 @@ class Messenger
                 'messaging_product' => 'whatsapp',
                 'to' => $recipient,
                 'type' => 'audio',
-                'audio' => [
-                    'link' => $url,
-                ],
-            ];
+            'audio' => [
+                'link' => $url,
+            ],
+        ];
 
-            $response = $this->transport->send($config, $payload);
-            if ($response !== null && $this->shouldRecord($options)) {
+        $response = $this->transport->send($config, $payload);
+        $this->captureTransportDiagnostics();
+        if ($response !== null && $this->shouldRecord($options)) {
                 $waMessageId = $this->extractMessageId($response);
                 $this->conversations->recordOutgoing($recipient, 'audio', '[Audio]', $payload, $waMessageId);
             }
@@ -470,6 +490,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $name = isset($options['name']) ? MessageSanitizer::sanitize((string) $options['name']) : '';
         $address = isset($options['address']) ? MessageSanitizer::sanitize((string) $options['address']) : '';
 
@@ -499,6 +520,7 @@ class Messenger
             }
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null && $this->shouldRecord($options)) {
                 $preview = sprintf('[Ubicación] %.6f, %.6f', $latitude, $longitude);
                 $waMessageId = $this->extractMessageId($response);
@@ -522,6 +544,7 @@ class Messenger
             return false;
         }
 
+        $this->resetTransportDiagnostics();
         $name = trim((string) ($template['name'] ?? ''));
         $language = trim((string) ($template['language'] ?? ''));
 
@@ -559,6 +582,7 @@ class Messenger
             ];
 
             $response = $this->transport->send($config, $payload);
+            $this->captureTransportDiagnostics();
             if ($response !== null) {
                 $preview = '[Plantilla] ' . $name;
                 $waMessageId = $this->extractMessageId($response);
@@ -569,6 +593,36 @@ class Messenger
         }
 
         return $allSucceeded;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getLastTransportError(): ?array
+    {
+        return $this->lastTransportError;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getLastTransportResponse(): ?array
+    {
+        return $this->lastTransportResponse;
+    }
+
+    private function resetTransportDiagnostics(): void
+    {
+        $this->lastTransportError = null;
+        $this->lastTransportResponse = null;
+    }
+
+    private function captureTransportDiagnostics(): void
+    {
+        if ($this->transport instanceof CloudApiTransport) {
+            $this->lastTransportError = $this->transport->getLastError();
+            $this->lastTransportResponse = $this->transport->getLastResponse();
+        }
     }
 
     /**

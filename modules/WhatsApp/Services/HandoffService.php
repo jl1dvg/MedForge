@@ -367,11 +367,15 @@ class HandoffService
     {
         $config = $this->settings->get();
         if (empty($config['handoff_notify_agents'])) {
+            $this->handoffs->insertEvent($handoffId, 'notify_skipped', null, 'Notificación desactivada en Settings.');
+
             return;
         }
 
         $agents = $this->listNotifiableAgents($roleId);
         if (empty($agents)) {
+            $this->handoffs->insertEvent($handoffId, 'notify_skipped', null, 'Sin agentes notificables para este rol.');
+
             return;
         }
 
@@ -395,12 +399,24 @@ class HandoffService
         }
 
         if (empty($recipients)) {
+            $this->handoffs->insertEvent($handoffId, 'notify_skipped', null, 'Agentes sin número de WhatsApp configurado.');
+
             return;
         }
 
-        $this->messenger->sendInteractiveButtons($recipients, $message, $buttons, [
+        $sent = $this->messenger->sendInteractiveButtons($recipients, $message, $buttons, [
             'skip_record' => true,
         ]);
+
+        if ($sent) {
+            $this->handoffs->insertEvent($handoffId, 'notified', null, 'Notificado a ' . count($recipients) . ' agentes.');
+
+            return;
+        }
+
+        $error = $this->messenger->getLastTransportError();
+        $note = $this->formatTransportError($error);
+        $this->handoffs->insertEvent($handoffId, 'notify_failed', null, $note);
     }
 
     private function listNotifiableAgents(?int $roleId = null): array
@@ -670,6 +686,50 @@ class HandoffService
         $message = trim($message);
 
         return $message === '' ? ('Paciente ' . $contact . ' necesita asistencia.') : $message;
+    }
+
+    /**
+     * @param array<string, mixed>|null $error
+     */
+    private function formatTransportError(?array $error): string
+    {
+        if ($error === null) {
+            return 'No fue posible enviar la notificación a agentes.';
+        }
+
+        $parts = [];
+        if (!empty($error['http_code'])) {
+            $parts[] = 'HTTP ' . $error['http_code'];
+        }
+
+        $message = isset($error['message']) ? trim((string) $error['message']) : '';
+        if ($message !== '') {
+            $parts[] = $message;
+        }
+
+        $details = $error['details'] ?? null;
+        if (is_array($details) && isset($details['error']) && is_array($details['error'])) {
+            $meta = [];
+            if (!empty($details['error']['message'])) {
+                $meta[] = (string) $details['error']['message'];
+            }
+            if (!empty($details['error']['code'])) {
+                $meta[] = 'code ' . (string) $details['error']['code'];
+            }
+            if (!empty($details['error']['type'])) {
+                $meta[] = (string) $details['error']['type'];
+            }
+            if (!empty($details['error']['error_subcode'])) {
+                $meta[] = 'subcode ' . (string) $details['error']['error_subcode'];
+            }
+            if (!empty($meta)) {
+                $parts[] = 'Meta: ' . implode(' · ', $meta);
+            }
+        }
+
+        $note = trim(implode(' | ', $parts));
+
+        return $note !== '' ? $note : 'No fue posible enviar la notificación a agentes.';
     }
 
     private function resolveButtonLabel(string $value, string $fallback): string

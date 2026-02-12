@@ -6,6 +6,14 @@ use RuntimeException;
 
 class OpenAIHelper
 {
+    private const DEFAULT_TIMEOUT_SECONDS = 20;
+    private const DEFAULT_CONNECT_TIMEOUT_SECONDS = 5;
+    private const DEFAULT_MAX_CALLS_PER_REQUEST = 8;
+
+    /** @var array<string, string> */
+    private static array $responseCache = [];
+    private static int $callsThisRequest = 0;
+
     private string $apiKey;
     private string $endpoint;
     private string $model;
@@ -78,7 +86,29 @@ class OpenAIHelper
      */
     public function respond(string $input, ?int $maxOutputTokens = null): string
     {
+        if ($this->isAiDisabled()) {
+            throw new RuntimeException('La generación con IA está deshabilitada por configuración (OPENAI_DISABLED).');
+        }
+
+        $maxCallsPerRequest = $this->resolvePositiveIntEnv('OPENAI_MAX_CALLS_PER_REQUEST', self::DEFAULT_MAX_CALLS_PER_REQUEST);
+        if (self::$callsThisRequest >= $maxCallsPerRequest) {
+            throw new RuntimeException('Se alcanzó el límite de llamadas IA para esta solicitud (OPENAI_MAX_CALLS_PER_REQUEST).');
+        }
+
         $maxTokens = $maxOutputTokens ?? $this->defaultMaxOutputTokens;
+        $cacheKey = hash('sha256', implode('|', [
+            $this->endpoint,
+            $this->model,
+            (string) $maxTokens,
+            trim($input),
+        ]));
+
+        if (isset(self::$responseCache[$cacheKey])) {
+            return self::$responseCache[$cacheKey];
+        }
+
+        self::$callsThisRequest++;
+
         $payload = [
             'model' => $this->model,
             'input' => $input,
@@ -100,7 +130,8 @@ class OpenAIHelper
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_CONNECTTIMEOUT => $this->resolvePositiveIntEnv('OPENAI_CONNECT_TIMEOUT', self::DEFAULT_CONNECT_TIMEOUT_SECONDS),
+            CURLOPT_TIMEOUT => $this->resolvePositiveIntEnv('OPENAI_TIMEOUT', self::DEFAULT_TIMEOUT_SECONDS),
         ]);
 
         $raw = curl_exec($ch);
@@ -154,7 +185,26 @@ class OpenAIHelper
             error_log('OpenAIHelper respond(): respuesta cruda sin texto detectable: ' . $raw);
         }
 
+        self::$responseCache[$cacheKey] = $text;
+
         return $text;
+    }
+
+    private function isAiDisabled(): bool
+    {
+        $value = trim((string) ($_ENV['OPENAI_DISABLED'] ?? getenv('OPENAI_DISABLED') ?: ''));
+        return $value !== '' && in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function resolvePositiveIntEnv(string $key, int $default): int
+    {
+        $raw = trim((string) ($_ENV[$key] ?? getenv($key) ?: ''));
+        if ($raw === '' || !is_numeric($raw)) {
+            return $default;
+        }
+
+        $value = (int) $raw;
+        return $value > 0 ? $value : $default;
     }
 
     /** ===== Casos de uso clínicos (tus funciones) ===== */

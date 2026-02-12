@@ -160,15 +160,14 @@ class CronTaskRepository
                  duration_ms = :duration
              WHERE id = :id'
         );
-        $stmt->execute([
-            ':status' => $status,
-            ':finished_at' => $finishedAt->format('Y-m-d H:i:s'),
-            ':message' => $message,
-            ':output' => $this->encodeJson($details),
-            ':error' => $error,
-            ':duration' => $durationMs >= 0 ? $durationMs : null,
-            ':id' => $logId,
-        ]);
+        $stmt->bindValue(':status', $status);
+        $stmt->bindValue(':finished_at', $finishedAt->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':message', $message);
+        $stmt->bindValue(':output', $this->encodeJson($details));
+        $stmt->bindValue(':error', $error);
+        $stmt->bindValue(':duration', $durationMs >= 0 ? $durationMs : null, $durationMs >= 0 ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':id', $logId, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
     public function markSuccess(
@@ -193,14 +192,13 @@ class CronTaskRepository
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = :id'
         );
-        $stmt->execute([
-            ':last_run' => $runAt->format('Y-m-d H:i:s'),
-            ':next_run' => $nextRun->format('Y-m-d H:i:s'),
-            ':message' => $message,
-            ':output' => $this->encodeJson($details),
-            ':duration' => $durationMs >= 0 ? $durationMs : null,
-            ':id' => $taskId,
-        ]);
+        $stmt->bindValue(':last_run', $runAt->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':next_run', $nextRun->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':message', $message);
+        $stmt->bindValue(':output', $this->encodeJson($details));
+        $stmt->bindValue(':duration', $durationMs >= 0 ? $durationMs : null, $durationMs >= 0 ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':id', $taskId, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
     public function markFailure(
@@ -225,15 +223,14 @@ class CronTaskRepository
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = :id'
         );
-        $stmt->execute([
-            ':last_run' => $runAt->format('Y-m-d H:i:s'),
-            ':next_run' => $nextRun->format('Y-m-d H:i:s'),
-            ':message' => $message,
-            ':output' => $this->encodeJson($details),
-            ':error' => $message,
-            ':duration' => $durationMs >= 0 ? $durationMs : null,
-            ':id' => $taskId,
-        ]);
+        $stmt->bindValue(':last_run', $runAt->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':next_run', $nextRun->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':message', $message);
+        $stmt->bindValue(':output', $this->encodeJson($details));
+        $stmt->bindValue(':error', $message);
+        $stmt->bindValue(':duration', $durationMs >= 0 ? $durationMs : null, $durationMs >= 0 ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':id', $taskId, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
     public function markSkipped(
@@ -256,14 +253,13 @@ class CronTaskRepository
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = :id'
         );
-        $stmt->execute([
-            ':last_run' => $runAt->format('Y-m-d H:i:s'),
-            ':next_run' => $nextRun->format('Y-m-d H:i:s'),
-            ':message' => $message,
-            ':output' => $this->encodeJson($details),
-            ':duration' => $durationMs >= 0 ? $durationMs : null,
-            ':id' => $taskId,
-        ]);
+        $stmt->bindValue(':last_run', $runAt->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':next_run', $nextRun->format('Y-m-d H:i:s'));
+        $stmt->bindValue(':message', $message);
+        $stmt->bindValue(':output', $this->encodeJson($details));
+        $stmt->bindValue(':duration', $durationMs >= 0 ? $durationMs : null, $durationMs >= 0 ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':id', $taskId, PDO::PARAM_INT);
+        $stmt->execute();
     }
 
     private function nextRunTime(DateTimeImmutable $runAt, int $interval): DateTimeImmutable
