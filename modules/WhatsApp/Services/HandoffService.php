@@ -10,6 +10,7 @@ use Modules\WhatsApp\Repositories\ConversationRepository;
 use Modules\WhatsApp\Repositories\HandoffRepository;
 use Modules\WhatsApp\Support\PhoneNumberFormatter;
 use PDO;
+use Throwable;
 
 class HandoffService
 {
@@ -72,12 +73,15 @@ class HandoffService
             if ($isAssigned) {
                 $this->conversations->updateHandoffDetails($conversationId, $notes, $resolvedRoleId);
             } else {
-                $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
+                try {
+                    $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
+                } catch (Throwable $exception) {
+                    $this->handoffs->insertEvent((int) $active['id'], 'conversation_update_failed', null, $this->sanitizeNotes($exception->getMessage()));
+                }
             }
             $this->handoffs->insertEvent((int) $active['id'], 'requested', null, $notes);
             if (!$isAssigned) {
-                $this->notifyHandoff($conversationId);
-                $this->notifyAgents($normalized, (int) $active['id'], $resolvedRoleId, $notes, $conversationId);
+                $this->dispatchHandoffNotifications($conversationId, $normalized, (int) $active['id'], $resolvedRoleId, $notes);
             }
 
             return (int) $active['id'];
@@ -95,11 +99,31 @@ class HandoffService
         ]);
 
         $this->handoffs->insertEvent($handoffId, 'queued', null, $notes);
-        $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
-        $this->notifyHandoff($conversationId);
-        $this->notifyAgents($normalized, $handoffId, $resolvedRoleId, $notes, $conversationId);
+        try {
+            $this->conversations->setHandoffFlag($conversationId, true, $notes, $resolvedRoleId);
+        } catch (Throwable $exception) {
+            $this->handoffs->insertEvent($handoffId, 'conversation_update_failed', null, $this->sanitizeNotes($exception->getMessage()));
+        }
+        $this->dispatchHandoffNotifications($conversationId, $normalized, $handoffId, $resolvedRoleId, $notes);
 
         return $handoffId;
+    }
+
+    private function dispatchHandoffNotifications(int $conversationId, string $waNumber, int $handoffId, ?int $roleId, ?string $notes): void
+    {
+        $this->handoffs->insertEvent($handoffId, 'notify_started', null, 'Iniciando notificación de handoff.');
+
+        try {
+            $this->notifyHandoff($conversationId);
+        } catch (Throwable $exception) {
+            $this->handoffs->insertEvent($handoffId, 'notify_realtime_failed', null, $this->sanitizeNotes($exception->getMessage()));
+        }
+
+        try {
+            $this->notifyAgents($waNumber, $handoffId, $roleId, $notes, $conversationId);
+        } catch (Throwable $exception) {
+            $this->handoffs->insertEvent($handoffId, 'notify_failed', null, 'Error interno al notificar agentes: ' . $this->sanitizeNotes($exception->getMessage()));
+        }
     }
 
     public function assignConversation(int $conversationId, int $agentId, ?int $actorId = null): bool
@@ -372,7 +396,14 @@ class HandoffService
             return;
         }
 
-        $agents = $this->listNotifiableAgents($roleId);
+        $selection = $this->listNotifiableAgentsWithDiagnostics($roleId);
+        $agents = $selection['agents'];
+        $this->handoffs->insertEvent(
+            $handoffId,
+            'notify_selection',
+            null,
+            $selection['note']
+        );
         if (empty($agents)) {
             $this->handoffs->insertEvent($handoffId, 'notify_skipped', null, 'Sin agentes notificables para este rol.');
 
@@ -419,7 +450,10 @@ class HandoffService
         $this->handoffs->insertEvent($handoffId, 'notify_failed', null, $note);
     }
 
-    private function listNotifiableAgents(?int $roleId = null): array
+    /**
+     * @return array{agents: array<int, array{id:int,name:string,whatsapp_number:string,role_id:int|null}>, note:string}
+     */
+    private function listNotifiableAgentsWithDiagnostics(?int $roleId = null): array
     {
         $sql = 'SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.nombre, u.permisos, u.role_id, u.whatsapp_number, u.whatsapp_notify, r.permissions AS role_permissions ' .
             'FROM users u LEFT JOIN roles r ON r.id = u.role_id';
@@ -435,24 +469,39 @@ class HandoffService
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (!is_array($rows)) {
-            return [];
+            return [
+                'agents' => [],
+                'note' => 'No se pudo obtener usuarios candidatos para notificación.',
+            ];
         }
 
         $agents = [];
+        $excludedNoPermission = 0;
+        $excludedNoNumber = 0;
+        $excludedNotifyDisabled = 0;
+        $excludedInvalidNumber = 0;
         foreach ($rows as $row) {
             $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
             if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.manage'])) {
+                $excludedNoPermission++;
                 continue;
             }
 
             $whatsappNumber = isset($row['whatsapp_number']) ? trim((string) $row['whatsapp_number']) : '';
             $notify = isset($row['whatsapp_notify']) ? (int) $row['whatsapp_notify'] : 0;
-            if ($whatsappNumber === '' || $notify !== 1) {
+            if ($notify !== 1) {
+                $excludedNotifyDisabled++;
+                continue;
+            }
+
+            if ($whatsappNumber === '') {
+                $excludedNoNumber++;
                 continue;
             }
 
             $normalizedNumber = $this->normalizeNumber($whatsappNumber);
             if ($normalizedNumber === null) {
+                $excludedInvalidNumber++;
                 continue;
             }
 
@@ -465,7 +514,21 @@ class HandoffService
             ];
         }
 
-        return $agents;
+        $note = sprintf(
+            'Candidatos evaluados: %d | notificados: %d | sin permiso: %d | whatsapp_notify=0: %d | sin número: %d | número inválido: %d | filtro rol: %s',
+            count($rows),
+            count($agents),
+            $excludedNoPermission,
+            $excludedNotifyDisabled,
+            $excludedNoNumber,
+            $excludedInvalidNumber,
+            $roleId !== null && $roleId > 0 ? (string) $roleId : 'sin filtro'
+        );
+
+        return [
+            'agents' => $agents,
+            'note' => $note,
+        ];
     }
 
     private function findAgentByWhatsapp(string $waNumber): ?array
