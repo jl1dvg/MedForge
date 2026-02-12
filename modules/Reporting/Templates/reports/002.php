@@ -764,7 +764,8 @@ ob_start();
                     </div>
                 <?php endif; ?>
             </td>
-            <td colspan="30" class="blanco">&nbsp;</td>
+            <td colspan="30" class="blanco"><img src="<?= htmlspecialchars((string)$consulta['doctor_signature_path'], ENT_QUOTES, 'UTF-8') ?>"
+                                                 alt="Firma del profesional" style="max-height: 60px;"></td>
         </tr>
     </table>
     <table style="border: none">
