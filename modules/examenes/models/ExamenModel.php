@@ -125,7 +125,7 @@ class ExamenModel
             $finDate = DateTime::createFromFormat('d-m-Y', trim($fin));
 
             if ($inicioDate && $finDate) {
-                $sql .= " AND DATE(ce.consulta_fecha) BETWEEN ? AND ?";
+                $sql .= " AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) BETWEEN ? AND ?";
                 $params[] = $inicioDate->format('Y-m-d');
                 $params[] = $finDate->format('Y-m-d');
             }

@@ -1,4 +1,3 @@
-import { actualizarEstadoExamen } from './estado.js';
 import { showToast } from './toast.js';
 
 const PREQUIRURGICO_DEBOUNCE_MS = 900;
@@ -11,10 +10,6 @@ let coberturaMailModalReady = false;
 let coberturaMailSending = false;
 let coberturaEditorReady = false;
 const coberturaTemplateCache = new Map();
-
-function obtenerTarjetaActiva() {
-    return document.querySelector('.kanban-card.view-details.active');
-}
 
 function cerrarModal() {
     const modalElement = document.getElementById('prefacturaModal');
@@ -500,43 +495,8 @@ function imprimirReferenciaCobertura(tarjeta) {
     return abierta;
 }
 
-function actualizarDesdeBoton(nuevoEstado) {
-    const tarjeta = obtenerTarjetaActiva();
-    if (!tarjeta) {
-        showToast('Selecciona un examen antes de continuar', false);
-        return Promise.reject(new Error('No hay tarjeta activa'));
-    }
-
-    return actualizarEstadoExamen(
-        tarjeta.dataset.id,
-        tarjeta.dataset.form,
-        nuevoEstado,
-        window.__examenesKanban || [],
-        window.aplicarFiltros
-    ).then(() => cerrarModal());
-}
-
 export function inicializarBotonesModal() {
-    const revisarBtn = document.getElementById('btnRevisarCodigos');
-    if (revisarBtn && revisarBtn.dataset.listenerAttached !== 'true') {
-        revisarBtn.dataset.listenerAttached = 'true';
-        revisarBtn.addEventListener('click', () => {
-            const estado = revisarBtn.dataset.estado || 'Revisión de cobertura';
-            actualizarDesdeBoton(estado).catch(() => {});
-        });
-    }
-
-    const coberturaBtn = document.getElementById('btnSolicitarCobertura');
-    if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
-        coberturaBtn.dataset.listenerAttached = 'true';
-        coberturaBtn.addEventListener('click', () => {
-            const tarjeta = obtenerTarjetaActiva();
-            imprimirReferenciaCobertura(tarjeta);
-
-            const estado = coberturaBtn.dataset.estado || 'Docs Completos';
-            actualizarDesdeBoton(estado).catch(() => {});
-        });
-    }
+    // botones de cobertura removidos
 }
 
 function updateCoberturaMailStatus(payload = {}) {

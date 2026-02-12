@@ -1005,10 +1005,6 @@ $reporting = array_merge(
             <div class="modal-body" id="prefacturaContent">Cargando información...</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-primary" id="btnRevisarCodigos" data-estado="Revisión de cobertura">✅ Cobertura revisada</button>
-                <button type="button" class="btn btn-warning" id="btnSolicitarCobertura" data-estado="Docs Completos">
-                    <i class="mdi mdi-shield-check-outline me-1"></i> Solicitar cobertura
-                </button>
             </div>
         </div>
     </div>

@@ -1030,5 +1030,5 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    cargarKanban();
+    window.aplicarFiltros();
 });
