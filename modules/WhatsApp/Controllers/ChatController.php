@@ -343,6 +343,18 @@ class ChatController extends BaseController
             return;
         }
 
+        if ($conversationId !== null) {
+            $hasInbound = $this->conversations->hasInboundMessages($conversationId);
+            if (!$hasInbound && $template === null) {
+                $this->json([
+                    'ok' => false,
+                    'error' => 'Este contacto no ha iniciado conversación. Debes enviar una plantilla aprobada para abrir la ventana de 24h.',
+                ], 422);
+
+                return;
+            }
+        }
+
         $previewUrl = (bool) ($payload['preview_url'] ?? false);
 
         if ($template !== null) {

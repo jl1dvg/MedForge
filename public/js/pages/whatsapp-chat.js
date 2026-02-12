@@ -85,7 +85,8 @@
             agents: [],
             search: '',
             loadingConversation: false,
-            sending: false
+            sending: false,
+            selectedHasInbound: true
         };
 
         var endpoints = {
@@ -138,6 +139,7 @@
         var detailHandoff = root.querySelector('[data-detail-handoff]');
         var detailNotes = root.querySelector('[data-detail-notes]');
         var needsHumanBadge = root.querySelector('[data-chat-needs-human]');
+        var assignedBadge = root.querySelector('[data-chat-assigned]');
         var copyNumberButton = root.querySelector('[data-action-copy-number]');
         var openChatLink = root.querySelector('[data-action-open-chat]');
         var closeConversationButton = root.querySelector('[data-action-close-conversation]');
@@ -148,6 +150,7 @@
         var attachmentTrigger = root.querySelector('[data-attachment-trigger]');
         var attachmentInput = root.querySelector('[data-attachment-input]');
         var attachmentPreview = root.querySelector('[data-attachment-preview]');
+        var templateWarning = root.querySelector('[data-chat-template-warning]');
         var handoffPanel = root.querySelector('[data-handoff-panel]');
         var handoffBadge = root.querySelector('[data-handoff-badge]');
         var handoffQueue = root.querySelector('[data-handoff-queue]');
@@ -199,6 +202,7 @@
 
         function resetConversationView() {
             state.selectedId = null;
+            state.selectedHasInbound = true;
             selectedNumber = '';
 
             if (titleElement) {
@@ -249,6 +253,13 @@
             }
             if (needsHumanBadge) {
                 needsHumanBadge.classList.add('d-none');
+            }
+            if (assignedBadge) {
+                assignedBadge.classList.add('d-none');
+                assignedBadge.textContent = '';
+            }
+            if (templateWarning) {
+                templateWarning.classList.add('d-none');
             }
             if (unreadIndicator) {
                 unreadIndicator.classList.add('d-none');
@@ -857,6 +868,16 @@
                 }
             }
 
+            if (assignedBadge) {
+                if (conversation.assigned_user_name) {
+                    assignedBadge.textContent = 'Asignado a ' + conversation.assigned_user_name;
+                    assignedBadge.classList.remove('d-none');
+                } else {
+                    assignedBadge.classList.add('d-none');
+                    assignedBadge.textContent = '';
+                }
+            }
+
             if (summary && summary.unread_count) {
                 summary.unread_count = 0;
                 renderConversations();
@@ -926,6 +947,7 @@
 
             updateHandoffPanel(conversation);
             renderAgentOptions(conversation);
+            updateTemplateWarning(conversation);
         }
 
         function updateHeaderAvatar(conversation) {
@@ -951,6 +973,37 @@
                 var initials = computeInitials(conversation.display_name || conversation.patient_full_name || conversation.wa_number);
                 headerAvatarInitials.textContent = initials || 'WA';
                 headerAvatarInitials.classList.remove('d-none');
+            }
+        }
+
+        function resolveHasInbound(conversation) {
+            if (conversation && typeof conversation.has_inbound === 'boolean') {
+                return conversation.has_inbound;
+            }
+
+            if (conversation && Array.isArray(conversation.messages)) {
+                for (var i = 0; i < conversation.messages.length; i++) {
+                    if (conversation.messages[i] && conversation.messages[i].direction === 'inbound') {
+                        return true;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        function updateTemplateWarning(conversation) {
+            var hasInbound = resolveHasInbound(conversation);
+            state.selectedHasInbound = hasInbound;
+
+            if (!templateWarning) {
+                return;
+            }
+
+            if (hasInbound) {
+                templateWarning.classList.add('d-none');
+            } else {
+                templateWarning.classList.remove('d-none');
             }
         }
 
@@ -1262,6 +1315,14 @@
                 if (!text && !pendingAttachment) {
                     if (errorAlert) {
                         errorAlert.textContent = 'El mensaje no puede estar vacío.';
+                        errorAlert.classList.remove('d-none');
+                    }
+                    return;
+                }
+
+                if (!state.selectedHasInbound) {
+                    if (errorAlert) {
+                        errorAlert.textContent = 'Este contacto no ha iniciado conversación. Envía una plantilla aprobada desde la pestaña Nuevo.';
                         errorAlert.classList.remove('d-none');
                     }
                     return;

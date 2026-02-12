@@ -195,8 +195,9 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <p class="fs-16" data-chat-title>Selecciona una conversación</p>
                                         <p class="fs-12 mb-0" data-chat-subtitle>El historial aparecerá cuando elijas un
                                             contacto.</p>
-                                        <div class="mt-1">
+                                        <div class="mt-1 d-flex flex-wrap gap-2">
                                             <span class="badge bg-warning-light text-warning d-none" data-chat-needs-human>Requiere agente</span>
+                                            <span class="badge bg-success-light text-success d-none" data-chat-assigned></span>
                                         </div>
                                         <p class="fs-12 mb-0" data-chat-last-seen></p>
                                     </div>
@@ -291,6 +292,10 @@ $phoneNumber = $config['phone_number_id'] ?? '';
 
                         <div class="box-body pt-0" data-conversation-meta>
                             <h5 class="mb-3">Detalles del contacto</h5>
+                            <div class="alert alert-warning d-none mb-3" role="alert" data-chat-template-warning>
+                                Este contacto no ha iniciado conversación. WhatsApp Cloud API no entregará mensajes libres.
+                                Envía una plantilla aprobada desde la pestaña Nuevo para abrir la ventana de 24h.
+                            </div>
                             <div class="d-flex align-items-center mb-3">
                                 <div class="avatar avatar-lg bg-light rounded-circle d-flex align-items-center justify-content-center me-3">
                                     <i class="mdi mdi-account text-muted"></i>

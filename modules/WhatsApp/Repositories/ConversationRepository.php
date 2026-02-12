@@ -190,6 +190,16 @@ class ConversationRepository
             ->execute([':id' => $conversationId]);
     }
 
+    public function hasInboundMessages(int $conversationId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM whatsapp_messages WHERE conversation_id = :id AND direction = "inbound" LIMIT 1'
+        );
+        $stmt->execute([':id' => $conversationId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */

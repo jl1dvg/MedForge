@@ -219,6 +219,7 @@ class ConversationService
             return null;
         }
 
+        $hasInbound = $this->repository->hasInboundMessages($conversationId);
         $messages = $this->repository->fetchMessages($conversationId, $limit);
         $this->repository->markConversationAsRead($conversationId);
 
@@ -252,8 +253,14 @@ class ConversationService
             'assigned_at' => $this->formatIsoDate($conversation['assigned_at'] ?? null),
             'handoff_requested_at' => $this->formatIsoDate($conversation['handoff_requested_at'] ?? null),
             'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
+            'has_inbound' => $hasInbound,
             'messages' => $mappedMessages,
         ];
+    }
+
+    public function hasInboundMessages(int $conversationId): bool
+    {
+        return $this->repository->hasInboundMessages($conversationId);
     }
 
     public function getConversationSummary(int $conversationId): ?array
