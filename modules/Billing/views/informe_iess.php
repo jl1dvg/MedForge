@@ -17,7 +17,7 @@ $pacientesCache = $pacientesCache ?? [];
 $datosCache = $datosCache ?? [];
 $scrapingOutput = $scrapingOutput ?? null;
 $grupoConfig = $grupoConfig ?? [];
-$vista = $vista ?? '';
+$vista = isset($vista) ? (string)$vista : '';
 $basePath = rtrim($grupoConfig['basePath'] ?? '/informes/iess', '/');
 $pageTitle = $grupoConfig['titulo'] ?? 'Informe IESS';
 $excelButtons = $grupoConfig['excelButtons'] ?? [];
@@ -58,9 +58,20 @@ $afiliacionesPermitidas = array_map(
         $afiliacionesPermitidas
 );
 $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
-$vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
 
 ?>
+<style>
+    /* Rehabilita checkboxes nativos en tablas de consolidado (el theme global los oculta sin label asociado) */
+    .select-derivacion.form-check-input,
+    .select-all-derivaciones.form-check-input {
+        position: static !important;
+        left: auto !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: inline-block !important;
+        margin: 0;
+    }
+</style>
 
 <section class="content-header">
     <div class="d-flex align-items-center">
@@ -98,10 +109,6 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
                     <div class="card-body">
                         <form method="GET" action="<?= htmlspecialchars($basePath) ?>" class="row g-3 align-items-end">
                             <input type="hidden" name="modo" value="consolidado">
-                            <?php if ($vista): ?>
-                                <input type="hidden" name="vista" value="<?= htmlspecialchars($vista) ?>">
-                            <?php endif; ?>
-
                             <div class="col-md-4">
                                 <label for="mes" class="form-label fw-bold">
                                     <i class="mdi mdi-calendar"></i> Selecciona un mes:
@@ -419,21 +426,23 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
                                         </div>
 
                                         <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
-                                            <?php if ($vista !== 'rapida'): ?>
-                                                <div class="text-muted small">Selecciona filas sin código de
-                                                    derivación para lanzar el scraping en lote.
-                                                </div>
-                                                <form method="post" action="<?= htmlspecialchars($basePath) ?>"
-                                                      class="d-flex gap-2 align-items-center bulk-derivaciones-form">
-                                                    <input type="hidden" name="scrape_derivacion" value="1">
-                                                    <div class="bulk-derivaciones-fields"></div>
-                                                    <button type="submit"
-                                                            class="btn btn-warning btn-sm bulk-derivaciones-submit"
-                                                            disabled>
-                                                        <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
+                                            <div class="text-muted small">
+                                                <?php if ($vista === 'rapida'): ?>
+                                                    Selecciona filas para lanzar el scraping en lote.
+                                                <?php else: ?>
+                                                    Selecciona filas sin código de derivación para lanzar el scraping en lote.
+                                                <?php endif; ?>
+                                            </div>
+                                            <form method="post" action="<?= htmlspecialchars($basePath) ?>"
+                                                  class="d-flex gap-2 align-items-center bulk-derivaciones-form">
+                                                <input type="hidden" name="scrape_derivacion" value="1">
+                                                <div class="bulk-derivaciones-fields"></div>
+                                                <button type="submit"
+                                                        class="btn btn-warning btn-sm bulk-derivaciones-submit"
+                                                        disabled>
+                                                    <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
+                                                </button>
+                                            </form>
                                         </div>
 
                                         <div class="table-responsive"
@@ -447,11 +456,9 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
                                                 <thead class="bg-success-light">
                                                 <tr>
                                                     <th class="text-center">
-                                                        <?php if ($vista !== 'rapida'): ?>
-                                                            <input type="checkbox"
-                                                                   class="form-check-input select-all-derivaciones"
-                                                                   title="Seleccionar visibles (filas sin código)">
-                                                        <?php endif; ?>
+                                                        <input type="checkbox"
+                                                               class="form-check-input select-all-derivaciones"
+                                                               title="Seleccionar visibles">
                                                     </th>
                                                     <th>#</th>
                                                     <th>🏛️</th>
@@ -515,19 +522,17 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
                                                         }, $info['form_ids']);
                                                         $procHtml = implode(', ', $consultaLinks);
                                                     }
-                                                    $puedeSeleccionar = $vista !== 'rapida' && empty($codigoDerivacion);
+                                                    $puedeSeleccionar = $vista === 'rapida' || empty($codigoDerivacion);
                                                     ?>
                                                     <tr style='font-size: 12.5px;'>
                                                         <td class="text-center">
-                                                            <?php if ($vista !== 'rapida'): ?>
-                                                                <input
-                                                                        type="checkbox"
-                                                                        class="form-check-input select-derivacion"
-                                                                        data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
-                                                                        data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
-                                                                        <?= $puedeSeleccionar ? '' : 'disabled' ?>
-                                                                >
-                                                            <?php endif; ?>
+                                                            <input
+                                                                    type="checkbox"
+                                                                    class="form-check-input select-derivacion"
+                                                                    data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
+                                                                    data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
+                                                                    <?= $puedeSeleccionar ? '' : 'disabled' ?>
+                                                            >
                                                         </td>
                                                         <td class="text-center"><?= $n ?></td>
                                                         <td class="text-center"><?= strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', $pacienteInfo['afiliacion'] ?? '')))) ?></td>
@@ -799,6 +804,7 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
             const $bulkForm = $table.closest('.tab-pane').find('.bulk-derivaciones-form');
             const $fieldsContainer = $bulkForm.find('.bulk-derivaciones-fields');
             const $submitBtn = $bulkForm.find('.bulk-derivaciones-submit');
+            const $selectAll = $table.find('.select-all-derivaciones');
 
             const getRows = function () {
                 if (dataTableInstance && dataTableInstance.rows) {
@@ -823,6 +829,19 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
                 });
 
                 $submitBtn.prop('disabled', seleccionadas === 0);
+                syncSelectAllState();
+            };
+
+            const syncSelectAllState = function () {
+                const nodes = getRows();
+                const $enabled = $(nodes).find('.select-derivacion:enabled');
+                const enabledCount = $enabled.length;
+                const checkedCount = $enabled.filter(':checked').length;
+                const allChecked = enabledCount > 0 && checkedCount === enabledCount;
+                const anyChecked = checkedCount > 0;
+
+                $selectAll.prop('checked', allChecked);
+                $selectAll.prop('indeterminate', !allChecked && anyChecked);
             };
 
             $table.off('change.bulkSelectDerivacion').on('change.bulkSelectDerivacion', '.select-derivacion', syncSelection);
@@ -834,6 +853,12 @@ $vista = $vista !== '' ? $vista : ($mesSeleccionado ? 'rapida' : '');
             });
 
             syncSelection();
+
+            if (dataTableInstance && dataTableInstance.on) {
+                dataTableInstance.on('draw', function () {
+                    syncSelectAllState();
+                });
+            }
         };
 
         const initConsolidadoTables = function () {

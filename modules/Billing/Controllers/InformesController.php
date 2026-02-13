@@ -322,8 +322,9 @@ class InformesController extends BaseController
         ];
 
         $mesSeleccionado = $filtros['mes'];
-        $vista = $_GET['vista'] ?? '';
-        if ($vista === '' && !empty($mesSeleccionado)) {
+        $vistaParamPresente = array_key_exists('vista', $_GET);
+        $vista = $vistaParamPresente ? (string)($_GET['vista'] ?? '') : '';
+        if (!$vistaParamPresente && !empty($mesSeleccionado)) {
             $vista = 'rapida';
         }
         $facturas = $this->billingController->obtenerFacturasDisponibles($mesSeleccionado ?: null);
