@@ -27,6 +27,16 @@ $apellido = $_GET['apellido'] ?? null;
 $hcNumber = $_GET['hc_number'] ?? null;
 $derivacion = $_GET['derivacion'] ?? null;
 $categoria = $_GET['categoria'] ?? null;
+$formIdsSeleccionadosRaw = $_GET['form_ids'] ?? [];
+$formIdsSeleccionados = [];
+if (is_array($formIdsSeleccionadosRaw)) {
+    $formIdsSeleccionados = $formIdsSeleccionadosRaw;
+} elseif (is_string($formIdsSeleccionadosRaw) && $formIdsSeleccionadosRaw !== '') {
+    $formIdsSeleccionados = preg_split('/\s*,\s*/', $formIdsSeleccionadosRaw);
+}
+$formIdsSeleccionados = array_values(array_unique(array_filter(array_map(static function ($value) {
+    return trim((string)$value);
+}, $formIdsSeleccionados))));
 $categoria = is_string($categoria) ? strtolower(trim($categoria)) : null;
 $categoriasValidas = ['procedimientos', 'consulta', 'imagenes'];
 if ($categoria && !in_array($categoria, $categoriasValidas, true)) {
@@ -72,6 +82,19 @@ $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
     $pacientesCache,
     $datosCache
 );
+
+if (!empty($formIdsSeleccionados)) {
+    $lookupFormIds = array_fill_keys($formIdsSeleccionados, true);
+    foreach ($consolidado as $mesKey => $pacientesDelMes) {
+        $consolidado[$mesKey] = array_values(array_filter($pacientesDelMes, static function ($factura) use ($lookupFormIds) {
+            $formId = trim((string)($factura['form_id'] ?? ''));
+            return $formId !== '' && isset($lookupFormIds[$formId]);
+        }));
+        if (empty($consolidado[$mesKey])) {
+            unset($consolidado[$mesKey]);
+        }
+    }
+}
 
 $formIdsConsolidado = [];
 foreach ($consolidado as $pacientesDelMes) {

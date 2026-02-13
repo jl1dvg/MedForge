@@ -235,6 +235,76 @@ TXT;
     }
 
     /**
+     * Genera en una sola llamada las secciones clínicas principales de la consulta.
+     *
+     * @param array<string, mixed> $payload
+     * @return array{motivo_consulta:string,enfermedad_actual:string,examen_fisico:string,plan_tratamiento:string}
+     */
+    public function generateConsultaSectionsBundle(array $payload): array
+    {
+        $motivo = trim((string)($payload['motivo_consulta'] ?? ''));
+        $enfermedad = trim((string)($payload['enfermedad_actual'] ?? ''));
+        $examen = trim((string)($payload['examen_fisico'] ?? ''));
+        $plan = trim((string)($payload['plan_tratamiento'] ?? ''));
+        $insurance = trim((string)($payload['insurance'] ?? ''));
+
+        $prompt = <<<TXT
+Actúa como médico especialista y devuelve SOLO un JSON válido con estas claves exactas:
+{
+  "motivo_consulta": "string",
+  "enfermedad_actual": "string",
+  "examen_fisico": "string",
+  "plan_tratamiento": "string"
+}
+
+ENTRADAS:
+- motivo_consulta_fuente: {$motivo}
+- enfermedad_actual_fuente: {$enfermedad}
+- examen_fisico_fuente: {$examen}
+- plan_tratamiento_fuente: {$plan}
+- afiliacion_seguro: {$insurance}
+
+REGLAS OBLIGATORIAS:
+- NO uses markdown, NO uses asteriscos, NO agregues texto fuera del JSON.
+- Cada campo se redacta de manera independiente. Si un campo fuente está vacío o no aporta datos, ese campo debe ser EXACTAMENTE: "Sin datos registrados."
+- No inventes datos clínicos, diagnósticos, antecedentes ni tratamientos.
+- Mantén redacción clínica formal, ortografía y sintaxis correctas.
+
+ESTILO POR CAMPO:
+- motivo_consulta: 1 frase breve.
+- enfermedad_actual: 1 párrafo corto cronológico.
+- examen_fisico: resumen clínico en texto plano, con "ojo derecho" / "ojo izquierdo" cuando aplique.
+- plan_tratamiento: plan terapéutico claro y breve; si hay datos insuficientes, "Sin datos registrados.".
+TXT;
+
+        $raw = trim($this->respond($prompt, 900));
+        $jsonText = $raw;
+        if (preg_match('/```(?:json)?\s*(\{.*\})\s*```/is', $raw, $matches)) {
+            $jsonText = trim((string)$matches[1]);
+        }
+
+        $decoded = json_decode($jsonText, true);
+
+        $fallback = [
+            'motivo_consulta' => 'Sin datos registrados.',
+            'enfermedad_actual' => 'Sin datos registrados.',
+            'examen_fisico' => 'Sin datos registrados.',
+            'plan_tratamiento' => 'Sin datos registrados.',
+        ];
+
+        if (!is_array($decoded)) {
+            return $fallback;
+        }
+
+        foreach (array_keys($fallback) as $key) {
+            $value = trim((string)($decoded[$key] ?? ''));
+            $fallback[$key] = $value !== '' ? $value : 'Sin datos registrados.';
+        }
+
+        return $fallback;
+    }
+
+    /**
      * E. ENFERMEDAD O PROBLEMA ACTUAL
      * Descripción cronológica y detallada, guiada por ALICIAN.
      * $examenFisico es solo contexto terminológico (NO inventar datos a partir de él).

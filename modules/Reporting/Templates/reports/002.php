@@ -178,6 +178,33 @@ $planLineas = array_values(array_filter([
         $consultaVigenciaReceta !== '' ? 'Vigencia receta: ' . $consultaVigenciaReceta : '',
 ], static fn($line) => trim($line) !== ''));
 $planTratamiento = implode(PHP_EOL, $planLineas);
+
+$aiBundle = [
+        'motivo_consulta' => '',
+        'enfermedad_actual' => '',
+        'examen_fisico' => '',
+        'plan_tratamiento' => '',
+];
+$aiBundleError = null;
+$bundleMotivoInput = trim((string)($reason ?? ''));
+$bundleEnfermedadInput = trim((string)($consulta['enfermedad_actual'] ?? ''));
+$bundleExamenInput = trim((string)($consultaExamenFisico ?? ($consulta['examen_fisico'] ?? '')));
+$bundlePlanInput = trim((string)$planTratamiento);
+$bundleHasInput = $bundleMotivoInput !== '' || $bundleEnfermedadInput !== '' || $bundleExamenInput !== '' || $bundlePlanInput !== '';
+if (isset($ai) && $bundleHasInput) {
+    try {
+        $aiBundle = $ai->generateConsultaSectionsBundle([
+                'motivo_consulta' => $bundleMotivoInput,
+                'enfermedad_actual' => $bundleEnfermedadInput,
+                'examen_fisico' => $bundleExamenInput,
+                'plan_tratamiento' => $bundlePlanInput,
+                'insurance' => $paciente['afiliacion'] ?? $patient['afiliacion'] ?? '',
+        ]);
+    } catch (\Throwable $e) {
+        $aiBundleError = $e->getMessage();
+        error_log('OpenAI generateConsultaSectionsBundle error: ' . $aiBundleError);
+    }
+}
 ob_start();
 //echo '<pre>';
 //var_dump($data);
@@ -194,23 +221,36 @@ ob_start();
         <tr>
             <td colspan="5" class="blanco_left"><?php
                 $motivoTexto = $reason !== '' ? $reason : '';
-                $motivoAI = '';
-                $motivoAI_error = null;
-                if (isset($ai)) {
-                    try {
-                        $motivoAI = $ai->generateMotivoConsulta($motivoTexto);
-                    } catch (\Throwable $e) {
-                        $motivoAI_error = $e->getMessage();
-                        error_log('OpenAI generateEnfermedadProblemaActual error: ' . $motivoAI_error);
-                    }
-                }
-                if (trim($motivoAI) !== '') {
+                $motivoAI = trim((string)($aiBundle['motivo_consulta'] ?? ''));
+                $motivoAI_error = $aiBundleError;
+                $motivoEsSinDatos = mb_strtolower(trim($motivoAI)) === 'sin datos registrados.';
+                if (trim($motivoAI) !== '' && !$motivoEsSinDatos) {
                     echo wordwrap($motivoAI, 160, "</td>
     </tr>
     <tr>
         <td colspan=\"5\" class=\"blanco_left\">");
                 } else {
-                    echo wordwrap('Sin datos registrados.', 160, "</td>
+                    $sexoRaw = strtoupper(trim((string)($paciente['sexo'] ?? $patient['sexo'] ?? '')));
+                    $sexoTexto = match (true) {
+                        in_array($sexoRaw, ['F', 'FEMENINO'], true) => 'femenino',
+                        in_array($sexoRaw, ['M', 'MASCULINO'], true) => 'masculino',
+                        default => 'no especificado',
+                    };
+
+                    $edadTexto = trim((string)($edadPaciente ?? $paciente['edad'] ?? $patient['edad'] ?? ''));
+                    if ($edadTexto !== '' && preg_match('/(\d{1,3})/', $edadTexto, $edadMatch)) {
+                        $edadTexto = $edadMatch[1] . ' años';
+                    } elseif ($edadTexto === '') {
+                        $edadTexto = 'edad no especificada';
+                    }
+
+                    $motivoFallback = sprintf(
+                        'Paciente de sexo %s, de %s, que acude por trastornos de la visión.',
+                        $sexoTexto,
+                        $edadTexto
+                    );
+
+                    echo wordwrap($motivoFallback, 160, "</td>
     </tr>
     <tr>
         <td colspan=\"5\" class=\"blanco_left\">");
@@ -328,17 +368,12 @@ ob_start();
                         ? $enfermedadActualTexto
                         : '';
 
-                $enfermedadActualAI = '';
-                $enfermedadActualAI_error = null;
-                if (isset($ai)) {
-                    try {
-                        $enfermedadActualAI = $ai->generateEnfermedadActualALICIAN($enfermedadActualTexto);
-                    } catch (\Throwable $e) {
-                        $enfermedadActualAI_error = $e->getMessage();
-                        error_log('OpenAI generateEnfermedadProblemaActual error: ' . $enfermedadActualAI_error);
-                    }
-                }
-                $enfermedadSalida = trim($enfermedadActualAI) !== '' ? $enfermedadActualAI : 'Sin datos registrados.';
+                $enfermedadActualAI = trim((string)($aiBundle['enfermedad_actual'] ?? ''));
+                $enfermedadActualAI_error = $aiBundleError;
+                $enfermedadEsSinDatos = mb_strtolower(trim($enfermedadActualAI)) === 'sin datos registrados.';
+                $enfermedadSalida = (!$enfermedadEsSinDatos && trim($enfermedadActualAI) !== '')
+                    ? $enfermedadActualAI
+                    : ($enfermedadActualTexto !== '' ? $enfermedadActualTexto : 'Sin datos registrados.');
                 echo wordwrap(
                         $enfermedadSalida,
                         160,
@@ -563,23 +598,13 @@ ob_start();
                 $examenFisicoTextoRaw = trim((string)($consultaExamenFisico ?? ($consulta['examen_fisico'] ?? '')));
                 $examenFisicoTexto = $examenFisicoTextoRaw !== '' ? $examenFisicoTextoRaw : '';
 
-                $examenFisicoAI = '';
-                $examenFisicoAI_error = null;
-
-                // Solo invocar IA si hay texto real
-                if ($examenFisicoTexto !== '' && isset($ai)) {
-                    try {
-                        // Nuevo método especializado para examen físico
-                        $examenFisicoAI = $ai->generateExamenFisicoOftalmologico($examenFisicoTexto);
-                    } catch (\Throwable $e) {
-                        $examenFisicoAI_error = $e->getMessage();
-                        error_log('OpenAI generateExamenFisicoOftalmologico error: ' . $examenFisicoAI_error);
-                    }
-                }
+                $examenFisicoAI = trim((string)($aiBundle['examen_fisico'] ?? ''));
+                $examenFisicoAI_error = $aiBundleError;
 
                 // Preferir salida IA si existe; si no, mostrar el texto original; si no hay nada, mostrar mensaje estándar.
                 $examenFisicoSalida = '';
-                if (trim($examenFisicoAI) !== '') {
+                $examenEsSinDatos = mb_strtolower(trim($examenFisicoAI)) === 'sin datos registrados.';
+                if (trim($examenFisicoAI) !== '' && !$examenEsSinDatos) {
                     $examenFisicoSalida = $examenFisicoAI;
                 } elseif ($examenFisicoTexto !== '') {
                     $examenFisicoSalida = $examenFisicoTexto;
@@ -671,22 +696,13 @@ ob_start();
                 // Aseguradora/afiliación para el texto estándar del plan (la usa generatePlanTratamiento)
                 $insurance = trim((string)($paciente['afiliacion'] ?? $patient['afiliacion'] ?? ''));
 
-                $planAI = '';
-                $planAI_error = null;
-
-                // Solo invocar IA si hay texto real
-                if ($planTexto !== '' && isset($ai)) {
-                    try {
-                        $planAI = $ai->generatePlanTratamiento($planTexto, $insurance);
-                    } catch (\Throwable $e) {
-                        $planAI_error = $e->getMessage();
-                        error_log('OpenAI generatePlanTratamiento error: ' . $planAI_error);
-                    }
-                }
+                $planAI = trim((string)($aiBundle['plan_tratamiento'] ?? ''));
+                $planAI_error = $aiBundleError;
 
                 // Preferir salida IA si existe; si no, mostrar el texto original; si no hay nada, mostrar mensaje estándar.
                 $planSalida = '';
-                if (trim($planAI) !== '') {
+                $planEsSinDatos = mb_strtolower(trim($planAI)) === 'sin datos registrados.';
+                if (trim($planAI) !== '' && !$planEsSinDatos) {
                     $planSalida = $planAI;
                 } elseif ($planTexto !== '') {
                     $planSalida = $planTexto;

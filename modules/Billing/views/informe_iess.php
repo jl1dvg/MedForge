@@ -443,6 +443,42 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                     <i class="mdi mdi-playlist-plus"></i> Obtener códigos seleccionados
                                                 </button>
                                             </form>
+                                            <?php if ($slug === 'consulta' && $basePath === '/informes/iess'): ?>
+                                                <form method="get" action="<?= htmlspecialchars($basePath . '/consolidado') ?>"
+                                                      class="d-flex gap-2 align-items-center bulk-download-form">
+                                                    <?php if (!empty($mesSeleccionado)): ?>
+                                                        <input type="hidden" name="mes" value="<?= htmlspecialchars($mesSeleccionado) ?>">
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($filtros['afiliacion'])): ?>
+                                                        <input type="hidden" name="afiliacion" value="<?= htmlspecialchars((string)$filtros['afiliacion']) ?>">
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($filtros['apellido'])): ?>
+                                                        <input type="hidden" name="apellido" value="<?= htmlspecialchars((string)$filtros['apellido']) ?>">
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($filtros['hc_number'])): ?>
+                                                        <input type="hidden" name="hc_number" value="<?= htmlspecialchars((string)$filtros['hc_number']) ?>">
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($filtros['derivacion'])): ?>
+                                                        <input type="hidden" name="derivacion" value="<?= htmlspecialchars((string)$filtros['derivacion']) ?>">
+                                                    <?php endif; ?>
+                                                    <input type="hidden" name="categoria" value="consulta">
+                                                    <input type="hidden" name="formato" value="IESS_SOAM">
+                                                    <input type="hidden" name="zip" value="0" class="bulk-download-zip">
+                                                    <div class="bulk-download-fields"></div>
+                                                    <button type="submit"
+                                                            class="btn btn-primary btn-sm bulk-download-submit"
+                                                            data-zip="0"
+                                                            disabled>
+                                                        <i class="mdi mdi-file-check"></i> SOAM seleccionados
+                                                    </button>
+                                                    <button type="submit"
+                                                            class="btn btn-outline-danger btn-sm bulk-download-submit"
+                                                            data-zip="1"
+                                                            disabled>
+                                                        <i class="mdi mdi-zip-box"></i> SOAM + PDF seleccionados
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
                                         </div>
 
                                         <div class="table-responsive"
@@ -522,7 +558,8 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                         }, $info['form_ids']);
                                                         $procHtml = implode(', ', $consultaLinks);
                                                     }
-                                                    $puedeSeleccionar = $vista === 'rapida' || empty($codigoDerivacion);
+                                                    $puedeScrapear = $vista === 'rapida' || empty($codigoDerivacion);
+                                                    $puedeSeleccionar = trim($formIdsPaciente) !== '';
                                                     ?>
                                                     <tr style='font-size: 12.5px;'>
                                                         <td class="text-center">
@@ -531,6 +568,7 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                                     class="form-check-input select-derivacion"
                                                                     data-form-ids="<?= htmlspecialchars($formIdsPaciente) ?>"
                                                                     data-hc="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>"
+                                                                    data-puede-scrape="<?= $puedeScrapear ? '1' : '0' ?>"
                                                                     <?= $puedeSeleccionar ? '' : 'disabled' ?>
                                                             >
                                                         </td>
@@ -804,6 +842,10 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
             const $bulkForm = $table.closest('.tab-pane').find('.bulk-derivaciones-form');
             const $fieldsContainer = $bulkForm.find('.bulk-derivaciones-fields');
             const $submitBtn = $bulkForm.find('.bulk-derivaciones-submit');
+            const $bulkDownloadForm = $table.closest('.tab-pane').find('.bulk-download-form').first();
+            const $downloadFields = $bulkDownloadForm.find('.bulk-download-fields');
+            const $downloadButtons = $bulkDownloadForm.find('.bulk-download-submit');
+            const $downloadZipInput = $bulkDownloadForm.find('.bulk-download-zip');
             const $selectAll = $table.find('.select-all-derivaciones');
 
             const getRows = function () {
@@ -815,20 +857,31 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
 
             const syncSelection = function () {
                 $fieldsContainer.empty();
-                let seleccionadas = 0;
+                $downloadFields.empty();
+                let seleccionadasScrape = 0;
                 const $rows = getRows();
+                const formIdsDescarga = new Set();
 
                 $($rows).find('.select-derivacion:checked').each(function () {
                     const formIds = String($(this).data('form-ids') || '').split(',').map(v => v.trim()).filter(Boolean);
-                    const hc = $(this).data('hc');
+                    const hc = String($(this).data('hc') || '').trim();
+                    const puedeScrapear = String($(this).data('puede-scrape') || '0') === '1';
                     formIds.forEach(function (fid) {
-                        $fieldsContainer.append('<input type="hidden" name="form_id_scrape[]" value="' + fid + '">');
-                        $fieldsContainer.append('<input type="hidden" name="hc_number_scrape[]" value="' + hc + '">');
-                        seleccionadas++;
+                        if (puedeScrapear) {
+                            $fieldsContainer.append('<input type="hidden" name="form_id_scrape[]" value="' + fid + '">');
+                            $fieldsContainer.append('<input type="hidden" name="hc_number_scrape[]" value="' + hc + '">');
+                            seleccionadasScrape++;
+                        }
+                        formIdsDescarga.add(fid);
                     });
                 });
 
-                $submitBtn.prop('disabled', seleccionadas === 0);
+                formIdsDescarga.forEach(function (fid) {
+                    $downloadFields.append('<input type="hidden" name="form_ids[]" value="' + fid + '">');
+                });
+
+                $submitBtn.prop('disabled', seleccionadasScrape === 0);
+                $downloadButtons.prop('disabled', formIdsDescarga.size === 0);
                 syncSelectAllState();
             };
 
@@ -850,6 +903,10 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                 const nodes = getRows();
                 $(nodes).find('.select-derivacion:enabled').prop('checked', checked);
                 syncSelection();
+            });
+            $bulkDownloadForm.off('click.bulkDownloadMode').on('click.bulkDownloadMode', '.bulk-download-submit', function () {
+                const zip = String($(this).data('zip') || '0');
+                $downloadZipInput.val(zip === '1' ? '1' : '0');
             });
 
             syncSelection();
