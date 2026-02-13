@@ -225,6 +225,7 @@ class ConversationService
 
         $mappedMessages = [];
         foreach ($messages as $message) {
+            $media = $this->extractMediaDetails($message);
             $mappedMessages[] = [
                 'id' => (int) $message['id'],
                 'direction' => $message['direction'],
@@ -235,6 +236,11 @@ class ConversationService
                 'sent_at' => $this->formatIsoDate($message['sent_at'] ?? null),
                 'delivered_at' => $this->formatIsoDate($message['delivered_at'] ?? null),
                 'read_at' => $this->formatIsoDate($message['read_at'] ?? null),
+                'media_url' => $media['media_url'],
+                'media_filename' => $media['media_filename'],
+                'media_caption' => $media['media_caption'],
+                'media_mime' => $media['media_mime'],
+                'media_id' => $media['media_id'],
             ];
         }
 
@@ -532,6 +538,63 @@ class ConversationService
         }
 
         return mb_substr($body, 0, 157) . '…';
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     * @return array{media_url:?string,media_filename:?string,media_caption:?string,media_mime:?string,media_id:?string}
+     */
+    private function extractMediaDetails(array $message): array
+    {
+        $type = isset($message['message_type']) ? (string) $message['message_type'] : '';
+        $payload = $this->decodePayload($message['raw_payload'] ?? null);
+
+        $details = [
+            'media_url' => null,
+            'media_filename' => null,
+            'media_caption' => null,
+            'media_mime' => null,
+            'media_id' => null,
+        ];
+
+        if ($type === 'image' && isset($payload['image']) && is_array($payload['image'])) {
+            $image = $payload['image'];
+            $details['media_url'] = isset($image['link']) ? (string) $image['link'] : (isset($image['url']) ? (string) $image['url'] : null);
+            $details['media_caption'] = isset($image['caption']) ? (string) $image['caption'] : null;
+            $details['media_mime'] = isset($image['mime_type']) ? (string) $image['mime_type'] : null;
+            $details['media_id'] = isset($image['id']) ? (string) $image['id'] : null;
+        } elseif ($type === 'document' && isset($payload['document']) && is_array($payload['document'])) {
+            $document = $payload['document'];
+            $details['media_url'] = isset($document['link']) ? (string) $document['link'] : (isset($document['url']) ? (string) $document['url'] : null);
+            $details['media_caption'] = isset($document['caption']) ? (string) $document['caption'] : null;
+            $details['media_filename'] = isset($document['filename']) ? (string) $document['filename'] : null;
+            $details['media_mime'] = isset($document['mime_type']) ? (string) $document['mime_type'] : null;
+            $details['media_id'] = isset($document['id']) ? (string) $document['id'] : null;
+        } elseif ($type === 'audio' && isset($payload['audio']) && is_array($payload['audio'])) {
+            $audio = $payload['audio'];
+            $details['media_url'] = isset($audio['link']) ? (string) $audio['link'] : (isset($audio['url']) ? (string) $audio['url'] : null);
+            $details['media_mime'] = isset($audio['mime_type']) ? (string) $audio['mime_type'] : null;
+            $details['media_id'] = isset($audio['id']) ? (string) $audio['id'] : null;
+        }
+
+        return $details;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodePayload(mixed $payload): array
+    {
+        if (is_array($payload)) {
+            return $payload;
+        }
+
+        if (is_string($payload) && $payload !== '') {
+            $decoded = json_decode($payload, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
     }
 
     private function formatIsoDate(mixed $value): ?string

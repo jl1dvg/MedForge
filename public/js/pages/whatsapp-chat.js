@@ -73,6 +73,15 @@
         }
     }
 
+    function isNearBottom(container, threshold) {
+        if (!container) {
+            return true;
+        }
+
+        var limit = typeof threshold === 'number' ? threshold : 80;
+        return (container.scrollHeight - container.scrollTop - container.clientHeight) <= limit;
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         var root = document.getElementById('whatsapp-chat-root');
         if (!root) {
@@ -86,7 +95,9 @@
             search: '',
             loadingConversation: false,
             sending: false,
-            selectedHasInbound: true
+            selectedHasInbound: true,
+            forceScroll: false,
+            lastInboundByConversation: {}
         };
 
         var endpoints = {
@@ -115,6 +126,8 @@
         var subtitle = header ? header.querySelector('[data-chat-subtitle]') : null;
         var titleElement = root.querySelector('[data-chat-title]');
         var lastSeenElement = root.querySelector('[data-chat-last-seen]');
+        var assignedCompact = root.querySelector('[data-chat-assigned-compact]');
+        var teamCompact = root.querySelector('[data-chat-team]');
         var unreadIndicator = root.querySelector('[data-unread-indicator]');
         var composer = root.querySelector('[data-chat-composer]');
         var messageForm = root.querySelector('[data-message-form]');
@@ -150,6 +163,7 @@
         var attachmentTrigger = root.querySelector('[data-attachment-trigger]');
         var attachmentInput = root.querySelector('[data-attachment-input]');
         var attachmentPreview = root.querySelector('[data-attachment-preview]');
+        var openTemplateButton = root.querySelector('[data-action-open-template]');
         var templateWarning = root.querySelector('[data-chat-template-warning]');
         var handoffPanel = root.querySelector('[data-handoff-panel]');
         var handoffBadge = root.querySelector('[data-handoff-badge]');
@@ -164,6 +178,9 @@
         }
         var selectedNumber = '';
         var pendingAttachment = null;
+        var attachmentObjectUrl = null;
+        var typingIndicator = null;
+        var typingTimerId = null;
         var templatesLoaded = false;
         var templateState = null;
         var templateFieldInputs = {};
@@ -213,6 +230,14 @@
             }
             if (lastSeenElement) {
                 lastSeenElement.textContent = '';
+            }
+            if (assignedCompact) {
+                assignedCompact.textContent = '';
+                assignedCompact.classList.add('d-none');
+            }
+            if (teamCompact) {
+                teamCompact.textContent = '';
+                teamCompact.classList.add('d-none');
             }
             if (detailName) {
                 detailName.textContent = 'Selecciona una conversación';
@@ -727,12 +752,17 @@
                 return;
             }
 
+            var previousScrollTop = messageContainer.scrollTop;
+            var wasNearBottom = isNearBottom(messageContainer, 120);
+
             resetContainer(messageContainer, emptyChatState);
 
             if (!data || !data.messages || !data.messages.length) {
                 if (emptyChatState) {
                     emptyChatState.classList.remove('d-none');
                 }
+                removeTypingIndicator();
+                state.forceScroll = false;
                 return;
             }
 
@@ -753,17 +783,24 @@
 
             data.messages.forEach(function (message) {
                 var isOutbound = message.direction === 'outbound';
+                var senderName = message.sender_name || (isOutbound ? 'Tú' : (data.patient_full_name || data.display_name || data.wa_number || 'Contacto'));
 
                 // Card container with left/right float and background per sample
                 var cardClass = isOutbound
-                    ? 'card d-inline-block mb-3 float-end me-2 bg-primary max-w-p80'
-                    : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80';
+                    ? 'card d-inline-block mb-3 float-end me-2 bg-primary max-w-p80 whatsapp-chat-bubble'
+                    : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80 whatsapp-chat-bubble';
                 var card = createElement('div', cardClass);
 
                 // Absolute timestamp at top-right
                 var stampWrap = createElement('div', 'position-absolute pt-1 pe-2 r-0');
                 var stamp = createElement('span', 'text-extra-small' + (isOutbound ? '' : ' text-muted'), formatTime(message.timestamp));
                 stampWrap.appendChild(stamp);
+                if (isOutbound && message.status) {
+                    var statusEl = buildStatusIndicator(message.status);
+                    if (statusEl) {
+                        stampWrap.appendChild(statusEl);
+                    }
+                }
                 card.appendChild(stampWrap);
 
                 var body = createElement('div', 'card-body');
@@ -781,11 +818,18 @@
                     avatarEl.alt = 'Profile';
                     avatarEl.src = appendCacheBuster(message.sender_avatar);
                     avatarEl.className = 'avatar me-10';
+                } else if (!isOutbound && data.avatar_url) {
+                    avatarEl = document.createElement('img');
+                    avatarEl.alt = 'Profile';
+                    avatarEl.src = appendCacheBuster(data.avatar_url);
+                    avatarEl.className = 'avatar me-10';
                 } else {
-                    // Fallback avatar as a circle with icon
-                    avatarEl = createElement('span', 'avatar me-10 bg-primary-light d-inline-flex align-items-center justify-content-center');
-                    var ic = createElement('i', 'mdi mdi-account text-primary');
-                    avatarEl.appendChild(ic);
+                    // Fallback avatar with initials + color
+                    avatarEl = createElement('span', 'avatar me-10 d-inline-flex align-items-center justify-content-center');
+                    var initials = computeInitials(senderName || 'WA');
+                    var initialsSpan = createElement('span', 'fw-600', initials || 'WA');
+                    avatarEl.appendChild(initialsSpan);
+                    applyAvatarTheme(avatarEl, senderName || data.wa_number || 'WA');
                 }
                 avatarLink.appendChild(avatarEl);
                 headerRow.appendChild(avatarLink);
@@ -794,7 +838,6 @@
                 var nameWrap = createElement('div', 'm-2 ps-0 align-self-center d-flex flex-column flex-lg-row justify-content-between');
                 var inner = createElement('div', 'min-width-zero');
                 var nameP = createElement('p', 'mb-0 fs-16' + (isOutbound ? '' : ' text-dark'));
-                var senderName = message.sender_name || (isOutbound ? 'Tú' : (data.patient_full_name || data.display_name || data.wa_number || 'Contacto'));
                 nameP.textContent = senderName;
                 inner.appendChild(nameP);
                 nameWrap.appendChild(inner);
@@ -806,12 +849,23 @@
                 // Message text block with left padding (ps-55)
                 var textWrap = createElement('div', 'chat-text-start ps-55');
                 var paragraph = createElement('p', 'mb-0 text-semi-muted');
-                if (message.body) {
+                var hasBody = message.body && String(message.body).trim() !== '';
+                if (hasBody) {
                     paragraph.textContent = message.body;
-                } else {
-                    paragraph.textContent = '[Contenido sin vista previa]';
+                    textWrap.appendChild(paragraph);
+                } else if (message.media_caption) {
+                    paragraph.textContent = message.media_caption;
+                    textWrap.appendChild(paragraph);
+                    hasBody = true;
                 }
-                textWrap.appendChild(paragraph);
+
+                var mediaPreview = buildMediaPreview(message);
+                if (mediaPreview) {
+                    textWrap.appendChild(mediaPreview);
+                } else if (!hasBody) {
+                    paragraph.textContent = '[Contenido sin vista previa]';
+                    textWrap.appendChild(paragraph);
+                }
                 body.appendChild(textWrap);
 
                 card.appendChild(body);
@@ -819,8 +873,192 @@
                 messageContainer.appendChild(createElement('div', 'clearfix'));
             });
 
-            // Scroll to bottom after rendering
-            messageContainer.scrollTop = messageContainer.scrollHeight;
+            maybeShowTypingIndicator(data);
+
+            var shouldStickToBottom = state.forceScroll || wasNearBottom;
+            if (shouldStickToBottom) {
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+            } else {
+                var maxScroll = Math.max(0, messageContainer.scrollHeight - messageContainer.clientHeight);
+                messageContainer.scrollTop = Math.min(previousScrollTop, maxScroll);
+            }
+
+            state.forceScroll = false;
+        }
+
+        function buildMediaPreview(message) {
+            if (!message || !message.type) {
+                return null;
+            }
+
+            var type = String(message.type);
+            var url = message.media_url || '';
+
+            if (type === 'image') {
+                if (url) {
+                    var imgWrap = createElement('div', 'whatsapp-chat-media');
+                    var img = document.createElement('img');
+                    img.src = appendCacheBuster(url);
+                    img.alt = message.media_caption || 'Imagen';
+                    imgWrap.appendChild(img);
+                    return imgWrap;
+                }
+                return createMediaPlaceholder('Imagen recibida');
+            }
+
+            if (type === 'document') {
+                var docWrap = createElement('div', 'whatsapp-chat-media');
+                var doc = createElement('div', 'whatsapp-chat-doc');
+                var icon = createElement('i', 'mdi mdi-file-document-outline text-primary');
+                doc.appendChild(icon);
+                var meta = createElement('div', 'd-flex flex-column');
+                var name = message.media_filename || 'Documento';
+                var nameEl = createElement('div', 'doc-name', name);
+                var metaText = message.media_mime ? message.media_mime : '';
+                var metaEl = createElement('div', 'doc-meta', metaText);
+                meta.appendChild(nameEl);
+                meta.appendChild(metaEl);
+                doc.appendChild(meta);
+
+                if (url) {
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.className = 'text-decoration-none text-reset';
+                    link.appendChild(doc);
+                    docWrap.appendChild(link);
+                } else {
+                    docWrap.appendChild(doc);
+                }
+
+                return docWrap;
+            }
+
+            if (type === 'audio') {
+                if (url) {
+                    var audioWrap = createElement('div', 'whatsapp-chat-media');
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = url;
+                    audioWrap.appendChild(audio);
+                    return audioWrap;
+                }
+                return createMediaPlaceholder('Audio recibido');
+            }
+
+            return null;
+        }
+
+        function createMediaPlaceholder(label) {
+            var wrap = createElement('div', 'whatsapp-chat-media');
+            var badge = createElement('span', 'badge bg-secondary-light text-secondary', label);
+            wrap.appendChild(badge);
+            return wrap;
+        }
+
+        function buildStatusIndicator(status) {
+            if (!status) {
+                return null;
+            }
+
+            var normalized = String(status).toLowerCase();
+            var label = '';
+            var className = 'whatsapp-status';
+
+            if (normalized === 'sent') {
+                label = '✓';
+            } else if (normalized === 'delivered') {
+                label = '✓✓';
+            } else if (normalized === 'read') {
+                label = '✓✓';
+                className += ' read';
+            } else if (normalized === 'failed') {
+                label = '!';
+                className += ' failed';
+            } else {
+                return null;
+            }
+
+            return createElement('span', className, label);
+        }
+
+        function showTypingIndicator() {
+            if (!messageContainer) {
+                return;
+            }
+
+            removeTypingIndicator();
+
+            var bubble = createElement('div', 'whatsapp-typing');
+            bubble.appendChild(createElement('span', 'dot'));
+            bubble.appendChild(createElement('span', 'dot'));
+            bubble.appendChild(createElement('span', 'dot'));
+            typingIndicator = bubble;
+            messageContainer.appendChild(bubble);
+            messageContainer.appendChild(createElement('div', 'clearfix'));
+
+            typingTimerId = window.setTimeout(function () {
+                removeTypingIndicator();
+            }, 1400);
+        }
+
+        function removeTypingIndicator() {
+            if (typingTimerId) {
+                window.clearTimeout(typingTimerId);
+                typingTimerId = null;
+            }
+            if (typingIndicator && typingIndicator.parentNode) {
+                typingIndicator.parentNode.removeChild(typingIndicator);
+            }
+            typingIndicator = null;
+        }
+
+        function maybeShowTypingIndicator(conversation) {
+            if (!conversation || !conversation.messages || !conversation.messages.length) {
+                removeTypingIndicator();
+                return;
+            }
+
+            if (conversation.needs_human || conversation.assigned_user_id) {
+                removeTypingIndicator();
+                return;
+            }
+
+            var convId = conversation.id || conversation.conversation_id;
+            if (!convId) {
+                return;
+            }
+
+            var lastInbound = null;
+            for (var i = conversation.messages.length - 1; i >= 0; i--) {
+                var msg = conversation.messages[i];
+                if (msg && msg.direction === 'inbound') {
+                    lastInbound = msg;
+                    break;
+                }
+            }
+
+            if (!lastInbound) {
+                return;
+            }
+
+            var marker = lastInbound.id ? String(lastInbound.id) : (lastInbound.timestamp || '');
+            if (!marker) {
+                return;
+            }
+
+            if (state.lastInboundByConversation[convId] === undefined) {
+                state.lastInboundByConversation[convId] = marker;
+                return;
+            }
+
+            if (state.lastInboundByConversation[convId] === marker) {
+                return;
+            }
+
+            state.lastInboundByConversation[convId] = marker;
+            showTypingIndicator();
         }
 
         function updateHeader(conversation) {
@@ -840,9 +1078,11 @@
 
             if (lastSeenElement) {
                 if (conversation.last_message_at) {
-                    lastSeenElement.textContent = 'Último mensaje: ' + formatDate(conversation.last_message_at);
+                    lastSeenElement.textContent = 'Último: ' + formatDate(conversation.last_message_at);
+                    lastSeenElement.classList.remove('d-none');
                 } else {
                     lastSeenElement.textContent = '';
+                    lastSeenElement.classList.add('d-none');
                 }
             }
 
@@ -875,6 +1115,26 @@
                 } else {
                     assignedBadge.classList.add('d-none');
                     assignedBadge.textContent = '';
+                }
+            }
+
+            if (assignedCompact) {
+                if (conversation.assigned_user_name) {
+                    assignedCompact.textContent = 'Asignado a ' + conversation.assigned_user_name;
+                    assignedCompact.classList.remove('d-none');
+                } else {
+                    assignedCompact.textContent = '';
+                    assignedCompact.classList.add('d-none');
+                }
+            }
+
+            if (teamCompact) {
+                if (conversation.handoff_role_name) {
+                    teamCompact.textContent = 'Equipo: ' + conversation.handoff_role_name;
+                    teamCompact.classList.remove('d-none');
+                } else {
+                    teamCompact.textContent = '';
+                    teamCompact.classList.add('d-none');
                 }
             }
 
@@ -974,6 +1234,8 @@
                 headerAvatarInitials.textContent = initials || 'WA';
                 headerAvatarInitials.classList.remove('d-none');
             }
+
+            applyAvatarTheme(headerAvatar, conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'WA');
         }
 
         function resolveHasInbound(conversation) {
@@ -1007,6 +1269,22 @@
             }
         }
 
+        function openTemplateTab() {
+            var tabLink = root.querySelector('a[data-bs-toggle=\"tab\"][href=\"#contacts\"]');
+            if (tabLink) {
+                tabLink.click();
+            }
+
+            if (templateToggle && !templateToggle.checked) {
+                templateToggle.checked = true;
+                templateToggle.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+
+            if (templateSelect) {
+                templateSelect.focus();
+            }
+        }
+
         function computeInitials(value) {
             if (!value) {
                 return '';
@@ -1027,6 +1305,38 @@
             }
 
             return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+        }
+
+        function colorFromString(value) {
+            var palette = [
+                {bg: '#e0f2fe', text: '#0369a1'},
+                {bg: '#fee2e2', text: '#b91c1c'},
+                {bg: '#dcfce7', text: '#15803d'},
+                {bg: '#fef9c3', text: '#a16207'},
+                {bg: '#ede9fe', text: '#6d28d9'},
+                {bg: '#fce7f3', text: '#be185d'},
+                {bg: '#cffafe', text: '#0e7490'},
+                {bg: '#ffedd5', text: '#c2410c'}
+            ];
+
+            var str = String(value || 'chat');
+            var hash = 0;
+            for (var i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                hash |= 0;
+            }
+            var index = Math.abs(hash) % palette.length;
+            return palette[index];
+        }
+
+        function applyAvatarTheme(element, seed) {
+            if (!element) {
+                return;
+            }
+
+            var theme = colorFromString(seed || '');
+            element.style.backgroundColor = theme.bg;
+            element.style.color = theme.text;
         }
 
         function buildWaMe(number) {
@@ -1110,6 +1420,7 @@
             }
 
             state.selectedId = id;
+            state.forceScroll = !silent;
 
             if (!silent) {
                 state.loadingConversation = true;
@@ -1250,6 +1561,7 @@
                 }
 
                 state.sending = true;
+                state.forceScroll = true;
                 if (newConversationFeedback) {
                     newConversationFeedback.textContent = 'Enviando mensaje...';
                     newConversationFeedback.classList.remove('text-danger');
@@ -1329,6 +1641,7 @@
                 }
 
                 state.sending = true;
+                state.forceScroll = true;
                 if (errorAlert) {
                     errorAlert.classList.add('d-none');
                 }
@@ -1463,17 +1776,61 @@
             });
         }
 
+        if (openTemplateButton) {
+            openTemplateButton.addEventListener('click', function () {
+                openTemplateTab();
+            });
+        }
+
         function showAttachmentPreview(file) {
             if (!attachmentPreview) {
                 return;
             }
 
-            attachmentPreview.textContent = file ? 'Adjunto: ' + file.name + ' (clic para quitar)' : '';
-            if (file) {
-                attachmentPreview.classList.remove('d-none');
-            } else {
-                attachmentPreview.classList.add('d-none');
+            if (attachmentObjectUrl) {
+                URL.revokeObjectURL(attachmentObjectUrl);
+                attachmentObjectUrl = null;
             }
+
+            attachmentPreview.innerHTML = '';
+            if (!file) {
+                attachmentPreview.classList.add('d-none');
+                return;
+            }
+
+            var wrapper = createElement('div', 'd-flex align-items-center gap-2');
+            var type = file.type || '';
+
+            if (type.indexOf('image/') === 0) {
+                attachmentObjectUrl = URL.createObjectURL(file);
+                var img = document.createElement('img');
+                img.src = attachmentObjectUrl;
+                img.alt = file.name;
+                img.className = 'whatsapp-attachment-thumb';
+                wrapper.appendChild(img);
+            } else {
+                var iconClass = 'mdi mdi-paperclip text-primary';
+                if (type.indexOf('pdf') !== -1) {
+                    iconClass = 'mdi mdi-file-pdf-box text-danger';
+                } else if (type.indexOf('word') !== -1) {
+                    iconClass = 'mdi mdi-file-word-box text-primary';
+                } else if (type.indexOf('audio') !== -1) {
+                    iconClass = 'mdi mdi-microphone text-success';
+                }
+                var icon = createElement('i', iconClass);
+                wrapper.appendChild(icon);
+            }
+
+            var info = createElement('div', 'd-flex flex-column');
+            info.appendChild(createElement('div', 'fw-600', file.name));
+            info.appendChild(createElement('div', 'text-muted small', formatFileSize(file.size)));
+            wrapper.appendChild(info);
+
+            var hint = createElement('div', 'ms-auto text-muted small', 'clic para quitar');
+            wrapper.appendChild(hint);
+
+            attachmentPreview.appendChild(wrapper);
+            attachmentPreview.classList.remove('d-none');
         }
 
         function clearAttachment() {
@@ -1481,7 +1838,22 @@
             if (attachmentInput) {
                 attachmentInput.value = '';
             }
+            if (attachmentObjectUrl) {
+                URL.revokeObjectURL(attachmentObjectUrl);
+                attachmentObjectUrl = null;
+            }
             showAttachmentPreview(null);
+        }
+
+        function formatFileSize(bytes) {
+            var size = Number(bytes) || 0;
+            if (!size) {
+                return '0 B';
+            }
+            var units = ['B', 'KB', 'MB', 'GB'];
+            var index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+            var value = size / Math.pow(1024, index);
+            return value.toFixed(value >= 10 || index === 0 ? 0 : 1) + ' ' + units[index];
         }
 
         function loadPatients(query) {

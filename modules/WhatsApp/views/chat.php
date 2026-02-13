@@ -59,6 +59,96 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         color: #6b7280;
         border: 1px solid rgba(107, 114, 128, 0.2);
     }
+    .whatsapp-chat-bubble {
+        max-width: 72%;
+        border-radius: 14px;
+    }
+    .whatsapp-chat-bubble .card-body {
+        padding: 0.7rem 0.9rem 0.6rem;
+    }
+    .whatsapp-chat-bubble .chat-text-start p {
+        font-size: 0.92rem;
+        line-height: 1.35;
+    }
+    .whatsapp-chat-media {
+        margin-top: 0.5rem;
+    }
+    .whatsapp-chat-media img {
+        max-width: 100%;
+        border-radius: 10px;
+        display: block;
+    }
+    .whatsapp-chat-doc {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.6rem;
+        background: rgba(15, 23, 42, 0.04);
+        border-radius: 10px;
+    }
+    .whatsapp-chat-doc .doc-name {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #1f2937;
+    }
+    .whatsapp-chat-doc .doc-meta {
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+    .whatsapp-chat-meta span + span::before {
+        content: '•';
+        margin: 0 6px;
+        color: #94a3b8;
+    }
+    .whatsapp-status {
+        margin-left: 6px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+    .whatsapp-status.read {
+        color: #0d6efd;
+    }
+    .whatsapp-status.failed {
+        color: #dc3545;
+    }
+    .whatsapp-typing {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 10px;
+        border-radius: 16px;
+        background: #f1f5f9;
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-bottom: 12px;
+    }
+    .whatsapp-typing .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #94a3b8;
+        animation: whatsappTyping 1.2s infinite;
+    }
+    .whatsapp-typing .dot:nth-child(2) { animation-delay: 0.2s; }
+    .whatsapp-typing .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes whatsappTyping {
+        0%, 100% { opacity: 0.3; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(-2px); }
+    }
+    .whatsapp-attachment-preview {
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #f8fafc;
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+    }
+    .whatsapp-attachment-thumb {
+        width: 46px;
+        height: 46px;
+        border-radius: 8px;
+        object-fit: cover;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+    }
 </style>
 <section class="content">
     <div
@@ -199,7 +289,11 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                             <span class="badge bg-warning-light text-warning d-none" data-chat-needs-human>Requiere agente</span>
                                             <span class="badge bg-success-light text-success d-none" data-chat-assigned></span>
                                         </div>
-                                        <p class="fs-12 mb-0" data-chat-last-seen></p>
+                                        <div class="fs-12 text-muted d-flex flex-wrap gap-2 align-items-center whatsapp-chat-meta" data-chat-meta>
+                                            <span data-chat-last-seen></span>
+                                            <span class="d-none" data-chat-assigned-compact></span>
+                                            <span class="d-none" data-chat-team></span>
+                                        </div>
                                     </div>
                                     <div class="d-flex align-items-center gap-2">
                                         <ul class="list-inline mb-0 fs-18">
@@ -251,7 +345,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         </button>
                                         <input type="file" class="d-none" data-attachment-input
                                                accept="image/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                                        <div class="small text-muted d-none" data-attachment-preview></div>
+                                        <div class="small text-muted d-none whatsapp-attachment-preview" data-attachment-preview></div>
                                     </div>
                                     <button type="submit"
                                             class="btn btn-primary" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
@@ -293,8 +387,15 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                         <div class="box-body pt-0" data-conversation-meta>
                             <h5 class="mb-3">Detalles del contacto</h5>
                             <div class="alert alert-warning d-none mb-3" role="alert" data-chat-template-warning>
-                                Este contacto no ha iniciado conversación. WhatsApp Cloud API no entregará mensajes libres.
-                                Envía una plantilla aprobada desde la pestaña Nuevo para abrir la ventana de 24h.
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                    <div>
+                                        Este contacto no ha iniciado conversación. WhatsApp Cloud API no entregará mensajes libres.
+                                        Envía una plantilla aprobada para abrir la ventana de 24h.
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-action-open-template>
+                                        Enviar plantilla
+                                    </button>
+                                </div>
                             </div>
                             <div class="d-flex align-items-center mb-3">
                                 <div class="avatar avatar-lg bg-light rounded-circle d-flex align-items-center justify-content-center me-3">
