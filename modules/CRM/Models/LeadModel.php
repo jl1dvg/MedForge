@@ -21,6 +21,7 @@ class LeadModel
     private ?bool $crmCustomerHasHcNumber = null;
     private SchemaInspector $schemaInspector;
     private ?bool $hasLeadNameColumns = null;
+    private static ?bool $leadNameColumnsAvailable = null;
     /**
      * @var array<string, string>
      */
@@ -385,6 +386,8 @@ class LeadModel
             $this->logSqlException($e, $sql ?? null, $debugParams ?? []);
 
             if ($this->isUnknownNameColumn($e)) {
+                $this->hasLeadNameColumns = false;
+                self::$leadNameColumnsAvailable = false;
                 $retrySql = 'INSERT INTO crm_leads (hc_number, name, email, phone, status, source, notes, assigned_to, customer_id, created_by) '
                     . 'VALUES (:hc_number, :name, :email, :phone, :status, :source, :notes, :assigned_to, :customer_id, :created_by)';
 
@@ -565,6 +568,8 @@ class LeadModel
             $this->logSqlException($e, $sql ?? null, $params ?? []);
 
             if ($this->isUnknownNameColumn($e)) {
+                $this->hasLeadNameColumns = false;
+                self::$leadNameColumnsAvailable = false;
                 $fallbackFields = array_values(array_filter($fields, static function (string $field): bool {
                     return $field !== 'first_name = :first_name' && $field !== 'last_name = :last_name';
                 }));
@@ -1187,12 +1192,19 @@ class LeadModel
             return $this->hasLeadNameColumns;
         }
 
+        if (self::$leadNameColumnsAvailable !== null) {
+            $this->hasLeadNameColumns = self::$leadNameColumnsAvailable;
+            return $this->hasLeadNameColumns;
+        }
+
         try {
             $firstExists = (bool)$this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'first_name'")->fetchColumn();
             $lastExists = (bool)$this->pdo->query("SHOW COLUMNS FROM crm_leads LIKE 'last_name'")->fetchColumn();
             $this->hasLeadNameColumns = $firstExists && $lastExists;
+            self::$leadNameColumnsAvailable = $this->hasLeadNameColumns;
         } catch (\Throwable $t) {
             $this->hasLeadNameColumns = false;
+            self::$leadNameColumnsAvailable = false;
         }
 
         return $this->hasLeadNameColumns;
