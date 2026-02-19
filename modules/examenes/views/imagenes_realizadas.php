@@ -621,6 +621,8 @@ sort($estadoOpciones);
             let informeContext = null;
             let nasFiles = [];
             let nasCurrentIndex = 0;
+            let nasLoadToken = 0;
+            const nasPreviewNodes = new Map();
             const templateHtmlCache = new Map();
 
             function setEstado(texto) {
@@ -650,6 +652,172 @@ sort($estadoOpciones);
                 const ext = String(file && file.ext ? file.ext : '').toLowerCase();
                 const type = String(file && file.type ? file.type : '').toLowerCase();
                 return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].indexOf(ext) !== -1 || type.indexOf('image/') === 0;
+            }
+
+            function getNasFileKey(file) {
+                if (file && file.url) {
+                    return String(file.url);
+                }
+                return String(file && file.name ? file.name : '');
+            }
+
+            function getNasDisplayUrl(file) {
+                if (file && file._cachedUrl) {
+                    return String(file._cachedUrl);
+                }
+                return String(file && file.url ? file.url : '#');
+            }
+
+            function releaseNasFileCaches(list) {
+                (Array.isArray(list) ? list : []).forEach(function (file) {
+                    if (file && file._cachedUrl) {
+                        try {
+                            URL.revokeObjectURL(file._cachedUrl);
+                        } catch (e) {}
+                        file._cachedUrl = '';
+                    }
+                    if (file) {
+                        file._preloadPromise = null;
+                    }
+                });
+            }
+
+            function extractNasSuffixToken(name) {
+                const raw = String(name || '');
+                const stem = raw.replace(/\.[^.]+$/, '');
+                const idMatch = stem.match(/,\s*\d{6,}$/);
+                if (!idMatch) return '';
+                const left = stem.slice(0, idMatch.index).trim();
+                const tokenMatch = left.match(/([A-Za-z]{1,5})$/);
+                if (!tokenMatch) return '';
+                const token = tokenMatch[1];
+                if (token !== token.toLowerCase()) {
+                    return '';
+                }
+                return token;
+            }
+
+            function rankNasFileName(name) {
+                const token = extractNasSuffixToken(name);
+                if (!token) return 0;
+                const map = {
+                    gy: 1,
+                    gc: 1,
+                    gcl: 1,
+                    hno: 2,
+                    onh: 2,
+                    rnfl: 2
+                };
+                return map[token] || 3;
+            }
+
+            function orderNasFiles(files) {
+                return (Array.isArray(files) ? files.slice() : []).sort(function (a, b) {
+                    const rankA = rankNasFileName(a && a.name ? a.name : '');
+                    const rankB = rankNasFileName(b && b.name ? b.name : '');
+                    if (rankA !== rankB) {
+                        return rankA - rankB;
+                    }
+                    const mtimeA = Number(a && a.mtime ? a.mtime : 0);
+                    const mtimeB = Number(b && b.mtime ? b.mtime : 0);
+                    if (mtimeA !== mtimeB) {
+                        return mtimeB - mtimeA;
+                    }
+                    return String(a && a.name ? a.name : '').localeCompare(String(b && b.name ? b.name : ''), 'es', {sensitivity: 'base'});
+                });
+            }
+
+            function preloadNasFile(file, token) {
+                if (!file || !file.url) {
+                    return Promise.resolve();
+                }
+                if (file._cachedUrl) {
+                    return Promise.resolve();
+                }
+                if (file._preloadPromise) {
+                    return file._preloadPromise;
+                }
+                file._preloadPromise = fetch(file.url, {credentials: 'same-origin'})
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('status');
+                        return r.blob();
+                    })
+                    .then(function (blob) {
+                        if (!blob) return;
+                        const objectUrl = URL.createObjectURL(blob);
+                        if (token !== nasLoadToken) {
+                            try {
+                                URL.revokeObjectURL(objectUrl);
+                            } catch (e) {}
+                            return;
+                        }
+                        file._cachedUrl = objectUrl;
+                    })
+                    .catch(function () {
+                    })
+                    .finally(function () {
+                        file._preloadPromise = null;
+                    });
+                return file._preloadPromise;
+            }
+
+            function preloadNasFiles(files, token) {
+                const queue = Array.isArray(files) ? files.slice() : [];
+                if (!queue.length) return;
+                const workers = Math.min(3, queue.length);
+                for (let i = 0; i < workers; i++) {
+                    const run = function () {
+                        if (!queue.length) return Promise.resolve();
+                        const file = queue.shift();
+                        return preloadNasFile(file, token).finally(run);
+                    };
+                    run();
+                }
+            }
+
+            function clearNasPreviewStage() {
+                nasPreviewNodes.clear();
+                if (imagenesContainer) {
+                    imagenesContainer.innerHTML = '';
+                }
+            }
+
+            function buildNasPreviewNode(file) {
+                const current = file || {};
+                const name = current.name ? String(current.name) : 'Archivo';
+                const url = getNasDisplayUrl(current);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'nas-slider-preview-wrap d-none';
+                wrapper.dataset.nasKey = getNasFileKey(current);
+
+                const typeBadge = document.createElement('div');
+                typeBadge.className = 'position-absolute top-0 end-0 m-2';
+                typeBadge.innerHTML = isPdf(current)
+                    ? '<span class="badge bg-danger">PDF</span>'
+                    : '<span class="badge bg-info text-dark">Imagen</span>';
+                wrapper.appendChild(typeBadge);
+
+                if (isImage(current)) {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = name;
+                    img.className = 'nas-slider-preview-img';
+                    wrapper.appendChild(img);
+                } else if (isPdf(current)) {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = url;
+                    iframe.className = 'nas-slider-preview-pdf';
+                    iframe.title = name;
+                    wrapper.appendChild(iframe);
+                } else {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted';
+                    fallback.innerHTML = '<i class="mdi mdi-file-outline fs-1 mb-2"></i><div class="small">Archivo no previsualizable</div>';
+                    wrapper.appendChild(fallback);
+                }
+
+                return wrapper;
             }
 
             function updateNasControls() {
@@ -712,10 +880,11 @@ sort($estadoOpciones);
             function renderImagenesNas(files) {
                 if (!imagenesContainer) return;
                 if (Array.isArray(files)) {
+                    releaseNasFileCaches(nasFiles);
                     nasFiles = files.slice();
                     nasCurrentIndex = 0;
+                    clearNasPreviewStage();
                 }
-                imagenesContainer.innerHTML = '';
                 if (!nasFiles.length) {
                     imagenesContainer.innerHTML = '<div class="text-muted small px-3">No se encontraron archivos en el NAS.</div>';
                     renderNasThumbs();
@@ -730,44 +899,32 @@ sort($estadoOpciones);
                 }
 
                 const current = nasFiles[nasCurrentIndex];
-                const name = current && current.name ? current.name : 'Archivo';
-                const url = current && current.url ? current.url : '#';
-                const wrapper = document.createElement('div');
-                wrapper.className = 'nas-slider-preview-wrap';
-
-                const typeBadge = document.createElement('div');
-                typeBadge.className = 'position-absolute top-0 end-0 m-2';
-                typeBadge.innerHTML = isPdf(current)
-                    ? '<span class="badge bg-danger">PDF</span>'
-                    : '<span class="badge bg-info text-dark">Imagen</span>';
-                wrapper.appendChild(typeBadge);
-
-                if (isImage(current)) {
-                    const img = document.createElement('img');
-                    img.src = url;
-                    img.alt = name;
-                    img.className = 'nas-slider-preview-img';
-                    wrapper.appendChild(img);
-                } else if (isPdf(current)) {
-                    const iframe = document.createElement('iframe');
-                    iframe.src = url;
-                    iframe.className = 'nas-slider-preview-pdf';
-                    iframe.title = name;
-                    wrapper.appendChild(iframe);
-                } else {
-                    const fallback = document.createElement('div');
-                    fallback.className = 'w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted';
-                    fallback.innerHTML = '<i class="mdi mdi-file-outline fs-1 mb-2"></i><div class="small">Archivo no previsualizable</div>';
-                    wrapper.appendChild(fallback);
+                const key = getNasFileKey(current);
+                if (!nasPreviewNodes.has(key)) {
+                    nasPreviewNodes.set(key, buildNasPreviewNode(current));
                 }
 
-                imagenesContainer.appendChild(wrapper);
+                nasPreviewNodes.forEach(function (node) {
+                    if (!imagenesContainer.contains(node)) {
+                        imagenesContainer.appendChild(node);
+                    }
+                    node.classList.add('d-none');
+                });
+
+                const currentNode = nasPreviewNodes.get(key);
+                if (currentNode) {
+                    currentNode.classList.remove('d-none');
+                }
+
                 renderNasThumbs();
                 updateNasControls();
             }
 
             function cargarImagenesNas(formId, hcNumber) {
                 if (!imagenesContainer) return;
+                nasLoadToken += 1;
+                const token = nasLoadToken;
+                releaseNasFileCaches(nasFiles);
                 nasFiles = [];
                 nasCurrentIndex = 0;
                 renderImagenesNas([]);
@@ -780,8 +937,9 @@ sort($estadoOpciones);
                             setImagenesStatus(res && res.error ? res.error : 'No se pudieron cargar las imágenes.');
                             return;
                         }
-                        const files = res.files || [];
+                        const files = orderNasFiles(res.files || []);
                         renderImagenesNas(files);
+                        preloadNasFiles(files, token);
                         setImagenesStatus(files.length
                             ? (files.length + ' archivo(s) encontrado(s)')
                             : 'Sin archivos en el NAS');
@@ -1075,14 +1233,14 @@ sort($estadoOpciones);
                 });
             }
 
-            if (modalEl) {
+                if (modalEl) {
                 modalEl.addEventListener('hidden.bs.modal', function () {
+                    nasLoadToken += 1;
                     if (templateContainer) {
                         templateContainer.innerHTML = '';
                     }
-                    if (imagenesContainer) {
-                        imagenesContainer.innerHTML = '';
-                    }
+                    releaseNasFileCaches(nasFiles);
+                    clearNasPreviewStage();
                     if (imagenesThumbs) {
                         imagenesThumbs.innerHTML = '';
                     }
