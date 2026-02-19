@@ -434,10 +434,13 @@ class InformesHelper
 
     public static function clasificarCategoriaFactura(array $datosPaciente): string
     {
+        $codigosConsulta = ['92002', '92012'];
+        $lookupConsulta = array_flip($codigosConsulta);
+
         // 1) Regla fuerte: "consulta" SOLO si se facturó con código 92002.
         foreach (($datosPaciente['procedimientos'] ?? []) as $p) {
             $codigo = trim((string)($p['proc_codigo'] ?? ''));
-            if ($codigo === '92002') {
+            if ($codigo !== '' && isset($lookupConsulta[$codigo])) {
                 return 'consulta';
             }
         }
