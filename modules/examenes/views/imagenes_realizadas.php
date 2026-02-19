@@ -348,6 +348,21 @@ sort($estadoOpciones);
         max-height: 170px;
         overflow: auto;
     }
+    .nas-nav-btn {
+        min-width: 108px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+    .nas-nav-btn .nav-arrow {
+        font-size: 1rem;
+        line-height: 1;
+    }
+    .nas-nav-btn:disabled {
+        opacity: 0.5;
+    }
     .nas-thumb-item {
         text-align: left;
         border: 1px solid #dee2e6;
@@ -399,12 +414,14 @@ sort($estadoOpciones);
                                 <span class="text-muted small" id="informeImagenesStatus"></span>
                             </div>
                             <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNasPrev">
-                                    <i class="mdi mdi-chevron-left"></i>
+                                <button type="button" class="btn btn-sm btn-outline-secondary nas-nav-btn" id="btnNasPrev" aria-label="Archivo anterior">
+                                    <span class="nav-arrow" aria-hidden="true">&larr;</span>
+                                    <span>Anterior</span>
                                 </button>
                                 <span class="small text-muted" id="informeNasCounter">0/0</span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNasNext">
-                                    <i class="mdi mdi-chevron-right"></i>
+                                <button type="button" class="btn btn-sm btn-outline-secondary nas-nav-btn" id="btnNasNext" aria-label="Archivo siguiente">
+                                    <span>Siguiente</span>
+                                    <span class="nav-arrow" aria-hidden="true">&rarr;</span>
                                 </button>
                             </div>
                             <div id="informeImagenesContainer" class="nas-slider-stage flex-grow-1 d-flex align-items-center justify-content-center"></div>

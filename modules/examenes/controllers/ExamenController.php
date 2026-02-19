@@ -1951,6 +1951,18 @@ class ExamenController extends BaseController
         if (str_contains($texto, 'eco') || str_contains($texto, 'ecografia')) {
             return 'eco';
         }
+        if (
+            str_contains($texto, 'oct') &&
+            (
+                str_contains($texto, 'nervio')
+                || str_contains($texto, 'papila')
+                || str_contains($texto, 'cfnr')
+                || str_contains($texto, 'fibras nerviosas')
+                || str_contains($texto, 'rnfl')
+            )
+        ) {
+            return 'octno';
+        }
         if (str_contains($texto, 'oct')) {
             return 'octm';
         }
@@ -2488,12 +2500,14 @@ class ExamenController extends BaseController
         $reportService = new ReportService();
         $filename = 'PROTOCOLO_PREQUIRURGICO_' . $hcNumber . '_' . date('Ymd_His') . '.pdf';
         $branding = $this->buildProtocoloPrequirurgicoBranding();
+        $firmanteProtocolo = $this->obtenerDatosFirmante(31);
 
         $pdf = $reportService->renderPdf('protocolo_prequirurgico_catarata', [
             'hc_number' => $hcNumber,
             'fecha_emision' => date('Y-m-d'),
             'header_image_data_uri' => $branding['header'],
             'footer_image_data_uri' => $branding['footer'],
+            'firmante' => $firmanteProtocolo,
         ], [
             'destination' => 'S',
             'filename' => $filename,
@@ -2801,6 +2815,27 @@ class ExamenController extends BaseController
             return trim(implode("\n", $lines));
         }
 
+        if ($plantilla === 'octno') {
+            $odValor = trim((string)($payload['inputOD'] ?? ''));
+            $oiValor = trim((string)($payload['inputOI'] ?? ''));
+
+            $odCuadrantes = $this->resolverCuadrantesOctNo($payload, 'od');
+            $oiCuadrantes = $this->resolverCuadrantesOctNo($payload, 'oi');
+
+            $lines = [];
+            $odBloque = $this->buildOctNoEyeBlock('OD', $odValor, $odCuadrantes);
+            $oiBloque = $this->buildOctNoEyeBlock('OI', $oiValor, $oiCuadrantes);
+
+            if ($odBloque !== '') {
+                $lines[] = $odBloque;
+            }
+            if ($oiBloque !== '') {
+                $lines[] = $oiBloque;
+            }
+
+            return trim(implode("\n\n", $lines));
+        }
+
         if ($plantilla === 'biometria') {
             $odCamara = trim((string)($payload['camaraOD'] ?? ''));
             $odCristalino = trim((string)($payload['cristalinoOD'] ?? ''));
@@ -2860,6 +2895,101 @@ class ExamenController extends BaseController
         }
 
         return trim(implode("\n", $lines));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<int, string>
+     */
+    private function resolverCuadrantesOctNo(array $payload, string $eye): array
+    {
+        $eye = strtolower($eye) === 'oi' ? 'oi' : 'od';
+
+        $map = [
+            'INF' => [
+                'octno_' . $eye . '_inf',
+                'checkboxI' . ($eye === 'oi' ? '_OI' : ''),
+            ],
+            'SUP' => [
+                'octno_' . $eye . '_sup',
+                'checkboxS' . ($eye === 'oi' ? '_OI' : ''),
+            ],
+            'NAS' => [
+                'octno_' . $eye . '_nas',
+                'checkboxN' . ($eye === 'oi' ? '_OI' : ''),
+            ],
+            'TEMP' => [
+                'octno_' . $eye . '_temp',
+                'checkboxT' . ($eye === 'oi' ? '_OI' : ''),
+            ],
+        ];
+
+        $activos = [];
+        foreach ($map as $label => $keys) {
+            foreach ($keys as $key) {
+                if ($this->payloadFlagEnabled($payload[$key] ?? null)) {
+                    $activos[] = $label;
+                    break;
+                }
+            }
+        }
+
+        return $activos;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function payloadFlagEnabled($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return (float)$value > 0;
+        }
+        $text = trim((string)$value);
+        if ($text === '') {
+            return false;
+        }
+        return in_array(strtolower($text), ['1', 'true', 'on', 'yes', 'si', 'sí'], true);
+    }
+
+    /**
+     * @param array<int, string> $cuadrantes
+     */
+    private function buildOctNoEyeBlock(string $eye, string $valor, array $cuadrantes): string
+    {
+        $valorNum = (float)str_replace(',', '.', $valor);
+        $tieneValor = trim($valor) !== '';
+        $tieneCuadrantes = !empty($cuadrantes);
+
+        if (!$tieneValor && !$tieneCuadrantes) {
+            return '';
+        }
+
+        $clasificacion = 'AL BORDE DE LIMITES NORMALES';
+        if ($tieneValor && $valorNum >= 85) {
+            $clasificacion = 'DENTRO DE LIMITES NORMALES';
+        } elseif ($tieneCuadrantes) {
+            $clasificacion = 'FUERA DE LIMITES NORMALES';
+        }
+
+        $lines = [];
+        $lines[] = $eye === 'OD' ? 'OJO DERECHO' : 'OJO IZQUIERDO';
+        $lines[] = 'CONFIABILIDAD: BUENA';
+
+        if ($tieneCuadrantes) {
+            $lines[] = 'SE APRECIA DISMINUCIÓN DEL ESPESOR DE CAPA DE FIBRAS NERVIOSAS RETINALES EN CUADRANTES ' . implode(', ', $cuadrantes) . '.';
+        }
+
+        if ($tieneValor) {
+            $lines[] = 'PROMEDIO ESPESOR CFNR ' . $eye . ': ' . $valor . 'UM';
+        }
+
+        $lines[] = 'CLASIFICACIÓN: ' . $clasificacion;
+
+        return implode("\n", $lines);
     }
 
     private function construirConclusionesInforme(?array $payload): string
