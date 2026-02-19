@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
 
 const DEFAULT_CONTROL_ENDPOINT =
   "https://cive.consulmed.me/api/cive-extension/config";
+const DEFAULT_API_BASE_URL = "https://asistentecive.consulmed.me/api";
 const DEFAULT_REFRESH_INTERVAL_MS = 900000; // 15 minutos
 const SYNC_ALARM_NAME = "civeExtension.sync";
 const EXAM_COMMAND_MAP = {
@@ -314,6 +315,57 @@ function ejecutarExamenEnPestanaActiva(examenId) {
       },
     );
   });
+}
+
+function normalizeApiBaseUrl(rawValue) {
+  const fallback = new URL(DEFAULT_API_BASE_URL);
+  try {
+    const parsed = new URL(String(rawValue || "").trim() || DEFAULT_API_BASE_URL);
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/api";
+    }
+    return parsed.toString().replace(/\/+$/, "");
+  } catch (error) {
+    return fallback.toString().replace(/\/+$/, "");
+  }
+}
+
+async function resolveApiBaseUrl() {
+  const result = await storageGet([STORAGE_KEYS.config, STORAGE_KEYS.bootstrap]);
+  const config = result?.[STORAGE_KEYS.config] || {};
+  const bootstrap = result?.[STORAGE_KEYS.bootstrap] || {};
+  const candidate =
+    config?.apiBaseUrl ||
+    config?.api?.baseUrl ||
+    bootstrap?.apiBaseUrl ||
+    bootstrap?.api?.baseUrl ||
+    DEFAULT_API_BASE_URL;
+  return normalizeApiBaseUrl(candidate);
+}
+
+function normalizeApiPath(path) {
+  let normalized = (path || "").toString().trim();
+  if (!normalized.startsWith("/")) {
+    normalized = `/${normalized}`;
+  }
+  // Evita duplicar /api cuando la base ya lo incluye.
+  if (normalized.toLowerCase().startsWith("/api/")) {
+    normalized = normalized.slice(4);
+  }
+  return normalized;
+}
+
+async function buildApiUrl(path, query = null) {
+  const base = await resolveApiBaseUrl();
+  const url = new URL(`${base}${normalizeApiPath(path)}`);
+  if (query && typeof query === "object") {
+    Object.entries(query).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) {
+        url.searchParams.set(k, v);
+      }
+    });
+  }
+  return url.toString();
 }
 
 chrome.commands.onCommand.addListener((command) => {
@@ -653,23 +705,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: "Path inválido" });
       return false;
     }
-    const url = new URL(`https://asistentecive.consulmed.me${path}`);
-    Object.entries(query).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, v);
-    });
-    fetch(url.toString(), { method: "GET", credentials: "include" })
-      .then((resp) => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
-      })
-      .then((data) => sendResponse({ success: true, data }))
-      .catch((error) => {
+    (async () => {
+      let url = "";
+      try {
+        url = await buildApiUrl(path, query);
+        const resp = await fetch(url, { method: "GET", credentials: "include" });
+        const text = await resp.text();
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}${text ? ` | ${text}` : ""}`);
+        }
+        const data = text ? JSON.parse(text) : {};
+        sendResponse({ success: true, data });
+      } catch (error) {
         console.error("Error en proyeccionesGet:", error);
         sendResponse({
           success: false,
           error: error.message || "Error al consultar proyecciones",
+          url,
         });
-      });
+      }
+    })();
     return true;
   }
 
@@ -730,24 +785,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: "Path inválido" });
       return false;
     }
-    fetch(`https://asistentecive.consulmed.me${path}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json;charset=UTF-8" },
-      body: JSON.stringify(body),
-    })
-      .then((resp) => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
-      })
-      .then((data) => sendResponse({ success: true, data }))
-      .catch((error) => {
+    (async () => {
+      let url = "";
+      try {
+        url = await buildApiUrl(path);
+        const resp = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json;charset=UTF-8" },
+          body: JSON.stringify(body),
+        });
+        const text = await resp.text();
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}${text ? ` | ${text}` : ""}`);
+        }
+        const data = text ? JSON.parse(text) : {};
+        sendResponse({ success: true, data });
+      } catch (error) {
         console.error("Error en proyeccionesPost:", error);
         sendResponse({
           success: false,
           error: error.message || "Error al enviar proyecciones",
+          url,
         });
-      });
+      }
+    })();
     return true;
   }
 

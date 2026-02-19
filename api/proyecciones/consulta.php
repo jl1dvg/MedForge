@@ -14,10 +14,16 @@ $allowedOrigins = [
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if ($origin && in_array($origin, $allowedOrigins, true)) {
-    header("Access-Control-Allow-Origin: {$origin}");
-    header("Access-Control-Allow-Credentials: true");
-    header("Vary: Origin");
+$isAllowedWebOrigin = $origin && in_array($origin, $allowedOrigins, true);
+$isChromeExtensionOrigin = is_string($origin) && stripos($origin, 'chrome-extension://') === 0;
+$isNoOriginRequest = $origin === '';
+
+if ($isAllowedWebOrigin || $isChromeExtensionOrigin || $isNoOriginRequest) {
+    if ($origin !== '') {
+        header("Access-Control-Allow-Origin: {$origin}");
+        header("Access-Control-Allow-Credentials: true");
+        header("Vary: Origin");
+    }
 } else {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Origen no permitido']);

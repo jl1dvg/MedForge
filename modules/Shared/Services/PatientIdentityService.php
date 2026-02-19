@@ -391,6 +391,13 @@ class PatientIdentityService
         $sets = [];
         $params = [':hc' => $hcNumber];
         foreach ($fields as $column => $value) {
+            if ($value === null) {
+                continue;
+            }
+            if (is_string($value) && trim($value) === '') {
+                continue;
+            }
+
             $sets[] = sprintf('%s = :%s', $column, $column);
             $params[':' . $column] = $value;
         }

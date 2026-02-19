@@ -2,6 +2,9 @@
     RewriteEngine On
     RewriteBase /
 
+    # Strangler bridge: /v2/* -> Laravel kernel (parallel app)
+    RewriteRule ^v2(/.*)?$ v2_kernel.php [QSA,L]
+
     # No reescribir si el archivo o carpeta existe
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d

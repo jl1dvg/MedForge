@@ -399,7 +399,16 @@ class GuardarProyeccionController
         }
 
         $updates = [];
+        $dateColumns = ['fecha_nacimiento', 'fecha_caducidad'];
         foreach (array_keys($fields) as $column) {
+            if (in_array($column, $dateColumns, true)) {
+                $updates[] = sprintf(
+                    '%1$s = IF(VALUES(%1$s) IS NULL, %1$s, VALUES(%1$s))',
+                    $column
+                );
+                continue;
+            }
+
             $updates[] = sprintf(
                 '%1$s = IF(VALUES(%1$s) IS NULL OR VALUES(%1$s) = "", %1$s, VALUES(%1$s))',
                 $column
@@ -514,13 +523,22 @@ class GuardarProyeccionController
         if ($value === '') {
             return null;
         }
+        if ($value === '0000-00-00' || $value === '0000-00-00 00:00:00') {
+            return null;
+        }
 
         $timestamp = strtotime($value);
         if ($timestamp === false) {
             return null;
         }
 
-        return date('Y-m-d', $timestamp);
+        $normalized = date('Y-m-d', $timestamp);
+        [$year, $month, $day] = array_map('intval', explode('-', $normalized));
+        if ($year < 1900 || !checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        return $normalized;
     }
 
     public function obtenerEstado($formId): ?string
@@ -785,37 +803,193 @@ class GuardarProyeccionController
 
     public function actualizarEstado($formId, $nuevoEstado): array
     {
-        error_log("🟣 Intentando actualizar estado: form_id=$formId, nuevoEstado=$nuevoEstado");
-        $select = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = :form_id LIMIT 1");
-        $select->execute([':form_id' => $formId]);
-        $estadoActual = $select->fetchColumn();
+        try {
+            error_log("🟣 Intentando actualizar estado: form_id=$formId, nuevoEstado=$nuevoEstado");
+            $resolvedFormId = (string) $formId;
+            $select = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = :form_id LIMIT 1");
+            $select->execute([':form_id' => $resolvedFormId]);
+            $estadoActual = $select->fetchColumn();
 
-        if ($estadoActual === false) {
-            error_log("🔴 El form_id $formId NO existe en procedimiento_proyectado");
-            return ['success' => false, 'message' => 'El form_id no existe en la tabla procedimiento_proyectado'];
+            if ($estadoActual === false) {
+                $bootstrap = $this->bootstrapProcedimientoDesdeSolicitud($resolvedFormId, $nuevoEstado);
+                if (!empty($bootstrap['form_id'])) {
+                    $resolvedFormId = (string) $bootstrap['form_id'];
+                }
+
+                $select->execute([':form_id' => $resolvedFormId]);
+                $estadoActual = $select->fetchColumn();
+
+                if ($estadoActual === false) {
+                    error_log("🔴 El form_id $formId NO existe en procedimiento_proyectado");
+                    return ['success' => false, 'message' => 'El form_id no existe en la tabla procedimiento_proyectado'];
+                }
+            }
+
+            if ($estadoActual === $nuevoEstado) {
+                error_log("🟠 El estado solicitado ya estaba registrado. No se realizan cambios adicionales.");
+                return ['success' => true, 'message' => 'Estado ya estaba registrado'];
+            }
+
+            $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado_set WHERE form_id = :form_id AND estado_agenda <> :estado_compare";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                ':estado_set' => $nuevoEstado,
+                ':estado_compare' => $nuevoEstado,
+                ':form_id' => $resolvedFormId
+            ]);
+            error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
+            if ($stmt->rowCount() > 0) {
+                $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)"
+                         . " VALUES (?, ?, NOW())";
+                $this->db->prepare($sql2)->execute([$resolvedFormId, $nuevoEstado]);
+                return ['success' => true, 'message' => 'Estado actualizado'];
+            }
+
+            error_log("🟤 No se registraron cambios de estado para form_id $formId");
+            return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
+        } catch (\Throwable $e) {
+            error_log('🔴 actualizarEstado error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Error interno al actualizar estado: '
+                    . $e->getMessage()
+                    . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            ];
+        }
+    }
+
+    /**
+     * Intenta crear el registro mínimo en procedimiento_proyectado cuando no existe.
+     * También soporta que llegue id de solicitud en lugar de form_id.
+     *
+     * @return array{form_id:string}|array{}
+     */
+    private function bootstrapProcedimientoDesdeSolicitud(string $formIdOrId, string $estado): array
+    {
+        $formIdOrId = trim($formIdOrId);
+        if ($formIdOrId === '') {
+            return [];
         }
 
-        if ($estadoActual === $nuevoEstado) {
-            error_log("🟠 El estado solicitado ya estaba registrado. No se realizan cambios adicionales.");
-            return ['success' => true, 'message' => 'Estado ya estaba registrado'];
+        $selectColumns = ['form_id', 'hc_number', 'procedimiento'];
+        if ($this->schemaInspector->tableHasColumn('solicitud_procedimiento', 'doctor')) {
+            $selectColumns[] = 'doctor';
+        }
+        if ($this->schemaInspector->tableHasColumn('solicitud_procedimiento', 'afiliacion')) {
+            $selectColumns[] = 'afiliacion';
+        }
+        if ($this->schemaInspector->tableHasColumn('solicitud_procedimiento', 'fecha')) {
+            $selectColumns[] = 'fecha';
         }
 
-        $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado WHERE form_id = :form_id AND estado_agenda <> :estado";
+        $orderParts = [];
+        if ($this->schemaInspector->tableHasColumn('solicitud_procedimiento', 'id')) {
+            $orderParts[] = 'id DESC';
+        }
+        if ($this->schemaInspector->tableHasColumn('solicitud_procedimiento', 'created_at')) {
+            $orderParts[] = 'created_at DESC';
+        }
+        if (empty($orderParts)) {
+            $orderParts[] = 'form_id DESC';
+        }
+
+        $sql = sprintf(
+            "SELECT %s FROM solicitud_procedimiento WHERE form_id = :form_id ORDER BY %s LIMIT 1",
+            implode(', ', $selectColumns),
+            implode(', ', $orderParts)
+        );
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            ':estado' => $nuevoEstado,
-            ':form_id' => $formId
-        ]);
-        error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
-        if ($stmt->rowCount() > 0) {
-            $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)"
-                     . " VALUES (?, ?, NOW())";
-            $this->db->prepare($sql2)->execute([$formId, $nuevoEstado]);
-            return ['success' => true, 'message' => 'Estado actualizado'];
+        $stmt->execute([':form_id' => $formIdOrId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // Fallback: si llegó id numérico de solicitud, resolver su form_id real.
+        if (!$row && ctype_digit($formIdOrId)) {
+            $sqlById = sprintf(
+                "SELECT %s FROM solicitud_procedimiento WHERE id = :id LIMIT 1",
+                implode(', ', $selectColumns)
+            );
+            $stmtById = $this->db->prepare($sqlById);
+            $stmtById->execute([':id' => (int) $formIdOrId]);
+            $row = $stmtById->fetch(PDO::FETCH_ASSOC) ?: null;
         }
 
-        error_log("🟤 No se registraron cambios de estado para form_id $formId");
-        return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
+        if (!$row) {
+            return [];
+        }
+
+        $resolvedFormId = trim((string) ($row['form_id'] ?? ''));
+        $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+        $procedimiento = trim((string) ($row['procedimiento'] ?? ''));
+        $doctor = isset($row['doctor']) ? trim((string) $row['doctor']) : null;
+        $afiliacion = isset($row['afiliacion']) ? trim((string) $row['afiliacion']) : null;
+        $fecha = isset($row['fecha']) ? trim((string) $row['fecha']) : null;
+
+        if ($resolvedFormId === '' || $hcNumber === '' || $procedimiento === '') {
+            return [];
+        }
+
+        $fechaNormalizada = $this->normalizeDateField($fecha);
+        if ($fechaNormalizada === null) {
+            $fechaNormalizada = date('Y-m-d');
+        }
+
+        $insertValues = [
+            'form_id' => $resolvedFormId,
+            'hc_number' => $hcNumber,
+            'procedimiento_proyectado' => $procedimiento,
+        ];
+
+        if ($this->schemaInspector->tableHasColumn('procedimiento_proyectado', 'doctor')) {
+            $insertValues['doctor'] = ($doctor !== null && $doctor !== '') ? $doctor : null;
+        }
+        if ($this->schemaInspector->tableHasColumn('procedimiento_proyectado', 'afiliacion')) {
+            $insertValues['afiliacion'] = ($afiliacion !== null && $afiliacion !== '') ? $afiliacion : null;
+        }
+        if ($this->schemaInspector->tableHasColumn('procedimiento_proyectado', 'fecha')) {
+            $insertValues['fecha'] = $fechaNormalizada;
+        }
+        if ($this->schemaInspector->tableHasColumn('procedimiento_proyectado', 'estado_agenda')) {
+            $insertValues['estado_agenda'] = $estado !== '' ? $estado : 'CONSULTA';
+        }
+
+        $columns = [];
+        $placeholders = [];
+        $params = [];
+        foreach ($insertValues as $column => $value) {
+            $columns[] = $column;
+            $placeholders[] = ':' . $column;
+            $params[':' . $column] = $value;
+        }
+
+        $updates = [
+            "procedimiento_proyectado = IF(VALUES(procedimiento_proyectado) IS NULL OR VALUES(procedimiento_proyectado) = '', procedimiento_proyectado, VALUES(procedimiento_proyectado))",
+        ];
+        if (array_key_exists('doctor', $insertValues)) {
+            $updates[] = "doctor = IF(VALUES(doctor) IS NULL OR VALUES(doctor) = '', doctor, VALUES(doctor))";
+        }
+        if (array_key_exists('afiliacion', $insertValues)) {
+            $updates[] = "afiliacion = IF(VALUES(afiliacion) IS NULL OR VALUES(afiliacion) = '', afiliacion, VALUES(afiliacion))";
+        }
+        if (array_key_exists('fecha', $insertValues)) {
+            $updates[] = "fecha = IF(VALUES(fecha) IS NULL, fecha, VALUES(fecha))";
+        }
+        if (array_key_exists('estado_agenda', $insertValues)) {
+            $updates[] = "estado_agenda = IF(VALUES(estado_agenda) IS NULL OR VALUES(estado_agenda) = '', estado_agenda, VALUES(estado_agenda))";
+        }
+
+        $sqlBootstrap = sprintf(
+            'INSERT INTO procedimiento_proyectado (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
+            implode(', ', $columns),
+            implode(', ', $placeholders),
+            implode(', ', $updates)
+        );
+
+        $stmtBootstrap = $this->db->prepare($sqlBootstrap);
+        $stmtBootstrap->execute($params);
+
+        error_log("🛠️ Bootstrap procedimiento_proyectado ejecutado para form_id={$resolvedFormId} vía upsert mínimo");
+
+        return ['form_id' => $resolvedFormId];
     }
 
     public function getCambiosRecientes()

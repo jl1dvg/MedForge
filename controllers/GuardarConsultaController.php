@@ -55,35 +55,62 @@ class GuardarConsultaController
         try {
             $this->db->beginTransaction();
 
-            // 1) Upsert patient_data
-            if (!empty($data['fechaNacimiento']) || !empty($data['sexo']) || !empty($data['celular']) || !empty($data['ciudad'])) {
+            // 1) Actualizar patient_data sin sobreescribir con vacíos ni crear filas incompletas.
+            $patientFieldMap = [
+                'fecha_nacimiento' => $data['fechaNacimiento'] ?? null,
+                'sexo' => $data['sexo'] ?? null,
+                'celular' => $data['celular'] ?? null,
+                'ciudad' => $data['ciudad'] ?? null,
+            ];
+            $patientUpdates = [];
+            foreach ($patientFieldMap as $column => $value) {
+                if ($value === null) {
+                    continue;
+                }
+                $normalized = is_string($value) ? trim($value) : $value;
+                if ($normalized === '') {
+                    continue;
+                }
+                $patientUpdates[$column] = $normalized;
+            }
+
+            if (!empty($patientUpdates)) {
                 $auditType = PHP_SAPI === 'cli' ? 'cron' : 'api';
                 $auditIdentifier = PHP_SAPI === 'cli'
                     ? 'cron:' . basename((string) ($_SERVER['argv'][0] ?? 'unknown_script'))
                     : 'api:' . trim((string) ($_SERVER['REQUEST_URI'] ?? '/consultas/guardar'));
 
-                $sqlPaciente = "INSERT INTO patient_data (hc_number, fecha_nacimiento, sexo, celular, ciudad, created_by_type, created_by_identifier, updated_by_type, updated_by_identifier)
-                            VALUES (:hc, :nac, :sexo, :cel, :ciudad, :created_by_type, :created_by_identifier, :updated_by_type, :updated_by_identifier)
-                            ON DUPLICATE KEY UPDATE
-                                fecha_nacimiento = VALUES(fecha_nacimiento),
-                                sexo = VALUES(sexo),
-                                celular = VALUES(celular),
-                                ciudad = VALUES(ciudad),
-                                updated_at = CURRENT_TIMESTAMP,
-                                updated_by_type = VALUES(updated_by_type),
-                                updated_by_identifier = VALUES(updated_by_identifier)";
-                $stmt = $this->db->prepare($sqlPaciente);
-                $stmt->execute([
-                    ':hc' => $hcNumber,
-                    ':nac' => $data['fechaNacimiento'] ?? null,
-                    ':sexo' => $data['sexo'] ?? null,
-                    ':cel' => $data['celular'] ?? null,
-                    ':ciudad' => $data['ciudad'] ?? null,
-                    ':created_by_type' => $auditType,
-                    ':created_by_identifier' => $auditIdentifier,
-                    ':updated_by_type' => $auditType,
-                    ':updated_by_identifier' => $auditIdentifier,
-                ]);
+                $stmtExists = $this->db->prepare('SELECT 1 FROM patient_data WHERE hc_number = :hc LIMIT 1');
+                $stmtExists->execute([':hc' => $hcNumber]);
+                $patientExists = (bool) $stmtExists->fetchColumn();
+
+                if ($patientExists) {
+                    $sets = [];
+                    $params = [
+                        ':hc' => $hcNumber,
+                        ':updated_by_type' => $auditType,
+                        ':updated_by_identifier' => $auditIdentifier,
+                    ];
+
+                    foreach ($patientUpdates as $column => $value) {
+                        $paramName = ':' . $column;
+                        $sets[] = $column . ' = ' . $paramName;
+                        $params[$paramName] = $value;
+                    }
+
+                    $sets[] = 'updated_at = CURRENT_TIMESTAMP';
+                    $sets[] = 'updated_by_type = :updated_by_type';
+                    $sets[] = 'updated_by_identifier = :updated_by_identifier';
+
+                    $sqlPaciente = 'UPDATE patient_data SET ' . implode(', ', $sets) . ' WHERE hc_number = :hc';
+                    $stmt = $this->db->prepare($sqlPaciente);
+                    $stmt->execute($params);
+                } else {
+                    error_log(
+                        'GuardarConsultaController: Se omitió creación de patient_data para hc_number ' . $hcNumber
+                        . ' por falta de datos de identidad.'
+                    );
+                }
             }
 
             // 2) Upsert consulta_data (ahora con campos nuevos)
