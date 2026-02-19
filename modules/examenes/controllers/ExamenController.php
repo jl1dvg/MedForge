@@ -2265,7 +2265,7 @@ class ExamenController extends BaseController
     }
 
     /**
-     * @return array{pdf: string, filename: string, fecha: string|null, hc_number: string}
+     * @return array{pdf: string, filename: string, fecha: string|null, hc_number: string, tipo_examen: string}
      */
     private function renderInforme012B(string $formId, string $hcNumber): array
     {
@@ -2375,6 +2375,7 @@ class ExamenController extends BaseController
             'filename' => $filename,
             'fecha' => $fechaInforme ?: null,
             'hc_number' => $patient['hc_number'] ?: $hcNumber,
+            'tipo_examen' => $tipoExamen,
         ];
     }
 
@@ -2418,6 +2419,7 @@ class ExamenController extends BaseController
 
         $fechaReferencia = null;
         $timestampRef = null;
+        $shouldAppendProtocoloPrequirurgico = false;
 
         foreach ($items as $item) {
             $rendered = $this->renderInforme012B($item['form_id'], $item['hc_number']);
@@ -2431,6 +2433,10 @@ class ExamenController extends BaseController
             $tmpPdf = $this->writeTempFile($rendered['pdf'], 'pdf');
             $tempFiles[] = $tmpPdf;
             $this->appendPdfFile($pdf, $tmpPdf);
+
+            if ($this->debeAdjuntarProtocoloPrequirurgico($rendered['tipo_examen'] ?? '')) {
+                $shouldAppendProtocoloPrequirurgico = true;
+            }
 
             $files = $this->nasImagenesService->listFiles($item['hc_number'], $item['form_id']);
             foreach ($files as $file) {
@@ -2454,6 +2460,13 @@ class ExamenController extends BaseController
             }
         }
 
+        if ($shouldAppendProtocoloPrequirurgico) {
+            $protocoloPrequirurgicoPdf = $this->renderProtocoloPrequirurgicoPdf($hcBase);
+            $tmpProtocolo = $this->writeTempFile($protocoloPrequirurgicoPdf, 'pdf');
+            $tempFiles[] = $tmpProtocolo;
+            $this->appendPdfFile($pdf, $tmpProtocolo);
+        }
+
         $filename = $this->buildPaqueteFilename($hcBase, $fechaReferencia);
         $content = $pdf->Output($filename, 'S');
 
@@ -2468,6 +2481,145 @@ class ExamenController extends BaseController
         }
 
         return ['pdf' => $content, 'filename' => $filename];
+    }
+
+    private function renderProtocoloPrequirurgicoPdf(string $hcNumber): string
+    {
+        $reportService = new ReportService();
+        $filename = 'PROTOCOLO_PREQUIRURGICO_' . $hcNumber . '_' . date('Ymd_His') . '.pdf';
+        $branding = $this->buildProtocoloPrequirurgicoBranding();
+
+        $pdf = $reportService->renderPdf('protocolo_prequirurgico_catarata', [
+            'hc_number' => $hcNumber,
+            'fecha_emision' => date('Y-m-d'),
+            'header_image_data_uri' => $branding['header'],
+            'footer_image_data_uri' => $branding['footer'],
+        ], [
+            'destination' => 'S',
+            'filename' => $filename,
+        ]);
+
+        if (strncmp($pdf, '%PDF-', 5) !== 0) {
+            throw new RuntimeException('El protocolo prequirúrgico no generó un PDF válido.');
+        }
+
+        return $pdf;
+    }
+
+    /**
+     * @return array{header: string, footer: string}
+     */
+    private function buildProtocoloPrequirurgicoBranding(): array
+    {
+        $projectRoot = dirname(__DIR__, 3);
+        $headerEnv = trim((string)($_ENV['PROTOCOLO_PREQ_HEADER_IMAGE'] ?? ''));
+        $footerEnv = trim((string)($_ENV['PROTOCOLO_PREQ_FOOTER_IMAGE'] ?? ''));
+
+        $headerCandidates = array_filter([
+            $headerEnv !== '' ? $headerEnv : null,
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_header.png',
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_header.jpg',
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_header.jpeg',
+        ]);
+
+        $footerCandidates = array_filter([
+            $footerEnv !== '' ? $footerEnv : null,
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_footer.png',
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_footer.jpg',
+            $projectRoot . '/public/images/reporting/protocolo_prequirurgico_footer.jpeg',
+        ]);
+
+        return [
+            'header' => $this->firstImageDataUri($headerCandidates),
+            'footer' => $this->firstImageDataUri($footerCandidates),
+        ];
+    }
+
+    /**
+     * @param array<int, string> $paths
+     */
+    private function firstImageDataUri(array $paths): string
+    {
+        foreach ($paths as $path) {
+            $path = trim((string)$path);
+            if ($path === '' || !is_file($path)) {
+                continue;
+            }
+            $content = @file_get_contents($path);
+            if ($content === false || $content === '') {
+                continue;
+            }
+            $mime = (string)(@mime_content_type($path) ?: '');
+            if (!str_starts_with($mime, 'image/')) {
+                $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $mime = $ext === 'jpg' || $ext === 'jpeg'
+                    ? 'image/jpeg'
+                    : ($ext === 'gif' ? 'image/gif' : 'image/png');
+            }
+            return 'data:' . $mime . ';base64,' . base64_encode($content);
+        }
+
+        return '';
+    }
+
+    private function debeAdjuntarProtocoloPrequirurgico(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizarTextoBusqueda((string)($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b(281186|281197|281230|281010|76512|281032)\b/', $texto) === 1) {
+            return true;
+        }
+
+        $keywords = [
+            'topografia corneal',
+            'recuento de celulas endoteliales',
+            'microscopia especular',
+            'biometria ocular',
+            'biometria de inmersion',
+            'ultrasonido de segmento anterior',
+            'b scan',
+            'ecografia modo b',
+            'biomicroscopia de alta resolucion',
+            'tomografia',
+            'oct macular',
+        ];
+
+        foreach ($keywords as $keyword) {
+            if (str_contains($texto, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizarTextoBusqueda(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            $value = mb_strtolower($value, 'UTF-8');
+        } else {
+            $value = strtolower($value);
+        }
+
+        $map = [
+            'á' => 'a', 'à' => 'a', 'ä' => 'a', 'â' => 'a',
+            'é' => 'e', 'è' => 'e', 'ë' => 'e', 'ê' => 'e',
+            'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'î' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+            'ñ' => 'n',
+        ];
+        $value = strtr($value, $map);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        return trim($value);
     }
 
     private function emitPdf(string $content, string $filename, bool $inline): void

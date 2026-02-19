@@ -1144,7 +1144,6 @@ class ExamenModel
             LEFT JOIN imagenes_informes ii ON ii.form_id = pp.form_id
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
-              AND LOWER(TRIM(pp.estado_agenda)) <> 'agendado'
               AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";
 
         $params = [];

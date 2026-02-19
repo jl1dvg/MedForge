@@ -308,6 +308,71 @@ sort($estadoOpciones);
         cursor: pointer;
         vertical-align: middle;
     }
+    .nas-slider-stage {
+        height: clamp(360px, 58vh, 760px);
+        min-height: 360px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .nas-slider-preview-wrap {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .nas-slider-preview-img {
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+        background: #fff;
+    }
+    .nas-slider-preview-pdf {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        border: 0;
+        background: #fff;
+    }
+    .nas-slider-thumbs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+        max-height: 170px;
+        overflow: auto;
+    }
+    .nas-thumb-item {
+        text-align: left;
+        border: 1px solid #dee2e6;
+        background: #fff;
+        border-radius: 0.4rem;
+        padding: 0.4rem 0.5rem;
+        font-size: 0.8rem;
+        line-height: 1.2;
+    }
+    .nas-thumb-item.active {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
+    }
+    .nas-file-type-badge {
+        font-size: 0.7rem;
+    }
+    @media (max-width: 1199.98px) {
+        .nas-slider-stage {
+            height: clamp(280px, 44vh, 560px);
+            min-height: 280px;
+        }
+        .nas-slider-preview-pdf {
+            min-height: 0;
+        }
+    }
 </style>
 </section>
 
@@ -318,20 +383,41 @@ sort($estadoOpciones);
                 <h5 class="modal-title" id="modalInformeImagenLabel">Informar examen</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
-        <div class="modal-body" style="min-height: 70vh;">
-            <div class="mb-3">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <h6 class="mb-0">Imágenes del NAS</h6>
-                    <span class="text-muted small" id="informeImagenesStatus"></span>
+            <div class="modal-body" style="min-height: 70vh;">
+                <div class="row g-3 h-100">
+                    <div class="col-12 col-xl-6 order-2 order-xl-1">
+                        <div id="informeLoader" class="d-none text-center text-muted small py-2">
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            Cargando informe...
+                        </div>
+                        <div id="informeTemplateContainer"></div>
+                    </div>
+                    <div class="col-12 col-xl-6 order-1 order-xl-2">
+                        <div class="border rounded p-3 h-100 d-flex flex-column">
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                <h6 class="mb-0">Imágenes del NAS</h6>
+                                <span class="text-muted small" id="informeImagenesStatus"></span>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNasPrev">
+                                    <i class="mdi mdi-chevron-left"></i>
+                                </button>
+                                <span class="small text-muted" id="informeNasCounter">0/0</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNasNext">
+                                    <i class="mdi mdi-chevron-right"></i>
+                                </button>
+                            </div>
+                            <div id="informeImagenesContainer" class="nas-slider-stage flex-grow-1 d-flex align-items-center justify-content-center"></div>
+                            <div class="d-flex justify-content-end mt-2">
+                                <a href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary disabled" id="btnNasOpenCurrent">
+                                    <i class="mdi mdi-open-in-new"></i> Abrir archivo
+                                </a>
+                            </div>
+                            <div id="informeNasThumbs" class="nas-slider-thumbs mt-3"></div>
+                        </div>
+                    </div>
                 </div>
-                <div id="informeImagenesContainer" class="row g-2 mt-1"></div>
             </div>
-            <div id="informeLoader" class="d-none text-center text-muted small py-2">
-                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                Cargando informe...
-            </div>
-            <div id="informeTemplateContainer"></div>
-        </div>
             <div class="modal-footer">
                 <span class="text-muted small me-auto" id="informeEstado"></span>
                 <button type="button" class="btn btn-primary" id="btnGuardarInforme">Guardar informe</button>
@@ -508,9 +594,17 @@ sort($estadoOpciones);
             const estadoInforme = document.getElementById('informeEstado');
             const imagenesContainer = document.getElementById('informeImagenesContainer');
             const imagenesStatus = document.getElementById('informeImagenesStatus');
+            const imagenesThumbs = document.getElementById('informeNasThumbs');
+            const nasCounter = document.getElementById('informeNasCounter');
+            const btnNasPrev = document.getElementById('btnNasPrev');
+            const btnNasNext = document.getElementById('btnNasNext');
+            const btnNasOpenCurrent = document.getElementById('btnNasOpenCurrent');
             const informeLoader = document.getElementById('informeLoader');
             const modalInstance = window.bootstrap && modalEl ? new bootstrap.Modal(modalEl) : null;
             let informeContext = null;
+            let nasFiles = [];
+            let nasCurrentIndex = 0;
+            const templateHtmlCache = new Map();
 
             function setEstado(texto) {
                 if (estadoInforme) {
@@ -529,58 +623,137 @@ sort($estadoOpciones);
                 informeLoader.classList.toggle('d-none', !loading);
             }
 
+            function isPdf(file) {
+                const ext = String(file && file.ext ? file.ext : '').toLowerCase();
+                const type = String(file && file.type ? file.type : '').toLowerCase();
+                return ext === 'pdf' || type === 'application/pdf';
+            }
+
+            function isImage(file) {
+                const ext = String(file && file.ext ? file.ext : '').toLowerCase();
+                const type = String(file && file.type ? file.type : '').toLowerCase();
+                return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].indexOf(ext) !== -1 || type.indexOf('image/') === 0;
+            }
+
+            function updateNasControls() {
+                const total = nasFiles.length;
+                if (nasCounter) {
+                    nasCounter.textContent = total ? (String(nasCurrentIndex + 1) + '/' + String(total)) : '0/0';
+                }
+                if (btnNasPrev) {
+                    btnNasPrev.disabled = total === 0 || nasCurrentIndex <= 0;
+                }
+                if (btnNasNext) {
+                    btnNasNext.disabled = total === 0 || nasCurrentIndex >= total - 1;
+                }
+                if (btnNasOpenCurrent) {
+                    const current = total ? nasFiles[nasCurrentIndex] : null;
+                    if (current && current.url) {
+                        btnNasOpenCurrent.classList.remove('disabled');
+                        btnNasOpenCurrent.href = current.url;
+                    } else {
+                        btnNasOpenCurrent.classList.add('disabled');
+                        btnNasOpenCurrent.href = '#';
+                    }
+                }
+            }
+
+            function renderNasThumbs() {
+                if (!imagenesThumbs) return;
+                imagenesThumbs.innerHTML = '';
+                if (!nasFiles.length) return;
+                nasFiles.forEach(function (file, index) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'nas-thumb-item' + (index === nasCurrentIndex ? ' active' : '');
+
+                    const top = document.createElement('div');
+                    top.className = 'd-flex align-items-center justify-content-between gap-2 mb-1';
+                    const order = document.createElement('strong');
+                    order.textContent = '#' + String(index + 1);
+                    const badge = document.createElement('span');
+                    badge.className = 'badge nas-file-type-badge ' + (isPdf(file) ? 'bg-danger' : 'bg-info');
+                    badge.textContent = isPdf(file) ? 'PDF' : 'Imagen';
+                    top.appendChild(order);
+                    top.appendChild(badge);
+
+                    const name = document.createElement('div');
+                    name.className = 'text-truncate';
+                    name.title = file && file.name ? file.name : 'Archivo';
+                    name.textContent = file && file.name ? file.name : 'Archivo';
+
+                    btn.appendChild(top);
+                    btn.appendChild(name);
+                    btn.addEventListener('click', function () {
+                        nasCurrentIndex = index;
+                        renderImagenesNas();
+                    });
+                    imagenesThumbs.appendChild(btn);
+                });
+            }
+
             function renderImagenesNas(files) {
                 if (!imagenesContainer) return;
+                if (Array.isArray(files)) {
+                    nasFiles = files.slice();
+                    nasCurrentIndex = 0;
+                }
                 imagenesContainer.innerHTML = '';
-                if (!files || !files.length) {
-                    imagenesContainer.innerHTML = '<div class="text-muted small">No se encontraron archivos en el NAS.</div>';
+                if (!nasFiles.length) {
+                    imagenesContainer.innerHTML = '<div class="text-muted small px-3">No se encontraron archivos en el NAS.</div>';
+                    renderNasThumbs();
+                    updateNasControls();
                     return;
                 }
+                if (nasCurrentIndex >= nasFiles.length) {
+                    nasCurrentIndex = nasFiles.length - 1;
+                }
+                if (nasCurrentIndex < 0) {
+                    nasCurrentIndex = 0;
+                }
 
-                files.forEach(function (file) {
-                    const col = document.createElement('div');
-                    col.className = 'col-6 col-md-4 col-lg-3';
-                    const card = document.createElement('div');
-                    card.className = 'border rounded p-2 h-100';
-                    const name = file.name || 'Archivo';
-                    const ext = (file.ext || '').toLowerCase();
-                    const url = file.url || '#';
+                const current = nasFiles[nasCurrentIndex];
+                const name = current && current.name ? current.name : 'Archivo';
+                const url = current && current.url ? current.url : '#';
+                const wrapper = document.createElement('div');
+                wrapper.className = 'nas-slider-preview-wrap';
 
-                    if (['png', 'jpg', 'jpeg'].includes(ext)) {
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.target = '_blank';
-                        link.rel = 'noopener';
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.alt = name;
-                        img.className = 'img-fluid rounded mb-2';
-                        img.style.maxHeight = '140px';
-                        link.appendChild(img);
-                        card.appendChild(link);
-                    } else {
-                        const icon = document.createElement('div');
-                        icon.className = 'd-flex align-items-center gap-2 mb-2';
-                        icon.innerHTML = '<i class="mdi mdi-file-pdf text-danger"></i><span class="small">PDF</span>';
-                        card.appendChild(icon);
-                    }
+                const typeBadge = document.createElement('div');
+                typeBadge.className = 'position-absolute top-0 end-0 m-2';
+                typeBadge.innerHTML = isPdf(current)
+                    ? '<span class="badge bg-danger">PDF</span>'
+                    : '<span class="badge bg-info text-dark">Imagen</span>';
+                wrapper.appendChild(typeBadge);
 
-                    const linkName = document.createElement('a');
-                    linkName.href = url;
-                    linkName.target = '_blank';
-                    linkName.rel = 'noopener';
-                    linkName.className = 'small d-block text-truncate';
-                    linkName.textContent = name;
-                    card.appendChild(linkName);
+                if (isImage(current)) {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = name;
+                    img.className = 'nas-slider-preview-img';
+                    wrapper.appendChild(img);
+                } else if (isPdf(current)) {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = url;
+                    iframe.className = 'nas-slider-preview-pdf';
+                    iframe.title = name;
+                    wrapper.appendChild(iframe);
+                } else {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted';
+                    fallback.innerHTML = '<i class="mdi mdi-file-outline fs-1 mb-2"></i><div class="small">Archivo no previsualizable</div>';
+                    wrapper.appendChild(fallback);
+                }
 
-                    col.appendChild(card);
-                    imagenesContainer.appendChild(col);
-                });
+                imagenesContainer.appendChild(wrapper);
+                renderNasThumbs();
+                updateNasControls();
             }
 
             function cargarImagenesNas(formId, hcNumber) {
                 if (!imagenesContainer) return;
-                imagenesContainer.innerHTML = '';
+                nasFiles = [];
+                nasCurrentIndex = 0;
+                renderImagenesNas([]);
                 setImagenesStatus('Cargando imágenes...');
                 fetch('/imagenes/examenes-realizados/nas/list?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId))
                     .then(function (r) { return r.json(); })
@@ -590,13 +763,31 @@ sort($estadoOpciones);
                             setImagenesStatus(res && res.error ? res.error : 'No se pudieron cargar las imágenes.');
                             return;
                         }
-                        renderImagenesNas(res.files || []);
-                        setImagenesStatus('');
+                        const files = res.files || [];
+                        renderImagenesNas(files);
+                        setImagenesStatus(files.length
+                            ? (files.length + ' archivo(s) encontrado(s)')
+                            : 'Sin archivos en el NAS');
                     })
                     .catch(function () {
                         renderImagenesNas([]);
                         setImagenesStatus('Error al conectar con el NAS.');
                     });
+            }
+
+            if (btnNasPrev) {
+                btnNasPrev.addEventListener('click', function () {
+                    if (nasCurrentIndex <= 0) return;
+                    nasCurrentIndex -= 1;
+                    renderImagenesNas();
+                });
+            }
+            if (btnNasNext) {
+                btnNasNext.addEventListener('click', function () {
+                    if (nasCurrentIndex >= nasFiles.length - 1) return;
+                    nasCurrentIndex += 1;
+                    renderImagenesNas();
+                });
             }
 
             function cssEscape(value) {
@@ -727,14 +918,21 @@ sort($estadoOpciones);
                     return;
                 }
 
-                if (formId && hcNumber) {
-                    cargarImagenesNas(formId, hcNumber);
+                if (modalInstance) {
+                    modalInstance.show();
                 }
 
-                setEstado('Cargando plantilla...');
+                if (templateContainer) {
+                    templateContainer.innerHTML = '';
+                }
                 setInformeLoading(true);
+                setEstado('Cargando plantilla...');
                 if (btnGuardarInforme) {
                     btnGuardarInforme.disabled = true;
+                }
+
+                if (formId && hcNumber) {
+                    cargarImagenesNas(formId, hcNumber);
                 }
 
                 fetch('/imagenes/informes/datos?form_id=' + encodeURIComponent(formId) + '&tipo_examen=' + encodeURIComponent(tipoRaw))
@@ -758,14 +956,21 @@ sort($estadoOpciones);
                             row: row
                         };
 
-                        return fetch('/imagenes/informes/plantilla?plantilla=' + encodeURIComponent(res.plantilla));
-                    })
-                    .then(function (response) {
-                        if (!response) return;
-                        if (!response.ok) {
-                            throw new Error('No se pudo cargar la plantilla');
+                        if (templateHtmlCache.has(res.plantilla)) {
+                            return templateHtmlCache.get(res.plantilla);
                         }
-                        return response.text();
+
+                        return fetch('/imagenes/informes/plantilla?plantilla=' + encodeURIComponent(res.plantilla))
+                            .then(function (response) {
+                                if (!response.ok) {
+                                    throw new Error('No se pudo cargar la plantilla');
+                                }
+                                return response.text();
+                            })
+                            .then(function (html) {
+                                templateHtmlCache.set(res.plantilla, html);
+                                return html;
+                            });
                     })
                     .then(function (html) {
                         if (!html || !templateContainer) return;
@@ -782,9 +987,6 @@ sort($estadoOpciones);
                             btnGuardarInforme.disabled = false;
                         }
                         setInformeLoading(false);
-                        if (modalInstance) {
-                            modalInstance.show();
-                        }
                     })
                     .catch(function () {
                         setEstado('');
@@ -864,6 +1066,12 @@ sort($estadoOpciones);
                     if (imagenesContainer) {
                         imagenesContainer.innerHTML = '';
                     }
+                    if (imagenesThumbs) {
+                        imagenesThumbs.innerHTML = '';
+                    }
+                    nasFiles = [];
+                    nasCurrentIndex = 0;
+                    updateNasControls();
                     setImagenesStatus('');
                     setInformeLoading(false);
                     if (btnGuardarInforme) {
