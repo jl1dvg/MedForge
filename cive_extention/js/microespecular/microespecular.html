@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Microscopia Especular</title>
+    <link rel="stylesheet" href="microespecular.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>Microscopia Especular (AO)</h3>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="densidadOD">Densidad Celular</label>
+                <input type="number" id="densidadOD" step="0.01" inputmode="decimal" autocomplete="off">
+
+                <label for="desviacionOD">Desviacion Standard</label>
+                <input type="number" id="desviacionOD" step="0.01" inputmode="decimal" autocomplete="off">
+
+                <label for="coefVarOD">Coeficiente de Variacion</label>
+                <input type="number" id="coefVarOD" step="0.01" inputmode="decimal" autocomplete="off">
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="densidadOI">Densidad Celular</label>
+                <input type="number" id="densidadOI" step="0.01" inputmode="decimal" autocomplete="off">
+
+                <label for="desviacionOI">Desviacion Standard</label>
+                <input type="number" id="desviacionOI" step="0.01" inputmode="decimal" autocomplete="off">
+
+                <label for="coefVarOI">Coeficiente de Variacion</label>
+                <input type="number" id="coefVarOI" step="0.01" inputmode="decimal" autocomplete="off">
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="microespecular.js"></script>
+</body>
+</html>

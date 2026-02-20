@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Biometria Ocular</title>
+    <link rel="stylesheet" href="biometria.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>Biometria Ocular</h3>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="camaraOD">Camara Anterior</label>
+                <input type="number" step="0.01" id="camaraOD" inputmode="decimal" autocomplete="off">
+                <label for="cristalinoOD">Cristalino</label>
+                <input type="number" step="0.01" id="cristalinoOD" inputmode="decimal" autocomplete="off">
+                <label for="axialOD">Longitud axil</label>
+                <input type="number" step="0.01" id="axialOD" inputmode="decimal" autocomplete="off">
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="camaraOI">Camara Anterior</label>
+                <input type="number" step="0.01" id="camaraOI" inputmode="decimal" autocomplete="off">
+                <label for="cristalinoOI">Cristalino</label>
+                <input type="number" step="0.01" id="cristalinoOI" inputmode="decimal" autocomplete="off">
+                <label for="axialOI">Longitud axil</label>
+                <input type="number" step="0.01" id="axialOI" inputmode="decimal" autocomplete="off">
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="biometria.js"></script>
+</body>
+</html>
