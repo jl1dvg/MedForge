@@ -94,6 +94,17 @@ $cols = [
     'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG'
 ];
 
+$codigosImagenIess = [
+    '76512', '92081', '92225',
+    '281010', '281021', '281032', '281229',
+    '281186', '281197', '281230', '281306', '281295',
+];
+$lookupImagenIess = array_flip($codigosImagenIess);
+$tipoPrestacionPorCodigo = static function ($codigo) use ($lookupImagenIess): string {
+    $codigo = trim((string)$codigo);
+    return ($codigo !== '' && isset($lookupImagenIess[$codigo])) ? 'IMA' : 'AMB';
+};
+
 foreach ($datosFacturacionLote as $bloque) {
     $formId = $bloque['form_id'];
     $data = $bloque['data'];
@@ -199,7 +210,7 @@ foreach ($datosFacturacionLote as $bloque) {
                     $sexo,             // G
                     !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H
                     $contexto['edad'] ?? '', // I
-                    $esCirugia ? 'AMB' : 'IMA',      // J
+                    $tipoPrestacionPorCodigo($codigo), // J
                     $codigo,           // K
                     $descripcion,      // L
                     $cie10, // M
@@ -247,7 +258,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'AMB' : 'IMA',      // J
+            $tipoPrestacionPorCodigo($codigo), // J
             $codigo, // K: Código procedimiento
             $descripcion,// L: Descripción procedimiento
             $cie10,   // M: Diagnóstico principal (CIE10)
@@ -295,7 +306,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 $sexo,               // G: Sexo
                 !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
-                $esCirugia ? 'AMB' : 'IMA',      // J
+                $tipoPrestacionPorCodigo($p['proc_codigo'] ?? ''), // J
                 $p['proc_codigo'] ?? '', // K: Código procedimiento
                 $p['proc_detalle'] ?? '',// L: Descripción procedimiento
                 $cie10,   // M: Diagnóstico principal (CIE10)
@@ -354,7 +365,7 @@ foreach ($datosFacturacionLote as $bloque) {
             $sexo,               // G: Sexo
             !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
             $contexto['edad'] ?? '',  // I: Edad
-            $esCirugia ? 'AMB' : 'IMA',      // J
+            $tipoPrestacionPorCodigo($p['proc_codigo'] ?? ''), // J
             $p['proc_codigo'] ?? '', // K: Código procedimiento
             $p['proc_detalle'] ?? '',// L: Descripción procedimiento
             $cie10,   // M: Diagnóstico principal (CIE10)
