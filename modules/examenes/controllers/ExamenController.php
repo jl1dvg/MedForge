@@ -2135,6 +2135,9 @@ class ExamenController extends BaseController
         if (str_contains($texto, 'biometria') || str_contains($texto, 'biometr')) {
             return 'biometria';
         }
+        if (str_contains($texto, '281197') || (str_contains($texto, 'microscopia') && str_contains($texto, 'especular'))) {
+            return 'microespecular';
+        }
         if (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'topograf')) {
             return 'cornea';
         }
@@ -2660,6 +2663,9 @@ class ExamenController extends BaseController
             }
 
             $files = $this->nasImagenesService->listFiles($item['hc_number'], $item['form_id']);
+            if ($this->esAngiografiaRetinal((string)($rendered['tipo_examen'] ?? '')) && count($files) > 2) {
+                $files = array_slice($files, 0, 2);
+            }
             foreach ($files as $file) {
                 $name = $file['name'] ?? '';
                 if ($name === '') {
@@ -2676,7 +2682,11 @@ class ExamenController extends BaseController
                 if (($opened['ext'] ?? '') === 'pdf') {
                     $this->appendPdfFile($pdf, $tmpFile);
                 } else {
-                    $this->appendImageFile($pdf, $tmpFile);
+                    $tmpImageForPdf = $this->optimizeImageForPaquete($tmpFile, (string)($opened['ext'] ?? ''));
+                    if ($tmpImageForPdf !== $tmpFile) {
+                        $tempFiles[] = $tmpImageForPdf;
+                    }
+                    $this->appendImageFile($pdf, $tmpImageForPdf);
                 }
             }
         }
@@ -2819,6 +2829,20 @@ class ExamenController extends BaseController
         return false;
     }
 
+    private function esAngiografiaRetinal(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizarTextoBusqueda((string)($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b281021\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'angiografia retinal');
+    }
+
     private function normalizarTextoBusqueda(string $value): string
     {
         $value = trim($value);
@@ -2940,6 +2964,103 @@ class ExamenController extends BaseController
         } else {
             $pdf->Image($path, 0, 0, $pageWidth, $pageHeight);
         }
+    }
+
+    private function optimizeImageForPaquete(string $path, string $ext): string
+    {
+        $ext = strtolower(trim($ext));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+            return $path;
+        }
+
+        $enabled = getenv('IMAGENES_PAQUETE_LIVIANO');
+        if ($enabled !== false && $enabled !== null && trim((string)$enabled) !== '') {
+            $v = strtolower(trim((string)$enabled));
+            if (in_array($v, ['0', 'false', 'off', 'no'], true)) {
+                return $path;
+            }
+        }
+
+        if (!function_exists('imagecreatetruecolor')
+            || !function_exists('imagecopyresampled')
+            || !function_exists('imagejpeg')) {
+            return $path;
+        }
+
+        $info = @getimagesize($path);
+        $width = (int)($info[0] ?? 0);
+        $height = (int)($info[1] ?? 0);
+        if ($width <= 0 || $height <= 0) {
+            return $path;
+        }
+
+        $originalSize = @filesize($path);
+        $originalSize = $originalSize !== false ? (int)$originalSize : 0;
+
+        $maxDim = 1900;
+        $needsResize = max($width, $height) > $maxDim;
+        $needsReencode = $originalSize > 1200000 || $ext === 'png';
+        if (!$needsResize && !$needsReencode) {
+            return $path;
+        }
+
+        $src = null;
+        if (($ext === 'jpg' || $ext === 'jpeg') && function_exists('imagecreatefromjpeg')) {
+            $src = @imagecreatefromjpeg($path);
+        } elseif ($ext === 'png' && function_exists('imagecreatefrompng')) {
+            $src = @imagecreatefrompng($path);
+        }
+        if (!$src) {
+            return $path;
+        }
+
+        $scale = $needsResize ? min(1, $maxDim / max($width, $height)) : 1.0;
+        $targetW = max(1, (int)round($width * $scale));
+        $targetH = max(1, (int)round($height * $scale));
+
+        $dst = imagecreatetruecolor($targetW, $targetH);
+        if (!$dst) {
+            imagedestroy($src);
+            return $path;
+        }
+
+        // Fondo blanco para imágenes con transparencia (PNG).
+        $white = imagecolorallocate($dst, 255, 255, 255);
+        imagefilledrectangle($dst, 0, 0, $targetW, $targetH, $white);
+
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $targetW, $targetH, $width, $height);
+
+        $tmpBase = tempnam(sys_get_temp_dir(), 'imglite_');
+        if ($tmpBase === false) {
+            imagedestroy($src);
+            imagedestroy($dst);
+            return $path;
+        }
+        $tmpOut = $tmpBase . '.jpg';
+        @rename($tmpBase, $tmpOut);
+
+        $ok = @imagejpeg($dst, $tmpOut, 78);
+        imagedestroy($src);
+        imagedestroy($dst);
+        if (!$ok || !is_file($tmpOut)) {
+            @unlink($tmpOut);
+            return $path;
+        }
+
+        $newSize = @filesize($tmpOut);
+        $newSize = $newSize !== false ? (int)$newSize : 0;
+        if ($newSize <= 0) {
+            @unlink($tmpOut);
+            return $path;
+        }
+
+        // Si no mejora de forma tangible, conservar original.
+        if (!$needsResize && $originalSize > 0 && $newSize >= (int)($originalSize * 0.98)) {
+            @unlink($tmpOut);
+            return $path;
+        }
+
+        return $tmpOut;
     }
 
     /**
@@ -3077,6 +3198,104 @@ class ExamenController extends BaseController
                 }
                 if ($oiAxial !== '') {
                     $lines[] = 'Longitud axial: ' . $oiAxial;
+                }
+            }
+
+            return trim(implode("\n", $lines));
+        }
+
+        if ($plantilla === 'cornea') {
+            $buildEye = function (string $suffix, string $label) use ($payload): array {
+                $kFlat = trim((string)($payload['kFlat' . $suffix] ?? ''));
+                $axisFlat = trim((string)($payload['axisFlat' . $suffix] ?? ''));
+                $kSteep = trim((string)($payload['kSteep' . $suffix] ?? ''));
+                $axisSteep = trim((string)($payload['axisSteep' . $suffix] ?? ''));
+                $cilindro = trim((string)($payload['cilindro' . $suffix] ?? ''));
+                $kPromedio = trim((string)($payload['kPromedio' . $suffix] ?? ''));
+
+                $flatNum = is_numeric(str_replace(',', '.', $kFlat)) ? (float)str_replace(',', '.', $kFlat) : null;
+                $steepNum = is_numeric(str_replace(',', '.', $kSteep)) ? (float)str_replace(',', '.', $kSteep) : null;
+                $axisFlatNum = is_numeric($axisFlat) ? (int)round((float)$axisFlat) : null;
+
+                if ($axisSteep === '' && $axisFlatNum !== null) {
+                    $calcAxis = $axisFlatNum + 90;
+                    while ($calcAxis > 180) {
+                        $calcAxis -= 180;
+                    }
+                    while ($calcAxis <= 0) {
+                        $calcAxis += 180;
+                    }
+                    $axisSteep = (string)$calcAxis;
+                }
+                if ($cilindro === '' && $flatNum !== null && $steepNum !== null) {
+                    $cilindro = number_format(abs($steepNum - $flatNum), 2, '.', '');
+                }
+                if ($kPromedio === '' && $flatNum !== null && $steepNum !== null) {
+                    $kPromedio = number_format(($flatNum + $steepNum) / 2, 2, '.', '');
+                }
+
+                $lines = [];
+                if ($kFlat !== '' || $axisFlat !== '' || $kSteep !== '' || $axisSteep !== '' || $cilindro !== '' || $kPromedio !== '') {
+                    $lines[] = '**' . $label . ':**';
+                    if ($kFlat !== '') {
+                        $lines[] = 'K Flat: ' . $kFlat;
+                    }
+                    if ($axisFlat !== '') {
+                        $lines[] = 'Axis: ' . $axisFlat;
+                    }
+                    if ($kSteep !== '') {
+                        $lines[] = 'K Steep: ' . $kSteep;
+                    }
+                    if ($axisSteep !== '') {
+                        $lines[] = 'Axis (steep): ' . $axisSteep;
+                    }
+                    if ($cilindro !== '') {
+                        $lines[] = 'Cilindro: ' . $cilindro;
+                    }
+                    if ($kPromedio !== '') {
+                        $lines[] = 'K Promedio: ' . $kPromedio;
+                    }
+                }
+                return $lines;
+            };
+
+            $od = $buildEye('OD', 'Ojo Derecho');
+            $oi = $buildEye('OI', 'Ojo Izquierdo');
+            return trim(implode("\n", array_merge($od, $oi)));
+        }
+
+        if ($plantilla === 'microespecular') {
+            $odDensidad = trim((string)($payload['densidadOD'] ?? ''));
+            $odDesv = trim((string)($payload['desviacionOD'] ?? ''));
+            $odCv = trim((string)($payload['coefVarOD'] ?? ''));
+            $oiDensidad = trim((string)($payload['densidadOI'] ?? ''));
+            $oiDesv = trim((string)($payload['desviacionOI'] ?? ''));
+            $oiCv = trim((string)($payload['coefVarOI'] ?? ''));
+
+            $lines = [];
+            if ($odDensidad !== '' || $odDesv !== '' || $odCv !== '') {
+                $lines[] = '**Ojo Derecho:**';
+                if ($odDensidad !== '') {
+                    $lines[] = 'Densidad celular: ' . $odDensidad;
+                }
+                if ($odDesv !== '') {
+                    $lines[] = 'Desviación estándar: ' . $odDesv;
+                }
+                if ($odCv !== '') {
+                    $lines[] = 'Coeficiente de variación: ' . $odCv;
+                }
+            }
+
+            if ($oiDensidad !== '' || $oiDesv !== '' || $oiCv !== '') {
+                $lines[] = '**Ojo Izquierdo:**';
+                if ($oiDensidad !== '') {
+                    $lines[] = 'Densidad celular: ' . $oiDensidad;
+                }
+                if ($oiDesv !== '') {
+                    $lines[] = 'Desviación estándar: ' . $oiDesv;
+                }
+                if ($oiCv !== '') {
+                    $lines[] = 'Coeficiente de variación: ' . $oiCv;
                 }
             }
 

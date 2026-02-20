@@ -50,7 +50,7 @@
     },
     {
       "id": "cornea",
-      "cirugia": "OCT Córnea",
+      "cirugia": "Topografia Corneal",
       "tecnicos": [
         {
           "selector": "#select2-ordenexamen-0-tecnico_id-container",
@@ -105,6 +105,30 @@
           "funcion": "DE VERA G",
           "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
           "nombre": "MARIO SNS POLIT MACIAS"
+        }
+      ]
+    },
+    {
+      "id": "microespecular",
+      "cirugia": "Microscopia Especular",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
+      "id": "biometria",
+      "cirugia": "Biometria Ocular",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
         }
       ]
     }

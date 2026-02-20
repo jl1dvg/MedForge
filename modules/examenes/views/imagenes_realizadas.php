@@ -309,8 +309,8 @@ sort($estadoOpciones);
         vertical-align: middle;
     }
     .nas-slider-stage {
-        height: clamp(360px, 58vh, 760px);
-        min-height: 360px;
+        height: clamp(500px, 58vh, 760px);
+        min-height: 500px;
         background: #f8f9fa;
         border: 1px solid #dee2e6;
         border-radius: 0.5rem;
@@ -1082,6 +1082,71 @@ sort($estadoOpciones);
                 return payload;
             }
 
+            function toNumber(value) {
+                const normalized = (value || '').toString().trim().replace(',', '.');
+                if (!normalized) return null;
+                const n = Number(normalized);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            function wrapAxis(axis) {
+                let a = Math.round(axis);
+                while (a <= 0) a += 180;
+                while (a > 180) a -= 180;
+                return a;
+            }
+
+            function initCorneaTopografiaTemplate(container) {
+                if (!container) return;
+                const template = container.querySelector('[data-informe-template="cornea"]');
+                if (!template) return;
+
+                function recalcEye(prefix) {
+                    const kFlatEl = container.querySelector('#kFlat' + prefix);
+                    const axisFlatEl = container.querySelector('#axisFlat' + prefix);
+                    const kSteepEl = container.querySelector('#kSteep' + prefix);
+                    const axisSteepEl = container.querySelector('#axisSteep' + prefix);
+                    const cilindroEl = container.querySelector('#cilindro' + prefix);
+                    const kPromedioEl = container.querySelector('#kPromedio' + prefix);
+                    if (!kFlatEl || !axisFlatEl || !kSteepEl || !axisSteepEl || !cilindroEl || !kPromedioEl) {
+                        return;
+                    }
+
+                    const kFlat = toNumber(kFlatEl.value);
+                    const axisFlat = toNumber(axisFlatEl.value);
+                    const kSteep = toNumber(kSteepEl.value);
+
+                    if (axisFlat !== null) {
+                        const steepAxis = wrapAxis(axisFlat + 90);
+                        axisSteepEl.value = String(steepAxis);
+                    } else {
+                        axisSteepEl.value = '';
+                    }
+
+                    if (kFlat !== null && kSteep !== null) {
+                        cilindroEl.value = Math.abs(kSteep - kFlat).toFixed(2);
+                        kPromedioEl.value = ((kSteep + kFlat) / 2).toFixed(2);
+                    } else {
+                        cilindroEl.value = '';
+                        kPromedioEl.value = '';
+                    }
+                }
+
+                ['OD', 'OI'].forEach(function (prefix) {
+                    ['kFlat', 'axisFlat', 'kSteep'].forEach(function (field) {
+                        const input = container.querySelector('#' + field + prefix);
+                        if (!input) return;
+                        if (!input.dataset.corneaBound) {
+                            input.addEventListener('input', function () {
+                                recalcEye(prefix);
+                            });
+                            input.dataset.corneaBound = '1';
+                        }
+                    });
+                    recalcEye(prefix);
+                });
+            }
+
             function abrirInformeModal(row) {
                 if (!row) return;
                 const formId = (row.dataset.formId || '').trim();
@@ -1151,8 +1216,10 @@ sort($estadoOpciones);
                         if (!html || !templateContainer) return;
                         templateContainer.innerHTML = html;
                         initChecklist(templateContainer);
+                        initCorneaTopografiaTemplate(templateContainer);
                         if (informeContext && informeContext.payload) {
                             applyPayload(templateContainer, informeContext.payload);
+                            initCorneaTopografiaTemplate(templateContainer);
                             rebuildChecklistTargets(templateContainer);
                             setEstado('Informe existente cargado.');
                         } else {

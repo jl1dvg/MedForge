@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Topografia Corneal</title>
+    <link rel="stylesheet" href="cornea.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>Topografia Corneal</h3>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="kFlatOD">K Flat</label>
+                <input type="number" step="0.01" id="kFlatOD" inputmode="decimal" autocomplete="off">
+
+                <label for="axisFlatOD">Axis</label>
+                <input type="number" step="1" min="0" max="180" id="axisFlatOD" inputmode="numeric" autocomplete="off">
+
+                <label for="kSteepOD">K Steep</label>
+                <input type="number" step="0.01" id="kSteepOD" inputmode="decimal" autocomplete="off">
+
+                <label for="axisSteepOD">Axis (auto)</label>
+                <input type="number" step="1" id="axisSteepOD" readonly>
+
+                <label for="cilindroOD">Cilindro (auto)</label>
+                <input type="number" step="0.01" id="cilindroOD" readonly>
+
+                <label for="kPromedioOD">K Promedio (auto)</label>
+                <input type="number" step="0.01" id="kPromedioOD" readonly>
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="kFlatOI">K Flat</label>
+                <input type="number" step="0.01" id="kFlatOI" inputmode="decimal" autocomplete="off">
+
+                <label for="axisFlatOI">Axis</label>
+                <input type="number" step="1" min="0" max="180" id="axisFlatOI" inputmode="numeric" autocomplete="off">
+
+                <label for="kSteepOI">K Steep</label>
+                <input type="number" step="0.01" id="kSteepOI" inputmode="decimal" autocomplete="off">
+
+                <label for="axisSteepOI">Axis (auto)</label>
+                <input type="number" step="1" id="axisSteepOI" readonly>
+
+                <label for="cilindroOI">Cilindro (auto)</label>
+                <input type="number" step="0.01" id="cilindroOI" readonly>
+
+                <label for="kPromedioOI">K Promedio (auto)</label>
+                <input type="number" step="0.01" id="kPromedioOI" readonly>
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="cornea.js"></script>
+</body>
+</html>

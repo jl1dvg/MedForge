@@ -688,7 +688,8 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'RETINOGRAFIA',
             cv: 'CAMPO VISUAL',
             cornea: 'TOPOGRAFIA CORNEAL',
-            biometria: 'BIOMETRIA OCULAR'
+            biometria: 'BIOMETRIA OCULAR',
+            microespecular: '281197 - MICROSCOPIA ESPECULAR (AO)'
         };
         return byId[item?.id] || item?.cirugia || item?.nombre || 'EXAMEN DE IMAGEN';
     }
@@ -704,7 +705,8 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'retino',
             cv: 'cv',
             cornea: 'cornea',
-            biometria: 'biometria'
+            biometria: 'biometria',
+            microespecular: 'microespecular'
         };
         return byId[item?.id] || '';
     }
@@ -1110,6 +1112,40 @@ OI: ${OI}`;
 
                 finalizarFlujoExamen(item, result);
             });
+        } else if (item.id === 'cornea') {
+            mostrarPopup('js/cornea/cornea.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const payload = (result.payload && typeof result.payload === 'object') ? result.payload : {};
+                const lines = ['SE REALIZA ESTUDIO DE TOPOGRAFIA CORNEAL.'];
+
+                function appendEye(prefix, label) {
+                    const kFlat = (payload['kFlat' + prefix] || '').toString().trim();
+                    const axisFlat = (payload['axisFlat' + prefix] || '').toString().trim();
+                    const kSteep = (payload['kSteep' + prefix] || '').toString().trim();
+                    const axisSteep = (payload['axisSteep' + prefix] || '').toString().trim();
+                    const cilindro = (payload['cilindro' + prefix] || '').toString().trim();
+                    const kPromedio = (payload['kPromedio' + prefix] || '').toString().trim();
+                    if (!kFlat && !axisFlat && !kSteep && !axisSteep && !cilindro && !kPromedio) return;
+
+                    lines.push('');
+                    lines.push(label + ':');
+                    if (kFlat) lines.push('K Flat: ' + kFlat);
+                    if (axisFlat) lines.push('Axis: ' + axisFlat);
+                    if (kSteep) lines.push('K Steep: ' + kSteep);
+                    if (axisSteep) lines.push('Axis (steep): ' + axisSteep);
+                    if (cilindro) lines.push('Cilindro: ' + cilindro);
+                    if (kPromedio) lines.push('K Promedio: ' + kPromedio);
+                }
+
+                appendEye('OD', 'OD');
+                appendEye('OI', 'OI');
+                recomendaciones.value = lines.join('\n');
+
+                finalizarFlujoExamen(item, result);
+            });
         } else if (item.id === 'cv') {
             mostrarPopup('js/cv/cv.html').then((result) => {
                 if (!result) return;
@@ -1127,6 +1163,56 @@ OI: ${OI}`;
                     recomendaciones.value += `${OI}`;
                 }
 
+                finalizarFlujoExamen(item, result);
+            });
+        } else if (item.id === 'microespecular') {
+            mostrarPopup('js/microespecular/microespecular.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const od = (result.OD || '').toString().trim();
+                const oi = (result.OI || '').toString().trim();
+                recomendaciones.value = 'SE REALIZA ESTUDIO DE MICROSCOPIA ESPECULAR DE AMBOS OJOS.\n';
+                if (od) {
+                    recomendaciones.value += `\n${od}\n`;
+                }
+                if (oi) {
+                    recomendaciones.value += `\n${oi}`;
+                }
+
+                finalizarFlujoExamen(item, result);
+            });
+        } else if (item.id === 'biometria') {
+            mostrarPopup('js/biometria/biometria.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const payload = (result.payload && typeof result.payload === 'object') ? result.payload : {};
+                const lines = ['SE REALIZA ESTUDIO DE BIOMETRIA OCULAR.'];
+
+                const od = [];
+                if ((payload.camaraOD || '').trim() !== '') od.push('Camara anterior: ' + payload.camaraOD.trim());
+                if ((payload.cristalinoOD || '').trim() !== '') od.push('Cristalino: ' + payload.cristalinoOD.trim());
+                if ((payload.axialOD || '').trim() !== '') od.push('Longitud axial: ' + payload.axialOD.trim());
+                if (od.length) {
+                    lines.push('');
+                    lines.push('OD:');
+                    lines.push(...od);
+                }
+
+                const oi = [];
+                if ((payload.camaraOI || '').trim() !== '') oi.push('Camara anterior: ' + payload.camaraOI.trim());
+                if ((payload.cristalinoOI || '').trim() !== '') oi.push('Cristalino: ' + payload.cristalinoOI.trim());
+                if ((payload.axialOI || '').trim() !== '') oi.push('Longitud axial: ' + payload.axialOI.trim());
+                if (oi.length) {
+                    lines.push('');
+                    lines.push('OI:');
+                    lines.push(...oi);
+                }
+
+                recomendaciones.value = lines.join('\n');
                 finalizarFlujoExamen(item, result);
             });
         }
