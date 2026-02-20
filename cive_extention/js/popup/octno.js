@@ -2,26 +2,59 @@ document.getElementById('inputOD').focus();
 document.getElementById('btnAceptar').addEventListener('click', () => {
     const inputOD = document.getElementById('inputOD');
     const inputOI = document.getElementById('inputOI');
+    const odFlags = {
+        inf: Boolean(document.getElementById('checkboxI')?.checked),
+        sup: Boolean(document.getElementById('checkboxS')?.checked),
+        nas: Boolean(document.getElementById('checkboxN')?.checked),
+        temp: Boolean(document.getElementById('checkboxT')?.checked)
+    };
+    const oiFlags = {
+        inf: Boolean(document.getElementById('checkboxI_OI')?.checked),
+        sup: Boolean(document.getElementById('checkboxS_OI')?.checked),
+        nas: Boolean(document.getElementById('checkboxN_OI')?.checked),
+        temp: Boolean(document.getElementById('checkboxT_OI')?.checked)
+    };
 
-    // Si ambos inputs están vacíos, no hacer nada
-    if (!inputOD.value && !inputOI.value) return;
-
-    // Continuar si alguno de los inputs tiene valor
     const ODvalue = inputOD.value.trim();
     const OIvalue = inputOI.value.trim();
+    const hasOdFlags = Object.values(odFlags).some(Boolean);
+    const hasOiFlags = Object.values(oiFlags).some(Boolean);
 
-    // Crear mensajes solo si hay valores o marcadores de cuadrantes
+    if (!ODvalue && !OIvalue && !hasOdFlags && !hasOiFlags) return;
+
     let ODMessage = '', OIMessage = '';
-    if (ODvalue || document.querySelectorAll('#checkboxI:checked, #checkboxS:checked, #checkboxN:checked, #checkboxT:checked').length) {
+    if (ODvalue || hasOdFlags) {
         ODMessage = construirMensaje('OD', ODvalue);
     }
-    if (OIvalue || document.querySelectorAll('#checkboxI_OI:checked, #checkboxS_OI:checked, #checkboxN_OI:checked, #checkboxT_OI:checked').length) {
+    if (OIvalue || hasOiFlags) {
         OIMessage = construirMensaje('OI', OIvalue);
     }
 
-    // Enviar los mensajes si existen
     if (ODMessage || OIMessage) {
-        window.parent.postMessage({OD: ODMessage, OI: OIMessage}, '*');
+        window.parent.postMessage({
+            OD: ODMessage,
+            OI: OIMessage,
+            payload: {
+                inputOD: ODvalue,
+                inputOI: OIvalue,
+                checkboxI: odFlags.inf,
+                checkboxS: odFlags.sup,
+                checkboxN: odFlags.nas,
+                checkboxT: odFlags.temp,
+                checkboxI_OI: oiFlags.inf,
+                checkboxS_OI: oiFlags.sup,
+                checkboxN_OI: oiFlags.nas,
+                checkboxT_OI: oiFlags.temp,
+                octno_od_inf: odFlags.inf,
+                octno_od_sup: odFlags.sup,
+                octno_od_nas: odFlags.nas,
+                octno_od_temp: odFlags.temp,
+                octno_oi_inf: oiFlags.inf,
+                octno_oi_sup: oiFlags.sup,
+                octno_oi_nas: oiFlags.nas,
+                octno_oi_temp: oiFlags.temp
+            }
+        }, '*');
     }
 });
 

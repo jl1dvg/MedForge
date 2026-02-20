@@ -24,10 +24,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
     document.getElementById('btnAceptar').addEventListener('click', () => {
-        const CTMOD = document.getElementById('inputOD').value;
-        const CTMOI = document.getElementById('inputOI').value;
-        const textOD = document.getElementById('textOD').value;
-        const textOI = document.getElementById('textOI').value;
+        const CTMOD = document.getElementById('inputOD').value.trim();
+        const CTMOI = document.getElementById('inputOI').value.trim();
+        const textOD = document.getElementById('textOD').value.trim();
+        const textOI = document.getElementById('textOI').value.trim();
 
         let OD = '';
         let OI = '';
@@ -48,7 +48,16 @@ document.addEventListener('DOMContentLoaded', function () {
             OI = `LAS IMÁGENES SON SUGESTIVAS DE:\nOI: ${textOI}`;
         }
 
-        window.parent.postMessage({OD, OI}, '*');
+        window.parent.postMessage({
+            OD,
+            OI,
+            payload: {
+                inputOD: CTMOD,
+                inputOI: CTMOI,
+                textOD,
+                textOI
+            }
+        }, '*');
     });
 
     document.getElementById('btnClose').addEventListener('click', () => {
@@ -103,4 +112,3 @@ function updateTextarea(textareaId, checkbox) {
         }
     }
 }
-

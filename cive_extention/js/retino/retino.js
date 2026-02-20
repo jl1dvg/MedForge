@@ -21,7 +21,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const OD = document.getElementById('inputOD').value;
         const OI = document.getElementById('inputOI').value;
 
-        window.parent.postMessage({OD, OI}, '*');
+        window.parent.postMessage({
+            OD,
+            OI,
+            payload: {
+                inputOD: OD.trim(),
+                inputOI: OI.trim()
+            }
+        }, '*');
     });
 
     document.getElementById('btnClose').addEventListener('click', () => {
@@ -77,4 +84,3 @@ function updateTextarea(textareaId, checkbox) {
     textarea.value = newText;
     textarea.setSelectionRange(cursorPosition, cursorPosition);
 }
-

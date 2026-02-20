@@ -17,8 +17,10 @@ document.getElementById('btnAceptar').addEventListener('click', () => {
         return;
     }
 
-    const OD = parseFloat(inputOD.value);
-    const OI = parseFloat(inputOI.value);
+    const odRaw = inputOD.value.trim();
+    const oiRaw = inputOI.value.trim();
+    const OD = parseFloat(odRaw);
+    const OI = parseFloat(oiRaw);
 
     let clasificacionOD = '';
     let clasificacionOI = '';
@@ -77,7 +79,14 @@ document.getElementById('btnAceptar').addEventListener('click', () => {
     const OIMessage = `OI: SE APRECIAN ÁNGULOS IRIDOCORNEALES CON ${OI} GRADOS DE APERTURA ANGULAR COMPATIBLES CON CLASIFICACIÓN GRADO ${clasificacionOI} DE LA ESCALA DE SHAFFER.\nCONCLUSIÓN: ÁNGULOS IRIDOCORNEALES ${evaluacionOI}S. SE RECOMIENDA CORRELACIONAR IMÁGENES CON ESTUDIO GONIOSCÓPICO.`;
 
     // Enviar los valores al padre
-    window.parent.postMessage({OD: ODMessage, OI: OIMessage}, '*');
+    window.parent.postMessage({
+        OD: ODMessage,
+        OI: OIMessage,
+        payload: {
+            inputOD: odRaw,
+            inputOI: oiRaw
+        }
+    }, '*');
 });
 
 document.getElementById('btnClose').addEventListener('click', () => {

@@ -50,7 +50,18 @@ document.addEventListener('DOMContentLoaded', function () {
             OI = `OJO: IZQUIERDO\nSE REALIZA CAMPO VISUAL OCTOPUS 600 IMPRESIÓN HFA.\nESTRATEGIA: 24.2 DINÁMICO\nCONFIABILIDAD: BUENA\nSENSIBILIDAD FOVEAL: ACTIVA\nLECTURA: ${textOI}\nCONCLUSIONES: CAMPO VISUAL FUERA DE LIMITES NORMALES`;
         }
 
-        window.parent.postMessage({OD, OI}, '*');
+        window.parent.postMessage({
+            OD,
+            OI,
+            payload: {
+                inputOD: textOD.trim(),
+                inputOI: textOI.trim(),
+                checkboxOD_dln: DLN_OD,
+                checkboxOI_dln: DLN_OI,
+                checkboxOD_amaurosis: Amaurosis_OD,
+                checkboxOI_amaurosis: Amaurosis_OI
+            }
+        }, '*');
     });
 
     document.getElementById('btnClose').addEventListener('click', () => {
