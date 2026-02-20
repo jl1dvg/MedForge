@@ -1,0 +1,87 @@
+<?php
+
+return [
+    'defaults' => [
+        'legacy_base_url' => getenv('SMOKE_LEGACY_BASE') ?: 'http://127.0.0.1:8080',
+        'v2_base_url' => getenv('SMOKE_V2_BASE') ?: 'http://127.0.0.1:8081',
+        'timeout_seconds' => 20,
+    ],
+    'modules' => [
+        'dashboard' => [
+            [
+                'id' => 'dashboard_summary',
+                'method' => 'GET',
+                'legacy_path' => '/dashboard',
+                'v2_path' => '/v2/dashboard/summary',
+                'expect_status' => 200,
+                'required_json_paths' => ['data.patients_total', 'data.users_total', 'data.protocols_total'],
+                'notes' => 'Legacy endpoint is HTML. This checks v2 status and required fields only.',
+                'compare_mode' => 'v2_only',
+            ],
+        ],
+        'billing' => [
+            [
+                'id' => 'billing_no_facturados',
+                'method' => 'GET',
+                'legacy_path' => '/api/billing/no-facturados?start=0&length=10',
+                'v2_path' => '/v2/api/billing/no-facturados?start=0&length=10',
+                'expect_status' => 200,
+                'expect_legacy_status' => 302,
+                'expect_v2_status' => 200,
+                'required_json_paths' => ['recordsTotal', 'recordsFiltered', 'data', 'summary.total'],
+                'compare_mode' => 'v2_only',
+                'notes' => 'Legacy returns 302 when unauthenticated. Run with --cookie=PHPSESSID=... for full parity.',
+            ],
+            [
+                'id' => 'billing_afiliaciones',
+                'method' => 'GET',
+                'legacy_path' => '/api/billing/afiliaciones',
+                'v2_path' => '/v2/api/billing/afiliaciones',
+                'expect_status' => 200,
+                'expect_legacy_status' => 302,
+                'expect_v2_status' => 200,
+                'required_json_paths' => ['0'],
+                'compare_mode' => 'v2_only',
+                'notes' => 'Legacy returns 302 when unauthenticated. Run with --cookie=PHPSESSID=... for full parity.',
+            ],
+        ],
+        'pacientes' => [
+            [
+                'id' => 'pacientes_datatable',
+                'method' => 'POST',
+                'legacy_path' => '/pacientes/datatable',
+                'v2_path' => '/v2/pacientes/datatable',
+                'body' => [
+                    'draw' => 1,
+                    'start' => 0,
+                    'length' => 10,
+                    'search' => ['value' => ''],
+                ],
+                'expect_status' => 200,
+                'required_json_paths' => ['draw', 'recordsTotal', 'recordsFiltered', 'data'],
+                'compare_mode' => 'full',
+            ],
+            [
+                'id' => 'pacientes_detalles',
+                'method' => 'GET',
+                'legacy_path' => '/pacientes/detalles?hc_number=HC-TEST-001',
+                'v2_path' => '/v2/pacientes/detalles?hc_number=HC-TEST-001',
+                'expect_status' => 200,
+                'required_json_paths' => ['data.patient'],
+                'compare_mode' => 'full',
+                'notes' => 'Replace hc_number with an existing fixture in your DB.',
+            ],
+        ],
+        'auth' => [
+            [
+                'id' => 'auth_migration_status',
+                'method' => 'GET',
+                'legacy_path' => '/auth/login',
+                'v2_path' => '/v2/auth/migration-status',
+                'expect_status' => 501,
+                'required_json_paths' => ['module', 'status', 'message'],
+                'compare_mode' => 'v2_only',
+            ],
+        ],
+    ],
+];
