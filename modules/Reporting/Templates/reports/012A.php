@@ -90,6 +90,7 @@ $patient['edad'] = $edadPaciente;
 
 $examenesRelacionados = $data['examenes_relacionados'] ?? ($data['examenes'] ?? []);
 $imagenesSolicitadas = $data['imagenes_solicitadas'] ?? ($data['imagenes'] ?? []);
+$estudiosPrecomputados012A = is_array($data['estudios_012a'] ?? null) ? $data['estudios_012a'] : [];
 
 // --- DIAGNÓSTICOS ---
 // Regla solicitada:
@@ -278,6 +279,22 @@ foreach ($estudiosPendientes as $estudio) {
     $estudiosLineas[] = $linea;
 }
 $estudiosTexto = $estudiosLineas !== [] ? implode(PHP_EOL, $estudiosLineas) : 'Sin estudios pendientes registrados.';
+if ($estudiosPrecomputados012A !== []) {
+    $lineasPre = [];
+    foreach ($estudiosPrecomputados012A as $estudioPre) {
+        if (!is_array($estudioPre)) {
+            continue;
+        }
+        $linea = trim((string)($estudioPre['linea'] ?? $estudioPre['nombre'] ?? ''));
+        if ($linea === '') {
+            continue;
+        }
+        $lineasPre[] = $linea;
+    }
+    if ($lineasPre !== []) {
+        $estudiosTexto = implode(PHP_EOL, $lineasPre);
+    }
+}
 
 $motivoSolicitud = trim((string)($consulta['motivo_solicitud'] ?? ''));
 if ($motivoSolicitud === '') {
