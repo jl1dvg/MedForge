@@ -349,6 +349,31 @@ class ExamenModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
+    public function obtenerExamenesPorFormId(string $formId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                ce.estado,
+                ce.doctor,
+                ce.solicitante,
+                ce.consulta_fecha,
+                ce.created_at
+             FROM consulta_examenes ce
+             WHERE ce.form_id = :form_id
+             ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+        ]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
     public function obtenerDoctorProcedimientoProyectado(string $formId, string $hcNumber): ?string
     {
         $stmt = $this->db->prepare(
@@ -420,6 +445,39 @@ class ExamenModel
         $stmt->execute([
             ':form_id' => $formId,
             ':hc_number' => $hcNumber,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        return $row ?: null;
+    }
+
+    public function obtenerConsultaPorFormId(string $formId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                cd.*,
+                pp.doctor AS procedimiento_doctor,
+                u.id AS doctor_user_id,
+                u.first_name AS doctor_fname,
+                u.middle_name AS doctor_mname,
+                u.last_name AS doctor_lname,
+                u.second_last_name AS doctor_lname2,
+                u.cedula AS doctor_cedula,
+                u.signature_path AS doctor_signature_path,
+                u.firma AS doctor_firma,
+                u.nombre AS doctor_nombre
+             FROM consulta_data cd
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+             LEFT JOIN users u
+                ON UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+             WHERE cd.form_id = :form_id
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
         ]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -1207,6 +1265,74 @@ class ExamenModel
         $stmt->bindValue(':form_id', $formId, PDO::PARAM_STR);
         $stmt->bindValue(':hc_number', $hcNumber, PDO::PARAM_STR);
         $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function obtenerProcedimientoProyectadoPorFormId(string $formId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT pp.id, pp.form_id, pp.hc_number, pp.procedimiento_proyectado, pp.fecha, pp.hora, pp.afiliacion, pp.estado_agenda
+             FROM procedimiento_proyectado pp
+             WHERE pp.form_id = :form_id
+             ORDER BY pp.id DESC
+             LIMIT 1'
+        );
+        $stmt->bindValue(':form_id', $formId, PDO::PARAM_STR);
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    public function buscarConsultaExamenOrigen(
+        string $hcNumber,
+        ?string $examenCodigo = null,
+        ?string $fechaReferencia = null,
+        ?string $nombreLike = null
+    ): ?array {
+        $codigo = trim((string)$examenCodigo);
+        $nombre = trim((string)$nombreLike);
+        $fecha = trim((string)$fechaReferencia);
+
+        $baseSql = 'SELECT
+                ce.id,
+                ce.form_id,
+                ce.hc_number,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                COALESCE(ce.consulta_fecha, ce.created_at) AS fecha_ref
+            FROM consulta_examenes ce
+            WHERE ce.hc_number = :hc_number';
+
+        $params = [':hc_number' => $hcNumber];
+
+        if ($codigo !== '') {
+            $baseSql .= ' AND ce.examen_codigo = :examen_codigo';
+            $params[':examen_codigo'] = $codigo;
+        } elseif ($nombre !== '') {
+            $nombreUpper = function_exists('mb_strtoupper') ? mb_strtoupper($nombre, 'UTF-8') : strtoupper($nombre);
+            $baseSql .= ' AND UPPER(TRIM(ce.examen_nombre)) LIKE :nombre_like';
+            $params[':nombre_like'] = '%' . $nombreUpper . '%';
+        }
+
+        if ($fecha !== '') {
+            $sqlConFecha = $baseSql . '
+                AND COALESCE(ce.consulta_fecha, ce.created_at) <= :fecha_ref
+                ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC
+                LIMIT 1';
+            $stmt = $this->db->prepare($sqlConFecha);
+            $stmt->execute($params + [':fecha_ref' => $fecha]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row) && !empty($row)) {
+                return $row;
+            }
+        }
+
+        $sql = $baseSql . '
+            ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC, ce.id DESC
+            LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
     }

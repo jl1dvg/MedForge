@@ -11,6 +11,9 @@ class NasImagenesService
     private ?string $password;
     private ?string $basePath;
     private ?string $lastError = null;
+    private $ssh2Connection = null;
+    private $ssh2Sftp = null;
+    private ?\phpseclib3\Net\SFTP $phpseclibSftp = null;
 
     public function __construct()
     {
@@ -231,20 +234,11 @@ class NasImagenesService
      */
     private function listFilesSftp(string $path): array
     {
-        $connection = @ssh2_connect($this->host, $this->port);
-        if (!$connection) {
-            $this->lastError = 'No se pudo conectar al NAS.';
+        $session = $this->connectSsh2();
+        if (!$session) {
             return [];
         }
-        if (!@ssh2_auth_password($connection, $this->username, $this->password)) {
-            $this->lastError = 'No se pudo autenticar en NAS.';
-            return [];
-        }
-        $sftp = @ssh2_sftp($connection);
-        if (!$sftp) {
-            $this->lastError = 'No se pudo iniciar SFTP.';
-            return [];
-        }
+        $sftp = $session['sftp'];
 
         $dir = @opendir("ssh2.sftp://{$sftp}{$path}");
         if (!$dir) {
@@ -335,20 +329,11 @@ class NasImagenesService
      */
     private function openFileSftp(string $path, string $filename): ?array
     {
-        $connection = @ssh2_connect($this->host, $this->port);
-        if (!$connection) {
-            $this->lastError = 'No se pudo conectar al NAS.';
+        $session = $this->connectSsh2();
+        if (!$session) {
             return null;
         }
-        if (!@ssh2_auth_password($connection, $this->username, $this->password)) {
-            $this->lastError = 'No se pudo autenticar en NAS.';
-            return null;
-        }
-        $sftp = @ssh2_sftp($connection);
-        if (!$sftp) {
-            $this->lastError = 'No se pudo iniciar SFTP.';
-            return null;
-        }
+        $sftp = $session['sftp'];
 
         $remotePath = $path . '/' . $filename;
         $stat = @ssh2_sftp_stat($sftp, $remotePath);
@@ -448,6 +433,10 @@ class NasImagenesService
             return null;
         }
 
+        if ($this->phpseclibSftp instanceof \phpseclib3\Net\SFTP) {
+            return $this->phpseclibSftp;
+        }
+
         [$sftp, $warning] = $this->withWarningTrap(
             fn() => new \phpseclib3\Net\SFTP($this->host, $this->port),
             'No se pudo iniciar sesión SFTP'
@@ -467,7 +456,47 @@ class NasImagenesService
             return null;
         }
 
-        return $sftp;
+        $this->phpseclibSftp = $sftp;
+        return $this->phpseclibSftp;
+    }
+
+    /**
+     * @return array{connection:mixed,sftp:mixed}|null
+     */
+    private function connectSsh2(): ?array
+    {
+        if (!$this->host || !$this->username || !$this->password) {
+            $this->lastError = 'NAS no configurado.';
+            return null;
+        }
+
+        if (!function_exists('ssh2_connect')) {
+            $this->lastError = 'Extensión ssh2 no disponible en PHP.';
+            return null;
+        }
+
+        if ($this->ssh2Connection && $this->ssh2Sftp) {
+            return ['connection' => $this->ssh2Connection, 'sftp' => $this->ssh2Sftp];
+        }
+
+        $connection = @ssh2_connect($this->host, $this->port);
+        if (!$connection) {
+            $this->lastError = 'No se pudo conectar al NAS.';
+            return null;
+        }
+        if (!@ssh2_auth_password($connection, $this->username, $this->password)) {
+            $this->lastError = 'No se pudo autenticar en NAS.';
+            return null;
+        }
+        $sftp = @ssh2_sftp($connection);
+        if (!$sftp) {
+            $this->lastError = 'No se pudo iniciar SFTP.';
+            return null;
+        }
+
+        $this->ssh2Connection = $connection;
+        $this->ssh2Sftp = $sftp;
+        return ['connection' => $this->ssh2Connection, 'sftp' => $this->ssh2Sftp];
     }
 
     /**

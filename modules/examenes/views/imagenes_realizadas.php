@@ -764,7 +764,7 @@ sort($estadoOpciones);
             function preloadNasFiles(files, token) {
                 const queue = Array.isArray(files) ? files.slice() : [];
                 if (!queue.length) return;
-                const workers = Math.min(3, queue.length);
+                const workers = Math.min(6, queue.length);
                 for (let i = 0; i < workers; i++) {
                     const run = function () {
                         if (!queue.length) return Promise.resolve();

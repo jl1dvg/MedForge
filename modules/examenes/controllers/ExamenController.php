@@ -5,6 +5,7 @@ namespace Controllers;
 use Core\BaseController;
 use DateTimeImmutable;
 use Helpers\JsonLogger;
+use Models\SettingsModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
@@ -1526,6 +1527,26 @@ class ExamenController extends BaseController
     {
         $examen = $this->examenModel->obtenerExamenPorFormHc($formId, $hcNumber, $examenId);
         if (!$examen) {
+            // Fallback: en algunos flujos (p.ej. imágenes realizadas) el HC puede no coincidir,
+            // por eso buscamos el examen por form_id y reintentamos con el HC real guardado.
+            $candidatos = $this->examenModel->obtenerExamenesPorFormId($formId);
+            $primero = is_array($candidatos) && !empty($candidatos) ? $candidatos[0] : null;
+            if (is_array($primero)) {
+                $hcAlterno = trim((string)($primero['hc_number'] ?? ''));
+                $idAlterno = (int)($primero['id'] ?? 0);
+                if ($hcAlterno !== '') {
+                    $examen = $this->examenModel->obtenerExamenPorFormHc(
+                        $formId,
+                        $hcAlterno,
+                        $idAlterno > 0 ? $idAlterno : null
+                    );
+                    if ($examen) {
+                        $hcNumber = $hcAlterno;
+                    }
+                }
+            }
+        }
+        if (!$examen) {
             return ['examen' => null];
         }
 
@@ -1556,8 +1577,19 @@ class ExamenController extends BaseController
             $examen['estado'] = $estadoSugerido;
         }
 
-        $paciente = $this->pacienteService->getPatientDetails($hcNumber);
         $consulta = $this->examenModel->obtenerConsultaPorFormHc($formId, $hcNumber) ?? [];
+        if (empty($consulta)) {
+            $consulta = $this->examenModel->obtenerConsultaPorFormId($formId) ?? [];
+        }
+
+        $hcConsulta = trim((string)($consulta['hc_number'] ?? ''));
+        $paciente = $this->pacienteService->getPatientDetails($hcNumber);
+        if ((!is_array($paciente) || empty($paciente)) && $hcConsulta !== '' && $hcConsulta !== $hcNumber) {
+            $paciente = $this->pacienteService->getPatientDetails($hcConsulta);
+        }
+        if (is_array($paciente) && trim((string)($paciente['hc_number'] ?? '')) === '' && $hcConsulta !== '') {
+            $paciente['hc_number'] = $hcConsulta;
+        }
         if (empty(trim((string)($consulta['doctor'] ?? '')))) {
             $doctorFromJoin = trim((string)($consulta['doctor_nombre'] ?? $consulta['procedimiento_doctor'] ?? ''));
             if ($doctorFromJoin !== '') {
@@ -1565,6 +1597,9 @@ class ExamenController extends BaseController
             }
         }
         $examenesRelacionados = $this->examenModel->obtenerExamenesPorFormHc($formId, $hcNumber);
+        if (empty($examenesRelacionados)) {
+            $examenesRelacionados = $this->examenModel->obtenerExamenesPorFormId($formId);
+        }
         $examenesRelacionados = array_map([$this, 'transformExamenRow'], $examenesRelacionados);
         $examenesRelacionados = $this->estadoService->enrichExamenes($examenesRelacionados);
         foreach ($examenesRelacionados as &$rel) {
@@ -1768,6 +1803,164 @@ class ExamenController extends BaseController
         }
 
         return $records;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $examenesRelacionados
+     * @param array<int, array<string, mixed>> $imagenesSolicitadas
+     * @return array<int, array{linea:string, estado:string}>
+     */
+    private function construirEstudios012A(array $examenesRelacionados, array $imagenesSolicitadas): array
+    {
+        $records = [];
+
+        $push = function (?string $nombreRaw, ?string $codigoRaw, ?string $estadoRaw) use (&$records): void {
+            $nombre = trim((string)$nombreRaw);
+            $codigo = trim((string)$codigoRaw);
+            $estado = trim((string)$estadoRaw);
+            if ($nombre === '' && $codigo === '') {
+                return;
+            }
+
+            $parsed = $this->parseProcedimientoImagen($nombre);
+            $nombreLimpio = trim((string)($parsed['texto'] ?? ''));
+            if ($nombreLimpio === '') {
+                $nombreLimpio = $nombre;
+            }
+            if ($codigo === '') {
+                $codigo = (string)($this->extraerCodigoTarifario($nombreLimpio) ?? '');
+            }
+
+            $tarifaDesc = '';
+            if ($codigo !== '') {
+                $tarifa = $this->obtenerTarifarioPorCodigo($codigo);
+                if (is_array($tarifa) && !empty($tarifa)) {
+                    $tarifaDesc = trim((string)($tarifa['descripcion'] ?? $tarifa['short_description'] ?? ''));
+                }
+            }
+
+            $detalle = $nombreLimpio;
+            if ($codigo !== '') {
+                $detalle = preg_replace('/\b' . preg_quote($codigo, '/') . '\b\s*[-:]?\s*/iu', '', $detalle) ?? $detalle;
+            }
+            $detalle = trim((string)$detalle, " -\t\n\r\0\x0B");
+
+            $records[] = [
+                'codigo' => $codigo,
+                'tarifa_desc' => $tarifaDesc,
+                'detalle' => $detalle !== '' ? $detalle : $nombreLimpio,
+                'estado' => $estado,
+            ];
+        };
+
+        foreach ($examenesRelacionados as $rel) {
+            if (!is_array($rel)) {
+                continue;
+            }
+            $push(
+                (string)($rel['examen_nombre'] ?? $rel['procedimiento'] ?? ''),
+                (string)($rel['examen_codigo'] ?? $rel['tipo'] ?? ''),
+                (string)($rel['kanban_estado'] ?? $rel['estado'] ?? '')
+            );
+        }
+        foreach ($imagenesSolicitadas as $img) {
+            if (!is_array($img)) {
+                continue;
+            }
+            $push(
+                (string)($img['nombre'] ?? $img['examen'] ?? ''),
+                (string)($img['codigo'] ?? ''),
+                (string)($img['estado'] ?? '')
+            );
+        }
+
+        $unique = [];
+        $seen = [];
+        foreach ($records as $record) {
+            $codigo = trim((string)($record['codigo'] ?? ''));
+            $tarifaDesc = trim((string)($record['tarifa_desc'] ?? ''));
+            $detalle = trim((string)($record['detalle'] ?? ''));
+            if ($codigo === '' && $detalle === '') {
+                continue;
+            }
+            $key = $this->normalizarTexto($codigo . '|' . $tarifaDesc . '|' . $detalle);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $unique[] = $record;
+        }
+
+        $aprobados = ['listo-para-agenda', 'completado', 'atendido'];
+        $pendientes = [];
+        foreach ($unique as $record) {
+            $estado = trim((string)($record['estado'] ?? ''));
+            $slug = str_replace(' ', '-', $this->normalizarTexto($estado));
+            $isApproved = in_array($slug, $aprobados, true) || str_contains($slug, 'aprob');
+            if (!$isApproved) {
+                $pendientes[] = $record;
+            }
+        }
+
+        $target = $pendientes !== [] ? $pendientes : $unique;
+
+        $conteoPorCodigo = [];
+        foreach ($target as $record) {
+            $codigo = trim((string)($record['codigo'] ?? ''));
+            if ($codigo === '') {
+                continue;
+            }
+            $conteoPorCodigo[$codigo] = ($conteoPorCodigo[$codigo] ?? 0) + 1;
+        }
+
+        $result = [];
+        foreach ($target as $record) {
+            $codigo = trim((string)($record['codigo'] ?? ''));
+            $tarifaDesc = trim((string)($record['tarifa_desc'] ?? ''));
+            $detalle = trim((string)($record['detalle'] ?? ''));
+
+            if ($codigo !== '' && $tarifaDesc !== '') {
+                $linea = $codigo . ' - ' . $tarifaDesc;
+                if (($conteoPorCodigo[$codigo] ?? 0) > 1) {
+                    $suffix = $this->normalizarDetalleEstudio012A($detalle, $tarifaDesc);
+                    if ($suffix !== '') {
+                        $linea .= ' - ' . $suffix;
+                    }
+                }
+            } elseif ($codigo !== '') {
+                $linea = $codigo . ' - ' . ($detalle !== '' ? $detalle : 'SIN DETALLE');
+            } else {
+                $linea = $detalle;
+            }
+
+            $result[] = [
+                'linea' => trim($linea),
+                'estado' => (string)($record['estado'] ?? ''),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function normalizarDetalleEstudio012A(string $detalle, string $tarifaDesc): string
+    {
+        $detalle = trim(preg_replace('/\s+/', ' ', $detalle) ?? '');
+        $tarifaDesc = trim(preg_replace('/\s+/', ' ', $tarifaDesc) ?? '');
+        if ($detalle === '') {
+            return '';
+        }
+
+        $detalleNorm = $this->normalizarTexto($detalle);
+        $tarifaNorm = $this->normalizarTexto($tarifaDesc);
+        if ($detalleNorm !== '' && $detalleNorm === $tarifaNorm) {
+            return '';
+        }
+
+        // Para OCT repetidos: "OCT MACULAR" => "MACULAR", "OCT DEL NERVIO OPTICO" => "DEL NERVIO OPTICO"
+        $detalle = preg_replace('/^OCT\s+/iu', '', $detalle) ?? $detalle;
+        $detalle = trim($detalle, " -\t\n\r\0\x0B");
+
+        return $detalle;
     }
 
     private function construirTrazabilidad(array $examen, array $crmResumen): array
@@ -2042,7 +2235,8 @@ class ExamenController extends BaseController
 
     public function informeGuardar(): void
     {
-        if (!$this->isAuthenticated()) {
+        $extensionAuthorized = $this->isExtensionAuthorizedRequest();
+        if (!$this->isAuthenticated() && !$extensionAuthorized) {
             $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
             return;
         }
@@ -2053,7 +2247,8 @@ class ExamenController extends BaseController
         $tipoExamen = trim((string)($payload['tipo_examen'] ?? ''));
         $plantilla = trim((string)($payload['plantilla'] ?? ''));
         $data = $payload['payload'] ?? null;
-        $firmanteId = isset($payload['firmante_id']) ? (int)$payload['firmante_id'] : 0;
+        // Requerimiento temporal: siempre registrar los informes con firmante ID 1.
+        $firmanteId = 1;
 
         if (is_object($data)) {
             $data = (array)$data;
@@ -2080,16 +2275,19 @@ class ExamenController extends BaseController
             return;
         }
 
-        $firmanteId = $firmanteId > 0 ? $firmanteId : null;
-
         try {
+            $currentUserId = $this->getCurrentUserId();
+            if ($currentUserId === null && $extensionAuthorized) {
+                $currentUserId = 1;
+            }
+
             $ok = $this->examenModel->guardarInformeImagen(
                 $formId,
                 $hcNumber !== '' ? $hcNumber : null,
                 $tipoExamen,
                 $plantilla,
                 $payloadJson,
-                $this->getCurrentUserId(),
+                $currentUserId,
                 $firmanteId
             );
             $this->json(['success' => $ok]);
@@ -2432,8 +2630,19 @@ class ExamenController extends BaseController
         $fechaReferencia = null;
         $timestampRef = null;
         $shouldAppendProtocoloPrequirurgico = false;
+        $appended012A = false;
 
         foreach ($items as $item) {
+            if (!$appended012A) {
+                $attachment012A = $this->buildCobertura012AAttachment($item['form_id'], $item['hc_number'], null);
+                if (is_array($attachment012A) && !empty($attachment012A['path']) && is_file((string)$attachment012A['path'])) {
+                    $tmp012A = (string)$attachment012A['path'];
+                    $tempFiles[] = $tmp012A;
+                    $this->appendPdfFile($pdf, $tmp012A);
+                    $appended012A = true;
+                }
+            }
+
             $rendered = $this->renderInforme012B($item['form_id'], $item['hc_number']);
 
             $timestamp = $this->parseTimestamp($rendered['fecha'] ?? null);
@@ -3224,6 +3433,21 @@ class ExamenController extends BaseController
             return;
         }
 
+        $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
+        if ($cachePath !== null && is_file($cachePath) && $this->isNasCacheFresh($cachePath)) {
+            $this->emitNasHeaders(
+                $this->resolveNasMimeByFilename($filename),
+                (int)(filesize($cachePath) ?: 0),
+                basename($filename)
+            );
+            $cachedStream = fopen($cachePath, 'rb');
+            if ($cachedStream) {
+                fpassthru($cachedStream);
+                fclose($cachedStream);
+                return;
+            }
+        }
+
         $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
         if (!$opened || empty($opened['stream'])) {
             http_response_code(404);
@@ -3236,20 +3460,113 @@ class ExamenController extends BaseController
         $name = $opened['name'] ?? $filename;
         $stream = $opened['stream'];
 
-        if (!headers_sent()) {
-            if (ob_get_length()) {
-                ob_clean();
-            }
-            header('Content-Type: ' . $type);
-            if ($size > 0) {
-                header('Content-Length: ' . $size);
-            }
-            header('Content-Disposition: inline; filename="' . $name . '"');
-            header('X-Content-Type-Options: nosniff');
+        $this->emitNasHeaders($type, $size, $name);
+
+        $cacheTemp = null;
+        $cacheHandle = null;
+        if ($cachePath !== null) {
+            $cacheTemp = $cachePath . '.part';
+            $cacheHandle = @fopen($cacheTemp, 'wb');
         }
 
-        fpassthru($stream);
+        while (!feof($stream)) {
+            $chunk = fread($stream, 65536);
+            if ($chunk === false) {
+                break;
+            }
+            if ($cacheHandle) {
+                fwrite($cacheHandle, $chunk);
+            }
+            echo $chunk;
+        }
+
+        if ($cacheHandle) {
+            fclose($cacheHandle);
+            $cacheHandle = null;
+            if ($cacheTemp !== null) {
+                @rename($cacheTemp, $cachePath);
+            }
+        }
+
         fclose($stream);
+    }
+
+    private function emitNasHeaders(string $type, int $size, string $name): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        if (ob_get_length()) {
+            ob_clean();
+        }
+        header('Content-Type: ' . $type);
+        if ($size > 0) {
+            header('Content-Length: ' . $size);
+        }
+        header('Content-Disposition: inline; filename="' . basename($name) . '"');
+        header('Cache-Control: private, max-age=1800');
+        header('X-Content-Type-Options: nosniff');
+    }
+
+    private function resolveNasFileCachePath(string $hcNumber, string $formId, string $filename): ?string
+    {
+        $dir = $this->resolveNasCacheDir();
+        if ($dir === null) {
+            return null;
+        }
+
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return null;
+        }
+
+        $ext = strtolower((string)pathinfo($filename, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['pdf', 'png', 'jpg', 'jpeg'], true)) {
+            $ext = 'bin';
+        }
+
+        $hash = sha1($hcNumber . '|' . $formId . '|' . $filename);
+        return rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $hash . '.' . $ext;
+    }
+
+    private function resolveNasCacheDir(): ?string
+    {
+        $fromEnv = trim((string)($_ENV['NAS_IMAGES_CACHE_DIR'] ?? $_SERVER['NAS_IMAGES_CACHE_DIR'] ?? ''));
+        if ($fromEnv !== '') {
+            return $fromEnv;
+        }
+
+        $tmp = sys_get_temp_dir();
+        if (!is_dir($tmp) || !is_writable($tmp)) {
+            return null;
+        }
+
+        return rtrim($tmp, '/\\') . DIRECTORY_SEPARATOR . 'medforge_nas_cache';
+    }
+
+    private function isNasCacheFresh(string $path): bool
+    {
+        if (!is_file($path)) {
+            return false;
+        }
+
+        $ttl = (int)($_ENV['NAS_IMAGES_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_CACHE_TTL'] ?? 1800);
+        if ($ttl <= 0) {
+            return false;
+        }
+
+        $mtime = (int)(filemtime($path) ?: 0);
+        return $mtime > 0 && (time() - $mtime) <= $ttl;
+    }
+
+    private function resolveNasMimeByFilename(string $filename): string
+    {
+        $ext = strtolower((string)pathinfo($filename, PATHINFO_EXTENSION));
+        return match ($ext) {
+            'pdf' => 'application/pdf',
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            default => 'application/octet-stream',
+        };
     }
 
     /**
@@ -3660,6 +3977,35 @@ class ExamenController extends BaseController
     private function getCurrentUserId(): ?int
     {
         return isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
+    }
+
+    private function isExtensionAuthorizedRequest(): bool
+    {
+        $provided = trim((string)($_SERVER['HTTP_X_CIVE_EXTENSION_ID'] ?? ''));
+        if ($provided === '') {
+            return false;
+        }
+
+        $providedNorm = strtoupper($provided);
+        $allowed = ['CIVE', 'JORGE'];
+
+        try {
+            $settings = new SettingsModel($this->pdo);
+            $options = $settings->getOptions([
+                'cive_extension_extension_id_local',
+                'cive_extension_extension_id_remote',
+            ]);
+            foreach (['cive_extension_extension_id_local', 'cive_extension_extension_id_remote'] as $key) {
+                $value = strtoupper(trim((string)($options[$key] ?? '')));
+                if ($value !== '') {
+                    $allowed[] = $value;
+                }
+            }
+        } catch (Throwable $e) {
+            // fallback a defaults
+        }
+
+        return in_array($providedNorm, array_values(array_unique($allowed)), true);
     }
 
     private function transformExamenRow(array $row): array
@@ -4171,6 +4517,95 @@ class ExamenController extends BaseController
     }
 
     /**
+     * @return array{form_id:string,hc_number:string,examen_id:int|null}
+     */
+    private function resolveSolicitudOrigenContextFor012A(string $formId, string $hcNumber): array
+    {
+        $resolvedFormId = trim($formId);
+        $resolvedHc = trim($hcNumber);
+        $resolvedExamenId = null;
+
+        if ($resolvedFormId === '' || $resolvedHc === '') {
+            return ['form_id' => $resolvedFormId, 'hc_number' => $resolvedHc, 'examen_id' => $resolvedExamenId];
+        }
+
+        $consultaDirecta = $this->examenModel->obtenerConsultaPorFormHc($resolvedFormId, $resolvedHc);
+        if (is_array($consultaDirecta) && !empty($consultaDirecta)) {
+            return ['form_id' => $resolvedFormId, 'hc_number' => $resolvedHc, 'examen_id' => $resolvedExamenId];
+        }
+
+        $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($resolvedFormId, $resolvedHc);
+        if (!$procedimiento) {
+            $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormId($resolvedFormId);
+        }
+        if (!$procedimiento) {
+            return ['form_id' => $resolvedFormId, 'hc_number' => $resolvedHc, 'examen_id' => $resolvedExamenId];
+        }
+
+        $hcProc = trim((string)($procedimiento['hc_number'] ?? ''));
+        if ($hcProc !== '') {
+            $resolvedHc = $hcProc;
+        }
+
+        $tipoExamenRaw = trim((string)($procedimiento['procedimiento_proyectado'] ?? ''));
+        $codigoExamen = $this->extractCodigoFromProcedimiento($tipoExamenRaw);
+        $nombreExamen = $this->extractNombreFromProcedimiento($tipoExamenRaw);
+
+        $fechaProc = trim((string)($procedimiento['fecha'] ?? ''));
+        $horaProc = trim((string)($procedimiento['hora'] ?? ''));
+        $fechaReferencia = '';
+        if ($fechaProc !== '') {
+            $fechaReferencia = $fechaProc . ($horaProc !== '' ? (' ' . $horaProc . ':00') : ' 23:59:59');
+        }
+
+        $candidato = $this->examenModel->buscarConsultaExamenOrigen(
+            $resolvedHc,
+            $codigoExamen !== '' ? $codigoExamen : null,
+            $fechaReferencia !== '' ? $fechaReferencia : null,
+            $nombreExamen !== '' ? $nombreExamen : null
+        );
+        if (is_array($candidato) && !empty($candidato)) {
+            $resolvedFormId = trim((string)($candidato['form_id'] ?? $resolvedFormId));
+            $resolvedHc = trim((string)($candidato['hc_number'] ?? $resolvedHc));
+            $resolvedExamenId = isset($candidato['id']) ? (int)$candidato['id'] : null;
+        }
+
+        return ['form_id' => $resolvedFormId, 'hc_number' => $resolvedHc, 'examen_id' => $resolvedExamenId];
+    }
+
+    private function extractCodigoFromProcedimiento(string $procedimiento): string
+    {
+        if ($procedimiento === '') {
+            return '';
+        }
+        if (preg_match('/\b(\d{6})\b/', $procedimiento, $match)) {
+            return trim((string)($match[1] ?? ''));
+        }
+        return '';
+    }
+
+    private function extractNombreFromProcedimiento(string $procedimiento): string
+    {
+        $procedimiento = trim(preg_replace('/\s+/', ' ', $procedimiento) ?? '');
+        if ($procedimiento === '') {
+            return '';
+        }
+
+        $parts = array_values(array_filter(array_map('trim', explode(' - ', $procedimiento)), static fn($part) => $part !== ''));
+        foreach ($parts as $part) {
+            if (!preg_match('/\b\d{6}\b/', $part)) {
+                continue;
+            }
+            $nombre = trim(preg_replace('/\b\d{6}\s*[-:]?\s*/', '', $part) ?? '');
+            if ($nombre !== '') {
+                return $nombre;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * @return array{path: string, name?: string, type?: string, size?: int}|null
      */
     private function buildCobertura012AAttachment(string $formId, string $hcNumber, ?int $examenId): ?array
@@ -4179,17 +4614,22 @@ class ExamenController extends BaseController
             return null;
         }
 
+        $contextoOrigen = $this->resolveSolicitudOrigenContextFor012A($formId, $hcNumber);
+        $contextFormId = trim((string)($contextoOrigen['form_id'] ?? $formId));
+        $contextHcNumber = trim((string)($contextoOrigen['hc_number'] ?? $hcNumber));
+        $contextExamenId = $examenId ?: (isset($contextoOrigen['examen_id']) ? (int)$contextoOrigen['examen_id'] : null);
+
         try {
-            $viewData = $this->obtenerDatosParaVista($hcNumber, $formId, $examenId);
+            $viewData = $this->obtenerDatosParaVista($contextHcNumber, $contextFormId, $contextExamenId);
         } catch (Throwable $e) {
             JsonLogger::log(
                 'examenes_mail',
                 'No se pudo construir datos para 012A',
                 $e,
                 [
-                    'form_id' => $formId,
-                    'hc_number' => $hcNumber,
-                    'examen_id' => $examenId,
+                    'form_id' => $contextFormId,
+                    'hc_number' => $contextHcNumber,
+                    'examen_id' => $contextExamenId,
                     'user_id' => $this->getCurrentUserId(),
                 ]
             );
@@ -4197,13 +4637,96 @@ class ExamenController extends BaseController
         }
 
         if (empty($viewData['examen'])) {
-            return null;
+            // Fallback para paquetes masivos: algunos registros no tienen detalle completo en consulta_examenes
+            // pero sí cuentan con datos suficientes para emitir 012A básico.
+            $consultaFallback = $this->examenModel->obtenerConsultaPorFormHc($contextFormId, $contextHcNumber) ?? [];
+            if (empty($consultaFallback)) {
+                $consultaFallback = $this->examenModel->obtenerConsultaPorFormId($contextFormId) ?? [];
+            }
+            $hcFallback = trim((string)($consultaFallback['hc_number'] ?? $contextHcNumber));
+
+            $procedimientoFallback = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($contextFormId, $hcFallback !== '' ? $hcFallback : $contextHcNumber);
+            if (!$procedimientoFallback) {
+                $procedimientoFallback = $this->examenModel->obtenerProcedimientoProyectadoPorFormId($contextFormId);
+            }
+            if (is_array($procedimientoFallback)) {
+                $hcProc = trim((string)($procedimientoFallback['hc_number'] ?? ''));
+                if ($hcFallback === '' && $hcProc !== '') {
+                    $hcFallback = $hcProc;
+                }
+                if (empty($consultaFallback)) {
+                    $fechaProc = trim((string)($procedimientoFallback['fecha'] ?? ''));
+                    $horaProc = trim((string)($procedimientoFallback['hora'] ?? ''));
+                    $createdAtProc = trim(($fechaProc !== '' ? $fechaProc : date('Y-m-d')) . ($horaProc !== '' ? (' ' . $horaProc) : ''));
+                    $consultaFallback = [
+                        'form_id' => $contextFormId,
+                        'hc_number' => $hcFallback !== '' ? $hcFallback : $contextHcNumber,
+                        'fecha' => $fechaProc,
+                        'created_at' => $createdAtProc,
+                        'plan' => (string)($procedimientoFallback['procedimiento_proyectado'] ?? ''),
+                    ];
+                }
+            }
+
+            $pacienteFallback = $this->pacienteService->getPatientDetails($hcFallback !== '' ? $hcFallback : $contextHcNumber);
+            $examenesRelacionadosFallback = $this->examenModel->obtenerExamenesPorFormHc($contextFormId, $hcFallback !== '' ? $hcFallback : $contextHcNumber);
+            if (empty($examenesRelacionadosFallback)) {
+                $examenesRelacionadosFallback = $this->examenModel->obtenerExamenesPorFormId($contextFormId);
+            }
+            if (empty($examenesRelacionadosFallback) && is_array($procedimientoFallback)) {
+                $proc = trim((string)($procedimientoFallback['procedimiento_proyectado'] ?? ''));
+                if ($proc !== '') {
+                    $codigo = '';
+                    if (preg_match('/\b(\d{6})\b/', $proc, $matchCodigo)) {
+                        $codigo = trim((string)($matchCodigo[1] ?? ''));
+                    }
+                    $examenesRelacionadosFallback[] = [
+                        'id' => 0,
+                        'hc_number' => $hcFallback !== '' ? $hcFallback : $contextHcNumber,
+                        'form_id' => $contextFormId,
+                        'examen_codigo' => $codigo,
+                        'examen_nombre' => $proc,
+                        'estado' => 'pendiente',
+                        'consulta_fecha' => $consultaFallback['fecha'] ?? null,
+                        'created_at' => $consultaFallback['created_at'] ?? null,
+                    ];
+                }
+            }
+            $examenesRelacionadosFallback = array_map([$this, 'transformExamenRow'], $examenesRelacionadosFallback);
+            $examenesRelacionadosFallback = $this->estadoService->enrichExamenes($examenesRelacionadosFallback);
+
+            $diagnosticosFallback = [];
+            if (isset($consultaFallback['diagnosticos']) && is_string($consultaFallback['diagnosticos'])) {
+                $decodedDx = json_decode($consultaFallback['diagnosticos'], true);
+                if (is_array($decodedDx)) {
+                    $diagnosticosFallback = $decodedDx;
+                }
+            }
+
+            $viewData = [
+                'examen' => ['created_at' => null],
+                'paciente' => is_array($pacienteFallback) ? $pacienteFallback : [],
+                'consulta' => $consultaFallback,
+                'diagnostico' => $diagnosticosFallback,
+                'derivacion' => [],
+                'examenes_relacionados' => $examenesRelacionadosFallback,
+                'imagenes_solicitadas' => $this->extraerImagenesSolicitadas(
+                    $consultaFallback['examenes'] ?? null,
+                    $examenesRelacionadosFallback,
+                    []
+                ),
+            ];
         }
 
         $dxDerivacion = [];
         if (!empty($viewData['derivacion']['diagnostico'])) {
             $dxDerivacion[] = ['diagnostico' => $viewData['derivacion']['diagnostico']];
         }
+
+        $estudios012A = $this->construirEstudios012A(
+            is_array($viewData['examenes_relacionados'] ?? null) ? $viewData['examenes_relacionados'] : [],
+            is_array($viewData['imagenes_solicitadas'] ?? null) ? $viewData['imagenes_solicitadas'] : []
+        );
 
         $payload = [
             'paciente' => $viewData['paciente'] ?? [],
@@ -4217,9 +4740,10 @@ class ExamenController extends BaseController
             ],
             'examenes_relacionados' => $viewData['examenes_relacionados'] ?? [],
             'imagenes_solicitadas' => $viewData['imagenes_solicitadas'] ?? [],
+            'estudios_012a' => $estudios012A,
         ];
 
-        $filename = '012A_' . ($hcNumber !== '' ? $hcNumber : 'paciente') . '_' . date('Ymd_His') . '.pdf';
+        $filename = '012A_' . ($contextHcNumber !== '' ? $contextHcNumber : 'paciente') . '_' . date('Ymd_His') . '.pdf';
         $reportService = new ReportService();
 
         try {
@@ -4233,9 +4757,9 @@ class ExamenController extends BaseController
                 'No se pudo generar PDF 012A',
                 $e,
                 [
-                    'form_id' => $formId,
-                    'hc_number' => $hcNumber,
-                    'examen_id' => $examenId,
+                    'form_id' => $contextFormId,
+                    'hc_number' => $contextHcNumber,
+                    'examen_id' => $contextExamenId,
                     'user_id' => $this->getCurrentUserId(),
                 ]
             );
