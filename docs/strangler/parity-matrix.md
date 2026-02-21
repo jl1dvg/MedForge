@@ -22,6 +22,7 @@
 - `POST /pacientes/datatable` -> `POST /v2/pacientes/datatable`
 - `GET|POST /pacientes/detalles` -> `GET|POST /v2/pacientes/detalles`
 - `GET /pacientes/flujo` -> `GET /v2/pacientes/flujo`
+- `POST /pacientes/detalles?actualizar_paciente=1` -> `POST /v2/pacientes/detalles?actualizar_paciente=1`
 
 Current auth parity policy:
 
@@ -30,6 +31,8 @@ Current auth parity policy:
 - Authenticated parity is contract-aware when `--cookie=PHPSESSID=...` is present:
 - `datatable`: full compare (legacy/v2 `200` + DataTable shape).
 - `detalles`: status parity (`200` both sides) + v2 JSON required fields.
+- `flujo`: status parity (`200` both sides) + v2 JSON required fields.
+- `detalles_update`: status parity (`302` both sides) + v2 post-check de persistencia.
 
 ### Auth (deferred)
 
@@ -48,6 +51,8 @@ Use stable fixture records in DB:
 ```bash
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
+php tools/tests/http_smoke.php --endpoint=pacientes_flujo
+php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
 php tools/tests/http_smoke.php --fail-fast
 php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-number='HC-REAL-001'
 ```

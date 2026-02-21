@@ -66,17 +66,83 @@ foreach ($tests as $test) {
     $module = (string) $test['module'];
     $method = strtoupper((string) ($test['method'] ?? 'GET'));
     $compareMode = (string) resolveByAuth($test, 'compare_mode', $isAuthenticated, 'full');
+    $bodyFormat = (string) resolveByAuth($test, 'body_format', $isAuthenticated, 'json');
+    $requestBody = is_array($test['body'] ?? null) ? (array) $test['body'] : null;
 
     echo "\n[$module/$id] $method\n";
+
+    $sourceResult = null;
+    $hydration = resolveByAuth($test, 'body_from_v2_json', $isAuthenticated, null);
+    if (is_array($hydration)) {
+        $sourcePath = (string) ($hydration['path'] ?? '');
+        $sourceMethod = strtoupper((string) ($hydration['method'] ?? 'GET'));
+        $sourceExpectStatus = (int) ($hydration['expect_status'] ?? 200);
+        $sourceFields = is_array($hydration['fields'] ?? null) ? (array) $hydration['fields'] : [];
+        $sourceRequired = (bool) ($hydration['required'] ?? true);
+        $sourceBodyFormat = (string) ($hydration['body_format'] ?? 'json');
+
+        if ($sourcePath !== '') {
+            $sourceResult = request(
+                $v2Base . $sourcePath,
+                $sourceMethod,
+                null,
+                $timeout,
+                $cookieHeader,
+                $sourceBodyFormat
+            );
+
+            if ($sourceResult['status'] !== $sourceExpectStatus) {
+                echo "  FAIL\n";
+                echo "  - Body hydration source status expected $sourceExpectStatus, got {$sourceResult['status']}\n";
+                echo "  source: " . $sourceResult['url'] . "\n";
+                echo "    status=" . $sourceResult['status'] . " body=" . truncate($sourceResult['body']) . "\n";
+                $failed++;
+                if ($failFast) {
+                    break;
+                }
+                continue;
+            }
+
+            if ($requestBody === null) {
+                $requestBody = [];
+            }
+
+            $hydrationErrors = [];
+            foreach ($sourceFields as $bodyKey => $jsonPath) {
+                [$found, $value] = jsonPathRead($sourceResult['json'], (string) $jsonPath);
+                if (!$found) {
+                    if ($sourceRequired) {
+                        $hydrationErrors[] = "Hydration source missing path: $jsonPath";
+                    }
+                    continue;
+                }
+                $requestBody[(string) $bodyKey] = $value;
+            }
+
+            if ($hydrationErrors !== []) {
+                echo "  FAIL\n";
+                foreach ($hydrationErrors as $error) {
+                    echo "  - $error\n";
+                }
+                echo "  source: " . $sourceResult['url'] . "\n";
+                echo "    status=" . $sourceResult['status'] . " body=" . truncate($sourceResult['body']) . "\n";
+                $failed++;
+                if ($failFast) {
+                    break;
+                }
+                continue;
+            }
+        }
+    }
 
     $legacyResult = null;
     if ($compareMode !== 'v2_only') {
         $legacyUrl = $legacyBase . (string) $test['legacy_path'];
-        $legacyResult = request($legacyUrl, $method, $test['body'] ?? null, $timeout, $cookieHeader);
+        $legacyResult = request($legacyUrl, $method, $requestBody, $timeout, $cookieHeader, $bodyFormat);
     }
 
     $v2Url = $v2Base . (string) $test['v2_path'];
-    $v2Result = request($v2Url, $method, $test['body'] ?? null, $timeout, $cookieHeader);
+    $v2Result = request($v2Url, $method, $requestBody, $timeout, $cookieHeader, $bodyFormat);
 
     $errors = [];
 
@@ -112,6 +178,54 @@ foreach ($tests as $test) {
         $v2Shape = jsonShape($v2Result['json']);
         if ($legacyShape !== $v2Shape) {
             $errors[] = "JSON shape differs (legacy vs v2).";
+        }
+    }
+
+    $postCheck = resolveByAuth($test, 'post_check_v2', $isAuthenticated, null);
+    if ($errors === [] && is_array($postCheck)) {
+        $checkPath = (string) ($postCheck['path'] ?? '');
+        if ($checkPath !== '') {
+            $checkMethod = strtoupper((string) ($postCheck['method'] ?? 'GET'));
+            $checkExpectStatus = (int) ($postCheck['expect_status'] ?? 200);
+            $checkRequiredPaths = (array) ($postCheck['required_json_paths'] ?? []);
+            $checkEquals = is_array($postCheck['assert_json_equals'] ?? null) ? (array) $postCheck['assert_json_equals'] : [];
+
+            $checkResult = request(
+                $v2Base . $checkPath,
+                $checkMethod,
+                null,
+                $timeout,
+                $cookieHeader,
+                (string) ($postCheck['body_format'] ?? 'json')
+            );
+
+            if ($checkResult['status'] !== $checkExpectStatus) {
+                $errors[] = "Post-check v2 status expected $checkExpectStatus, got {$checkResult['status']}";
+            }
+
+            foreach ($checkRequiredPaths as $path) {
+                if (!hasJsonPath($checkResult['json'], (string) $path)) {
+                    $errors[] = "Post-check v2 missing required path: $path";
+                }
+            }
+
+            foreach ($checkEquals as $path => $expectedRaw) {
+                $expected = resolveExpectedValue($expectedRaw, $requestBody ?? []);
+                [$found, $actual] = jsonPathRead($checkResult['json'], (string) $path);
+                if (!$found) {
+                    $errors[] = "Post-check v2 missing path for equality assertion: $path";
+                    continue;
+                }
+
+                if (!valuesEqual($actual, $expected)) {
+                    $errors[] = sprintf(
+                        'Post-check mismatch at %s expected=%s actual=%s',
+                        (string) $path,
+                        normalizePrintable($expected),
+                        normalizePrintable($actual)
+                    );
+                }
+            }
         }
     }
 
@@ -154,7 +268,17 @@ exit($failed > 0 ? 1 : 0);
  */
 function applyFixtureTokens(array $test, array $fixtures): array
 {
-    foreach (['legacy_path', 'v2_path', 'body', 'notes', 'notes_auth'] as $field) {
+    foreach ([
+        'legacy_path',
+        'v2_path',
+        'body',
+        'notes',
+        'notes_auth',
+        'body_from_v2_json',
+        'body_from_v2_json_auth',
+        'post_check_v2',
+        'post_check_v2_auth',
+    ] as $field) {
         if (array_key_exists($field, $test)) {
             $test[$field] = replaceTokens($test[$field], $fixtures);
         }
@@ -228,12 +352,21 @@ function replaceTokens(mixed $value, array $fixtures): mixed
     return $value;
 }
 
-function request(string $url, string $method, ?array $body, int $timeout, ?string $cookieHeader = null): array
+/**
+ * @param array<string, mixed>|null $body
+ */
+function request(
+    string $url,
+    string $method,
+    ?array $body,
+    int $timeout,
+    ?string $cookieHeader = null,
+    string $bodyFormat = 'json'
+): array
 {
     $ch = curl_init($url);
     $headers = [
         'Accept: application/json',
-        'Content-Type: application/json',
         'X-Request-Id: smoke-' . bin2hex(random_bytes(6)),
     ];
     if ($cookieHeader !== null && $cookieHeader !== '') {
@@ -251,7 +384,15 @@ function request(string $url, string $method, ?array $body, int $timeout, ?strin
     ]);
 
     if ($body !== null && in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if ($bodyFormat === 'form') {
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(flattenFormBody($body), '', '&', PHP_QUERY_RFC3986));
+        } else {
+            $headers[] = 'Content-Type: application/json';
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
     }
 
     $raw = curl_exec($ch);
@@ -343,4 +484,124 @@ function truncate(string $value, int $max = 240): string
         return $trimmed;
     }
     return substr($trimmed, 0, $max) . '...';
+}
+
+/**
+ * @param array<string, mixed> $payload
+ * @return array<string, scalar|null>
+ */
+function flattenFormBody(array $payload, string $prefix = ''): array
+{
+    $result = [];
+    foreach ($payload as $key => $value) {
+        $keyString = $prefix === '' ? (string) $key : $prefix . '[' . (string) $key . ']';
+
+        if (is_array($value)) {
+            $result += flattenFormBody($value, $keyString);
+            continue;
+        }
+
+        if (is_bool($value)) {
+            $result[$keyString] = $value ? '1' : '0';
+            continue;
+        }
+
+        if (is_scalar($value)) {
+            $result[$keyString] = $value;
+            continue;
+        }
+
+        if ($value === null) {
+            $result[$keyString] = '';
+            continue;
+        }
+
+        $result[$keyString] = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    return $result;
+}
+
+/**
+ * @param array<string, mixed> $body
+ */
+function resolveExpectedValue(mixed $expectedRaw, array $body): mixed
+{
+    if (is_string($expectedRaw) && str_starts_with($expectedRaw, '@body.')) {
+        $bodyPath = substr($expectedRaw, 6);
+        [$found, $value] = jsonPathRead($body, $bodyPath);
+        if ($found) {
+            return $value;
+        }
+    }
+
+    return $expectedRaw;
+}
+
+function valuesEqual(mixed $actual, mixed $expected): bool
+{
+    if ($actual === $expected) {
+        return true;
+    }
+
+    // Legacy forms frequently normalize null DB values to empty strings.
+    if (($actual === null && $expected === '') || ($actual === '' && $expected === null)) {
+        return true;
+    }
+
+    if ($actual === null || $expected === null) {
+        return false;
+    }
+
+    return (string) $actual === (string) $expected;
+}
+
+/**
+ * @return array{0: bool, 1: mixed}
+ */
+function jsonPathRead(?array $data, string $path): array
+{
+    if ($data === null) {
+        return [false, null];
+    }
+
+    if ($path === '') {
+        return [true, $data];
+    }
+
+    $segments = explode('.', $path);
+    $current = $data;
+
+    foreach ($segments as $segment) {
+        if (is_array($current) && array_key_exists($segment, $current)) {
+            $current = $current[$segment];
+            continue;
+        }
+
+        if (is_array($current) && ctype_digit($segment)) {
+            $index = (int) $segment;
+            if (array_key_exists($index, $current)) {
+                $current = $current[$index];
+                continue;
+            }
+        }
+
+        return [false, null];
+    }
+
+    return [true, $current];
+}
+
+function normalizePrintable(mixed $value): string
+{
+    if (is_string($value)) {
+        return $value;
+    }
+
+    if (is_scalar($value) || $value === null) {
+        return (string) $value;
+    }
+
+    $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    return $encoded === false ? '[unprintable]' : $encoded;
 }

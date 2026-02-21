@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PDO;
+use Throwable;
 
 class PacientesReadController
 {
@@ -127,14 +128,43 @@ class PacientesReadController
             return response()->json(['error' => 'hc_number es requerido'], 422);
         }
 
-        $rows = DB::select(
-            'SELECT form_id, hc_number, fecha_creacion, fecha_registro, cod_derivacion
+        $columns = $this->tableColumns('prefactura_paciente');
+
+        $formIdColumn = in_array('form_id', $columns, true)
+            ? 'form_id'
+            : (in_array('id', $columns, true) ? 'id AS form_id' : 'NULL AS form_id');
+        $fechaCreacionColumn = in_array('fecha_creacion', $columns, true)
+            ? 'fecha_creacion'
+            : (in_array('created_at', $columns, true) ? 'created_at AS fecha_creacion' : 'NULL AS fecha_creacion');
+        $fechaRegistroColumn = in_array('fecha_registro', $columns, true)
+            ? 'fecha_registro'
+            : 'NULL AS fecha_registro';
+        $codDerivacionColumn = in_array('cod_derivacion', $columns, true)
+            ? 'cod_derivacion'
+            : 'NULL AS cod_derivacion';
+
+        $orderBy = in_array('fecha_creacion', $columns, true)
+            ? 'fecha_creacion'
+            : (in_array('created_at', $columns, true) ? 'created_at' : (in_array('id', $columns, true) ? 'id' : 'hc_number'));
+
+        $sql = sprintf(
+            'SELECT %s, hc_number, %s, %s, %s
              FROM prefactura_paciente
              WHERE hc_number = ?
-             ORDER BY fecha_creacion DESC
+             ORDER BY %s DESC
              LIMIT 50',
-            [$hcNumber]
+            $formIdColumn,
+            $fechaCreacionColumn,
+            $fechaRegistroColumn,
+            $codDerivacionColumn,
+            $orderBy
         );
+
+        try {
+            $rows = DB::select($sql, [$hcNumber]);
+        } catch (Throwable) {
+            $rows = [];
+        }
 
         return response()->json([
             'data' => $rows,
@@ -142,6 +172,28 @@ class PacientesReadController
                 'count' => count($rows),
             ],
         ]);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function tableColumns(string $table): array
+    {
+        try {
+            $rows = DB::select("SHOW COLUMNS FROM {$table}");
+        } catch (Throwable) {
+            return [];
+        }
+
+        $columns = [];
+        foreach ($rows as $row) {
+            $field = (string) data_get((array) $row, 'Field', '');
+            if ($field !== '') {
+                $columns[] = $field;
+            }
+        }
+
+        return $columns;
     }
 
     private function unauthenticatedJson(int $draw): JsonResponse
