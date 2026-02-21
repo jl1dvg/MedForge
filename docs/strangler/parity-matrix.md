@@ -10,12 +10,18 @@
 
 ### Dashboard
 
-- `GET /dashboard` -> `GET /v2/dashboard/summary`
+- `GET /dashboard` -> `GET /v2/dashboard` (UI cutover por flag)
+- `GET /dashboard` -> `GET /v2/dashboard/summary` (API parity)
 
 Current auth parity policy:
 
-- Guest behavior differs by design (`302` HTML redirect in legacy vs `401` JSON in v2 API).
-- Authenticated parity validates status (`200` both sides) + v2 JSON shape (summary metrics).
+- Session bridge global en Laravel (`LegacySessionBridge`) para leer `PHPSESSID` del login legacy.
+- `PHPSESSID` queda excluida de encrypt/decrypt cookies de Laravel para evitar loop de login en rutas `web`.
+- Guest behavior differs by design (`302` HTML redirect in legacy browser vs `401` JSON cuando request API a v2).
+- Authenticated parity validates:
+- `/v2/dashboard` render (`200` HTML).
+- `/v2/dashboard/summary` status (`200`) + v2 JSON shape (summary metrics).
+- Con `DASHBOARD_V2_UI_ENABLED=1`, `/dashboard` legacy redirige a `/v2/dashboard`; por eso el smoke de `dashboard_summary` en auth corre en modo `v2_only`.
 
 ### Billing
 
@@ -63,6 +69,8 @@ Use stable fixture records in DB:
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...' --allow-destructive
+php tools/tests/http_smoke.php --endpoint=dashboard_ui
+php tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=dashboard_summary
 php tools/tests/http_smoke.php --endpoint=dashboard_summary --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
@@ -81,6 +89,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 
 ```bash
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 ```
 
 ## Billing Write Cutover Flag

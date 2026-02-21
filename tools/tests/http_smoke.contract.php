@@ -14,6 +14,23 @@ return [
     'modules' => [
         'dashboard' => [
             [
+                'id' => 'dashboard_ui',
+                'method' => 'GET',
+                'legacy_path' => '/dashboard',
+                'v2_path' => '/v2/dashboard',
+                'expect_status' => 401,
+                'expect_legacy_status' => 302,
+                'expect_v2_status' => 401,
+                'expect_legacy_status_auth' => 200,
+                'expect_v2_status_auth' => 200,
+                'required_json_paths' => ['error'],
+                'required_json_paths_auth' => [],
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'notes' => 'Guest mode sends Accept: application/json, so v2 dashboard UI returns JSON 401.',
+                'notes_auth' => 'Authenticated mode validates that /v2/dashboard renders HTML (status 200).',
+            ],
+            [
                 'id' => 'dashboard_summary',
                 'method' => 'GET',
                 'legacy_path' => '/dashboard',
@@ -44,9 +61,9 @@ return [
                     'meta.date_range.label',
                 ],
                 'compare_mode' => 'v2_only',
-                'compare_mode_auth' => 'status_only',
+                'compare_mode_auth' => 'v2_only',
                 'notes' => 'Guest mode validates auth requirement in v2 dashboard summary.',
-                'notes_auth' => 'Authenticated mode validates dashboard v2 payload shape with status parity.',
+                'notes_auth' => 'Authenticated mode validates dashboard v2 payload shape. Legacy status parity is skipped when UI cutover redirects /dashboard -> /v2/dashboard.',
             ],
         ],
         'billing' => [

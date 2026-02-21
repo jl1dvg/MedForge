@@ -7,4 +7,4 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/v2/dashboard', [DashboardUiController::class, 'index']);
+Route::middleware('legacy.auth')->get('/v2/dashboard', [DashboardUiController::class, 'index']);
