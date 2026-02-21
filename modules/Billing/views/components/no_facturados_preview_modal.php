@@ -1,3 +1,11 @@
+<?php
+$billingV2WritesEnabled = filter_var(
+    $_ENV['BILLING_V2_WRITES_ENABLED'] ?? getenv('BILLING_V2_WRITES_ENABLED') ?? '0',
+    FILTER_VALIDATE_BOOLEAN
+);
+$billingWritePrefix = $billingV2WritesEnabled ? '/v2' : '';
+$billingNoFacturadosCrearAction = $billingWritePrefix . '/billing/no-facturados/crear';
+?>
 <!-- Modal global para preview -->
 <div class="modal fade bs-example-modal-lg" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel"
      aria-hidden="true">
@@ -29,7 +37,7 @@
                 </div>
                 <div>
                     <form id="facturarForm" method="POST"
-                          action="/billing/no-facturados/crear"
+                          action="<?= htmlspecialchars($billingNoFacturadosCrearAction, ENT_QUOTES, 'UTF-8') ?>"
                           class="mb-0">
                         <input type="hidden" name="form_id" id="facturarFormId">
                         <input type="hidden" name="hc_number" id="facturarHcNumber">

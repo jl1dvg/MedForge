@@ -1222,7 +1222,8 @@ $scripts = array_merge($scripts ?? [], [
                     formData.append('form_id', item.formId);
                     formData.append('hc_number', item.hcNumber);
 
-                    const response = await fetch('/billing/no-facturados/crear', {
+                    const billingWriteEndpoint = document.getElementById('facturarForm')?.getAttribute('action') || '/billing/no-facturados/crear';
+                    const response = await fetch(billingWriteEndpoint, {
                         method: 'POST',
                         body: formData,
                     });

@@ -10,6 +10,12 @@ $formId = $datos['billing']['form_id'] ?? '';
 $membrete = $protocolo['membrete'] ?? '';
 $fechaInicio = $protocolo['fecha_inicio'] ?? null;
 $fechaInicioFormatted = $fechaInicio ? date('d/m/Y', strtotime($fechaInicio)) : '--';
+$billingV2WritesEnabled = filter_var(
+    $_ENV['BILLING_V2_WRITES_ENABLED'] ?? getenv('BILLING_V2_WRITES_ENABLED') ?? '0',
+    FILTER_VALIDATE_BOOLEAN
+);
+$billingWritePrefix = $billingV2WritesEnabled ? '/v2' : '';
+$billingEliminarFacturaEndpoint = $billingWritePrefix . '/informes/api/eliminar-factura';
 ?>
 <div class="mb-2">
     <span class="badge bg-primary">Procedimientos (Cirujano)</span>
@@ -412,6 +418,8 @@ foreach ($derechos as $servicio) {
             </h4>
         </div>
         <script>
+            const billingEliminarFacturaEndpoint = <?= json_encode($billingEliminarFacturaEndpoint, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+
             function confirmarEliminacion(formId) {
                 Swal.fire({
                     title: '¿Estás seguro?',
@@ -423,7 +431,7 @@ foreach ($derechos as $servicio) {
                     confirmButtonText: 'Sí, eliminar'
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        fetch('/informes/api/eliminar-factura', {
+                        fetch(billingEliminarFacturaEndpoint, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded'

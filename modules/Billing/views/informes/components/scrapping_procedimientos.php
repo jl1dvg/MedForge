@@ -3,6 +3,13 @@
 $codigoDerivacionPrincipal = $codigoDerivacion;
 $fecha_registroPrincipal = $fecha_registro;
 $codigoDerivacionObtenida = '';
+$billingV2WritesEnabled = filter_var(
+    $_ENV['BILLING_V2_WRITES_ENABLED'] ?? getenv('BILLING_V2_WRITES_ENABLED') ?? '0',
+    FILTER_VALIDATE_BOOLEAN
+);
+$billingWritePrefix = $billingV2WritesEnabled ? '/v2' : '';
+$billingVerificacionDerivacionEndpoint = $billingWritePrefix . '/api/billing/verificacion_derivacion.php';
+$billingInsertarBillingMainEndpoint = $billingWritePrefix . '/api/billing/insertar_billing_main.php';
 
 if (!empty($scrapingOutput)):
     if (is_array($scrapingOutput)) {
@@ -142,6 +149,8 @@ if (!empty($scrapingOutput)):
                 </form>
                 <script>
                     let seleccionados = [];
+                    const billingVerificacionDerivacionEndpoint = <?= json_encode($billingVerificacionDerivacionEndpoint, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+                    const billingInsertarBillingMainEndpoint = <?= json_encode($billingInsertarBillingMainEndpoint, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 
                     document.getElementById('agregar-seleccionados').addEventListener('click', async function () {
                         console.log("🟢 Botón 'Agregar seleccionados' clickeado");
@@ -166,7 +175,7 @@ if (!empty($scrapingOutput)):
 
                         try {
                             console.log("🚀 Enviando verificación de derivación");
-                            const verificacion = await fetch('/api/billing/verificacion_derivacion.php', {
+                            const verificacion = await fetch(billingVerificacionDerivacionEndpoint, {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                                 body: 'form_ids[]=' + formIds.join('&form_ids[]=')
@@ -240,7 +249,7 @@ if (!empty($scrapingOutput)):
                             console.table(payloadCompleto.procedimientos);
                             console.log("📤 JSON.stringify:", JSON.stringify(payloadCompleto, null, 2));
 
-                            const responseCompleto = await fetch('/api/billing/insertar_billing_main.php', {
+                            const responseCompleto = await fetch(billingInsertarBillingMainEndpoint, {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify(payloadCompleto)

@@ -75,3 +75,17 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 ```bash
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 ```
+
+## Billing Write Cutover Flag
+
+- Legacy frontend can switch only Billing writes to `/v2` with env flag:
+
+```bash
+BILLING_V2_WRITES_ENABLED=1
+```
+
+- Fast rollback (no code revert): set
+
+```bash
+BILLING_V2_WRITES_ENABLED=0
+```
