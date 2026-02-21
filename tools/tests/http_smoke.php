@@ -8,11 +8,14 @@ $options = getopt('', [
     'module::',
     'endpoint::',
     'fail-fast',
+    'allow-destructive',
     'legacy-base::',
     'v2-base::',
     'timeout::',
     'cookie::',
     'hc-number::',
+    'billing-form-id::',
+    'billing-hc-number::',
     'help',
 ]);
 
@@ -21,6 +24,7 @@ if (isset($options['help'])) {
     echo "  php tools/tests/http_smoke.php [--module=billing] [--endpoint=billing_no_facturados] [--fail-fast]\n";
     echo "       [--legacy-base=http://127.0.0.1:8080] [--v2-base=http://127.0.0.1:8081] [--timeout=20]\n";
     echo "       [--cookie='PHPSESSID=...'] [--hc-number=HC-REAL-001]\n";
+    echo "       [--allow-destructive] [--billing-form-id=123] [--billing-hc-number=HC123]\n";
     exit(0);
 }
 
@@ -30,11 +34,14 @@ $timeout = max(1, (int) ($options['timeout'] ?? $contract['defaults']['timeout_s
 $moduleFilter = isset($options['module']) ? trim((string) $options['module']) : null;
 $endpointFilter = isset($options['endpoint']) ? trim((string) $options['endpoint']) : null;
 $failFast = isset($options['fail-fast']);
+$allowDestructive = isset($options['allow-destructive']);
 $cookieHeader = isset($options['cookie']) ? trim((string) $options['cookie']) : null;
 $isAuthenticated = $cookieHeader !== null && $cookieHeader !== '';
 
 $fixtures = [
     'HC_NUMBER' => trim((string) ($options['hc-number'] ?? $contract['fixtures']['HC_NUMBER'] ?? 'HC-TEST-001')),
+    'BILLING_FORM_ID' => trim((string) ($options['billing-form-id'] ?? $contract['fixtures']['BILLING_FORM_ID'] ?? '')),
+    'BILLING_HC_NUMBER' => trim((string) ($options['billing-hc-number'] ?? $contract['fixtures']['BILLING_HC_NUMBER'] ?? '')),
 ];
 
 $tests = [];
@@ -56,8 +63,25 @@ if (empty($tests)) {
     exit(2);
 }
 
+if ($isAuthenticated && hasBillingDynamicFixtureNeed($tests) && ($fixtures['BILLING_FORM_ID'] === '' || $fixtures['BILLING_HC_NUMBER'] === '')) {
+    $dynamicFixture = resolveDynamicBillingFixture($v2Base, $timeout, $cookieHeader);
+    if (is_array($dynamicFixture)) {
+        if ($fixtures['BILLING_FORM_ID'] === '') {
+            $fixtures['BILLING_FORM_ID'] = $dynamicFixture['BILLING_FORM_ID'] ?? '';
+        }
+        if ($fixtures['BILLING_HC_NUMBER'] === '') {
+            $fixtures['BILLING_HC_NUMBER'] = $dynamicFixture['BILLING_HC_NUMBER'] ?? '';
+        }
+
+        if ($fixtures['BILLING_FORM_ID'] !== '' && $fixtures['BILLING_HC_NUMBER'] !== '') {
+            echo "Dynamic fixture: form_id={$fixtures['BILLING_FORM_ID']} hc_number={$fixtures['BILLING_HC_NUMBER']}\n";
+        }
+    }
+}
+
 $passed = 0;
 $failed = 0;
+$skipped = 0;
 
 foreach ($tests as $test) {
     $test = applyFixtureTokens($test, $fixtures);
@@ -70,6 +94,20 @@ foreach ($tests as $test) {
     $requestBody = is_array($test['body'] ?? null) ? (array) $test['body'] : null;
 
     echo "\n[$module/$id] $method\n";
+
+    if ((bool) ($test['destructive'] ?? false) && !$allowDestructive) {
+        echo "  SKIP\n";
+        echo "  note: Destructive test disabled. Re-run with --allow-destructive.\n";
+        $skipped++;
+        continue;
+    }
+
+    if ((bool) ($test['requires_dynamic_fixture'] ?? false) && ($fixtures['BILLING_FORM_ID'] === '' || $fixtures['BILLING_HC_NUMBER'] === '')) {
+        echo "  SKIP\n";
+        echo "  note: Dynamic billing fixture unavailable. Provide --billing-form-id/--billing-hc-number or ensure /v2/api/billing/no-facturados has data.\n";
+        $skipped++;
+        continue;
+    }
 
     $sourceResult = null;
     $hydration = resolveByAuth($test, 'body_from_v2_json', $isAuthenticated, null);
@@ -258,8 +296,53 @@ foreach ($tests as $test) {
     }
 }
 
-echo "\nSummary: passed=$passed failed=$failed total=" . ($passed + $failed) . "\n";
+echo "\nSummary: passed=$passed failed=$failed skipped=$skipped total=" . ($passed + $failed + $skipped) . "\n";
 exit($failed > 0 ? 1 : 0);
+
+/**
+ * @param array<int, array<string, mixed>> $tests
+ */
+function hasBillingDynamicFixtureNeed(array $tests): bool
+{
+    foreach ($tests as $test) {
+        if ((string) ($test['module'] ?? '') !== 'billing') {
+            continue;
+        }
+        if ((bool) ($test['requires_dynamic_fixture'] ?? false)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * @return array{BILLING_FORM_ID:string,BILLING_HC_NUMBER:string}|null
+ */
+function resolveDynamicBillingFixture(string $v2Base, int $timeout, ?string $cookieHeader): ?array
+{
+    $url = rtrim($v2Base, '/') . '/v2/api/billing/no-facturados?start=0&length=1';
+    $result = request($url, 'GET', null, $timeout, $cookieHeader);
+    if ((int) ($result['status'] ?? 0) !== 200 || !is_array($result['json'] ?? null)) {
+        return null;
+    }
+
+    [$found, $first] = jsonPathRead(is_array($result['json']) ? $result['json'] : null, 'data.0');
+    if (!$found || !is_array($first)) {
+        return null;
+    }
+
+    $formId = trim((string) ($first['form_id'] ?? ''));
+    $hcNumber = trim((string) ($first['hc_number'] ?? ''));
+    if ($formId === '' || $hcNumber === '') {
+        return null;
+    }
+
+    return [
+        'BILLING_FORM_ID' => $formId,
+        'BILLING_HC_NUMBER' => $hcNumber,
+    ];
+}
 
 /**
  * @param array<string, mixed> $test

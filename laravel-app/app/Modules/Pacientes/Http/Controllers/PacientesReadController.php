@@ -3,12 +3,12 @@
 namespace App\Modules\Pacientes\Http\Controllers;
 
 use App\Modules\Pacientes\Services\PacientesParityService;
+use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PDO;
-use Throwable;
 
 class PacientesReadController
 {
@@ -162,7 +162,7 @@ class PacientesReadController
 
         try {
             $rows = DB::select($sql, [$hcNumber]);
-        } catch (Throwable) {
+        } catch (\Throwable) {
             $rows = [];
         }
 
@@ -181,7 +181,7 @@ class PacientesReadController
     {
         try {
             $rows = DB::select("SHOW COLUMNS FROM {$table}");
-        } catch (Throwable) {
+        } catch (\Throwable) {
             return [];
         }
 
@@ -209,19 +209,12 @@ class PacientesReadController
 
     private function isLegacyAuthenticated(Request $request): bool
     {
-        return $this->legacyUserId($request) !== null;
+        return LegacySessionAuth::isAuthenticated($request);
     }
 
     private function legacyUserId(Request $request): ?int
     {
-        $session = $this->readLegacyPhpSession($request);
-        $raw = $session['user_id'] ?? null;
-        if (!is_numeric($raw)) {
-            return null;
-        }
-
-        $userId = (int) $raw;
-        return $userId > 0 ? $userId : null;
+        return LegacySessionAuth::userId($request);
     }
 
     /**
@@ -229,33 +222,6 @@ class PacientesReadController
      */
     private function readLegacyPhpSession(Request $request): array
     {
-        $sessionId = (string) $request->cookie('PHPSESSID', '');
-        if ($sessionId === '') {
-            return [];
-        }
-
-        $originalName = session_name();
-        $originalId = session_id();
-        $wasActive = session_status() === PHP_SESSION_ACTIVE;
-
-        if ($wasActive) {
-            session_write_close();
-        }
-
-        session_name('PHPSESSID');
-        session_id($sessionId);
-
-        $started = @session_start(['read_and_close' => true]);
-        $data = $started && is_array($_SESSION ?? null) ? $_SESSION : [];
-        $_SESSION = [];
-
-        if ($originalName !== '') {
-            @session_name($originalName);
-        }
-        if ($originalId !== '') {
-            @session_id($originalId);
-        }
-
-        return is_array($data) ? $data : [];
+        return LegacySessionAuth::readSession($request);
     }
 }

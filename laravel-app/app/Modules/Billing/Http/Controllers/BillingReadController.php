@@ -73,18 +73,32 @@ class BillingReadController
     {
         $start = max((int) $request->query('start', 0), 0);
         $length = min(max((int) $request->query('length', 25), 1), 200);
+        $filters = $this->buildFilters($request);
 
         $baseSql = $this->baseSql();
+        $fromSql = ' FROM (' . $baseSql . ') AS base';
+        $whereSql = $filters['sql'] !== '' ? ' WHERE ' . $filters['sql'] : '';
 
-        $recordsTotal = (int) (DB::selectOne('SELECT COUNT(*) AS total FROM (' . $baseSql . ') AS x')->total ?? 0);
-        $rows = DB::select($baseSql . ' ORDER BY base.paciente ASC, base.fecha DESC, base.form_id DESC LIMIT ' . $start . ', ' . $length);
+        $recordsTotal = (int) (DB::selectOne('SELECT COUNT(*) AS total' . $fromSql)->total ?? 0);
+        $recordsFiltered = $recordsTotal;
+        if ($whereSql !== '') {
+            $recordsFiltered = (int) (DB::selectOne(
+                'SELECT COUNT(*) AS total' . $fromSql . $whereSql,
+                $filters['params']
+            )->total ?? 0);
+        }
+
+        $rows = DB::select(
+            'SELECT base.*' . $fromSql . $whereSql . ' ORDER BY base.paciente ASC, base.fecha DESC, base.form_id DESC LIMIT ' . $start . ', ' . $length,
+            $filters['params']
+        );
 
         return response()->json([
             'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
             'data' => $rows,
             'summary' => [
-                'total' => $recordsTotal,
+                'total' => $recordsFiltered,
                 'monto' => 0,
                 'quirurgicos' => ['cantidad' => 0, 'monto' => 0],
                 'no_quirurgicos' => ['cantidad' => 0, 'monto' => 0],
@@ -103,5 +117,35 @@ class BillingReadController
         );
 
         return response()->json(array_map(static fn ($row) => $row->afiliacion, $rows));
+    }
+
+    /**
+     * @return array{sql:string,params:array<int,string>}
+     */
+    private function buildFilters(Request $request): array
+    {
+        $where = [];
+        $params = [];
+
+        $busqueda = trim((string) $request->query('busqueda', ''));
+        if ($busqueda !== '') {
+            $where[] = '(CAST(base.form_id AS CHAR) LIKE ? OR base.hc_number LIKE ? OR base.paciente LIKE ? OR base.procedimiento LIKE ?)';
+            $needle = '%' . $busqueda . '%';
+            $params[] = $needle;
+            $params[] = $needle;
+            $params[] = $needle;
+            $params[] = $needle;
+        }
+
+        $formId = trim((string) $request->query('form_id', ''));
+        if ($formId !== '') {
+            $where[] = 'CAST(base.form_id AS CHAR) = ?';
+            $params[] = $formId;
+        }
+
+        return [
+            'sql' => implode(' AND ', $where),
+            'params' => $params,
+        ];
     }
 }

@@ -16,6 +16,10 @@
 
 - `GET /api/billing/no-facturados` -> `GET /v2/api/billing/no-facturados`
 - `GET /api/billing/afiliaciones` -> `GET /v2/api/billing/afiliaciones`
+- `POST /billing/no-facturados/crear` -> `POST /v2/billing/no-facturados/crear` (`/v2/api/billing/no-facturados/crear`)
+- `POST /informes/api/eliminar-factura` -> `POST /v2/informes/api/eliminar-factura` (`/v2/api/billing/facturas/eliminar`)
+- `POST /api/billing/verificacion_derivacion.php` -> `POST /v2/api/billing/verificacion_derivacion.php` (`/v2/api/billing/derivaciones/verificar`)
+- `POST /api/billing/insertar_billing_main.php` -> `POST /v2/api/billing/insertar_billing_main.php` (`/v2/api/billing/procedimientos/registrar`)
 
 ### Pacientes
 
@@ -43,6 +47,8 @@ Current auth parity policy:
 Use stable fixture records in DB:
 
 - `hc_number`: pass an existing patient with `--hc-number=...` (default token `HC-TEST-001`)
+- `billing fixture`: dynamic candidate from `/v2/api/billing/no-facturados?start=0&length=1` or pass
+  `--billing-form-id` + `--billing-hc-number`
 - At least one row in `patient_data`
 - At least one row in billing source tables for `no-facturados`
 
@@ -50,6 +56,8 @@ Use stable fixture records in DB:
 
 ```bash
 php tools/tests/http_smoke.php --module=billing
+php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...' --allow-destructive
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
@@ -61,6 +69,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 
 - In unauthenticated runs, legacy billing APIs can respond `302` to `/auth/login`.
 - Current contract marks those as `v2_only` until shared-session/auth migration (Wave C).
+- Destructive tests (for example `billing_eliminar_factura`) run only with `--allow-destructive`.
 - On IONOS, use CLI 8.1 (avoid `php` CGI legacy):
 
 ```bash
