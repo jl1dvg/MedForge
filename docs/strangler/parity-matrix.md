@@ -10,7 +10,12 @@
 
 ### Dashboard
 
-- `GET /dashboard` -> `GET /v2/dashboard/summary` (v2-only parity until structured legacy JSON exists)
+- `GET /dashboard` -> `GET /v2/dashboard/summary`
+
+Current auth parity policy:
+
+- Guest behavior differs by design (`302` HTML redirect in legacy vs `401` JSON in v2 API).
+- Authenticated parity validates status (`200` both sides) + v2 JSON shape (summary metrics).
 
 ### Billing
 
@@ -58,6 +63,8 @@ Use stable fixture records in DB:
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...' --allow-destructive
+php tools/tests/http_smoke.php --endpoint=dashboard_summary
+php tools/tests/http_smoke.php --endpoint=dashboard_summary --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
@@ -88,4 +95,18 @@ BILLING_V2_WRITES_ENABLED=1
 
 ```bash
 BILLING_V2_WRITES_ENABLED=0
+```
+
+## Dashboard UI Cutover Flag
+
+- Legacy runtime can switch Dashboard UI to Laravel `/v2/dashboard` with env flag:
+
+```bash
+DASHBOARD_V2_UI_ENABLED=1
+```
+
+- Fast rollback (no code revert):
+
+```bash
+DASHBOARD_V2_UI_ENABLED=0
 ```
