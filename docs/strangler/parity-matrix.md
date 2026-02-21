@@ -23,6 +23,12 @@
 - `GET|POST /pacientes/detalles` -> `GET|POST /v2/pacientes/detalles`
 - `GET /pacientes/flujo` -> `GET /v2/pacientes/flujo`
 
+Current auth parity policy:
+
+- `datatable` guest parity is enforced (`401` both sides).
+- `detalles` differs on guest behavior by design (`302` legacy page redirect vs `401` JSON in v2 API).
+- Authenticated full parity should be validated using `--cookie=PHPSESSID=...`.
+
 ### Auth (deferred)
 
 - `GET /auth/login` -> `GET /v2/auth/migration-status` (placeholder 501)

@@ -2,14 +2,30 @@
 
 namespace App\Modules\Pacientes\Http\Controllers;
 
+use App\Modules\Pacientes\Services\PacientesParityService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use PDO;
 
 class PacientesReadController
 {
+    private PacientesParityService $service;
+
+    public function __construct()
+    {
+        /** @var PDO $pdo */
+        $pdo = DB::connection()->getPdo();
+        $this->service = new PacientesParityService($pdo);
+    }
+
     public function index(Request $request): JsonResponse
     {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return $this->unauthenticatedJson(1);
+        }
+
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
         $offset = max((int) $request->query('offset', 0), 0);
 
@@ -33,84 +49,79 @@ class PacientesReadController
 
     public function datatable(Request $request): JsonResponse
     {
-        $draw = (int) $request->input('draw', 1);
-        $start = max((int) $request->input('start', 0), 0);
-        $length = min(max((int) $request->input('length', 10), 1), 200);
-        $search = trim((string) data_get($request->all(), 'search.value', ''));
-
-        $recordsTotal = (int) (DB::selectOne('SELECT COUNT(*) AS total FROM patient_data')->total ?? 0);
-
-        $params = [];
-        $where = '';
-        if ($search !== '') {
-            $where = 'WHERE hc_number LIKE ? OR fname LIKE ? OR lname LIKE ? OR lname2 LIKE ?';
-            $like = '%' . $search . '%';
-            $params = [$like, $like, $like, $like];
+        if (!$this->isLegacyAuthenticated($request)) {
+            return $this->unauthenticatedJson((int) $request->input('draw', 1));
         }
 
-        $filteredSql = 'SELECT COUNT(*) AS total FROM patient_data ' . $where;
-        $recordsFiltered = (int) (DB::selectOne($filteredSql, $params)->total ?? 0);
+        $draw = (int) $request->input('draw', 1);
+        $start = max((int) $request->input('start', 0), 0);
+        $length = max((int) $request->input('length', 10), 1);
+        $search = trim((string) data_get($request->all(), 'search.value', ''));
+        $orderColumnIndex = (int) data_get($request->all(), 'order.0.column', 0);
+        $orderDir = (string) data_get($request->all(), 'order.0.dir', 'asc');
+        $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
+        $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-        $dataSql = 'SELECT hc_number, fname, lname, lname2, afiliacion, fecha_nacimiento
-                    FROM patient_data '
-                    . $where
-                    . ' ORDER BY hc_number DESC LIMIT ? OFFSET ?';
-
-        $rows = DB::select($dataSql, array_merge($params, [$length, $start]));
+        $response = $this->service->obtenerPacientesPaginados(
+            $start,
+            $length,
+            $search,
+            $orderColumn,
+            strtoupper($orderDir)
+        );
 
         return response()->json([
             'draw' => $draw,
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
-            'data' => $rows,
+            'recordsTotal' => $response['recordsTotal'] ?? 0,
+            'recordsFiltered' => $response['recordsFiltered'] ?? 0,
+            'data' => $response['data'] ?? [],
         ]);
     }
 
-    public function detalles(Request $request): JsonResponse
+    public function detalles(Request $request): JsonResponse|RedirectResponse
     {
+        if (!$this->isLegacyAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
         $hcNumber = trim((string) $request->input('hc_number', ''));
         if ($hcNumber === '') {
-            return response()->json(['error' => 'hc_number es requerido'], 422);
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'hc_number es requerido'], 422);
+            }
+
+            return redirect('/v2/pacientes');
         }
 
-        $patient = DB::selectOne(
-            'SELECT * FROM patient_data WHERE hc_number = ? LIMIT 1',
-            [$hcNumber]
-        );
-
-        if ($patient === null) {
-            return response()->json(['error' => 'Paciente no encontrado'], 404);
+        if ($request->isMethod('post') && $request->has('actualizar_paciente')) {
+            $this->service->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            return redirect('/v2/pacientes/detalles?hc_number=' . urlencode($hcNumber));
         }
 
-        $consultas = DB::select(
-            'SELECT form_id, fecha, diagnosticos, examen_fisico
-             FROM consulta_data
-             WHERE hc_number = ?
-             ORDER BY fecha DESC
-             LIMIT 20',
-            [$hcNumber]
-        );
+        $context = $this->service->obtenerContextoPaciente($hcNumber);
+        if ($context === []) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Paciente no encontrado'], 404);
+            }
 
-        $protocolos = DB::select(
-            'SELECT form_id, fecha_inicio, membrete, status
-             FROM protocolo_data
-             WHERE hc_number = ?
-             ORDER BY fecha_inicio DESC
-             LIMIT 20',
-            [$hcNumber]
-        );
+            return redirect('/v2/pacientes?not_found=1');
+        }
 
         return response()->json([
-            'data' => [
-                'patient' => $patient,
-                'consultas' => $consultas,
-                'protocolos' => $protocolos,
-            ],
+            'data' => $context,
         ]);
     }
 
     public function flujo(Request $request): JsonResponse
     {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
         $hcNumber = trim((string) $request->query('hc_number', ''));
         if ($hcNumber === '') {
             return response()->json(['error' => 'hc_number es requerido'], 422);
@@ -131,5 +142,68 @@ class PacientesReadController
                 'count' => count($rows),
             ],
         ]);
+    }
+
+    private function unauthenticatedJson(int $draw): JsonResponse
+    {
+        return response()->json([
+            'draw' => $draw,
+            'recordsTotal' => 0,
+            'recordsFiltered' => 0,
+            'data' => [],
+            'error' => 'Sesión expirada',
+        ], 401);
+    }
+
+    private function isLegacyAuthenticated(Request $request): bool
+    {
+        return $this->legacyUserId($request) !== null;
+    }
+
+    private function legacyUserId(Request $request): ?int
+    {
+        $session = $this->readLegacyPhpSession($request);
+        $raw = $session['user_id'] ?? null;
+        if (!is_numeric($raw)) {
+            return null;
+        }
+
+        $userId = (int) $raw;
+        return $userId > 0 ? $userId : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readLegacyPhpSession(Request $request): array
+    {
+        $sessionId = (string) $request->cookie('PHPSESSID', '');
+        if ($sessionId === '') {
+            return [];
+        }
+
+        $originalName = session_name();
+        $originalId = session_id();
+        $wasActive = session_status() === PHP_SESSION_ACTIVE;
+
+        if ($wasActive) {
+            session_write_close();
+        }
+
+        session_name('PHPSESSID');
+        session_id($sessionId);
+
+        $started = @session_start(['read_and_close' => true]);
+        $data = $started && is_array($_SESSION ?? null) ? $_SESSION : [];
+        $_SESSION = [];
+
+        if ($originalName !== '') {
+            @session_name($originalName);
+        }
+        if ($originalId !== '') {
+            @session_id($originalId);
+        }
+
+        return is_array($data) ? $data : [];
     }
 }
