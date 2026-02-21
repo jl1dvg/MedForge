@@ -31,8 +31,8 @@ if (isset($options['help'])) {
 $legacyBase = rtrim((string) ($options['legacy-base'] ?? $contract['defaults']['legacy_base_url']), '/');
 $v2Base = rtrim((string) ($options['v2-base'] ?? $contract['defaults']['v2_base_url']), '/');
 $timeout = max(1, (int) ($options['timeout'] ?? $contract['defaults']['timeout_seconds']));
-$moduleFilter = isset($options['module']) ? trim((string) $options['module']) : null;
-$endpointFilter = isset($options['endpoint']) ? trim((string) $options['endpoint']) : null;
+$moduleFilter = isset($options['module']) ? normalizeFilterKey((string) $options['module']) : null;
+$endpointFilter = isset($options['endpoint']) ? normalizeFilterKey((string) $options['endpoint']) : null;
 $failFast = isset($options['fail-fast']);
 $allowDestructive = isset($options['allow-destructive']);
 $cookieHeader = isset($options['cookie']) ? trim((string) $options['cookie']) : null;
@@ -46,11 +46,13 @@ $fixtures = [
 
 $tests = [];
 foreach ($contract['modules'] as $module => $moduleTests) {
-    if ($moduleFilter !== null && $moduleFilter !== '' && $module !== $moduleFilter) {
+    $moduleKey = normalizeFilterKey((string) $module);
+    if ($moduleFilter !== null && $moduleFilter !== '' && $moduleKey !== $moduleFilter) {
         continue;
     }
     foreach ($moduleTests as $test) {
-        if ($endpointFilter !== null && $endpointFilter !== '' && ($test['id'] ?? '') !== $endpointFilter) {
+        $endpointKey = normalizeFilterKey((string) ($test['id'] ?? ''));
+        if ($endpointFilter !== null && $endpointFilter !== '' && $endpointKey !== $endpointFilter) {
             continue;
         }
         $test['module'] = $module;
@@ -59,7 +61,28 @@ foreach ($contract['modules'] as $module => $moduleTests) {
 }
 
 if (empty($tests)) {
+    $availableModules = [];
+    $availableEndpoints = [];
+    foreach (($contract['modules'] ?? []) as $module => $moduleTests) {
+        $availableModules[] = (string) $module;
+        foreach ((array) $moduleTests as $test) {
+            $id = trim((string) ($test['id'] ?? ''));
+            if ($id !== '') {
+                $availableEndpoints[] = $id;
+            }
+        }
+    }
+
+    $availableModules = array_values(array_unique($availableModules));
+    $availableEndpoints = array_values(array_unique($availableEndpoints));
+    sort($availableModules);
+    sort($availableEndpoints);
+
     fwrite(STDERR, "No tests matched current filters.\n");
+    fwrite(STDERR, "  module filter: " . (($moduleFilter ?? '') !== '' ? $moduleFilter : '(none)') . "\n");
+    fwrite(STDERR, "  endpoint filter: " . (($endpointFilter ?? '') !== '' ? $endpointFilter : '(none)') . "\n");
+    fwrite(STDERR, "  available modules: " . implode(', ', $availableModules) . "\n");
+    fwrite(STDERR, "  available endpoints: " . implode(', ', $availableEndpoints) . "\n");
     exit(2);
 }
 
@@ -314,6 +337,11 @@ function hasBillingDynamicFixtureNeed(array $tests): bool
     }
 
     return false;
+}
+
+function normalizeFilterKey(string $value): string
+{
+    return strtolower(trim(preg_replace('/[[:cntrl:]]+/', '', $value) ?? ''));
 }
 
 /**

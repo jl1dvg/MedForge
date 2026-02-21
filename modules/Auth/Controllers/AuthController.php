@@ -10,6 +10,43 @@ use PDOException;
 
 class AuthController extends BaseController
 {
+    private function expireUnifiedCookies(): void
+    {
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? '');
+        $host = trim(explode(':', $host)[0] ?? '');
+        $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+
+        $domains = [''];
+        if ($host !== '') {
+            $domains[] = $host;
+            if (substr_count($host, '.') >= 2) {
+                $parts = explode('.', $host);
+                $root = '.' . implode('.', array_slice($parts, -2));
+                $domains[] = $root;
+            }
+        }
+
+        $domains = array_values(array_unique($domains));
+        foreach ($domains as $domain) {
+            $this->expireCookie('PHPSESSID', $domain, $secure, true);
+            $this->expireCookie('laravel-session', $domain, $secure, true);
+            $this->expireCookie('XSRF-TOKEN', $domain, $secure, false);
+        }
+    }
+
+    private function expireCookie(string $name, string $domain, bool $secure, bool $httpOnly): void
+    {
+        setcookie(
+            $name,
+            '',
+            time() - 3600,
+            '/',
+            $domain,
+            $secure,
+            $httpOnly
+        );
+    }
+
     private function loginViewPath(): string
     {
         // Ruta absoluta y explícita para evitar que __DIR__ apunte a /Controllers
@@ -106,6 +143,7 @@ class AuthController extends BaseController
     public function logout()
     {
         Auth::logout();
+        $this->expireUnifiedCookies();
         header('Location: /auth/login?logged_out=1');
         exit;
     }

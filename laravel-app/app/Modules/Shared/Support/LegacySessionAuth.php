@@ -52,6 +52,28 @@ class LegacySessionAuth
         $request->attributes->set(self::ATTR_USER_ID, $userId);
     }
 
+    public static function sessionId(Request $request): string
+    {
+        self::hydrateRequest($request);
+        $sessionId = $request->attributes->get(self::ATTR_SESSION_ID, '');
+
+        return is_string($sessionId) ? $sessionId : '';
+    }
+
+    public static function destroySession(Request $request): bool
+    {
+        $sessionId = self::sessionId($request);
+        if ($sessionId === '') {
+            return false;
+        }
+
+        $destroyed = self::destroyBySessionId($sessionId);
+        $request->attributes->set(self::ATTR_SESSION, []);
+        $request->attributes->set(self::ATTR_USER_ID, null);
+
+        return $destroyed;
+    }
+
     private static function resolveSessionId(Request $request): string
     {
         $sessionId = trim((string) $request->cookie('PHPSESSID', ''));
@@ -114,6 +136,36 @@ class LegacySessionAuth
         }
 
         return is_array($data) ? $data : [];
+    }
+
+    private static function destroyBySessionId(string $sessionId): bool
+    {
+        $originalName = session_name();
+        $originalId = session_id();
+        $wasActive = session_status() === PHP_SESSION_ACTIVE;
+
+        if ($wasActive) {
+            @session_write_close();
+        }
+
+        session_name('PHPSESSID');
+        session_id($sessionId);
+
+        $started = @session_start();
+        if ($started) {
+            $_SESSION = [];
+            @session_destroy();
+        }
+
+        if ($originalName !== '') {
+            @session_name($originalName);
+        }
+
+        if ($originalId !== '') {
+            @session_id($originalId);
+        }
+
+        return $started;
     }
 
     /**

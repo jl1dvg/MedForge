@@ -52,6 +52,12 @@ Current auth parity policy:
 ### Auth (deferred)
 
 - `GET /auth/login` -> `GET /v2/auth/migration-status` (placeholder 501)
+- `GET /auth/logout` <-> `GET /v2/auth/logout` (logout unificado legacy+v2)
+
+Logout unificado:
+
+- Si cierras en legacy (`/auth/logout`), se destruye `PHPSESSID` y se expiran cookies Laravel (`laravel-session`, `XSRF-TOKEN`).
+- Si cierras en v2 (`/v2/auth/logout`), se destruye sesión legacy (`PHPSESSID`) y se invalida la sesión Laravel.
 
 ## Fixture dataset
 
@@ -69,6 +75,7 @@ Use stable fixture records in DB:
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...' --allow-destructive
+php tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 php tools/tests/http_smoke.php --endpoint=dashboard_ui
 php tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=dashboard_summary
@@ -90,6 +97,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 ```bash
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
 
 ## Billing Write Cutover Flag

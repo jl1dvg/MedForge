@@ -48,6 +48,17 @@
             font-weight: 600;
         }
 
+        .logout-link {
+            display: inline-block;
+            text-decoration: none;
+            background: #fee2e2;
+            color: #9f1239;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -116,6 +127,7 @@
             <span class="chip">Strangler</span>
             <span class="chip">Laravel /v2</span>
             <span class="chip" id="dateRangeChip">Rango: --</span>
+            <a href="/v2/auth/logout" class="logout-link">Cerrar sesión</a>
         </div>
     </div>
 
