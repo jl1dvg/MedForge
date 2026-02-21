@@ -12,6 +12,7 @@ $options = getopt('', [
     'v2-base::',
     'timeout::',
     'cookie::',
+    'hc-number::',
     'help',
 ]);
 
@@ -19,7 +20,7 @@ if (isset($options['help'])) {
     echo "Usage:\n";
     echo "  php tools/tests/http_smoke.php [--module=billing] [--endpoint=billing_no_facturados] [--fail-fast]\n";
     echo "       [--legacy-base=http://127.0.0.1:8080] [--v2-base=http://127.0.0.1:8081] [--timeout=20]\n";
-    echo "       [--cookie='PHPSESSID=...']\n";
+    echo "       [--cookie='PHPSESSID=...'] [--hc-number=HC-REAL-001]\n";
     exit(0);
 }
 
@@ -30,6 +31,11 @@ $moduleFilter = isset($options['module']) ? trim((string) $options['module']) : 
 $endpointFilter = isset($options['endpoint']) ? trim((string) $options['endpoint']) : null;
 $failFast = isset($options['fail-fast']);
 $cookieHeader = isset($options['cookie']) ? trim((string) $options['cookie']) : null;
+$isAuthenticated = $cookieHeader !== null && $cookieHeader !== '';
+
+$fixtures = [
+    'HC_NUMBER' => trim((string) ($options['hc-number'] ?? $contract['fixtures']['HC_NUMBER'] ?? 'HC-TEST-001')),
+];
 
 $tests = [];
 foreach ($contract['modules'] as $module => $moduleTests) {
@@ -54,15 +60,17 @@ $passed = 0;
 $failed = 0;
 
 foreach ($tests as $test) {
+    $test = applyFixtureTokens($test, $fixtures);
+
     $id = (string) $test['id'];
     $module = (string) $test['module'];
     $method = strtoupper((string) ($test['method'] ?? 'GET'));
-    $compareMode = (string) ($test['compare_mode'] ?? 'full');
+    $compareMode = (string) resolveByAuth($test, 'compare_mode', $isAuthenticated, 'full');
 
     echo "\n[$module/$id] $method\n";
 
     $legacyResult = null;
-    if ($compareMode === 'full') {
+    if ($compareMode !== 'v2_only') {
         $legacyUrl = $legacyBase . (string) $test['legacy_path'];
         $legacyResult = request($legacyUrl, $method, $test['body'] ?? null, $timeout, $cookieHeader);
     }
@@ -72,22 +80,22 @@ foreach ($tests as $test) {
 
     $errors = [];
 
-    $expectV2Status = (int) ($test['expect_v2_status'] ?? $test['expect_status'] ?? 200);
-    $expectLegacyStatus = (int) ($test['expect_legacy_status'] ?? $test['expect_status'] ?? 200);
+    $expectV2Status = (int) resolveExpectedStatus($test, 'v2', $isAuthenticated);
+    $expectLegacyStatus = (int) resolveExpectedStatus($test, 'legacy', $isAuthenticated);
 
     if ($v2Result['status'] !== $expectV2Status) {
         $errors[] = "V2 status expected $expectV2Status, got {$v2Result['status']}";
     }
 
-    if ($compareMode === 'full' && $legacyResult !== null && $legacyResult['status'] !== $expectLegacyStatus) {
+    if ($compareMode !== 'v2_only' && $legacyResult !== null && $legacyResult['status'] !== $expectLegacyStatus) {
         $errors[] = "Legacy status expected $expectLegacyStatus, got {$legacyResult['status']}";
     }
 
-    if ($compareMode === 'full' && $legacyResult !== null && $legacyResult['status'] !== $v2Result['status']) {
+    if ($compareMode !== 'v2_only' && $legacyResult !== null && $legacyResult['status'] !== $v2Result['status']) {
         $errors[] = "Status mismatch legacy={$legacyResult['status']} v2={$v2Result['status']}";
     }
 
-    $requiredPaths = (array) ($test['required_json_paths'] ?? []);
+    $requiredPaths = (array) resolveByAuth($test, 'required_json_paths', $isAuthenticated, []);
     if (!empty($requiredPaths)) {
         foreach ($requiredPaths as $path) {
             if (!hasJsonPath($v2Result['json'], (string) $path)) {
@@ -110,8 +118,9 @@ foreach ($tests as $test) {
     if (empty($errors)) {
         echo "  PASS\n";
         echo "  status: " . $v2Result['status'] . "\n";
-        if (!empty($test['notes'])) {
-            echo "  note: " . $test['notes'] . "\n";
+        $note = (string) resolveByAuth($test, 'notes', $isAuthenticated, '');
+        if ($note !== '') {
+            echo "  note: " . $note . "\n";
         }
         $passed++;
         continue;
@@ -137,6 +146,87 @@ foreach ($tests as $test) {
 
 echo "\nSummary: passed=$passed failed=$failed total=" . ($passed + $failed) . "\n";
 exit($failed > 0 ? 1 : 0);
+
+/**
+ * @param array<string, mixed> $test
+ * @param array<string, string> $fixtures
+ * @return array<string, mixed>
+ */
+function applyFixtureTokens(array $test, array $fixtures): array
+{
+    foreach (['legacy_path', 'v2_path', 'body', 'notes', 'notes_auth'] as $field) {
+        if (array_key_exists($field, $test)) {
+            $test[$field] = replaceTokens($test[$field], $fixtures);
+        }
+    }
+
+    return $test;
+}
+
+/**
+ * @param array<string, mixed> $test
+ */
+function resolveExpectedStatus(array $test, string $target, bool $isAuthenticated): int
+{
+    $specificKey = $target === 'legacy' ? 'expect_legacy_status' : 'expect_v2_status';
+    $defaultValue = $test['expect_status'] ?? 200;
+
+    if ($isAuthenticated && array_key_exists($specificKey . '_auth', $test)) {
+        return (int) $test[$specificKey . '_auth'];
+    }
+
+    if (array_key_exists($specificKey, $test)) {
+        return (int) $test[$specificKey];
+    }
+
+    if ($isAuthenticated && array_key_exists('expect_status_auth', $test)) {
+        return (int) $test['expect_status_auth'];
+    }
+
+    return (int) $defaultValue;
+}
+
+/**
+ * @param array<string, mixed> $test
+ */
+function resolveByAuth(array $test, string $field, bool $isAuthenticated, mixed $default): mixed
+{
+    if ($isAuthenticated && array_key_exists($field . '_auth', $test)) {
+        return $test[$field . '_auth'];
+    }
+
+    if (array_key_exists($field, $test)) {
+        return $test[$field];
+    }
+
+    return $default;
+}
+
+/**
+ * @param mixed $value
+ * @param array<string, string> $fixtures
+ * @return mixed
+ */
+function replaceTokens(mixed $value, array $fixtures): mixed
+{
+    if (is_string($value)) {
+        $replaced = $value;
+        foreach ($fixtures as $token => $tokenValue) {
+            $replaced = str_replace('{' . $token . '}', $tokenValue, $replaced);
+        }
+        return $replaced;
+    }
+
+    if (is_array($value)) {
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[$key] = replaceTokens($item, $fixtures);
+        }
+        return $result;
+    }
+
+    return $value;
+}
 
 function request(string $url, string $method, ?array $body, int $timeout, ?string $cookieHeader = null): array
 {

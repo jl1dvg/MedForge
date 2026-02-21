@@ -27,7 +27,9 @@ Current auth parity policy:
 
 - `datatable` guest parity is enforced (`401` both sides).
 - `detalles` differs on guest behavior by design (`302` legacy page redirect vs `401` JSON in v2 API).
-- Authenticated full parity should be validated using `--cookie=PHPSESSID=...`.
+- Authenticated parity is contract-aware when `--cookie=PHPSESSID=...` is present:
+- `datatable`: full compare (legacy/v2 `200` + DataTable shape).
+- `detalles`: status parity (`200` both sides) + v2 JSON required fields.
 
 ### Auth (deferred)
 
@@ -37,7 +39,7 @@ Current auth parity policy:
 
 Use stable fixture records in DB:
 
-- `hc_number`: `HC-TEST-001` (replace in contract if different)
+- `hc_number`: pass an existing patient with `--hc-number=...` (default token `HC-TEST-001`)
 - At least one row in `patient_data`
 - At least one row in billing source tables for `no-facturados`
 
@@ -47,14 +49,15 @@ Use stable fixture records in DB:
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
 php tools/tests/http_smoke.php --fail-fast
+php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-number='HC-REAL-001'
 ```
 
 ### Auth note for remote smoke
 
 - In unauthenticated runs, legacy billing APIs can respond `302` to `/auth/login`.
 - Current contract marks those as `v2_only` until shared-session/auth migration (Wave C).
-- For full parity runs, pass a valid session cookie:
+- On IONOS, use CLI 8.1 (avoid `php` CGI legacy):
 
 ```bash
-php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 ```

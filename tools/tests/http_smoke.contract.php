@@ -6,6 +6,9 @@ return [
         'v2_base_url' => getenv('SMOKE_V2_BASE') ?: 'http://127.0.0.1:8081',
         'timeout_seconds' => 20,
     ],
+    'fixtures' => [
+        'HC_NUMBER' => getenv('SMOKE_HC_NUMBER') ?: 'HC-TEST-001',
+    ],
     'modules' => [
         'dashboard' => [
             [
@@ -60,21 +63,30 @@ return [
                 'expect_status' => 401,
                 'expect_legacy_status' => 401,
                 'expect_v2_status' => 401,
+                'expect_legacy_status_auth' => 200,
+                'expect_v2_status_auth' => 200,
                 'required_json_paths' => ['draw', 'recordsTotal', 'recordsFiltered', 'data', 'error'],
+                'required_json_paths_auth' => ['draw', 'recordsTotal', 'recordsFiltered', 'data'],
                 'compare_mode' => 'full',
                 'notes' => 'Guest parity: both legacy and v2 return 401. Use --cookie=PHPSESSID=... to validate authenticated parity.',
+                'notes_auth' => 'Authenticated parity expects both legacy and v2 to return 200 with DataTable payload.',
             ],
             [
                 'id' => 'pacientes_detalles',
                 'method' => 'GET',
-                'legacy_path' => '/pacientes/detalles?hc_number=HC-TEST-001',
-                'v2_path' => '/v2/pacientes/detalles?hc_number=HC-TEST-001',
+                'legacy_path' => '/pacientes/detalles?hc_number={HC_NUMBER}',
+                'v2_path' => '/v2/pacientes/detalles?hc_number={HC_NUMBER}',
                 'expect_status' => 401,
                 'expect_legacy_status' => 302,
                 'expect_v2_status' => 401,
+                'expect_legacy_status_auth' => 200,
+                'expect_v2_status_auth' => 200,
                 'required_json_paths' => ['error'],
+                'required_json_paths_auth' => ['data.patientData.hc_number', 'data.timelineItems'],
                 'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'status_only',
                 'notes' => 'Legacy redirects unauthenticated users; v2 returns JSON 401 for API clients. With cookie, validate full patient context.',
+                'notes_auth' => 'Run with --hc-number using an existing patient to validate authenticated patient context.',
             ],
         ],
         'auth' => [
