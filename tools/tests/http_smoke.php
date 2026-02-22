@@ -14,6 +14,7 @@ $options = getopt('', [
     'timeout::',
     'cookie::',
     'hc-number::',
+    'solicitud-id::',
     'billing-form-id::',
     'billing-hc-number::',
     'help',
@@ -23,7 +24,7 @@ if (isset($options['help'])) {
     echo "Usage:\n";
     echo "  php tools/tests/http_smoke.php [--module=billing] [--endpoint=billing_no_facturados] [--fail-fast]\n";
     echo "       [--legacy-base=http://127.0.0.1:8080] [--v2-base=http://127.0.0.1:8081] [--timeout=20]\n";
-    echo "       [--cookie='PHPSESSID=...'] [--hc-number=HC-REAL-001]\n";
+    echo "       [--cookie='PHPSESSID=...'] [--hc-number=HC-REAL-001] [--solicitud-id=123]\n";
     echo "       [--allow-destructive] [--billing-form-id=123] [--billing-hc-number=HC123]\n";
     exit(0);
 }
@@ -40,6 +41,7 @@ $isAuthenticated = $cookieHeader !== null && $cookieHeader !== '';
 
 $fixtures = [
     'HC_NUMBER' => trim((string) ($options['hc-number'] ?? $contract['fixtures']['HC_NUMBER'] ?? 'HC-TEST-001')),
+    'SOLICITUD_ID' => trim((string) ($options['solicitud-id'] ?? $contract['fixtures']['SOLICITUD_ID'] ?? '')),
     'BILLING_FORM_ID' => trim((string) ($options['billing-form-id'] ?? $contract['fixtures']['BILLING_FORM_ID'] ?? '')),
     'BILLING_HC_NUMBER' => trim((string) ($options['billing-hc-number'] ?? $contract['fixtures']['BILLING_HC_NUMBER'] ?? '')),
 ];
@@ -102,6 +104,19 @@ if ($isAuthenticated && hasBillingDynamicFixtureNeed($tests) && ($fixtures['BILL
     }
 }
 
+if ($isAuthenticated && hasSolicitudesDynamicFixtureNeed($tests) && $fixtures['SOLICITUD_ID'] === '') {
+    $dynamicFixture = resolveDynamicSolicitudesFixture($v2Base, $timeout, $cookieHeader);
+    if (is_array($dynamicFixture)) {
+        if ($fixtures['SOLICITUD_ID'] === '') {
+            $fixtures['SOLICITUD_ID'] = $dynamicFixture['SOLICITUD_ID'] ?? '';
+        }
+
+        if ($fixtures['SOLICITUD_ID'] !== '') {
+            echo "Dynamic fixture: solicitud_id={$fixtures['SOLICITUD_ID']}\n";
+        }
+    }
+}
+
 $passed = 0;
 $failed = 0;
 $skipped = 0;
@@ -128,6 +143,13 @@ foreach ($tests as $test) {
     if ((bool) ($test['requires_dynamic_fixture'] ?? false) && ($fixtures['BILLING_FORM_ID'] === '' || $fixtures['BILLING_HC_NUMBER'] === '')) {
         echo "  SKIP\n";
         echo "  note: Dynamic billing fixture unavailable. Provide --billing-form-id/--billing-hc-number or ensure /v2/api/billing/no-facturados has data.\n";
+        $skipped++;
+        continue;
+    }
+
+    if ((bool) ($test['requires_dynamic_solicitud_fixture'] ?? false) && $fixtures['SOLICITUD_ID'] === '') {
+        echo "  SKIP\n";
+        echo "  note: Dynamic solicitud fixture unavailable. Provide --solicitud-id or ensure /v2/solicitudes/kanban-data has data.\n";
         $skipped++;
         continue;
     }
@@ -374,6 +396,20 @@ function hasBillingDynamicFixtureNeed(array $tests): bool
     return false;
 }
 
+/**
+ * @param array<int, array<string, mixed>> $tests
+ */
+function hasSolicitudesDynamicFixtureNeed(array $tests): bool
+{
+    foreach ($tests as $test) {
+        if ((bool) ($test['requires_dynamic_solicitud_fixture'] ?? false)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function normalizeFilterKey(string $value): string
 {
     return strtolower(trim(preg_replace('/[[:cntrl:]]+/', '', $value) ?? ''));
@@ -404,6 +440,32 @@ function resolveDynamicBillingFixture(string $v2Base, int $timeout, ?string $coo
     return [
         'BILLING_FORM_ID' => $formId,
         'BILLING_HC_NUMBER' => $hcNumber,
+    ];
+}
+
+/**
+ * @return array{SOLICITUD_ID:string}|null
+ */
+function resolveDynamicSolicitudesFixture(string $v2Base, int $timeout, ?string $cookieHeader): ?array
+{
+    $url = rtrim($v2Base, '/') . '/v2/solicitudes/kanban-data';
+    $result = request($url, 'POST', ['fechaTexto' => ''], $timeout, $cookieHeader, 'form');
+    if ((int) ($result['status'] ?? 0) !== 200 || !is_array($result['json'] ?? null)) {
+        return null;
+    }
+
+    [$found, $first] = jsonPathRead(is_array($result['json']) ? $result['json'] : null, 'data.0');
+    if (!$found || !is_array($first)) {
+        return null;
+    }
+
+    $solicitudId = trim((string) ($first['id'] ?? ''));
+    if ($solicitudId === '') {
+        return null;
+    }
+
+    return [
+        'SOLICITUD_ID' => $solicitudId,
     ];
 }
 

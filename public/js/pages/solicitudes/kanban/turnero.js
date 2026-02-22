@@ -1,6 +1,6 @@
-import { getKanbanConfig } from './config.js';
+import { getKanbanConfig, resolveWritePath } from './config.js';
 
-const ENDPOINT = `${getKanbanConfig().basePath}/turnero-llamar`;
+const ENDPOINT = resolveWritePath(`${getKanbanConfig().basePath}/turnero-llamar`);
 
 const parseEntero = valor => {
     const numero = Number.parseInt(valor, 10);

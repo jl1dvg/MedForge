@@ -43,6 +43,12 @@ $reporting = array_merge(
         ],
         $reporting ?? []
 );
+
+$solicitudesV2WritesEnabled = filter_var(
+        $_ENV['SOLICITUDES_V2_WRITES_ENABLED'] ?? getenv('SOLICITUDES_V2_WRITES_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+);
+$solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -1161,6 +1167,8 @@ $reporting = array_merge(
         window.__KANBAN_MODULE__ = {
             key: 'solicitudes',
             basePath: <?= json_encode($basePath, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+            writePrefix: <?= json_encode($solicitudesWritePrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+            v2WritesEnabled: <?= json_encode($solicitudesV2WritesEnabled) ?>,
             storageKeyView: 'solicitudes:view-mode',
             dataKey: '__solicitudesKanban',
             estadosMetaKey: '__solicitudesEstadosMeta',

@@ -1,4 +1,4 @@
-import {getKanbanConfig, getDataStore} from "../config.js";
+import {getKanbanConfig, getDataStore, resolveWritePath} from "../config.js";
 import {updateKanbanCardSla} from "../renderer.js";
 import {findSolicitudById} from "./store.js";
 
@@ -94,25 +94,25 @@ export function buildGuardarSolicitudInternalCandidates({solicitudId} = {}) {
     }
 
     // 1) Canónica absoluta
-    candidates.push(`/solicitudes/${sid}/cirugia`);
+    candidates.push(resolveWritePath(`/solicitudes/${sid}/cirugia`));
 
     // 2) Si el basePath existe y NO es ya "/solicitudes", construir prefijo + "/solicitudes/..."
     if (normalizedBase && normalizedBase !== "/solicitudes") {
-        candidates.push(`${normalizedBase}/solicitudes/${sid}/cirugia`);
+        candidates.push(resolveWritePath(`${normalizedBase}/solicitudes/${sid}/cirugia`));
     }
 
     // 3) Si el basePath existe y YA es "/solicitudes", construir simplemente basePath + "/{id}/cirugia"
     if (normalizedBase === "/solicitudes") {
-        candidates.push(`${normalizedBase}/${sid}/cirugia`);
+        candidates.push(resolveWritePath(`${normalizedBase}/${sid}/cirugia`));
     }
 
     // Fallback opcional: endpoint CRM (solo si backend lo soporta)
-    candidates.push(`/solicitudes/${sid}/crm`);
+    candidates.push(resolveWritePath(`/solicitudes/${sid}/crm`));
     if (normalizedBase && normalizedBase !== "/solicitudes") {
-        candidates.push(`${normalizedBase}/solicitudes/${sid}/crm`);
+        candidates.push(resolveWritePath(`${normalizedBase}/solicitudes/${sid}/crm`));
     }
     if (normalizedBase === "/solicitudes") {
-        candidates.push(`${normalizedBase}/${sid}/crm`);
+        candidates.push(resolveWritePath(`${normalizedBase}/${sid}/crm`));
     }
 
     // Filtrar duplicados preservando orden

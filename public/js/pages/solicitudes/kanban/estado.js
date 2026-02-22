@@ -1,8 +1,9 @@
 import { showToast } from './toast.js';
-import { getKanbanConfig } from './config.js';
+import { getKanbanConfig, resolveWritePath } from './config.js';
 
 function buildApiVariants(pathname) {
-    const path = pathname.startsWith('/') ? pathname : `/${pathname}`;
+    const rawPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+    const path = resolveWritePath(rawPath);
     const { basePath } = getKanbanConfig();
     const normalizedBase = basePath && basePath !== '/' ? basePath.replace(/\/+$/, '') : '';
     const locationPath = typeof window !== 'undefined' ? window.location.pathname || '' : '';
@@ -21,12 +22,14 @@ function buildApiVariants(pathname) {
     variants.add(path);
 
     // Path con basePath cuando no está incluido
-    if (normalizedBase && !pathHasBase) {
+    const hasV2SolicitudesPrefix = path.includes('/v2/solicitudes') || path.includes('/v2/api/solicitudes');
+    const shouldPrependBase = normalizedBase && !pathHasBase && !hasV2SolicitudesPrefix;
+    if (shouldPrependBase) {
         variants.add(`${normalizedBase}${path}`);
     }
     if (rootPrefix) {
         variants.add(`${rootPrefix}${path}`);
-        if (normalizedBase && !pathHasBase) {
+        if (shouldPrependBase) {
             variants.add(`${rootPrefix}${normalizedBase}${path}`);
         }
     }

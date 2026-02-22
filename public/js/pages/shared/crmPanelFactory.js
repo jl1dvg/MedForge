@@ -1,6 +1,7 @@
 let panelConfig = {
     showToast: () => {},
     getBasePath: () => '',
+    resolveWritePath: null,
     entityLabel: 'solicitud',
     entityArticle: 'la',
     entitySelectionSuffix: 'seleccionada',
@@ -16,6 +17,21 @@ function resolveBasePath() {
         return baseResult.basePath || '';
     }
     return '';
+}
+
+function resolveWritePath(path) {
+    if (typeof panelConfig.resolveWritePath === 'function') {
+        try {
+            const resolved = panelConfig.resolveWritePath(path);
+            if (typeof resolved === 'string' && resolved.trim() !== '') {
+                return resolved;
+            }
+        } catch (error) {
+            console.warn('CRM ▶ resolveWritePath fallback por error:', error);
+        }
+    }
+
+    return path;
 }
 
 function notify(message, ok = true) {
@@ -237,7 +253,11 @@ function bindForms() {
 
             const payload = collectDetallePayload(detalleForm);
             const basePath = resolveBasePath();
-            await submitJson(`${basePath}/${currentEntityId}/crm`, payload, 'Detalles CRM actualizados');
+            await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm`),
+                payload,
+                'Detalles CRM actualizados'
+            );
         });
     }
 
@@ -262,7 +282,11 @@ function bindForms() {
 
             const payload = { nota: texto };
             const basePath = resolveBasePath();
-            const ok = await submitJson(`${basePath}/${currentEntityId}/crm/notas`, payload, 'Nota registrada');
+            const ok = await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/notas`),
+                payload,
+                'Nota registrada'
+            );
             if (ok && textarea) {
                 textarea.value = '';
             }
@@ -292,7 +316,11 @@ function bindForms() {
             }
 
             const basePath = resolveBasePath();
-            const ok = await submitFormData(`${basePath}/${currentEntityId}/crm/adjuntos`, formData, 'Documento cargado');
+            const ok = await submitFormData(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/adjuntos`),
+                formData,
+                'Documento cargado'
+            );
             if (ok) {
                 adjuntoForm.reset();
             }
@@ -315,7 +343,11 @@ function bindForms() {
             }
 
             const basePath = resolveBasePath();
-            const ok = await submitJson(`${basePath}/${currentEntityId}/crm/tareas`, payload, 'Tarea agregada');
+            const ok = await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/tareas`),
+                payload,
+                'Tarea agregada'
+            );
             if (ok) {
                 tareaForm.reset();
             }
@@ -339,7 +371,7 @@ function bindForms() {
 
             const basePath = resolveBasePath();
             const ok = await submitJson(
-                `${basePath}/${currentEntityId}/crm/bloqueo`,
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/bloqueo`),
                 payload,
                 'Bloqueo de agenda registrado'
             );
@@ -1098,7 +1130,7 @@ async function actualizarEstadoTarea(tareaId, estado) {
     }
 
     const basePath = resolveBasePath();
-    await submitJson(`${basePath}/${currentEntityId}/crm/tareas/estado`, {
+    await submitJson(resolveWritePath(`${basePath}/${currentEntityId}/crm/tareas/estado`), {
         tarea_id: tareaId,
         estado,
     }, 'Tarea actualizada');

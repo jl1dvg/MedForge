@@ -1,4 +1,4 @@
-import {getKanbanConfig} from "../config.js";
+import {getKanbanConfig, resolveWritePath} from "../config.js";
 import {escapeHtml, formatDerivacionVigencia} from "./utils.js";
 
 export function buildDerivacionMissingHtml(
@@ -172,7 +172,7 @@ export async function loadDerivacion({hc, formId}) {
 }
 
 async function guardarPreseleccionDerivacion(payload) {
-    const response = await fetch("/solicitudes/derivacion-preseleccion/guardar", {
+    const response = await fetch(resolveWritePath("/solicitudes/derivacion-preseleccion/guardar"), {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),
