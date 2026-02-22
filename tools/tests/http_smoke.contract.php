@@ -66,6 +66,27 @@ return [
                 'notes_auth' => 'Authenticated mode validates dashboard v2 payload shape. Legacy status parity is skipped when UI cutover redirects /dashboard -> /v2/dashboard.',
             ],
         ],
+        'dashboard_cutover' => [
+            [
+                'id' => 'dashboard_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/dashboard',
+                'v2_path' => '/dashboard',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/dashboard',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/dashboard',
+                ],
+                'notes' => 'Use this only when DASHBOARD_V2_UI_ENABLED=1 to verify /dashboard cutover redirect to /v2/dashboard.',
+                'notes_auth' => 'Authenticated mode also expects /dashboard redirecting to /v2/dashboard when UI cutover is enabled.',
+            ],
+        ],
         'billing' => [
             [
                 'id' => 'billing_no_facturados',

@@ -234,6 +234,41 @@ foreach ($tests as $test) {
         }
     }
 
+    $requiredV2Headers = (array) resolveByAuth($test, 'required_v2_headers', $isAuthenticated, []);
+    foreach ($requiredV2Headers as $headerNameRaw) {
+        $headerName = strtolower(trim((string) $headerNameRaw));
+        if ($headerName === '') {
+            continue;
+        }
+        if (!array_key_exists($headerName, $v2Result['headers'])) {
+            $errors[] = "V2 missing required header: $headerName";
+        }
+    }
+
+    $assertV2HeaderContains = (array) resolveByAuth($test, 'assert_v2_header_contains', $isAuthenticated, []);
+    foreach ($assertV2HeaderContains as $headerNameRaw => $expectedFragmentRaw) {
+        $headerName = strtolower(trim((string) $headerNameRaw));
+        $expectedFragment = trim((string) $expectedFragmentRaw);
+        if ($headerName === '') {
+            continue;
+        }
+
+        $actualValue = (string) ($v2Result['headers'][$headerName] ?? '');
+        if ($actualValue === '') {
+            $errors[] = "V2 missing header for contains assertion: $headerName";
+            continue;
+        }
+
+        if ($expectedFragment !== '' && stripos($actualValue, $expectedFragment) === false) {
+            $errors[] = sprintf(
+                'V2 header mismatch for %s expected to contain=%s actual=%s',
+                $headerName,
+                normalizePrintable($expectedFragment),
+                normalizePrintable($actualValue)
+            );
+        }
+    }
+
     if ($compareMode === 'full' && $legacyResult !== null) {
         $legacyShape = jsonShape($legacyResult['json']);
         $v2Shape = jsonShape($v2Result['json']);
@@ -515,6 +550,7 @@ function request(
             'status' => 0,
             'body' => 'curl_error: ' . $error,
             'json' => null,
+            'headers' => [],
         ];
     }
 
@@ -523,6 +559,7 @@ function request(
     curl_close($ch);
 
     $bodyText = substr($raw, $headerSize) ?: '';
+    $headerText = substr($raw, 0, $headerSize) ?: '';
     $json = json_decode($bodyText, true);
 
     return [
@@ -530,7 +567,40 @@ function request(
         'status' => $status,
         'body' => $bodyText,
         'json' => is_array($json) ? $json : null,
+        'headers' => parseHeaders($headerText),
     ];
+}
+
+/**
+ * @return array<string, string>
+ */
+function parseHeaders(string $headerText): array
+{
+    $result = [];
+    foreach (preg_split("/\r\n|\n|\r/", $headerText) as $line) {
+        if (!str_contains((string) $line, ':')) {
+            continue;
+        }
+
+        [$name, $value] = array_pad(explode(':', (string) $line, 2), 2, '');
+        $name = strtolower(trim($name));
+        if ($name === '') {
+            continue;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            continue;
+        }
+
+        if (isset($result[$name]) && $result[$name] !== '') {
+            $result[$name] .= '; ' . $value;
+        } else {
+            $result[$name] = $value;
+        }
+    }
+
+    return $result;
 }
 
 function hasJsonPath(?array $data, string $path): bool

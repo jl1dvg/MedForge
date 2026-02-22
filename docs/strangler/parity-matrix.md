@@ -80,6 +80,8 @@ php tools/tests/http_smoke.php --endpoint=dashboard_ui
 php tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=dashboard_summary
 php tools/tests/http_smoke.php --endpoint=dashboard_summary --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=dashboard_cutover
+php tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
@@ -97,6 +99,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 ```bash
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
 
@@ -122,8 +125,37 @@ BILLING_V2_WRITES_ENABLED=0
 DASHBOARD_V2_UI_ENABLED=1
 ```
 
+- Validation when enabled:
+
+```bash
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+```
+
+- Expected:
+- `dashboard_ui_cutover_redirect` returns `302`.
+- `Location` header contains `/v2/dashboard`.
+
 - Fast rollback (no code revert):
 
 ```bash
 DASHBOARD_V2_UI_ENABLED=0
+```
+
+## Dashboard Data Cutover Flag
+
+- Legacy dashboard UI can keep rendering in legacy while reading summary data from Laravel `/v2/dashboard/summary`:
+
+```bash
+DASHBOARD_V2_DATA_ENABLED=1
+```
+
+- Behavior:
+- `1`: legacy `/dashboard` keeps the same view but sources main dashboard metrics/charts from `/v2/dashboard/summary`.
+- fallback automático a SQL legacy si `/v2` falla (sin downtime).
+- response header para trazabilidad: `X-Dashboard-Data-Source: v2|legacy`.
+
+- Rollback instantáneo:
+
+```bash
+DASHBOARD_V2_DATA_ENABLED=0
 ```

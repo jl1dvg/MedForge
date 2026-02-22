@@ -15,6 +15,8 @@
 /** @var array $kpi_cards */
 /** @var int|string $total_cirugias_periodo */
 /** @var array $ai_summary */
+/** @var string $dashboard_data_source */
+/** @var bool $dashboard_v2_data_enabled */
 
 $afiliaciones_json = json_encode($estadisticas_afiliacion['afiliaciones'], JSON_UNESCAPED_UNICODE);
 $procedimientos_por_afiliacion_json = json_encode($estadisticas_afiliacion['totales'], JSON_UNESCAPED_UNICODE);
@@ -22,6 +24,8 @@ $solicitudes_funnel_json = $solicitudes_funnel_json ?? json_encode($solicitudes_
 $crm_backlog_json = $crm_backlog_json ?? json_encode($crm_backlog, JSON_UNESCAPED_UNICODE);
 $revision_estados_json = $revision_estados_json ?? json_encode($revision_estados, JSON_UNESCAPED_UNICODE);
 $date_range_json = json_encode($date_range, JSON_UNESCAPED_UNICODE);
+$dashboard_data_source = $dashboard_data_source ?? 'legacy';
+$dashboard_v2_data_enabled = (bool) ($dashboard_v2_data_enabled ?? false);
 
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
@@ -116,6 +120,11 @@ JS,
                     </form>
                     <p class="text-muted fs-12 mb-0 mt-10">
                         Mostrando datos del periodo: <strong><?= htmlspecialchars($date_range['label'] ?? '') ?></strong>
+                        <?php if ($dashboard_v2_data_enabled): ?>
+                            <span class="ms-10 badge bg-light text-primary">
+                                Fuente: <?= htmlspecialchars(strtoupper($dashboard_data_source)); ?>
+                            </span>
+                        <?php endif; ?>
                     </p>
                 </div>
             </div>

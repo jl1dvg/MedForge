@@ -14,6 +14,7 @@ use Throwable;
 class DashboardController
 {
     private $db;
+    private ?string $lastV2SummaryError = null;
 
     public function __construct($pdo)
     {
@@ -52,10 +53,70 @@ class DashboardController
             $crm_backlog = $this->getCrmBacklogStats($dateRange['start'], $dateRange['end']);
             $ai_summary = $this->getAiSummary();
             $kpiAggregates = $this->fetchDashboardKpiAggregates($kpiService, $dateRange['start'], $dateRange['end']);
+            $totalCirugiasPeriodo = $this->getTotalCirugias($dateRange['start'], $dateRange['end']);
+            $totalProtocols = $this->totalProtocolos();
+            $totalPatients = $this->totalPacientes();
+            $totalUsers = $this->totalUsuarios();
+            $dateRangeView = $this->formatDateRangeForView($dateRange);
+
+            $dashboardV2DataEnabled = $this->isDashboardV2DataEnabled();
+            $dashboardDataSource = 'legacy';
+            $dashboardDataReason = $dashboardV2DataEnabled ? 'v2-fetch-failed' : 'flag-off';
+
+            if ($dashboardV2DataEnabled) {
+                // Avoid nested PHP session lock when legacy request calls /v2 with same PHPSESSID.
+                if (session_status() === PHP_SESSION_ACTIVE) {
+                    @session_write_close();
+                }
+
+                $summaryPayload = $this->fetchV2SummaryPayload($dateRange['start'], $dateRange['end']);
+                if ($summaryPayload !== null) {
+                    $dashboardDataSource = 'v2';
+                    $dashboardDataReason = 'v2-ok';
+                    $summaryData = is_array($summaryPayload['data'] ?? null) ? $summaryPayload['data'] : [];
+
+                    $procedimientos_dia = $this->normalizeProcedimientosDia(
+                        $summaryData['procedimientos_dia'] ?? null,
+                        $procedimientos_dia
+                    );
+                    $top_procedimientos = $this->normalizeTopProcedimientos(
+                        $summaryData['top_procedimientos'] ?? null,
+                        $top_procedimientos
+                    );
+                    $revision_estados = $this->normalizeRevisionEstados(
+                        $summaryData['revision_estados'] ?? null,
+                        $revision_estados
+                    );
+                    $solicitudes_funnel = $this->normalizeSolicitudesFunnel(
+                        $summaryData['solicitudes_funnel'] ?? null,
+                        $solicitudes_funnel
+                    );
+                    $crm_backlog = $this->normalizeCrmBacklog(
+                        $summaryData['crm_backlog'] ?? null,
+                        $crm_backlog
+                    );
+
+                    $totalCirugiasPeriodo = (int) ($summaryData['total_cirugias_periodo'] ?? $totalCirugiasPeriodo);
+                    $totalProtocols = (int) ($summaryData['protocols_total'] ?? $totalProtocols);
+                    $totalPatients = (int) ($summaryData['patients_total'] ?? $totalPatients);
+                    $totalUsers = (int) ($summaryData['users_total'] ?? $totalUsers);
+                    $dateRangeView = $this->normalizeDateRangeView(
+                        $summaryPayload['meta']['date_range'] ?? null,
+                        $dateRangeView
+                    );
+                } else {
+                    $dashboardDataReason = $this->lastV2SummaryError ?? 'v2-fetch-failed';
+                }
+            }
+
+            if (!headers_sent()) {
+                header('X-Dashboard-Data-Source: ' . $dashboardDataSource);
+                header('X-Dashboard-Data-Reason: ' . $dashboardDataReason);
+            }
 
             $data = [
                 'username' => $username,
-                'date_range' => $this->formatDateRangeForView($dateRange),
+                'date_range' => $dateRangeView,
                 'procedimientos_dia' => $procedimientos_dia,
                 'fechas_json' => json_encode($procedimientos_dia['fechas']),
                 'procedimientos_dia_json' => json_encode($procedimientos_dia['totales']),
@@ -73,13 +134,15 @@ class DashboardController
                 'estadisticas_afiliacion' => $this->getEstadisticasPorAfiliacion($dateRange['start'], $dateRange['end']),
                 'revision_estados' => $revision_estados,
                 'revision_estados_json' => json_encode($revision_estados, JSON_THROW_ON_ERROR),
-                'total_cirugias_periodo' => $this->getTotalCirugias($dateRange['start'], $dateRange['end']),
-                'total_protocols' => $this->totalProtocolos(),
-                'total_patients' => $this->totalPacientes(),
-                'total_users' => $this->totalUsuarios(),
+                'total_cirugias_periodo' => $totalCirugiasPeriodo,
+                'total_protocols' => $totalProtocols,
+                'total_patients' => $totalPatients,
+                'total_users' => $totalUsers,
                 'kpi_cards' => $this->buildKpiCards($kpiAggregates, $ai_summary),
                 'ai_summary' => $ai_summary,
                 'cirugias_recientes' => $cirugias_recientes,
+                'dashboard_data_source' => $dashboardDataSource,
+                'dashboard_v2_data_enabled' => $dashboardV2DataEnabled,
             ];
 
             View::render(
@@ -514,6 +577,273 @@ class DashboardController
             'start' => $start,
             'end' => $end,
             'label' => $start->format('d/m/Y') . ' - ' . $end->format('d/m/Y'),
+        ];
+    }
+
+    private function isDashboardV2DataEnabled(): bool
+    {
+        $raw = $_ENV['DASHBOARD_V2_DATA_ENABLED'] ?? getenv('DASHBOARD_V2_DATA_ENABLED') ?? null;
+        if ($raw === null || trim((string) $raw) === '') {
+            $raw = $this->readEnvFileValue('DASHBOARD_V2_DATA_ENABLED');
+        }
+
+        return filter_var((string) ($raw ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function readEnvFileValue(string $key): ?string
+    {
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 3);
+        $envPath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.env';
+        if (!is_readable($envPath)) {
+            return null;
+        }
+
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            [$lineKey, $value] = array_pad(explode('=', $line, 2), 2, '');
+            if (trim($lineKey) !== $key) {
+                continue;
+            }
+
+            return trim($value, " \t\n\r\0\x0B\"'");
+        }
+
+        return null;
+    }
+
+    private function fetchV2SummaryPayload(DateTimeInterface $start, DateTimeInterface $end): ?array
+    {
+        $this->lastV2SummaryError = null;
+        $sessionId = (string) session_id();
+        if ($sessionId === '') {
+            $this->lastV2SummaryError = 'missing-session-id';
+            return null;
+        }
+
+        $baseUrl = $this->resolveCurrentBaseUrl();
+        if ($baseUrl === '') {
+            $this->lastV2SummaryError = 'missing-base-url';
+            return null;
+        }
+
+        $query = http_build_query([
+            'start_date' => $start->format('Y-m-d'),
+            'end_date' => $end->format('Y-m-d'),
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        $url = rtrim($baseUrl, '/') . '/v2/dashboard/summary?' . $query;
+        try {
+            $requestToken = bin2hex(random_bytes(6));
+        } catch (Throwable) {
+            $requestToken = (string) mt_rand(100000, 999999);
+        }
+        $headers = [
+            'Accept: application/json',
+            'Cookie: PHPSESSID=' . $sessionId,
+            'X-Request-Id: legacy-dashboard-' . $requestToken,
+        ];
+
+        [$status, $body] = $this->httpGet($url, $headers, 8);
+        if ($status !== 200) {
+            $this->lastV2SummaryError = 'http-status-' . $status;
+            return null;
+        }
+        if ($body === '') {
+            $this->lastV2SummaryError = 'empty-body';
+            return null;
+        }
+
+        $payload = json_decode($body, true);
+        if (!is_array($payload)) {
+            $this->lastV2SummaryError = 'invalid-json';
+            return null;
+        }
+        if (!is_array($payload['data'] ?? null)) {
+            $this->lastV2SummaryError = 'missing-data-node';
+            return null;
+        }
+
+        $this->lastV2SummaryError = 'ok';
+        return $payload;
+    }
+
+    /**
+     * @param array<int, string> $headers
+     * @return array{0:int,1:string}
+     */
+    private function httpGet(string $url, array $headers, int $timeoutSeconds): array
+    {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_TIMEOUT => $timeoutSeconds,
+                CURLOPT_CONNECTTIMEOUT => $timeoutSeconds,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ]);
+
+            $raw = curl_exec($ch);
+            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+
+            return [$status, is_string($raw) ? $raw : ''];
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => implode("\r\n", $headers),
+                'timeout' => $timeoutSeconds,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $body = @file_get_contents($url, false, $context);
+        $status = 0;
+        foreach (($http_response_header ?? []) as $line) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', (string) $line, $matches)) {
+                $status = (int) ($matches[1] ?? 0);
+                break;
+            }
+        }
+
+        return [$status, is_string($body) ? $body : ''];
+    }
+
+    private function resolveCurrentBaseUrl(): string
+    {
+        if (defined('BASE_URL')) {
+            $base = trim((string) BASE_URL);
+            if ($base !== '') {
+                return rtrim($base, '/');
+            }
+        }
+
+        $hostHeader = (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
+        $host = trim(explode(',', $hostHeader)[0] ?? '');
+        if ($host === '') {
+            return '';
+        }
+
+        $proto = (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+        if ($proto === '') {
+            $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        }
+
+        return $proto . '://' . $host;
+    }
+
+    private function normalizeDateRangeView(mixed $metaRange, array $fallback): array
+    {
+        if (!is_array($metaRange)) {
+            return $fallback;
+        }
+
+        $start = trim((string) ($metaRange['start'] ?? ''));
+        $end = trim((string) ($metaRange['end'] ?? ''));
+        $label = trim((string) ($metaRange['label'] ?? ''));
+
+        if ($start === '' || $end === '') {
+            return $fallback;
+        }
+
+        if ($label === '') {
+            $label = $start . ' - ' . $end;
+        }
+
+        return [
+            'label' => $label,
+            'start' => $start,
+            'end' => $end,
+        ];
+    }
+
+    private function normalizeProcedimientosDia(mixed $value, array $fallback): array
+    {
+        if (!is_array($value)) {
+            return $fallback;
+        }
+
+        $fechas = array_values((array) ($value['fechas'] ?? []));
+        $totales = array_values((array) ($value['totales'] ?? []));
+        if ($fechas === [] || $totales === []) {
+            return $fallback;
+        }
+
+        return [
+            'fechas' => array_map(static fn($item) => (string) $item, $fechas),
+            'totales' => array_map(static fn($item) => is_numeric($item) ? (float) $item : 0.0, $totales),
+        ];
+    }
+
+    private function normalizeTopProcedimientos(mixed $value, array $fallback): array
+    {
+        if (!is_array($value)) {
+            return $fallback;
+        }
+
+        $membretes = array_values((array) ($value['membretes'] ?? []));
+        $totales = array_values((array) ($value['totales'] ?? []));
+        if ($membretes === [] || $totales === []) {
+            return $fallback;
+        }
+
+        return [
+            'membretes' => array_map(static fn($item) => (string) $item, $membretes),
+            'totales' => array_map(static fn($item) => is_numeric($item) ? (float) $item : 0.0, $totales),
+        ];
+    }
+
+    private function normalizeRevisionEstados(mixed $value, array $fallback): array
+    {
+        if (!is_array($value)) {
+            return $fallback;
+        }
+
+        return [
+            'incompletos' => (int) ($value['incompletos'] ?? $fallback['incompletos'] ?? 0),
+            'revisados' => (int) ($value['revisados'] ?? $fallback['revisados'] ?? 0),
+            'no_revisados' => (int) ($value['no_revisados'] ?? $fallback['no_revisados'] ?? 0),
+        ];
+    }
+
+    private function normalizeSolicitudesFunnel(mixed $value, array $fallback): array
+    {
+        if (!is_array($value)) {
+            return $fallback;
+        }
+
+        $etapas = is_array($value['etapas'] ?? null) ? $value['etapas'] : [];
+        $totales = is_array($value['totales'] ?? null) ? $value['totales'] : [];
+        $prioridades = is_array($value['prioridades'] ?? null) ? $value['prioridades'] : [];
+
+        return [
+            'etapas' => array_merge((array) ($fallback['etapas'] ?? []), $etapas),
+            'totales' => array_merge((array) ($fallback['totales'] ?? []), $totales),
+            'prioridades' => array_merge((array) ($fallback['prioridades'] ?? []), $prioridades),
+        ];
+    }
+
+    private function normalizeCrmBacklog(mixed $value, array $fallback): array
+    {
+        if (!is_array($value)) {
+            return $fallback;
+        }
+
+        return [
+            'pendientes' => (int) ($value['pendientes'] ?? $fallback['pendientes'] ?? 0),
+            'completadas' => (int) ($value['completadas'] ?? $fallback['completadas'] ?? 0),
+            'vencidas' => (int) ($value['vencidas'] ?? $fallback['vencidas'] ?? 0),
+            'vencen_hoy' => (int) ($value['vencen_hoy'] ?? $fallback['vencen_hoy'] ?? 0),
+            'avance' => (float) ($value['avance'] ?? $fallback['avance'] ?? 0),
         ];
     }
 
