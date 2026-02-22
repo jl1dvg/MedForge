@@ -9,6 +9,41 @@ use Throwable;
 class DashboardParityService
 {
     /**
+     * @return array<string, mixed>
+     */
+    public function buildUiPayload(?string $startDate, ?string $endDate): array
+    {
+        [$start, $end, $label] = $this->resolveDateRange($startDate, $endDate);
+        $summary = $this->buildSummary($startDate, $endDate);
+
+        $summaryData = (array) ($summary['data'] ?? []);
+
+        return [
+            'summary' => $summary,
+            'date_range' => [
+                'start' => $start->format('Y-m-d'),
+                'end' => $end->format('Y-m-d'),
+                'label' => $label,
+            ],
+            'cirugias_recientes' => $this->getCirugiasRecientes($start, $end),
+            'plantillas' => $this->getPlantillasRecientes(20),
+            'diagnosticos_frecuentes' => $this->getDiagnosticosFrecuentes(),
+            'solicitudes_quirurgicas' => $this->getUltimasSolicitudes($start, $end, 5),
+            'doctores_top' => $this->getTopDoctores($start, $end),
+            'estadisticas_afiliacion' => $this->getEstadisticasPorAfiliacion($start, $end),
+            'kpi_cards' => $this->buildKpiCardsFromSummary($summaryData),
+            'ai_summary' => [
+                'provider' => '',
+                'provider_configured' => false,
+                'features' => [
+                    'consultas_enfermedad' => false,
+                    'consultas_plan' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
      * @return array{
      *   data: array<string, mixed>,
      *   meta: array<string, mixed>
@@ -442,5 +477,311 @@ class DashboardParityService
         $slug = strtolower(trim($value));
         $slug = preg_replace('/[^a-z0-9]+/u', '-', $slug) ?? '';
         return trim($slug, '-');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function getCirugiasRecientes(CarbonImmutable $start, CarbonImmutable $end, int $limit = 8): array
+    {
+        try {
+            return array_map(
+                static fn(object $row): array => (array) $row,
+                DB::select(
+                    'SELECT p.hc_number, p.fname, p.lname, p.lname2, p.fecha_nacimiento, p.ciudad, p.afiliacion,
+                            pr.fecha_inicio, pr.id, pr.membrete, pr.form_id
+                     FROM patient_data p
+                     INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
+                     WHERE p.afiliacion != "ALQUILER"
+                       AND pr.fecha_inicio BETWEEN ? AND ?
+                     ORDER BY pr.fecha_inicio DESC, pr.id DESC
+                     LIMIT ' . (int) $limit,
+                    [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+                )
+            );
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function getPlantillasRecientes(int $limit = 20): array
+    {
+        try {
+            return array_map(
+                static fn(object $row): array => (array) $row,
+                DB::select(
+                    'SELECT id, membrete, cirugia,
+                            COALESCE(fecha_actualizacion, fecha_creacion) AS fecha,
+                            CASE
+                                WHEN fecha_actualizacion IS NOT NULL THEN "Modificado"
+                                ELSE "Creado"
+                            END AS tipo
+                     FROM procedimientos
+                     ORDER BY fecha DESC
+                     LIMIT ' . (int) $limit
+                )
+            );
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function getDiagnosticosFrecuentes(): array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT hc_number, diagnosticos
+                 FROM consulta_data
+                 WHERE diagnosticos IS NOT NULL
+                   AND diagnosticos != ""'
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $conteoDiagnosticos = [];
+        foreach ($rows as $row) {
+            $hc = (string) ($row->hc_number ?? '');
+            $diagnosticos = json_decode((string) ($row->diagnosticos ?? ''), true);
+            if (!is_array($diagnosticos)) {
+                continue;
+            }
+
+            foreach ($diagnosticos as $dx) {
+                if (!is_array($dx)) {
+                    continue;
+                }
+
+                $id = isset($dx['idDiagnostico']) ? strtoupper(str_replace('.', '', (string) $dx['idDiagnostico'])) : 'SINID';
+                $desc = array_key_exists('descripcion', $dx) ? (string) $dx['descripcion'] : 'Sin descripcion';
+                if (stripos($id, 'Z') === 0) {
+                    continue;
+                }
+
+                $key = ($id === 'H25' || $id === 'H251')
+                    ? 'H25 | Catarata senil'
+                    : ($id . ' | ' . $desc);
+
+                if (!isset($conteoDiagnosticos[$key])) {
+                    $conteoDiagnosticos[$key] = [];
+                }
+                $conteoDiagnosticos[$key][$hc] = true;
+            }
+        }
+
+        $prevalencias = [];
+        foreach ($conteoDiagnosticos as $key => $pacientes) {
+            $prevalencias[(string) $key] = count((array) $pacientes);
+        }
+
+        arsort($prevalencias);
+        return array_slice($prevalencias, 0, 9, true);
+    }
+
+    /**
+     * @return array{solicitudes: array<int, array<string, mixed>>, total: int}
+     */
+    private function getUltimasSolicitudes(CarbonImmutable $start, CarbonImmutable $end, int $limit = 5): array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT sp.id, sp.fecha, sp.procedimiento, p.fname, p.lname, p.hc_number, sp.estado, sp.prioridad,
+                        sp.turno, detalles.pipeline_stage AS crm_pipeline_stage, detalles.responsable_id,
+                        responsable.nombre AS responsable_nombre
+                 FROM solicitud_procedimiento sp
+                 JOIN patient_data p ON sp.hc_number COLLATE utf8mb4_unicode_ci = p.hc_number COLLATE utf8mb4_unicode_ci
+                 LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
+                 LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+                 WHERE sp.procedimiento IS NOT NULL
+                   AND sp.procedimiento != ""
+                   AND sp.procedimiento != "SELECCIONE"
+                   AND COALESCE(sp.created_at, sp.fecha) BETWEEN ? AND ?
+                 ORDER BY COALESCE(sp.created_at, sp.fecha) DESC
+                 LIMIT ' . (int) $limit,
+                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+            );
+
+            $countRow = DB::selectOne(
+                'SELECT COUNT(*) AS total
+                 FROM solicitud_procedimiento
+                 WHERE procedimiento IS NOT NULL
+                   AND procedimiento != ""
+                   AND procedimiento != "SELECCIONE"
+                   AND COALESCE(created_at, fecha) BETWEEN ? AND ?',
+                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+            );
+        } catch (Throwable) {
+            return [
+                'solicitudes' => [],
+                'total' => 0,
+            ];
+        }
+
+        return [
+            'solicitudes' => array_map(static fn(object $row): array => (array) $row, $rows),
+            'total' => (int) ($countRow->total ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function getTopDoctores(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT pr.cirujano_1, COUNT(*) AS total,
+                        (
+                            SELECT u.profile_photo
+                            FROM users u
+                            WHERE u.profile_photo IS NOT NULL
+                              AND u.profile_photo <> ""
+                              AND (
+                                LOWER(TRIM(u.nombre)) = LOWER(TRIM(pr.cirujano_1))
+                                OR LOWER(TRIM(pr.cirujano_1)) LIKE CONCAT("%", LOWER(TRIM(u.nombre)), "%")
+                                OR LOWER(TRIM(u.username)) = LOWER(TRIM(pr.cirujano_1))
+                                OR LOWER(TRIM(u.email)) = LOWER(TRIM(pr.cirujano_1))
+                              )
+                            ORDER BY u.id ASC
+                            LIMIT 1
+                        ) AS avatar_path
+                 FROM protocolo_data pr
+                 WHERE pr.cirujano_1 IS NOT NULL
+                   AND pr.cirujano_1 != ""
+                   AND pr.fecha_inicio BETWEEN ? AND ?
+                 GROUP BY pr.cirujano_1
+                 ORDER BY total DESC
+                 LIMIT 5',
+                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $doctores = [];
+        foreach ($rows as $row) {
+            $doctor = (array) $row;
+            $doctor['avatar'] = $this->formatProfilePhoto((string) ($doctor['avatar_path'] ?? ''));
+            unset($doctor['avatar_path']);
+            $doctores[] = $doctor;
+        }
+
+        return $doctores;
+    }
+
+    private function formatProfilePhoto(string $path): ?string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return null;
+        }
+
+        if (preg_match('#^(?:https?:)?//#i', $path) === 1) {
+            return $path;
+        }
+
+        return '/' . ltrim($path, '/');
+    }
+
+    /**
+     * @return array{afiliaciones: array<int, string>, totales: array<int, int>}
+     */
+    private function getEstadisticasPorAfiliacion(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT p.afiliacion, COUNT(*) AS total_procedimientos
+                 FROM protocolo_data pr
+                 INNER JOIN patient_data p ON pr.hc_number = p.hc_number
+                 WHERE pr.fecha_inicio BETWEEN ? AND ?
+                 GROUP BY p.afiliacion',
+                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+            );
+        } catch (Throwable) {
+            return [
+                'afiliaciones' => ['No data'],
+                'totales' => [0],
+            ];
+        }
+
+        $afiliaciones = [];
+        $totales = [];
+        foreach ($rows as $row) {
+            $afiliaciones[] = (string) ($row->afiliacion ?? '');
+            $totales[] = (int) ($row->total_procedimientos ?? 0);
+        }
+
+        return [
+            'afiliaciones' => $afiliaciones !== [] ? $afiliaciones : ['No data'],
+            'totales' => $totales !== [] ? $totales : [0],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $summaryData
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildKpiCardsFromSummary(array $summaryData): array
+    {
+        $registradas = (int) (($summaryData['solicitudes_funnel']['totales']['registradas'] ?? 0));
+        $agendadas = (int) (($summaryData['solicitudes_funnel']['totales']['agendadas'] ?? 0));
+        $conversion = (float) (($summaryData['solicitudes_funnel']['totales']['conversion_agendada'] ?? 0.0));
+        $conCirugia = (int) (($summaryData['solicitudes_funnel']['totales']['con_cirugia'] ?? 0));
+        $urgentesSinTurno = (int) (($summaryData['solicitudes_funnel']['totales']['urgentes_sin_turno'] ?? 0));
+        $crmVencidas = (int) (($summaryData['crm_backlog']['vencidas'] ?? 0));
+        $crmAvance = (float) (($summaryData['crm_backlog']['avance'] ?? 0.0));
+        $protocolosNoRevisados = (int) (($summaryData['revision_estados']['no_revisados'] ?? 0));
+        $protocolosIncompletos = (int) (($summaryData['revision_estados']['incompletos'] ?? 0));
+
+        return [
+            [
+                'title' => 'Solicitudes registradas',
+                'value' => $registradas,
+                'description' => 'En este periodo',
+                'icon' => 'svg-icon/color-svg/1.svg',
+                'tag' => $conversion > 0 ? $conversion . '% agendadas' : 'Sin agenda registrada',
+            ],
+            [
+                'title' => 'Agenda confirmada',
+                'value' => $agendadas,
+                'description' => 'Solicitudes con turno asignado',
+                'icon' => 'svg-icon/color-svg/2.svg',
+                'tag' => $conCirugia > 0 ? $conCirugia . ' con cirugía' : 'Sin cirugías vinculadas',
+            ],
+            [
+                'title' => 'Urgentes sin turno',
+                'value' => $urgentesSinTurno,
+                'description' => 'Urgentes pendientes de agenda',
+                'icon' => 'svg-icon/color-svg/3.svg',
+                'tag' => $urgentesSinTurno > 0 ? 'Revisar backlog' : 'Todo al día',
+            ],
+            [
+                'title' => 'Tareas CRM vencidas',
+                'value' => $crmVencidas,
+                'description' => 'Pendientes de seguimiento',
+                'icon' => 'svg-icon/color-svg/4.svg',
+                'tag' => $crmAvance . '% completadas',
+            ],
+            [
+                'title' => 'Protocolos sin revisar',
+                'value' => $protocolosNoRevisados,
+                'description' => 'Listos para auditoría final',
+                'icon' => 'svg-icon/color-svg/5.svg',
+                'tag' => $protocolosIncompletos . ' incompletos',
+            ],
+            [
+                'title' => 'Asistente IA',
+                'value' => 'En migración',
+                'description' => 'Paridad en construcción',
+                'icon' => 'svg-icon/color-svg/6.svg',
+                'tag' => 'Fase Dashboard',
+            ],
+        ];
     }
 }
