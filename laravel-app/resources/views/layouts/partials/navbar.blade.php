@@ -28,6 +28,12 @@
 
         return '';
     };
+
+    $isV2Shell = str_starts_with($path . '/', '/v2/');
+    $dashboardLink = $isV2Shell ? '/v2/dashboard' : '/dashboard';
+    $solicitudesLink = $isV2Shell ? '/v2/solicitudes' : '/solicitudes';
+    $solicitudesDashboardLink = $isV2Shell ? '/v2/solicitudes/dashboard' : '/solicitudes/dashboard';
+    $solicitudesTurneroLink = $isV2Shell ? '/v2/solicitudes/turnero' : '/solicitudes/turnero';
 @endphp
 <aside class="main-sidebar">
     <section class="sidebar position-relative">
@@ -35,7 +41,7 @@
             <div class="multinav-scroll" style="height: 100%;">
                 <ul class="sidebar-menu" data-widget="tree">
                     <li class="{{ $isActive('/dashboard') }}{{ $isPrefix('/v2/dashboard') }}">
-                        <a href="/dashboard">
+                        <a href="{{ $dashboardLink }}">
                             <i class="mdi mdi-view-dashboard"><span class="path1"></span><span class="path2"></span></i>
                             <span>Inicio</span>
                         </a>
@@ -86,15 +92,16 @@
                         </ul>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/cirugias', '/solicitudes', '/ipl', '/protocolos']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/cirugias', '/solicitudes', '/v2/solicitudes', '/ipl', '/protocolos']) }}">
                         <a href="#">
                             <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>
                             <span>Coordinación quirúrgica</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="{{ $isActive('/solicitudes') }}"><a href="/solicitudes"><i class="mdi mdi-file-document"></i>Solicitudes (Kanban)</a></li>
-                            <li class="{{ $isActive('/solicitudes/dashboard') }}"><a href="/solicitudes/dashboard"><i class="mdi mdi-chart-timeline"></i>Dashboard solicitudes</a></li>
+                            <li class="{{ $isActive('/solicitudes') }}{{ $isActive('/v2/solicitudes') }}"><a href="{{ $solicitudesLink }}"><i class="mdi mdi-file-document"></i>Solicitudes (Kanban)</a></li>
+                            <li class="{{ $isActive('/solicitudes/dashboard') }}{{ $isActive('/v2/solicitudes/dashboard') }}"><a href="{{ $solicitudesDashboardLink }}"><i class="mdi mdi-chart-timeline"></i>Dashboard solicitudes</a></li>
+                            <li class="{{ $isActive('/solicitudes/turnero') }}{{ $isActive('/v2/solicitudes/turnero') }}"><a href="{{ $solicitudesTurneroLink }}"><i class="mdi mdi-bell-ring-outline"></i>Turnero solicitudes</a></li>
                             <li class="{{ $isActive('/cirugias') }}"><a href="/cirugias"><i class="mdi mdi-clipboard-check"></i>Protocolos Realizados</a></li>
                             <li class="{{ $isActive('/cirugias/dashboard') }}"><a href="/cirugias/dashboard"><i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico</a></li>
                             <li class="{{ $isActive('/ipl') }}{{ $isPrefix('/ipl') }}"><a href="/ipl"><i class="mdi mdi-calendar-clock"></i>Planificador de IPL</a></li>

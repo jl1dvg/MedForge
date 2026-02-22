@@ -72,6 +72,7 @@ export function createCrmPanel(config = {}) {
         refreshCrmPanelIfActive,
         getCrmKanbanPreferences,
         initCrmInteractions,
+        openEntityCrm,
     };
 }
 
@@ -482,6 +483,7 @@ function collectTareaPayload(form) {
         assigned_to: form.querySelector('#crmTareaAsignado')?.value ?? '',
         due_date: form.querySelector('#crmTareaFecha')?.value ?? '',
         remind_at: form.querySelector('#crmTareaRecordatorio')?.value ?? '',
+        priority: form.querySelector('#crmTareaPrioridad')?.value ?? '',
         descripcion: form.querySelector('#crmTareaDescripcion')?.value?.trim() ?? '',
     };
 }
@@ -719,9 +721,63 @@ function openCrmPanel(entityId, nombrePaciente) {
 
     if (offcanvasInstance) {
         offcanvasInstance.show();
+    } else {
+        showFallbackOffcanvas(element);
     }
 
     loadCrmData(entityId);
+}
+
+function openEntityCrm(entityId, nombrePaciente = '') {
+    const parsed = Number.parseInt(String(entityId ?? ''), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        notify(`No se pudo identificar ${panelConfig.entityArticle} ${panelConfig.entityLabel} ${panelConfig.entitySelectionSuffix}`, false);
+        return false;
+    }
+
+    openCrmPanel(parsed, nombrePaciente);
+    return true;
+}
+
+function showFallbackOffcanvas(element) {
+    element.classList.add('show');
+    element.style.visibility = 'visible';
+    element.removeAttribute('aria-hidden');
+    element.setAttribute('aria-modal', 'true');
+    document.body.classList.add('overflow-hidden');
+
+    let backdrop = document.getElementById('crmOffcanvasFallbackBackdrop');
+    if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.id = 'crmOffcanvasFallbackBackdrop';
+        backdrop.className = 'offcanvas-backdrop fade show';
+        backdrop.addEventListener('click', closeFallbackOffcanvas, { passive: true });
+        document.body.appendChild(backdrop);
+    }
+
+    element.querySelectorAll('[data-bs-dismiss=\"offcanvas\"]').forEach((button) => {
+        if (button.dataset.crmFallbackBound === '1') {
+            return;
+        }
+        button.dataset.crmFallbackBound = '1';
+        button.addEventListener('click', closeFallbackOffcanvas);
+    });
+}
+
+function closeFallbackOffcanvas() {
+    const element = document.getElementById('crmOffcanvas');
+    if (element) {
+        element.classList.remove('show');
+        element.style.visibility = 'hidden';
+        element.setAttribute('aria-hidden', 'true');
+        element.removeAttribute('aria-modal');
+    }
+
+    document.body.classList.remove('overflow-hidden');
+    const backdrop = document.getElementById('crmOffcanvasFallbackBackdrop');
+    if (backdrop && backdrop.parentElement) {
+        backdrop.parentElement.removeChild(backdrop);
+    }
 }
 
 async function loadCrmData(entityId) {

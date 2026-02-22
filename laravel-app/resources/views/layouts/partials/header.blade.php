@@ -3,6 +3,11 @@
     $displayName = trim((string) ($user['display_name'] ?? 'Usuario'));
     $roleName = trim((string) ($user['role_name'] ?? 'Usuario'));
     $profilePhoto = trim((string) ($user['profile_photo_url'] ?? ''));
+    $path = rtrim((string) request()->getPathInfo(), '/');
+    if ($path === '') {
+        $path = '/';
+    }
+    $homeLink = str_starts_with($path . '/', '/v2/') ? '/v2/dashboard' : '/dashboard';
 
     $initials = 'U';
     if ($displayName !== '') {
@@ -16,7 +21,7 @@
 @endphp
 <header class="main-header">
     <div class="d-flex align-items-center logo-box justify-content-start">
-        <a href="/dashboard" class="logo">
+        <a href="{{ $homeLink }}" class="logo">
             <div class="logo-mini w-50">
                 <span class="light-logo"><img src="/images/logo-light-text.png" alt="logo"></span>
                 <span class="dark-logo"><img src="/images/logo-light-text.png" alt="logo"></span>

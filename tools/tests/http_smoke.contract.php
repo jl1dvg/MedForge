@@ -88,6 +88,65 @@ return [
                 'notes_auth' => 'Authenticated mode also expects /dashboard redirecting to /v2/dashboard when UI cutover is enabled.',
             ],
         ],
+        'solicitudes_cutover' => [
+            [
+                'id' => 'solicitudes_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/solicitudes',
+                'v2_path' => '/solicitudes',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/solicitudes',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/solicitudes',
+                ],
+                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes redirect to /v2/solicitudes.',
+                'notes_auth' => 'Authenticated mode also expects /solicitudes redirecting to /v2/solicitudes when UI cutover is enabled.',
+            ],
+            [
+                'id' => 'solicitudes_dashboard_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/solicitudes/dashboard',
+                'v2_path' => '/solicitudes/dashboard',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/solicitudes/dashboard',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/solicitudes/dashboard',
+                ],
+                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes/dashboard redirect to /v2/solicitudes/dashboard.',
+                'notes_auth' => 'Authenticated mode also expects /solicitudes/dashboard redirecting to /v2/solicitudes/dashboard.',
+            ],
+            [
+                'id' => 'solicitudes_turnero_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/solicitudes/turnero',
+                'v2_path' => '/solicitudes/turnero',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/solicitudes/turnero',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/solicitudes/turnero',
+                ],
+                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes/turnero redirect to /v2/solicitudes/turnero.',
+                'notes_auth' => 'Authenticated mode also expects /solicitudes/turnero redirecting to /v2/solicitudes/turnero.',
+            ],
+        ],
         'billing' => [
             [
                 'id' => 'billing_no_facturados',
