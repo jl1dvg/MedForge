@@ -48,6 +48,11 @@ $solicitudesV2WritesEnabled = filter_var(
         $_ENV['SOLICITUDES_V2_WRITES_ENABLED'] ?? getenv('SOLICITUDES_V2_WRITES_ENABLED') ?? '0',
         FILTER_VALIDATE_BOOLEAN
 );
+$solicitudesV2ReadsEnabled = filter_var(
+        $_ENV['SOLICITUDES_V2_READS_ENABLED'] ?? getenv('SOLICITUDES_V2_READS_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+);
+$solicitudesReadPrefix = $solicitudesV2ReadsEnabled ? '/v2' : '';
 $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
 ?>
 <div class="content-header">
@@ -1167,6 +1172,8 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
         window.__KANBAN_MODULE__ = {
             key: 'solicitudes',
             basePath: <?= json_encode($basePath, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+            readPrefix: <?= json_encode($solicitudesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+            v2ReadsEnabled: <?= json_encode($solicitudesV2ReadsEnabled) ?>,
             writePrefix: <?= json_encode($solicitudesWritePrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
             v2WritesEnabled: <?= json_encode($solicitudesV2WritesEnabled) ?>,
             storageKeyView: 'solicitudes:view-mode',

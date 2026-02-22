@@ -18,7 +18,42 @@ array_push(
     'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
     'js/pages/solicitudes/dashboard.js'
 );
+
+$solicitudesV2ReadsEnabled = filter_var(
+    $_ENV['SOLICITUDES_V2_READS_ENABLED'] ?? getenv('SOLICITUDES_V2_READS_ENABLED') ?? '0',
+    FILTER_VALIDATE_BOOLEAN
+);
+$solicitudesReadPrefix = $solicitudesV2ReadsEnabled ? '/v2' : '';
+
+$basePath = '/solicitudes';
+if (defined('BASE_URL')) {
+    $baseUrlPath = parse_url((string) BASE_URL, PHP_URL_PATH) ?: '';
+    $baseUrlPath = rtrim($baseUrlPath, '/');
+    if ($baseUrlPath !== '') {
+        $basePath = $baseUrlPath . '/solicitudes';
+    }
+}
+
+$dashboardDataEndpoint = $basePath . '/dashboard-data';
+if ($solicitudesReadPrefix !== '') {
+    $marker = '/solicitudes/dashboard-data';
+    $markerPos = strpos($dashboardDataEndpoint, $marker);
+    if ($markerPos !== false) {
+        $rootPrefix = substr($dashboardDataEndpoint, 0, $markerPos);
+        $dashboardDataEndpoint = $rootPrefix . $solicitudesReadPrefix . $marker;
+    } else {
+        $dashboardDataEndpoint = $solicitudesReadPrefix . '/' . ltrim($dashboardDataEndpoint, '/');
+    }
+}
 ?>
+
+<script>
+    window.__SOLICITUDES_DASHBOARD__ = {
+        endpoint: <?= json_encode($dashboardDataEndpoint, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        readPrefix: <?= json_encode($solicitudesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        v2ReadsEnabled: <?= json_encode($solicitudesV2ReadsEnabled) ?>,
+    };
+</script>
 
 <div class="content-header">
     <div class="d-flex align-items-center">

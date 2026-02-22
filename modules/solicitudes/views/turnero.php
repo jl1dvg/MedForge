@@ -6,6 +6,11 @@
 $contextLabel = $turneroContext ?: 'Coordinación Quirúrgica';
 $emptyMessage = $turneroEmptyMessage ?: 'No hay pacientes en cola para coordinación quirúrgica.';
 $turneroRefreshMs = isset($turneroRefreshMs) ? (int) $turneroRefreshMs : 30000;
+$solicitudesV2ReadsEnabled = filter_var(
+    $_ENV['SOLICITUDES_V2_READS_ENABLED'] ?? getenv('SOLICITUDES_V2_READS_ENABLED') ?? '0',
+    FILTER_VALIDATE_BOOLEAN
+);
+$solicitudesReadPrefix = $solicitudesV2ReadsEnabled ? '/v2' : '';
 $contextId = 'turneroContextLabel';
 $contextFor = 'turneroTitle';
 ?>
@@ -303,6 +308,8 @@ if (defined('BASE_URL')) {
     window.__KANBAN_MODULE__ = {
         key: 'solicitudes',
         basePath: <?= json_encode($basePath, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        readPrefix: <?= json_encode($solicitudesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        v2ReadsEnabled: <?= json_encode($solicitudesV2ReadsEnabled) ?>,
         turnero: {
             refreshMs: <?= json_encode($turneroRefreshMs, JSON_UNESCAPED_UNICODE) ?>,
         },

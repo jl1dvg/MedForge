@@ -1,6 +1,9 @@
 (() => {
     const charts = {};
-    const endpoint = '/solicitudes/dashboard-data';
+    const dashboardConfig = typeof window !== 'undefined' ? (window.__SOLICITUDES_DASHBOARD__ || {}) : {};
+    const endpoint = typeof dashboardConfig.endpoint === 'string' && dashboardConfig.endpoint.trim() !== ''
+        ? dashboardConfig.endpoint.trim()
+        : '/solicitudes/dashboard-data';
     const chartEmptyMessage = 'Sin datos suficientes para mostrar este gráfico.';
 
     const elements = {
@@ -199,12 +202,28 @@
     };
 
     const fetchDashboard = (filters = {}) => {
+        const headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        };
+
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            headers['X-Request-Id'] = `legacy-solicitudes-dashboard-${crypto.randomUUID()}`;
+        }
+
         return fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            headers,
             body: JSON.stringify(filters),
         })
-            .then(response => response.json())
+            .then(async response => {
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload?.error || `Error HTTP ${response.status}`);
+                }
+                return payload;
+            })
             .then(data => {
                 renderDashboard(data);
             })
