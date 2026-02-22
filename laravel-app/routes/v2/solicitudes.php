@@ -24,6 +24,8 @@ Route::post('/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::clas
 Route::post('/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
+Route::post('/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
+Route::post('/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
 
 // Legacy-style API aliases
 Route::match(['GET', 'POST'], '/api/solicitudes/kanban_data.php', [SolicitudesReadController::class, 'kanbanData']);
@@ -51,3 +53,5 @@ Route::post('/api/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::
 Route::post('/api/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');

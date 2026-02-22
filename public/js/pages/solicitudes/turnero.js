@@ -1,6 +1,6 @@
-import { getKanbanConfig, getRealtimeConfig, getTurneroConfig } from './kanban/config.js';
+import { getKanbanConfig, getRealtimeConfig, getTurneroConfig, resolveReadPath } from './kanban/config.js';
 
-const ENDPOINT = `${getKanbanConfig().basePath}/turnero-data`;
+const ENDPOINT = resolveReadPath(`${getKanbanConfig().basePath}/turnero-data`);
 const resolvedRefresh = Number(getTurneroConfig().refreshMs);
 const REFRESH_INTERVAL = Number.isFinite(resolvedRefresh) && resolvedRefresh > 0 ? resolvedRefresh : 30000;
 

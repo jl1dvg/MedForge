@@ -1,6 +1,7 @@
 let panelConfig = {
     showToast: () => {},
     getBasePath: () => '',
+    resolveReadPath: null,
     resolveWritePath: null,
     entityLabel: 'solicitud',
     entityArticle: 'la',
@@ -28,6 +29,21 @@ function resolveWritePath(path) {
             }
         } catch (error) {
             console.warn('CRM ▶ resolveWritePath fallback por error:', error);
+        }
+    }
+
+    return path;
+}
+
+function resolveReadPath(path) {
+    if (typeof panelConfig.resolveReadPath === 'function') {
+        try {
+            const resolved = panelConfig.resolveReadPath(path);
+            if (typeof resolved === 'string' && resolved.trim() !== '') {
+                return resolved;
+            }
+        } catch (error) {
+            console.warn('CRM ▶ resolveReadPath fallback por error:', error);
         }
     }
 
@@ -711,7 +727,7 @@ function openCrmPanel(entityId, nombrePaciente) {
 async function loadCrmData(entityId) {
     try {
         const basePath = resolveBasePath();
-        const response = await fetch(`${basePath}/${entityId}/crm`, { credentials: 'same-origin' });
+        const response = await fetch(resolveReadPath(`${basePath}/${entityId}/crm`), { credentials: 'same-origin' });
 
         // Intenta parsear JSON; si falla, intenta leer texto para mostrar un error útil
         let data;

@@ -13,6 +13,7 @@ import {
     getReportingConfig,
     resolveAttr,
     resolveId,
+    resolveReadPath,
     getTableBodySelector,
     getRealtimeConfig,
 } from './kanban/config.js';
@@ -89,16 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const buildEstadoApiCandidates = () => {
         const candidates = [
-            '/solicitudes/api/estado',
-            '/api/solicitudes/estado',
+            resolveReadPath('/solicitudes/api/estado'),
+            resolveReadPath('/api/solicitudes/estado'),
         ];
 
         if (normalizedApiBasePath) {
-            candidates.push(`${normalizedApiBasePath}/solicitudes/estado`);
+            candidates.push(resolveReadPath(`${normalizedApiBasePath}/solicitudes/estado`));
         }
 
         if (normalizedBasePath) {
-            candidates.push(`${normalizedBasePath}/api/estado`);
+            candidates.push(resolveReadPath(`${normalizedBasePath}/api/estado`));
         }
 
         return Array.from(new Set(candidates));
@@ -1272,7 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const filtrosSeleccionados = obtenerFiltros();
         const urlParams = new URLSearchParams(window.location.search);
         const debugKanban = ['1', 'true', 'yes'].includes((urlParams.get('debug_kanban') || '').toLowerCase());
-        const kanbanUrl = `${config.basePath}/kanban-data${debugKanban ? '?debug=1' : ''}`;
+        const kanbanUrl = `${resolveReadPath(`${config.basePath}/kanban-data`)}${debugKanban ? '?debug=1' : ''}`;
         console.groupCollapsed('%cKANBAN ▶ Filtros aplicados', 'color:#0b7285');
         console.log(filtros);
         console.groupEnd();

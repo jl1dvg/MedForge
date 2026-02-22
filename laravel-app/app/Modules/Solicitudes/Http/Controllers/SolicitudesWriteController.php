@@ -9,6 +9,7 @@ use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -411,6 +412,95 @@ class SolicitudesWriteController
         );
     }
 
+    public function crmRegistrarBloqueo(Request $request, int $id): JsonResponse
+    {
+        return $this->crmWriteResponse(
+            $request,
+            $id,
+            fn(array $payload, ?int $userId): array => $this->service->crmRegistrarBloqueo($id, $payload, $userId)
+        );
+    }
+
+    public function crmSubirAdjunto(Request $request, int $id): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $file = $request->file('archivo');
+        if (!$file instanceof UploadedFile) {
+            return response()->json(['success' => false, 'error' => 'No se recibió el archivo'], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        if (!$file->isValid()) {
+            return response()->json(['success' => false, 'error' => 'El archivo es inválido'], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $originalName = trim((string) $file->getClientOriginalName());
+        if ($originalName === '') {
+            $originalName = 'adjunto';
+        }
+
+        $safeName = preg_replace('/[^A-Za-z0-9_\.-]+/', '_', $originalName) ?? 'adjunto';
+        $safeName = trim($safeName, '_');
+        if ($safeName === '') {
+            $safeName = 'adjunto';
+        }
+
+        $publicRoot = $this->resolveSharedPublicPath();
+        $uploadDir = rtrim($publicRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'solicitudes' . DIRECTORY_SEPARATOR . $id;
+        if (!is_dir($uploadDir) && !mkdir($uploadDir, 0775, true) && !is_dir($uploadDir)) {
+            return response()->json(['success' => false, 'error' => 'No se pudo preparar la carpeta de adjuntos'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $storedName = uniqid('crm_', true) . '_' . $safeName;
+        $storedPath = $uploadDir . DIRECTORY_SEPARATOR . $storedName;
+        $relativePath = 'uploads/solicitudes/' . $id . '/' . $storedName;
+        $description = trim((string) $request->input('descripcion', ''));
+        $mimeType = $file->getClientMimeType() ?: $file->getMimeType();
+        $size = $file->getSize();
+
+        try {
+            $file->move($uploadDir, $storedName);
+            $summary = $this->service->crmSubirAdjunto(
+                $id,
+                $originalName,
+                $relativePath,
+                is_string($mimeType) && $mimeType !== '' ? $mimeType : null,
+                is_numeric($size) ? (int) $size : null,
+                LegacySessionAuth::userId($request),
+                $description !== '' ? $description : null,
+            );
+        } catch (RuntimeException $e) {
+            if (is_file($storedPath)) {
+                @unlink($storedPath);
+            }
+
+            return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
+                ->header('X-Request-Id', $requestId);
+        } catch (Throwable $e) {
+            if (is_file($storedPath)) {
+                @unlink($storedPath);
+            }
+
+            Log::error('solicitudes.write.crm_adjunto.error', [
+                'request_id' => $requestId,
+                'solicitud_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudo registrar el adjunto'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json(['success' => true, 'data' => $summary])->header('X-Request-Id', $requestId);
+    }
+
     public function crmActualizarTarea(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
@@ -520,5 +610,20 @@ class SolicitudesWriteController
         }
 
         return 'v2-' . bin2hex(random_bytes(8));
+    }
+
+    private function resolveSharedPublicPath(): string
+    {
+        $configured = trim((string) (env('SHARED_PUBLIC_PATH') ?? ''));
+        if ($configured !== '') {
+            return rtrim($configured, DIRECTORY_SEPARATOR);
+        }
+
+        $legacyCandidate = realpath(base_path('..' . DIRECTORY_SEPARATOR . 'public'));
+        if (is_string($legacyCandidate) && $legacyCandidate !== '') {
+            return $legacyCandidate;
+        }
+
+        return public_path();
     }
 }

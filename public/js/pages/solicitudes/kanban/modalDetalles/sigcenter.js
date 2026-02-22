@@ -1,4 +1,4 @@
-import {getKanbanConfig} from "../config.js";
+import {getKanbanConfig, resolveReadPath} from "../config.js";
 import {fetchDetalleSolicitud, fetchWithFallback, resolveApiBasePath} from "./api.js";
 import {findSolicitudById} from "./store.js";
 import {extractProcedimientoCodigo, lateralidadToId, resolveLateralidad} from "./utils.js";
@@ -350,7 +350,7 @@ export function initSigcenterPanel(container) {
         if (!solicitudId) return;
         const {basePath} = getKanbanConfig();
         const safeBasePath = String(basePath || "").replace(/\/+$/g, "");
-        const url = `${safeBasePath}/${encodeURIComponent(String(solicitudId))}/crm/checklist-state`;
+        const url = resolveReadPath(`${safeBasePath}/${encodeURIComponent(String(solicitudId))}/crm/checklist-state`);
         console.log("[Sigcenter] basePath:", basePath);
         console.log("[Sigcenter] checklist-state url:", url);
         setStatus("Validando checklist...", "text-muted");

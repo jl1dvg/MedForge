@@ -163,12 +163,13 @@ foreach ($tests as $test) {
         $sourceFields = is_array($hydration['fields'] ?? null) ? (array) $hydration['fields'] : [];
         $sourceRequired = (bool) ($hydration['required'] ?? true);
         $sourceBodyFormat = (string) ($hydration['body_format'] ?? 'json');
+        $sourceBody = is_array($hydration['body'] ?? null) ? (array) $hydration['body'] : null;
 
         if ($sourcePath !== '') {
             $sourceResult = request(
                 $v2Base . $sourcePath,
                 $sourceMethod,
-                null,
+                $sourceBody,
                 $timeout,
                 $cookieHeader,
                 $sourceBodyFormat
@@ -573,6 +574,7 @@ function request(
 ): array
 {
     $ch = curl_init($url);
+    $tempFiles = [];
     $headers = [
         'Accept: application/json',
         'X-Request-Id: smoke-' . bin2hex(random_bytes(6)),
@@ -596,6 +598,9 @@ function request(
             $headers[] = 'Content-Type: application/x-www-form-urlencoded';
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(flattenFormBody($body), '', '&', PHP_QUERY_RFC3986));
+        } elseif ($bodyFormat === 'multipart') {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, buildMultipartBody($body, $tempFiles));
         } else {
             $headers[] = 'Content-Type: application/json';
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
@@ -607,6 +612,7 @@ function request(
     if ($raw === false) {
         $error = curl_error($ch);
         curl_close($ch);
+        cleanupTempFiles($tempFiles);
         return [
             'url' => $url,
             'status' => 0,
@@ -619,6 +625,7 @@ function request(
     $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     curl_close($ch);
+    cleanupTempFiles($tempFiles);
 
     $bodyText = substr($raw, $headerSize) ?: '';
     $headerText = substr($raw, 0, $headerSize) ?: '';
@@ -763,6 +770,75 @@ function flattenFormBody(array $payload, string $prefix = ''): array
     }
 
     return $result;
+}
+
+/**
+ * @param array<string,mixed> $payload
+ * @param array<int,string> $tempFiles
+ * @return array<string,mixed>
+ */
+function buildMultipartBody(array $payload, array &$tempFiles, string $prefix = ''): array
+{
+    $result = [];
+    foreach ($payload as $key => $value) {
+        $keyString = $prefix === '' ? (string) $key : $prefix . '[' . (string) $key . ']';
+
+        if (is_array($value) && isset($value['__file']) && is_array($value['__file'])) {
+            $fileSpec = (array) $value['__file'];
+            $fileName = trim((string) ($fileSpec['name'] ?? 'smoke-upload.bin'));
+            if ($fileName === '') {
+                $fileName = 'smoke-upload.bin';
+            }
+            $mimeType = trim((string) ($fileSpec['type'] ?? 'application/octet-stream'));
+            if ($mimeType === '') {
+                $mimeType = 'application/octet-stream';
+            }
+            $content = (string) ($fileSpec['content'] ?? '');
+
+            $tmpPath = tempnam(sys_get_temp_dir(), 'smoke_upload_');
+            if ($tmpPath === false) {
+                continue;
+            }
+            file_put_contents($tmpPath, $content);
+            $tempFiles[] = $tmpPath;
+
+            $result[$keyString] = new CURLFile($tmpPath, $mimeType, $fileName);
+            continue;
+        }
+
+        if (is_array($value)) {
+            $result += buildMultipartBody($value, $tempFiles, $keyString);
+            continue;
+        }
+
+        if (is_bool($value)) {
+            $result[$keyString] = $value ? '1' : '0';
+            continue;
+        }
+
+        if (is_scalar($value)) {
+            $result[$keyString] = (string) $value;
+            continue;
+        }
+
+        if ($value === null) {
+            $result[$keyString] = '';
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * @param array<int,string> $tempFiles
+ */
+function cleanupTempFiles(array $tempFiles): void
+{
+    foreach ($tempFiles as $path) {
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
 }
 
 /**

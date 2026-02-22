@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Services;
 
 use DateTime;
+use DateInterval;
 use DateTimeImmutable;
 use PDO;
 use RuntimeException;
@@ -443,6 +444,139 @@ class SolicitudesWriteParityService
         if (isset($payload['custom_fields']) && is_array($payload['custom_fields'])) {
             $this->guardarCrmMeta($solicitudId, $payload['custom_fields']);
         }
+
+        return $this->readService->crmResumen($solicitudId);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmRegistrarBloqueo(int $solicitudId, array $payload, ?int $userId): array
+    {
+        $this->assertSolicitudExists($solicitudId);
+
+        $columns = $this->tableColumns('crm_calendar_blocks');
+        if ($columns === []) {
+            throw new RuntimeException('Tabla crm_calendar_blocks no disponible');
+        }
+
+        $base = $this->fetchSolicitudBloqueoBase($solicitudId);
+        if ($base === null) {
+            throw new RuntimeException('No se encontró la solicitud para bloquear agenda');
+        }
+
+        $inicio = $this->parseFlexibleDateTime($payload['fecha_inicio'] ?? ($base['fecha_programada'] ?? null));
+        if (!$inicio instanceof DateTimeImmutable) {
+            throw new RuntimeException('La fecha/hora de inicio es obligatoria');
+        }
+
+        $fin = $this->parseFlexibleDateTime($payload['fecha_fin'] ?? null);
+        if (!$fin instanceof DateTimeImmutable) {
+            $duracionMinutos = max(15, (int) ($payload['duracion_minutos'] ?? 60));
+            $fin = $inicio->add(new DateInterval(sprintf('PT%dM', $duracionMinutos)));
+        }
+
+        if ($fin <= $inicio) {
+            throw new RuntimeException('La hora de fin debe ser posterior al inicio');
+        }
+
+        $doctor = $this->nullableString($payload['doctor'] ?? ($base['doctor'] ?? null));
+        $sala = $this->nullableString($payload['sala'] ?? ($payload['quirofano'] ?? ($base['sala'] ?? null)));
+        $motivo = $this->nullableString($payload['motivo'] ?? null);
+        $now = date('Y-m-d H:i:s');
+
+        $insert = ['solicitud_id' => $solicitudId];
+        if (in_array('doctor', $columns, true)) {
+            $insert['doctor'] = $doctor;
+        }
+        if (in_array('sala', $columns, true)) {
+            $insert['sala'] = $sala;
+        }
+        if (in_array('fecha_inicio', $columns, true)) {
+            $insert['fecha_inicio'] = $inicio->format('Y-m-d H:i:s');
+        }
+        if (in_array('fecha_fin', $columns, true)) {
+            $insert['fecha_fin'] = $fin->format('Y-m-d H:i:s');
+        }
+        if (in_array('motivo', $columns, true)) {
+            $insert['motivo'] = $motivo;
+        }
+        if (in_array('created_by', $columns, true)) {
+            $insert['created_by'] = $userId;
+        }
+        if (in_array('created_at', $columns, true)) {
+            $insert['created_at'] = $now;
+        }
+        if (in_array('updated_at', $columns, true)) {
+            $insert['updated_at'] = $now;
+        }
+
+        $this->insertRow('crm_calendar_blocks', $insert);
+        $bloqueoId = (int) $this->db->lastInsertId();
+
+        $resumen = $this->readService->crmResumen($solicitudId);
+        $resumen['ultimo_bloqueo'] = [
+            'id' => $bloqueoId > 0 ? $bloqueoId : null,
+            'solicitud_id' => $solicitudId,
+            'doctor' => $doctor,
+            'sala' => $sala,
+            'fecha_inicio' => $inicio->format(DateTimeImmutable::ATOM),
+            'fecha_fin' => $fin->format(DateTimeImmutable::ATOM),
+            'motivo' => $motivo,
+            'created_by' => $userId,
+        ];
+
+        return $resumen;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function crmSubirAdjunto(
+        int $solicitudId,
+        string $nombreOriginal,
+        string $rutaRelativa,
+        ?string $mimeType,
+        ?int $tamanoBytes,
+        ?int $usuarioId,
+        ?string $descripcion = null
+    ): array {
+        $this->assertSolicitudExists($solicitudId);
+
+        $columns = $this->tableColumns('solicitud_crm_adjuntos');
+        if ($columns === []) {
+            throw new RuntimeException('Tabla solicitud_crm_adjuntos no disponible');
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $insert = ['solicitud_id' => $solicitudId];
+        if (in_array('nombre_original', $columns, true)) {
+            $insert['nombre_original'] = $nombreOriginal;
+        }
+        if (in_array('ruta_relativa', $columns, true)) {
+            $insert['ruta_relativa'] = $rutaRelativa;
+        }
+        if (in_array('mime_type', $columns, true)) {
+            $insert['mime_type'] = $mimeType;
+        }
+        if (in_array('tamano_bytes', $columns, true)) {
+            $insert['tamano_bytes'] = $tamanoBytes;
+        }
+        if (in_array('descripcion', $columns, true)) {
+            $insert['descripcion'] = $this->nullableString($descripcion);
+        }
+        if (in_array('subido_por', $columns, true)) {
+            $insert['subido_por'] = $usuarioId;
+        }
+        if (in_array('created_at', $columns, true)) {
+            $insert['created_at'] = $now;
+        }
+        if (in_array('updated_at', $columns, true)) {
+            $insert['updated_at'] = $now;
+        }
+
+        $this->insertRow('solicitud_crm_adjuntos', $insert);
 
         return $this->readService->crmResumen($solicitudId);
     }
@@ -1728,6 +1862,78 @@ class SolicitudesWriteParityService
 
         try {
             return (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function fetchSolicitudBloqueoBase(int $solicitudId): ?array
+    {
+        $selectFecha = 'sp.fecha AS fecha_programada';
+        $selectSala = 'NULL AS sala';
+        $join = '';
+
+        $canJoinConsultaData = $this->tableExists('consulta_data')
+            && $this->hasColumn('consulta_data', 'hc_number')
+            && $this->hasColumn('consulta_data', 'form_id');
+
+        if ($canJoinConsultaData) {
+            $join = ' LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id';
+            if ($this->hasColumn('consulta_data', 'fecha')) {
+                $selectFecha = 'COALESCE(cd.fecha, sp.fecha) AS fecha_programada';
+            }
+            if ($this->hasColumn('consulta_data', 'quirofano')) {
+                $selectSala = 'cd.quirofano AS sala';
+            }
+        }
+
+        $stmt = $this->db->prepare(
+            sprintf(
+                'SELECT sp.id, sp.doctor, %s, %s
+                 FROM solicitud_procedimiento sp%s
+                 WHERE sp.id = :id
+                 LIMIT 1',
+                $selectFecha,
+                $selectSala,
+                $join
+            )
+        );
+        $stmt->execute([':id' => $solicitudId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row !== false ? $row : null;
+    }
+
+    private function parseFlexibleDateTime(mixed $value): ?DateTimeImmutable
+    {
+        if ($value instanceof DateTimeImmutable) {
+            return $value;
+        }
+
+        $raw = $this->nullableString($value);
+        if ($raw === null) {
+            return null;
+        }
+
+        foreach ([
+            'Y-m-d H:i:s',
+            DateTimeImmutable::ATOM,
+            'Y-m-d\TH:i',
+            'd/m/Y H:i',
+            'd-m-Y H:i',
+            'Y-m-d',
+        ] as $format) {
+            $dt = DateTimeImmutable::createFromFormat($format, $raw);
+            if ($dt instanceof DateTimeImmutable) {
+                return $dt;
+            }
+        }
+
+        try {
+            return new DateTimeImmutable($raw);
         } catch (Throwable) {
             return null;
         }

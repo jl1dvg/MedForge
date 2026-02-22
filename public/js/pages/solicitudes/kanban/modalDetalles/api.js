@@ -1,4 +1,4 @@
-import {getKanbanConfig, getDataStore, resolveWritePath} from "../config.js";
+import {getKanbanConfig, getDataStore, resolveReadPath, resolveWritePath} from "../config.js";
 import {updateKanbanCardSla} from "../renderer.js";
 import {findSolicitudById} from "./store.js";
 
@@ -53,12 +53,12 @@ export function buildEstadoApiCandidates() {
         basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
     const apiBase = resolveApiBasePath();
     const orderedCandidates = [
-        "/solicitudes/api/estado",
-        `${apiBase}/solicitudes/estado`,
-        "/api/solicitudes/estado",
+        resolveReadPath("/solicitudes/api/estado"),
+        resolveReadPath(`${apiBase}/solicitudes/estado`),
+        resolveReadPath("/api/solicitudes/estado"),
     ];
     if (normalizedBase) {
-        orderedCandidates.push(`${normalizedBase}/api/estado`);
+        orderedCandidates.push(resolveReadPath(`${normalizedBase}/api/estado`));
     }
 
     const expanded = [];

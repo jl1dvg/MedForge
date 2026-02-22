@@ -49,6 +49,9 @@ function computeConfig() {
     const key = (raw.key || 'solicitudes').toString();
     const selectors = raw.selectors || {};
     const ids = computeIds(key, selectors);
+    const normalizedReadPrefix = normalizePrefix(
+        raw.readPrefix || (raw.v2ReadsEnabled ? '/v2' : '')
+    );
     const normalizedWritePrefix = normalizePrefix(
         raw.writePrefix || (raw.v2WritesEnabled ? '/v2' : '')
     );
@@ -73,6 +76,8 @@ function computeConfig() {
         key,
         basePath: raw.basePath || '/solicitudes',
         apiBasePath: raw.apiBasePath || '/api',
+        v2ReadsEnabled: Boolean(raw.v2ReadsEnabled),
+        readPrefix: normalizedReadPrefix,
         v2WritesEnabled: Boolean(raw.v2WritesEnabled),
         writePrefix: normalizedWritePrefix,
         storageKeyView: raw.storageKeyView || `${key}:view-mode`,
@@ -182,6 +187,10 @@ export function getWritePrefix() {
     return ensureConfig().writePrefix || '';
 }
 
+export function getReadPrefix() {
+    return ensureConfig().readPrefix || '';
+}
+
 export function resolveWritePath(pathname) {
     const path = normalizePath(pathname);
     const writePrefix = getWritePrefix();
@@ -216,4 +225,40 @@ export function resolveWritePath(pathname) {
     }
 
     return `${writePrefix}${path === '/' ? '' : path}`;
+}
+
+export function resolveReadPath(pathname) {
+    const path = normalizePath(pathname);
+    const readPrefix = getReadPrefix();
+
+    if (!readPrefix) {
+        return path;
+    }
+
+    if (path === readPrefix || path.startsWith(`${readPrefix}/`)) {
+        return path;
+    }
+
+    if (
+        path.includes(`${readPrefix}/solicitudes`)
+        || path.includes(`${readPrefix}/api/solicitudes`)
+    ) {
+        return path;
+    }
+
+    const moduleMarkerIndex = path.indexOf('/solicitudes');
+    if (moduleMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, moduleMarkerIndex);
+        const moduleSuffix = path.slice(moduleMarkerIndex);
+        return `${rootPrefix}${readPrefix}${moduleSuffix}`;
+    }
+
+    const apiMarkerIndex = path.indexOf('/api/solicitudes');
+    if (apiMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, apiMarkerIndex);
+        const apiSuffix = path.slice(apiMarkerIndex);
+        return `${rootPrefix}${readPrefix}${apiSuffix}`;
+    }
+
+    return `${readPrefix}${path === '/' ? '' : path}`;
 }
