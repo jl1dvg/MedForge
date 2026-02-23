@@ -326,6 +326,15 @@
         .crm-task-item .badge {
             font-size: 10px;
         }
+
+        .prefactura-modal-body {
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+
+        .prefactura-content-wrapper {
+            min-height: 120px;
+        }
     </style>
 @endpush
 
@@ -629,6 +638,37 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="prefacturaModal" tabindex="-1" aria-hidden="true" aria-labelledby="prefacturaModalLabel">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body prefactura-modal-body">
+                    <div class="prefactura-content-wrapper">
+                        <div id="prefacturaContent">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                                <strong>Cargando información...</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">Generar turno</button>
+                    <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">En atención</button>
+                    <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2" type="button" id="btnSolicitarExamenesPrequirurgicos" data-bs-toggle="tooltip" title="Enviar solicitud de exámenes prequirúrgicos al paciente">
+                        <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 2055;"></div>
 @endsection
 
 @push('scripts')
@@ -644,5 +684,6 @@
             columns: @json($columns),
         };
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="/js/pages/solicitudes/v2-index.js"></script>
 @endpush

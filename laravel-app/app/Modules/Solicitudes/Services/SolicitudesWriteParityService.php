@@ -294,7 +294,14 @@ class SolicitudesWriteParityService
         $stmt = $this->db->prepare('UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id');
         $stmt->execute($params);
 
-        return $stmt->rowCount() > 0;
+        if ($stmt->rowCount() > 0) {
+            return true;
+        }
+
+        $existsStmt = $this->db->prepare('SELECT 1 FROM solicitud_procedimiento WHERE id = :id LIMIT 1');
+        $existsStmt->execute([':id' => $solicitudId]);
+
+        return $existsStmt->fetchColumn() !== false;
     }
 
     /**

@@ -1,6 +1,6 @@
 import {actualizarEstadoSolicitud} from './estado.js';
 import {showToast} from './toast.js';
-import {getDataStore} from './config.js';
+import {getDataStore, resolveWritePath} from './config.js';
 import {llamarTurnoSolicitud} from './turnero.js';
 
 const PREQUIRURGICO_DEBOUNCE_MS = 900;
@@ -285,7 +285,7 @@ function ensureCoberturaMailModal() {
             if (editor) {
                 formData.append('is_html', '1');
             }
-            const response = await request('/solicitudes/cobertura-mail', {
+            const response = await request(resolveWritePath('/solicitudes/cobertura-mail'), {
                 method: 'POST', body: formData,
             });
             showToast('Correo enviado.', true);

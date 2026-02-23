@@ -37,12 +37,29 @@
             loadingPromise: null,
             failed: false,
         },
+        prefacturaPanel: {
+            api: null,
+            loadingPromise: null,
+            failed: false,
+        },
     };
 
     const labelByColumn = columns.reduce((acc, col) => {
         acc[String(col.slug || '')] = String(col.label || col.slug || '');
         return acc;
     }, {});
+
+    const estadoColorBySlug = {
+        'recibida': 'secondary',
+        'llamado': 'info',
+        'revision-codigos': 'warning',
+        'espera-documentos': 'warning',
+        'apto-oftalmologo': 'primary',
+        'apto-anestesia': 'primary',
+        'listo-para-agenda': 'success',
+        'programada': 'success',
+        'completado': 'dark',
+    };
 
     const showToast = (message, ok) => {
         if (!toast) {
@@ -96,6 +113,58 @@
         if (prioridadSelect && typeof initialFilters.prioridad === 'string') {
             prioridadSelect.value = initialFilters.prioridad;
         }
+    };
+
+    const buildEstadosMeta = () => columns.reduce((acc, column) => {
+        const slug = String(column.slug || '').trim();
+        if (!slug) {
+            return acc;
+        }
+        acc[slug] = {
+            label: String(column.label || slug),
+            color: estadoColorBySlug[slug] || 'secondary',
+        };
+        return acc;
+    }, {});
+
+    const syncLegacyKanbanBridge = () => {
+        const existing = window.__KANBAN_MODULE__ && typeof window.__KANBAN_MODULE__ === 'object'
+            ? window.__KANBAN_MODULE__
+            : {};
+        const existingSelectors = existing.selectors && typeof existing.selectors === 'object'
+            ? existing.selectors
+            : {};
+
+        window.__KANBAN_MODULE__ = {
+            ...existing,
+            key: 'solicitudes',
+            basePath: '/v2/solicitudes',
+            apiBasePath: '/api',
+            readPrefix: '/v2',
+            v2ReadsEnabled: true,
+            writePrefix: '/v2',
+            v2WritesEnabled: true,
+            dataKey: '__solicitudesKanban',
+            estadosMetaKey: '__solicitudesEstadosMeta',
+            selectors: {
+                ...existingSelectors,
+                prefix: 'solicitudes',
+            },
+            strings: {
+                singular: 'solicitud',
+                plural: 'solicitudes',
+                capitalizedPlural: 'Solicitudes',
+                articleSingular: 'la',
+                articleSingularShort: 'la',
+                ...(existing.strings && typeof existing.strings === 'object' ? existing.strings : {}),
+            },
+        };
+
+        window.__solicitudesKanban = Array.isArray(state.rows) ? state.rows : [];
+        window.__solicitudesEstadosMeta = buildEstadosMeta();
+        window.aplicarFiltros = () => {
+            loadKanban();
+        };
     };
 
     const fetchJson = async (url, payload) => {
@@ -416,6 +485,66 @@
         }
     };
 
+    const ensurePrefacturaModalApi = async () => {
+        if (state.prefacturaPanel.failed) {
+            return null;
+        }
+
+        if (state.prefacturaPanel.api) {
+            return state.prefacturaPanel.api;
+        }
+
+        if (!state.prefacturaPanel.loadingPromise) {
+            state.prefacturaPanel.loadingPromise = import('/js/pages/solicitudes/kanban/modalDetalles/prefactura.js')
+                .then((module) => {
+                    if (!module || typeof module.abrirPrefactura !== 'function') {
+                        throw new Error('Módulo de prefactura no disponible');
+                    }
+                    state.prefacturaPanel.api = module;
+                    return module;
+                })
+                .catch((error) => {
+                    state.prefacturaPanel.failed = true;
+                    console.error('No se pudo inicializar el modal prefactura', error);
+                    showToast('No se pudo inicializar el modal de detalle', false);
+                    return null;
+                });
+        }
+
+        return state.prefacturaPanel.loadingPromise;
+    };
+
+    const attachPrefacturaCrmProxy = () => {
+        const modal = document.getElementById('prefacturaModal');
+        if (!modal || modal.dataset.crmProxyAttached === 'true') {
+            return;
+        }
+        modal.dataset.crmProxyAttached = 'true';
+
+        modal.addEventListener('click', (event) => {
+            const trigger = event.target.closest('[data-crm-proxy]');
+            if (!trigger) {
+                return;
+            }
+
+            const solicitudId = String(trigger.dataset.solicitudId || trigger.dataset.id || '').trim();
+            if (!solicitudId) {
+                return;
+            }
+
+            const selectorId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+                ? CSS.escape(solicitudId)
+                : solicitudId.replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+            const crmButton = board
+                ? board.querySelector(`.btn-open-crm[data-solicitud-id="${selectorId}"]`)
+                : null;
+
+            if (crmButton) {
+                crmButton.click();
+            }
+        });
+    };
+
     const loadKanban = async () => {
         if (state.loading) {
             return;
@@ -440,6 +569,7 @@
 
             state.rows = Array.isArray(json.data) ? json.data : [];
             state.options = json.options || {};
+            syncLegacyKanbanBridge();
 
             renderSelectOptions(afiliacionSelect, state.options.afiliaciones || [], filters.afiliacion);
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
@@ -519,6 +649,41 @@
         }
     };
 
+    const openDetalleModal = async (solicitudId, hcNumber, formId) => {
+        const hc = String(hcNumber || '').trim();
+        const form = String(formId || '').trim();
+        if (!hc || !form) {
+            showToast('No se puede abrir detalle sin HC y formulario', false);
+            return;
+        }
+
+        if (!window.bootstrap || !window.bootstrap.Modal) {
+            showToast('Bootstrap modal no está disponible', false);
+            return;
+        }
+
+        syncLegacyKanbanBridge();
+        attachPrefacturaCrmProxy();
+
+        const prefacturaApi = await ensurePrefacturaModalApi();
+        if (!prefacturaApi || typeof prefacturaApi.abrirPrefactura !== 'function') {
+            await loadDetalle(solicitudId, hc, form);
+            return;
+        }
+
+        try {
+            prefacturaApi.abrirPrefactura({
+                hc,
+                formId: form,
+                solicitudId,
+            });
+        } catch (error) {
+            console.error('No se pudo abrir detalle prefactura', error);
+            showToast('No se pudo abrir detalle, mostrando estado básico', false);
+            await loadDetalle(solicitudId, hc, form);
+        }
+    };
+
     if (form) {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -559,7 +724,7 @@
                 const id = target.dataset.id || '';
                 const hc = target.dataset.hc || '';
                 const formId = target.dataset.form || '';
-                loadDetalle(id, hc, formId);
+                openDetalleModal(id, hc, formId);
             }
         });
     }

@@ -1,4 +1,4 @@
-import {getKanbanConfig, resolveReadPath} from "../config.js";
+import {getKanbanConfig, resolveReadPath, resolveWritePath} from "../config.js";
 import {fetchDetalleSolicitud, fetchWithFallback, resolveApiBasePath} from "./api.js";
 import {findSolicitudById} from "./store.js";
 import {extractProcedimientoCodigo, lateralidadToId, resolveLateralidad} from "./utils.js";
@@ -568,7 +568,7 @@ export function initSigcenterPanel(container) {
 
         if (!origen && hcNumber && formId) {
             try {
-                const response = await fetch("/solicitudes/derivacion-preseleccion", {
+                const response = await fetch(resolveWritePath("/solicitudes/derivacion-preseleccion"), {
                     method: "POST",
                     headers: {"Content-Type": "application/json;charset=UTF-8"},
                     body: JSON.stringify({

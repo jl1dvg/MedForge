@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesReadController;
+use App\Modules\Solicitudes\Http\Controllers\SolicitudesPrefacturaController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use Illuminate\Support\Facades\Route;
 
@@ -9,6 +10,11 @@ Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadContro
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/solicitudes/turnero-data', [SolicitudesReadController::class, 'turneroData']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
+Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
+Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
+Route::post('/solicitudes/re-scrape-derivacion', [SolicitudesPrefacturaController::class, 'rescrapeDerivacion']);
+Route::post('/solicitudes/cobertura-mail', [SolicitudesPrefacturaController::class, 'coberturaMail']);
 
 // Legacy mirror paths (writes)
 Route::post('/solicitudes/actualizar-estado', [SolicitudesWriteController::class, 'actualizarEstado']);

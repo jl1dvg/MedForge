@@ -1,6 +1,13 @@
 import {getKanbanConfig, resolveWritePath} from "../config.js";
 import {escapeHtml, formatDerivacionVigencia} from "./utils.js";
 
+function requestId() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return `sol-v2-${crypto.randomUUID()}`;
+    }
+    return `sol-v2-${Date.now()}-${Math.floor(Math.random() * 99999)}`;
+}
+
 export function buildDerivacionMissingHtml(
     message = "Seguro particular: requiere autorización."
 ) {
@@ -151,7 +158,13 @@ export async function loadDerivacion({hc, formId}) {
     )}`;
 
     try {
-        const response = await fetch(derivacionUrl);
+        const response = await fetch(derivacionUrl, {
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json",
+                "X-Request-Id": requestId(),
+            },
+        });
         if (!response.ok) {
             return {
                 success: true,
@@ -174,15 +187,20 @@ export async function loadDerivacion({hc, formId}) {
 async function guardarPreseleccionDerivacion(payload) {
     const response = await fetch(resolveWritePath("/solicitudes/derivacion-preseleccion/guardar"), {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        credentials: "same-origin",
+        headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Request-Id": requestId(),
+        },
         body: JSON.stringify(payload),
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        throw new Error("No se pudo guardar la derivación seleccionada.");
+        throw new Error(data?.message || data?.error || "No se pudo guardar la derivación seleccionada.");
     }
-    const data = await response.json();
     if (!data?.success) {
-        throw new Error("No se pudo guardar la derivación seleccionada.");
+        throw new Error(data?.message || data?.error || "No se pudo guardar la derivación seleccionada.");
     }
     return data;
 }
@@ -227,21 +245,26 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
         return null;
     }
 
-    const response = await fetch("/solicitudes/derivacion-preseleccion", {
+    const response = await fetch(resolveWritePath("/solicitudes/derivacion-preseleccion"), {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        credentials: "same-origin",
+        headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Request-Id": requestId(),
+        },
         body: JSON.stringify({
             hc_number: hc,
             form_id: formId,
             solicitud_id: solicitudId,
         }),
     });
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        throw new Error("No se pudo obtener las derivaciones disponibles.");
+        throw new Error(data?.message || data?.error || "No se pudo obtener las derivaciones disponibles.");
     }
 
-    const data = await response.json();
     if (data?.selected) {
         return data.selected;
     }
@@ -265,11 +288,23 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
     }
 
     if (typeof Swal === "undefined") {
-        throw new Error("No se puede seleccionar derivación sin SweetAlert.");
+        const fallbackOption = options[0] || null;
+        if (!fallbackOption) {
+            return null;
+        }
+        await guardarPreseleccionDerivacion({
+            solicitud_id: solicitudId,
+            codigo_derivacion: fallbackOption.codigo_derivacion,
+            pedido_id_mas_antiguo: fallbackOption.pedido_id_mas_antiguo,
+            lateralidad: fallbackOption.lateralidad,
+            fecha_vigencia: fallbackOption.fecha_vigencia,
+            prefactura: fallbackOption.prefactura,
+        });
+        return fallbackOption;
     }
 
     const selectedValue = String(options[0]?.pedido_id_mas_antiguo || "");
-    const {isConfirmed} = await Swal.fire({
+    const {isConfirmed, value: selectedFromModal} = await Swal.fire({
         title: "Selecciona la derivación",
         html: buildDerivacionOptionsHtml(options, selectedValue),
         confirmButtonText: "Guardar selección",
@@ -311,8 +346,7 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
         return null;
     }
 
-    const chosenValue =
-        document.getElementById("derivacionSeleccionValue")?.value || "";
+    const chosenValue = String(selectedFromModal || "");
     const chosen = options.find(
         (option) => String(option.pedido_id_mas_antiguo || "") === String(chosenValue)
     );

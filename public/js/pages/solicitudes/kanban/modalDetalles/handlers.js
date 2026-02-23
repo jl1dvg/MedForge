@@ -1,4 +1,4 @@
-import {getKanbanConfig, getDataStore} from "../config.js";
+import {getKanbanConfig, getDataStore, resolveWritePath} from "../config.js";
 import {actualizarEstadoSolicitud} from "../estado.js";
 import {showToast} from "../toast.js";
 import {
@@ -577,7 +577,7 @@ export async function handleRescrapeDerivacion(event) {
     button.textContent = "⏳ Re-scrapeando…";
 
     try {
-        const response = await fetch("/solicitudes/re-scrape-derivacion", {
+        const response = await fetch(resolveWritePath("/solicitudes/re-scrape-derivacion"), {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
