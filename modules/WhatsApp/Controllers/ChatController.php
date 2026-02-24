@@ -360,7 +360,12 @@ class ChatController extends BaseController
         if ($template !== null) {
             $templateSent = $this->messenger->sendTemplateMessage($waNumber, $template);
             if (!$templateSent) {
-                $this->json(['ok' => false, 'error' => 'No fue posible enviar la plantilla de WhatsApp.'], 500);
+                $transportError = $this->messenger->getLastTransportError();
+                $this->json([
+                    'ok' => false,
+                    'error' => $this->formatTransportError($transportError, 'No fue posible enviar la plantilla de WhatsApp.'),
+                    'transport_error' => $transportError,
+                ], $this->resolveTransportStatusCode($transportError));
 
                 return;
             }
@@ -782,5 +787,66 @@ class ChatController extends BaseController
         }
 
         return 'COALESCE(' . implode(', ', $columns) . ')';
+    }
+
+    /**
+     * @param array<string, mixed>|null $error
+     */
+    private function formatTransportError(?array $error, string $fallback): string
+    {
+        if ($error === null) {
+            return $fallback;
+        }
+
+        $parts = [];
+        if (!empty($error['http_code'])) {
+            $parts[] = 'HTTP ' . (int) $error['http_code'];
+        }
+
+        $message = isset($error['message']) ? trim((string) $error['message']) : '';
+        if ($message !== '') {
+            $parts[] = $message;
+        }
+
+        $details = $error['details'] ?? null;
+        if (is_array($details) && isset($details['error']) && is_array($details['error'])) {
+            $meta = [];
+            if (!empty($details['error']['message'])) {
+                $meta[] = (string) $details['error']['message'];
+            }
+            if (!empty($details['error']['code'])) {
+                $meta[] = 'code ' . (string) $details['error']['code'];
+            }
+            if (!empty($details['error']['type'])) {
+                $meta[] = (string) $details['error']['type'];
+            }
+            if (!empty($details['error']['error_subcode'])) {
+                $meta[] = 'subcode ' . (string) $details['error']['error_subcode'];
+            }
+            if (!empty($meta)) {
+                $parts[] = 'Meta: ' . implode(' | ', $meta);
+            }
+        }
+
+        $combined = trim(implode(' | ', $parts));
+
+        return $combined !== '' ? $combined : $fallback;
+    }
+
+    /**
+     * @param array<string, mixed>|null $error
+     */
+    private function resolveTransportStatusCode(?array $error): int
+    {
+        if ($error === null) {
+            return 500;
+        }
+
+        $httpCode = isset($error['http_code']) ? (int) $error['http_code'] : 0;
+        if ($httpCode >= 400 && $httpCode <= 599) {
+            return $httpCode;
+        }
+
+        return 500;
     }
 }

@@ -2221,7 +2221,7 @@
                     if (!value) {
                         errors.push('Completa la variable ' + placeholder + ' de ' + (requirement.label || requirement.type));
                     } else {
-                        params.push({ type: 'TEXT', text: value });
+                        params.push({ type: 'text', text: value });
                     }
                 });
 
@@ -2230,7 +2230,7 @@
                     if (requirement.subType) {
                         entry.sub_type = requirement.subType;
                     }
-                    if (requirement.index !== null && typeof requirement.index !== 'undefined') {
+                    if (requirement.type === 'BUTTON' && requirement.index !== null && typeof requirement.index !== 'undefined') {
                         entry.index = requirement.index;
                     }
                     entry.parameters = params;
@@ -2247,10 +2247,6 @@
                 name: template.name,
                 language: template.language
             };
-
-            if (template.category) {
-                payload.category = template.category;
-            }
 
             if (components.length) {
                 payload.components = components;

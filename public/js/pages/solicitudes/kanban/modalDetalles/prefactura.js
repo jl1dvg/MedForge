@@ -134,7 +134,52 @@ export function abrirPrefactura({hc, formId, solicitudId}) {
         formId,
         solicitudId,
     })
-        .then(() => loadDerivacion({hc, formId}))
+        .then(async (selected) => {
+            const payload = await loadDerivacion({hc, formId});
+            const hasDerivacion =
+                payload?.success &&
+                payload?.has_derivacion &&
+                payload?.derivacion &&
+                payload?.derivacion_status !== "missing";
+
+            if (hasDerivacion) {
+                return payload;
+            }
+
+            if (selected && typeof selected === "object") {
+                const codigo = String(selected.codigo_derivacion || "").trim();
+                const pedido = String(selected.pedido_id_mas_antiguo || "").trim();
+                if (codigo && pedido) {
+                    return {
+                        success: true,
+                        has_derivacion: true,
+                        derivacion_status: "ok",
+                        message: null,
+                        derivacion: {
+                            derivacion_id: null,
+                            id: null,
+                            cod_derivacion: codigo,
+                            codigo_derivacion: codigo,
+                            form_id: pedido,
+                            hc_number: hc,
+                            fecha_creacion: null,
+                            fecha_registro: null,
+                            fecha_vigencia: selected.fecha_vigencia || null,
+                            referido: null,
+                            diagnostico: null,
+                            sede: null,
+                            parentesco: null,
+                            archivo_derivacion_path: null,
+                            lateralidad: selected.lateralidad || null,
+                            prefactura: selected.prefactura || null,
+                            source: "ui_selected_fallback",
+                        },
+                    };
+                }
+            }
+
+            return payload;
+        })
         .catch((error) => {
             console.error("❌ Error preseleccionando derivación:", error);
             showToast(

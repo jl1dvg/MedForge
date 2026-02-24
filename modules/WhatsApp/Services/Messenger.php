@@ -564,10 +564,6 @@ class Messenger
             'language' => ['code' => $language],
         ];
 
-        if (!empty($template['category'])) {
-            $payloadTemplate['category'] = strtoupper((string) $template['category']);
-        }
-
         if (!empty($components)) {
             $payloadTemplate['components'] = $components;
         }
@@ -654,12 +650,14 @@ class Messenger
 
             $entry = ['type' => $type];
 
-            if (isset($component['sub_type'])) {
-                $entry['sub_type'] = strtoupper(trim((string) $component['sub_type']));
-            }
+            if ($type === 'BUTTON') {
+                if (isset($component['sub_type'])) {
+                    $entry['sub_type'] = strtoupper(trim((string) $component['sub_type']));
+                }
 
-            if (isset($component['index'])) {
-                $entry['index'] = (int) $component['index'];
+                if (isset($component['index'])) {
+                    $entry['index'] = (int) $component['index'];
+                }
             }
 
             if (!empty($component['parameters']) && is_array($component['parameters'])) {
@@ -669,7 +667,7 @@ class Messenger
                         continue;
                     }
 
-                    $paramType = strtoupper(trim((string) ($parameter['type'] ?? 'TEXT')));
+                    $paramType = strtolower(trim((string) ($parameter['type'] ?? 'text')));
                     $param = ['type' => $paramType];
 
                     if (isset($parameter['text'])) {
@@ -706,9 +704,7 @@ class Messenger
                 }
             }
 
-            if (!empty($entry['parameters']) || !in_array($type, ['BODY', 'HEADER', 'FOOTER'], true)) {
-                $normalized[] = $entry;
-            } elseif (in_array($type, ['BODY', 'HEADER', 'FOOTER'], true)) {
+            if (!empty($entry['parameters'])) {
                 $normalized[] = $entry;
             }
         }

@@ -485,6 +485,37 @@ class ExamenModel
         return $row ?: null;
     }
 
+    public function obtenerUsuarioPorDoctorNombre(string $doctorNombre): ?array
+    {
+        $doctorNombre = trim($doctorNombre);
+        if ($doctorNombre === '') {
+            return null;
+        }
+
+        $normalizado = strtoupper(preg_replace('/\s+/', ' ', $doctorNombre) ?? $doctorNombre);
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                u.id,
+                u.first_name,
+                u.middle_name,
+                u.last_name,
+                u.second_last_name,
+                u.cedula,
+                u.signature_path,
+                u.firma,
+                u.nombre
+             FROM users u
+             WHERE u.nombre_norm = :nombre_norm
+                OR u.nombre_norm_rev = :nombre_norm
+             LIMIT 1"
+        );
+        $stmt->execute([':nombre_norm' => $normalizado]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return $row ?: null;
+    }
+
     public function obtenerDerivacionPorFormId(string $formId): ?array
     {
         $stmt = $this->db->prepare(

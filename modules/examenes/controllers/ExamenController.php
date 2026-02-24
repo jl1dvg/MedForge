@@ -1640,6 +1640,8 @@ class ExamenController extends BaseController
             }
         }
 
+        $consulta = $this->enriquecerDoctorConsulta012A($consulta);
+
         $crmResumen = [];
         try {
             $crmResumen = $this->crmService->obtenerResumen((int)$examen['id']);
@@ -1653,13 +1655,7 @@ class ExamenController extends BaseController
             $crmResumen['adjuntos'] ?? []
         );
 
-        $diagnosticos = [];
-        if (isset($consulta['diagnosticos']) && is_string($consulta['diagnosticos'])) {
-            $decodedDx = json_decode($consulta['diagnosticos'], true);
-            if (is_array($decodedDx)) {
-                $diagnosticos = $decodedDx;
-            }
-        }
+        $diagnosticos = $this->extraerDiagnosticosDesdeConsulta($consulta);
 
         $trazabilidad = $this->construirTrazabilidad($examen, $crmResumen);
 
@@ -1810,7 +1806,11 @@ class ExamenController extends BaseController
      * @param array<int, array<string, mixed>> $imagenesSolicitadas
      * @return array<int, array{linea:string, estado:string}>
      */
-    private function construirEstudios012A(array $examenesRelacionados, array $imagenesSolicitadas): array
+    private function construirEstudios012A(
+        array $examenesRelacionados,
+        array $imagenesSolicitadas,
+        bool $preferPendientes = true
+    ): array
     {
         $records = [];
 
@@ -1902,7 +1902,7 @@ class ExamenController extends BaseController
             }
         }
 
-        $target = $pendientes !== [] ? $pendientes : $unique;
+        $target = ($preferPendientes && $pendientes !== []) ? $pendientes : $unique;
 
         $conteoPorCodigo = [];
         foreach ($target as $record) {
@@ -1940,6 +1940,58 @@ class ExamenController extends BaseController
         }
 
         return $result;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $selectedItems
+     * @return array<int, array{linea:string, estado:string}>
+     */
+    private function construirEstudios012AFromSelectedItems(array $selectedItems): array
+    {
+        $examenes = [];
+
+        foreach ($selectedItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $nombre = trim((string)($item['tipo_examen'] ?? $item['tipo_examen_raw'] ?? ''));
+            $codigo = trim((string)($item['codigo'] ?? $item['examen_codigo'] ?? ''));
+            $estado = trim((string)($item['estado_agenda'] ?? $item['estado'] ?? ''));
+
+            if ($nombre === '') {
+                $formId = trim((string)($item['form_id'] ?? ''));
+                $hcNumber = trim((string)($item['hc_number'] ?? ''));
+                if ($formId !== '' && $hcNumber !== '') {
+                    $proc = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($formId, $hcNumber);
+                    if (!is_array($proc) || empty($proc)) {
+                        $proc = $this->examenModel->obtenerProcedimientoProyectadoPorFormId($formId);
+                    }
+                    if (is_array($proc) && !empty($proc)) {
+                        $nombre = trim((string)($proc['procedimiento_proyectado'] ?? ''));
+                        if ($estado === '') {
+                            $estado = trim((string)($proc['estado_agenda'] ?? ''));
+                        }
+                    }
+                }
+            }
+
+            if ($nombre === '' && $codigo === '') {
+                continue;
+            }
+
+            $examenes[] = [
+                'examen_nombre' => $nombre,
+                'examen_codigo' => $codigo,
+                'estado' => $estado,
+            ];
+        }
+
+        if ($examenes === []) {
+            return [];
+        }
+
+        return $this->construirEstudios012A($examenes, [], false);
     }
 
     private function normalizarDetalleEstudio012A(string $detalle, string $tarifaDesc): string
@@ -2609,7 +2661,15 @@ class ExamenController extends BaseController
                 continue;
             }
             $key = $formId . '|' . $hcNumber;
-            $normalizados[$key] = ['form_id' => $formId, 'hc_number' => $hcNumber];
+            $normalizados[$key] = [
+                'id' => isset($item['id']) ? (int)$item['id'] : null,
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'fecha_examen' => trim((string)($item['fecha_examen'] ?? '')),
+                'estado_agenda' => trim((string)($item['estado_agenda'] ?? '')),
+                'tipo_examen' => trim((string)($item['tipo_examen'] ?? '')),
+                'codigo' => trim((string)($item['codigo'] ?? $item['examen_codigo'] ?? '')),
+            ];
         }
 
         if (empty($normalizados)) {
@@ -2637,7 +2697,12 @@ class ExamenController extends BaseController
 
         foreach ($items as $item) {
             if (!$appended012A) {
-                $attachment012A = $this->buildCobertura012AAttachment($item['form_id'], $item['hc_number'], null);
+                $attachment012A = $this->buildCobertura012AAttachment(
+                    $item['form_id'],
+                    $item['hc_number'],
+                    null,
+                    $items
+                );
                 if (is_array($attachment012A) && !empty($attachment012A['path']) && is_file((string)$attachment012A['path'])) {
                     $tmp012A = (string)$attachment012A['path'];
                     $tempFiles[] = $tmp012A;
@@ -4736,6 +4801,231 @@ class ExamenController extends BaseController
     }
 
     /**
+     * @param array{form_id:string,hc_number:string,examen_id:int|null} $baseContext
+     * @param array<int, array<string, mixed>> $selectedItems
+     * @return array{form_id:string,hc_number:string,examen_id:int|null}
+     */
+    private function resolverMejorContextoClinico012A(array $baseContext, array $selectedItems): array
+    {
+        $candidatos = [];
+        $pushCandidato = function (array $contexto) use (&$candidatos): void {
+            $form = trim((string)($contexto['form_id'] ?? ''));
+            $hc = trim((string)($contexto['hc_number'] ?? ''));
+            if ($form === '' || $hc === '') {
+                return;
+            }
+            $key = $form . '|' . $hc;
+            if (isset($candidatos[$key])) {
+                return;
+            }
+            $candidatos[$key] = [
+                'form_id' => $form,
+                'hc_number' => $hc,
+                'examen_id' => isset($contexto['examen_id']) ? (int)$contexto['examen_id'] : null,
+            ];
+        };
+
+        $pushCandidato($baseContext);
+
+        foreach ($selectedItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $form = trim((string)($item['form_id'] ?? ''));
+            $hc = trim((string)($item['hc_number'] ?? ''));
+            if ($form === '' || $hc === '') {
+                continue;
+            }
+            $resolved = $this->resolveSolicitudOrigenContextFor012A($form, $hc);
+            $pushCandidato($resolved);
+        }
+
+        $best = $baseContext;
+        $bestScore = -1;
+
+        foreach ($candidatos as $cand) {
+            $form = trim((string)($cand['form_id'] ?? ''));
+            $hc = trim((string)($cand['hc_number'] ?? ''));
+            if ($form === '' || $hc === '') {
+                continue;
+            }
+
+            $consulta = $this->examenModel->obtenerConsultaPorFormHc($form, $hc) ?? [];
+            if (empty($consulta)) {
+                $consulta = $this->examenModel->obtenerConsultaPorFormId($form) ?? [];
+            }
+            if (!is_array($consulta) || empty($consulta)) {
+                continue;
+            }
+
+            $consulta = $this->enriquecerDoctorConsulta012A($consulta);
+            $diagnosticos = $this->extraerDiagnosticosDesdeConsulta($consulta);
+
+            $hasFirma = trim((string)($consulta['doctor_signature_path'] ?? '')) !== ''
+                || trim((string)($consulta['doctor_firma'] ?? '')) !== '';
+            $hasDoctor = trim((string)($consulta['doctor'] ?? $consulta['procedimiento_doctor'] ?? '')) !== '';
+
+            $score = (count($diagnosticos) * 10)
+                + ($hasFirma ? 3 : 0)
+                + ((int)($consulta['doctor_user_id'] ?? 0) > 0 ? 2 : 0)
+                + ($hasDoctor ? 1 : 0);
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = [
+                    'form_id' => $form,
+                    'hc_number' => trim((string)($consulta['hc_number'] ?? $hc)) ?: $hc,
+                    'examen_id' => isset($cand['examen_id']) ? (int)$cand['examen_id'] : null,
+                ];
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @return array<int, array{dx_code:string, descripcion:string}>
+     */
+    private function extraerDiagnosticosDesdeConsulta(array $consulta): array
+    {
+        $raw = $consulta['diagnosticos'] ?? null;
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return $this->normalizarDiagnosticosPara012A($decoded);
+    }
+
+    /**
+     * @param array<int, mixed> $diagnosticos
+     * @return array<int, array{dx_code:string, descripcion:string}>
+     */
+    private function normalizarDiagnosticosPara012A(array $diagnosticos): array
+    {
+        $result = [];
+        $seen = [];
+
+        foreach ($diagnosticos as $dx) {
+            if (!is_array($dx)) {
+                continue;
+            }
+
+            $code = trim((string)($dx['dx_code'] ?? $dx['codigo'] ?? ''));
+            $desc = trim((string)($dx['descripcion'] ?? $dx['descripcion_dx'] ?? $dx['nombre'] ?? ''));
+
+            if (($code === '' || $desc === '') && isset($dx['idDiagnostico'])) {
+                [$parsedCode, $parsedDesc] = $this->parseDiagnosticoCie10((string)$dx['idDiagnostico']);
+                if ($code === '') {
+                    $code = $parsedCode;
+                }
+                if ($desc === '') {
+                    $desc = $parsedDesc;
+                }
+            }
+
+            if ($code === '' && $desc === '') {
+                continue;
+            }
+
+            $key = strtoupper($code . '|' . $desc);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $result[] = [
+                'dx_code' => $code,
+                'descripcion' => $desc,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function parseDiagnosticoCie10(string $value): array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return ['', ''];
+        }
+
+        if (preg_match('/^\s*([A-Z][0-9A-Z\.]+)\s*[-–:]\s*(.+)\s*$/u', $value, $m)) {
+            return [trim((string)($m[1] ?? '')), trim((string)($m[2] ?? ''))];
+        }
+
+        return ['', $value];
+    }
+
+    /**
+     * @param array<string, mixed> $consulta
+     * @return array<string, mixed>
+     */
+    private function enriquecerDoctorConsulta012A(array $consulta): array
+    {
+        $hasDoctorNames = trim((string)($consulta['doctor_fname'] ?? '')) !== ''
+            || trim((string)($consulta['doctor_lname'] ?? '')) !== '';
+        $hasFirma = trim((string)($consulta['doctor_signature_path'] ?? '')) !== ''
+            || trim((string)($consulta['doctor_firma'] ?? '')) !== '';
+
+        if ($hasDoctorNames && $hasFirma) {
+            return $consulta;
+        }
+
+        $doctorNombreRef = trim((string)($consulta['doctor'] ?? ''));
+        if ($doctorNombreRef === '') {
+            $doctorNombreRef = trim((string)($consulta['doctor_nombre'] ?? $consulta['procedimiento_doctor'] ?? ''));
+        }
+
+        if ($doctorNombreRef === '') {
+            return $consulta;
+        }
+
+        $usuario = $this->examenModel->obtenerUsuarioPorDoctorNombre($doctorNombreRef);
+        if (!is_array($usuario) || empty($usuario)) {
+            if (!$hasDoctorNames) {
+                // Mostrar al menos el texto del doctor cuando no se pudo mapear al catálogo de usuarios.
+                $consulta['doctor_fname'] = $doctorNombreRef;
+            }
+            return $consulta;
+        }
+
+        if (trim((string)($consulta['doctor_fname'] ?? '')) === '') {
+            $consulta['doctor_fname'] = (string)($usuario['first_name'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_mname'] ?? '')) === '') {
+            $consulta['doctor_mname'] = (string)($usuario['middle_name'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_lname'] ?? '')) === '') {
+            $consulta['doctor_lname'] = (string)($usuario['last_name'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_lname2'] ?? '')) === '') {
+            $consulta['doctor_lname2'] = (string)($usuario['second_last_name'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_cedula'] ?? '')) === '') {
+            $consulta['doctor_cedula'] = (string)($usuario['cedula'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_signature_path'] ?? '')) === '') {
+            $consulta['doctor_signature_path'] = (string)($usuario['signature_path'] ?? '');
+        }
+        if (trim((string)($consulta['doctor_firma'] ?? '')) === '') {
+            $consulta['doctor_firma'] = (string)($usuario['firma'] ?? '');
+        }
+        if ((int)($consulta['doctor_user_id'] ?? 0) <= 0 && isset($usuario['id'])) {
+            $consulta['doctor_user_id'] = (int)$usuario['id'];
+        }
+
+        return $consulta;
+    }
+
+    /**
      * @return array{form_id:string,hc_number:string,examen_id:int|null}
      */
     private function resolveSolicitudOrigenContextFor012A(string $formId, string $hcNumber): array
@@ -4827,13 +5117,21 @@ class ExamenController extends BaseController
     /**
      * @return array{path: string, name?: string, type?: string, size?: int}|null
      */
-    private function buildCobertura012AAttachment(string $formId, string $hcNumber, ?int $examenId): ?array
+    private function buildCobertura012AAttachment(
+        string $formId,
+        string $hcNumber,
+        ?int $examenId,
+        array $selectedItems = []
+    ): ?array
     {
         if ($formId === '' || $hcNumber === '') {
             return null;
         }
 
         $contextoOrigen = $this->resolveSolicitudOrigenContextFor012A($formId, $hcNumber);
+        if ($selectedItems !== []) {
+            $contextoOrigen = $this->resolverMejorContextoClinico012A($contextoOrigen, $selectedItems);
+        }
         $contextFormId = trim((string)($contextoOrigen['form_id'] ?? $formId));
         $contextHcNumber = trim((string)($contextoOrigen['hc_number'] ?? $hcNumber));
         $contextExamenId = $examenId ?: (isset($contextoOrigen['examen_id']) ? (int)$contextoOrigen['examen_id'] : null);
@@ -4914,13 +5212,8 @@ class ExamenController extends BaseController
             $examenesRelacionadosFallback = array_map([$this, 'transformExamenRow'], $examenesRelacionadosFallback);
             $examenesRelacionadosFallback = $this->estadoService->enrichExamenes($examenesRelacionadosFallback);
 
-            $diagnosticosFallback = [];
-            if (isset($consultaFallback['diagnosticos']) && is_string($consultaFallback['diagnosticos'])) {
-                $decodedDx = json_decode($consultaFallback['diagnosticos'], true);
-                if (is_array($decodedDx)) {
-                    $diagnosticosFallback = $decodedDx;
-                }
-            }
+            $consultaFallback = $this->enriquecerDoctorConsulta012A($consultaFallback);
+            $diagnosticosFallback = $this->extraerDiagnosticosDesdeConsulta($consultaFallback);
 
             $viewData = [
                 'examen' => ['created_at' => null],
@@ -4946,6 +5239,13 @@ class ExamenController extends BaseController
             is_array($viewData['examenes_relacionados'] ?? null) ? $viewData['examenes_relacionados'] : [],
             is_array($viewData['imagenes_solicitadas'] ?? null) ? $viewData['imagenes_solicitadas'] : []
         );
+
+        if ($selectedItems !== []) {
+            $estudiosSeleccionados = $this->construirEstudios012AFromSelectedItems($selectedItems);
+            if ($estudiosSeleccionados !== []) {
+                $estudios012A = $estudiosSeleccionados;
+            }
+        }
 
         $payload = [
             'paciente' => $viewData['paciente'] ?? [],

@@ -7,6 +7,7 @@ namespace App\Modules\Solicitudes\Services;
 use DateTimeImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PDO;
 use RuntimeException;
 use Symfony\Component\Mailer\Mailer;
@@ -128,7 +129,43 @@ class SolicitudesPrefacturaService
     {
         $seleccion = $this->obtenerDerivacionPreseleccion($solicitudId, $formId, $hcNumber);
         $lookupFormId = trim((string) ($seleccion['derivacion_pedido_id'] ?? $formId));
+        $lookupCodigo = trim((string) ($seleccion['derivacion_codigo'] ?? ''));
         $hasSelection = $lookupFormId !== '' && !empty($seleccion['derivacion_pedido_id']);
+        $fallback = $this->buildDerivacionFallbackFromSelection(
+            $seleccion,
+            $lookupFormId !== '' ? $lookupFormId : $formId,
+            $hcNumber
+        );
+
+        $localOptions = $this->resolveDerivacionPreseleccionFromLocal($hcNumber, $formId);
+        $selectedLocal = $this->findDerivacionOptionByFormId($localOptions, $formId) ?? ($localOptions[0] ?? null);
+        if (is_array($selectedLocal)) {
+            $localLookupFormId = trim((string) ($selectedLocal['pedido_id_mas_antiguo'] ?? ''));
+            if ($localLookupFormId !== '') {
+                $localDerivacion = $this->obtenerDerivacionPorFormId($localLookupFormId);
+                if ($localDerivacion !== null) {
+                    return $localDerivacion;
+                }
+                $localDerivacionLegacy = $this->obtenerDerivacionLegacyPorFormHc($localLookupFormId, $hcNumber);
+                if ($localDerivacionLegacy !== null) {
+                    return $localDerivacionLegacy;
+                }
+
+                if ($fallback === null) {
+                    $fallback = $this->buildDerivacionFallbackFromSelection([
+                        'derivacion_codigo' => $selectedLocal['codigo_derivacion'] ?? null,
+                        'derivacion_pedido_id' => $selectedLocal['pedido_id_mas_antiguo'] ?? null,
+                        'derivacion_lateralidad' => $selectedLocal['lateralidad'] ?? null,
+                        'derivacion_fecha_vigencia_sel' => $selectedLocal['fecha_vigencia'] ?? null,
+                        'derivacion_prefactura' => $selectedLocal['prefactura'] ?? null,
+                    ], $localLookupFormId, $hcNumber);
+                }
+            }
+
+            if (($solicitudId ?? 0) > 0) {
+                $this->guardarDerivacionPreseleccion((int) $solicitudId, $selectedLocal);
+            }
+        }
 
         if ($hasSelection) {
             $derivacion = $this->obtenerDerivacionPorFormId($lookupFormId);
@@ -141,20 +178,134 @@ class SolicitudesPrefacturaService
                 return $derivacion;
             }
         }
+        $lookupByForm = $hasSelection ? $lookupFormId : $formId;
+        if ($lookupByForm !== '' && $hcNumber !== '') {
+            $derivacionLegacyByForm = $this->obtenerDerivacionLegacyPorFormHc($lookupByForm, $hcNumber);
+            if ($derivacionLegacyByForm !== null) {
+                return $derivacionLegacyByForm;
+            }
+        }
+
+        if ($lookupCodigo !== '') {
+            $derivacionByCode = $this->obtenerDerivacionPorCodigoHc($lookupCodigo, $hcNumber);
+            if ($derivacionByCode !== null) {
+                return $derivacionByCode;
+            }
+        }
+
+        if ($fallback === null) {
+            try {
+                $preselection = $this->resolveDerivacionPreseleccion($hcNumber, $formId, $solicitudId);
+                $selected = is_array($preselection['selected'] ?? null)
+                    ? $this->normalizeDerivacionOption($preselection['selected'])
+                    : null;
+
+                if ($selected !== null) {
+                    $selectedLookupFormId = trim((string) ($selected['pedido_id_mas_antiguo'] ?? $formId));
+                    $selectedCodigo = trim((string) ($selected['codigo_derivacion'] ?? ''));
+                    if ($selectedLookupFormId !== '') {
+                        $selectedDerivacion = $this->obtenerDerivacionPorFormId($selectedLookupFormId);
+                        if ($selectedDerivacion !== null) {
+                            return $selectedDerivacion;
+                        }
+                        $selectedLegacyDerivacion = $this->obtenerDerivacionLegacyPorFormHc($selectedLookupFormId, $hcNumber);
+                        if ($selectedLegacyDerivacion !== null) {
+                            return $selectedLegacyDerivacion;
+                        }
+
+                        $fallback = $this->buildDerivacionFallbackFromSelection([
+                            'derivacion_codigo' => $selected['codigo_derivacion'] ?? null,
+                            'derivacion_pedido_id' => $selected['pedido_id_mas_antiguo'] ?? null,
+                            'derivacion_lateralidad' => $selected['lateralidad'] ?? null,
+                            'derivacion_fecha_vigencia_sel' => $selected['fecha_vigencia'] ?? null,
+                            'derivacion_prefactura' => $selected['prefactura'] ?? null,
+                        ], $selectedLookupFormId, $hcNumber);
+                    }
+
+                    if ($selectedCodigo !== '') {
+                        $selectedDerivacionByCode = $this->obtenerDerivacionPorCodigoHc($selectedCodigo, $hcNumber);
+                        if ($selectedDerivacionByCode !== null) {
+                            return $selectedDerivacionByCode;
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning('solicitudes.prefactura.derivacion.preselection_fallback_error', [
+                    'hc_number' => $hcNumber,
+                    'form_id' => $formId,
+                    'solicitud_id' => $solicitudId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $script = $this->projectRootPath() . '/scrapping/scrape_derivacion.py';
         if (!is_file($script)) {
-            return null;
+            return $fallback;
         }
 
-        $this->runCommand(sprintf(
+        $lookup = $lookupFormId !== '' ? $lookupFormId : $formId;
+        [$scrapePayload, $scrapeRawOutput, $exitCode] = $this->runCommandWithJson(sprintf(
             'python3 %s %s %s 2>&1',
             escapeshellarg($script),
-            escapeshellarg($lookupFormId !== '' ? $lookupFormId : $formId),
+            escapeshellarg($lookup),
             escapeshellarg($hcNumber)
         ));
+        if (is_array($scrapePayload)) {
+            $scrapeCode = trim((string) ($scrapePayload['codigo_derivacion'] ?? $scrapePayload['cod_derivacion'] ?? ''));
+            $scrapeArchivo = trim((string) ($scrapePayload['archivo_path'] ?? $scrapePayload['archivo_derivacion_path'] ?? ''));
+            if ($scrapeCode !== '' || $scrapeArchivo !== '') {
+                $this->upsertLegacyDerivacion($lookup, $hcNumber, [
+                    'cod_derivacion' => $scrapeCode !== '' ? $scrapeCode : ($lookupCodigo !== '' ? $lookupCodigo : null),
+                    'fecha_registro' => $scrapePayload['fecha_registro'] ?? null,
+                    'fecha_vigencia' => $scrapePayload['fecha_vigencia'] ?? null,
+                    'referido' => $scrapePayload['referido'] ?? null,
+                    'diagnostico' => $scrapePayload['diagnostico'] ?? null,
+                    'sede' => $scrapePayload['sede'] ?? null,
+                    'parentesco' => $scrapePayload['parentesco'] ?? null,
+                    'archivo_derivacion_path' => $scrapeArchivo !== '' ? $scrapeArchivo : null,
+                ]);
+            }
+        }
+        if ($exitCode !== 0) {
+            $rawLines = $scrapeRawOutput !== '' ? preg_split('/\R+/', $scrapeRawOutput) : [];
+            if (!is_array($rawLines)) {
+                $rawLines = [];
+            }
+            Log::warning('solicitudes.prefactura.derivacion.scrape_nonzero', [
+                'lookup_form_id' => $lookup,
+                'hc_number' => $hcNumber,
+                'exit_code' => $exitCode,
+                'tail' => implode("\n", array_slice($rawLines, -5)),
+            ]);
+        }
 
-        return $this->obtenerDerivacionPorFormId($lookupFormId !== '' ? $lookupFormId : $formId);
+        $derivacion = $this->obtenerDerivacionPorFormId($lookup);
+        if ($derivacion !== null) {
+            return $derivacion;
+        }
+        $legacyDerivacion = $this->obtenerDerivacionLegacyPorFormHc($lookup, $hcNumber);
+        if ($legacyDerivacion !== null) {
+            return $legacyDerivacion;
+        }
+        if ($lookupCodigo !== '') {
+            $legacyDerivacionByCode = $this->obtenerDerivacionPorCodigoHc($lookupCodigo, $hcNumber);
+            if ($legacyDerivacionByCode !== null) {
+                return $legacyDerivacionByCode;
+            }
+        }
+
+        if ($fallback !== null) {
+            Log::info('solicitudes.prefactura.derivacion.using_preselection_fallback', [
+                'lookup_form_id' => $lookup,
+                'hc_number' => $hcNumber,
+                'lookup_codigo' => $lookupCodigo !== '' ? $lookupCodigo : null,
+                'solicitud_id' => $solicitudId,
+                'source' => $fallback['source'] ?? 'fallback',
+            ]);
+        }
+
+        return $fallback;
     }
 
     /**
@@ -183,6 +334,9 @@ class SolicitudesPrefacturaService
         $localOptions = $this->resolveDerivacionPreseleccionFromLocal($hcNumber, $formId);
         if ($localOptions !== []) {
             $selectedLocal = $this->findDerivacionOptionByFormId($localOptions, $formId);
+            if ($selectedLocal !== null && ($solicitudId ?? 0) > 0) {
+                $this->guardarDerivacionPreseleccion((int) $solicitudId, $selectedLocal);
+            }
 
             return [
                 'success' => true,
@@ -228,6 +382,9 @@ class SolicitudesPrefacturaService
         }
         $options = $this->dedupeDerivacionOptions($options);
         $selectedFromScraper = $this->findDerivacionOptionByFormId($options, $formId);
+        if ($selectedFromScraper !== null && ($solicitudId ?? 0) > 0) {
+            $this->guardarDerivacionPreseleccion((int) $solicitudId, $selectedFromScraper);
+        }
 
         return [
             'success' => true,
@@ -291,6 +448,44 @@ class SolicitudesPrefacturaService
             'payload' => $parsed,
             'raw_output' => $rawOutput,
             'exit_code' => $exitCode,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed>|null $seleccion
+     * @return array<string,mixed>|null
+     */
+    private function buildDerivacionFallbackFromSelection(?array $seleccion, string $lookupFormId, string $hcNumber): ?array
+    {
+        $selected = $this->normalizeDerivacionOption([
+            'codigo_derivacion' => $seleccion['derivacion_codigo'] ?? null,
+            'pedido_id_mas_antiguo' => $seleccion['derivacion_pedido_id'] ?? null,
+            'lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+            'fecha_vigencia' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
+            'prefactura' => $seleccion['derivacion_prefactura'] ?? null,
+        ]);
+        if ($selected === null) {
+            return null;
+        }
+
+        return [
+            'derivacion_id' => null,
+            'id' => null,
+            'cod_derivacion' => $selected['codigo_derivacion'],
+            'codigo_derivacion' => $selected['codigo_derivacion'],
+            'form_id' => $lookupFormId !== '' ? $lookupFormId : null,
+            'hc_number' => $hcNumber !== '' ? $hcNumber : null,
+            'fecha_creacion' => null,
+            'fecha_registro' => null,
+            'fecha_vigencia' => $selected['fecha_vigencia'] ?? null,
+            'referido' => null,
+            'diagnostico' => null,
+            'sede' => null,
+            'parentesco' => null,
+            'archivo_derivacion_path' => null,
+            'lateralidad' => $selected['lateralidad'] ?? null,
+            'prefactura' => $selected['prefactura'] ?? null,
+            'source' => 'preseleccion_fallback',
         ];
     }
 
@@ -1596,7 +1791,7 @@ class SolicitudesPrefacturaService
      */
     private function obtenerDerivacionPorFormId(string $formId): ?array
     {
-        if ($this->hasTable('derivaciones_forms')) {
+        try {
             $stmt = $this->db->prepare(
                 'SELECT
                     rf.id AS derivacion_id,
@@ -1625,13 +1820,153 @@ class SolicitudesPrefacturaService
                 $row['id'] = $row['derivacion_id'] ?? null;
                 return $row;
             }
+        } catch (Throwable) {
+            // continue with simpler/fallback lookups
         }
 
-        if ($this->hasTable('derivaciones_form_id')) {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT
+                    rf.id AS derivacion_id,
+                    r.referral_code AS cod_derivacion,
+                    r.referral_code AS codigo_derivacion,
+                    f.iess_form_id AS form_id,
+                    f.hc_number,
+                    f.fecha_creacion,
+                    f.fecha_registro,
+                    COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                    f.referido,
+                    f.diagnostico,
+                    f.sede,
+                    f.parentesco,
+                    f.archivo_derivacion_path
+                 FROM derivaciones_forms f
+                 LEFT JOIN derivaciones_referral_forms rf ON rf.form_id = f.id
+                 LEFT JOIN derivaciones_referrals r ON r.id = rf.referral_id
+                 WHERE f.iess_form_id = :form_id
+                 ORDER BY f.id DESC
+                 LIMIT 1'
+            );
+            $stmt->execute([':form_id' => $formId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                $row['id'] = $row['derivacion_id'] ?? null;
+                return $row;
+            }
+        } catch (Throwable) {
+            // continue
+        }
+
+        try {
             $stmt = $this->db->prepare('SELECT * FROM derivaciones_form_id WHERE form_id = :form_id LIMIT 1');
             $stmt->execute([':form_id' => $formId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            return is_array($row) ? $row : null;
+            if (is_array($row)) {
+                return $row;
+            }
+        } catch (Throwable) {
+            // no-op
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function obtenerDerivacionLegacyPorFormHc(string $formId, string $hcNumber): ?array
+    {
+        if ($formId === '' || $hcNumber === '') {
+            return null;
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT * FROM derivaciones_form_id
+                 WHERE form_id = :form_id
+                   AND hc_number = :hc
+                 ORDER BY id DESC
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                ':form_id' => $formId,
+                ':hc' => $hcNumber,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                return $row;
+            }
+        } catch (Throwable) {
+            // no-op
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function obtenerDerivacionPorCodigoHc(string $codigoDerivacion, string $hcNumber): ?array
+    {
+        if ($codigoDerivacion === '' || $hcNumber === '') {
+            return null;
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT
+                    rf.id AS derivacion_id,
+                    r.referral_code AS cod_derivacion,
+                    r.referral_code AS codigo_derivacion,
+                    f.iess_form_id AS form_id,
+                    f.hc_number,
+                    f.fecha_creacion,
+                    f.fecha_registro,
+                    COALESCE(r.valid_until, f.fecha_vigencia) AS fecha_vigencia,
+                    f.referido,
+                    f.diagnostico,
+                    f.sede,
+                    f.parentesco,
+                    f.archivo_derivacion_path
+                 FROM derivaciones_forms f
+                 INNER JOIN derivaciones_referral_forms rf ON rf.form_id = f.id
+                 INNER JOIN derivaciones_referrals r ON r.id = rf.referral_id
+                 WHERE r.referral_code = :codigo
+                   AND f.hc_number = :hc
+                 ORDER BY f.id DESC
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                ':codigo' => $codigoDerivacion,
+                ':hc' => $hcNumber,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                $row['id'] = $row['derivacion_id'] ?? null;
+                return $row;
+            }
+        } catch (Throwable) {
+            // continue
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT * FROM derivaciones_form_id
+                 WHERE cod_derivacion = :codigo
+                   AND hc_number = :hc
+                 ORDER BY id DESC
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                ':codigo' => $codigoDerivacion,
+                ':hc' => $hcNumber,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                return $row;
+            }
+        } catch (Throwable) {
+            // no-op
         }
 
         return null;

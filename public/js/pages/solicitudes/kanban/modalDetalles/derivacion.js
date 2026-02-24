@@ -266,6 +266,22 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
     }
 
     if (data?.selected) {
+        const source = String(data?.source || "").trim();
+        const shouldPersist =
+            source !== "solicitud_preseleccion" &&
+            Number.parseInt(String(solicitudId || "0"), 10) > 0;
+
+        if (shouldPersist) {
+            await guardarPreseleccionDerivacion({
+                solicitud_id: solicitudId,
+                codigo_derivacion: data.selected.codigo_derivacion,
+                pedido_id_mas_antiguo: data.selected.pedido_id_mas_antiguo,
+                lateralidad: data.selected.lateralidad,
+                fecha_vigencia: data.selected.fecha_vigencia,
+                prefactura: data.selected.prefactura,
+            });
+        }
+
         return data.selected;
     }
 

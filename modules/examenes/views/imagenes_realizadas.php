@@ -234,6 +234,7 @@ sort($estadoOpciones);
                             data-form-id="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-hc-number="<?= htmlspecialchars((string)($row['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-fecha-examen="<?= htmlspecialchars((string)($row['fecha_examen'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                            data-estado-agenda="<?= htmlspecialchars((string)($row['estado_agenda'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-afiliacion="<?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
@@ -1393,9 +1394,12 @@ sort($estadoOpciones);
             function buildItemsPayload(rows) {
                 return rows.map(function (row) {
                     return {
+                        id: parseInt((row.dataset.id || '0').trim(), 10) || null,
                         form_id: (row.dataset.formId || '').trim(),
                         hc_number: (row.dataset.hcNumber || '').trim(),
-                        fecha_examen: (row.dataset.fechaExamen || '').trim()
+                        fecha_examen: (row.dataset.fechaExamen || '').trim(),
+                        estado_agenda: (row.dataset.estadoAgenda || '').trim(),
+                        tipo_examen: (row.dataset.tipoRaw || row.dataset.examen || '').trim()
                     };
                 }).filter(function (item) {
                     return item.form_id && item.hc_number;
@@ -1583,7 +1587,14 @@ sort($estadoOpciones);
                     const formId = (row.dataset.formId || '').trim();
                     const hcNumber = (row.dataset.hcNumber || '').trim();
                     if (!formId || !hcNumber) return;
-                    descargarPaquete([{form_id: formId, hc_number: hcNumber}], btn);
+                    descargarPaquete([{
+                        id: parseInt((row.dataset.id || '0').trim(), 10) || null,
+                        form_id: formId,
+                        hc_number: hcNumber,
+                        fecha_examen: (row.dataset.fechaExamen || '').trim(),
+                        estado_agenda: (row.dataset.estadoAgenda || '').trim(),
+                        tipo_examen: (row.dataset.tipoRaw || row.dataset.examen || '').trim()
+                    }], btn);
                 });
             });
 
