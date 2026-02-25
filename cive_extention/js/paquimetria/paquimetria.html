@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Paquimetria Corneal</title>
+    <link rel="stylesheet" href="paquimetria.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>Paquimetria Corneal (AO)</h3>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="inputOD">Espesor corneal central (micras)</label>
+                <input type="number" step="0.01" id="inputOD" inputmode="decimal" autocomplete="off">
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="inputOI">Espesor corneal central (micras)</label>
+                <input type="number" step="0.01" id="inputOI" inputmode="decimal" autocomplete="off">
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="paquimetria.js"></script>
+</body>
+</html>
