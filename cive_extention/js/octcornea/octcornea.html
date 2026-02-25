@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>OCT de Cornea y Esclera</title>
+    <link rel="stylesheet" href="octcornea.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>OCT de Cornea y Esclera (AO)</h3>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="textOD">Descripción</label>
+                <textarea id="textOD" rows="7" autocomplete="off"></textarea>
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="textOI">Descripción</label>
+                <textarea id="textOI" rows="7" autocomplete="off"></textarea>
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="octcornea.js"></script>
+</body>
+</html>

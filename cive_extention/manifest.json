@@ -94,6 +94,8 @@
         "js/angulo/angulo.css",
         "js/cornea/cornea.html",
         "js/cornea/cornea.css",
+        "js/octcornea/octcornea.html",
+        "js/octcornea/octcornea.css",
         "js/paquimetria/paquimetria.html",
         "js/paquimetria/paquimetria.css",
         "js/octm/octm.html",

@@ -688,6 +688,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'RETINOGRAFIA',
             cv: 'CAMPO VISUAL',
             cornea: 'TOPOGRAFIA CORNEAL',
+            octcornea: '281032 - OCT DE CORNEA Y ESCLERA (AO)',
             paquimetria: '281229 - PAQUIMETRIA CORNEAL (AO)',
             biometria: 'BIOMETRIA OCULAR',
             microespecular: '281197 - MICROSCOPIA ESPECULAR (AO)'
@@ -706,6 +707,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'retino',
             cv: 'cv',
             cornea: 'cornea',
+            octcornea: 'octcornea',
             paquimetria: 'paquimetria',
             biometria: 'biometria',
             microespecular: 'microespecular'
@@ -1146,6 +1148,31 @@ OI: ${OI}`;
                 appendEye('OI', 'OI');
                 recomendaciones.value = lines.join('\n');
 
+                finalizarFlujoExamen(item, result);
+            });
+        } else if (item.id === 'octcornea') {
+            mostrarPopup('js/octcornea/octcornea.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const payload = (result.payload && typeof result.payload === 'object') ? result.payload : {};
+                const od = (payload.textOD || '').toString().trim();
+                const oi = (payload.textOI || '').toString().trim();
+                const lines = ['SE REALIZA OCT DE CORNEA Y ESCLERA.'];
+
+                if (od) {
+                    lines.push('');
+                    lines.push('OD:');
+                    lines.push(od);
+                }
+                if (oi) {
+                    lines.push('');
+                    lines.push('OI:');
+                    lines.push(oi);
+                }
+
+                recomendaciones.value = lines.join('\n');
                 finalizarFlujoExamen(item, result);
             });
         } else if (item.id === 'paquimetria') {
