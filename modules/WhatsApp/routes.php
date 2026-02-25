@@ -35,6 +35,10 @@ return static function (Router $router): void {
         (new ChatController($pdo))->sendMessage();
     });
 
+    $router->get('/whatsapp/api/media/{mediaId}', static function (\PDO $pdo, string $mediaId): void {
+        (new ChatController($pdo))->streamMedia($mediaId);
+    });
+
     $router->post('/whatsapp/api/conversations/{conversationId}/assign', static function (\PDO $pdo, string $conversationId): void {
         (new ChatController($pdo))->assignConversation((int) $conversationId);
     });

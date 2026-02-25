@@ -428,6 +428,53 @@ class ChatController extends BaseController
         ]);
     }
 
+    public function streamMedia(string $mediaId): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $mediaId = trim($mediaId);
+        if ($mediaId === '' || !preg_match('/^[A-Za-z0-9._-]+$/', $mediaId)) {
+            $this->json(['ok' => false, 'error' => 'Media ID inválido.'], 422);
+
+            return;
+        }
+
+        $download = $this->messenger->downloadMediaById($mediaId);
+        if ($download === null) {
+            $transportError = $this->messenger->getLastTransportError();
+            $this->json([
+                'ok' => false,
+                'error' => $this->formatTransportError($transportError, 'No fue posible descargar el archivo de WhatsApp.'),
+                'transport_error' => $transportError,
+            ], $this->resolveTransportStatusCode($transportError));
+
+            return;
+        }
+
+        $mimeType = trim((string) ($download['mime_type'] ?? 'application/octet-stream'));
+        if ($mimeType === '') {
+            $mimeType = 'application/octet-stream';
+        }
+
+        $filename = trim((string) ($download['filename'] ?? ('media_' . $mediaId)));
+        if ($filename === '') {
+            $filename = 'media_' . $mediaId;
+        }
+        $filename = preg_replace('/[^A-Za-z0-9._-]/', '_', $filename) ?: ('media_' . $mediaId);
+        $content = (string) ($download['content'] ?? '');
+
+        if (!headers_sent()) {
+            header('Content-Type: ' . $mimeType);
+            header('Content-Length: ' . strlen($content));
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        echo $content;
+    }
+
     public function searchPatients(): void
     {
         $this->requireAuth();

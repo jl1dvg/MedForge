@@ -607,10 +607,252 @@ class Messenger
         return $this->lastTransportResponse;
     }
 
+    /**
+     * @return array{content:string,mime_type:string,filename:string}|null
+     */
+    public function downloadMediaById(string $mediaId): ?array
+    {
+        $config = $this->settings->get();
+        if (!$config['enabled']) {
+            return null;
+        }
+
+        $mediaId = trim($mediaId);
+        if ($mediaId === '') {
+            return null;
+        }
+
+        $this->resetTransportDiagnostics();
+
+        $apiVersion = trim((string) ($config['api_version'] ?? ''));
+        $apiVersion = $apiVersion !== '' ? trim($apiVersion, '/') : 'v17.0';
+        $token = (string) ($config['access_token'] ?? '');
+        if (trim($token) === '') {
+            $this->lastTransportError = [
+                'type' => 'config',
+                'message' => 'No hay token de acceso configurado para WhatsApp Cloud API.',
+            ];
+
+            return null;
+        }
+
+        $metadataUrl = 'https://graph.facebook.com/' . $apiVersion . '/' . rawurlencode($mediaId);
+        $metadata = $this->requestJsonWithBearer($metadataUrl, $token);
+        if ($metadata === null) {
+            return null;
+        }
+
+        $downloadUrl = isset($metadata['url']) ? trim((string) $metadata['url']) : '';
+        if ($downloadUrl === '') {
+            $this->lastTransportError = [
+                'type' => 'http',
+                'message' => 'La respuesta de Meta no incluyó URL de descarga para el media ID.',
+                'details' => $metadata,
+            ];
+
+            return null;
+        }
+
+        $binary = $this->requestBinaryWithBearer($downloadUrl, $token);
+        if ($binary === null) {
+            return null;
+        }
+
+        $mimeType = trim((string) ($metadata['mime_type'] ?? $binary['mime_type'] ?? 'application/octet-stream'));
+        if ($mimeType === '') {
+            $mimeType = 'application/octet-stream';
+        }
+
+        $filename = $this->resolveMediaFilename($mediaId, $metadata, $mimeType);
+
+        return [
+            'content' => $binary['body'],
+            'mime_type' => $mimeType,
+            'filename' => $filename,
+        ];
+    }
+
     private function resetTransportDiagnostics(): void
     {
         $this->lastTransportError = null;
         $this->lastTransportResponse = null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function requestJsonWithBearer(string $url, string $token): ?array
+    {
+        $handle = curl_init($url);
+        if ($handle === false) {
+            $this->lastTransportError = [
+                'type' => 'transport',
+                'message' => 'No fue posible iniciar la solicitud de metadata de media.',
+            ];
+
+            return null;
+        }
+
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $token,
+                'Accept: application/json',
+            ],
+            CURLOPT_TIMEOUT => 20,
+        ]);
+
+        $response = curl_exec($handle);
+        if ($response === false) {
+            $error = curl_error($handle);
+            curl_close($handle);
+
+            $this->lastTransportError = [
+                'type' => 'transport',
+                'message' => 'Error al consultar metadata de media en Meta: ' . $error,
+            ];
+
+            return null;
+        }
+
+        $status = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
+        curl_close($handle);
+
+        $decoded = json_decode((string) $response, true);
+        if ($status < 200 || $status >= 300) {
+            $this->lastTransportError = [
+                'type' => 'http',
+                'http_code' => $status,
+                'message' => 'Meta rechazó la consulta de media.',
+                'details' => is_array($decoded) ? $decoded : ['raw' => (string) $response],
+            ];
+
+            return null;
+        }
+
+        if (!is_array($decoded)) {
+            $this->lastTransportError = [
+                'type' => 'decode',
+                'http_code' => $status,
+                'message' => 'No fue posible decodificar metadata de media.',
+                'details' => ['raw' => (string) $response],
+            ];
+
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @return array{body:string,mime_type:string}|null
+     */
+    private function requestBinaryWithBearer(string $url, string $token): ?array
+    {
+        $handle = curl_init($url);
+        if ($handle === false) {
+            $this->lastTransportError = [
+                'type' => 'transport',
+                'message' => 'No fue posible iniciar la descarga del archivo de media.',
+            ];
+
+            return null;
+        }
+
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $token,
+                'Accept: */*',
+            ],
+            CURLOPT_TIMEOUT => 30,
+        ]);
+
+        $response = curl_exec($handle);
+        if ($response === false) {
+            $error = curl_error($handle);
+            curl_close($handle);
+
+            $this->lastTransportError = [
+                'type' => 'transport',
+                'message' => 'Error al descargar archivo de media en Meta: ' . $error,
+            ];
+
+            return null;
+        }
+
+        $status = (int) curl_getinfo($handle, CURLINFO_HTTP_CODE);
+        $mimeType = (string) (curl_getinfo($handle, CURLINFO_CONTENT_TYPE) ?: '');
+        curl_close($handle);
+
+        if ($status < 200 || $status >= 300) {
+            $decoded = json_decode((string) $response, true);
+            $this->lastTransportError = [
+                'type' => 'http',
+                'http_code' => $status,
+                'message' => 'Meta rechazó la descarga del archivo de media.',
+                'details' => is_array($decoded) ? $decoded : ['raw' => (string) $response],
+            ];
+
+            return null;
+        }
+
+        return [
+            'body' => (string) $response,
+            'mime_type' => trim($mimeType),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function resolveMediaFilename(string $mediaId, array $metadata, string $mimeType): string
+    {
+        $filename = trim((string) ($metadata['filename'] ?? ''));
+        if ($filename !== '') {
+            return $filename;
+        }
+
+        $extension = $this->guessExtensionFromMime($mimeType);
+        if ($extension !== '') {
+            return 'media_' . $mediaId . '.' . $extension;
+        }
+
+        return 'media_' . $mediaId;
+    }
+
+    private function guessExtensionFromMime(string $mimeType): string
+    {
+        $mime = strtolower(trim($mimeType));
+        if ($mime === '') {
+            return '';
+        }
+
+        $map = [
+            'audio/ogg' => 'ogg',
+            'audio/opus' => 'opus',
+            'audio/mpeg' => 'mp3',
+            'audio/mp3' => 'mp3',
+            'audio/aac' => 'aac',
+            'audio/mp4' => 'm4a',
+            'audio/x-m4a' => 'm4a',
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'application/pdf' => 'pdf',
+        ];
+
+        if (isset($map[$mime])) {
+            return $map[$mime];
+        }
+
+        if (str_contains($mime, '/')) {
+            $parts = explode('/', $mime, 2);
+            return preg_replace('/[^a-z0-9]+/', '', strtolower($parts[1])) ?: '';
+        }
+
+        return '';
     }
 
     private function captureTransportDiagnostics(): void

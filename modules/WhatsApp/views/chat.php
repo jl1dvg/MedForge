@@ -158,6 +158,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
             data-endpoint-list="/whatsapp/api/conversations"
             data-endpoint-conversation="/whatsapp/api/conversations/{id}"
             data-endpoint-send="/whatsapp/api/messages"
+            data-endpoint-media="/whatsapp/api/media/{id}"
             data-endpoint-patients="/whatsapp/api/patients"
             data-endpoint-templates="/whatsapp/api/chat-templates"
             data-endpoint-agents="/whatsapp/api/agents"

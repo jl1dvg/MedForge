@@ -104,6 +104,7 @@
             list: root.getAttribute('data-endpoint-list') || '',
             conversation: root.getAttribute('data-endpoint-conversation') || '',
             send: root.getAttribute('data-endpoint-send') || '',
+            media: root.getAttribute('data-endpoint-media') || '',
             patients: root.getAttribute('data-endpoint-patients') || '',
             templates: root.getAttribute('data-endpoint-templates') || '',
             agents: root.getAttribute('data-endpoint-agents') || '',
@@ -204,6 +205,10 @@
 
         function getDeleteEndpoint(id) {
             return endpoints.remove.replace('{id}', String(id));
+        }
+
+        function getMediaEndpoint(id) {
+            return endpoints.media.replace('{id}', encodeURIComponent(String(id)));
         }
 
         function toggleComposer(disabled) {
@@ -892,7 +897,7 @@
             }
 
             var type = String(message.type);
-            var url = message.media_url || '';
+            var url = resolveMediaUrl(message);
 
             if (type === 'image') {
                 if (url) {
@@ -955,6 +960,45 @@
             var badge = createElement('span', 'badge bg-secondary-light text-secondary', label);
             wrap.appendChild(badge);
             return wrap;
+        }
+
+        function resolveMediaUrl(message) {
+            if (!message) {
+                return '';
+            }
+
+            var mediaId = '';
+            if (message.media_id) {
+                mediaId = String(message.media_id).trim();
+            }
+
+            if (!mediaId && message.media_url) {
+                mediaId = extractMediaIdFromUrl(String(message.media_url));
+            }
+
+            if (mediaId && endpoints.media) {
+                return getMediaEndpoint(mediaId);
+            }
+
+            if (message.media_url) {
+                return String(message.media_url);
+            }
+
+            return '';
+        }
+
+        function extractMediaIdFromUrl(url) {
+            if (!url) {
+                return '';
+            }
+
+            try {
+                var parsed = new URL(url, window.location.origin);
+                var mid = parsed.searchParams.get('mid');
+                return mid ? String(mid).trim() : '';
+            } catch (error) {
+                return '';
+            }
         }
 
         function buildStatusIndicator(status) {
@@ -2401,7 +2445,8 @@
             isRefreshing = true;
 
             var promises = [loadConversations()];
-            if (state.selectedId) {
+            var isPlayingAudio = isAudioPlaybackActive();
+            if (state.selectedId && !isPlayingAudio) {
                 promises.push(openConversation(state.selectedId, {silent: true}));
             }
 
@@ -2414,6 +2459,22 @@
                 isRefreshing = false;
                 scheduleRefresh(refreshIntervalMs);
             });
+        }
+
+        function isAudioPlaybackActive() {
+            if (!messageContainer) {
+                return false;
+            }
+
+            var audios = messageContainer.querySelectorAll('audio');
+            for (var i = 0; i < audios.length; i++) {
+                var audio = audios[i];
+                if (audio && !audio.paused && !audio.ended) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         function startAutoRefresh() {
