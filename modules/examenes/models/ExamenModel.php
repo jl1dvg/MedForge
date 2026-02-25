@@ -152,7 +152,7 @@ class ExamenModel
                 ce.id,
                 ce.hc_number,
                 ce.form_id,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS full_name,
                 ce.estado,
                 ce.prioridad,
                 ce.created_at,
@@ -1347,7 +1347,7 @@ class ExamenModel
                     ELSE NULL
                 END AS fecha_examen,
                 COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación') AS afiliacion,
-                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
+                CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS full_name,
                 COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number) AS cedula,
                 NULLIF(TRIM(pp.procedimiento_proyectado), '') AS tipo_examen,
                 NULL AS examen_nombre,
@@ -1386,7 +1386,11 @@ class ExamenModel
         }
 
         if (!empty($filters['paciente'])) {
-            $sql .= " AND (pd.hc_number LIKE :paciente OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente)";
+            $sql .= " AND (
+                pd.hc_number LIKE :paciente
+                OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+            )";
             $params[':paciente'] = '%' . $filters['paciente'] . '%';
         }
 
