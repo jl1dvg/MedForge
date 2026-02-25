@@ -210,8 +210,15 @@ class BillingService
     private function resolverFacturador(array $billing): ?array
     {
         $userId = !empty($billing['facturado_por']) ? (int)$billing['facturado_por'] : null;
+        $formId = trim((string)($billing['form_id'] ?? ''));
 
         if (!$userId) {
+            if ($formId !== '' && $this->esFacturacionImagenAutomatica($formId)) {
+                return [
+                    'id' => null,
+                    'nombre' => 'Imagenes',
+                ];
+            }
             return null;
         }
 
@@ -221,10 +228,24 @@ class BillingService
         $stmt->execute([$userId]);
         $nombre = $stmt->fetchColumn();
 
+        if (!$nombre && $formId !== '' && $this->esFacturacionImagenAutomatica($formId)) {
+            return [
+                'id' => null,
+                'nombre' => 'Imagenes',
+            ];
+        }
+
         return [
             'id' => $userId,
             'nombre' => $nombre ?: null,
         ];
+    }
+
+    private function esFacturacionImagenAutomatica(string $formId): bool
+    {
+        $stmt = $this->db->prepare('SELECT 1 FROM imagenes_informes WHERE form_id = ? LIMIT 1');
+        $stmt->execute([$formId]);
+        return (bool)$stmt->fetchColumn();
     }
 
     public function obtenerResumenConsolidado(?string $mes = null): array

@@ -5,6 +5,8 @@ namespace Controllers;
 use Core\BaseController;
 use DateTimeImmutable;
 use Helpers\JsonLogger;
+use Models\BillingMainModel;
+use Models\BillingProcedimientosModel;
 use Models\SettingsModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
@@ -23,6 +25,7 @@ use Modules\Pacientes\Services\PacienteService;
 use Modules\Reporting\Services\ReportService;
 use PDO;
 use RuntimeException;
+use Services\PreviewService;
 use setasign\Fpdi\Tcpdf\Fpdi;
 use Throwable;
 
@@ -2382,9 +2385,114 @@ class ExamenController extends BaseController
                 $currentUserId,
                 $firmanteId
             );
+
+            if ($ok) {
+                $this->autoFacturarInformeImagen($formId, $hcNumber !== '' ? $hcNumber : null);
+            }
+
             $this->json(['success' => $ok]);
         } catch (Throwable $e) {
             $this->json(['success' => false, 'error' => 'No se pudo guardar el informe'], 500);
+        }
+    }
+
+    private function autoFacturarInformeImagen(string $formId, ?string $hcNumber): void
+    {
+        $formId = trim($formId);
+        $hc = trim((string)$hcNumber);
+        if ($formId === '') {
+            return;
+        }
+
+        if ($hc === '') {
+            $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormId($formId);
+            $hc = trim((string)($procedimiento['hc_number'] ?? ''));
+        }
+
+        if ($hc === '') {
+            JsonLogger::log(
+                'examenes_billing_auto',
+                'Auto facturación omitida: hc_number vacío',
+                null,
+                ['form_id' => $formId, 'user_id' => $this->getCurrentUserId()]
+            );
+            return;
+        }
+
+        try {
+            $previewService = new PreviewService($this->pdo);
+            $preview = $previewService->prepararPreviewFacturacion($formId, $hc);
+            $procedimientos = is_array($preview['procedimientos'] ?? null) ? $preview['procedimientos'] : [];
+            $procedimientosFacturables = [];
+
+            foreach ($procedimientos as $procedimiento) {
+                if (!is_array($procedimiento)) {
+                    continue;
+                }
+
+                $codigo = trim((string)($procedimiento['procCodigo'] ?? ''));
+                $detalle = trim((string)($procedimiento['procDetalle'] ?? ''));
+                if ($codigo === '' || $detalle === '') {
+                    continue;
+                }
+
+                $procedimientosFacturables[] = [
+                    'id' => isset($procedimiento['id']) ? (int)$procedimiento['id'] : null,
+                    'procCodigo' => $codigo,
+                    'procDetalle' => $detalle,
+                    'procPrecio' => (float)($procedimiento['procPrecio'] ?? 0),
+                ];
+            }
+
+            if ($procedimientosFacturables === []) {
+                JsonLogger::log(
+                    'examenes_billing_auto',
+                    'Auto facturación omitida: sin procedimientos facturables',
+                    null,
+                    ['form_id' => $formId, 'hc_number' => $hc, 'user_id' => $this->getCurrentUserId()]
+                );
+                return;
+            }
+
+            $billingMainModel = new BillingMainModel($this->pdo);
+            $billingProcedimientosModel = new BillingProcedimientosModel($this->pdo);
+
+            $this->pdo->beginTransaction();
+
+            $billing = $billingMainModel->findByFormId($formId);
+            if ($billing) {
+                $billingId = (int)($billing['id'] ?? 0);
+                if ($billingId <= 0) {
+                    throw new RuntimeException('Billing existente inválido para form_id ' . $formId);
+                }
+                $billingMainModel->update($hc, $billingId);
+                // Requerimiento: reconstrucción automática de procedimientos.
+                $billingProcedimientosModel->borrarPorBillingId($billingId);
+            } else {
+                $billingId = $billingMainModel->insert($hc, $formId, null);
+            }
+
+            foreach ($procedimientosFacturables as $procedimiento) {
+                $billingProcedimientosModel->insertar($billingId, [
+                    'id' => $procedimiento['id'],
+                    'procCodigo' => $procedimiento['procCodigo'],
+                    'procDetalle' => $procedimiento['procDetalle'],
+                    'procPrecio' => $procedimiento['procPrecio'],
+                ]);
+            }
+
+            $this->pdo->commit();
+        } catch (Throwable $exception) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            JsonLogger::log(
+                'examenes_billing_auto',
+                'Error en auto facturación al guardar informe',
+                $exception,
+                ['form_id' => $formId, 'hc_number' => $hc, 'user_id' => $this->getCurrentUserId()]
+            );
         }
     }
 
