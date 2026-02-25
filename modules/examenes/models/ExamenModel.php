@@ -383,6 +383,24 @@ class ExamenModel
                AND pp.hc_number = :hc_number
                AND pp.doctor IS NOT NULL
                AND TRIM(pp.doctor) <> ''
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'IMAGENES%'
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRIA%'
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRÍA%'
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGIA%'
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGÍA%'
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE '%SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'
+               AND EXISTS (
+                    SELECT 1
+                    FROM users u
+                    WHERE (
+                            UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                            OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                        )
+                      AND (
+                            UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                            OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+                        )
+                )
              ORDER BY pp.id DESC
              LIMIT 1"
         );
@@ -399,7 +417,24 @@ class ExamenModel
                  WHERE pp.hc_number = :hc_number
                    AND pp.doctor IS NOT NULL
                    AND TRIM(pp.doctor) <> ''
-                   AND pp.doctor NOT LIKE '%optometría%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'IMAGENES%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRIA%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRÍA%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGIA%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGÍA%'
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE '%SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'
+                   AND EXISTS (
+                        SELECT 1
+                        FROM users u
+                        WHERE (
+                                UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                                OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                            )
+                          AND (
+                                UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                                OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+                            )
+                    )
                  ORDER BY pp.form_id DESC, pp.id DESC
                  LIMIT 1"
             );
@@ -434,10 +469,31 @@ class ExamenModel
                 u.nombre AS doctor_nombre
              FROM consulta_data cd
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+                ON pp.id = (
+                    SELECT pp2.id
+                    FROM procedimiento_proyectado pp2
+                    WHERE pp2.form_id = cd.form_id
+                      AND pp2.hc_number = cd.hc_number
+                      AND pp2.doctor IS NOT NULL
+                      AND TRIM(pp2.doctor) <> ''
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'IMAGENES%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRIA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRÍA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGIA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGÍA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) LIKE '%SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'
+                    ORDER BY pp2.id DESC
+                    LIMIT 1
+                )
              LEFT JOIN users u
-                ON UPPER(TRIM(pp.doctor)) = u.nombre_norm
-                OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                ON (
+                    UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                    OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                )
+                AND (
+                    UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                    OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+                )
              WHERE cd.form_id = :form_id
                AND cd.hc_number = :hc_number
              LIMIT 1"
@@ -469,10 +525,31 @@ class ExamenModel
                 u.nombre AS doctor_nombre
              FROM consulta_data cd
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+                ON pp.id = (
+                    SELECT pp2.id
+                    FROM procedimiento_proyectado pp2
+                    WHERE pp2.form_id = cd.form_id
+                      AND pp2.hc_number = cd.hc_number
+                      AND pp2.doctor IS NOT NULL
+                      AND TRIM(pp2.doctor) <> ''
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'IMAGENES%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRIA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE 'CONSULTA OPTOMETRÍA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGIA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) NOT LIKE '%ANESTESIOLOGÍA%'
+                      AND UPPER(TRIM(COALESCE(pp2.procedimiento_proyectado, ''))) LIKE '%SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'
+                    ORDER BY pp2.id DESC
+                    LIMIT 1
+                )
              LEFT JOIN users u
-                ON UPPER(TRIM(pp.doctor)) = u.nombre_norm
-                OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                ON (
+                    UPPER(TRIM(pp.doctor)) = u.nombre_norm
+                    OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                )
+                AND (
+                    UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                    OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+                )
              WHERE cd.form_id = :form_id
              LIMIT 1"
         );
@@ -506,11 +583,53 @@ class ExamenModel
                 u.firma,
                 u.nombre
              FROM users u
-             WHERE u.nombre_norm = :nombre_norm
-                OR u.nombre_norm_rev = :nombre_norm
+             WHERE (
+                    u.nombre_norm = :nombre_norm
+                    OR u.nombre_norm_rev = :nombre_norm
+                )
+               AND (
+                    UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                    OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+               )
              LIMIT 1"
         );
         $stmt->execute([':nombre_norm' => $normalizado]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        return $row ?: null;
+    }
+
+    public function obtenerConsultaClinicaSerOftPorHcHastaFecha(string $hcNumber, string $fechaMax): ?array
+    {
+        $hcNumber = trim($hcNumber);
+        $fechaMax = trim($fechaMax);
+        if ($hcNumber === '' || $fechaMax === '') {
+            return null;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                cd.form_id,
+                cd.hc_number
+             FROM consulta_data cd
+             WHERE cd.hc_number = :hc_number
+               AND COALESCE(cd.fecha, '1900-01-01') <= :fecha_max
+               AND JSON_VALID(cd.diagnosticos)
+               AND JSON_LENGTH(cd.diagnosticos) > 0
+               AND EXISTS (
+                    SELECT 1
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.form_id = cd.form_id
+                      AND pp.hc_number = cd.hc_number
+                      AND UPPER(COALESCE(pp.procedimiento_proyectado, '')) LIKE '%SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'
+               )
+             ORDER BY COALESCE(cd.fecha, '1900-01-01') DESC, cd.form_id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([
+            ':hc_number' => $hcNumber,
+            ':fecha_max' => $fechaMax,
+        ]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         return $row ?: null;

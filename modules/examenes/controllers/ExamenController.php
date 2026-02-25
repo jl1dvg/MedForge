@@ -1824,6 +1824,7 @@ class ExamenController extends BaseController
 
             $parsed = $this->parseProcedimientoImagen($nombre);
             $nombreLimpio = trim((string)($parsed['texto'] ?? ''));
+            $ojo = trim((string)($parsed['ojo'] ?? ''));
             if ($nombreLimpio === '') {
                 $nombreLimpio = $nombre;
             }
@@ -1849,6 +1850,7 @@ class ExamenController extends BaseController
                 'codigo' => $codigo,
                 'tarifa_desc' => $tarifaDesc,
                 'detalle' => $detalle !== '' ? $detalle : $nombreLimpio,
+                'ojo' => $ojo,
                 'estado' => $estado,
             ];
         };
@@ -1880,10 +1882,11 @@ class ExamenController extends BaseController
             $codigo = trim((string)($record['codigo'] ?? ''));
             $tarifaDesc = trim((string)($record['tarifa_desc'] ?? ''));
             $detalle = trim((string)($record['detalle'] ?? ''));
+            $ojo = trim((string)($record['ojo'] ?? ''));
             if ($codigo === '' && $detalle === '') {
                 continue;
             }
-            $key = $this->normalizarTexto($codigo . '|' . $tarifaDesc . '|' . $detalle);
+            $key = $this->normalizarTexto($codigo . '|' . $tarifaDesc . '|' . $detalle . '|' . $ojo);
             if ($key === '' || isset($seen[$key])) {
                 continue;
             }
@@ -1918,9 +1921,10 @@ class ExamenController extends BaseController
             $codigo = trim((string)($record['codigo'] ?? ''));
             $tarifaDesc = trim((string)($record['tarifa_desc'] ?? ''));
             $detalle = trim((string)($record['detalle'] ?? ''));
+            $ojo = trim((string)($record['ojo'] ?? ''));
 
             if ($codigo !== '' && $tarifaDesc !== '') {
-                $linea = $codigo . ' - ' . $tarifaDesc;
+                $linea = $tarifaDesc . ' (' . $codigo . ')';
                 if (($conteoPorCodigo[$codigo] ?? 0) > 1) {
                     $suffix = $this->normalizarDetalleEstudio012A($detalle, $tarifaDesc);
                     if ($suffix !== '') {
@@ -1928,9 +1932,17 @@ class ExamenController extends BaseController
                     }
                 }
             } elseif ($codigo !== '') {
-                $linea = $codigo . ' - ' . ($detalle !== '' ? $detalle : 'SIN DETALLE');
+                $linea = ($detalle !== '' ? $detalle : 'SIN DETALLE') . ' (' . $codigo . ')';
             } else {
                 $linea = $detalle;
+            }
+
+            if ($ojo !== '') {
+                $lineaNorm = $this->normalizarTexto($linea);
+                $ojoNorm = $this->normalizarTexto($ojo);
+                if ($ojoNorm !== '' && !str_contains($lineaNorm, $ojoNorm)) {
+                    $linea .= ' - ' . $ojo;
+                }
             }
 
             $result[] = [
@@ -1955,13 +1967,31 @@ class ExamenController extends BaseController
                 continue;
             }
 
-            $nombre = trim((string)($item['tipo_examen'] ?? $item['tipo_examen_raw'] ?? ''));
+            $formId = trim((string)($item['form_id'] ?? ''));
+            $hcNumber = trim((string)($item['hc_number'] ?? ''));
+            $rawSeleccion = trim((string)($item['tipo_examen'] ?? $item['tipo_examen_raw'] ?? ''));
+            $rawSeleccionParsed = $this->parseProcedimientoImagen($rawSeleccion);
+            $rawSeleccionTexto = trim((string)($rawSeleccionParsed['texto'] ?? ''));
+            $nombre = $rawSeleccion;
             $codigo = trim((string)($item['codigo'] ?? $item['examen_codigo'] ?? ''));
             $estado = trim((string)($item['estado_agenda'] ?? $item['estado'] ?? ''));
 
+            // Prioridad: usar el tipo_examen del informe guardado (012B) para que 012A
+            // refleje exactamente los informes seleccionados al descargar.
+            if ($formId !== '') {
+                $informe = $this->examenModel->obtenerInformeImagen($formId);
+                if (is_array($informe) && !empty($informe)) {
+                    $hcInforme = trim((string)($informe['hc_number'] ?? ''));
+                    if ($hcNumber === '' || $hcInforme === '' || $hcInforme === $hcNumber) {
+                        $tipoInforme = trim((string)($informe['tipo_examen'] ?? ''));
+                        if ($nombre === '') {
+                            $nombre = $tipoInforme;
+                        }
+                    }
+                }
+            }
+
             if ($nombre === '') {
-                $formId = trim((string)($item['form_id'] ?? ''));
-                $hcNumber = trim((string)($item['hc_number'] ?? ''));
                 if ($formId !== '' && $hcNumber !== '') {
                     $proc = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($formId, $hcNumber);
                     if (!is_array($proc) || empty($proc)) {
@@ -1974,6 +2004,13 @@ class ExamenController extends BaseController
                         }
                     }
                 }
+            }
+
+            if ($codigo === '' && $rawSeleccion !== '') {
+                $codigo = (string)($this->extraerCodigoTarifario($rawSeleccionTexto !== '' ? $rawSeleccionTexto : $rawSeleccion) ?? '');
+            }
+            if ($codigo === '' && $nombre !== '') {
+                $codigo = (string)($this->extraerCodigoTarifario($nombre) ?? '');
             }
 
             if ($nombre === '' && $codigo === '') {
@@ -3553,8 +3590,22 @@ class ExamenController extends BaseController
 
     private function extraerCodigoTarifario(string $texto): ?string
     {
-        if (preg_match('/\b(\d{3,})\b/', $texto, $match)) {
-            return $match[1];
+        if ($texto === '') {
+            return null;
+        }
+
+        if (preg_match_all('/\b(\d{5,6})\b/', $texto, $matches)) {
+            $candidatos = array_values(array_unique($matches[1] ?? []));
+
+            foreach ($candidatos as $candidate) {
+                if ($this->obtenerTarifarioPorCodigo((string)$candidate)) {
+                    return (string)$candidate;
+                }
+            }
+
+            if (!empty($candidatos)) {
+                return (string)$candidatos[0];
+            }
         }
 
         return null;
@@ -4808,6 +4859,7 @@ class ExamenController extends BaseController
     private function resolverMejorContextoClinico012A(array $baseContext, array $selectedItems): array
     {
         $candidatos = [];
+        $maxFechaPorHc = [];
         $pushCandidato = function (array $contexto) use (&$candidatos): void {
             $form = trim((string)($contexto['form_id'] ?? ''));
             $hc = trim((string)($contexto['hc_number'] ?? ''));
@@ -4836,8 +4888,30 @@ class ExamenController extends BaseController
             if ($form === '' || $hc === '') {
                 continue;
             }
+
+            $fechaItemRaw = trim((string)($item['fecha_examen'] ?? $item['fecha'] ?? ''));
+            if ($fechaItemRaw !== '') {
+                $fechaItem = substr($fechaItemRaw, 0, 10);
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaItem)) {
+                    if (!isset($maxFechaPorHc[$hc]) || strcmp($fechaItem, $maxFechaPorHc[$hc]) > 0) {
+                        $maxFechaPorHc[$hc] = $fechaItem;
+                    }
+                }
+            }
+
             $resolved = $this->resolveSolicitudOrigenContextFor012A($form, $hc);
             $pushCandidato($resolved);
+        }
+
+        foreach ($maxFechaPorHc as $hc => $maxFecha) {
+            $candClinico = $this->examenModel->obtenerConsultaClinicaSerOftPorHcHastaFecha($hc, $maxFecha);
+            if (is_array($candClinico) && !empty($candClinico)) {
+                $pushCandidato([
+                    'form_id' => trim((string)($candClinico['form_id'] ?? '')),
+                    'hc_number' => trim((string)($candClinico['hc_number'] ?? $hc)),
+                    'examen_id' => null,
+                ]);
+            }
         }
 
         $best = $baseContext;
@@ -4990,10 +5064,6 @@ class ExamenController extends BaseController
 
         $usuario = $this->examenModel->obtenerUsuarioPorDoctorNombre($doctorNombreRef);
         if (!is_array($usuario) || empty($usuario)) {
-            if (!$hasDoctorNames) {
-                // Mostrar al menos el texto del doctor cuando no se pudo mapear al catálogo de usuarios.
-                $consulta['doctor_fname'] = $doctorNombreRef;
-            }
             return $consulta;
         }
 
@@ -5235,16 +5305,16 @@ class ExamenController extends BaseController
             $dxDerivacion[] = ['diagnostico' => $viewData['derivacion']['diagnostico']];
         }
 
-        $estudios012A = $this->construirEstudios012A(
-            is_array($viewData['examenes_relacionados'] ?? null) ? $viewData['examenes_relacionados'] : [],
-            is_array($viewData['imagenes_solicitadas'] ?? null) ? $viewData['imagenes_solicitadas'] : []
-        );
-
+        $estudios012A = [];
         if ($selectedItems !== []) {
-            $estudiosSeleccionados = $this->construirEstudios012AFromSelectedItems($selectedItems);
-            if ($estudiosSeleccionados !== []) {
-                $estudios012A = $estudiosSeleccionados;
-            }
+            $estudios012A = $this->construirEstudios012AFromSelectedItems($selectedItems);
+        }
+
+        if ($estudios012A === []) {
+            $estudios012A = $this->construirEstudios012A(
+                is_array($viewData['examenes_relacionados'] ?? null) ? $viewData['examenes_relacionados'] : [],
+                is_array($viewData['imagenes_solicitadas'] ?? null) ? $viewData['imagenes_solicitadas'] : []
+            );
         }
 
         $payload = [
