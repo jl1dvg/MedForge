@@ -1143,6 +1143,15 @@ class SettingsHelper
                                 ['min' => 1, 'max' => 168]
                             ),
                             array_merge(
+                                self::numberField(
+                                    'whatsapp_handoff_sla_target_minutes',
+                                    'Meta SLA de asignación (minutos)',
+                                    15,
+                                    'Se usa para medir el KPI de cumplimiento (queued → assigned).'
+                                ),
+                                ['min' => 1, 'max' => 1440]
+                            ),
+                            array_merge(
                                 self::textareaField(
                                     'whatsapp_handoff_agent_message',
                                     'Mensaje para agentes',

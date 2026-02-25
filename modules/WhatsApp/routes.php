@@ -3,6 +3,7 @@
 use Core\Router;
 use Modules\WhatsApp\Controllers\ChatController;
 use Modules\WhatsApp\Controllers\InboxController;
+use Modules\WhatsApp\Controllers\KpiController;
 use Modules\WhatsApp\Controllers\TemplateController;
 use Modules\WhatsApp\Controllers\WebhookController;
 
@@ -13,6 +14,10 @@ return static function (Router $router): void {
 
     $router->get('/whatsapp/chat', static function (\PDO $pdo): void {
         (new ChatController($pdo))->index();
+    });
+
+    $router->get('/whatsapp/dashboard', static function (\PDO $pdo): void {
+        (new KpiController($pdo))->dashboard();
     });
 
     $router->get('/whatsapp/api/conversations', static function (\PDO $pdo): void {
@@ -29,6 +34,14 @@ return static function (Router $router): void {
 
     $router->get('/whatsapp/api/inbox', static function (\PDO $pdo): void {
         (new InboxController($pdo))->index();
+    });
+
+    $router->get('/whatsapp/api/kpis', static function (\PDO $pdo): void {
+        (new KpiController($pdo))->index();
+    });
+
+    $router->get('/whatsapp/api/kpis/drilldown', static function (\PDO $pdo): void {
+        (new KpiController($pdo))->drilldown();
     });
 
     $router->post('/whatsapp/api/messages', static function (\PDO $pdo): void {

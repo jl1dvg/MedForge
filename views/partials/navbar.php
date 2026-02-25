@@ -132,7 +132,7 @@ if (!function_exists('isTreeOpen')) {
                         </li>
                     <?php endif; ?>
 
-                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/whatsapp/dashboard', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones']) ?>">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Atención al paciente</span>
@@ -165,6 +165,11 @@ if (!function_exists('isTreeOpen')) {
                                 <li class="<?= isActive('/whatsapp/chat') ?>">
                                     <a href="/whatsapp/chat">
                                         <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
+                                    </a>
+                                </li>
+                                <li class="<?= isActive('/whatsapp/dashboard') ?>">
+                                    <a href="/whatsapp/dashboard">
+                                        <i class="mdi mdi-chart-line"></i>Dashboard WhatsApp
                                     </a>
                                 </li>
                             <?php endif; ?>
@@ -252,7 +257,7 @@ if (!function_exists('isTreeOpen')) {
                     </li>
 
 
-                    <li class="treeview<?= isTreeOpen(['/examenes', '/imagenes/examenes-realizados']) ?>">
+                    <li class="treeview<?= isTreeOpen(['/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard']) ?>">
                         <a href="#">
                             <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
                             <span>Imágenes</span>
@@ -267,6 +272,11 @@ if (!function_exists('isTreeOpen')) {
                             <li class="<?= isActive('/imagenes/examenes-realizados') ?>">
                                 <a href="/imagenes/examenes-realizados">
                                     <i class="mdi mdi-file-image"></i>Exámenes realizados
+                                </a>
+                            </li>
+                            <li class="<?= isActive('/imagenes/dashboard') ?>">
+                                <a href="/imagenes/dashboard">
+                                    <i class="mdi mdi-chart-line"></i>Dashboard imágenes
                                 </a>
                             </li>
                         </ul>

@@ -48,6 +48,7 @@ class WhatsAppSettings
      *     data_protection_flow: array<string, mixed>,
      *     template_languages: string,
      *     handoff_ttl_hours: int,
+     *     handoff_sla_target_minutes: int,
      *     handoff_notify_agents: bool,
      *     handoff_agent_message: string,
      *     handoff_button_take_label: string,
@@ -80,6 +81,7 @@ class WhatsAppSettings
             'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
             'template_languages' => '',
             'handoff_ttl_hours' => 24,
+            'handoff_sla_target_minutes' => 15,
             'handoff_notify_agents' => true,
             'handoff_agent_message' => "Paciente {{contact}} necesita asistencia.\nToca para tomar ✅\n\nNota: {{notes}}",
             'handoff_button_take_label' => 'Tomar',
@@ -105,6 +107,7 @@ class WhatsAppSettings
                     'whatsapp_data_consent_no_keywords',
                     'whatsapp_template_languages',
                     'whatsapp_handoff_ttl_hours',
+                    'whatsapp_handoff_sla_target_minutes',
                     'whatsapp_handoff_notify_agents',
                     'whatsapp_handoff_agent_message',
                     'whatsapp_handoff_button_take_label',
@@ -172,6 +175,11 @@ class WhatsAppSettings
                 $ttl = (int) ($options['whatsapp_handoff_ttl_hours'] ?? 24);
                 if ($ttl > 0) {
                     $config['handoff_ttl_hours'] = $ttl;
+                }
+
+                $slaTarget = (int) ($options['whatsapp_handoff_sla_target_minutes'] ?? 15);
+                if ($slaTarget > 0) {
+                    $config['handoff_sla_target_minutes'] = min(1440, $slaTarget);
                 }
 
                 $config['handoff_notify_agents'] = ($options['whatsapp_handoff_notify_agents'] ?? '1') === '1';

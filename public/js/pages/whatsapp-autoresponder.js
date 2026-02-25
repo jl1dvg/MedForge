@@ -839,7 +839,7 @@
             intercept_menu: false,
             conditions: [{type: 'always'}],
             actions: [
-                {type: 'send_message', message: {type: 'text', body: 'No te entendí. Escribe menú para ver opciones.'}},
+                {type: 'send_message', message: {type: 'text', body: 'No te entendí. Escribe ayuda para que un agente te responda enseguida.'}},
             ],
         },
     ];
