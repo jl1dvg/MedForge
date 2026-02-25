@@ -688,6 +688,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'RETINOGRAFIA',
             cv: 'CAMPO VISUAL',
             cornea: 'TOPOGRAFIA CORNEAL',
+            paquimetria: '281229 - PAQUIMETRIA CORNEAL (AO)',
             biometria: 'BIOMETRIA OCULAR',
             microespecular: '281197 - MICROSCOPIA ESPECULAR (AO)'
         };
@@ -705,6 +706,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             retino: 'retino',
             cv: 'cv',
             cornea: 'cornea',
+            paquimetria: 'paquimetria',
             biometria: 'biometria',
             microespecular: 'microespecular'
         };
@@ -1144,6 +1146,31 @@ OI: ${OI}`;
                 appendEye('OI', 'OI');
                 recomendaciones.value = lines.join('\n');
 
+                finalizarFlujoExamen(item, result);
+            });
+        } else if (item.id === 'paquimetria') {
+            mostrarPopup('js/paquimetria/paquimetria.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const payload = (result.payload && typeof result.payload === 'object') ? result.payload : {};
+                const od = (payload.inputOD || '').toString().trim();
+                const oi = (payload.inputOI || '').toString().trim();
+
+                const lines = ['SE REALIZA ESTUDIO DE PAQUIMETRIA CORNEAL.'];
+                if (od !== '') {
+                    lines.push('');
+                    lines.push('OD:');
+                    lines.push('Espesor corneal central: ' + od + ' micras');
+                }
+                if (oi !== '') {
+                    lines.push('');
+                    lines.push('OI:');
+                    lines.push('Espesor corneal central: ' + oi + ' micras');
+                }
+
+                recomendaciones.value = lines.join('\n');
                 finalizarFlujoExamen(item, result);
             });
         } else if (item.id === 'cv') {

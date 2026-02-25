@@ -2230,6 +2230,9 @@ class ExamenController extends BaseController
         if (str_contains($texto, '281197') || (str_contains($texto, 'microscopia') && str_contains($texto, 'especular'))) {
             return 'microespecular';
         }
+        if (str_contains($texto, '281229') || str_contains($texto, 'paquimetr')) {
+            return 'paquimetria';
+        }
         if (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'topograf')) {
             return 'cornea';
         }
@@ -3590,6 +3593,21 @@ class ExamenController extends BaseController
                 }
             }
 
+            return trim(implode("\n", $lines));
+        }
+
+        if ($plantilla === 'paquimetria') {
+            $od = trim((string)($payload['inputOD'] ?? ''));
+            $oi = trim((string)($payload['inputOI'] ?? ''));
+            $lines = [];
+            if ($od !== '') {
+                $lines[] = '**Ojo Derecho:**';
+                $lines[] = 'Espesor corneal central: ' . $od . ' micras';
+            }
+            if ($oi !== '') {
+                $lines[] = '**Ojo Izquierdo:**';
+                $lines[] = 'Espesor corneal central: ' . $oi . ' micras';
+            }
             return trim(implode("\n", $lines));
         }
 

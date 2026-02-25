@@ -61,6 +61,18 @@
       ]
     },
     {
+      "id": "paquimetria",
+      "cirugia": "Paquimetria Corneal",
+      "tecnicos": [
+        {
+          "selector": "#select2-ordenexamen-0-tecnico_id-container",
+          "funcion": "DE VERA GUTIERREZ JORGE LUIS",
+          "trabajador": "#select2-ordenexamen-0-radiologo_id-container",
+          "nombre": "DAVID FERNANDO DANIN GALARZA"
+        }
+      ]
+    },
+    {
       "id": "cv",
       "cirugia": "CV",
       "tecnicos": [
