@@ -126,6 +126,7 @@ sort($estadoOpciones);
             <?php
             $totalInformados = 0;
             $totalNoInformados = 0;
+            $totalSinNas = 0;
             foreach ($imagenesRealizadas as $row) {
                 $informado = !empty($row['informe_id']);
                 if ($informado) {
@@ -146,6 +147,12 @@ sort($estadoOpciones);
                     <button class="nav-link" type="button" data-tab="informados">
                         Informados
                         <span class="badge badge-success-light ms-1"><?= (int) $totalInformados ?></span>
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" type="button" data-tab="sin-nas">
+                        Sin imágenes NAS
+                        <span class="badge badge-warning-light ms-1"><?= (int) $totalSinNas ?></span>
                     </button>
                 </li>
             </ul>
@@ -239,6 +246,7 @@ sort($estadoOpciones);
                             data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
+                            data-nas-status="pendiente"
                             data-informado="<?= $informado ? '1' : '0' ?>">
                             <td class="text-center select-cell">
                                 <input type="checkbox" class="form-check-input row-select"
@@ -489,7 +497,7 @@ sort($estadoOpciones);
                 }
             }
 
-            const rows = Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr'));
+            const rows = Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]'));
             const afiliaciones = rows.map(function (row) {
                 return (row.dataset.afiliacion || '').trim();
             });
@@ -501,16 +509,64 @@ sort($estadoOpciones);
 
             let activeTab = 'no-informados';
             const selectAllInformados = document.getElementById('selectAllInformados');
+            let dataTable = null;
+            const nasStatusCache = new Map();
+            const nasListCache = new Map();
+            const nasStatusPending = new Map();
+            let nasStatusRefreshTimer = null;
+            const nasWarmCasePending = new Set();
+            const nasWarmCaseDone = new Set();
+            const nasWarmRequestQueue = [];
+            const nasWarmRequestSet = new Set();
+            let nasWarmRequestInFlight = false;
+            const NAS_WARM_CASES_PER_PASS = 4;
+            const NAS_STATUS_CASES_PER_PASS = 6;
+
+            function rowIsInformado(row) {
+                return (row && row.dataset && row.dataset.informado === '1');
+            }
+
+            function rowIsSinNas(row) {
+                return (row && row.dataset && row.dataset.nasStatus === 'sin-archivos');
+            }
+
+            function rowInActiveTab(row) {
+                if (!row || !row.dataset || !row.dataset.id) {
+                    return true;
+                }
+                const informado = rowIsInformado(row);
+                const sinNas = rowIsSinNas(row);
+                if (activeTab === 'informados') {
+                    return informado;
+                }
+                if (activeTab === 'sin-nas') {
+                    return !informado && sinNas;
+                }
+                return !informado && !sinNas;
+            }
 
             function getDataRows() {
                 return Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]'));
             }
 
-            function getVisibleSelectableRows() {
+            function getCurrentPageRows() {
+                if (dataTable) {
+                    return dataTable
+                        .rows({page: 'current', search: 'applied'})
+                        .nodes()
+                        .toArray()
+                        .filter(function (row) {
+                            return !!(row && row.dataset && row.dataset.id);
+                        });
+                }
                 return getDataRows().filter(function (row) {
-                    const visible = row.style.display !== 'none';
-                    const informado = (row.dataset.informado || '0') === '1';
-                    return visible && informado;
+                    return row.style.display !== 'none';
+                });
+            }
+
+            function getVisibleSelectableRows() {
+                return getCurrentPageRows().filter(function (row) {
+                    return rowIsInformado(row);
                 });
             }
 
@@ -534,30 +590,39 @@ sort($estadoOpciones);
             }
 
             function refreshTabCounts() {
-                const totalInformados = rows.filter(function (row) {
-                    return (row.dataset.informado || '0') === '1';
+                const totalRows = rows.filter(function (row) {
+                    return !!(row && row.dataset && row.dataset.id);
+                });
+                const totalInformados = totalRows.filter(function (row) {
+                    return rowIsInformado(row);
                 }).length;
-                const totalNoInformados = rows.length - totalInformados;
+                const totalSinNas = totalRows.filter(function (row) {
+                    return !rowIsInformado(row) && rowIsSinNas(row);
+                }).length;
+                const totalNoInformados = totalRows.length - totalInformados - totalSinNas;
                 const badgeNo = document.querySelector('#tabInformes [data-tab="no-informados"] .badge');
                 const badgeSi = document.querySelector('#tabInformes [data-tab="informados"] .badge');
+                const badgeSinNas = document.querySelector('#tabInformes [data-tab="sin-nas"] .badge');
                 if (badgeNo) badgeNo.textContent = String(totalNoInformados);
                 if (badgeSi) badgeSi.textContent = String(totalInformados);
+                if (badgeSinNas) badgeSinNas.textContent = String(totalSinNas);
             }
 
             function applyTabFilter(tab) {
                 activeTab = tab;
-                const showInformados = tab === 'informados';
-                rows.forEach(function (row) {
-                    const informado = (row.dataset.informado || '0') === '1';
-                    const visible = showInformados ? informado : !informado;
-                    row.style.display = visible ? '' : 'none';
-                });
                 if (dataTable) {
+                    dataTable.draw(false);
                     dataTable.columns.adjust();
+                } else {
+                    getDataRows().forEach(function (row) {
+                        const visible = rowInActiveTab(row);
+                        row.style.display = visible ? '' : 'none';
+                    });
+                    applyPatientGrouping();
                 }
-                applyPatientGrouping();
                 refreshTabCounts();
                 updateSelectAllState();
+                runActiveTabBackgroundTasks();
             }
 
             document.querySelectorAll('#tabInformes [data-tab]').forEach(function (btn) {
@@ -921,26 +986,248 @@ sort($estadoOpciones);
                 updateNasControls();
             }
 
-            function cargarImagenesNas(formId, hcNumber) {
+            function scheduleNasStatusRefresh() {
+                if (nasStatusRefreshTimer !== null) {
+                    clearTimeout(nasStatusRefreshTimer);
+                }
+                nasStatusRefreshTimer = setTimeout(function () {
+                    nasStatusRefreshTimer = null;
+                    if (dataTable) {
+                        dataTable.draw(false);
+                    } else {
+                        getDataRows().forEach(function (row) {
+                            row.style.display = rowInActiveTab(row) ? '' : 'none';
+                        });
+                        applyPatientGrouping();
+                        refreshTabCounts();
+                        updateSelectAllState();
+                    }
+                }, 120);
+            }
+
+            function resolveNasStatus(formId, hcNumber) {
+                const form = String(formId || '').trim();
+                const hc = String(hcNumber || '').trim();
+                if (!form || !hc) {
+                    return Promise.resolve('error');
+                }
+                const key = form + '|' + hc;
+                if (nasStatusCache.has(key)) {
+                    return Promise.resolve(nasStatusCache.get(key));
+                }
+                if (nasStatusPending.has(key)) {
+                    return nasStatusPending.get(key);
+                }
+                const promise = fetch('/imagenes/examenes-realizados/nas/list?hc_number=' + encodeURIComponent(hc) + '&form_id=' + encodeURIComponent(form))
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.success) {
+                            return 'error';
+                        }
+                        const files = orderNasFiles(Array.isArray(res.files) ? res.files : []);
+                        nasListCache.set(key, files);
+                        return files.length > 0
+                            ? 'con-archivos'
+                            : 'sin-archivos';
+                    })
+                    .catch(function () {
+                        return 'error';
+                    })
+                    .then(function (status) {
+                        if (status === 'con-archivos' || status === 'sin-archivos') {
+                            nasStatusCache.set(key, status);
+                        }
+                        return status;
+                    })
+                    .finally(function () {
+                        nasStatusPending.delete(key);
+                    });
+                nasStatusPending.set(key, promise);
+                return promise;
+            }
+
+            function setRowNasStatus(row, status, shouldRefresh) {
+                if (!row || !row.dataset || !row.dataset.id) return;
+                if (status !== 'con-archivos' && status !== 'sin-archivos' && status !== 'pendiente') return;
+                if ((row.dataset.nasStatus || 'pendiente') === status) return;
+                row.dataset.nasStatus = status;
+                const form = String(row.dataset.formId || '').trim();
+                const hc = String(row.dataset.hcNumber || '').trim();
+                if (form && hc && (status === 'con-archivos' || status === 'sin-archivos')) {
+                    nasStatusCache.set(form + '|' + hc, status);
+                }
+                if (shouldRefresh !== false) {
+                    scheduleNasStatusRefresh();
+                }
+            }
+
+            function scanNasStatusForVisibleRows() {
+                const shouldWarmModal = activeTab === 'no-informados';
+                const candidates = getCurrentPageRows()
+                    .filter(function (row) {
+                        return !rowIsInformado(row);
+                    })
+                    .filter(function (row) {
+                        const status = String(row.dataset.nasStatus || 'pendiente');
+                        return status === 'pendiente';
+                    })
+                    .slice(0, NAS_STATUS_CASES_PER_PASS);
+                if (!candidates.length) {
+                    return;
+                }
+                const queue = candidates.slice();
+                const workers = Math.min(3, queue.length);
+                for (let i = 0; i < workers; i++) {
+                    const run = function () {
+                        if (!queue.length) {
+                            return Promise.resolve();
+                        }
+                        const row = queue.shift();
+                        const form = String(row.dataset.formId || '').trim();
+                        const hc = String(row.dataset.hcNumber || '').trim();
+                        if (!form || !hc) {
+                            return Promise.resolve().finally(run);
+                        }
+                        return resolveNasStatus(form, hc)
+                            .then(function (status) {
+                                if (status === 'con-archivos' || status === 'sin-archivos') {
+                                    setRowNasStatus(row, status, true);
+                                }
+                                if (shouldWarmModal && status === 'con-archivos') {
+                                    warmFirstNasFileForCase(form, hc);
+                                }
+                            })
+                            .finally(run);
+                    };
+                    run();
+                }
+            }
+
+            function enqueueNasWarmCase(formId, hcNumber) {
+                const form = String(formId || '').trim();
+                const hc = String(hcNumber || '').trim();
+                if (!form || !hc) return;
+                const caseKey = form + '|' + hc;
+                if (nasWarmRequestSet.has(caseKey)) return;
+                nasWarmRequestSet.add(caseKey);
+                nasWarmRequestQueue.push({form_id: form, hc_number: hc, key: caseKey});
+                pumpNasWarmCaseQueue();
+            }
+
+            function pumpNasWarmCaseQueue() {
+                if (nasWarmRequestInFlight) return;
+                if (!nasWarmRequestQueue.length) return;
+
+                const batch = nasWarmRequestQueue.splice(0, 4);
+                const items = batch.map(function (it) {
+                    return {form_id: it.form_id, hc_number: it.hc_number};
+                });
+                nasWarmRequestInFlight = true;
+
+                postJson('/imagenes/examenes-realizados/nas/warm', {items: items})
+                    .catch(function () {
+                    })
+                    .finally(function () {
+                        batch.forEach(function (it) {
+                            nasWarmRequestSet.delete(it.key);
+                        });
+                        nasWarmRequestInFlight = false;
+                        if (nasWarmRequestQueue.length) {
+                            setTimeout(pumpNasWarmCaseQueue, 80);
+                        }
+                    });
+            }
+
+            function warmFirstNasFileForCase(formId, hcNumber) {
+                const form = String(formId || '').trim();
+                const hc = String(hcNumber || '').trim();
+                if (!form || !hc) return;
+                const caseKey = form + '|' + hc;
+                if (nasWarmCaseDone.has(caseKey) || nasWarmCasePending.has(caseKey)) {
+                    return;
+                }
+                nasWarmCasePending.add(caseKey);
+                resolveNasStatus(form, hc)
+                    .then(function (status) {
+                        if (status !== 'con-archivos') return;
+                        const files = nasListCache.get(caseKey) || [];
+                        if (!files.length) return;
+                        const first = files[0];
+                        if (!first || !first.name) return;
+                        enqueueNasWarmCase(form, hc);
+                    })
+                    .finally(function () {
+                        nasWarmCasePending.delete(caseKey);
+                        nasWarmCaseDone.add(caseKey);
+                    });
+            }
+
+            function warmInformadosVisibleRows() {
+                if (activeTab !== 'informados') return;
+                const visibleRows = getCurrentPageRows().filter(function (row) {
+                    return rowIsInformado(row);
+                });
+                if (!visibleRows.length) return;
+
+                let processed = 0;
+                visibleRows.some(function (row) {
+                    if (processed >= NAS_WARM_CASES_PER_PASS) return true;
+                    const form = String(row.dataset.formId || '').trim();
+                    const hc = String(row.dataset.hcNumber || '').trim();
+                    if (!form || !hc) return false;
+                    processed += 1;
+                    warmFirstNasFileForCase(form, hc);
+                    return false;
+                });
+            }
+
+            function runActiveTabBackgroundTasks() {
+                if (activeTab === 'informados') {
+                    warmInformadosVisibleRows();
+                    return;
+                }
+                scanNasStatusForVisibleRows();
+            }
+
+            function cargarImagenesNas(formId, hcNumber, row) {
                 if (!imagenesContainer) return;
                 nasLoadToken += 1;
                 const token = nasLoadToken;
+                const cacheKey = String(formId).trim() + '|' + String(hcNumber).trim();
                 releaseNasFileCaches(nasFiles);
                 nasFiles = [];
                 nasCurrentIndex = 0;
                 renderImagenesNas([]);
                 setImagenesStatus('Cargando imágenes...');
+                const cachedFiles = nasListCache.get(cacheKey);
+                if (Array.isArray(cachedFiles)) {
+                    renderImagenesNas(cachedFiles);
+                    preloadNasFiles(cachedFiles, token);
+                    if (row) {
+                        setRowNasStatus(row, cachedFiles.length ? 'con-archivos' : 'sin-archivos', false);
+                    }
+                    setImagenesStatus(cachedFiles.length
+                        ? (cachedFiles.length + ' archivo(s) en caché...')
+                        : 'Sin archivos en caché');
+                }
                 fetch('/imagenes/examenes-realizados/nas/list?hc_number=' + encodeURIComponent(hcNumber) + '&form_id=' + encodeURIComponent(formId))
                     .then(function (r) { return r.json(); })
                     .then(function (res) {
                         if (!res || !res.success) {
                             renderImagenesNas([]);
                             setImagenesStatus(res && res.error ? res.error : 'No se pudieron cargar las imágenes.');
+                            if (row) {
+                                setRowNasStatus(row, 'pendiente', false);
+                            }
                             return;
                         }
                         const files = orderNasFiles(res.files || []);
+                        nasListCache.set(cacheKey, files);
                         renderImagenesNas(files);
                         preloadNasFiles(files, token);
+                        if (row) {
+                            setRowNasStatus(row, files.length ? 'con-archivos' : 'sin-archivos', true);
+                        }
                         setImagenesStatus(files.length
                             ? (files.length + ' archivo(s) encontrado(s)')
                             : 'Sin archivos en el NAS');
@@ -948,6 +1235,9 @@ sort($estadoOpciones);
                     .catch(function () {
                         renderImagenesNas([]);
                         setImagenesStatus('Error al conectar con el NAS.');
+                        if (row) {
+                            setRowNasStatus(row, 'pendiente', false);
+                        }
                     });
             }
 
@@ -1173,7 +1463,7 @@ sort($estadoOpciones);
                 }
 
                 if (formId && hcNumber) {
-                    cargarImagenesNas(formId, hcNumber);
+                    cargarImagenesNas(formId, hcNumber, row);
                 }
 
                 fetch('/imagenes/informes/datos?form_id=' + encodeURIComponent(formId) + '&tipo_examen=' + encodeURIComponent(tipoRaw))
@@ -1471,11 +1761,10 @@ sort($estadoOpciones);
                     row.remove();
                 });
 
-                const rows = Array.from(tbody.querySelectorAll('tr[data-id]'))
-                    .filter(function (row) {
-                        return row.style.display !== 'none';
-                    });
-                if (!rows.length) return;
+                const rows = getCurrentPageRows();
+                if (!rows.length) {
+                    return;
+                }
 
                 const counts = new Map();
                 rows.forEach(function (row) {
@@ -1530,8 +1819,28 @@ sort($estadoOpciones);
                 });
             }
 
-            let dataTable = null;
             if (window.jQuery && $.fn.DataTable) {
+                const extSearch = $.fn.dataTable.ext.search;
+                if (window.__imagenesRealizadasTabFilterFn) {
+                    const oldFilterIndex = extSearch.indexOf(window.__imagenesRealizadasTabFilterFn);
+                    if (oldFilterIndex !== -1) {
+                        extSearch.splice(oldFilterIndex, 1);
+                    }
+                }
+
+                const tabFilterFn = function (settings, data, dataIndex) {
+                    if (!settings || !settings.nTable || settings.nTable.id !== 'tablaImagenesRealizadas') {
+                        return true;
+                    }
+                    const rowRef = settings.aoData && settings.aoData[dataIndex] ? settings.aoData[dataIndex].nTr : null;
+                    if (!rowRef || !rowRef.dataset || !rowRef.dataset.id) {
+                        return true;
+                    }
+                    return rowInActiveTab(rowRef);
+                };
+                extSearch.push(tabFilterFn);
+                window.__imagenesRealizadasTabFilterFn = tabFilterFn;
+
                 dataTable = $('#tablaImagenesRealizadas').DataTable({
                     order: [[1, 'desc']],
                     language: {url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
@@ -1549,7 +1858,9 @@ sort($estadoOpciones);
                 });
                 $('#tablaImagenesRealizadas').on('draw.dt', function () {
                     applyPatientGrouping();
+                    refreshTabCounts();
                     updateSelectAllState();
+                    runActiveTabBackgroundTasks();
                 });
             }
 

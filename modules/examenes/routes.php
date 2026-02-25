@@ -24,6 +24,10 @@ return function (Router $router) {
         (new ExamenController($pdo))->imagenesNasList();
     });
 
+    $router->post('/imagenes/examenes-realizados/nas/warm', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesNasWarm();
+    });
+
     $router->get('/imagenes/examenes-realizados/nas/file', function (\PDO $pdo) {
         (new ExamenController($pdo))->imagenesNasFile();
     });

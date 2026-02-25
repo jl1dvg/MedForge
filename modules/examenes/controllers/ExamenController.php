@@ -2881,18 +2881,21 @@ class ExamenController extends BaseController
                 if ($name === '') {
                     continue;
                 }
-                $opened = $this->nasImagenesService->openFile($item['hc_number'], $item['form_id'], $name);
-                if (!$opened) {
+                $prepared = $this->prepareNasFileForPaquete($item['hc_number'], $item['form_id'], $name);
+                if (!$prepared) {
                     continue;
                 }
-                $tmpFile = $this->writeTempStream($opened['stream'], $opened['ext']);
+                $tmpFile = (string)($prepared['path'] ?? '');
+                $ext = strtolower((string)($prepared['ext'] ?? ''));
+                if ($tmpFile === '' || !is_file($tmpFile)) {
+                    continue;
+                }
                 $tempFiles[] = $tmpFile;
-                fclose($opened['stream']);
 
-                if (($opened['ext'] ?? '') === 'pdf') {
+                if ($ext === 'pdf') {
                     $this->appendPdfFile($pdf, $tmpFile);
                 } else {
-                    $tmpImageForPdf = $this->optimizeImageForPaquete($tmpFile, (string)($opened['ext'] ?? ''));
+                    $tmpImageForPdf = $this->optimizeImageForPaquete($tmpFile, $ext);
                     if ($tmpImageForPdf !== $tmpFile) {
                         $tempFiles[] = $tmpImageForPdf;
                     }
@@ -3140,6 +3143,84 @@ class ExamenController extends BaseController
         }
         stream_copy_to_stream($stream, $dest);
         fclose($dest);
+        return $path;
+    }
+
+    /**
+     * @return array{path: string, ext: string}|null
+     */
+    private function prepareNasFileForPaquete(string $hcNumber, string $formId, string $filename): ?array
+    {
+        $filename = trim($filename);
+        if ($filename === '') {
+            return null;
+        }
+
+        $extByName = strtolower((string)pathinfo($filename, PATHINFO_EXTENSION));
+        $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
+        if ($cachePath !== null && $this->isNasCacheFresh($cachePath)) {
+            try {
+                $tmpFromCache = $this->copyFileToTempPath($cachePath, $extByName);
+                return [
+                    'path' => $tmpFromCache,
+                    'ext' => $extByName !== '' ? $extByName : strtolower((string)pathinfo($cachePath, PATHINFO_EXTENSION)),
+                ];
+            } catch (Throwable) {
+                // Fallback a lectura directa del NAS.
+            }
+        }
+
+        $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
+        if (!$opened || empty($opened['stream'])) {
+            return null;
+        }
+
+        $resolvedExt = strtolower((string)($opened['ext'] ?? $extByName));
+        if ($resolvedExt === '') {
+            $resolvedExt = $extByName !== '' ? $extByName : 'bin';
+        }
+
+        $tmpPath = $this->writeTempStream($opened['stream'], $resolvedExt);
+        fclose($opened['stream']);
+
+        if ($cachePath !== null) {
+            $cacheTmp = $cachePath . '.part';
+            if (@copy($tmpPath, $cacheTmp)) {
+                @rename($cacheTmp, $cachePath);
+            } else {
+                @unlink($cacheTmp);
+            }
+        }
+
+        return [
+            'path' => $tmpPath,
+            'ext' => $resolvedExt,
+        ];
+    }
+
+    private function copyFileToTempPath(string $sourcePath, string $ext): string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
+        if ($base === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+
+        $normalizedExt = strtolower(trim($ext));
+        if ($normalizedExt === '' || preg_match('/^[a-z0-9]+$/', $normalizedExt) !== 1) {
+            $normalizedExt = strtolower((string)pathinfo($sourcePath, PATHINFO_EXTENSION));
+        }
+        if ($normalizedExt === '' || preg_match('/^[a-z0-9]+$/', $normalizedExt) !== 1) {
+            $normalizedExt = 'bin';
+        }
+
+        $path = $base . '.' . $normalizedExt;
+        @rename($base, $path);
+
+        if (!@copy($sourcePath, $path)) {
+            @unlink($path);
+            throw new RuntimeException('No se pudo copiar archivo temporal.');
+        }
+
         return $path;
     }
 
@@ -3834,8 +3915,8 @@ class ExamenController extends BaseController
             return;
         }
 
-        $files = $this->nasImagenesService->listFiles($hcNumber, $formId);
-        $error = $this->nasImagenesService->getLastError();
+        $error = null;
+        $files = $this->getNasFilesWithCache($hcNumber, $formId, false, $error);
 
         $files = array_map(function (array $file) use ($hcNumber, $formId) {
             $name = $file['name'] ?? '';
@@ -3853,6 +3934,60 @@ class ExamenController extends BaseController
             'success' => $error === null,
             'files' => $files,
             'error' => $error,
+        ]);
+    }
+
+    public function imagenesNasWarm(): void
+    {
+        $this->requireAuth();
+
+        if (!$this->nasImagenesService->isAvailable()) {
+            $this->json([
+                'success' => false,
+                'error' => $this->nasImagenesService->getLastError() ?? 'NAS no disponible.',
+            ], 500);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
+        if (empty($items)) {
+            $this->json(['success' => true, 'warmed' => 0, 'checked' => 0]);
+            return;
+        }
+
+        $checked = 0;
+        $warmed = 0;
+        foreach (array_slice($items, 0, 8) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $formId = trim((string)($item['form_id'] ?? ''));
+            $hcNumber = trim((string)($item['hc_number'] ?? ''));
+            if ($formId === '' || $hcNumber === '') {
+                continue;
+            }
+            $checked++;
+
+            $error = null;
+            $files = $this->getNasFilesWithCache($hcNumber, $formId, false, $error);
+            if ($error !== null || empty($files)) {
+                continue;
+            }
+            $first = $files[0] ?? null;
+            $name = is_array($first) ? trim((string)($first['name'] ?? '')) : '';
+            if ($name === '') {
+                continue;
+            }
+            if ($this->warmNasFileCache($hcNumber, $formId, $name)) {
+                $warmed++;
+            }
+        }
+
+        $this->json([
+            'success' => true,
+            'checked' => $checked,
+            'warmed' => $warmed,
         ]);
     }
 
@@ -3969,6 +4104,171 @@ class ExamenController extends BaseController
 
         $hash = sha1($hcNumber . '|' . $formId . '|' . $filename);
         return rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $hash . '.' . $ext;
+    }
+
+    /**
+     * @return array<int, array{name: string, size: int, mtime: int, ext: string, type: string}>
+     */
+    private function getNasFilesWithCache(string $hcNumber, string $formId, bool $forceRefresh = false, ?string &$error = null): array
+    {
+        $error = null;
+        if (!$forceRefresh) {
+            $cached = $this->readNasListCache($hcNumber, $formId);
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        $files = $this->nasImagenesService->listFiles($hcNumber, $formId);
+        $error = $this->nasImagenesService->getLastError();
+        if ($error === null) {
+            $this->writeNasListCache($hcNumber, $formId, $files);
+        }
+
+        return $files;
+    }
+
+    /**
+     * @return array<int, array{name: string, size: int, mtime: int, ext: string, type: string}>|null
+     */
+    private function readNasListCache(string $hcNumber, string $formId): ?array
+    {
+        $path = $this->resolveNasListCachePath($hcNumber, $formId);
+        if ($path === null || !$this->isNasListCacheFresh($path)) {
+            return null;
+        }
+
+        $raw = @file_get_contents($path);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !is_array($decoded['files'] ?? null)) {
+            return null;
+        }
+
+        $files = [];
+        foreach ($decoded['files'] as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+            $name = trim((string)($file['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $ext = strtolower(trim((string)($file['ext'] ?? pathinfo($name, PATHINFO_EXTENSION))));
+            $files[] = [
+                'name' => $name,
+                'size' => (int)($file['size'] ?? 0),
+                'mtime' => (int)($file['mtime'] ?? 0),
+                'ext' => $ext,
+                'type' => (string)($file['type'] ?? $this->resolveNasMimeByFilename($name)),
+            ];
+        }
+
+        return $files;
+    }
+
+    /**
+     * @param array<int, array{name: string, size: int, mtime: int, ext: string, type: string}> $files
+     */
+    private function writeNasListCache(string $hcNumber, string $formId, array $files): void
+    {
+        $path = $this->resolveNasListCachePath($hcNumber, $formId);
+        if ($path === null) {
+            return;
+        }
+
+        $dir = dirname($path);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return;
+        }
+
+        $payload = json_encode([
+            'cached_at' => date('c'),
+            'files' => array_values($files),
+        ], JSON_UNESCAPED_UNICODE);
+        if ($payload === false) {
+            return;
+        }
+
+        $tmp = $path . '.part';
+        if (@file_put_contents($tmp, $payload) === false) {
+            @unlink($tmp);
+            return;
+        }
+        @rename($tmp, $path);
+    }
+
+    private function resolveNasListCachePath(string $hcNumber, string $formId): ?string
+    {
+        $dir = $this->resolveNasCacheDir();
+        if ($dir === null) {
+            return null;
+        }
+        $subdir = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . 'list';
+        if (!is_dir($subdir) && !@mkdir($subdir, 0775, true) && !is_dir($subdir)) {
+            return null;
+        }
+
+        $hash = sha1($hcNumber . '|' . $formId . '|list');
+        return $subdir . DIRECTORY_SEPARATOR . $hash . '.json';
+    }
+
+    private function isNasListCacheFresh(string $path): bool
+    {
+        if (!is_file($path)) {
+            return false;
+        }
+        $ttl = (int)($_ENV['NAS_IMAGES_LIST_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_LIST_CACHE_TTL'] ?? 90);
+        if ($ttl <= 0) {
+            return false;
+        }
+        $mtime = (int)(filemtime($path) ?: 0);
+        return $mtime > 0 && (time() - $mtime) <= $ttl;
+    }
+
+    private function warmNasFileCache(string $hcNumber, string $formId, string $filename): bool
+    {
+        $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
+        if ($cachePath === null) {
+            return false;
+        }
+        if ($this->isNasCacheFresh($cachePath)) {
+            return true;
+        }
+
+        $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
+        if (!$opened || empty($opened['stream'])) {
+            return false;
+        }
+
+        $stream = $opened['stream'];
+        $tmpPath = $cachePath . '.part';
+        $handle = @fopen($tmpPath, 'wb');
+        if (!$handle) {
+            fclose($stream);
+            return false;
+        }
+
+        while (!feof($stream)) {
+            $chunk = fread($stream, 65536);
+            if ($chunk === false) {
+                break;
+            }
+            fwrite($handle, $chunk);
+        }
+        fclose($stream);
+        fclose($handle);
+
+        if (!is_file($tmpPath) || (int)(filesize($tmpPath) ?: 0) <= 0) {
+            @unlink($tmpPath);
+            return false;
+        }
+
+        @rename($tmpPath, $cachePath);
+        return is_file($cachePath) && (int)(filesize($cachePath) ?: 0) > 0;
     }
 
     private function resolveNasCacheDir(): ?string
