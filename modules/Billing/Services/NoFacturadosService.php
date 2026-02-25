@@ -22,6 +22,8 @@ class NoFacturadosService
                 base.procedimiento,
                 base.tipo,
                 base.estado_revision,
+                base.informado,
+                base.informe_actualizado,
                 base.estado_agenda,
                 base.valor_estimado
             FROM (
@@ -38,11 +40,17 @@ class NoFacturadosService
                         ELSE 'no_quirurgico'
                     END AS tipo,
                     NULL AS estado_revision,
+                    CASE
+                        WHEN UPPER(pr.procedimiento_proyectado) LIKE 'IMAGENES%' THEN CASE WHEN ii.id IS NULL THEN 0 ELSE 1 END
+                        ELSE NULL
+                    END AS informado,
+                    ii.updated_at AS informe_actualizado,
                     pr.estado_agenda AS estado_agenda,
                     0 AS valor_estimado
                 FROM procedimiento_proyectado pr
                 INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
                 LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
+                LEFT JOIN imagenes_informes ii ON ii.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
                   AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
                   AND (
@@ -71,11 +79,17 @@ class NoFacturadosService
                         ELSE 'quirurgico'
                     END AS tipo,
                     pd.status AS estado_revision,
+                    CASE
+                        WHEN UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'IMAGENES%' THEN CASE WHEN ii.id IS NULL THEN 0 ELSE 1 END
+                        ELSE NULL
+                    END AS informado,
+                    ii.updated_at AS informe_actualizado,
                     pr.estado_agenda AS estado_agenda,
                     0 AS valor_estimado
                 FROM protocolo_data pd
                 INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
+                LEFT JOIN imagenes_informes ii ON ii.form_id = pd.form_id
                 WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
                   AND (
                         UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
@@ -277,6 +291,7 @@ class NoFacturadosService
         $procedimiento = $filters['procedimiento'] ?? null;
         $valorMin = $filters['valor_min'] ?? null;
         $valorMax = $filters['valor_max'] ?? null;
+        $informado = $filters['informado'] ?? null;
         $estadosAgenda = array_values(array_filter(array_map('trim', (array)($filters['estado_agenda'] ?? [])), static fn($value) => $value !== ''));
 
         if (!empty($filters['fecha_desde'])) {
@@ -350,6 +365,12 @@ class NoFacturadosService
         if ($valorMax !== '' && $valorMax !== null) {
             $conditions[] = 'base.valor_estimado <= :valor_max';
             $params[':valor_max'] = (float)$valorMax;
+        }
+
+        if ($informado !== '' && $informado !== null && ($informado === '0' || $informado === '1' || $informado === 0 || $informado === 1)) {
+            // Solo aplica a registros de imágenes; para otros tipos no restringe el resultado.
+            $conditions[] = '(base.tipo <> \'imagen\' OR COALESCE(base.informado, 0) = :informado)';
+            $params[':informado'] = (int)$informado;
         }
 
         return $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';

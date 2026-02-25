@@ -702,6 +702,19 @@ $scripts = array_merge($scripts ?? [], [
             return date.toLocaleDateString('es-EC');
         };
 
+        const formatFechaHora = (data) => {
+            if (!data) return '';
+            const date = new Date(data);
+            if (Number.isNaN(date.getTime())) return String(data);
+            return date.toLocaleString('es-EC', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        };
+
         const showTableError = (tableId, message) => {
             const errorBox = document.querySelector(`[data-table-error="${tableId}"]`);
             if (!errorBox) return;
@@ -946,6 +959,30 @@ $scripts = array_merge($scripts ?? [], [
                     return estado
                         ? renderBadge('Revisado', 'success')
                         : renderBadge('Pendiente', 'warning');
+                }
+            },
+            {
+                data: 'informado',
+                render: (data, type, row) => {
+                    if (row.tipo !== 'imagen') {
+                        return renderBadge('N/A', 'secondary');
+                    }
+
+                    const informado = Number(data) === 1;
+                    const badge = informado
+                        ? renderBadge('Informado', 'success')
+                        : renderBadge('Sin informar', 'warning');
+
+                    if (!informado) {
+                        return badge;
+                    }
+
+                    const fechaInforme = formatFechaHora(row?.informe_actualizado);
+                    if (!fechaInforme) {
+                        return badge;
+                    }
+
+                    return `${badge}<div class="text-muted small mt-1">${fechaInforme}</div>`;
                 }
             },
             {

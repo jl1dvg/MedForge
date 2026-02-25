@@ -86,6 +86,14 @@
                             </select>
                         </div>
                         <div class="col-md-2">
+                            <label for="fInformado" class="form-label">Informe imágenes</label>
+                            <select id="fInformado" name="informado" class="form-select form-select-sm">
+                                <option value="">Todos</option>
+                                <option value="1">Informado</option>
+                                <option value="0">Sin informar</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label for="fEstadoAgenda" class="form-label">Estado agenda</label>
                             <select id="fEstadoAgenda" name="estado_agenda" class="form-select form-select-sm" multiple
                                     aria-label="Selecciona estados de agenda">
@@ -210,6 +218,7 @@
                                         <th>Fecha</th>
                                         <th>Tipo</th>
                                         <th>Estado revisión</th>
+                                        <th>Informe</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>
@@ -247,6 +256,7 @@
                                         <th>Fecha</th>
                                         <th>Tipo</th>
                                         <th>Estado revisión</th>
+                                        <th>Informe</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>
@@ -285,6 +295,7 @@
                                         <th>Fecha</th>
                                         <th>Tipo</th>
                                         <th>Estado revisión</th>
+                                        <th>Informe</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>
@@ -332,6 +343,7 @@
                                         <th>Fecha</th>
                                         <th>Tipo</th>
                                         <th>Estado revisión</th>
+                                        <th>Informe</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>
@@ -369,6 +381,7 @@
                                         <th>Fecha</th>
                                         <th>Tipo</th>
                                         <th>Estado revisión</th>
+                                        <th>Informe</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>

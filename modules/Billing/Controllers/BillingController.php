@@ -310,6 +310,7 @@ class BillingController extends BaseController
             'fecha_hasta' => $_GET['fecha_hasta'] ?? null,
             'afiliacion' => $afiliaciones,
             'estado_revision' => $_GET['estado_revision'] ?? null,
+            'informado' => $_GET['informado'] ?? null,
             'estado_agenda' => $estadosAgenda,
             'tipo' => $_GET['tipo'] ?? null,
             'busqueda' => $_GET['busqueda'] ?? null,
