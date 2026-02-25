@@ -20,6 +20,10 @@ return function (Router $router) {
         (new ExamenController($pdo))->imagenesRealizadas();
     });
 
+    $router->get('/imagenes/dashboard', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesDashboard();
+    });
+
     $router->get('/imagenes/examenes-realizados/nas/list', function (\PDO $pdo) {
         (new ExamenController($pdo))->imagenesNasList();
     });

@@ -1322,8 +1322,19 @@ class ExamenModel
      *     estado_agenda?: string
      * } $filters
      */
-    public function fetchImagenesRealizadas(array $filters = []): array
+    public function fetchImagenesRealizadas(array $filters = [], bool $includeFacturado = false): array
     {
+        $facturadoSelect = $includeFacturado
+            ? "CASE WHEN bm.form_id IS NULL THEN 0 ELSE 1 END AS facturado"
+            : "0 AS facturado";
+        $facturadoJoin = $includeFacturado
+            ? "LEFT JOIN (
+                SELECT DISTINCT form_id
+                FROM billing_main
+                WHERE form_id IS NOT NULL AND TRIM(form_id) <> ''
+            ) bm ON bm.form_id = pp.form_id"
+            : '';
+
         $sql = "SELECT
                 pp.id,
                 pp.form_id,
@@ -1346,10 +1357,12 @@ class ExamenModel
                 pp.estado_agenda,
                 ii.id AS informe_id,
                 ii.firmado_por AS informe_firmado_por,
-                ii.updated_at AS informe_actualizado
+                ii.updated_at AS informe_actualizado,
+                {$facturadoSelect}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             LEFT JOIN imagenes_informes ii ON ii.form_id = pp.form_id
+            {$facturadoJoin}
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
               AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";

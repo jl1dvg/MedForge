@@ -118,9 +118,14 @@ sort($estadoOpciones);
     <div class="box">
         <div class="box-header with-border d-flex justify-content-between align-items-center">
             <h4 class="box-title mb-0">Listado por fecha, afiliación y paciente</h4>
+            <div class="d-flex gap-2">
+                <a href="/imagenes/dashboard" class="btn btn-outline-info btn-sm">
+                    <i class="mdi mdi-chart-line"></i> Dashboard
+                </a>
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btnPrintTable">
                     <i class="mdi mdi-printer"></i> Imprimir lista
                 </button>
+            </div>
         </div>
         <div class="box-body">
             <?php

@@ -3901,7 +3901,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
-        $rows = $this->examenModel->fetchImagenesRealizadas($filters);
+        $rows = $this->examenModel->fetchImagenesRealizadas($filters, false);
 
         $this->render(
             __DIR__ . '/../views/imagenes_realizadas.php',
@@ -3909,6 +3909,25 @@ class ExamenController extends BaseController
                 'pageTitle' => 'Imágenes · Procedimientos proyectados',
                 'imagenesRealizadas' => $rows,
                 'filters' => $filters,
+            ]
+        );
+    }
+
+    public function imagenesDashboard(): void
+    {
+        $this->requireAuth();
+
+        $filters = $this->buildImagenesRealizadasFilters();
+        $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
+
+        $this->render(
+            __DIR__ . '/../views/imagenes_dashboard.php',
+            [
+                'pageTitle' => 'Dashboard de Imágenes',
+                'filters' => $filters,
+                'dashboard' => $dashboard,
+                'rows' => $rows,
             ]
         );
     }
@@ -4368,6 +4387,275 @@ class ExamenController extends BaseController
         }
 
         return (new \DateTime($fallback))->format('Y-m-d');
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array{
+     *     fecha_inicio?: string,
+     *     fecha_fin?: string
+     * } $filters
+     * @return array<string, mixed>
+     */
+    private function buildImagenesDashboardSummary(array $rows, array $filters): array
+    {
+        $today = new DateTimeImmutable('today');
+        $todayTs = $today->getTimestamp();
+        $total = count($rows);
+
+        $informados = 0;
+        $noInformados = 0;
+        $facturados = 0;
+        $facturadosEInformados = 0;
+        $facturadosSinInformar = 0;
+        $informadosSinFacturar = 0;
+
+        $tatHoras = [];
+        $sla48Cumple = 0;
+        $sla48Total = 0;
+
+        $dailyMap = [];
+        $mixMap = [];
+        $tarifarioCache = [];
+        $aging = [
+            '0-2 días' => 0,
+            '3-7 días' => 0,
+            '8-14 días' => 0,
+            '15+ días' => 0,
+        ];
+
+        foreach ($rows as $row) {
+            $informado = !empty($row['informe_id']);
+            $facturado = (int)($row['facturado'] ?? 0) === 1;
+            $fechaExamenRaw = trim((string)($row['fecha_examen'] ?? ''));
+            $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
+            $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
+
+            if ($fechaExamenDia !== '') {
+                if (!isset($dailyMap[$fechaExamenDia])) {
+                    $dailyMap[$fechaExamenDia] = ['realizados' => 0, 'informados' => 0];
+                }
+                $dailyMap[$fechaExamenDia]['realizados']++;
+            }
+
+            if ($informado) {
+                $informados++;
+                if ($fechaExamenDia !== '') {
+                    $dailyMap[$fechaExamenDia]['informados']++;
+                }
+            } else {
+                $noInformados++;
+            }
+
+            if ($facturado) {
+                $facturados++;
+            }
+
+            if ($informado && $facturado) {
+                $facturadosEInformados++;
+            } elseif ($facturado && !$informado) {
+                $facturadosSinInformar++;
+            } elseif (!$facturado && $informado) {
+                $informadosSinFacturar++;
+            }
+
+            if ($informado) {
+                $informeActualizadoRaw = trim((string)($row['informe_actualizado'] ?? ''));
+                $informeActualizadoTs = $informeActualizadoRaw !== '' ? strtotime($informeActualizadoRaw) : false;
+                if ($fechaExamenTs !== false && $informeActualizadoTs !== false && $informeActualizadoTs >= $fechaExamenTs) {
+                    $horas = ($informeActualizadoTs - $fechaExamenTs) / 3600;
+                    $tatHoras[] = $horas;
+                    $sla48Total++;
+                    if ($horas <= 48) {
+                        $sla48Cumple++;
+                    }
+                }
+            } elseif ($fechaExamenTs !== false) {
+                $dias = max(0, (int)floor(($todayTs - $fechaExamenTs) / 86400));
+                if ($dias <= 2) {
+                    $aging['0-2 días']++;
+                } elseif ($dias <= 7) {
+                    $aging['3-7 días']++;
+                } elseif ($dias <= 14) {
+                    $aging['8-14 días']++;
+                } else {
+                    $aging['15+ días']++;
+                }
+            }
+
+            $tipoRaw = trim((string)($row['tipo_examen'] ?? ''));
+            $parsedTipo = $this->parseProcedimientoImagen($tipoRaw);
+            $tipoTexto = trim((string)($parsedTipo['texto'] ?? ''));
+            $codigo = (string)($this->extraerCodigoTarifario($tipoTexto !== '' ? $tipoTexto : $tipoRaw) ?? '');
+            $nombreTarifario = '';
+
+            if ($codigo !== '') {
+                if (!isset($tarifarioCache[$codigo])) {
+                    $tarifarioCache[$codigo] = $this->obtenerTarifarioPorCodigo($codigo);
+                }
+                $tarifa = $tarifarioCache[$codigo];
+                if (is_array($tarifa) && !empty($tarifa)) {
+                    $nombreTarifario = trim((string)($tarifa['descripcion'] ?? $tarifa['short_description'] ?? ''));
+                }
+            }
+
+            $detalle = $tipoTexto !== '' ? $tipoTexto : $tipoRaw;
+            if ($codigo !== '') {
+                $detalle = trim((string)(preg_replace('/\b' . preg_quote($codigo, '/') . '\b\s*[-:]?\s*/iu', '', $detalle) ?? $detalle));
+            }
+            $detalle = trim($detalle, " -\t\n\r\0\x0B");
+
+            if ($codigo !== '' && $nombreTarifario !== '') {
+                $label = $codigo . ' - ' . $nombreTarifario;
+                $suffix = $this->normalizarDetalleEstudio012A($detalle, $nombreTarifario);
+                if ($suffix !== '') {
+                    $label .= ' - ' . $suffix;
+                }
+            } elseif ($codigo !== '') {
+                $label = $codigo . ' - ' . ($detalle !== '' ? $detalle : 'SIN DETALLE');
+            } else {
+                $label = $detalle !== '' ? $detalle : 'SIN CÓDIGO';
+            }
+
+            $mixMap[$label] = ($mixMap[$label] ?? 0) + 1;
+        }
+
+        arsort($mixMap);
+        $mixTop = array_slice($mixMap, 0, 8, true);
+
+        $seriesStart = trim((string)($filters['fecha_inicio'] ?? ''));
+        $seriesEnd = trim((string)($filters['fecha_fin'] ?? ''));
+        if ($seriesStart !== '' && $seriesEnd !== '') {
+            $dStart = DateTimeImmutable::createFromFormat('Y-m-d', $seriesStart);
+            $dEnd = DateTimeImmutable::createFromFormat('Y-m-d', $seriesEnd);
+            if ($dStart instanceof DateTimeImmutable && $dEnd instanceof DateTimeImmutable && $dStart <= $dEnd) {
+                $days = (int)$dStart->diff($dEnd)->days;
+                if ($days <= 120) {
+                    for ($cursor = $dStart; $cursor <= $dEnd; $cursor = $cursor->modify('+1 day')) {
+                        $k = $cursor->format('Y-m-d');
+                        if (!isset($dailyMap[$k])) {
+                            $dailyMap[$k] = ['realizados' => 0, 'informados' => 0];
+                        }
+                    }
+                }
+            }
+        }
+        ksort($dailyMap);
+
+        $tatPromedio = !empty($tatHoras) ? array_sum($tatHoras) / count($tatHoras) : null;
+        $tatMediana = $this->calcularPercentil($tatHoras, 0.50);
+        $tatP90 = $this->calcularPercentil($tatHoras, 0.90);
+        $sla48Pct = $sla48Total > 0 ? ($sla48Cumple * 100 / $sla48Total) : null;
+
+        $rangeLabel = trim((string)($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string)($filters['fecha_fin'] ?? ''));
+        $rangeLabel = trim($rangeLabel, ' a');
+
+        return [
+            'cards' => [
+                [
+                    'label' => 'Total estudios',
+                    'value' => $total,
+                    'hint' => $rangeLabel !== '' ? ('Rango: ' . $rangeLabel) : 'Sin rango',
+                ],
+                [
+                    'label' => 'Informados',
+                    'value' => $informados,
+                    'hint' => $total > 0 ? (number_format(($informados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'No informados',
+                    'value' => $noInformados,
+                    'hint' => $total > 0 ? (number_format(($noInformados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Facturados',
+                    'value' => $facturados,
+                    'hint' => $total > 0 ? (number_format(($facturados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Facturados e informados',
+                    'value' => $facturadosEInformados,
+                    'hint' => 'Cruce OK',
+                ],
+                [
+                    'label' => 'Facturados sin informar',
+                    'value' => $facturadosSinInformar,
+                    'hint' => 'Debe tender a 0',
+                ],
+                [
+                    'label' => 'Informados sin facturar',
+                    'value' => $informadosSinFacturar,
+                    'hint' => 'Pendiente de facturar',
+                ],
+                [
+                    'label' => 'SLA informe <= 48h',
+                    'value' => $sla48Pct !== null ? (number_format($sla48Pct, 1) . '%') : '—',
+                    'hint' => $sla48Total > 0 ? ($sla48Cumple . ' de ' . $sla48Total . ' informes') : 'Sin datos de TAT',
+                ],
+            ],
+            'meta' => [
+                'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
+                'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
+                'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+            ],
+            'charts' => [
+                'serie_diaria' => [
+                    'labels' => array_keys($dailyMap),
+                    'realizados' => array_values(array_map(static fn(array $item): int => (int)($item['realizados'] ?? 0), $dailyMap)),
+                    'informados' => array_values(array_map(static fn(array $item): int => (int)($item['informados'] ?? 0), $dailyMap)),
+                ],
+                'mix_codigos' => [
+                    'labels' => array_keys($mixTop),
+                    'values' => array_values($mixTop),
+                ],
+                'aging_backlog' => [
+                    'labels' => array_keys($aging),
+                    'values' => array_values($aging),
+                ],
+                'trazabilidad' => [
+                    'labels' => [
+                        'Facturados e informados',
+                        'Facturados sin informar',
+                        'Informados sin facturar',
+                        'No informados y no facturados',
+                    ],
+                    'values' => [
+                        $facturadosEInformados,
+                        $facturadosSinInformar,
+                        $informadosSinFacturar,
+                        max(0, $noInformados - $facturadosSinInformar),
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<int, float|int> $values
+     */
+    private function calcularPercentil(array $values, float $percent): ?float
+    {
+        if (empty($values)) {
+            return null;
+        }
+
+        $percent = max(0.0, min(1.0, $percent));
+        sort($values, SORT_NUMERIC);
+        $n = count($values);
+        if ($n === 1) {
+            return (float)$values[0];
+        }
+
+        $index = ($n - 1) * $percent;
+        $lower = (int)floor($index);
+        $upper = (int)ceil($index);
+
+        if ($lower === $upper) {
+            return (float)$values[$lower];
+        }
+
+        $weight = $index - $lower;
+        return ((float)$values[$lower] * (1 - $weight)) + ((float)$values[$upper] * $weight);
     }
 
     public function actualizarImagenRealizada(): void
