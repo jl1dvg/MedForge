@@ -5,10 +5,14 @@ use Modules\Usuarios\Support\UserMediaValidator;
 
 require_once __DIR__ . '/../../core/Permissions.php';
 require_once __DIR__ . '/../../core/BaseController.php';
+require_once __DIR__ . '/../../models/SettingsModel.php';
 require_once __DIR__ . '/../../modules/Usuarios/Models/UsuarioModel.php';
 require_once __DIR__ . '/../../modules/Usuarios/Models/RolModel.php';
 require_once __DIR__ . '/../../modules/Usuarios/Support/PermissionRegistry.php';
+require_once __DIR__ . '/../../modules/Usuarios/Support/SensitiveDataProtector.php';
 require_once __DIR__ . '/../../modules/Usuarios/Support/UserMediaValidator.php';
+require_once __DIR__ . '/../../modules/WhatsApp/Config/WhatsAppSettings.php';
+require_once __DIR__ . '/../../modules/WhatsApp/Support/PhoneNumberFormatter.php';
 require_once __DIR__ . '/../../modules/Usuarios/Controllers/UsuariosController.php';
 
 if (!defined('BASE_PATH')) {
@@ -82,6 +86,9 @@ assert_true($txtResult['error'] !== null, 'Invalid mime should fail', $failures)
 
 $destination = $validator->destinationFor(UserMediaValidator::TYPE_SIGNATURE, 'sample.svg', BASE_PATH);
 assert_true(str_contains($destination['public'], '/uploads/users/signatures/sample.svg'), 'Signature destination should include signatures directory', $failures);
+
+$combinedDestination = $validator->destinationFor(UserMediaValidator::TYPE_SEAL_SIGNATURE, 'combined.svg', BASE_PATH);
+assert_true(str_contains($combinedDestination['public'], '/uploads/users/seal-signatures/combined.svg'), 'Combined destination should include seal-signatures directory', $failures);
 
 $pdo = new PDO('sqlite::memory:');
 $controller = new UsuariosControllerProbe($pdo);

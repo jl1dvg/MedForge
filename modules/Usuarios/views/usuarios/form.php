@@ -232,6 +232,13 @@ if (!function_exists('usuarios_permission_id')) {
                                 <small class="text-muted">Se habilita solo para Cirujano Oftalmólogo.</small>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Contraseña <?= isset($usuario['id']) ? '(dejar en blanco para mantener)' : '*'; ?></label>
+                                <input type="password" name="password" class="form-control" autocomplete="new-password">
+                                <?php if (!empty($errors['password'])): ?>
+                                    <div class="text-danger small"><?= htmlspecialchars($errors['password'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Sello</label>
                                 <?php
                                 $firmaPath = $usuario['firma'] ?? null;
@@ -326,6 +333,42 @@ if (!function_exists('usuarios_permission_id')) {
                                 </div>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Sello + firma combinados</label>
+                                <?php
+                                $sealSignaturePath = $usuario['seal_signature_path'] ?? null;
+                                if ($sealSignaturePath && !preg_match('/^https?:/i', $sealSignaturePath)) {
+                                    $sealSignaturePath = rtrim(BASE_URL, '/') . '/' . ltrim($sealSignaturePath, '/');
+                                }
+                                ?>
+                                <?php if (!empty($usuario['seal_signature_path'])): ?>
+                                    <div class="mb-2">
+                                        <img src="<?= htmlspecialchars($sealSignaturePath, ENT_QUOTES, 'UTF-8'); ?>" alt="Sello y firma combinados" class="img-fluid border rounded" style="max-height: 120px;">
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="remove_seal_signature" id="remove_seal_signature" value="1">
+                                        <label class="form-check-label" for="remove_seal_signature">Eliminar imagen combinada actual</label>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="drop-zone mt-2" data-upload-drop-zone="seal_signature_file" tabindex="0" aria-label="Zona de carga para sello y firma combinados" aria-describedby="seal_signature_help">
+                                    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                                        <div class="fw-semibold">Sube una sola imagen con sello y firma ya combinados.</div>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-upload-trigger="seal_signature_file">
+                                            <i class="mdi mdi-upload"></i> Seleccionar archivo
+                                        </button>
+                                    </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="seal_signature_file" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <?php $sealSignatureError = $errors['seal_signature_file'] ?? null; ?>
+                                    <div class="text-danger small mt-2 <?= $sealSignatureError ? '' : 'd-none'; ?>" data-upload-error="seal_signature_file" role="alert">
+                                        <?= $sealSignatureError ? htmlspecialchars($sealSignatureError, ENT_QUOTES, 'UTF-8') : ''; ?>
+                                    </div>
+                                    <div class="mt-2" data-upload-preview="seal_signature_file"></div>
+                                    <div class="text-muted small mt-2" id="seal_signature_help">Formatos permitidos: PNG, WEBP o SVG. Máximo 2&nbsp;MB.</div>
+                                    <input type="file" name="seal_signature_file" id="seal_signature_file" class="form-control mt-2" accept="image/png,image/webp,image/svg+xml">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">Foto de perfil</label>
                                 <?php
                                 $fotoPath = $usuario['profile_photo'] ?? null;
@@ -361,13 +404,7 @@ if (!function_exists('usuarios_permission_id')) {
                                     <input type="file" name="profile_photo_file" id="profile_photo_file" class="form-control mt-2" accept="image/png,image/jpeg,image/webp">
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Contraseña <?= isset($usuario['id']) ? '(dejar en blanco para mantener)' : '*'; ?></label>
-                                <input type="password" name="password" class="form-control" autocomplete="new-password">
-                                <?php if (!empty($errors['password'])): ?>
-                                    <div class="text-danger small"><?= htmlspecialchars($errors['password'], ENT_QUOTES, 'UTF-8'); ?></div>
-                                <?php endif; ?>
-                            </div>
+
                             <div class="col-md-6">
                                 <label class="form-label">Rol</label>
                                 <select name="role_id" class="form-select">

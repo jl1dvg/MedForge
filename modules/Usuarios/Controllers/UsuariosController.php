@@ -31,6 +31,13 @@ class UsuariosController extends BaseController
             'path_key' => 'signature_path',
             'meta_prefix' => 'signature',
         ],
+        'seal_signature' => [
+            'input' => 'seal_signature_file',
+            'remove' => 'remove_seal_signature',
+            'directory' => UserMediaValidator::TYPE_SEAL_SIGNATURE,
+            'path_key' => 'seal_signature_path',
+            'meta_prefix' => 'seal_signature',
+        ],
     ];
 
     private const PROFILE_MAX_SIZE = 2097152; // 2MB
@@ -134,6 +141,7 @@ class UsuariosController extends BaseController
             $formData['firma'] = null;
             $formData['profile_photo'] = null;
             $formData['signature_path'] = null;
+            $formData['seal_signature_path'] = null;
             $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
                 'pageTitle' => 'Nuevo usuario',
                 'roles' => $this->roles->all(),
@@ -232,6 +240,7 @@ class UsuariosController extends BaseController
             $formData['firma'] = $existing['firma'] ?? null;
             $formData['profile_photo'] = $existing['profile_photo'] ?? null;
             $formData['signature_path'] = $existing['signature_path'] ?? null;
+            $formData['seal_signature_path'] = $existing['seal_signature_path'] ?? null;
             $usuario = array_merge($existing, $formData);
             $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
                 'pageTitle' => 'Editar usuario',
@@ -297,6 +306,7 @@ class UsuariosController extends BaseController
         $this->usuarios->delete($id);
         $this->deleteFile($usuario['firma'] ?? null);
         $this->deleteFile($usuario['signature_path'] ?? null);
+        $this->deleteFile($usuario['seal_signature_path'] ?? null);
         $this->deleteFile($usuario['profile_photo'] ?? null);
         header('Location: /usuarios?status=deleted');
         exit;
@@ -327,6 +337,7 @@ class UsuariosController extends BaseController
             'user' => $this->buildUserIdentityPayload($usuario),
             'seal' => $this->serializeMediaPayload($usuario, 'firma'),
             'signature' => $this->serializeMediaPayload($usuario, 'signature_path'),
+            'seal_signature' => $this->serializeMediaPayload($usuario, 'seal_signature_path'),
         ];
 
         $this->applyMediaCachingHeaders($payload);
@@ -386,6 +397,12 @@ class UsuariosController extends BaseController
             'signature_hash' => $existing['signature_hash'] ?? null,
             'signature_updated_at' => $existing['signature_updated_at'] ?? null,
             'signature_updated_by' => $existing['signature_updated_by'] ?? null,
+            'seal_signature_path' => $existing['seal_signature_path'] ?? null,
+            'seal_signature_mime' => $existing['seal_signature_mime'] ?? null,
+            'seal_signature_size' => $existing['seal_signature_size'] ?? null,
+            'seal_signature_hash' => $existing['seal_signature_hash'] ?? null,
+            'seal_signature_updated_at' => $existing['seal_signature_updated_at'] ?? null,
+            'seal_signature_updated_by' => $existing['seal_signature_updated_by'] ?? null,
         ];
 
         $data['nombre'] = $this->buildFullName($data);
@@ -511,8 +528,10 @@ class UsuariosController extends BaseController
         $hashSource = json_encode([
             $payload['seal']['hash'] ?? null,
             $payload['signature']['hash'] ?? null,
+            $payload['seal_signature']['hash'] ?? null,
             $payload['seal']['updated_at'] ?? null,
             $payload['signature']['updated_at'] ?? null,
+            $payload['seal_signature']['updated_at'] ?? null,
         ]);
 
         header('Cache-Control: public, max-age=' . $ttl . ', stale-while-revalidate=' . $stale);
@@ -554,7 +573,11 @@ class UsuariosController extends BaseController
 
     private function serializeMediaPayload(array $usuario, string $pathKey): ?array
     {
-        $prefix = $pathKey === 'firma' ? 'firma' : 'signature';
+        $prefix = match ($pathKey) {
+            'firma' => 'firma',
+            'seal_signature_path' => 'seal_signature',
+            default => 'signature',
+        };
         $path = $usuario[$pathKey] ?? null;
 
         if (!$path) {

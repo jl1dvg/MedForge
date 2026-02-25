@@ -6,6 +6,7 @@ class UserMediaValidator
 {
     public const TYPE_SEAL = 'seal';
     public const TYPE_SIGNATURE = 'signature';
+    public const TYPE_SEAL_SIGNATURE = 'seal_signature';
 
     private const MAX_BYTES = 2 * 1024 * 1024; // 2MB
     private const MIN_WIDTH = 64;
@@ -22,6 +23,7 @@ class UserMediaValidator
     private const TYPE_DIRECTORIES = [
         self::TYPE_SEAL => 'seals',
         self::TYPE_SIGNATURE => 'signatures',
+        self::TYPE_SEAL_SIGNATURE => 'seal-signatures',
     ];
 
     /**

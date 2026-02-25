@@ -12,6 +12,10 @@
             label: 'firma digital',
             accepted: ['image/png', 'image/webp', 'image/svg+xml'],
         },
+        seal_signature_file: {
+            label: 'sello y firma combinados',
+            accepted: ['image/png', 'image/webp', 'image/svg+xml'],
+        },
         profile_photo_file: {
             label: 'foto de perfil',
             accepted: ['image/png', 'image/jpeg', 'image/webp'],
