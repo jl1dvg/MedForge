@@ -3124,7 +3124,46 @@ class ExamenController extends BaseController
         $timestamp = $this->parseTimestamp($fechaReferencia) ?? time();
         $mes = date('m', $timestamp);
         $anio = date('Y', $timestamp);
-        return 'IMAGENES_' . $hcNumber . '_' . $mes . '-' . $anio . '.pdf';
+        $prefix = $this->resolvePacienteFilenamePrefix($hcNumber);
+        return $prefix . '_' . $hcNumber . '_' . $mes . '-' . $anio . '.pdf';
+    }
+
+    private function resolvePacienteFilenamePrefix(string $hcNumber): string
+    {
+        $default = 'IMAGENES';
+        $hcNumber = trim($hcNumber);
+        if ($hcNumber === '') {
+            return $default;
+        }
+
+        try {
+            $paciente = $this->pacienteService->getPatientDetails($hcNumber);
+        } catch (\Throwable $e) {
+            return $default;
+        }
+
+        if (!is_array($paciente) || empty($paciente)) {
+            return $default;
+        }
+
+        $parts = [
+            trim((string)($paciente['lname'] ?? $paciente['last_name'] ?? '')),
+            trim((string)($paciente['lname2'] ?? $paciente['second_last_name'] ?? '')),
+            trim((string)($paciente['fname'] ?? $paciente['first_name'] ?? '')),
+            trim((string)($paciente['mname'] ?? $paciente['middle_name'] ?? '')),
+        ];
+        $parts = array_values(array_filter($parts, static fn (string $v): bool => $v !== ''));
+
+        if (empty($parts)) {
+            return $default;
+        }
+
+        $prefix = implode('_', $parts);
+        $prefix = preg_replace('/\s+/u', '_', $prefix) ?? $prefix;
+        $prefix = preg_replace('/[^\pL\pN_-]+/u', '', $prefix) ?? $prefix;
+        $prefix = trim($prefix, '_-');
+
+        return $prefix !== '' ? $prefix : $default;
     }
 
     private function writeTempFile(string $content, string $ext): string
