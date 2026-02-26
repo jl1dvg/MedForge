@@ -75,6 +75,9 @@ if (!function_exists('usuarios_permission_id')) {
                         <?php if (!empty($errors)): ?>
                             <div class="alert alert-danger" role="alert" aria-live="assertive" tabindex="-1" data-validation-alert>
                                 <i class="mdi mdi-alert-circle-outline"></i> Revisa los campos marcados para continuar.
+                                <?php if (!empty($errors['general'])): ?>
+                                    <div class="mt-2"><?= htmlspecialchars($errors['general'], ENT_QUOTES, 'UTF-8'); ?></div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
                         <div class="row g-3">

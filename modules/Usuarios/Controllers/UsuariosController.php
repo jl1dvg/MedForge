@@ -170,7 +170,37 @@ class UsuariosController extends BaseController
             $_SESSION['user_warnings'] = $warnings;
         }
 
-        $this->usuarios->create($data);
+        try {
+            $createdId = $this->usuarios->create($data);
+        } catch (\Throwable $exception) {
+            $createdId = 0;
+            error_log('No se pudo crear el usuario: ' . $exception->getMessage());
+        }
+
+        if ($createdId <= 0) {
+            $this->rollbackUploads($pendingUploads);
+            $formData = $data;
+            unset($formData['password']);
+            $formData['firma'] = null;
+            $formData['profile_photo'] = null;
+            $formData['signature_path'] = null;
+            $formData['seal_signature_path'] = null;
+            $errors['general'] = 'No se pudo guardar el usuario. Verifica que la base de datos tenga las columnas de medios actualizadas.';
+            $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
+                'pageTitle' => 'Nuevo usuario',
+                'roles' => $this->roles->all(),
+                'permissions' => PermissionRegistry::groups(),
+                'selectedPermissions' => PermissionRegistry::sanitizeSelection($_POST['permissions'] ?? []),
+                'formAction' => '/usuarios/create',
+                'method' => 'POST',
+                'usuario' => $formData,
+                'errors' => $errors,
+                'warnings' => $warnings,
+                'scripts' => self::FORM_SCRIPTS,
+            ]);
+            return;
+        }
+
         $this->finalizeUploads($pendingUploads);
         header('Location: /usuarios?status=created');
         exit;
@@ -270,7 +300,38 @@ class UsuariosController extends BaseController
             $_SESSION['user_warnings'] = $warnings;
         }
 
-        $this->usuarios->update($id, $data);
+        try {
+            $updated = $this->usuarios->update($id, $data);
+        } catch (\Throwable $exception) {
+            $updated = false;
+            error_log('No se pudo actualizar el usuario ' . $id . ': ' . $exception->getMessage());
+        }
+
+        if (!$updated) {
+            $this->rollbackUploads($pendingUploads);
+            $formData = $data;
+            unset($formData['password']);
+            $formData['firma'] = $existing['firma'] ?? null;
+            $formData['profile_photo'] = $existing['profile_photo'] ?? null;
+            $formData['signature_path'] = $existing['signature_path'] ?? null;
+            $formData['seal_signature_path'] = $existing['seal_signature_path'] ?? null;
+            $errors['general'] = 'No se pudo guardar los cambios. Verifica que la base de datos tenga las columnas de medios actualizadas.';
+            $usuario = array_merge($existing, $formData);
+            $this->render(BASE_PATH . '/modules/Usuarios/views/usuarios/form.php', [
+                'pageTitle' => 'Editar usuario',
+                'roles' => $this->roles->all(),
+                'permissions' => PermissionRegistry::groups(),
+                'selectedPermissions' => PermissionRegistry::sanitizeSelection($_POST['permissions'] ?? []),
+                'formAction' => '/usuarios/edit?id=' . $id,
+                'method' => 'POST',
+                'usuario' => $usuario,
+                'errors' => $errors,
+                'warnings' => $warnings,
+                'scripts' => self::FORM_SCRIPTS,
+            ]);
+            return;
+        }
+
         $this->finalizeUploads($pendingUploads);
 
         // Si el usuario editado es el mismo autenticado, refrescar permisos en sesión

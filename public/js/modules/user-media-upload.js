@@ -72,6 +72,21 @@
         previewBox.appendChild(wrapper);
     }
 
+    function bindFileToInput(input, file) {
+        if (!input || !file) {
+            return false;
+        }
+
+        try {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            input.files = dataTransfer.files;
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
     function setupUpload(fieldId, config) {
         const input = document.getElementById(fieldId);
         if (!input) {
@@ -182,10 +197,32 @@
 
             dropZone.addEventListener('drop', (event) => {
                 const file = event.dataTransfer?.files?.[0];
-                handleFile(file);
+                if (!file) {
+                    return;
+                }
+
+                const bound = bindFileToInput(input, file);
+                if (!bound || !(input.files && input.files[0])) {
+                    setError('No se pudo adjuntar el archivo arrastrado. Usa el botón de selección.');
+                    return;
+                }
+
+                handleFile(input.files[0]);
             });
 
-            dropZone.addEventListener('click', () => input.click());
+            dropZone.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!(target instanceof Element)) {
+                    input.click();
+                    return;
+                }
+
+                if (target.closest('button, input, label, a')) {
+                    return;
+                }
+
+                input.click();
+            });
 
             dropZone.addEventListener('keydown', (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -196,7 +233,11 @@
         }
 
         triggers.forEach((button) => {
-            button.addEventListener('click', () => input.click());
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                input.click();
+            });
         });
 
         const initialError = errorBox?.textContent?.trim();
