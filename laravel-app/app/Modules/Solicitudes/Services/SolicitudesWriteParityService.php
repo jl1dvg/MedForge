@@ -37,6 +37,16 @@ class SolicitudesWriteParityService
         'atendido' => 'Atendido',
     ];
 
+    private const META_CIRUGIA_CONFIRMADA_KEYS = [
+        'cirugia_confirmada_form_id',
+        'cirugia_confirmada_hc_number',
+        'cirugia_confirmada_fecha_inicio',
+        'cirugia_confirmada_lateralidad',
+        'cirugia_confirmada_membrete',
+        'cirugia_confirmada_by',
+        'cirugia_confirmada_at',
+    ];
+
     /** @var array<string, array<int, string>> */
     private array $columnsCache = [];
 
@@ -839,6 +849,166 @@ class SolicitudesWriteParityService
     }
 
     /**
+     * @return array<string,mixed>
+     */
+    public function confirmarConciliacionCirugia(int $solicitudId, string $protocoloFormId, ?int $userId): array
+    {
+        if ($solicitudId <= 0) {
+            throw new RuntimeException('Solicitud inválida', 422);
+        }
+
+        $protocoloFormId = trim($protocoloFormId);
+        if ($protocoloFormId === '') {
+            throw new RuntimeException('Debes indicar el protocolo a asociar.', 422);
+        }
+
+        $solicitud = $this->readService->obtenerSolicitudConciliacionPorId($solicitudId);
+        if ($solicitud === null) {
+            throw new RuntimeException('No se encontró la solicitud.', 404);
+        }
+
+        $protocolo = $this->readService->obtenerProtocoloConciliacionPorFormId($protocoloFormId);
+        if ($protocolo === null) {
+            throw new RuntimeException('No se encontró el protocolo seleccionado.', 404);
+        }
+
+        $hcSolicitud = trim((string) ($solicitud['hc_number'] ?? ''));
+        $hcProtocolo = trim((string) ($protocolo['hc_number'] ?? ''));
+        if ($hcSolicitud === '' || $hcProtocolo === '' || $hcSolicitud !== $hcProtocolo) {
+            throw new RuntimeException('El protocolo no pertenece al mismo paciente.', 422);
+        }
+
+        $fechaSolicitudTs = strtotime((string) ($solicitud['fecha_solicitud'] ?? '')) ?: 0;
+        $fechaProtocoloTs = strtotime((string) ($protocolo['fecha_inicio'] ?? '')) ?: 0;
+        if ($fechaSolicitudTs > 0 && $fechaProtocoloTs > 0 && $fechaProtocoloTs < $fechaSolicitudTs) {
+            throw new RuntimeException('El protocolo debe ser posterior a la solicitud.', 422);
+        }
+
+        $lateralidadSolicitud = trim((string) ($solicitud['ojo_resuelto'] ?? ($solicitud['ojo'] ?? '')));
+        $lateralidadProtocolo = trim((string) ($protocolo['lateralidad'] ?? ''));
+        if (!$this->readService->lateralidadesCompatibles($lateralidadSolicitud, $lateralidadProtocolo)) {
+            throw new RuntimeException('La lateralidad del protocolo no es compatible con la solicitud.', 422);
+        }
+
+        $this->guardarConfirmacionCirugiaMeta($solicitudId, $protocolo, $userId);
+
+        $nota = sprintf(
+            'Confirmación manual de cirugía con protocolo %s (%s).',
+            (string) ($protocolo['form_id'] ?? ''),
+            (string) ($protocolo['lateralidad'] ?? 'sin lateralidad')
+        );
+
+        $this->completarChecklistConciliacion($solicitudId, $userId, $nota);
+        $tareasActualizadas = $this->completarTodasLasTareasConciliacion($solicitudId);
+
+        $updatePayload = ['estado' => 'completado'];
+        if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
+            $updatePayload['updated_at'] = date('Y-m-d H:i:s');
+        }
+        $this->updateRow('solicitud_procedimiento', $updatePayload, 'id = :id', [':id' => $solicitudId]);
+
+        $checklistState = $this->crmChecklistState($solicitudId);
+
+        return [
+            'message' => 'Solicitud confirmada y marcada como completada.',
+            'estado' => 'completado',
+            'checklist' => $checklistState['checklist'] ?? [],
+            'checklist_progress' => $checklistState['checklist_progress'] ?? [],
+            'tareas_actualizadas' => $tareasActualizadas,
+            'protocolo_confirmado' => [
+                'form_id' => trim((string) ($protocolo['form_id'] ?? '')),
+                'hc_number' => trim((string) ($protocolo['hc_number'] ?? '')),
+                'fecha_inicio' => $protocolo['fecha_inicio'] ?? null,
+                'lateralidad' => trim((string) ($protocolo['lateralidad'] ?? '')),
+                'membrete' => trim((string) ($protocolo['membrete'] ?? '')),
+                'status' => isset($protocolo['status']) ? (int) $protocolo['status'] : null,
+                'confirmado_at' => date('Y-m-d H:i:s'),
+                'confirmado_by_id' => $userId ?: null,
+            ],
+        ];
+    }
+
+    private function completarChecklistConciliacion(int $solicitudId, ?int $userId, ?string $note): void
+    {
+        if (!$this->tableExists('solicitud_checklist')) {
+            return;
+        }
+
+        foreach (self::DEFAULT_STAGES as $stage) {
+            $slug = (string) ($stage['slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+            $this->upsertChecklistRow($solicitudId, $slug, true, $userId, $note);
+        }
+    }
+
+    private function completarTodasLasTareasConciliacion(int $solicitudId): int
+    {
+        $totalActualizadas = 0;
+        $now = date('Y-m-d H:i:s');
+
+        if ($this->tableExists('crm_tasks')) {
+            $columns = $this->tableColumns('crm_tasks');
+            if (
+                in_array('status', $columns, true)
+                && in_array('source_module', $columns, true)
+                && in_array('source_ref_id', $columns, true)
+            ) {
+                $payload = [
+                    'status' => 'completada',
+                ];
+                if (in_array('completed_at', $columns, true)) {
+                    $payload['completed_at'] = $now;
+                }
+                if (in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = $now;
+                }
+
+                $where = 'source_module = :source_module AND source_ref_id = :source_ref_id';
+                $bindings = [
+                    ':source_module' => 'solicitudes',
+                    ':source_ref_id' => (string) $solicitudId,
+                    ':estado_actual' => 'completada',
+                ];
+
+                if (in_array('company_id', $columns, true)) {
+                    $where .= ' AND company_id = :company_id';
+                    $bindings[':company_id'] = $this->resolveCompanyId();
+                }
+
+                $where .= ' AND (status IS NULL OR status <> :estado_actual)';
+                $totalActualizadas += $this->updateRow('crm_tasks', $payload, $where, $bindings);
+            }
+        }
+
+        if ($this->tableExists('solicitud_crm_tareas')) {
+            $columns = $this->tableColumns('solicitud_crm_tareas');
+            if (in_array('estado', $columns, true) && in_array('solicitud_id', $columns, true)) {
+                $payload = [
+                    'estado' => 'completada',
+                ];
+                if (in_array('completed_at', $columns, true)) {
+                    $payload['completed_at'] = $now;
+                }
+                if (in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = $now;
+                }
+
+                $where = 'solicitud_id = :solicitud_id AND (estado IS NULL OR estado <> :estado_actual)';
+                $bindings = [
+                    ':solicitud_id' => $solicitudId,
+                    ':estado_actual' => 'completada',
+                ];
+
+                $totalActualizadas += $this->updateRow('solicitud_crm_tareas', $payload, $where, $bindings);
+            }
+        }
+
+        return $totalActualizadas;
+    }
+
+    /**
      * @param array<string,mixed> $campos
      * @return array<string,mixed>
      */
@@ -1224,6 +1394,83 @@ class SolicitudesWriteParityService
             }
             if (in_array('meta_type', $columns, true)) {
                 $insert['meta_type'] = 'string';
+            }
+            if (in_array('created_at', $columns, true)) {
+                $insert['created_at'] = $now;
+            }
+            if (in_array('updated_at', $columns, true)) {
+                $insert['updated_at'] = $now;
+            }
+
+            $this->insertRow('solicitud_crm_meta', $insert);
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $protocolo
+     */
+    private function guardarConfirmacionCirugiaMeta(int $solicitudId, array $protocolo, ?int $usuarioId): void
+    {
+        $formId = trim((string) ($protocolo['form_id'] ?? ''));
+        if ($formId === '') {
+            throw new RuntimeException('No se puede guardar confirmación sin form_id de protocolo.');
+        }
+
+        if (!$this->tableExists('solicitud_crm_meta')) {
+            return;
+        }
+
+        $columns = $this->tableColumns('solicitud_crm_meta');
+        if (!in_array('solicitud_id', $columns, true) || !in_array('meta_key', $columns, true)) {
+            return;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $metaValues = [
+            'cirugia_confirmada_form_id' => $formId,
+            'cirugia_confirmada_hc_number' => trim((string) ($protocolo['hc_number'] ?? '')),
+            'cirugia_confirmada_fecha_inicio' => trim((string) ($protocolo['fecha_inicio'] ?? '')),
+            'cirugia_confirmada_lateralidad' => trim((string) ($protocolo['lateralidad'] ?? '')),
+            'cirugia_confirmada_membrete' => trim((string) ($protocolo['membrete'] ?? '')),
+            'cirugia_confirmada_by' => $usuarioId ? (string) $usuarioId : '',
+            'cirugia_confirmada_at' => $now,
+        ];
+
+        $metaTypes = [
+            'cirugia_confirmada_form_id' => 'texto',
+            'cirugia_confirmada_hc_number' => 'texto',
+            'cirugia_confirmada_fecha_inicio' => 'fecha',
+            'cirugia_confirmada_lateralidad' => 'texto',
+            'cirugia_confirmada_membrete' => 'texto',
+            'cirugia_confirmada_by' => 'numero',
+            'cirugia_confirmada_at' => 'fecha',
+        ];
+
+        $placeholders = implode(', ', array_fill(0, count(self::META_CIRUGIA_CONFIRMADA_KEYS), '?'));
+        $deleteSql = "DELETE FROM solicitud_crm_meta
+             WHERE solicitud_id = ?
+               AND meta_key IN ($placeholders)";
+
+        $params = array_merge([$solicitudId], self::META_CIRUGIA_CONFIRMADA_KEYS);
+        $deleteStmt = $this->db->prepare($deleteSql);
+        $deleteStmt->execute($params);
+
+        foreach (self::META_CIRUGIA_CONFIRMADA_KEYS as $metaKey) {
+            $value = $metaValues[$metaKey] ?? '';
+            if ($value === '') {
+                continue;
+            }
+
+            $insert = [
+                'solicitud_id' => $solicitudId,
+                'meta_key' => $metaKey,
+            ];
+
+            if (in_array('meta_value', $columns, true)) {
+                $insert['meta_value'] = $value;
+            }
+            if (in_array('meta_type', $columns, true)) {
+                $insert['meta_type'] = $metaTypes[$metaKey] ?? 'texto';
             }
             if (in_array('created_at', $columns, true)) {
                 $insert['created_at'] = $now;

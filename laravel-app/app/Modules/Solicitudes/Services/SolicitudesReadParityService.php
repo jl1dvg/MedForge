@@ -38,10 +38,25 @@ class SolicitudesReadParityService
         ['slug' => 'programada', 'label' => 'Programada', 'order' => 90, 'column' => 'programada', 'required' => true],
     ];
 
+    private const META_CIRUGIA_CONFIRMADA_KEYS = [
+        'cirugia_confirmada_form_id',
+        'cirugia_confirmada_hc_number',
+        'cirugia_confirmada_fecha_inicio',
+        'cirugia_confirmada_lateralidad',
+        'cirugia_confirmada_membrete',
+        'cirugia_confirmada_by',
+        'cirugia_confirmada_at',
+    ];
+
     /**
      * @var array<string, bool>
      */
     private array $columnExistsCache = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $tableExistsCache = [];
 
     public function dashboardData(array $payload): array
     {
@@ -230,6 +245,607 @@ class SolicitudesReadParityService
             'bloqueos_agenda' => $this->queryBloqueosAgenda($solicitudId),
             'cobertura_mails' => $this->queryCoberturaMails($solicitudId),
         ];
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    public function conciliacionCirugiasMes(DateTimeImmutable $desde, DateTimeImmutable $hasta): array
+    {
+        $derivacionLateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $hasMetaTable = $this->tableExists('solicitud_crm_meta');
+        $metaPlaceholders = implode(', ', array_fill(0, count(self::META_CIRUGIA_CONFIRMADA_KEYS), '?'));
+
+        $metaSelect = implode(
+            ",\n                ",
+            [
+                $hasMetaTable ? "meta.protocolo_confirmado_form_id" : "NULL AS protocolo_confirmado_form_id",
+                $hasMetaTable ? "meta.protocolo_confirmado_hc_number" : "NULL AS protocolo_confirmado_hc_number",
+                $hasMetaTable ? "meta.protocolo_confirmado_fecha_inicio" : "NULL AS protocolo_confirmado_fecha_inicio",
+                $hasMetaTable ? "meta.protocolo_confirmado_lateralidad" : "NULL AS protocolo_confirmado_lateralidad",
+                $hasMetaTable ? "meta.protocolo_confirmado_membrete" : "NULL AS protocolo_confirmado_membrete",
+                $hasMetaTable ? "meta.protocolo_confirmado_by" : "NULL AS protocolo_confirmado_by",
+                $hasMetaTable ? "meta.protocolo_confirmado_at" : "NULL AS protocolo_confirmado_at",
+            ]
+        );
+
+        $metaJoin = '';
+        if ($hasMetaTable) {
+            $metaJoin = sprintf(
+                "LEFT JOIN (
+                    SELECT
+                        solicitud_id,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_form_id' THEN meta_value END) AS protocolo_confirmado_form_id,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_hc_number' THEN meta_value END) AS protocolo_confirmado_hc_number,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_fecha_inicio' THEN meta_value END) AS protocolo_confirmado_fecha_inicio,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_lateralidad' THEN meta_value END) AS protocolo_confirmado_lateralidad,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_membrete' THEN meta_value END) AS protocolo_confirmado_membrete,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_by' THEN meta_value END) AS protocolo_confirmado_by,
+                        MAX(CASE WHEN meta_key = 'cirugia_confirmada_at' THEN meta_value END) AS protocolo_confirmado_at
+                    FROM solicitud_crm_meta
+                    WHERE meta_key IN (%s)
+                    GROUP BY solicitud_id
+                ) meta ON meta.solicitud_id = sp.id",
+                $metaPlaceholders
+            );
+        }
+
+        $sql = sprintf(
+            "SELECT
+                sp.id,
+                sp.form_id,
+                sp.hc_number,
+                sp.procedimiento,
+                sp.ojo,
+                %s,
+                sp.estado,
+                COALESCE(sp.created_at, sp.fecha, cd.fecha) AS fecha_solicitud,
+                TRIM(CONCAT_WS(' ',
+                    NULLIF(TRIM(pd.fname), ''),
+                    NULLIF(TRIM(pd.mname), ''),
+                    NULLIF(TRIM(pd.lname), ''),
+                    NULLIF(TRIM(pd.lname2), '')
+                )) AS full_name,
+                %s
+            FROM solicitud_procedimiento sp
+            LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+            LEFT JOIN (
+                SELECT hc_number, form_id, MAX(fecha) AS fecha
+                FROM consulta_data
+                GROUP BY hc_number, form_id
+            ) cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+            %s
+            WHERE COALESCE(sp.created_at, sp.fecha, cd.fecha) BETWEEN ? AND ?
+              AND sp.procedimiento IS NOT NULL
+              AND TRIM(sp.procedimiento) <> ''
+              AND UPPER(TRIM(sp.procedimiento)) <> 'SELECCIONE'
+            ORDER BY fecha_solicitud DESC, sp.id DESC",
+            $derivacionLateralidadExpr,
+            $metaSelect,
+            $metaJoin
+        );
+
+        $params = array_merge(
+            $hasMetaTable ? self::META_CIRUGIA_CONFIRMADA_KEYS : [],
+            [
+                $desde->format('Y-m-d H:i:s'),
+                $hasta->format('Y-m-d H:i:s'),
+            ]
+        );
+
+        $rows = array_map(static fn(object $row): array => (array) $row, DB::select($sql, $params));
+        if ($rows === []) {
+            return [];
+        }
+
+        $hcNumbers = [];
+        $usuarioIds = [];
+        $rawHcByKey = [];
+
+        foreach ($rows as $row) {
+            $hc = trim((string) ($row['hc_number'] ?? ''));
+            if ($hc !== '') {
+                $hcNumbers[$hc] = true;
+                $hcKey = $this->normalizarHcClave($hc);
+                if ($hcKey !== '') {
+                    $rawHcByKey[$hcKey][$hc] = true;
+                }
+            }
+
+            if ($hasMetaTable) {
+                $confirmadoBy = (int) ($row['protocolo_confirmado_by'] ?? 0);
+                if ($confirmadoBy > 0) {
+                    $usuarioIds[$confirmadoBy] = true;
+                }
+            }
+        }
+
+        $usuariosById = $this->cargarUsuariosPorId(array_keys($usuarioIds));
+        $protocolosByHc = $this->cargarProtocolosPorHc(array_keys($hcNumbers), '1900-01-01 00:00:00');
+        $protocolosByHcKey = [];
+        $protocolosByFormId = [];
+
+        foreach ($protocolosByHc as $hc => $protocolos) {
+            $hcKey = $this->normalizarHcClave((string) $hc);
+            foreach ($protocolos as $protocolo) {
+                $formId = trim((string) ($protocolo['form_id'] ?? ''));
+                if ($formId !== '') {
+                    $protocolosByFormId[$formId] = $protocolo;
+                }
+
+                $protocoloHcKey = $hcKey !== ''
+                    ? $hcKey
+                    : $this->normalizarHcClave((string) ($protocolo['hc_number'] ?? ''));
+                if ($protocoloHcKey !== '') {
+                    $protocolosByHcKey[$protocoloHcKey][] = $protocolo;
+                }
+            }
+        }
+
+        $rowsByHc = [];
+        foreach ($rows as $index => $row) {
+            $hc = $this->normalizarHcClave((string) ($row['hc_number'] ?? ''));
+            if ($hc === '') {
+                continue;
+            }
+            $rowsByHc[$hc][] = $index;
+        }
+
+        foreach ($rowsByHc as $hc => $indexes) {
+            usort($indexes, function (int $a, int $b) use ($rows): int {
+                $tsA = $this->toTimestamp((string) ($rows[$a]['fecha_solicitud'] ?? ''));
+                $tsB = $this->toTimestamp((string) ($rows[$b]['fecha_solicitud'] ?? ''));
+
+                if ($tsA === $tsB) {
+                    return ((int) ($rows[$a]['id'] ?? 0)) <=> ((int) ($rows[$b]['id'] ?? 0));
+                }
+
+                return $tsA <=> $tsB;
+            });
+
+            foreach ($indexes as $index) {
+                $row = &$rows[$index];
+                $confirmado = $this->resolverProtocoloConfirmado($row, $protocolosByFormId, $usuariosById);
+
+                if ($confirmado !== null) {
+                    $row['protocolo_confirmado'] = $confirmado;
+                    $row['protocolo_posterior_compatible'] = $confirmado;
+                    continue;
+                }
+
+                $row['protocolo_confirmado'] = null;
+                $row['protocolo_posterior_compatible'] = null;
+
+                $protocolosPaciente = $protocolosByHcKey[$hc] ?? [];
+                if ($protocolosPaciente === [] && !empty($rawHcByKey[$hc])) {
+                    foreach (array_keys($rawHcByKey[$hc]) as $rawHc) {
+                        if (!empty($protocolosByHc[$rawHc])) {
+                            $protocolosPaciente = array_merge($protocolosPaciente, $protocolosByHc[$rawHc]);
+                        }
+                    }
+                }
+                if ($protocolosPaciente === []) {
+                    continue;
+                }
+
+                $solicitudLateralidad = $this->resolverLateralidadSolicitud($row);
+                $fechaSolicitudTs = $this->toTimestamp((string) ($row['fecha_solicitud'] ?? ''));
+
+                foreach ($protocolosPaciente as $protocolo) {
+                    $formId = trim((string) ($protocolo['form_id'] ?? ''));
+                    if ($formId === '') {
+                        continue;
+                    }
+
+                    $fechaProtocoloTs = $this->toTimestamp((string) ($protocolo['fecha_inicio'] ?? ''));
+                    $isPosterior = !($fechaSolicitudTs > 0 && $fechaProtocoloTs > 0 && $fechaProtocoloTs < $fechaSolicitudTs);
+
+                    $lateralidadProtocolo = trim((string) ($protocolo['lateralidad'] ?? ''));
+                    if (!$this->lateralidadesCompatibles($solicitudLateralidad, $lateralidadProtocolo)) {
+                        continue;
+                    }
+
+                    if (!$isPosterior) {
+                        continue;
+                    }
+
+                    $row['protocolo_posterior_compatible'] = $this->formatearProtocolo($protocolo);
+                    break;
+                }
+            }
+            unset($row);
+        }
+
+        foreach ($rows as &$row) {
+            $nombre = trim((string) ($row['full_name'] ?? ''));
+            $row['full_name'] = $nombre !== '' ? $nombre : null;
+            $row['ojo_resuelto'] = $this->resolverLateralidadSolicitud($row);
+            $estado = strtolower(trim((string) ($row['estado'] ?? '')));
+            if ($row['protocolo_confirmado'] === null && $estado === 'completado' && $row['protocolo_posterior_compatible'] !== null) {
+                $row['protocolo_confirmado'] = $row['protocolo_posterior_compatible'];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    public function obtenerSolicitudConciliacionPorId(int $solicitudId): ?array
+    {
+        if ($solicitudId <= 0) {
+            return null;
+        }
+
+        $derivacionLateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $sql = sprintf(
+            "SELECT
+                sp.id,
+                sp.form_id,
+                sp.hc_number,
+                sp.procedimiento,
+                sp.ojo,
+                %s,
+                sp.estado,
+                COALESCE(sp.created_at, sp.fecha, cd.fecha) AS fecha_solicitud
+            FROM solicitud_procedimiento sp
+            LEFT JOIN (
+                SELECT hc_number, form_id, MAX(fecha) AS fecha
+                FROM consulta_data
+                GROUP BY hc_number, form_id
+            ) cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+            WHERE sp.id = ?
+            LIMIT 1",
+            $derivacionLateralidadExpr
+        );
+
+        $rows = DB::select($sql, [$solicitudId]);
+        if ($rows === []) {
+            return null;
+        }
+
+        $row = (array) $rows[0];
+        $row['ojo_resuelto'] = $this->resolverLateralidadSolicitud($row);
+
+        return $row;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    public function obtenerProtocoloConciliacionPorFormId(string $formId): ?array
+    {
+        $formId = trim($formId);
+        if ($formId === '') {
+            return null;
+        }
+
+        if (
+            !$this->tableExists('protocolo_data')
+            || !$this->tableHasColumn('protocolo_data', 'form_id')
+            || !$this->tableHasColumn('protocolo_data', 'hc_number')
+        ) {
+            return null;
+        }
+
+        $lateralidadExpr = $this->tableHasColumn('protocolo_data', 'lateralidad')
+            ? 'lateralidad'
+            : 'NULL AS lateralidad';
+        $membreteExpr = $this->tableHasColumn('protocolo_data', 'membrete')
+            ? 'membrete'
+            : 'NULL AS membrete';
+        $statusExpr = $this->tableHasColumn('protocolo_data', 'status')
+            ? 'status'
+            : 'NULL AS status';
+        $fechaExpr = $this->tableHasColumn('protocolo_data', 'fecha_inicio')
+            ? 'fecha_inicio'
+            : 'NULL AS fecha_inicio';
+
+        $rows = DB::select(
+            "SELECT
+                form_id,
+                hc_number,
+                {$fechaExpr},
+                {$lateralidadExpr},
+                {$membreteExpr},
+                {$statusExpr}
+            FROM protocolo_data
+            WHERE form_id = ?
+            ORDER BY fecha_inicio DESC
+            LIMIT 1",
+            [$formId]
+        );
+
+        if ($rows === []) {
+            return null;
+        }
+
+        return (array) $rows[0];
+    }
+
+    /**
+     * @param array<int, array<string,mixed>> $rows
+     * @param array{hc_number?:string,solicitud_id?:int,form_id?:string,limit?:int} $options
+     * @return array<string,mixed>
+     */
+    public function diagnosticarConciliacion(array $rows, array $options = []): array
+    {
+        $hcFilterRaw = trim((string) ($options['hc_number'] ?? ''));
+        $hcFilterKey = $this->normalizarHcClave($hcFilterRaw);
+        $solicitudIdFilter = (int) ($options['solicitud_id'] ?? 0);
+        $formIdFilter = trim((string) ($options['form_id'] ?? ''));
+        $limit = (int) ($options['limit'] ?? 25);
+        $limit = max(1, min(200, $limit));
+
+        $selected = [];
+        foreach ($rows as $row) {
+            if ($solicitudIdFilter > 0 && (int) ($row['id'] ?? 0) !== $solicitudIdFilter) {
+                continue;
+            }
+
+            if ($formIdFilter !== '' && trim((string) ($row['form_id'] ?? '')) !== $formIdFilter) {
+                continue;
+            }
+
+            if ($hcFilterKey !== '') {
+                $rowHcKey = $this->normalizarHcClave((string) ($row['hc_number'] ?? ''));
+                if ($rowHcKey !== $hcFilterKey) {
+                    continue;
+                }
+            }
+
+            $selected[] = $row;
+            if (count($selected) >= $limit) {
+                break;
+            }
+        }
+
+        if ($selected === [] && $hcFilterKey === '' && $solicitudIdFilter <= 0 && $formIdFilter === '') {
+            $selected = array_slice($rows, 0, $limit);
+        }
+
+        $items = [];
+        foreach ($selected as $row) {
+            $items[] = $this->diagnosticarFilaConciliacion($row);
+        }
+
+        return [
+            'filtros' => [
+                'hc_number' => $hcFilterRaw !== '' ? $hcFilterRaw : null,
+                'solicitud_id' => $solicitudIdFilter > 0 ? $solicitudIdFilter : null,
+                'form_id' => $formIdFilter !== '' ? $formIdFilter : null,
+                'limit' => $limit,
+            ],
+            'total_rows' => count($rows),
+            'rows_debugged' => count($items),
+            'items' => $items,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function diagnosticarFilaConciliacion(array $row): array
+    {
+        $hcRaw = trim((string) ($row['hc_number'] ?? ''));
+        $hcKey = $this->normalizarHcClave($hcRaw);
+        $fechaSolicitud = (string) ($row['fecha_solicitud'] ?? '');
+        $fechaSolicitudTs = $this->toTimestamp($fechaSolicitud);
+        $solicitudLateralidad = $this->resolverLateralidadSolicitud($row);
+        $solicitudLateralidadNormalizada = $this->normalizarLateralidades($solicitudLateralidad);
+
+        $protocolos = $this->cargarProtocolosDebugPorHc($hcRaw, $hcKey);
+        $totalProtocolos = count($protocolos);
+
+        $firstPosterior = null;
+        $firstCompatible = null;
+        $firstCompatiblePosterior = null;
+        $posteriores = 0;
+        $compatibles = 0;
+        $compatiblesPosteriores = 0;
+        $muestra = [];
+
+        foreach ($protocolos as $protocolo) {
+            $protocoloFechaTs = $this->toTimestamp((string) ($protocolo['fecha_inicio'] ?? ''));
+            $isPosterior = !($fechaSolicitudTs > 0 && $protocoloFechaTs > 0 && $protocoloFechaTs < $fechaSolicitudTs);
+
+            $lateralidadProtocolo = trim((string) ($protocolo['lateralidad'] ?? ''));
+            $isCompatible = $this->lateralidadesCompatibles($solicitudLateralidad, $lateralidadProtocolo);
+
+            if ($isPosterior) {
+                $posteriores++;
+                if ($firstPosterior === null) {
+                    $firstPosterior = $protocolo;
+                }
+            }
+
+            if ($isCompatible) {
+                $compatibles++;
+                if ($firstCompatible === null) {
+                    $firstCompatible = $protocolo;
+                }
+            }
+
+            if ($isPosterior && $isCompatible) {
+                $compatiblesPosteriores++;
+                if ($firstCompatiblePosterior === null) {
+                    $firstCompatiblePosterior = $protocolo;
+                }
+            }
+
+            if (count($muestra) < 10) {
+                $muestra[] = [
+                    'form_id' => trim((string) ($protocolo['form_id'] ?? '')),
+                    'fecha_inicio' => $protocolo['fecha_inicio'] ?? null,
+                    'lateralidad' => $lateralidadProtocolo,
+                    'es_posterior' => $isPosterior,
+                    'compatible_lateralidad' => $isCompatible,
+                ];
+            }
+        }
+
+        $esperado = $firstCompatiblePosterior;
+        $actual = is_array($row['protocolo_posterior_compatible'] ?? null)
+            ? $row['protocolo_posterior_compatible']
+            : null;
+
+        $motivo = 'con_match';
+        if ($actual === null) {
+            if ($totalProtocolos === 0) {
+                $motivo = 'sin_protocolos_para_hc';
+            } elseif ($posteriores === 0) {
+                $motivo = 'sin_protocolos_posteriores';
+            } elseif ($compatiblesPosteriores === 0 && $compatibles === 0) {
+                $motivo = 'sin_compatibilidad_lateralidad';
+            } elseif ($compatiblesPosteriores === 0 && $compatibles > 0) {
+                $motivo = 'compatibles_solo_anteriores';
+            } else {
+                $motivo = 'sin_match';
+            }
+        }
+
+        return [
+            'solicitud' => [
+                'id' => (int) ($row['id'] ?? 0),
+                'form_id' => trim((string) ($row['form_id'] ?? '')),
+                'hc_number' => $hcRaw,
+                'hc_key' => $hcKey,
+                'fecha_solicitud' => $fechaSolicitud !== '' ? $fechaSolicitud : null,
+                'lateralidad' => $solicitudLateralidad,
+                'lateralidad_normalizada' => $solicitudLateralidadNormalizada,
+                'estado' => trim((string) ($row['estado'] ?? '')),
+            ],
+            'resumen' => [
+                'total_protocolos' => $totalProtocolos,
+                'posteriores' => $posteriores,
+                'compatibles_lateralidad' => $compatibles,
+                'compatibles_posteriores' => $compatiblesPosteriores,
+                'motivo' => $motivo,
+            ],
+            'match_actual' => $actual ? [
+                'form_id' => trim((string) ($actual['form_id'] ?? '')),
+                'fecha_inicio' => $actual['fecha_inicio'] ?? null,
+                'lateralidad' => trim((string) ($actual['lateralidad'] ?? '')),
+            ] : null,
+            'match_esperado' => $esperado ? [
+                'form_id' => trim((string) ($esperado['form_id'] ?? '')),
+                'fecha_inicio' => $esperado['fecha_inicio'] ?? null,
+                'lateralidad' => trim((string) ($esperado['lateralidad'] ?? '')),
+            ] : null,
+            'protocolos_muestra' => $muestra,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string,mixed>>
+     */
+    private function cargarProtocolosDebugPorHc(string $hcRaw, string $hcKey): array
+    {
+        $collected = [];
+        $grouped = $this->cargarProtocolosPorHc($hcRaw !== '' ? [$hcRaw] : [], '1900-01-01 00:00:00');
+
+        foreach ($grouped as $hcValue => $protocolos) {
+            $groupKey = $this->normalizarHcClave((string) $hcValue);
+            if ($hcKey !== '' && $groupKey !== '' && $groupKey !== $hcKey) {
+                continue;
+            }
+            foreach ($protocolos as $protocolo) {
+                $formId = trim((string) ($protocolo['form_id'] ?? ''));
+                if ($formId !== '') {
+                    $collected[$formId] = $protocolo;
+                }
+            }
+        }
+
+        if ($collected !== []) {
+            usort($collected, function (array $a, array $b): int {
+                $tsA = $this->toTimestamp((string) ($a['fecha_inicio'] ?? ''));
+                $tsB = $this->toTimestamp((string) ($b['fecha_inicio'] ?? ''));
+                if ($tsA === $tsB) {
+                    return strcmp((string) ($a['form_id'] ?? ''), (string) ($b['form_id'] ?? ''));
+                }
+                return $tsA <=> $tsB;
+            });
+            return array_values($collected);
+        }
+
+        if (
+            !$this->tableExists('protocolo_data')
+            || !$this->tableHasColumn('protocolo_data', 'form_id')
+            || !$this->tableHasColumn('protocolo_data', 'hc_number')
+            || !$this->tableHasColumn('protocolo_data', 'fecha_inicio')
+        ) {
+            return [];
+        }
+
+        $lateralidadExpr = $this->tableHasColumn('protocolo_data', 'lateralidad')
+            ? 'lateralidad'
+            : 'NULL AS lateralidad';
+        $membreteExpr = $this->tableHasColumn('protocolo_data', 'membrete')
+            ? 'membrete'
+            : 'NULL AS membrete';
+        $statusExpr = $this->tableHasColumn('protocolo_data', 'status')
+            ? 'status'
+            : 'NULL AS status';
+
+        $compactRaw = preg_replace('/\s+/', '', $hcRaw) ?? '';
+        $conditions = [];
+        $params = [];
+
+        if ($compactRaw !== '') {
+            $conditions[] = "REPLACE(TRIM(hc_number), ' ', '') = ?";
+            $params[] = $compactRaw;
+        }
+
+        if ($hcKey !== '') {
+            if (ctype_digit($hcKey)) {
+                $conditions[] = "TRIM(LEADING '0' FROM REPLACE(TRIM(hc_number), ' ', '')) = ?";
+                $params[] = $hcKey;
+            } else {
+                $conditions[] = "UPPER(REPLACE(TRIM(hc_number), ' ', '')) = ?";
+                $params[] = strtoupper($hcKey);
+            }
+        }
+
+        if ($conditions === []) {
+            return [];
+        }
+
+        $where = implode(' OR ', $conditions);
+        $sql = "SELECT
+                form_id,
+                hc_number,
+                fecha_inicio,
+                {$lateralidadExpr},
+                {$membreteExpr},
+                {$statusExpr}
+            FROM protocolo_data
+            WHERE ({$where})
+              AND fecha_inicio IS NOT NULL
+            ORDER BY fecha_inicio ASC, form_id ASC";
+
+        $rows = array_map(static fn(object $row): array => (array) $row, DB::select($sql, $params));
+
+        return array_values(array_filter($rows, static function (array $row): bool {
+            return trim((string) ($row['form_id'] ?? '')) !== '';
+        }));
+    }
+
+    public function lateralidadesCompatibles(?string $solicitudLateralidad, ?string $protocoloLateralidad): bool
+    {
+        $solicitud = $this->normalizarLateralidades($solicitudLateralidad);
+        $protocolo = $this->normalizarLateralidades($protocoloLateralidad);
+
+        // Si falta lateralidad en alguno de los lados, se considera "compatible por dato incompleto"
+        // para permitir conciliación asistida por usuario.
+        if ($solicitud === [] || $protocolo === []) {
+            return true;
+        }
+
+        return array_intersect($solicitud, $protocolo) !== [];
     }
 
     /**
@@ -1547,6 +2163,294 @@ class SolicitudesReadParityService
         return $result;
     }
 
+    /**
+     * @param array<int, int|string> $ids
+     * @return array<int, string>
+     */
+    private function cargarUsuariosPorId(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $rows = DB::select("SELECT id, nombre FROM users WHERE id IN ($placeholders)", $ids);
+
+        $result = [];
+        foreach ($rows as $row) {
+            $item = (array) $row;
+            $id = (int) ($item['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $result[$id] = trim((string) ($item['nombre'] ?? ''));
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, string> $hcNumbers
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function cargarProtocolosPorHc(array $hcNumbers, string $fechaMinima): array
+    {
+        $hcNumbers = array_values(array_unique(array_filter(array_map(
+            static fn($value): string => trim((string) $value),
+            $hcNumbers
+        ))));
+
+        if ($hcNumbers === []) {
+            return [];
+        }
+
+        if (
+            !$this->tableExists('protocolo_data')
+            || !$this->tableHasColumn('protocolo_data', 'form_id')
+            || !$this->tableHasColumn('protocolo_data', 'hc_number')
+            || !$this->tableHasColumn('protocolo_data', 'fecha_inicio')
+        ) {
+            return [];
+        }
+
+        $lateralidadExpr = $this->tableHasColumn('protocolo_data', 'lateralidad')
+            ? 'lateralidad'
+            : 'NULL AS lateralidad';
+        $membreteExpr = $this->tableHasColumn('protocolo_data', 'membrete')
+            ? 'membrete'
+            : 'NULL AS membrete';
+        $statusExpr = $this->tableHasColumn('protocolo_data', 'status')
+            ? 'status'
+            : 'NULL AS status';
+        $hcCompactos = [];
+        $hcNumericos = [];
+        $hcAlfanumericos = [];
+        foreach ($hcNumbers as $hcNumber) {
+            $compacto = preg_replace('/\s+/', '', trim((string) $hcNumber)) ?? '';
+            if ($compacto === '') {
+                continue;
+            }
+
+            $hcCompactos[$compacto] = true;
+            if (ctype_digit($compacto)) {
+                $sinCeros = ltrim($compacto, '0');
+                $hcNumericos[$sinCeros !== '' ? $sinCeros : '0'] = true;
+            } else {
+                $hcAlfanumericos[strtoupper($compacto)] = true;
+            }
+        }
+
+        if ($hcCompactos === [] && $hcNumericos === [] && $hcAlfanumericos === []) {
+            return [];
+        }
+
+        $hcExpr = "REPLACE(TRIM(CAST(hc_number AS CHAR)), ' ', '')";
+        $conditions = [];
+        $params = [];
+
+        if ($hcCompactos !== []) {
+            $values = array_keys($hcCompactos);
+            $conditions[] = $hcExpr . ' IN (' . implode(', ', array_fill(0, count($values), '?')) . ')';
+            $params = array_merge($params, $values);
+        }
+
+        if ($hcNumericos !== []) {
+            $values = array_keys($hcNumericos);
+            $conditions[] = "TRIM(LEADING '0' FROM {$hcExpr}) IN (" . implode(', ', array_fill(0, count($values), '?')) . ')';
+            $params = array_merge($params, $values);
+        }
+
+        if ($hcAlfanumericos !== []) {
+            $values = array_keys($hcAlfanumericos);
+            $conditions[] = "UPPER({$hcExpr}) IN (" . implode(', ', array_fill(0, count($values), '?')) . ')';
+            $params = array_merge($params, $values);
+        }
+
+        $whereHc = implode(' OR ', $conditions);
+        $sql = "SELECT
+                form_id,
+                hc_number,
+                fecha_inicio,
+                {$lateralidadExpr},
+                {$membreteExpr},
+                {$statusExpr}
+            FROM protocolo_data
+            WHERE ({$whereHc})
+              AND fecha_inicio IS NOT NULL
+              AND CAST(fecha_inicio AS CHAR) <> ''
+              AND CAST(fecha_inicio AS CHAR) >= ?
+            ORDER BY hc_number ASC, fecha_inicio ASC, form_id ASC";
+
+        $params[] = $fechaMinima;
+        $rows = array_map(static fn(object $row): array => (array) $row, DB::select($sql, $params));
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $hc = trim((string) ($row['hc_number'] ?? ''));
+            if ($hc === '') {
+                continue;
+            }
+            $grouped[$hc][] = $row;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @param array<string,array<string,mixed>> $protocolosByFormId
+     * @param array<int,string> $usuariosById
+     * @return array<string,mixed>|null
+     */
+    private function resolverProtocoloConfirmado(array $row, array $protocolosByFormId, array $usuariosById): ?array
+    {
+        $formId = trim((string) ($row['protocolo_confirmado_form_id'] ?? ''));
+        if ($formId === '') {
+            return null;
+        }
+
+        $protocolo = $protocolosByFormId[$formId] ?? [
+            'form_id' => $formId,
+            'hc_number' => $row['protocolo_confirmado_hc_number'] ?? ($row['hc_number'] ?? null),
+            'fecha_inicio' => $row['protocolo_confirmado_fecha_inicio'] ?? null,
+            'lateralidad' => $row['protocolo_confirmado_lateralidad'] ?? null,
+            'membrete' => $row['protocolo_confirmado_membrete'] ?? null,
+            'status' => null,
+        ];
+
+        $payload = $this->formatearProtocolo($protocolo);
+        $confirmadoBy = (int) ($row['protocolo_confirmado_by'] ?? 0);
+        $payload['confirmado_at'] = $row['protocolo_confirmado_at'] ?? null;
+        $payload['confirmado_by'] = $confirmadoBy > 0 ? ($usuariosById[$confirmadoBy] ?? null) : null;
+        $payload['confirmado_by_id'] = $confirmadoBy > 0 ? $confirmadoBy : null;
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string,mixed> $protocolo
+     * @return array<string,mixed>
+     */
+    private function formatearProtocolo(array $protocolo): array
+    {
+        return [
+            'form_id' => trim((string) ($protocolo['form_id'] ?? '')),
+            'hc_number' => trim((string) ($protocolo['hc_number'] ?? '')),
+            'fecha_inicio' => $protocolo['fecha_inicio'] ?? null,
+            'lateralidad' => trim((string) ($protocolo['lateralidad'] ?? '')),
+            'membrete' => trim((string) ($protocolo['membrete'] ?? '')),
+            'status' => isset($protocolo['status']) ? (int) $protocolo['status'] : null,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolverLateralidadSolicitud(array $row): ?string
+    {
+        $ojo = trim((string) ($row['ojo'] ?? ''));
+        if ($ojo !== '') {
+            return $ojo;
+        }
+
+        $derivacion = trim((string) ($row['derivacion_lateralidad'] ?? ''));
+        if ($derivacion !== '') {
+            return $derivacion;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function normalizarLateralidades(?string $valor): array
+    {
+        $valor = trim((string) $valor);
+        if ($valor === '') {
+            return [];
+        }
+
+        $valor = strtoupper($valor);
+        $valor = strtr($valor, [
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ü' => 'U',
+            'Ñ' => 'N',
+        ]);
+
+        $tokens = preg_split('/[^A-Z0-9]+/', $valor) ?: [];
+        $result = [];
+        $hasBoth = false;
+
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+
+            if (in_array($token, ['AO', 'AMBOS', 'AMBAS', 'BILATERAL', 'BILATERALES', 'BILATERALIDAD', 'B'], true)) {
+                $hasBoth = true;
+                break;
+            }
+
+            if (in_array($token, ['OD', 'DER', 'DERECHO', 'DERECHA'], true)) {
+                $result['OD'] = true;
+                continue;
+            }
+
+            if (in_array($token, ['OI', 'IZQ', 'IZQUIERDO', 'IZQUIERDA'], true)) {
+                $result['OI'] = true;
+                continue;
+            }
+        }
+
+        if ($hasBoth) {
+            return ['OD', 'OI'];
+        }
+
+        return array_keys($result);
+    }
+
+    private function toTimestamp(?string $value): int
+    {
+        if ($value === null) {
+            return 0;
+        }
+
+        $timestamp = strtotime($value);
+
+        return $timestamp ?: 0;
+    }
+
+    private function normalizarHcClave(?string $value): string
+    {
+        $normalized = preg_replace('/\s+/', '', trim((string) $value)) ?? '';
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (ctype_digit($normalized)) {
+            $withoutLeadingZeroes = ltrim($normalized, '0');
+            return $withoutLeadingZeroes !== '' ? $withoutLeadingZeroes : '0';
+        }
+
+        return strtoupper($normalized);
+    }
+
+    private function selectSolicitudColumn(string $column, ?string $alias = null): string
+    {
+        $alias = $alias ?? $column;
+        if ($this->tableHasColumn('solicitud_procedimiento', $column)) {
+            return 'sp.`' . str_replace('`', '', $column) . '` AS `' . str_replace('`', '', $alias) . '`';
+        }
+
+        return 'NULL AS `' . str_replace('`', '', $alias) . '`';
+    }
+
     private function normalizePipelineStage(string $stage): string
     {
         $stage = trim($stage);
@@ -1742,6 +2646,34 @@ class SolicitudesReadParityService
         return $slug !== '' ? ucfirst(str_replace('-', ' ', $slug)) : 'Sin estado';
     }
 
+    private function tableExists(string $table): bool
+    {
+        if (array_key_exists($table, $this->tableExistsCache)) {
+            return $this->tableExistsCache[$table];
+        }
+
+        $exists = false;
+        try {
+            $rows = DB::select('SHOW TABLES LIKE ?', [$table]);
+            $exists = !empty($rows);
+        } catch (Throwable) {
+            $exists = false;
+        }
+
+        if (!$exists) {
+            try {
+                DB::select('SELECT 1 FROM `' . str_replace('`', '', $table) . '` LIMIT 1');
+                $exists = true;
+            } catch (Throwable) {
+                $exists = false;
+            }
+        }
+
+        $this->tableExistsCache[$table] = $exists;
+
+        return $exists;
+    }
+
     private function tableHasColumn(string $table, string $column): bool
     {
         $key = $table . '.' . $column;
@@ -1749,12 +2681,48 @@ class SolicitudesReadParityService
             return $this->columnExistsCache[$key];
         }
 
-        try {
-            $rows = DB::select('SHOW COLUMNS FROM ' . $table . ' LIKE ?', [$column]);
-            $this->columnExistsCache[$key] = !empty($rows);
-        } catch (Throwable) {
+        if (!$this->tableExists($table)) {
             $this->columnExistsCache[$key] = false;
+            return false;
         }
+
+        $exists = false;
+
+        try {
+            $rows = DB::select('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '` LIKE ?', [$column]);
+            $exists = !empty($rows);
+        } catch (Throwable) {
+            $exists = false;
+        }
+
+        if (!$exists) {
+            try {
+                $rows = DB::select(
+                    'SELECT COUNT(*) AS total
+                     FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = ?
+                       AND COLUMN_NAME = ?',
+                    [$table, $column]
+                );
+                $exists = ((int) ($rows[0]->total ?? 0)) > 0;
+            } catch (Throwable) {
+                $exists = false;
+            }
+        }
+
+        if (!$exists) {
+            try {
+                $safeTable = str_replace('`', '', $table);
+                $safeColumn = str_replace('`', '', $column);
+                DB::select('SELECT `' . $safeColumn . '` FROM `' . $safeTable . '` LIMIT 0');
+                $exists = true;
+            } catch (Throwable) {
+                $exists = false;
+            }
+        }
+
+        $this->columnExistsCache[$key] = $exists;
 
         return $this->columnExistsCache[$key];
     }

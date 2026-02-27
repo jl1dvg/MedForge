@@ -370,6 +370,37 @@ class SolicitudesWriteController
         return response()->json(['success' => true] + $result)->header('X-Request-Id', $requestId);
     }
 
+    public function confirmarConciliacionCirugia(Request $request, int $id): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $payload = $this->payload($request);
+        $protocoloFormId = trim((string) ($payload['protocolo_form_id'] ?? ''));
+
+        try {
+            $result = $this->service->confirmarConciliacionCirugia($id, $protocoloFormId, LegacySessionAuth::userId($request));
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
+                ->header('X-Request-Id', $requestId);
+        } catch (Throwable $e) {
+            Log::error('solicitudes.write.conciliacion_confirmar.error', [
+                'request_id' => $requestId,
+                'solicitud_id' => $id,
+                'protocolo_form_id' => $protocoloFormId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudo confirmar la cirugía'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json(['success' => true] + $result)->header('X-Request-Id', $requestId);
+    }
+
     public function crmAgregarNota(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);

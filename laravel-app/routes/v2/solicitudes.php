@@ -10,6 +10,7 @@ Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadContro
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/solicitudes/turnero-data', [SolicitudesReadController::class, 'turneroData']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
 Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
 Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
@@ -32,6 +33,7 @@ Route::post('/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 
 Route::post('/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
+Route::post('/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
 
 // Legacy-style API aliases
 Route::match(['GET', 'POST'], '/api/solicitudes/kanban_data.php', [SolicitudesReadController::class, 'kanbanData']);
@@ -46,6 +48,7 @@ Route::match(['GET', 'POST'], '/api/solicitudes/kanban', [SolicitudesReadControl
 Route::post('/api/solicitudes/dashboard', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/api/solicitudes/turnero', [SolicitudesReadController::class, 'turneroData']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);
 Route::post('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoPost']);
 Route::post('/api/solicitudes/estado/actualizar', [SolicitudesWriteController::class, 'actualizarEstado']);
@@ -61,3 +64,4 @@ Route::post('/api/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::cla
 Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
