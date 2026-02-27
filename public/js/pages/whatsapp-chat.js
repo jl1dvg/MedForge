@@ -97,7 +97,11 @@
             sending: false,
             selectedHasInbound: true,
             forceScroll: false,
-            lastInboundByConversation: {}
+            lastInboundByConversation: {},
+            selectedConversationSignature: '',
+            conversationListSignature: '',
+            unreadByConversation: {},
+            unreadInitialized: false
         };
 
         var endpoints = {
@@ -108,6 +112,7 @@
             patients: root.getAttribute('data-endpoint-patients') || '',
             templates: root.getAttribute('data-endpoint-templates') || '',
             agents: root.getAttribute('data-endpoint-agents') || '',
+            agentPresence: root.getAttribute('data-endpoint-agent-presence') || '',
             assign: root.getAttribute('data-endpoint-assign') || '',
             transfer: root.getAttribute('data-endpoint-transfer') || '',
             close: root.getAttribute('data-endpoint-close') || '',
@@ -129,6 +134,7 @@
         var lastSeenElement = root.querySelector('[data-chat-last-seen]');
         var assignedCompact = root.querySelector('[data-chat-assigned-compact]');
         var teamCompact = root.querySelector('[data-chat-team]');
+        var botStatusCompact = root.querySelector('[data-chat-bot-status]');
         var unreadIndicator = root.querySelector('[data-unread-indicator]');
         var composer = root.querySelector('[data-chat-composer]');
         var messageForm = root.querySelector('[data-message-form]');
@@ -154,6 +160,7 @@
         var detailNotes = root.querySelector('[data-detail-notes]');
         var needsHumanBadge = root.querySelector('[data-chat-needs-human]');
         var assignedBadge = root.querySelector('[data-chat-assigned]');
+        var firstContactBadge = root.querySelector('[data-chat-first-contact]');
         var copyNumberButton = root.querySelector('[data-action-copy-number]');
         var openChatLink = root.querySelector('[data-action-open-chat]');
         var closeConversationButton = root.querySelector('[data-action-close-conversation]');
@@ -173,6 +180,8 @@
         var transferSelect = root.querySelector('[data-transfer-agent]');
         var transferButton = root.querySelector('[data-action="transfer-conversation"]');
         var transferNoteInput = root.querySelector('[data-transfer-note]');
+        var agentPresenceSelect = root.querySelector('[data-agent-presence]');
+        var agentPresenceFeedback = root.querySelector('[data-agent-presence-feedback]');
 
         if (handoffPanel && !canAssign) {
             handoffPanel.classList.add('d-none');
@@ -182,6 +191,7 @@
         var attachmentObjectUrl = null;
         var typingIndicator = null;
         var typingTimerId = null;
+        var toastStack = null;
         var templatesLoaded = false;
         var templateState = null;
         var templateFieldInputs = {};
@@ -211,6 +221,84 @@
             return endpoints.media.replace('{id}', encodeURIComponent(String(id)));
         }
 
+        function computeConversationListSignature(conversations) {
+            if (!Array.isArray(conversations) || !conversations.length) {
+                return 'empty';
+            }
+
+            return conversations.map(function (conversation) {
+                var lastAt = conversation && conversation.last_message ? (conversation.last_message.at || '') : '';
+                var unread = conversation ? Number(conversation.unread_count || 0) : 0;
+                var needsHuman = conversation && conversation.needs_human ? 1 : 0;
+                var assignedId = conversation ? Number(conversation.assigned_user_id || 0) : 0;
+                return [conversation.id || 0, lastAt, unread, needsHuman, assignedId].join(':');
+            }).join('|');
+        }
+
+        function computeConversationSignature(conversation) {
+            if (!conversation || !conversation.id) {
+                return '';
+            }
+
+            var messages = Array.isArray(conversation.messages) ? conversation.messages : [];
+            var first = messages.length ? messages[0] : null;
+            var last = messages.length ? messages[messages.length - 1] : null;
+
+            return [
+                conversation.id,
+                conversation.last_message_at || '',
+                conversation.needs_human ? 1 : 0,
+                Number(conversation.assigned_user_id || 0),
+                Number(conversation.handoff_role_id || 0),
+                messages.length,
+                first ? (first.id || first.timestamp || '') : '',
+                last ? (last.id || last.timestamp || '') : '',
+                last ? (last.status || '') : ''
+            ].join('|');
+        }
+
+        function notifyIncomingFromList(conversations) {
+            if (!Array.isArray(conversations)) {
+                return;
+            }
+
+            var nextUnread = {};
+            conversations.forEach(function (conversation) {
+                if (!conversation || !conversation.id) {
+                    return;
+                }
+                nextUnread[String(conversation.id)] = Number(conversation.unread_count || 0);
+            });
+
+            if (!state.unreadInitialized) {
+                state.unreadByConversation = nextUnread;
+                state.unreadInitialized = true;
+                return;
+            }
+
+            conversations.forEach(function (conversation) {
+                if (!conversation || !conversation.id) {
+                    return;
+                }
+
+                var key = String(conversation.id);
+                var previous = Number(state.unreadByConversation[key] || 0);
+                var current = Number(conversation.unread_count || 0);
+                if (current <= previous) {
+                    return;
+                }
+
+                if (state.selectedId && Number(state.selectedId) === Number(conversation.id)) {
+                    return;
+                }
+
+                var name = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
+                showHandoffToast('Nuevo mensaje de ' + name);
+            });
+
+            state.unreadByConversation = nextUnread;
+        }
+
         function toggleComposer(disabled) {
             if (!composer) {
                 return;
@@ -225,6 +313,7 @@
         function resetConversationView() {
             state.selectedId = null;
             state.selectedHasInbound = true;
+            state.selectedConversationSignature = '';
             selectedNumber = '';
 
             if (titleElement) {
@@ -243,6 +332,11 @@
             if (teamCompact) {
                 teamCompact.textContent = '';
                 teamCompact.classList.add('d-none');
+            }
+            if (botStatusCompact) {
+                botStatusCompact.textContent = '';
+                botStatusCompact.classList.remove('meta-warning', 'meta-active');
+                botStatusCompact.classList.add('d-none');
             }
             if (detailName) {
                 detailName.textContent = 'Selecciona una conversación';
@@ -287,6 +381,9 @@
             if (assignedBadge) {
                 assignedBadge.classList.add('d-none');
                 assignedBadge.textContent = '';
+            }
+            if (firstContactBadge) {
+                firstContactBadge.classList.add('d-none');
             }
             if (templateWarning) {
                 templateWarning.classList.add('d-none');
@@ -374,6 +471,10 @@
                     return;
                 }
                 if (roleFilter && agent.role_id && Number(agent.role_id) !== roleFilter) {
+                    return;
+                }
+                var presence = String(agent.presence_status || 'available');
+                if (presence !== 'available') {
                     return;
                 }
                 var option = document.createElement('option');
@@ -554,37 +655,65 @@
             }
         }
 
+        function getToastStack() {
+            if (toastStack && toastStack.parentNode) {
+                return toastStack;
+            }
+
+            toastStack = document.querySelector('.wa-inline-toast-stack');
+            if (toastStack) {
+                return toastStack;
+            }
+
+            toastStack = document.createElement('div');
+            toastStack.className = 'wa-inline-toast-stack';
+            document.body.appendChild(toastStack);
+
+            return toastStack;
+        }
+
         function showHandoffToast(message) {
             if (!message) {
                 return;
             }
 
+            var stack = getToastStack();
+            if (!stack) {
+                return;
+            }
+
+            if (stack.childElementCount >= 3) {
+                stack.removeChild(stack.firstElementChild);
+            }
+
             var toast = document.createElement('div');
-            toast.className = 'alert alert-info alert-dismissible fade show wa-handoff-toast';
-            toast.style.position = 'sticky';
-            toast.style.top = '0.75rem';
-            toast.style.zIndex = '1040';
-            toast.style.maxWidth = '420px';
-            toast.style.margin = '0.5rem auto';
-            toast.innerHTML = '<i class="mdi mdi-whatsapp me-1"></i>' + message;
+            toast.className = 'wa-inline-toast';
+
+            var icon = document.createElement('i');
+            icon.className = 'mdi mdi-whatsapp';
+            toast.appendChild(icon);
+
+            var text = document.createElement('span');
+            text.className = 'wa-inline-toast__text';
+            text.textContent = message;
+            toast.appendChild(text);
 
             var closeButton = document.createElement('button');
             closeButton.type = 'button';
             closeButton.className = 'btn-close';
-            closeButton.setAttribute('data-bs-dismiss', 'alert');
             closeButton.setAttribute('aria-label', 'Cerrar');
             closeButton.addEventListener('click', function () {
                 toast.remove();
             });
             toast.appendChild(closeButton);
 
-            root.prepend(toast);
+            stack.appendChild(toast);
 
             setTimeout(function () {
                 if (toast && toast.parentNode) {
                     toast.remove();
                 }
-            }, 6000);
+            }, 4200);
         }
 
         function setupRealtime() {
@@ -1133,6 +1262,21 @@
             var summary = state.conversations.find(function (item) {
                 return item.id === conversation.id;
             });
+            var messages = Array.isArray(conversation.messages) ? conversation.messages : [];
+            var inboundCount = 0;
+            var outboundCount = 0;
+            messages.forEach(function (item) {
+                if (!item || !item.direction) {
+                    return;
+                }
+                if (item.direction === 'inbound') {
+                    inboundCount += 1;
+                } else if (item.direction === 'outbound') {
+                    outboundCount += 1;
+                }
+            });
+            var hasInbound = Boolean(conversation.has_inbound) || inboundCount > 0;
+            var isInitialContact = hasInbound && outboundCount === 0;
 
             if (unreadIndicator) {
                 var unreadCount = summary && summary.unread_count ? summary.unread_count : 0;
@@ -1141,6 +1285,14 @@
                     unreadIndicator.classList.remove('d-none');
                 } else {
                     unreadIndicator.classList.add('d-none');
+                }
+            }
+
+            if (firstContactBadge) {
+                if (isInitialContact) {
+                    firstContactBadge.classList.remove('d-none');
+                } else {
+                    firstContactBadge.classList.add('d-none');
                 }
             }
 
@@ -1180,6 +1332,27 @@
                     teamCompact.textContent = '';
                     teamCompact.classList.add('d-none');
                 }
+            }
+
+            if (botStatusCompact) {
+                botStatusCompact.classList.remove('meta-warning', 'meta-active');
+                var botStatusText = '';
+                if (conversation.assigned_user_id) {
+                    botStatusText = 'Bot en pausa (chat asignado)';
+                    botStatusCompact.classList.add('meta-warning');
+                } else if (conversation.needs_human) {
+                    botStatusText = 'Bot en pausa (handoff)';
+                    botStatusCompact.classList.add('meta-warning');
+                } else if (isInitialContact) {
+                    botStatusText = 'Bot activo (primer contacto)';
+                    botStatusCompact.classList.add('meta-active');
+                } else {
+                    botStatusText = 'Bot activo';
+                    botStatusCompact.classList.add('meta-active');
+                }
+
+                botStatusCompact.textContent = botStatusText;
+                botStatusCompact.classList.remove('d-none');
             }
 
             if (summary && summary.unread_count) {
@@ -1439,15 +1612,112 @@
             }).then(function (response) {
                 return response.json();
             }).then(function (payload) {
+                var nextConversations = [];
                 if (payload && payload.ok && Array.isArray(payload.data)) {
-                    state.conversations = payload.data;
-                    renderConversations();
-                } else {
-                    state.conversations = [];
-                    renderConversations();
+                    nextConversations = payload.data;
                 }
+
+                notifyIncomingFromList(nextConversations);
+
+                var nextSignature = computeConversationListSignature(nextConversations);
+                if (state.conversationListSignature !== nextSignature) {
+                    state.conversationListSignature = nextSignature;
+                    state.conversations = nextConversations;
+                    renderConversations();
+                    return;
+                }
+
+                state.conversations = nextConversations;
             }).catch(function (error) {
                 console.error('No fue posible cargar las conversaciones', error);
+            });
+        }
+
+        function mapPresenceLabel(status) {
+            if (status === 'available') {
+                return 'Disponible';
+            }
+            if (status === 'away') {
+                return 'Ausente';
+            }
+            if (status === 'offline') {
+                return 'Desconectado';
+            }
+            return 'Disponible';
+        }
+
+        function loadMyPresence() {
+            if (!agentPresenceSelect || !endpoints.agentPresence) {
+                return Promise.resolve();
+            }
+
+            return fetch(appendCacheBuster(endpoints.agentPresence), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                cache: 'no-store',
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json();
+            }).then(function (payload) {
+                if (!payload || !payload.ok || !payload.data) {
+                    throw new Error(payload && payload.error ? payload.error : 'No se pudo cargar el estado.');
+                }
+
+                var status = String(payload.data.status || 'available');
+                agentPresenceSelect.value = status;
+                if (agentPresenceFeedback) {
+                    agentPresenceFeedback.textContent = 'Estado actual: ' + mapPresenceLabel(status);
+                }
+            }).catch(function (error) {
+                console.error('No fue posible cargar el estado del agente', error);
+                if (agentPresenceFeedback) {
+                    agentPresenceFeedback.textContent = 'No se pudo cargar el estado.';
+                }
+            });
+        }
+
+        function updateMyPresence(status) {
+            if (!agentPresenceSelect || !endpoints.agentPresence) {
+                return Promise.resolve();
+            }
+
+            agentPresenceSelect.disabled = true;
+            if (agentPresenceFeedback) {
+                agentPresenceFeedback.textContent = 'Actualizando estado...';
+            }
+
+            return fetch(endpoints.agentPresence, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({status: status})
+            }).then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || !payload || !payload.ok || !payload.data) {
+                        var error = payload && payload.error ? payload.error : 'No se pudo actualizar el estado.';
+                        throw new Error(error);
+                    }
+                    return payload.data;
+                });
+            }).then(function (data) {
+                var updatedStatus = String(data.status || status || 'available');
+                agentPresenceSelect.value = updatedStatus;
+                if (agentPresenceFeedback) {
+                    agentPresenceFeedback.textContent = 'Estado actual: ' + mapPresenceLabel(updatedStatus);
+                }
+            }).catch(function (error) {
+                console.error('No se pudo actualizar el estado del agente', error);
+                if (agentPresenceFeedback) {
+                    agentPresenceFeedback.textContent = error.message || 'No se pudo actualizar el estado.';
+                }
+                return loadMyPresence();
+            }).finally(function () {
+                agentPresenceSelect.disabled = false;
             });
         }
 
@@ -1463,6 +1733,9 @@
                 return Promise.resolve();
             }
 
+            if (state.selectedId !== id) {
+                state.selectedConversationSignature = '';
+            }
             state.selectedId = id;
             state.forceScroll = !silent;
 
@@ -1493,12 +1766,20 @@
                     throw new Error(payload && payload.error ? payload.error : 'Error desconocido');
                 }
 
+                var conversation = payload.data || {};
+                var nextSignature = computeConversationSignature(conversation);
+                if (silent && state.selectedConversationSignature === nextSignature) {
+                    return;
+                }
+
+                state.selectedConversationSignature = nextSignature;
                 updateHeader(payload.data);
                 renderMessages(payload.data);
             }).catch(function (error) {
                 if (!silent) {
                     state.loadingConversation = false;
                     state.selectedId = null;
+                    state.selectedConversationSignature = '';
                     console.error('No fue posible cargar la conversación', error);
                     toggleComposer(true);
                     renderConversations();
@@ -1730,6 +2011,13 @@
                 state.search = event.target.value.trim();
                 loadConversations();
             }, 300));
+        }
+
+        if (agentPresenceSelect) {
+            agentPresenceSelect.addEventListener('change', function () {
+                var status = String(agentPresenceSelect.value || 'available');
+                updateMyPresence(status);
+            });
         }
 
         if (messageInput) {
@@ -2507,6 +2795,7 @@
         if (canAssign) {
             fetchAgents();
         }
+        loadMyPresence();
         loadConversations();
         startAutoRefresh();
     });

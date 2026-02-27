@@ -200,6 +200,25 @@ class ConversationRepository
         return (bool) $stmt->fetchColumn();
     }
 
+    public function hasInboundSince(string $waNumber, string $sinceDateTime): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1
+             FROM whatsapp_messages m
+             INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+             WHERE c.wa_number = :wa_number
+               AND m.direction = "inbound"
+               AND COALESCE(m.message_timestamp, m.created_at) >= :since
+             LIMIT 1'
+        );
+        $stmt->execute([
+            ':wa_number' => $waNumber,
+            ':since' => $sinceDateTime,
+        ]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */

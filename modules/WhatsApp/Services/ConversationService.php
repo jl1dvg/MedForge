@@ -356,6 +356,12 @@ class ConversationService
             return [];
         }
 
+        $userIds = [];
+        foreach ($rows as $row) {
+            $userIds[] = (int) ($row['id'] ?? 0);
+        }
+        $presenceMap = $this->loadAgentPresenceMap($userIds);
+
         $agents = [];
         foreach ($rows as $row) {
             $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
@@ -371,16 +377,54 @@ class ConversationService
                 $name = (string) ($row['username'] ?? 'Agente');
             }
 
+            $agentId = (int) ($row['id'] ?? 0);
             $agents[] = [
-                'id' => (int) $row['id'],
+                'id' => $agentId,
                 'name' => $name,
                 'email' => $row['email'] ?? null,
                 'role_id' => isset($row['role_id']) ? (int) $row['role_id'] : null,
                 'role_name' => $row['role_name'] ?? null,
+                'presence_status' => $presenceMap[$agentId] ?? 'available',
             ];
         }
 
         return $agents;
+    }
+
+    public function getAgentPresence(int $userId): string
+    {
+        if ($userId <= 0) {
+            return 'available';
+        }
+
+        $map = $this->loadAgentPresenceMap([$userId]);
+
+        return $map[$userId] ?? 'available';
+    }
+
+    public function setAgentPresence(int $userId, string $status): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $status = $this->normalizePresenceStatus($status);
+
+        try {
+            $stmt = $this->repository->getPdo()->prepare(
+                'INSERT INTO whatsapp_agent_presence (user_id, status, updated_at)
+                 VALUES (:user_id, :status, NOW())
+                 ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = VALUES(updated_at)'
+            );
+            $stmt->execute([
+                ':user_id' => $userId,
+                ':status' => $status,
+            ]);
+
+            return true;
+        } catch (Throwable $exception) {
+            return false;
+        }
     }
 
     private function notifyHandoff(int $conversationId): void
@@ -409,6 +453,59 @@ class ConversationService
         $this->pusher->trigger($payload, null, PusherConfigService::EVENT_WHATSAPP_HANDOFF);
     }
 
+    /**
+     * @param array<int, int> $userIds
+     * @return array<int, string>
+     */
+    private function loadAgentPresenceMap(array $userIds): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $userIds), static fn (int $id): bool => $id > 0));
+        if ($ids === []) {
+            return [];
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach ($ids as $index => $id) {
+            $key = ':id_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $id;
+        }
+
+        try {
+            $stmt = $this->repository->getPdo()->prepare(
+                'SELECT user_id, status
+                 FROM whatsapp_agent_presence
+                 WHERE user_id IN (' . implode(', ', $placeholders) . ')'
+            );
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['user_id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $map[$id] = $this->normalizePresenceStatus((string) ($row['status'] ?? 'available'));
+        }
+
+        return $map;
+    }
+
+    private function normalizePresenceStatus(string $status): string
+    {
+        $status = strtolower(trim($status));
+        if (in_array($status, ['available', 'away', 'offline'], true)) {
+            return $status;
+        }
+
+        return 'available';
+    }
+
     private function getHandoffService(): HandoffService
     {
         if (!$this->handoffs instanceof HandoffService) {
@@ -431,6 +528,19 @@ class ConversationService
         }
 
         return $this->repository->findConversationIdByNumber($normalized);
+    }
+
+    public function hasInboundInRecentHours(string $waNumber, int $hours = 24): bool
+    {
+        $normalized = $this->normalizeNumber($waNumber);
+        if ($normalized === null) {
+            return false;
+        }
+
+        $hours = max(1, min(168, $hours));
+        $since = (new DateTimeImmutable('-' . $hours . ' hours'))->format('Y-m-d H:i:s');
+
+        return $this->repository->hasInboundSince($normalized, $since);
     }
 
     private function normalizeNumber(mixed $waNumber): ?string

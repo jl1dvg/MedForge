@@ -100,6 +100,14 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         margin: 0 6px;
         color: #94a3b8;
     }
+    .whatsapp-chat-meta .meta-warning {
+        color: #b45309;
+        font-weight: 600;
+    }
+    .whatsapp-chat-meta .meta-active {
+        color: #0f766e;
+        font-weight: 600;
+    }
     .whatsapp-status {
         margin-left: 6px;
         font-weight: 600;
@@ -149,6 +157,44 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         object-fit: cover;
         border: 1px solid rgba(15, 23, 42, 0.08);
     }
+    .wa-inline-toast-stack {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 1080;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: min(320px, calc(100vw - 2rem));
+        pointer-events: none;
+    }
+    .wa-inline-toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        background: #111827;
+        color: #f9fafb;
+        border-radius: 10px;
+        padding: 0.5rem 0.6rem;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.32);
+        font-size: 0.82rem;
+        line-height: 1.25;
+        pointer-events: auto;
+    }
+    .wa-inline-toast i {
+        color: #22c55e;
+        font-size: 1rem;
+        margin-top: 1px;
+    }
+    .wa-inline-toast .wa-inline-toast__text {
+        flex: 1;
+        min-width: 0;
+    }
+    .wa-inline-toast .btn-close {
+        filter: invert(1);
+        opacity: 0.7;
+        transform: scale(0.82);
+    }
 </style>
 <section class="content">
     <div
@@ -162,6 +208,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
             data-endpoint-patients="/whatsapp/api/patients"
             data-endpoint-templates="/whatsapp/api/chat-templates"
             data-endpoint-agents="/whatsapp/api/agents"
+            data-endpoint-agent-presence="/whatsapp/api/agent-presence"
             data-endpoint-assign="/whatsapp/api/conversations/{id}/assign"
             data-endpoint-transfer="/whatsapp/api/conversations/{id}/transfer"
             data-endpoint-close="/whatsapp/api/conversations/{id}/close"
@@ -184,6 +231,15 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                     </ul>
                 </div>
                 <div class="box-body">
+                    <div class="mb-3">
+                        <label class="form-label mb-1" for="agentPresenceSelect">Mi estado</label>
+                        <select class="form-select form-select-sm" id="agentPresenceSelect" data-agent-presence>
+                            <option value="available">Disponible</option>
+                            <option value="away">Ausente</option>
+                            <option value="offline">Desconectado</option>
+                        </select>
+                        <div class="small text-muted mt-1" data-agent-presence-feedback></div>
+                    </div>
                     <!-- Tab panes -->
                     <div class="tab-content">
                         <div class="tab-pane active" id="messages" role="tabpanel">
@@ -289,11 +345,13 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <div class="mt-1 d-flex flex-wrap gap-2">
                                             <span class="badge bg-warning-light text-warning d-none" data-chat-needs-human>Requiere agente</span>
                                             <span class="badge bg-success-light text-success d-none" data-chat-assigned></span>
+                                            <span class="badge bg-info-light text-info d-none" data-chat-first-contact>Contacto inicial</span>
                                         </div>
                                         <div class="fs-12 text-muted d-flex flex-wrap gap-2 align-items-center whatsapp-chat-meta" data-chat-meta>
                                             <span data-chat-last-seen></span>
                                             <span class="d-none" data-chat-assigned-compact></span>
                                             <span class="d-none" data-chat-team></span>
+                                            <span class="d-none" data-chat-bot-status></span>
                                         </div>
                                     </div>
                                     <div class="d-flex align-items-center gap-2">

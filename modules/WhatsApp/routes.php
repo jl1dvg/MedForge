@@ -32,6 +32,14 @@ return static function (Router $router): void {
         (new ChatController($pdo))->listAgents();
     });
 
+    $router->get('/whatsapp/api/agent-presence', static function (\PDO $pdo): void {
+        (new ChatController($pdo))->getAgentPresence();
+    });
+
+    $router->post('/whatsapp/api/agent-presence', static function (\PDO $pdo): void {
+        (new ChatController($pdo))->updateAgentPresence();
+    });
+
     $router->get('/whatsapp/api/inbox', static function (\PDO $pdo): void {
         (new InboxController($pdo))->index();
     });

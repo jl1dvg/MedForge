@@ -49,6 +49,7 @@ class WhatsAppSettings
      *     template_languages: string,
      *     handoff_ttl_hours: int,
      *     handoff_sla_target_minutes: int,
+     *     handoff_notify_in_app: bool,
      *     handoff_notify_agents: bool,
      *     handoff_agent_message: string,
      *     handoff_button_take_label: string,
@@ -82,7 +83,8 @@ class WhatsAppSettings
             'template_languages' => '',
             'handoff_ttl_hours' => 24,
             'handoff_sla_target_minutes' => 15,
-            'handoff_notify_agents' => true,
+            'handoff_notify_in_app' => true,
+            'handoff_notify_agents' => false,
             'handoff_agent_message' => "Paciente {{contact}} necesita asistencia.\nToca para tomar ✅\n\nNota: {{notes}}",
             'handoff_button_take_label' => 'Tomar',
             'handoff_button_ignore_label' => 'Ignorar',
@@ -108,6 +110,7 @@ class WhatsAppSettings
                     'whatsapp_template_languages',
                     'whatsapp_handoff_ttl_hours',
                     'whatsapp_handoff_sla_target_minutes',
+                    'whatsapp_handoff_notify_in_app',
                     'whatsapp_handoff_notify_agents',
                     'whatsapp_handoff_agent_message',
                     'whatsapp_handoff_button_take_label',
@@ -182,7 +185,8 @@ class WhatsAppSettings
                     $config['handoff_sla_target_minutes'] = min(1440, $slaTarget);
                 }
 
-                $config['handoff_notify_agents'] = ($options['whatsapp_handoff_notify_agents'] ?? '1') === '1';
+                $config['handoff_notify_in_app'] = ($options['whatsapp_handoff_notify_in_app'] ?? '1') === '1';
+                $config['handoff_notify_agents'] = ($options['whatsapp_handoff_notify_agents'] ?? '0') === '1';
 
                 $agentMessage = trim((string) ($options['whatsapp_handoff_agent_message'] ?? ''));
                 if ($agentMessage !== '') {

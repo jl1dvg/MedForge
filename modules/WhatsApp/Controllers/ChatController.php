@@ -98,6 +98,68 @@ class ChatController extends BaseController
         $this->json(['ok' => true, 'data' => $agents]);
     }
 
+    public function getAgentPresence(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $authUser = Auth::user();
+        $userId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($userId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido.'], 401);
+
+            return;
+        }
+
+        $status = $this->conversations->getAgentPresence($userId);
+        $this->json([
+            'ok' => true,
+            'data' => [
+                'user_id' => $userId,
+                'status' => $status,
+            ],
+        ]);
+    }
+
+    public function updateAgentPresence(): void
+    {
+        $this->requireAuth();
+        $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->preventCaching();
+
+        $authUser = Auth::user();
+        $userId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($userId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido.'], 401);
+
+            return;
+        }
+
+        $payload = $this->getBody();
+        $status = isset($payload['status']) ? trim((string) $payload['status']) : '';
+        if (!in_array($status, ['available', 'away', 'offline'], true)) {
+            $this->json(['ok' => false, 'error' => 'Estado no válido.'], 422);
+
+            return;
+        }
+
+        $updated = $this->conversations->setAgentPresence($userId, $status);
+        if (!$updated) {
+            $this->json(['ok' => false, 'error' => 'No se pudo actualizar el estado. Verifica la migración whatsapp_agent_presence.'], 500);
+
+            return;
+        }
+
+        $this->json([
+            'ok' => true,
+            'data' => [
+                'user_id' => $userId,
+                'status' => $status,
+            ],
+        ]);
+    }
+
     public function assignConversation(int $conversationId): void
     {
         $this->requireAuth();
