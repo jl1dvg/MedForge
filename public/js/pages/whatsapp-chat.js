@@ -104,7 +104,7 @@
             unreadInitialized: false,
             needsHumanByConversation: {},
             needsHumanInitialized: false,
-            onlyNeedsHuman: false,
+            queueFilter: 'workqueue',
             canWriteCurrent: false,
             cannotWriteReason: ''
         };
@@ -147,7 +147,11 @@
         var lockAlert = root.querySelector('[data-chat-lock-message]');
         var errorAlert = root.querySelector('[data-chat-error]');
         var searchInput = root.querySelector('[data-conversation-search]');
-        var needsHumanFilterInput = root.querySelector('[data-needs-human-filter]');
+        var queueFilterButtons = root.querySelectorAll('[data-queue-filter]');
+        var queueCountWorkqueue = root.querySelector('[data-queue-count="workqueue"]');
+        var queueCountPending = root.querySelector('[data-queue-count="pending"]');
+        var queueCountMine = root.querySelector('[data-queue-count="mine"]');
+        var queueCountAll = root.querySelector('[data-queue-count="all"]');
         var newConversationForm = root.querySelector('[data-new-conversation-form]');
         var newConversationFeedback = root.querySelector('[data-new-conversation-feedback]');
         var patientSearchInput = root.querySelector('[data-patient-search]');
@@ -329,7 +333,115 @@
             });
         }
 
-        function updateEmptyListState(isFiltered) {
+        function normalizeQueueFilter(filter) {
+            if (filter === 'all' || filter === 'pending' || filter === 'mine' || filter === 'workqueue') {
+                return filter;
+            }
+
+            return 'workqueue';
+        }
+
+        function isConversationPending(conversation) {
+            if (!conversation) {
+                return false;
+            }
+
+            var assignedId = Number(conversation.assigned_user_id || 0);
+
+            return Boolean(conversation.needs_human) && assignedId <= 0;
+        }
+
+        function isConversationMine(conversation) {
+            if (!conversation) {
+                return false;
+            }
+
+            return Number(conversation.assigned_user_id || 0) === currentUserId;
+        }
+
+        function matchesQueueFilter(conversation, filter) {
+            var normalized = normalizeQueueFilter(filter);
+
+            if (normalized === 'all') {
+                return true;
+            }
+
+            if (normalized === 'pending') {
+                return isConversationPending(conversation);
+            }
+
+            if (normalized === 'mine') {
+                return isConversationMine(conversation);
+            }
+
+            return isConversationMine(conversation) || isConversationPending(conversation);
+        }
+
+        function getFilteredConversations() {
+            return state.conversations.filter(function (conversation) {
+                if (!conversation) {
+                    return false;
+                }
+
+                return matchesQueueFilter(conversation, state.queueFilter);
+            });
+        }
+
+        function updateQueueFilterStats() {
+            var total = state.conversations.length;
+            var pending = 0;
+            var mine = 0;
+
+            state.conversations.forEach(function (conversation) {
+                if (!conversation) {
+                    return;
+                }
+
+                if (isConversationPending(conversation)) {
+                    pending += 1;
+                }
+                if (isConversationMine(conversation)) {
+                    mine += 1;
+                }
+            });
+
+            if (queueCountAll) {
+                queueCountAll.textContent = String(total);
+            }
+            if (queueCountPending) {
+                queueCountPending.textContent = String(pending);
+            }
+            if (queueCountMine) {
+                queueCountMine.textContent = String(mine);
+            }
+            if (queueCountWorkqueue) {
+                queueCountWorkqueue.textContent = String(pending + mine);
+            }
+        }
+
+        function syncQueueFilterButtons() {
+            if (!queueFilterButtons || !queueFilterButtons.length) {
+                return;
+            }
+
+            queueFilterButtons.forEach(function (button) {
+                var value = normalizeQueueFilter(String(button.getAttribute('data-queue-filter') || 'workqueue'));
+                var isActive = value === state.queueFilter;
+
+                button.classList.remove('btn-primary', 'btn-outline-secondary', 'btn-outline-warning', 'btn-outline-success');
+                if (value === 'pending') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-warning');
+                } else if (value === 'mine') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-success');
+                } else if (value === 'all') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-secondary');
+                } else {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-secondary');
+                }
+            });
+        }
+
+        function updateEmptyListState(filter) {
             if (!emptyListState) {
                 return;
             }
@@ -339,10 +451,34 @@
                 return;
             }
 
-            if (isFiltered) {
-                paragraphs[0].textContent = 'No hay conversaciones que requieran agente.';
+            if (state.search) {
+                paragraphs[0].textContent = 'No se encontraron conversaciones con ese criterio.';
                 if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Desactiva el filtro para ver todas las conversaciones.';
+                    paragraphs[1].textContent = 'Prueba con otro término o cambia el filtro de cola.';
+                }
+                return;
+            }
+
+            if (filter === 'pending') {
+                paragraphs[0].textContent = 'No hay conversaciones pendientes por tomar.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Aquí verás los casos que requieren agente y aún no están asignados.';
+                }
+                return;
+            }
+
+            if (filter === 'mine') {
+                paragraphs[0].textContent = 'No tienes conversaciones asignadas.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Cuando tomes un caso aparecerá en esta lista.';
+                }
+                return;
+            }
+
+            if (filter === 'workqueue') {
+                paragraphs[0].textContent = 'No tienes pendientes ni conversaciones asignadas.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Puedes revisar "Todas" para consultar el historial completo.';
                 }
                 return;
             }
@@ -351,6 +487,25 @@
             if (paragraphs[1]) {
                 paragraphs[1].textContent = 'Los mensajes recibidos aparecerán automáticamente en esta lista.';
             }
+        }
+
+        function setQueueFilter(filter) {
+            state.queueFilter = normalizeQueueFilter(filter);
+            syncQueueFilterButtons();
+
+            var filtered = getFilteredConversations();
+            if (state.selectedId) {
+                var selectedVisible = filtered.some(function (conversation) {
+                    return Number(conversation.id) === Number(state.selectedId);
+                });
+
+                if (!selectedVisible) {
+                    resetConversationView();
+                    return;
+                }
+            }
+
+            renderConversations();
         }
 
         function resolveWriteAccess(conversation) {
@@ -907,22 +1062,14 @@
             }
 
             resetContainer(listContainer, emptyListState);
+            updateQueueFilterStats();
+            syncQueueFilterButtons();
 
-            var conversationsToRender = state.conversations.filter(function (conversation) {
-                if (!conversation) {
-                    return false;
-                }
-
-                if (state.onlyNeedsHuman && !conversation.needs_human) {
-                    return false;
-                }
-
-                return true;
-            });
+            var conversationsToRender = getFilteredConversations();
 
             if (!conversationsToRender.length) {
                 if (emptyListState) {
-                    updateEmptyListState(state.onlyNeedsHuman);
+                    updateEmptyListState(state.queueFilter);
                     emptyListState.classList.remove('d-none');
                 }
                 return;
@@ -930,7 +1077,7 @@
 
             // Ensure empty state is hidden when there is data
             if (emptyListState) {
-                updateEmptyListState(false);
+                updateEmptyListState(state.queueFilter);
                 emptyListState.classList.add('d-none');
             }
 
@@ -1789,6 +1936,7 @@
                 }
 
                 state.conversations = nextConversations;
+                updateQueueFilterStats();
             }).catch(function (error) {
                 console.error('No fue posible cargar las conversaciones', error);
             });
@@ -2196,10 +2344,12 @@
             }, 300));
         }
 
-        if (needsHumanFilterInput) {
-            needsHumanFilterInput.addEventListener('change', function () {
-                state.onlyNeedsHuman = Boolean(needsHumanFilterInput.checked);
-                renderConversations();
+        if (queueFilterButtons && queueFilterButtons.length) {
+            queueFilterButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var filter = String(button.getAttribute('data-queue-filter') || 'workqueue');
+                    setQueueFilter(filter);
+                });
             });
         }
 
@@ -2981,9 +3131,7 @@
         });
 
         setupRealtime();
-        if (needsHumanFilterInput) {
-            state.onlyNeedsHuman = Boolean(needsHumanFilterInput.checked);
-        }
+        syncQueueFilterButtons();
         toggleComposer(true);
         if (canAssign) {
             fetchAgents();

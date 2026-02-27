@@ -59,6 +59,21 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         color: #6b7280;
         border: 1px solid rgba(107, 114, 128, 0.2);
     }
+    .whatsapp-queue-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .whatsapp-queue-filters .btn {
+        border-radius: 999px;
+        padding: 0.2rem 0.65rem;
+        font-size: 0.76rem;
+    }
+    .whatsapp-queue-filters .btn .badge {
+        margin-left: 0.35rem;
+        font-size: 0.68rem;
+        vertical-align: middle;
+    }
     .whatsapp-chat-bubble {
         max-width: 72%;
         border-radius: 14px;
@@ -251,9 +266,23 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                                autocomplete="off" data-conversation-search>
                                     </div>
                                 </div>
-                                <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="waNeedsHumanOnly" data-needs-human-filter>
-                                    <label class="form-check-label small" for="waNeedsHumanOnly">Solo requiere agente</label>
+                                <div class="whatsapp-queue-filters mb-2" data-queue-filter-group>
+                                    <button type="button" class="btn btn-primary btn-sm" data-queue-filter="workqueue">
+                                        Mi cola
+                                        <span class="badge bg-light text-dark" data-queue-count="workqueue">0</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" data-queue-filter="pending">
+                                        Pendientes
+                                        <span class="badge bg-warning-light text-warning" data-queue-count="pending">0</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" data-queue-filter="mine">
+                                        Asignadas a mí
+                                        <span class="badge bg-success-light text-success" data-queue-count="mine">0</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-queue-filter="all">
+                                        Todas
+                                        <span class="badge bg-secondary-light text-secondary" data-queue-count="all">0</span>
+                                    </button>
                                 </div>
                                 <div class="media-list media-list-hover" data-conversation-list>
                                     <div class="media flex-column align-items-center py-5 text-center text-muted"
