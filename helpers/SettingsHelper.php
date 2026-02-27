@@ -1128,10 +1128,16 @@ class SettingsHelper
                         'description' => 'Define la asignación humana, tiempos de respuesta y notificaciones.',
                         'fields' => [
                             self::checkboxField(
+                                'whatsapp_handoff_notify_in_app',
+                                'Notificar dentro de la plataforma',
+                                true,
+                                'Muestra alertas en tiempo real dentro del módulo WhatsApp para agentes del rol.'
+                            ),
+                            self::checkboxField(
                                 'whatsapp_handoff_notify_agents',
                                 'Notificar agentes por WhatsApp',
-                                true,
-                                'Envía un mensaje con botones de tomar/ignorar cuando se solicita asistencia humana.'
+                                false,
+                                'Envía un mensaje al WhatsApp personal del agente con botones de tomar/ignorar.'
                             ),
                             array_merge(
                                 self::numberField(
