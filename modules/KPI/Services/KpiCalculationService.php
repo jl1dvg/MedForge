@@ -73,6 +73,7 @@ class KpiCalculationService
         foreach ($grouped as $calculator => $calculatorKeys) {
             $calculatorResults = match ($calculator) {
                 'solicitudes' => $this->calculateSolicitudes($periodStart, $periodEnd, $calculatorKeys),
+                'cirugias_programacion' => $this->calculateCirugiasProgramacion($periodStart, $periodEnd, $calculatorKeys),
                 'crm_tasks' => $this->calculateCrmTasks($periodStart, $periodEnd, $calculatorKeys),
                 'protocolos_revision' => $this->calculateProtocolosRevision($periodStart, $periodEnd, $calculatorKeys),
                 'reingresos' => $this->calculateReingresosMismoDiagnostico($periodStart, $periodEnd, $calculatorKeys),
@@ -196,6 +197,100 @@ class KpiCalculationService
                     'numerator' => $agendadas,
                     'denominator' => $registradas,
                     'extra' => ['registradas' => $registradas, 'agendadas' => $agendadas],
+                ],
+                default => ['value' => 0],
+            };
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     * @return array<string, array<string, mixed>>
+     */
+    private function calculateCirugiasProgramacion(DateTimeImmutable $start, DateTimeImmutable $end, array $keys): array
+    {
+        $sql = <<<'SQL'
+            SELECT
+                COUNT(*) AS programadas,
+                SUM(
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(base.estado, ''))) IN (
+                            'suspendido', 'suspendida', 'cancelado', 'cancelada',
+                            'no procede', 'no_procede', 'no-procede'
+                        ) THEN 1 ELSE 0
+                    END
+                ) AS suspendidas,
+                SUM(
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(base.estado, ''))) IN ('reprogramado', 'reprogramada')
+                            THEN 1 ELSE 0
+                    END
+                ) AS reprogramadas,
+                SUM(CASE WHEN pr.form_id IS NOT NULL THEN 1 ELSE 0 END) AS realizadas
+            FROM (
+                SELECT DISTINCT
+                    sp.id,
+                    sp.form_id,
+                    sp.hc_number,
+                    sp.estado
+                FROM solicitud_procedimiento sp
+                LEFT JOIN consulta_data cd
+                    ON cd.hc_number = sp.hc_number
+                    AND cd.form_id = sp.form_id
+                WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio_solicitud AND :fin_solicitud
+                  AND sp.procedimiento IS NOT NULL
+                  AND TRIM(sp.procedimiento) <> ''
+                  AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+            ) base
+            LEFT JOIN (
+                SELECT DISTINCT form_id, hc_number
+                FROM protocolo_data
+                WHERE fecha_inicio BETWEEN :inicio_cirugia AND :fin_cirugia
+            ) pr
+                ON pr.form_id = base.form_id
+               AND pr.hc_number = base.hc_number
+        SQL;
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([
+            ':inicio_solicitud' => $start->format('Y-m-d 00:00:00'),
+            ':fin_solicitud' => $end->format('Y-m-d 23:59:59'),
+            ':inicio_cirugia' => $start->format('Y-m-d 00:00:00'),
+            ':fin_cirugia' => $end->format('Y-m-d 23:59:59'),
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $programadas = (int) ($row['programadas'] ?? 0);
+        $realizadas = (int) ($row['realizadas'] ?? 0);
+        $suspendidas = (int) ($row['suspendidas'] ?? 0);
+        $reprogramadas = (int) ($row['reprogramadas'] ?? 0);
+
+        $cumplimiento = $programadas > 0 ? round(($realizadas / $programadas) * 100, 2) : 0.0;
+        $tasaSuspendidas = $programadas > 0 ? round(($suspendidas / $programadas) * 100, 2) : 0.0;
+        $tasaReprogramacion = $programadas > 0 ? round(($reprogramadas / $programadas) * 100, 2) : 0.0;
+
+        $results = [];
+
+        foreach ($keys as $key) {
+            $results[$key] = match ($key) {
+                'cirugias.programacion.programadas' => ['value' => $programadas],
+                'cirugias.programacion.realizadas' => ['value' => $realizadas],
+                'cirugias.programacion.cumplimiento' => [
+                    'value' => $cumplimiento,
+                    'numerator' => $realizadas,
+                    'denominator' => $programadas,
+                ],
+                'cirugias.programacion.tasa_suspendidas' => [
+                    'value' => $tasaSuspendidas,
+                    'numerator' => $suspendidas,
+                    'denominator' => $programadas,
+                ],
+                'cirugias.programacion.tasa_reprogramacion' => [
+                    'value' => $tasaReprogramacion,
+                    'numerator' => $reprogramadas,
+                    'denominator' => $programadas,
                 ],
                 default => ['value' => 0],
             };

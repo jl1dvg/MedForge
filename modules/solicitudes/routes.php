@@ -74,6 +74,14 @@ return function (Router $router) {
         (new SolicitudController($pdo))->kanbanData();
     });
 
+    $router->get('/solicitudes/conciliacion-cirugias', function (\PDO $pdo) {
+        (new SolicitudController($pdo))->conciliacionCirugiasMes();
+    });
+
+    $router->post('/solicitudes/{id}/conciliacion-cirugia/confirmar', function (\PDO $pdo, $solicitudId) {
+        (new SolicitudController($pdo))->confirmarConciliacionCirugia((int)$solicitudId);
+    });
+
     $router->post('/solicitudes/reportes/pdf', function (\PDO $pdo) {
         (new SolicitudController($pdo))->reportePdf();
     });

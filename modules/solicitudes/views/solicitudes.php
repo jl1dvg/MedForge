@@ -678,6 +678,18 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             font-size: 0.95rem;
         }
 
+        .conciliacion-table .badge {
+            font-size: 0.72rem;
+        }
+
+        .conciliacion-table small {
+            color: #64748b;
+        }
+
+        .conciliacion-table .table-success {
+            --bs-table-bg: rgba(22, 163, 74, 0.12);
+        }
+
         #crmOffcanvas {
             --bs-offcanvas-width: min(100vw, 480px);
             --bs-offcanvas-zindex: 2050;
@@ -925,6 +937,9 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
                 <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="table">
                     <i class="mdi mdi-table-large"></i> Tabla
                 </button>
+                <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="conciliacion">
+                    <i class="mdi mdi-clipboard-check-outline"></i> Conciliación
+                </button>
             </div>
             <a class="btn btn-outline-primary" href="/turneros/unificado" target="_blank" rel="noopener">
                 <i class="mdi mdi-monitor"></i> Turnero
@@ -1022,6 +1037,40 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
         </div>
     </div>
 
+    <div id="solicitudesConciliacionSection" class="box mb-3 d-none">
+        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h5 class="box-title mb-1">Conciliación cirugía solicitada vs protocolo</h5>
+                <small class="text-muted">Solicitudes creadas en el mes actual.</small>
+            </div>
+            <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm">
+                <i class="mdi mdi-refresh"></i> Actualizar
+            </button>
+        </div>
+        <div class="box-body">
+            <p id="solicitudesConciliacionSummary" class="text-muted small mb-2"></p>
+            <div class="table-responsive conciliacion-table">
+                <table class="table table-sm align-middle mb-0" id="solicitudesConciliacionTable">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Paciente</th>
+                        <th>Procedimiento solicitado</th>
+                        <th>Ojo</th>
+                        <th>Protocolo posterior compatible</th>
+                        <th>Estado</th>
+                        <th>Acción</th>
+                    </tr>
+                    </thead>
+                    <tbody id="solicitudesConciliacionBody"></tbody>
+                </table>
+            </div>
+            <div id="solicitudesConciliacionEmpty" class="table-view-empty d-none mt-2">
+                No hay solicitudes del mes para conciliación.
+            </div>
+        </div>
+    </div>
+
     <?php
     $columnasConfig = $kanbanColumns ?? [];
     $stagesConfig = $kanbanStages ?? [];
@@ -1050,7 +1099,7 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
     }
     ?>
 
-    <div class="kanban-nav" aria-label="Navegación horizontal del tablero">
+    <div id="solicitudesKanbanNav" class="kanban-nav" aria-label="Navegación horizontal del tablero">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-kanban-scroll-left>
             <i class="mdi mdi-chevron-left"></i> Izquierda
         </button>
@@ -1708,11 +1757,9 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
                 return CSS.escape(value);
             }
             return String(value).replace(
-                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/
-            g,
+                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g,
                 '\\\\$1'
-        )
-            ;
+            );
         };
 
         modal.addEventListener('click', (event) => {

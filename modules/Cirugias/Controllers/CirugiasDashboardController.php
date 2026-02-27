@@ -42,6 +42,8 @@ class CirugiasDashboardController extends BaseController
         $topProcedimientos = $this->service->getTopProcedimientos($startSql, $endSql);
         $topCirujanos = $this->service->getTopCirujanos($startSql, $endSql);
         $cirugiasPorConvenio = $this->service->getCirugiasPorConvenio($startSql, $endSql);
+        $programacionKpis = $this->service->getProgramacionKpis($startSql, $endSql);
+        $reingresoMismoDiagnostico = $this->service->getReingresoMismoDiagnostico($startSql, $endSql);
 
         $data = [
             'pageTitle' => 'Dashboard quirúrgico',
@@ -54,6 +56,8 @@ class CirugiasDashboardController extends BaseController
             'top_procedimientos' => $topProcedimientos,
             'top_cirujanos' => $topCirujanos,
             'cirugias_por_convenio' => $cirugiasPorConvenio,
+            'programacion_kpis' => $programacionKpis,
+            'reingreso_mismo_diagnostico' => $reingresoMismoDiagnostico,
         ];
 
         $this->render('modules/Cirugias/views/dashboard.php', $data);

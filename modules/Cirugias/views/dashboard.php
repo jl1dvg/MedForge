@@ -8,6 +8,20 @@
 /** @var array $top_procedimientos */
 /** @var array $top_cirujanos */
 /** @var array $cirugias_por_convenio */
+/** @var array $programacion_kpis */
+/** @var array $reingreso_mismo_diagnostico */
+
+$formatPercent = static fn(float $value): string => number_format($value, 2) . '%';
+$programadas = (int) ($programacion_kpis['programadas'] ?? 0);
+$realizadas = (int) ($programacion_kpis['realizadas'] ?? 0);
+$suspendidas = (int) ($programacion_kpis['suspendidas'] ?? 0);
+$reprogramadas = (int) ($programacion_kpis['reprogramadas'] ?? 0);
+$cumplimiento = (float) ($programacion_kpis['cumplimiento'] ?? 0);
+$tasaSuspendidas = (float) ($programacion_kpis['tasa_suspendidas'] ?? 0);
+$tasaReprogramacion = (float) ($programacion_kpis['tasa_reprogramacion'] ?? 0);
+$reingresosTotal = (int) ($reingreso_mismo_diagnostico['total'] ?? 0);
+$reingresosTasa = (float) ($reingreso_mismo_diagnostico['tasa'] ?? 0);
+$reingresosEpisodios = (int) ($reingreso_mismo_diagnostico['episodios'] ?? 0);
 
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
@@ -95,6 +109,47 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                         <div class="box-body">
                             <p class="text-muted mb-5">Duración promedio</p>
                             <h3 class="fw-600 mb-0"><?= htmlspecialchars($duracion_promedio) ?></h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="row g-3">
+                <div class="col-md-6 col-xl-3">
+                    <div class="box">
+                        <div class="box-body">
+                            <p class="text-muted mb-5">Cumplimiento programación</p>
+                            <h3 class="fw-600 mb-0"><?= $formatPercent($cumplimiento) ?></h3>
+                            <small class="text-muted"><?= $realizadas ?> realizadas / <?= $programadas ?> programadas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="box">
+                        <div class="box-body">
+                            <p class="text-muted mb-5">Tasa de suspendidas</p>
+                            <h3 class="fw-600 mb-0"><?= $formatPercent($tasaSuspendidas) ?></h3>
+                            <small class="text-muted"><?= $suspendidas ?> suspendidas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="box">
+                        <div class="box-body">
+                            <p class="text-muted mb-5">Tasa de reprogramación</p>
+                            <h3 class="fw-600 mb-0"><?= $formatPercent($tasaReprogramacion) ?></h3>
+                            <small class="text-muted"><?= $reprogramadas ?> reprogramadas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="box">
+                        <div class="box-body">
+                            <p class="text-muted mb-5">Reingreso mismo CIE-10</p>
+                            <h3 class="fw-600 mb-0"><?= $formatPercent($reingresosTasa) ?></h3>
+                            <small class="text-muted"><?= $reingresosTotal ?> reingresos / <?= $reingresosEpisodios ?> episodios</small>
                         </div>
                     </div>
                 </div>

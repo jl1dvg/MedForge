@@ -2,6 +2,8 @@
 
 namespace Modules\Cirugias\Services;
 
+use DateTimeImmutable;
+use Modules\KPI\Services\KpiQueryService;
 use Modules\Cirugias\Models\Cirugia;
 use PDO;
 
@@ -194,5 +196,132 @@ class CirugiasDashboardService
         }
 
         return ['labels' => $labels, 'totals' => $totals];
+    }
+
+    /**
+     * KPIs de programación quirúrgica basados en solicitudes con fecha programada.
+     *
+     * Fórmulas:
+     * - Cumplimiento = (realizadas / programadas) * 100
+     * - Tasa suspendidas = (suspendidas / programadas) * 100
+     * - Tasa reprogramación = (reprogramadas / programadas) * 100
+     */
+    public function getProgramacionKpis(string $start, string $end): array
+    {
+        $sql = <<<'SQL'
+            SELECT
+                COUNT(*) AS programadas,
+                SUM(
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(base.estado, ''))) IN (
+                            'suspendido', 'suspendida', 'cancelado', 'cancelada',
+                            'no procede', 'no_procede', 'no-procede'
+                        ) THEN 1 ELSE 0
+                    END
+                ) AS suspendidas,
+                SUM(
+                    CASE
+                        WHEN LOWER(TRIM(COALESCE(base.estado, ''))) IN ('reprogramado', 'reprogramada')
+                            THEN 1 ELSE 0
+                    END
+                ) AS reprogramadas,
+                SUM(CASE WHEN pr.form_id IS NOT NULL THEN 1 ELSE 0 END) AS realizadas
+            FROM (
+                SELECT DISTINCT
+                    sp.id,
+                    sp.form_id,
+                    sp.hc_number,
+                    sp.estado
+                FROM solicitud_procedimiento sp
+                LEFT JOIN consulta_data cd
+                    ON cd.hc_number = sp.hc_number
+                    AND cd.form_id = sp.form_id
+                WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio_solicitud AND :fin_solicitud
+                  AND sp.procedimiento IS NOT NULL
+                  AND TRIM(sp.procedimiento) <> ''
+                  AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+            ) base
+            LEFT JOIN (
+                SELECT DISTINCT form_id, hc_number
+                FROM protocolo_data
+                WHERE fecha_inicio BETWEEN :inicio_cirugia AND :fin_cirugia
+            ) pr
+                ON pr.form_id = base.form_id
+               AND pr.hc_number = base.hc_number
+        SQL;
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio_solicitud' => $start,
+            ':fin_solicitud' => $end,
+            ':inicio_cirugia' => $start,
+            ':fin_cirugia' => $end,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $programadas = (int) ($row['programadas'] ?? 0);
+        $realizadas = (int) ($row['realizadas'] ?? 0);
+        $suspendidas = (int) ($row['suspendidas'] ?? 0);
+        $reprogramadas = (int) ($row['reprogramadas'] ?? 0);
+
+        return [
+            'programadas' => $programadas,
+            'realizadas' => $realizadas,
+            'suspendidas' => $suspendidas,
+            'reprogramadas' => $reprogramadas,
+            'cumplimiento' => $this->percentage((float) $realizadas, (float) $programadas),
+            'tasa_suspendidas' => $this->percentage((float) $suspendidas, (float) $programadas),
+            'tasa_reprogramacion' => $this->percentage((float) $reprogramadas, (float) $programadas),
+        ];
+    }
+
+    /**
+     * Obtiene KPI de reingresos por mismo diagnóstico CIE-10 desde el módulo KPI.
+     */
+    public function getReingresoMismoDiagnostico(string $start, string $end): array
+    {
+        try {
+            $queryService = new KpiQueryService($this->db);
+            $startDate = (new DateTimeImmutable($start))->setTime(0, 0, 0);
+            $endDate = (new DateTimeImmutable($end))->setTime(0, 0, 0);
+
+            $total = $queryService->getAggregatedValue(
+                'reingresos.mismo_diagnostico.total',
+                $startDate,
+                $endDate,
+                [],
+                true
+            ) ?? ['value' => 0];
+
+            $rate = $queryService->getAggregatedValue(
+                'reingresos.mismo_diagnostico.tasa',
+                $startDate,
+                $endDate,
+                [],
+                true
+            ) ?? ['value' => 0, 'denominator' => 0];
+
+            return [
+                'total' => (int) round((float) ($total['value'] ?? 0)),
+                'tasa' => round((float) ($rate['value'] ?? 0), 2),
+                'episodios' => (int) round((float) ($rate['denominator'] ?? 0)),
+            ];
+        } catch (\Throwable) {
+            return [
+                'total' => 0,
+                'tasa' => 0.0,
+                'episodios' => 0,
+            ];
+        }
+    }
+
+    private function percentage(float $numerator, float $denominator): float
+    {
+        if ($denominator <= 0) {
+            return 0.0;
+        }
+
+        return round(($numerator / $denominator) * 100, 2);
     }
 }

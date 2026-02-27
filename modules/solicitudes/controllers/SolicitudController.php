@@ -485,6 +485,274 @@ class SolicitudController extends BaseController
         }
     }
 
+    public function conciliacionCirugiasMes(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $dateFromRaw = trim((string)($_GET['date_from'] ?? ''));
+        $dateToRaw = trim((string)($_GET['date_to'] ?? ''));
+        $mes = trim((string)($_GET['mes'] ?? ''));
+        $debugEnabled = filter_var((string)($_GET['debug'] ?? '0'), FILTER_VALIDATE_BOOLEAN);
+        $debugHc = trim((string)($_GET['debug_hc'] ?? ($_GET['hc_number'] ?? '')));
+        $debugFormId = trim((string)($_GET['debug_form_id'] ?? ($_GET['form_id'] ?? '')));
+        $debugSolicitudId = (int)($_GET['debug_id'] ?? ($_GET['id'] ?? 0));
+        $debugLimit = (int)($_GET['debug_limit'] ?? 25);
+
+        $inicioBase = null;
+        $finBase = null;
+
+        if ($dateFromRaw !== '' || $dateToRaw !== '') {
+            $dateFrom = $dateFromRaw !== '' ? $this->parseDate($dateFromRaw) : null;
+            $dateTo = $dateToRaw !== '' ? $this->parseDate($dateToRaw) : null;
+
+            if ($dateFromRaw !== '' && !$dateFrom) {
+                $this->json(['success' => false, 'error' => 'El parámetro "date_from" no tiene un formato válido.'], 422);
+                return;
+            }
+
+            if ($dateToRaw !== '' && !$dateTo) {
+                $this->json(['success' => false, 'error' => 'El parámetro "date_to" no tiene un formato válido.'], 422);
+                return;
+            }
+
+            $inicioBase = $dateFrom ?: $dateTo;
+            $finBase = $dateTo ?: $dateFrom;
+        }
+
+        if (!$inicioBase || !$finBase) {
+            $base = null;
+            if ($mes !== '') {
+                $base = DateTimeImmutable::createFromFormat('!Y-m', $mes) ?: null;
+                if (!$base) {
+                    $this->json(['success' => false, 'error' => 'El parámetro "mes" debe tener formato YYYY-MM.'], 422);
+                    return;
+                }
+            }
+
+            if (!$base) {
+                $base = new DateTimeImmutable('first day of this month');
+            }
+
+            $inicioBase = $base;
+            $finBase = $base->modify('last day of this month');
+        }
+
+        $inicio = $inicioBase->setTime(0, 0, 0);
+        $fin = $finBase->setTime(23, 59, 59);
+
+        if ($inicio > $fin) {
+            [$inicio, $fin] = [$fin, $inicio];
+            $inicio = $inicio->setTime(0, 0, 0);
+            $fin = $fin->setTime(23, 59, 59);
+        }
+
+        try {
+            $data = $this->solicitudModel->listarConciliacionCirugiasMes($inicio, $fin);
+        } catch (Throwable $exception) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_conciliacion',
+                'No se pudo cargar la conciliación de cirugías',
+                $exception,
+                [
+                    'error_id' => $errorId,
+                    'usuario_id' => $this->getCurrentUserId(),
+                    'date_from' => $inicio->format('Y-m-d'),
+                    'date_to' => $fin->format('Y-m-d'),
+                    'mes' => $mes !== '' ? $mes : $inicio->format('Y-m'),
+                ]
+            );
+
+            $this->json([
+                'success' => false,
+                'error' => 'No se pudo cargar la conciliación (ref: ' . $errorId . ').',
+            ], 500);
+            return;
+        }
+
+        $debugPayload = null;
+        if ($debugEnabled) {
+            try {
+                $debugPayload = $this->solicitudModel->diagnosticarConciliacion($data, [
+                    'hc_number' => $debugHc,
+                    'solicitud_id' => $debugSolicitudId,
+                    'form_id' => $debugFormId,
+                    'limit' => $debugLimit,
+                ]);
+            } catch (Throwable $exception) {
+                $debugPayload = [
+                    'error' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        $total = count($data);
+        $confirmadas = 0;
+        $conMatch = 0;
+
+        foreach ($data as $row) {
+            if (!empty($row['protocolo_confirmado'])) {
+                $confirmadas++;
+            }
+            if (!empty($row['protocolo_posterior_compatible'])) {
+                $conMatch++;
+            }
+        }
+
+        $this->json([
+            'success' => true,
+            'periodo' => [
+                'mes' => $inicio->format('Y-m'),
+                'from' => $inicio->format('Y-m-d'),
+                'to' => $fin->format('Y-m-d'),
+                'desde' => $inicio->format('Y-m-d H:i:s'),
+                'hasta' => $fin->format('Y-m-d H:i:s'),
+            ],
+            'totales' => [
+                'total' => $total,
+                'con_match' => $conMatch,
+                'confirmadas' => $confirmadas,
+                'sin_match' => max(0, $total - $conMatch),
+            ],
+            'debug' => $debugPayload,
+            'data' => $data,
+        ]);
+    }
+
+    public function confirmarConciliacionCirugia(int $solicitudId): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        if ($solicitudId <= 0) {
+            $this->json(['success' => false, 'error' => 'Solicitud inválida.'], 422);
+            return;
+        }
+
+        $payload = $this->getRequestBody();
+        $protocoloFormId = trim((string)($payload['protocolo_form_id'] ?? ''));
+
+        if ($protocoloFormId === '') {
+            $this->json(['success' => false, 'error' => 'Debes indicar el protocolo a asociar.'], 422);
+            return;
+        }
+
+        try {
+            $solicitud = $this->solicitudModel->obtenerSolicitudConciliacionPorId($solicitudId);
+            if (!$solicitud) {
+                $this->json(['success' => false, 'error' => 'No se encontró la solicitud.'], 404);
+                return;
+            }
+
+            $protocolo = $this->solicitudModel->obtenerProtocoloConciliacionPorFormId($protocoloFormId);
+            if (!$protocolo) {
+                $this->json(['success' => false, 'error' => 'No se encontró el protocolo seleccionado.'], 404);
+                return;
+            }
+
+            $hcSolicitud = trim((string)($solicitud['hc_number'] ?? ''));
+            $hcProtocolo = trim((string)($protocolo['hc_number'] ?? ''));
+            if ($hcSolicitud === '' || $hcProtocolo === '' || $hcSolicitud !== $hcProtocolo) {
+                $this->json(['success' => false, 'error' => 'El protocolo no pertenece al mismo paciente.'], 422);
+                return;
+            }
+
+            $fechaSolicitudTs = strtotime((string)($solicitud['fecha_solicitud'] ?? '')) ?: 0;
+            $fechaProtocoloTs = strtotime((string)($protocolo['fecha_inicio'] ?? '')) ?: 0;
+
+            if ($fechaSolicitudTs > 0 && $fechaProtocoloTs > 0 && $fechaProtocoloTs < $fechaSolicitudTs) {
+                $this->json(['success' => false, 'error' => 'El protocolo debe ser posterior a la solicitud.'], 422);
+                return;
+            }
+
+            $lateralidadSolicitud = trim((string)($solicitud['ojo_resuelto'] ?? ''));
+            $lateralidadProtocolo = trim((string)($protocolo['lateralidad'] ?? ''));
+
+            if (!$this->solicitudModel->lateralidadesCompatibles($lateralidadSolicitud, $lateralidadProtocolo)) {
+                $this->json(['success' => false, 'error' => 'La lateralidad del protocolo no es compatible con la solicitud.'], 422);
+                return;
+            }
+
+            $usuarioId = $this->getCurrentUserId();
+            $this->solicitudModel->registrarConfirmacionCirugia($solicitudId, $protocolo, $usuarioId);
+
+            $nota = sprintf(
+                'Confirmación manual de cirugía con protocolo %s (%s).',
+                (string)($protocolo['form_id'] ?? ''),
+                (string)($protocolo['lateralidad'] ?? 'sin lateralidad')
+            );
+
+            $checklistResult = $this->crmService->completarChecklistSolicitud(
+                $solicitudId,
+                $usuarioId,
+                $this->currentPermissions(),
+                $nota
+            );
+            $tareasActualizadas = $this->crmService->completarTodasLasTareasSolicitud($solicitudId);
+
+            $estadoResult = $this->solicitudModel->actualizarEstado($solicitudId, 'completado');
+
+            $eventoPayload = $estadoResult + [
+                    'kanban_estado' => 'completado',
+                    'kanban_estado_label' => 'Completado',
+                    'checklist' => $checklistResult['checklist'] ?? [],
+                    'checklist_progress' => $checklistResult['checklist_progress'] ?? [],
+                    'protocolo_confirmado' => [
+                        'form_id' => $protocolo['form_id'] ?? null,
+                        'hc_number' => $protocolo['hc_number'] ?? null,
+                        'fecha_inicio' => $protocolo['fecha_inicio'] ?? null,
+                        'lateralidad' => $protocolo['lateralidad'] ?? null,
+                        'membrete' => $protocolo['membrete'] ?? null,
+                        'status' => isset($protocolo['status']) ? (int)$protocolo['status'] : null,
+                        'confirmado_at' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+                        'confirmado_by_id' => $usuarioId ?: null,
+                    ],
+                    'channels' => $this->pusherConfig->getNotificationChannels(),
+                ];
+
+            $this->pusherConfig->trigger(
+                $eventoPayload,
+                null,
+                PusherConfigService::EVENT_STATUS_UPDATED
+            );
+
+            $this->json([
+                'success' => true,
+                'message' => 'Solicitud confirmada y marcada como completada.',
+                'estado' => 'completado',
+                'checklist' => $checklistResult['checklist'] ?? [],
+                'checklist_progress' => $checklistResult['checklist_progress'] ?? [],
+                'tareas_actualizadas' => $tareasActualizadas,
+                'protocolo_confirmado' => $eventoPayload['protocolo_confirmado'],
+            ]);
+        } catch (RuntimeException $exception) {
+            $this->json(['success' => false, 'error' => $exception->getMessage()], 422);
+        } catch (Throwable $exception) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'solicitudes_conciliacion',
+                'No se pudo confirmar la cirugía conciliada',
+                $exception,
+                [
+                    'error_id' => $errorId,
+                    'usuario_id' => $this->getCurrentUserId(),
+                    'solicitud_id' => $solicitudId,
+                    'protocolo_form_id' => $protocoloFormId,
+                ]
+            );
+
+            $this->json([
+                'success' => false,
+                'error' => 'No se pudo confirmar la cirugía (ref: ' . $errorId . ').',
+            ], 500);
+        }
+    }
+
     public function reporteExcel(): void
     {
         if (!$this->isAuthenticated()) {

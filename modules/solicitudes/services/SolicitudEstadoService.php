@@ -149,8 +149,15 @@ class SolicitudEstadoService
             $kanban = $this->computeKanbanEstado($checklist);
 
             $stateSlug = $this->normalizeSlug($legacyEstado);
-            // Para etapas operativas iniciales, respetar el estado explícito en columna
-            if (in_array($stateSlug, ['recibida', 'llamado'], true)) {
+            // Estados legacy explícitos que deben conservar columna de Kanban.
+            if ($stateSlug === 'completado') {
+                $kanban = [
+                    'slug' => 'completado',
+                    'label' => $this->getColumns()['completado']['label'] ?? 'Completado',
+                    'next_slug' => null,
+                    'next_label' => null,
+                ];
+            } elseif (in_array($stateSlug, ['recibida', 'llamado'], true)) {
                 $stage = $this->getStageBySlug($stateSlug);
                 if ($stage) {
                     $kanban = [

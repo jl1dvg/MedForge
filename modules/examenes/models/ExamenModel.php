@@ -395,6 +395,8 @@ class ExamenModel
                     WHERE (
                             UPPER(TRIM(pp.doctor)) = u.nombre_norm
                             OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                            OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm
+                            OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm_rev
                         )
                       AND (
                             UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
@@ -429,6 +431,8 @@ class ExamenModel
                         WHERE (
                                 UPPER(TRIM(pp.doctor)) = u.nombre_norm
                                 OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                                OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm
+                                OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm_rev
                             )
                           AND (
                                 UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
@@ -489,6 +493,8 @@ class ExamenModel
                 ON (
                     UPPER(TRIM(pp.doctor)) = u.nombre_norm
                     OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                    OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm
+                    OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm_rev
                 )
                 AND (
                     UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
@@ -545,6 +551,8 @@ class ExamenModel
                 ON (
                     UPPER(TRIM(pp.doctor)) = u.nombre_norm
                     OR UPPER(TRIM(pp.doctor)) = u.nombre_norm_rev
+                    OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm
+                    OR TRIM(REPLACE(REPLACE(REPLACE(CONCAT(' ', UPPER(TRIM(pp.doctor)), ' '), ' SNS ', ' '), '  ', ' '), '  ', ' ')) = u.nombre_norm_rev
                 )
                 AND (
                     UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
@@ -569,7 +577,23 @@ class ExamenModel
             return null;
         }
 
-        $normalizado = strtoupper(preg_replace('/\s+/', ' ', $doctorNombre) ?? $doctorNombre);
+        $variantes = $this->buildDoctorNombreVariantes($doctorNombre);
+        if ($variantes === []) {
+            return null;
+        }
+
+        $nombreNormPlaceholders = [];
+        $nombreRevPlaceholders = [];
+        $params = [];
+
+        foreach ($variantes as $i => $variante) {
+            $normKey = ':nombre_norm_' . $i;
+            $revKey = ':nombre_rev_' . $i;
+            $nombreNormPlaceholders[] = $normKey;
+            $nombreRevPlaceholders[] = $revKey;
+            $params[$normKey] = $variante;
+            $params[$revKey] = $variante;
+        }
 
         $stmt = $this->db->prepare(
             "SELECT
@@ -584,19 +608,42 @@ class ExamenModel
                 u.nombre
              FROM users u
              WHERE (
-                    u.nombre_norm = :nombre_norm
-                    OR u.nombre_norm_rev = :nombre_norm
+                    u.nombre_norm IN (" . implode(', ', $nombreNormPlaceholders) . ")
+                    OR u.nombre_norm_rev IN (" . implode(', ', $nombreRevPlaceholders) . ")
                 )
                AND (
                     UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
                     OR UPPER(TRIM(COALESCE(u.especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
                )
+             ORDER BY u.id ASC
              LIMIT 1"
         );
-        $stmt->execute([':nombre_norm' => $normalizado]);
+        $stmt->execute($params);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         return $row ?: null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildDoctorNombreVariantes(string $doctorNombre): array
+    {
+        $base = strtoupper(preg_replace('/\s+/', ' ', trim($doctorNombre)) ?? trim($doctorNombre));
+        if ($base === '') {
+            return [];
+        }
+
+        $variantes = [$base];
+
+        // En procedimiento_proyectado hay casos con token "SNS" en medio del nombre.
+        $sinSns = preg_replace('/\bSNS\b/u', ' ', $base) ?? $base;
+        $sinSns = trim(preg_replace('/\s+/', ' ', $sinSns) ?? $sinSns);
+        if ($sinSns !== '' && $sinSns !== $base) {
+            $variantes[] = $sinSns;
+        }
+
+        return array_values(array_unique($variantes));
     }
 
     public function obtenerConsultaClinicaSerOftPorHcHastaFecha(string $hcNumber, string $fechaMax): ?array

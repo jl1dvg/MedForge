@@ -34,6 +34,8 @@ class SolicitudCrmService
     private WhatsAppMessenger $whatsapp;
     private CalendarBlockService $calendarBlocks;
     private SolicitudEstadoService $estadoService;
+    /** @var array<string, array<int, string>> */
+    private array $tableColumnsCache = [];
 
     public function __construct(PDO $pdo)
     {
@@ -458,6 +460,80 @@ class SolicitudCrmService
                 ]
             );
         }
+    }
+
+    public function completarTodasLasTareasSolicitud(int $solicitudId): int
+    {
+        if ($solicitudId <= 0) {
+            return 0;
+        }
+
+        $actualizadas = 0;
+        $now = date('Y-m-d H:i:s');
+
+        $crmColumns = $this->obtenerColumnasTabla('crm_tasks');
+        if (
+            in_array('status', $crmColumns, true)
+            && in_array('source_module', $crmColumns, true)
+            && in_array('source_ref_id', $crmColumns, true)
+        ) {
+            $sets = ['status = :estado_completada'];
+            $where = ['source_module = :source_module', 'source_ref_id = :source_ref_id', '(status IS NULL OR status <> :estado_actual)'];
+            $params = [
+                ':estado_completada' => 'completada',
+                ':source_module' => 'solicitudes',
+                ':source_ref_id' => (string) $solicitudId,
+                ':estado_actual' => 'completada',
+            ];
+
+            if (in_array('completed_at', $crmColumns, true)) {
+                $sets[] = 'completed_at = :completed_at';
+                $params[':completed_at'] = $now;
+            }
+
+            if (in_array('updated_at', $crmColumns, true)) {
+                $sets[] = 'updated_at = :updated_at';
+                $params[':updated_at'] = $now;
+            }
+
+            if (in_array('company_id', $crmColumns, true)) {
+                $where[] = 'company_id = :company_id';
+                $params[':company_id'] = $this->resolveCompanyId();
+            }
+
+            $sql = 'UPDATE crm_tasks SET ' . implode(', ', $sets) . ' WHERE ' . implode(' AND ', $where);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $actualizadas += (int) $stmt->rowCount();
+        }
+
+        $legacyColumns = $this->obtenerColumnasTabla('solicitud_crm_tareas');
+        if (in_array('solicitud_id', $legacyColumns, true) && in_array('estado', $legacyColumns, true)) {
+            $sets = ['estado = :estado_completada'];
+            $where = ['solicitud_id = :solicitud_id', '(estado IS NULL OR estado <> :estado_actual)'];
+            $params = [
+                ':estado_completada' => 'completada',
+                ':solicitud_id' => $solicitudId,
+                ':estado_actual' => 'completada',
+            ];
+
+            if (in_array('completed_at', $legacyColumns, true)) {
+                $sets[] = 'completed_at = :legacy_completed_at';
+                $params[':legacy_completed_at'] = $now;
+            }
+
+            if (in_array('updated_at', $legacyColumns, true)) {
+                $sets[] = 'updated_at = :legacy_updated_at';
+                $params[':legacy_updated_at'] = $now;
+            }
+
+            $sql = 'UPDATE solicitud_crm_tareas SET ' . implode(', ', $sets) . ' WHERE ' . implode(' AND ', $where);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $actualizadas += (int) $stmt->rowCount();
+        }
+
+        return $actualizadas;
     }
 
     public function registrarAdjunto(
@@ -1069,6 +1145,55 @@ class SolicitudCrmService
             'tasks' => $tasks,
             'checklist' => $checklist,
             'checklist_progress' => $progress,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $checklist
+     * @return array<string, mixed>
+     */
+    public function completarChecklistSolicitud(
+        int $solicitudId,
+        ?int $usuarioId,
+        array $userPermissions = [],
+        ?string $nota = null
+    ): array {
+        $resultado = $this->checklistState($solicitudId, $userPermissions);
+        $stages = $this->estadoService->getStages();
+
+        foreach ($stages as $stage) {
+            $slug = (string) ($stage['slug'] ?? '');
+            if ($slug === '') {
+                continue;
+            }
+
+            $resultado = $this->estadoService->actualizarEtapa(
+                $solicitudId,
+                $slug,
+                true,
+                $usuarioId,
+                $userPermissions,
+                true,
+                $nota
+            );
+        }
+
+        $detalle = $this->safeObtenerDetalleSolicitud($solicitudId) ?? [];
+        $leadId = !empty($detalle['crm_lead_id']) ? (int) $detalle['crm_lead_id'] : null;
+        $project = $this->ensureCrmProject($solicitudId, $detalle, $leadId, $usuarioId);
+        $projectId = isset($project['id']) ? (int) $project['id'] : null;
+
+        if ($leadId || $projectId) {
+            $this->persistCrmMap($solicitudId, $leadId, $projectId);
+        }
+
+        $checklist = $resultado['checklist'] ?? [];
+        $tasks = $this->syncChecklistTasks($solicitudId, $detalle, $leadId, $projectId, $checklist, $usuarioId);
+
+        return $resultado + [
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'tasks' => $tasks,
         ];
     }
 
@@ -1799,6 +1924,35 @@ class SolicitudCrmService
     private function buildTaskKey(int $solicitudId, string $slug): string
     {
         return 'solicitud:' . $solicitudId . ':kanban:' . $slug;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function obtenerColumnasTabla(string $table): array
+    {
+        if (array_key_exists($table, $this->tableColumnsCache)) {
+            return $this->tableColumnsCache[$table];
+        }
+
+        try {
+            $stmt = $this->pdo->query('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '`');
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        } catch (Throwable) {
+            $rows = [];
+        }
+
+        $columns = [];
+        foreach ($rows as $row) {
+            $field = trim((string) ($row['Field'] ?? ''));
+            if ($field !== '') {
+                $columns[] = $field;
+            }
+        }
+
+        $this->tableColumnsCache[$table] = $columns;
+
+        return $columns;
     }
 
     private function persistCrmMap(int $solicitudId, ?int $leadId, ?int $projectId): void

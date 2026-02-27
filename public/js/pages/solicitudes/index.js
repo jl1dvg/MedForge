@@ -5,6 +5,7 @@ import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
 import { createNotificationPanel } from './notifications/panel.js';
 import { formatTurno } from './kanban/turnero.js';
+import { initSolicitudesConciliacion } from './conciliacion.js';
 import {
     getKanbanConfig,
     getDataStore,
@@ -225,8 +226,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewButtons = Array.from(document.querySelectorAll(`[${viewAttr}]`));
     const kanbanContainer = document.getElementById(resolveId('ViewKanban'));
     const tableContainer = document.getElementById(resolveId('ViewTable'));
+    const conciliacionContainer = document.getElementById('solicitudesConciliacionSection');
     const totalCounter = document.getElementById(resolveId('TotalCount'));
     const overviewContainer = document.getElementById(resolveId('Overview'));
+    const filtersContainer = document.getElementById('solicitudesFilters');
+    const kanbanNav = document.getElementById('solicitudesKanbanNav');
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
@@ -234,7 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const dateFilter = document.getElementById('kanbanDateFilter');
 
     const VIEW_DEFAULT = 'kanban';
-    let currentView = localStorage.getItem(STORAGE_KEY_VIEW) === 'table' ? 'table' : VIEW_DEFAULT;
+    const VIEW_ALLOWED = new Set(['kanban', 'table', 'conciliacion']);
+    const storedView = (localStorage.getItem(STORAGE_KEY_VIEW) || '').toLowerCase();
+    let currentView = VIEW_ALLOWED.has(storedView) ? storedView : VIEW_DEFAULT;
 
     const normalizeFormats = (formats) => {
         if (!Array.isArray(formats)) {
@@ -938,19 +944,43 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const switchView = (view, persist = true) => {
-        const normalized = view === 'table' ? 'table' : VIEW_DEFAULT;
+        const normalized = VIEW_ALLOWED.has(String(view || '').toLowerCase())
+            ? String(view || '').toLowerCase()
+            : VIEW_DEFAULT;
         currentView = normalized;
 
         if (kanbanContainer) {
-            kanbanContainer.classList.toggle('d-none', normalized === 'table');
+            kanbanContainer.classList.toggle('d-none', normalized !== 'kanban');
         }
 
         if (tableContainer) {
             tableContainer.classList.toggle('d-none', normalized !== 'table');
         }
 
+        if (conciliacionContainer) {
+            conciliacionContainer.classList.toggle('d-none', normalized !== 'conciliacion');
+        }
+
+        if (overviewContainer) {
+            overviewContainer.classList.toggle('d-none', normalized === 'conciliacion');
+        }
+
+        if (filtersContainer) {
+            filtersContainer.classList.toggle('d-none', normalized === 'conciliacion');
+        }
+
+        if (kanbanNav) {
+            kanbanNav.classList.toggle('d-none', normalized !== 'kanban');
+        }
+
+        const overviewToggle = document.getElementById(OVERVIEW_TOGGLE_ID);
+        if (overviewToggle && overviewToggle.parentElement) {
+            overviewToggle.parentElement.classList.toggle('d-none', normalized === 'conciliacion');
+        }
+
         viewButtons.forEach(button => {
-            const buttonView = button.getAttribute(viewAttr) === 'table' ? 'table' : VIEW_DEFAULT;
+            const buttonViewRaw = (button.getAttribute(viewAttr) || '').toLowerCase();
+            const buttonView = VIEW_ALLOWED.has(buttonViewRaw) ? buttonViewRaw : VIEW_DEFAULT;
             button.classList.toggle('active', buttonView === normalized);
         });
 
@@ -1344,7 +1374,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     };
 
-    window.aplicarFiltros = () => cargarKanban(obtenerFiltros());
+    const conciliacion = initSolicitudesConciliacion({
+        showToast,
+        getFilters: obtenerFiltros,
+        onConfirmed: async () => {
+            await cargarKanban(obtenerFiltros());
+        },
+    });
+
+    window.aplicarFiltros = () => {
+        const filtros = obtenerFiltros();
+        cargarKanban(filtros);
+        conciliacion.reload();
+    };
 
     ['kanbanAfiliacionFilter', 'kanbanDoctorFilter'].forEach(id => {
         const element = document.getElementById(id);
@@ -1489,6 +1531,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast(mensaje, true, toastDurationMs);
                 maybeShowDesktopNotification('Nueva solicitud', mensaje);
                 window.aplicarFiltros();
+                conciliacion.reload();
             });
 
             if (statusEventName) {
@@ -1527,6 +1570,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     maybeShowDesktopNotification('Estado de solicitud', `${paciente} pasó a ${nuevoEstado}`);
                     scheduleRealtimeRefresh({ solicitudId, formId, hcNumber });
                     window.aplicarFiltros();
+                    conciliacion.reload();
                 });
             }
 
