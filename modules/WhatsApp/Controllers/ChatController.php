@@ -356,6 +356,14 @@ class ChatController extends BaseController
         $this->requirePermission(['whatsapp.chat.send', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($currentUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido.'], 401);
+
+            return;
+        }
+
         $payload = $this->getBody();
         $message = isset($payload['message']) ? trim((string) $payload['message']) : '';
         $template = $this->normalizeTemplatePayload($payload['template'] ?? null);
@@ -368,20 +376,21 @@ class ChatController extends BaseController
         }
 
         $conversationId = null;
+        $conversationSummary = null;
         $waNumber = null;
         $displayName = null;
 
         if (!empty($payload['conversation_id'])) {
             $conversationId = (int) $payload['conversation_id'];
-            $summary = $this->conversations->getConversationSummary($conversationId);
-            if ($summary === null) {
+            $conversationSummary = $this->conversations->getConversationSummary($conversationId);
+            if ($conversationSummary === null) {
                 $this->json(['ok' => false, 'error' => 'La conversación indicada no existe'], 404);
 
                 return;
             }
 
-            $waNumber = $summary['wa_number'];
-            $displayName = $summary['display_name'];
+            $waNumber = $conversationSummary['wa_number'];
+            $displayName = $conversationSummary['display_name'];
         } elseif (!empty($payload['wa_number'])) {
             $waNumber = (string) $payload['wa_number'];
             $displayName = isset($payload['display_name']) ? trim((string) $payload['display_name']) : null;
@@ -406,6 +415,39 @@ class ChatController extends BaseController
         }
 
         if ($conversationId !== null) {
+            if ($conversationSummary === null || (int) ($conversationSummary['id'] ?? 0) !== $conversationId) {
+                $conversationSummary = $this->conversations->getConversationSummary($conversationId);
+            }
+
+            if ($conversationSummary === null) {
+                $this->json(['ok' => false, 'error' => 'La conversación indicada no existe'], 404);
+
+                return;
+            }
+
+            $assignedUserId = isset($conversationSummary['assigned_user_id']) ? (int) $conversationSummary['assigned_user_id'] : 0;
+            $assignedUserName = trim((string) ($conversationSummary['assigned_user_name'] ?? ''));
+            $needsHuman = !empty($conversationSummary['needs_human']);
+
+            if ($needsHuman && $assignedUserId <= 0) {
+                $this->json([
+                    'ok' => false,
+                    'error' => 'Debes tomar esta conversación antes de responder.',
+                ], 423);
+
+                return;
+            }
+
+            if ($assignedUserId > 0 && $assignedUserId !== $currentUserId) {
+                $agentName = $assignedUserName !== '' ? $assignedUserName : 'otro agente';
+                $this->json([
+                    'ok' => false,
+                    'error' => 'Esta conversación está asignada a ' . $agentName . '. Solo el agente asignado puede responder.',
+                ], 403);
+
+                return;
+            }
+
             $hasInbound = $this->conversations->hasInboundMessages($conversationId);
             if (!$hasInbound && $template === null) {
                 $this->json([

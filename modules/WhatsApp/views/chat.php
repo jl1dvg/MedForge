@@ -251,6 +251,10 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                                autocomplete="off" data-conversation-search>
                                     </div>
                                 </div>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="waNeedsHumanOnly" data-needs-human-filter>
+                                    <label class="form-check-label small" for="waNeedsHumanOnly">Solo requiere agente</label>
+                                </div>
                                 <div class="media-list media-list-hover" data-conversation-list>
                                     <div class="media flex-column align-items-center py-5 text-center text-muted"
                                          data-empty-state>
@@ -412,6 +416,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                     </button>
                                 </div>
                             </form>
+                            <div class="alert alert-warning d-none mt-2 mb-0" role="alert" data-chat-lock-message></div>
                             <div class="alert alert-danger d-none mt-3" role="alert" data-chat-error></div>
                         </div>
                     </div>

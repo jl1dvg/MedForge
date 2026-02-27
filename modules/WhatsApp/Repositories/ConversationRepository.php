@@ -4,10 +4,15 @@ namespace Modules\WhatsApp\Repositories;
 
 use PDO;
 use PDOException;
+use Throwable;
 
 class ConversationRepository
 {
     private PDO $pdo;
+    /**
+     * @var array<string, bool>|null
+     */
+    private ?array $conversationColumns = null;
 
     public function __construct(PDO $pdo)
     {
@@ -298,33 +303,100 @@ class ConversationRepository
 
     public function setHandoffFlag(int $conversationId, bool $needsHuman, ?string $notes = null, ?int $roleId = null): bool
     {
-        $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, handoff_role_id = :role_id, ' .
-            'assigned_user_id = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_user_id END, ' .
-            'assigned_at = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_at END, ' .
-            'handoff_requested_at = CASE WHEN :needs_human = 1 THEN NOW() ELSE handoff_requested_at END, ' .
-            'updated_at = NOW() WHERE id = :id'
-        );
-        $stmt->execute([
-            ':needs_human' => $needsHuman ? 1 : 0,
-            ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
-            ':role_id' => $roleId,
-            ':id' => $conversationId,
-        ]);
+        $normalizedNotes = $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null;
 
-        return $stmt->rowCount() > 0;
+        try {
+            $stmt = $this->pdo->prepare(
+                'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, handoff_role_id = :role_id, ' .
+                'assigned_user_id = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_user_id END, ' .
+                'assigned_at = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_at END, ' .
+                'handoff_requested_at = CASE WHEN :needs_human = 1 THEN NOW() ELSE handoff_requested_at END, ' .
+                'updated_at = NOW() WHERE id = :id'
+            );
+            $stmt->execute([
+                ':needs_human' => $needsHuman ? 1 : 0,
+                ':notes' => $normalizedNotes,
+                ':role_id' => $roleId,
+                ':id' => $conversationId,
+            ]);
+
+            return $stmt->rowCount() > 0;
+        } catch (Throwable $exception) {
+            // Compatibility fallback for installations that have not applied all handoff columns yet.
+            $this->applyHandoffFlagFallback($conversationId, $needsHuman, $normalizedNotes, $roleId);
+
+            return true;
+        }
     }
 
     public function updateHandoffDetails(int $conversationId, ?string $notes = null, ?int $roleId = null): void
     {
-        $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_conversations SET needs_human = 1, handoff_notes = :notes, handoff_role_id = :role_id, updated_at = NOW() WHERE id = :id'
-        );
-        $stmt->execute([
-            ':notes' => $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null,
-            ':role_id' => $roleId,
+        $normalizedNotes = $notes !== null && $notes !== '' ? mb_substr($notes, 0, 255) : null;
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'UPDATE whatsapp_conversations SET needs_human = 1, handoff_notes = :notes, handoff_role_id = :role_id, updated_at = NOW() WHERE id = :id'
+            );
+            $stmt->execute([
+                ':notes' => $normalizedNotes,
+                ':role_id' => $roleId,
+                ':id' => $conversationId,
+            ]);
+        } catch (Throwable $exception) {
+            $this->applyHandoffFlagFallback($conversationId, true, $normalizedNotes, $roleId);
+        }
+    }
+
+    private function applyHandoffFlagFallback(int $conversationId, bool $needsHuman, ?string $notes, ?int $roleId): void
+    {
+        $updates = [
+            'needs_human = :needs_human',
+            'handoff_notes = :notes',
+            'updated_at = NOW()',
+        ];
+        $params = [
+            ':needs_human' => $needsHuman ? 1 : 0,
+            ':notes' => $notes,
             ':id' => $conversationId,
-        ]);
+        ];
+
+        if ($this->hasConversationColumn('handoff_role_id')) {
+            $updates[] = 'handoff_role_id = :role_id';
+            $params[':role_id'] = $roleId;
+        }
+        if ($needsHuman && $this->hasConversationColumn('handoff_requested_at')) {
+            $updates[] = 'handoff_requested_at = NOW()';
+        }
+        if ($needsHuman && $this->hasConversationColumn('assigned_user_id')) {
+            $updates[] = 'assigned_user_id = NULL';
+        }
+        if ($needsHuman && $this->hasConversationColumn('assigned_at')) {
+            $updates[] = 'assigned_at = NULL';
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET ' . implode(', ', $updates) . ' WHERE id = :id'
+        );
+        $stmt->execute($params);
+    }
+
+    private function hasConversationColumn(string $column): bool
+    {
+        if ($this->conversationColumns === null) {
+            $this->conversationColumns = [];
+            $stmt = $this->pdo->query('SHOW COLUMNS FROM whatsapp_conversations');
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (is_array($rows)) {
+                foreach ($rows as $row) {
+                    $field = isset($row['Field']) ? (string) $row['Field'] : '';
+                    if ($field !== '') {
+                        $this->conversationColumns[$field] = true;
+                    }
+                }
+            }
+        }
+
+        return !empty($this->conversationColumns[$column]);
     }
 
     public function assignConversation(int $conversationId, int $userId): bool

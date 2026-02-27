@@ -101,7 +101,12 @@
             selectedConversationSignature: '',
             conversationListSignature: '',
             unreadByConversation: {},
-            unreadInitialized: false
+            unreadInitialized: false,
+            needsHumanByConversation: {},
+            needsHumanInitialized: false,
+            onlyNeedsHuman: false,
+            canWriteCurrent: false,
+            cannotWriteReason: ''
         };
 
         var endpoints = {
@@ -139,8 +144,10 @@
         var composer = root.querySelector('[data-chat-composer]');
         var messageForm = root.querySelector('[data-message-form]');
         var messageInput = root.querySelector('#chatMessage');
+        var lockAlert = root.querySelector('[data-chat-lock-message]');
         var errorAlert = root.querySelector('[data-chat-error]');
         var searchInput = root.querySelector('[data-conversation-search]');
+        var needsHumanFilterInput = root.querySelector('[data-needs-human-filter]');
         var newConversationForm = root.querySelector('[data-new-conversation-form]');
         var newConversationFeedback = root.querySelector('[data-new-conversation-feedback]');
         var patientSearchInput = root.querySelector('[data-patient-search]');
@@ -192,6 +199,7 @@
         var typingIndicator = null;
         var typingTimerId = null;
         var toastStack = null;
+        var handoffAudioContext = null;
         var templatesLoaded = false;
         var templateState = null;
         var templateFieldInputs = {};
@@ -263,17 +271,23 @@
             }
 
             var nextUnread = {};
+            var nextNeedsHuman = {};
             conversations.forEach(function (conversation) {
                 if (!conversation || !conversation.id) {
                     return;
                 }
                 nextUnread[String(conversation.id)] = Number(conversation.unread_count || 0);
+                nextNeedsHuman[String(conversation.id)] = Boolean(conversation.needs_human);
             });
 
             if (!state.unreadInitialized) {
                 state.unreadByConversation = nextUnread;
                 state.unreadInitialized = true;
-                return;
+            }
+
+            if (!state.needsHumanInitialized) {
+                state.needsHumanByConversation = nextNeedsHuman;
+                state.needsHumanInitialized = true;
             }
 
             conversations.forEach(function (conversation) {
@@ -282,21 +296,26 @@
                 }
 
                 var key = String(conversation.id);
-                var previous = Number(state.unreadByConversation[key] || 0);
-                var current = Number(conversation.unread_count || 0);
-                if (current <= previous) {
-                    return;
+
+                var previousUnread = Number(state.unreadByConversation[key] || 0);
+                var currentUnread = Number(conversation.unread_count || 0);
+                if (currentUnread > previousUnread && !(state.selectedId && Number(state.selectedId) === Number(conversation.id))) {
+                    var incomingName = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
+                    showHandoffToast('Nuevo mensaje de ' + incomingName);
                 }
 
-                if (state.selectedId && Number(state.selectedId) === Number(conversation.id)) {
-                    return;
+                var previousNeedsHuman = Boolean(state.needsHumanByConversation[key]);
+                var currentNeedsHuman = Boolean(conversation.needs_human);
+                if (!previousNeedsHuman && currentNeedsHuman) {
+                    var handoffName = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
+                    showHandoffToast('Solicitud de agente: ' + handoffName);
+                    maybeShowDesktopNotification('WhatsApp · Solicitud de agente', handoffName);
+                    playHandoffSound();
                 }
-
-                var name = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
-                showHandoffToast('Nuevo mensaje de ' + name);
             });
 
             state.unreadByConversation = nextUnread;
+            state.needsHumanByConversation = nextNeedsHuman;
         }
 
         function toggleComposer(disabled) {
@@ -310,10 +329,89 @@
             });
         }
 
+        function updateEmptyListState(isFiltered) {
+            if (!emptyListState) {
+                return;
+            }
+
+            var paragraphs = emptyListState.querySelectorAll('p');
+            if (!paragraphs || !paragraphs.length) {
+                return;
+            }
+
+            if (isFiltered) {
+                paragraphs[0].textContent = 'No hay conversaciones que requieran agente.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Desactiva el filtro para ver todas las conversaciones.';
+                }
+                return;
+            }
+
+            paragraphs[0].textContent = 'Aún no hay conversaciones registradas.';
+            if (paragraphs[1]) {
+                paragraphs[1].textContent = 'Los mensajes recibidos aparecerán automáticamente en esta lista.';
+            }
+        }
+
+        function resolveWriteAccess(conversation) {
+            if (!conversation || !conversation.id) {
+                return {
+                    canWrite: false,
+                    reason: 'Selecciona una conversación para responder.'
+                };
+            }
+
+            var assignedId = Number(conversation.assigned_user_id || 0);
+            var assignedName = conversation.assigned_user_name || 'otro agente';
+            var needsHuman = Boolean(conversation.needs_human);
+
+            if (needsHuman && assignedId <= 0) {
+                return {
+                    canWrite: false,
+                    reason: 'Debes tomar esta conversación antes de responder.'
+                };
+            }
+
+            if (assignedId > 0 && assignedId !== currentUserId) {
+                return {
+                    canWrite: false,
+                    reason: 'Esta conversación está asignada a ' + assignedName + '.'
+                };
+            }
+
+            return {
+                canWrite: true,
+                reason: ''
+            };
+        }
+
+        function applyWriteAccess(conversation) {
+            var access = resolveWriteAccess(conversation);
+            state.canWriteCurrent = access.canWrite;
+            state.cannotWriteReason = access.reason || '';
+
+            toggleComposer(!access.canWrite);
+
+            if (!lockAlert) {
+                return;
+            }
+
+            if (access.canWrite) {
+                lockAlert.classList.add('d-none');
+                lockAlert.textContent = '';
+                return;
+            }
+
+            lockAlert.textContent = access.reason || 'No puedes responder esta conversación.';
+            lockAlert.classList.remove('d-none');
+        }
+
         function resetConversationView() {
             state.selectedId = null;
             state.selectedHasInbound = true;
             state.selectedConversationSignature = '';
+            state.canWriteCurrent = false;
+            state.cannotWriteReason = '';
             selectedNumber = '';
 
             if (titleElement) {
@@ -387,6 +485,10 @@
             }
             if (templateWarning) {
                 templateWarning.classList.add('d-none');
+            }
+            if (lockAlert) {
+                lockAlert.classList.add('d-none');
+                lockAlert.textContent = '';
             }
             if (unreadIndicator) {
                 unreadIndicator.classList.add('d-none');
@@ -534,8 +636,12 @@
                 summary.handoff_requested_at = conversation.handoff_requested_at;
             }
 
+            state.needsHumanByConversation[String(conversation.id)] = Boolean(conversation.needs_human);
             renderConversations();
             updateHeader(conversation);
+            if (state.selectedId && Number(state.selectedId) === Number(conversation.id)) {
+                applyWriteAccess(conversation);
+            }
         }
 
         function assignConversation(conversationId, userId) {
@@ -716,6 +822,46 @@
             }, 4200);
         }
 
+        function playHandoffSound() {
+            if (typeof window === 'undefined') {
+                return;
+            }
+
+            var AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+                return;
+            }
+
+            try {
+                if (!handoffAudioContext) {
+                    handoffAudioContext = new AudioCtx();
+                }
+
+                if (handoffAudioContext.state === 'suspended') {
+                    handoffAudioContext.resume().catch(function () {});
+                }
+
+                var now = handoffAudioContext.currentTime;
+                [880, 660].forEach(function (frequency, index) {
+                    var oscillator = handoffAudioContext.createOscillator();
+                    var gain = handoffAudioContext.createGain();
+
+                    oscillator.type = 'sine';
+                    oscillator.frequency.value = frequency;
+                    gain.gain.setValueAtTime(0.0001, now + (index * 0.16));
+                    gain.gain.exponentialRampToValueAtTime(0.09, now + (index * 0.16) + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + (index * 0.16) + 0.18);
+
+                    oscillator.connect(gain);
+                    gain.connect(handoffAudioContext.destination);
+                    oscillator.start(now + (index * 0.16));
+                    oscillator.stop(now + (index * 0.16) + 0.2);
+                });
+            } catch (error) {
+                // Silence audio errors to avoid interrupting chat behavior.
+            }
+        }
+
         function setupRealtime() {
             var realtimeConfig = window.MEDF_PusherConfig || {};
             if (!realtimeConfig.enabled) {
@@ -749,6 +895,7 @@
                 var name = data.display_name || data.patient_full_name || data.wa_number || 'Contacto';
                 showHandoffToast('Nueva solicitud de agente: ' + name);
                 maybeShowDesktopNotification('WhatsApp · Nuevo handoff', name);
+                playHandoffSound();
 
                 loadConversations();
             });
@@ -761,8 +908,21 @@
 
             resetContainer(listContainer, emptyListState);
 
-            if (!state.conversations.length) {
+            var conversationsToRender = state.conversations.filter(function (conversation) {
+                if (!conversation) {
+                    return false;
+                }
+
+                if (state.onlyNeedsHuman && !conversation.needs_human) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            if (!conversationsToRender.length) {
                 if (emptyListState) {
+                    updateEmptyListState(state.onlyNeedsHuman);
                     emptyListState.classList.remove('d-none');
                 }
                 return;
@@ -770,11 +930,12 @@
 
             // Ensure empty state is hidden when there is data
             if (emptyListState) {
+                updateEmptyListState(false);
                 emptyListState.classList.add('d-none');
             }
 
             // Append each conversation as a .media item (demo look & feel)
-            state.conversations.forEach(function (conversation) {
+            conversationsToRender.forEach(function (conversation) {
                 var media = createElement('div', 'media');
                 media.setAttribute('data-id', conversation.id);
 
@@ -1774,15 +1935,22 @@
 
                 state.selectedConversationSignature = nextSignature;
                 updateHeader(payload.data);
+                applyWriteAccess(payload.data);
                 renderMessages(payload.data);
             }).catch(function (error) {
                 if (!silent) {
                     state.loadingConversation = false;
                     state.selectedId = null;
                     state.selectedConversationSignature = '';
+                    state.canWriteCurrent = false;
+                    state.cannotWriteReason = '';
                     console.error('No fue posible cargar la conversación', error);
                     toggleComposer(true);
                     renderConversations();
+                    if (lockAlert) {
+                        lockAlert.classList.add('d-none');
+                        lockAlert.textContent = '';
+                    }
                     if (errorAlert) {
                         errorAlert.textContent = error.message || 'No fue posible cargar la conversación seleccionada.';
                         errorAlert.classList.remove('d-none');
@@ -1946,6 +2114,18 @@
                     return;
                 }
 
+                if (!state.canWriteCurrent) {
+                    var lockReason = state.cannotWriteReason || 'Debes tomar la conversación antes de responder.';
+                    if (lockAlert) {
+                        lockAlert.textContent = lockReason;
+                        lockAlert.classList.remove('d-none');
+                    }
+                    if (errorAlert) {
+                        errorAlert.classList.add('d-none');
+                    }
+                    return;
+                }
+
                 var text = messageInput ? messageInput.value.trim() : '';
                 var preview = containsUrl(text);
 
@@ -1967,6 +2147,9 @@
 
                 state.sending = true;
                 state.forceScroll = true;
+                if (lockAlert) {
+                    lockAlert.classList.add('d-none');
+                }
                 if (errorAlert) {
                     errorAlert.classList.add('d-none');
                 }
@@ -2011,6 +2194,13 @@
                 state.search = event.target.value.trim();
                 loadConversations();
             }, 300));
+        }
+
+        if (needsHumanFilterInput) {
+            needsHumanFilterInput.addEventListener('change', function () {
+                state.onlyNeedsHuman = Boolean(needsHumanFilterInput.checked);
+                renderConversations();
+            });
         }
 
         if (agentPresenceSelect) {
@@ -2791,6 +2981,9 @@
         });
 
         setupRealtime();
+        if (needsHumanFilterInput) {
+            state.onlyNeedsHuman = Boolean(needsHumanFilterInput.checked);
+        }
         toggleComposer(true);
         if (canAssign) {
             fetchAgents();
