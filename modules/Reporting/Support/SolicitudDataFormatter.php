@@ -71,8 +71,17 @@ class SolicitudDataFormatter
         $normalized['diagnostico'] = $diagnostico;
         $normalized['consulta'] = $consulta;
         $consultaExamenFisico = self::resolveExamenFisico($consulta);
-        $normalized['consultaTexto'] = self::resolveConsultaTexto($consulta);
-        $normalized['consultaExamenFisico'] = $consultaExamenFisico;
+        $consultaTexto = self::resolveConsultaTexto($consulta);
+        if ($consultaTexto !== null) {
+            $normalized['consultaTexto'] = $consultaTexto;
+        } else {
+            unset($normalized['consultaTexto']);
+        }
+        if ($consultaExamenFisico !== null) {
+            $normalized['consultaExamenFisico'] = $consultaExamenFisico;
+        } else {
+            unset($normalized['consultaExamenFisico']);
+        }
         $normalized['derivacion'] = $derivacion;
 
         $normalized['form_id'] = $formId;
@@ -105,12 +114,38 @@ class SolicitudDataFormatter
         $normalized['paciente']['fecha_nacimiento_formateada'] = self::formatDate($fechaNacimiento);
         $normalized['pacienteFechaNacimiento'] = $fechaNacimiento;
         $normalized['pacienteFechaNacimientoFormateada'] = $normalized['paciente']['fecha_nacimiento_formateada'];
+        self::compactPacientePayload($normalized['paciente']);
 
-        $normalized['solicitud']['created_at_date'] = self::formatDate($solicitud['created_at'] ?? null);
-        $normalized['solicitud']['created_at_time'] = self::formatTime($solicitud['created_at'] ?? null);
-        $normalized['solicitud']['examenes_list'] = self::normalizeList($solicitud['examenes'] ?? null);
-        $normalized['solicitud']['procedimientos_list'] = self::normalizeList($solicitud['procedimientos'] ?? null);
-        $normalized['solicitud']['procedimiento_slug'] = self::slugify($solicitud['procedimiento'] ?? null);
+        $createdAtDate = self::formatDate($solicitud['created_at'] ?? null);
+        if ($createdAtDate !== null) {
+            $normalized['solicitud']['created_at_date'] = $createdAtDate;
+        } else {
+            unset($normalized['solicitud']['created_at_date']);
+        }
+        $createdAtTime = self::formatTime($solicitud['created_at'] ?? null);
+        if ($createdAtTime !== null) {
+            $normalized['solicitud']['created_at_time'] = $createdAtTime;
+        } else {
+            unset($normalized['solicitud']['created_at_time']);
+        }
+        $solicitudExamenesList = self::normalizeList($solicitud['examenes'] ?? null);
+        if ($solicitudExamenesList !== []) {
+            $normalized['solicitud']['examenes_list'] = $solicitudExamenesList;
+        } else {
+            unset($normalized['solicitud']['examenes_list']);
+        }
+        $solicitudProcedimientosList = self::normalizeList($solicitud['procedimientos'] ?? null);
+        if ($solicitudProcedimientosList !== []) {
+            $normalized['solicitud']['procedimientos_list'] = $solicitudProcedimientosList;
+        } else {
+            unset($normalized['solicitud']['procedimientos_list']);
+        }
+        $solicitudProcedimientoSlug = self::slugify($solicitud['procedimiento'] ?? null);
+        if ($solicitudProcedimientoSlug !== null) {
+            $normalized['solicitud']['procedimiento_slug'] = $solicitudProcedimientoSlug;
+        } else {
+            unset($normalized['solicitud']['procedimiento_slug']);
+        }
 
         $normalized['diagnosticoLista'] = self::buildDiagnosticoList($diagnostico);
         $normalized['diagnosticoPrincipal'] = $normalized['diagnosticoLista'][0] ?? null;
@@ -182,6 +217,20 @@ class SolicitudDataFormatter
             'recomen_no_farmaco',
             'antecedente_alergico',
             'vigencia_receta',
+            'doctor',
+            'doctor_full_name',
+            'procedimiento_doctor',
+            'procedimiento_nombre',
+            'doctor_fname',
+            'doctor_mname',
+            'doctor_lname',
+            'doctor_lname2',
+            'doctor_cedula',
+            'doctor_ci',
+            'doctor_documento',
+            'doctor_identificacion',
+            'doctor_signature_path',
+            'doctor_firma',
         ];
 
         foreach ($scalarFields as $field) {
@@ -205,6 +254,7 @@ class SolicitudDataFormatter
 
         if (array_key_exists('examenes', $consulta)) {
             $consulta['examenes_list'] = self::normalizeList($consulta['examenes']);
+            unset($consulta['examenes']);
         }
 
         if (array_key_exists('diagnosticos', $consulta)) {
@@ -231,6 +281,59 @@ class SolicitudDataFormatter
                     },
                     $decoded
                 ), static fn($value) => $value !== null));
+            }
+            unset($consulta['diagnosticos']);
+        }
+
+        $procedimientoDoctor = self::cleanDoctorName($consulta['procedimiento_doctor'] ?? null);
+        if ($procedimientoDoctor !== null) {
+            $consulta['procedimiento_doctor'] = $procedimientoDoctor;
+        } else {
+            unset($consulta['procedimiento_doctor']);
+        }
+
+        $doctorFromStructured = self::buildStructuredFullName([
+            $consulta['doctor_fname'] ?? null,
+            $consulta['doctor_mname'] ?? null,
+            $consulta['doctor_lname'] ?? null,
+            $consulta['doctor_lname2'] ?? null,
+        ]);
+        $doctorFromConsulta = self::cleanDoctorName($consulta['doctor'] ?? null);
+        $doctorFromFullName = self::cleanDoctorName($consulta['doctor_full_name'] ?? null);
+        $doctorDisplayName = self::firstNonEmpty([
+            $doctorFromFullName,
+            $doctorFromStructured,
+            $doctorFromConsulta,
+            $procedimientoDoctor,
+        ]);
+
+        if ($doctorDisplayName !== null) {
+            $consulta['doctor_full_name'] = $doctorDisplayName;
+            if ($doctorFromConsulta === null) {
+                $consulta['doctor'] = $doctorDisplayName;
+            }
+        }
+
+        $hasStructuredDoctorName = self::firstNonEmpty([
+            $consulta['doctor_fname'] ?? null,
+            $consulta['doctor_mname'] ?? null,
+            $consulta['doctor_lname'] ?? null,
+            $consulta['doctor_lname2'] ?? null,
+        ]) !== null;
+
+        if (!$hasStructuredDoctorName && $procedimientoDoctor !== null) {
+            $parts = self::splitDoctorNameFallback($procedimientoDoctor);
+            if (($consulta['doctor_fname'] ?? null) === null && $parts['doctor_fname'] !== null) {
+                $consulta['doctor_fname'] = $parts['doctor_fname'];
+            }
+            if (($consulta['doctor_mname'] ?? null) === null && $parts['doctor_mname'] !== null) {
+                $consulta['doctor_mname'] = $parts['doctor_mname'];
+            }
+            if (($consulta['doctor_lname'] ?? null) === null && $parts['doctor_lname'] !== null) {
+                $consulta['doctor_lname'] = $parts['doctor_lname'];
+            }
+            if (($consulta['doctor_lname2'] ?? null) === null && $parts['doctor_lname2'] !== null) {
+                $consulta['doctor_lname2'] = $parts['doctor_lname2'];
             }
         }
 
@@ -583,6 +686,103 @@ class SolicitudDataFormatter
         }
 
         return implode(' ', array_map(static fn ($value) => trim((string) $value), $parts));
+    }
+
+    /**
+     * @return array{doctor_fname:?string,doctor_mname:?string,doctor_lname:?string,doctor_lname2:?string}
+     */
+    private static function splitDoctorNameFallback(string $doctorName): array
+    {
+        $clean = trim($doctorName);
+        if ($clean === '') {
+            return [
+                'doctor_fname' => null,
+                'doctor_mname' => null,
+                'doctor_lname' => null,
+                'doctor_lname2' => null,
+            ];
+        }
+
+        $tokens = preg_split('/\s+/', $clean) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn ($token) => $token !== ''));
+
+        if ($tokens === []) {
+            return [
+                'doctor_fname' => null,
+                'doctor_mname' => null,
+                'doctor_lname' => null,
+                'doctor_lname2' => null,
+            ];
+        }
+
+        if (count($tokens) === 1) {
+            return [
+                'doctor_fname' => $tokens[0],
+                'doctor_mname' => null,
+                'doctor_lname' => null,
+                'doctor_lname2' => null,
+            ];
+        }
+
+        if (count($tokens) === 2) {
+            return [
+                'doctor_fname' => $tokens[1],
+                'doctor_mname' => null,
+                'doctor_lname' => $tokens[0],
+                'doctor_lname2' => null,
+            ];
+        }
+
+        return [
+            'doctor_fname' => $tokens[2] ?? null,
+            'doctor_mname' => isset($tokens[3]) ? implode(' ', array_slice($tokens, 3)) : null,
+            'doctor_lname' => $tokens[0] ?? null,
+            'doctor_lname2' => $tokens[1] ?? null,
+        ];
+    }
+
+    private static function cleanDoctorName(mixed $name): ?string
+    {
+        $value = self::stringifyValue($name);
+        if ($value === null) {
+            return null;
+        }
+
+        $wrapped = ' ' . $value . ' ';
+        $withoutSns = preg_replace('/\sSNS\s/ui', ' ', $wrapped) ?? $wrapped;
+        $collapsed = preg_replace('/\s+/', ' ', trim($withoutSns)) ?? trim($withoutSns);
+
+        return $collapsed !== '' ? $collapsed : null;
+    }
+
+    /**
+     * Reduce metadatos clínicos no usados por las plantillas de reportes.
+     *
+     * @param array<string, mixed> $paciente
+     */
+    private static function compactPacientePayload(array &$paciente): void
+    {
+        $removeKeys = [
+            'id',
+            'estado_civil',
+            'direccion',
+            'ocupacion',
+            'lugar_trabajo',
+            'parroquia',
+            'nacionalidad',
+            'id_procedencia',
+            'id_referido',
+            'created_at',
+            'updated_at',
+            'created_by_type',
+            'created_by_identifier',
+            'updated_by_type',
+            'updated_by_identifier',
+        ];
+
+        foreach ($removeKeys as $key) {
+            unset($paciente[$key]);
+        }
     }
 
     private static function normalizeGender(?string $gender): ?string

@@ -206,9 +206,6 @@ if (isset($ai) && $bundleHasInput) {
     }
 }
 ob_start();
-//echo '<pre>';
-//var_dump($data);
-//echo '</pre>';
 ?>
     <table>
         <tr>
@@ -773,15 +770,19 @@ ob_start();
             <td colspan="15" class="blanco"
                 style="height: 40px"><?php echo htmlspecialchars((string)($consulta['doctor_cedula'] ?? '')); ?></td>
             <td colspan="26" class="blanco">
-                <?php if (!empty($consulta['doctor_firma'] ?? '')): ?>
+                <?php if (!empty($consulta['doctor_signature_path'] ?? '')): ?>
                     <div style="margin-bottom: -25px;">
-                        <img src="<?= htmlspecialchars((string)$consulta['doctor_firma'], ENT_QUOTES, 'UTF-8') ?>"
+                        <img src="<?= htmlspecialchars((string)$consulta['doctor_signature_path'], ENT_QUOTES, 'UTF-8') ?>"
                              alt="Firma del profesional" style="max-height: 60px;">
                     </div>
                 <?php endif; ?>
             </td>
-            <td colspan="30" class="blanco"><img src="<?= htmlspecialchars((string)$consulta['doctor_signature_path'], ENT_QUOTES, 'UTF-8') ?>"
-                                                 alt="Firma del profesional" style="max-height: 60px;"></td>
+            <td colspan="30" class="blanco">
+                <?php if (!empty($consulta['doctor_firma'] ?? '')): ?>
+                    <img src="<?= htmlspecialchars((string)$consulta['doctor_firma'], ENT_QUOTES, 'UTF-8') ?>"
+                         alt="Sello del profesional" style="max-height: 60px;">
+                <?php endif; ?>
+            </td>
         </tr>
     </table>
     <table style="border: none">
