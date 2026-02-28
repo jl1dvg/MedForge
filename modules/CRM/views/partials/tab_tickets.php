@@ -23,7 +23,7 @@
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label for="ticket-filter-assigned" class="form-label mb-1">Asignado</label>
+                            <label for="ticket-filter-assigned" class="form-label mb-1">Responsable</label>
                             <select id="ticket-filter-assigned" class="form-select form-select-sm">
                                 <option value="">Todos</option>
                                 <?php include __DIR__ . '/user_options.php'; ?>

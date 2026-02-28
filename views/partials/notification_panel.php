@@ -18,6 +18,13 @@
         Canales activos: Tiempo real (Pusher)
     </div>
     <div class="notification-panel__warning text-danger d-none" data-integration-warning></div>
+    <div class="notification-panel__stats">
+        <span>Recibidas: <strong data-summary-count="received">0</strong></span>
+        <span>Por revisar: <strong data-summary-count="unread">0</strong></span>
+        <button type="button" class="btn btn-xs btn-outline-primary" data-action="mark-all-reviewed">
+            Marcar todo revisado
+        </button>
+    </div>
 
     <ul class="nav nav-tabs control-sidebar-tabs notification-panel__tabs" role="tablist">
         <li class="nav-item" role="presentation">
