@@ -13,6 +13,14 @@ return function (Router $router) {
         (new CirugiasDashboardController($pdo))->index();
     });
 
+    $router->get('/cirugias/dashboard/export/pdf', function (\PDO $pdo) {
+        (new CirugiasDashboardController($pdo))->exportPdf();
+    });
+
+    $router->get('/cirugias/dashboard/export/excel', function (\PDO $pdo) {
+        (new CirugiasDashboardController($pdo))->exportExcel();
+    });
+
     $router->match(['GET', 'POST'], '/cirugias/wizard', function (\PDO $pdo) {
         (new CirugiasController($pdo))->wizard();
     });

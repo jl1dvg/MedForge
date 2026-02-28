@@ -32,7 +32,6 @@
     $isV2Shell = str_starts_with($path . '/', '/v2/');
     $dashboardLink = $isV2Shell ? '/v2/dashboard' : '/dashboard';
     $solicitudesLink = $isV2Shell ? '/v2/solicitudes' : '/solicitudes';
-    $solicitudesDashboardLink = $isV2Shell ? '/v2/solicitudes/dashboard' : '/solicitudes/dashboard';
     $solicitudesTurneroLink = $isV2Shell ? '/v2/solicitudes/turnero' : '/solicitudes/turnero';
 @endphp
 <aside class="main-sidebar">
@@ -100,10 +99,9 @@
                         </a>
                         <ul class="treeview-menu">
                             <li class="{{ $isActive('/solicitudes') }}{{ $isActive('/v2/solicitudes') }}"><a href="{{ $solicitudesLink }}"><i class="mdi mdi-file-document"></i>Solicitudes (Kanban)</a></li>
-                            <li class="{{ $isActive('/solicitudes/dashboard') }}{{ $isActive('/v2/solicitudes/dashboard') }}"><a href="{{ $solicitudesDashboardLink }}"><i class="mdi mdi-chart-timeline"></i>Dashboard solicitudes</a></li>
                             <li class="{{ $isActive('/solicitudes/turnero') }}{{ $isActive('/v2/solicitudes/turnero') }}"><a href="{{ $solicitudesTurneroLink }}"><i class="mdi mdi-bell-ring-outline"></i>Turnero solicitudes</a></li>
                             <li class="{{ $isActive('/cirugias') }}"><a href="/cirugias"><i class="mdi mdi-clipboard-check"></i>Protocolos Realizados</a></li>
-                            <li class="{{ $isActive('/cirugias/dashboard') }}"><a href="/cirugias/dashboard"><i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico</a></li>
+                            <li class="{{ $isActive('/cirugias/dashboard') }}{{ $isActive('/solicitudes/dashboard') }}{{ $isActive('/v2/solicitudes/dashboard') }}"><a href="/cirugias/dashboard"><i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico</a></li>
                             <li class="{{ $isActive('/ipl') }}{{ $isPrefix('/ipl') }}"><a href="/ipl"><i class="mdi mdi-calendar-clock"></i>Planificador de IPL</a></li>
                             <li class="{{ $isActive('/protocolos') }}"><a href="/protocolos"><i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos</a></li>
                         </ul>

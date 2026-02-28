@@ -32256,6 +32256,26 @@ img.away, img.busy, img.offline, img.online {
   font-size: 0.85rem;
 }
 
+.notification-panel__stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.notification-panel__stats strong {
+  color: #0f172a;
+}
+
+.notification-panel__stats .btn {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .notification-panel__toolbar {
   padding: 0 1.5rem;
   margin-top: 0.75rem;
@@ -32322,6 +32342,36 @@ img.away, img.busy, img.offline, img.online {
 .notification-entry {
   border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   padding: 0.75rem 0;
+}
+
+.notification-entry--unread {
+  border-left: 3px solid #ef4444;
+  padding-left: 0.65rem;
+  background: rgba(239, 68, 68, 0.04);
+  border-radius: 8px;
+}
+
+.notification-entry__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.notification-entry__title {
+  margin-bottom: 0.25rem;
+}
+
+.notification-entry__actions {
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notification-entry__reviewed {
+  font-size: 0.72rem;
+  color: #64748b;
 }
 
 .notification-entry:last-child {
@@ -32395,6 +32445,19 @@ img.away, img.busy, img.offline, img.online {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.notification-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
 }
 
 @media (max-width: 768px) {

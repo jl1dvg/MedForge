@@ -352,7 +352,7 @@
                     </nav>
                 </div>
             </div>
-            <a href="/v2/solicitudes/dashboard" class="btn btn-light">
+            <a href="/cirugias/dashboard" class="btn btn-light">
                 <i class="mdi mdi-chart-line"></i> Dashboard
             </a>
         </div>

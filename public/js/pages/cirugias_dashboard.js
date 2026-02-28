@@ -51,14 +51,28 @@ window.initCirugiasDashboard = function (data) {
 
     var cirujanosEl = document.querySelector('#top-cirujanos');
     if (cirujanosEl) {
+        var cirujanosData = data.topCirujanos || { labels: [], totals: [] };
         var cirujanosOptions = {
-            series: [{ name: 'Cirugías', data: data.topCirujanos.totals || [] }],
-            xaxis: { categories: data.topCirujanos.labels || [] },
+            series: [{ name: 'Cirugías realizadas', data: cirujanosData.totals || [] }],
+            xaxis: { categories: cirujanosData.labels || [] },
+            plotOptions: { bar: { horizontal: true } },
+            colors: ['#00897b'],
+            chart: Object.assign({}, chartDefaults.chart, { type: 'bar', height: 320 })
+        };
+        new ApexCharts(cirujanosEl, cirujanosOptions).render();
+    }
+
+    var doctoresRealizadasEl = document.querySelector('#top-doctores-realizadas');
+    if (doctoresRealizadasEl) {
+        var doctoresRealizadasData = data.topDoctoresSolicitudesRealizadas || { labels: [], totals: [] };
+        var doctoresRealizadasOptions = {
+            series: [{ name: 'Solicitudes realizadas', data: doctoresRealizadasData.totals || [] }],
+            xaxis: { categories: doctoresRealizadasData.labels || [] },
             plotOptions: { bar: { horizontal: true } },
             colors: ['#5c6bc0'],
             chart: Object.assign({}, chartDefaults.chart, { type: 'bar', height: 320 })
         };
-        new ApexCharts(cirujanosEl, cirujanosOptions).render();
+        new ApexCharts(doctoresRealizadasEl, doctoresRealizadasOptions).render();
     }
 
     var convenioEl = document.querySelector('#cirugias-por-convenio');

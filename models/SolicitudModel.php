@@ -5,6 +5,12 @@ namespace Models;
 use PDO;
 use DateTime;
 
+// Prioriza el modelo modular cuando está disponible.
+$moduleSolicitudModel = dirname(__DIR__) . '/modules/solicitudes/models/SolicitudModel.php';
+if (is_file($moduleSolicitudModel)) {
+    require_once $moduleSolicitudModel;
+}
+
 if (class_exists(__NAMESPACE__ . '\\SolicitudModel', false)) {
     return;
 }

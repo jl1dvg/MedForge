@@ -28,6 +28,8 @@ use PDO;
 use RuntimeException;
 use Throwable;
 
+require_once dirname(__DIR__) . '/models/SolicitudModel.php';
+
 class SolicitudController extends BaseController
 {
     private const COBERTURA_MAIL_TO = 'cespinoza@cive.ec';
@@ -88,13 +90,14 @@ class SolicitudController extends BaseController
     public function dashboard(): void
     {
         $this->requireAuth();
+        $target = '/cirugias/dashboard';
+        $queryString = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        if ($queryString !== '') {
+            $target .= '?' . $queryString;
+        }
 
-        $this->render(
-            __DIR__ . '/../views/dashboard.php',
-            [
-                'pageTitle' => 'Dashboard de Solicitudes',
-            ]
-        );
+        header('Location: ' . $target, true, 302);
+        exit;
     }
 
     public function turnero(): void
@@ -272,6 +275,7 @@ class SolicitudController extends BaseController
             'afiliacion' => trim($payload['afiliacion'] ?? ''),
             'doctor' => trim($payload['doctor'] ?? ''),
             'prioridad' => trim($payload['prioridad'] ?? ''),
+            'responsable_id' => $this->sanitizeResponsableFilter($payload['responsable_id'] ?? null),
             'fechaTexto' => trim($payload['fechaTexto'] ?? ''),
         ];
 
@@ -353,7 +357,15 @@ class SolicitudController extends BaseController
                     ],
                     'metrics' => [
                         'sla' => [],
-                        'alerts' => [],
+                        'alerts' => [
+                            'requiere_reprogramacion' => 0,
+                            'pendiente_consentimiento' => 0,
+                            'documentos_faltantes' => 0,
+                            'autorizacion_pendiente' => 0,
+                            'tareas_vencidas' => 0,
+                            'sin_responsable' => 0,
+                            'contacto_pendiente' => 0,
+                        ],
                         'prioridad' => [],
                         'teams' => [],
                     ],
@@ -1345,6 +1357,7 @@ class SolicitudController extends BaseController
         $search = trim((string)($filters['search'] ?? ''));
         $doctor = trim((string)($filters['doctor'] ?? ''));
         $afiliacion = trim((string)($filters['afiliacion'] ?? ''));
+        $responsableId = $this->sanitizeResponsableFilter($filters['responsable_id'] ?? null);
         $prioridad = trim((string)($filters['prioridad'] ?? ''));
         $estado = trim((string)($filters['estado'] ?? ''));
 
@@ -1364,11 +1377,62 @@ class SolicitudController extends BaseController
             'search' => $search,
             'doctor' => $doctor,
             'afiliacion' => $afiliacion,
+            'responsable_id' => $responsableId,
             'prioridad' => $prioridad,
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'estado' => $estado,
         ];
+    }
+
+    private function sanitizeResponsableFilter(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $raw = trim((string)$value);
+        if ($raw === '') {
+            return '';
+        }
+
+        if (in_array($raw, ['sin_asignar', 'unassigned'], true)) {
+            return 'sin_asignar';
+        }
+
+        if (ctype_digit($raw) && (int)$raw > 0) {
+            return (string)(int)$raw;
+        }
+
+        return '';
+    }
+
+    private function resolveResponsableFilterLabel(?string $responsableId): string
+    {
+        if ($responsableId === null || $responsableId === '') {
+            return 'Todos';
+        }
+
+        if ($responsableId === 'sin_asignar') {
+            return 'Sin responsable';
+        }
+
+        $numericId = (int)$responsableId;
+        if ($numericId <= 0) {
+            return $responsableId;
+        }
+
+        $usuarios = $this->leadConfig->getAssignableUsers();
+        foreach ($usuarios as $usuario) {
+            if ((int)($usuario['id'] ?? 0) !== $numericId) {
+                continue;
+            }
+
+            $nombre = trim((string)($usuario['nombre'] ?? $usuario['name'] ?? $usuario['email'] ?? ''));
+            return $nombre !== '' ? $nombre : ('ID ' . $numericId);
+        }
+
+        return 'ID ' . $numericId;
     }
 
     private function normalizeDateInput(mixed $value): ?string
@@ -1470,6 +1534,7 @@ class SolicitudController extends BaseController
             'afiliacion',
             'estado',
             'crm_pipeline_stage',
+            'crm_responsable_nombre',
         ];
 
         return array_values(array_filter($solicitudes, static function (array $row) use ($term, $keys) {
@@ -1550,6 +1615,12 @@ class SolicitudController extends BaseController
         }
         if (!empty($filters['afiliacion'])) {
             $summary[] = ['label' => 'Afiliación', 'value' => $filters['afiliacion']];
+        }
+        if (!empty($filters['responsable_id'])) {
+            $summary[] = [
+                'label' => 'Responsable',
+                'value' => $this->resolveResponsableFilterLabel($filters['responsable_id']),
+            ];
         }
         if (!empty($filters['prioridad'])) {
             $summary[] = ['label' => 'Prioridad', 'value' => $filters['prioridad']];
@@ -1728,10 +1799,23 @@ class SolicitudController extends BaseController
 
         $adjuntos = (int)($row['crm_total_adjuntos'] ?? 0);
         $tareasPendientes = (int)($row['crm_tareas_pendientes'] ?? 0);
+        $proximoVencimientoTarea = $this->parseDate($row['crm_proximo_vencimiento'] ?? null);
+        $responsableId = isset($row['crm_responsable_id']) ? (int)$row['crm_responsable_id'] : 0;
+        $contactoEmail = trim((string)($row['crm_contacto_email'] ?? ''));
+        $contactoTelefono = trim((string)($row['crm_contacto_telefono'] ?? ''));
         $alertDocumentos = !$isTerminal && $adjuntos === 0;
         $alertAutorizacion = !$isTerminal
             && !empty($row['afiliacion'])
             && ($tareasPendientes > 0 || $alertDocumentos);
+        $alertTareaVencida = !$isTerminal
+            && $tareasPendientes > 0
+            && $proximoVencimientoTarea instanceof DateTimeImmutable
+            && $proximoVencimientoTarea < $now;
+        $alertSinResponsable = !$isTerminal && $responsableId <= 0;
+        $alertContactoPendiente = !$isTerminal
+            && $responsableId > 0
+            && $contactoEmail === ''
+            && $contactoTelefono === '';
 
         $alerts = [];
         if ($alertReprogramacion) {
@@ -1745,6 +1829,15 @@ class SolicitudController extends BaseController
         }
         if ($alertAutorizacion) {
             $alerts[] = 'Autorización pendiente';
+        }
+        if ($alertTareaVencida) {
+            $alerts[] = 'Tarea CRM vencida';
+        }
+        if ($alertSinResponsable) {
+            $alerts[] = 'Sin responsable asignado';
+        }
+        if ($alertContactoPendiente) {
+            $alerts[] = 'Contacto del responsable pendiente';
         }
 
         return [
@@ -1761,6 +1854,9 @@ class SolicitudController extends BaseController
             'alert_pendiente_consentimiento' => $alertConsentimiento,
             'alert_documentos_faltantes' => $alertDocumentos,
             'alert_autorizacion_pendiente' => $alertAutorizacion,
+            'alert_tarea_vencida' => $alertTareaVencida,
+            'alert_sin_responsable' => $alertSinResponsable,
+            'alert_contacto_pendiente' => $alertContactoPendiente,
             'alertas_operativas' => $alerts,
         ];
     }
@@ -1811,6 +1907,9 @@ class SolicitudController extends BaseController
                 'pendiente_consentimiento' => 0,
                 'documentos_faltantes' => 0,
                 'autorizacion_pendiente' => 0,
+                'tareas_vencidas' => 0,
+                'sin_responsable' => 0,
+                'contacto_pendiente' => 0,
             ],
             'prioridad' => [
                 'urgente' => 0,
@@ -1847,6 +1946,15 @@ class SolicitudController extends BaseController
             if (!empty($row['alert_autorizacion_pendiente'])) {
                 $metrics['alerts']['autorizacion_pendiente'] += 1;
             }
+            if (!empty($row['alert_tarea_vencida'])) {
+                $metrics['alerts']['tareas_vencidas'] += 1;
+            }
+            if (!empty($row['alert_sin_responsable'])) {
+                $metrics['alerts']['sin_responsable'] += 1;
+            }
+            if (!empty($row['alert_contacto_pendiente'])) {
+                $metrics['alerts']['contacto_pendiente'] += 1;
+            }
 
             $teamKey = (string)($row['crm_responsable_id'] ?? 'sin_asignar');
             if (!isset($metrics['teams'][$teamKey])) {
@@ -1861,6 +1969,8 @@ class SolicitudController extends BaseController
                     'sin_consentimiento' => 0,
                     'documentos' => 0,
                     'autorizaciones' => 0,
+                    'tareas_vencidas' => 0,
+                    'contacto_pendiente' => 0,
                 ];
             }
 
@@ -1886,6 +1996,12 @@ class SolicitudController extends BaseController
             }
             if (!empty($row['alert_autorizacion_pendiente'])) {
                 $metrics['teams'][$teamKey]['autorizaciones'] += 1;
+            }
+            if (!empty($row['alert_tarea_vencida'])) {
+                $metrics['teams'][$teamKey]['tareas_vencidas'] += 1;
+            }
+            if (!empty($row['alert_contacto_pendiente'])) {
+                $metrics['teams'][$teamKey]['contacto_pendiente'] += 1;
             }
         }
 

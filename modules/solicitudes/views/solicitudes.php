@@ -999,7 +999,7 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
                 </div>
 
                 <div class="row g-3 mt-1 align-items-end">
-                    <div class="col-lg-5 col-md-12">
+                    <div class="col-lg-4 col-md-12">
                         <label class="form-label d-flex align-items-center gap-2">
                             Derivación
                             <span class="badge bg-light text-muted">opt-in</span>
@@ -1020,10 +1020,21 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
                         </div>
                     </div>
 
-                    <div class="col-lg-3 col-md-6">
+                    <div class="col-lg-4 col-md-6">
+                        <label for="kanbanResponsableFilter" class="form-label d-flex align-items-center gap-2">
+                            Responsable
+                            <span class="badge bg-light text-muted">CRM</span>
+                        </label>
+                        <select id="kanbanResponsableFilter" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="sin_asignar">Sin responsable</option>
+                        </select>
+                    </div>
+
+                    <div class="col-lg-4 col-md-6">
                         <label class="form-label d-flex align-items-center gap-2">
-                            Responsable CRM
-                            <span class="badge bg-light text-muted">opt-in</span>
+                            Atajo
+                            <span class="badge bg-light text-muted">local</span>
                         </label>
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="kanbanCrmSinResponsableFilter">

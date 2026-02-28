@@ -5,6 +5,8 @@ namespace Controllers;
 use Models\SolicitudModel;
 use Modules\Pacientes\Services\PacienteService;
 
+require_once dirname(__DIR__) . '/modules/solicitudes/models/SolicitudModel.php';
+
 class SolicitudController
 {
     protected SolicitudModel $solicitudModel;

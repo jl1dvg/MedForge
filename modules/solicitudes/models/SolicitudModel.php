@@ -263,7 +263,7 @@ class SolicitudModel
             array_splice($vigenciaParts, 1, 0, [$derivacionSelectionVigenciaExpr]);
         }
         $derivacionVigenciaExpr = 'COALESCE(' . implode(', ', $vigenciaParts) . ')';
-        $doctorAvatarMatchCondition = $this->buildDoctorNameMatchCondition('sp.doctor', 'u.nombre');
+        $doctorAvatarMatchCondition = $this->buildDoctorUserMatchCondition('sp.doctor', 'u');
 
         $sql = "SELECT
                 sp.id,
@@ -396,6 +396,16 @@ class SolicitudModel
         if (!empty($filtros['prioridad'])) {
             $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
             $params[] = trim((string)$filtros['prioridad']);
+        }
+
+        if (array_key_exists('responsable_id', $filtros)) {
+            $responsable = trim((string)($filtros['responsable_id'] ?? ''));
+            if ($responsable === 'sin_asignar' || $responsable === 'unassigned') {
+                $sql .= " AND (detalles.responsable_id IS NULL OR detalles.responsable_id = 0)";
+            } elseif ($responsable !== '' && ctype_digit($responsable) && (int)$responsable > 0) {
+                $sql .= " AND detalles.responsable_id = ?";
+                $params[] = (int)$responsable;
+            }
         }
 
         $dateRange = $this->resolveDateRange($filtros);
@@ -849,7 +859,9 @@ class SolicitudModel
 
     public function obtenerConsultaDeSolicitud($form_id)
     {
-        $doctorJoinCondition = $this->buildDoctorNameMatchCondition('pp.doctor', 'u.nombre');
+        $doctorJoinSubquery = $this->buildDoctorPreferredUserIdSubquery('pp.doctor');
+        $doctorSignaturePathExpression = $this->buildDoctorSignaturePathExpression('u');
+        $doctorFirmaExpression = $this->buildDoctorFirmaExpression('u');
 
         $sql = "SELECT
                 cd.*,
@@ -860,8 +872,8 @@ class SolicitudModel
                 u.last_name AS matched_doctor_lname,
                 u.second_last_name AS matched_doctor_lname2,
                 u.cedula AS matched_doctor_cedula,
-                u.signature_path AS matched_doctor_signature_path,
-                u.firma AS matched_doctor_firma,
+                {$doctorSignaturePathExpression} AS matched_doctor_signature_path,
+                {$doctorFirmaExpression} AS matched_doctor_firma,
                 u.full_name AS matched_doctor_full_name
             FROM consulta_data cd
             LEFT JOIN procedimiento_proyectado pp
@@ -876,7 +888,7 @@ class SolicitudModel
                     LIMIT 1
                 )
             LEFT JOIN users u
-                ON {$doctorJoinCondition}
+                ON u.id = {$doctorJoinSubquery}
             WHERE cd.form_id = ?
             LIMIT 1";
 
@@ -921,7 +933,9 @@ class SolicitudModel
 
     public function obtenerDatosYCirujanoSolicitud($form_id, $hc)
     {
-        $doctorJoinCondition = $this->buildDoctorNameMatchCondition('sp.doctor', 'u.nombre');
+        $doctorJoinSubquery = $this->buildDoctorPreferredUserIdSubquery('sp.doctor');
+        $doctorSignaturePathExpression = $this->buildDoctorSignaturePathExpression('u');
+        $doctorFirmaExpression = $this->buildDoctorFirmaExpression('u');
 
         // Alias de ids para no confundir id de solicitud con id de usuario (sp.id vs u.id)
         $sql = "SELECT 
@@ -936,12 +950,12 @@ class SolicitudModel
                 u.last_name AS doctor_last_name,
                 u.second_last_name AS doctor_second_last_name,
                 u.cedula AS doctor_cedula,
-                u.signature_path AS doctor_signature_path,
-                u.firma AS doctor_firma,
+                {$doctorSignaturePathExpression} AS doctor_signature_path,
+                {$doctorFirmaExpression} AS doctor_firma,
                 u.full_name AS doctor_full_name
             FROM solicitud_procedimiento sp
             LEFT JOIN users u
-                ON {$doctorJoinCondition}
+                ON u.id = {$doctorJoinSubquery}
             WHERE sp.form_id = ? AND sp.hc_number = ?
             ORDER BY sp.created_at DESC
             LIMIT 1";
@@ -2135,6 +2149,135 @@ class SolicitudModel
             $rightNormalized,
             $leftNormalized
         );
+    }
+
+    private function buildDoctorUserMatchCondition(string $doctorExpression, string $userAlias = 'u'): string
+    {
+        $userNameExpression = $userAlias . '.nombre';
+        $userStructuredNameExpression = $this->buildDoctorStructuredNameExpression($userAlias, false);
+        $userStructuredReverseNameExpression = $this->buildDoctorStructuredNameExpression($userAlias, true);
+        $conditions = [
+            $this->buildDoctorNameMatchCondition($doctorExpression, $userNameExpression),
+            $this->buildDoctorNameMatchCondition($doctorExpression, $userStructuredNameExpression),
+            $this->buildDoctorNameMatchCondition($doctorExpression, $userStructuredReverseNameExpression),
+        ];
+
+        $doctorRaw = "UPPER(TRIM({$doctorExpression}))";
+        $doctorNormalized = $this->normalizeDoctorNameSql($doctorExpression);
+
+        if ($this->hasColumnInTable('users', 'full_name')) {
+            $conditions[] = $this->buildDoctorNameMatchCondition($doctorExpression, "{$userAlias}.full_name");
+        }
+
+        if ($this->hasColumnInTable('users', 'nombre_norm')) {
+            $conditions[] = "{$doctorRaw} = {$userAlias}.nombre_norm";
+            $conditions[] = "{$doctorNormalized} = {$userAlias}.nombre_norm";
+        }
+
+        if ($this->hasColumnInTable('users', 'nombre_norm_rev')) {
+            $conditions[] = "{$doctorRaw} = {$userAlias}.nombre_norm_rev";
+            $conditions[] = "{$doctorNormalized} = {$userAlias}.nombre_norm_rev";
+        }
+
+        return '(' . implode(' OR ', array_unique($conditions)) . ')';
+    }
+
+    private function buildDoctorPreferredUserIdSubquery(string $doctorExpression): string
+    {
+        $matchCondition = $this->buildDoctorUserMatchCondition($doctorExpression, 'u2');
+        $doctorRaw = "UPPER(TRIM({$doctorExpression}))";
+        $doctorNormalized = $this->normalizeDoctorNameSql($doctorExpression);
+        $orderBy = [];
+
+        if ($this->hasColumnInTable('users', 'nombre_norm_rev')) {
+            $orderBy[] = "CASE WHEN {$doctorRaw} = u2.nombre_norm_rev THEN 0 ELSE 1 END";
+            $orderBy[] = "CASE WHEN {$doctorNormalized} = u2.nombre_norm_rev THEN 0 ELSE 1 END";
+        }
+
+        if ($this->hasColumnInTable('users', 'nombre_norm')) {
+            $orderBy[] = "CASE WHEN {$doctorRaw} = u2.nombre_norm THEN 0 ELSE 1 END";
+            $orderBy[] = "CASE WHEN {$doctorNormalized} = u2.nombre_norm THEN 0 ELSE 1 END";
+        }
+
+        $orderBy[] = "CASE WHEN {$doctorNormalized} = " . $this->normalizeDoctorNameSql('u2.nombre') . " THEN 0 ELSE 1 END";
+        $orderBy[] = "CASE WHEN {$doctorNormalized} = " . $this->normalizeDoctorNameSql($this->buildDoctorStructuredNameExpression('u2', false)) . " THEN 0 ELSE 1 END";
+        $orderBy[] = "CASE WHEN {$doctorNormalized} = " . $this->normalizeDoctorNameSql($this->buildDoctorStructuredNameExpression('u2', true)) . " THEN 0 ELSE 1 END";
+
+        if ($this->hasColumnInTable('users', 'full_name')) {
+            $orderBy[] = "CASE WHEN {$doctorNormalized} = " . $this->normalizeDoctorNameSql('u2.full_name') . " THEN 0 ELSE 1 END";
+        }
+
+        $signatureExpression = $this->buildDoctorSignaturePathExpression('u2');
+        $firmaExpression = $this->buildDoctorFirmaExpression('u2');
+
+        if ($signatureExpression !== 'NULL') {
+            $orderBy[] = "CASE WHEN {$signatureExpression} IS NOT NULL THEN 0 ELSE 1 END";
+        }
+
+        if ($firmaExpression !== 'NULL') {
+            $orderBy[] = "CASE WHEN {$firmaExpression} IS NOT NULL THEN 0 ELSE 1 END";
+        }
+
+        $orderBy[] = 'u2.id DESC';
+
+        return "(SELECT u2.id
+            FROM users u2
+            WHERE {$matchCondition}
+            ORDER BY " . implode(', ', $orderBy) . "
+            LIMIT 1)";
+    }
+
+    private function buildDoctorSignaturePathExpression(string $userAlias = 'u'): string
+    {
+        $candidates = [];
+
+        if ($this->hasColumnInTable('users', 'signature_path')) {
+            $candidates[] = "NULLIF(TRIM({$userAlias}.signature_path), '')";
+        }
+
+        if ($this->hasColumnInTable('users', 'seal_signature_path')) {
+            $candidates[] = "NULLIF(TRIM({$userAlias}.seal_signature_path), '')";
+        }
+
+        if ($candidates === []) {
+            return 'NULL';
+        }
+
+        return 'COALESCE(' . implode(', ', $candidates) . ')';
+    }
+
+    private function buildDoctorFirmaExpression(string $userAlias = 'u'): string
+    {
+        $candidates = [];
+
+        if ($this->hasColumnInTable('users', 'firma')) {
+            $candidates[] = "NULLIF(TRIM({$userAlias}.firma), '')";
+        }
+
+        if ($candidates === []) {
+            return 'NULL';
+        }
+
+        return 'COALESCE(' . implode(', ', $candidates) . ')';
+    }
+
+    private function buildDoctorStructuredNameExpression(string $userAlias = 'u', bool $reverse = false): string
+    {
+        if ($reverse) {
+            return "TRIM(CONCAT_WS(' ',
+                NULLIF(TRIM({$userAlias}.last_name), ''),
+                NULLIF(TRIM({$userAlias}.second_last_name), ''),
+                NULLIF(TRIM({$userAlias}.first_name), ''),
+                NULLIF(TRIM({$userAlias}.middle_name), '')
+            ))";
+        }
+
+        return "TRIM(CONCAT_WS(' ',
+            NULLIF(TRIM({$userAlias}.first_name), ''),
+            NULLIF(TRIM({$userAlias}.middle_name), ''),
+            NULLIF(TRIM({$userAlias}.last_name), ''),
+            NULLIF(TRIM({$userAlias}.second_last_name), '')
+        ))";
     }
 
     private function normalizeDoctorNameSql(string $expression): string
