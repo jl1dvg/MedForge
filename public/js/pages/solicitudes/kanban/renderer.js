@@ -510,6 +510,30 @@ function getAlertBadges(item = {}) {
         });
     }
 
+    if (item.alert_tarea_vencida) {
+        alerts.push({
+            label: "Tarea vencida",
+            icon: "mdi-clipboard-alert-outline",
+            className: "badge bg-danger text-white",
+        });
+    }
+
+    if (item.alert_sin_responsable) {
+        alerts.push({
+            label: "Sin responsable",
+            icon: "mdi-account-alert-outline",
+            className: "badge bg-secondary text-white",
+        });
+    }
+
+    if (item.alert_contacto_pendiente) {
+        alerts.push({
+            label: "Sin contacto",
+            icon: "mdi-phone-alert",
+            className: "badge bg-secondary text-white",
+        });
+    }
+
     return alerts;
 }
 
@@ -531,13 +555,16 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const resolvedSlaStatus = resolveSlaStatus(solicitud);
         const isCriticalAlert =
             Boolean(solicitud.alert_reprogramacion) ||
+            Boolean(solicitud.alert_tarea_vencida) ||
             resolvedSlaStatus === "vencido";
 
         const isWarningAlert =
             !isCriticalAlert &&
             (Boolean(solicitud.alert_documentos_faltantes) ||
                 Boolean(solicitud.alert_autorizacion_pendiente) ||
-                Boolean(solicitud.alert_pendiente_consentimiento));
+                Boolean(solicitud.alert_pendiente_consentimiento) ||
+                Boolean(solicitud.alert_sin_responsable) ||
+                Boolean(solicitud.alert_contacto_pendiente));
 
         const accentClass = isCriticalAlert
             ? " border-start border-3 border-danger"

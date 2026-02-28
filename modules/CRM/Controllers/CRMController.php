@@ -101,8 +101,17 @@ class CRMController extends BaseController
             if (($status = $this->getQuery('status')) !== null) {
                 $filters['status'] = $status;
             }
-            if (($assigned = $this->getQueryInt('assigned_to')) !== null) {
-                $filters['assigned_to'] = $assigned;
+            $assignedRaw = $this->getQuery('assigned_to');
+            if ($assignedRaw === null || $assignedRaw === '') {
+                $assignedRaw = $this->getQuery('responsable_id');
+            }
+            if ($assignedRaw !== null && $assignedRaw !== '') {
+                $assignedRaw = trim((string)$assignedRaw);
+                if (in_array($assignedRaw, ['sin_asignar', 'unassigned'], true)) {
+                    $filters['assigned_to'] = 'sin_asignar';
+                } elseif (ctype_digit($assignedRaw) && (int)$assignedRaw > 0) {
+                    $filters['assigned_to'] = (int)$assignedRaw;
+                }
             }
             if (($search = $this->getQuery('q')) !== null) {
                 $filters['search'] = $search;

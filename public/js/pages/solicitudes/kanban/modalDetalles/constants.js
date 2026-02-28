@@ -47,4 +47,34 @@ export const ALERT_TEMPLATES = [
         icon: "mdi-shield-alert",
         className: "badge bg-warning text-dark",
     },
+    {
+        field: "alert_documentos_faltantes",
+        label: "Docs faltantes",
+        icon: "mdi-file-alert-outline",
+        className: "badge bg-warning text-dark",
+    },
+    {
+        field: "alert_autorizacion_pendiente",
+        label: "Autorización",
+        icon: "mdi-account-lock",
+        className: "badge bg-info text-dark",
+    },
+    {
+        field: "alert_tarea_vencida",
+        label: "Tarea vencida",
+        icon: "mdi-clipboard-alert-outline",
+        className: "badge bg-danger text-white",
+    },
+    {
+        field: "alert_sin_responsable",
+        label: "Sin responsable",
+        icon: "mdi-account-alert-outline",
+        className: "badge bg-secondary text-white",
+    },
+    {
+        field: "alert_contacto_pendiente",
+        label: "Sin contacto",
+        icon: "mdi-phone-alert",
+        className: "badge bg-secondary text-white",
+    },
 ];

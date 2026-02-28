@@ -234,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
+    const responsableFilter = document.getElementById('kanbanResponsableFilter');
     const exportPdfButton = document.getElementById('solicitudesExportPdfButton');
     const dateFilter = document.getElementById('kanbanDateFilter');
 
@@ -555,6 +556,46 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        if (item.alert_documentos_faltantes) {
+            alerts.push({
+                label: 'Docs',
+                variant: 'text-bg-warning text-dark',
+                icon: 'mdi-file-alert-outline',
+            });
+        }
+
+        if (item.alert_autorizacion_pendiente) {
+            alerts.push({
+                label: 'Autorización',
+                variant: 'text-bg-info text-white',
+                icon: 'mdi-account-lock',
+            });
+        }
+
+        if (item.alert_tarea_vencida) {
+            alerts.push({
+                label: 'Tarea vencida',
+                variant: 'text-bg-danger',
+                icon: 'mdi-clipboard-alert-outline',
+            });
+        }
+
+        if (item.alert_sin_responsable) {
+            alerts.push({
+                label: 'Sin responsable',
+                variant: 'text-bg-secondary',
+                icon: 'mdi-account-alert-outline',
+            });
+        }
+
+        if (item.alert_contacto_pendiente) {
+            alerts.push({
+                label: 'Sin contacto',
+                variant: 'text-bg-secondary',
+                icon: 'mdi-phone-alert',
+            });
+        }
+
         return alerts;
     };
 
@@ -618,6 +659,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const derivacionDiasRaw = Number.parseInt(getValue('kanbanDerivacionDiasInput'), 10);
         const diasPorVencer = Number.isFinite(derivacionDiasRaw) ? Math.max(0, derivacionDiasRaw) : 0;
         const filtrarSinResponsable = isChecked('kanbanCrmSinResponsableFilter');
+        const responsableSeleccionado = (responsableFilter?.value || '').trim();
 
         const today = new Date();
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -628,6 +670,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return items.filter(item => {
             if (tipoSeleccionado && normalizeUpper(item?.tipo) !== tipoSeleccionado) {
                 return false;
+            }
+
+            if (responsableSeleccionado) {
+                const responsableId = item?.crm_responsable_id ? String(item.crm_responsable_id) : '';
+                if (responsableSeleccionado === 'sin_asignar' && responsableId !== '') {
+                    return false;
+                }
+                if (responsableSeleccionado !== 'sin_asignar' && responsableId !== responsableSeleccionado) {
+                    return false;
+                }
             }
 
             if (filtrarSinResponsable && item?.crm_responsable_id) {
@@ -709,6 +761,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const advertencias = slaMetrics.advertencia ?? 0;
         const reprogramar = alertMetrics.requiere_reprogramacion ?? 0;
         const consentimientoPendiente = alertMetrics.pendiente_consentimiento ?? 0;
+        const tareasVencidas = alertMetrics.tareas_vencidas ?? 0;
+        const sinResponsable = alertMetrics.sin_responsable ?? 0;
+        const contactoPendiente = alertMetrics.contacto_pendiente ?? 0;
         const topTeam = teams.length ? teams[0] : null;
 
         cards.push(createOverviewCard({
@@ -758,6 +813,30 @@ document.addEventListener('DOMContentLoaded', () => {
             badge: consentimientoPendiente ? 'Falta registro' : null,
             badgeClass: consentimientoPendiente ? 'text-bg-warning text-dark' : 'text-bg-secondary',
             subtitle: consentimientoPendiente ? 'Gestionar firmas pendientes' : 'Consentimientos vigentes',
+        }));
+
+        cards.push(createOverviewCard({
+            title: 'Sin responsable',
+            count: sinResponsable,
+            badge: sinResponsable ? 'Asignar hoy' : null,
+            badgeClass: sinResponsable ? 'text-bg-secondary' : 'text-bg-light text-dark',
+            subtitle: sinResponsable ? 'Casos sin dueño operativo' : 'Todos con responsable',
+        }));
+
+        cards.push(createOverviewCard({
+            title: 'Tareas vencidas',
+            count: tareasVencidas,
+            badge: tareasVencidas ? 'Resolver pendientes' : null,
+            badgeClass: tareasVencidas ? 'text-bg-danger' : 'text-bg-secondary',
+            subtitle: tareasVencidas ? 'Pendientes fuera de fecha' : 'Sin tareas vencidas',
+        }));
+
+        cards.push(createOverviewCard({
+            title: 'Contacto pendiente',
+            count: contactoPendiente,
+            badge: contactoPendiente ? 'Completar datos' : null,
+            badgeClass: contactoPendiente ? 'text-bg-info text-white' : 'text-bg-secondary',
+            subtitle: contactoPendiente ? 'Sin teléfono/correo CRM' : 'Contacto completo',
         }));
 
         if (topTeam) {
@@ -1043,6 +1122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const obtenerFiltros = () => ({
         afiliacion: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
         doctor: document.getElementById('kanbanDoctorFilter')?.value ?? '',
+        responsable_id: responsableFilter?.value ?? '',
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
         search: searchInput?.value ?? '',
     });
@@ -1078,6 +1158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 search: filtros.search,
                 doctor: filtros.doctor,
                 afiliacion: filtros.afiliacion,
+                responsable_id: filtros.responsable_id,
                 date_from: range.from,
                 date_to: range.to,
             },
@@ -1295,8 +1376,53 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateInput = document.getElementById('kanbanDateFilter');
         if (afSelect && f.afiliacion !== undefined) afSelect.value = f.afiliacion;
         if (docSelect && f.doctor !== undefined) docSelect.value = f.doctor;
+        if (responsableFilter && f.responsable_id !== undefined) responsableFilter.value = f.responsable_id;
         if (dateInput && f.fechaTexto !== undefined) dateInput.value = f.fechaTexto;
         if (searchInput && f.search !== undefined) searchInput.value = f.search;
+    };
+
+    const poblarResponsables = (responsables = [], fallbackRows = []) => {
+        if (!responsableFilter) {
+            return;
+        }
+
+        const selectedValue = responsableFilter.value || '';
+        const responsablesMap = new Map();
+
+        (Array.isArray(responsables) ? responsables : []).forEach((item) => {
+            const id = item?.id ?? item?.responsable_id ?? null;
+            if (id === null || id === undefined || id === '') {
+                return;
+            }
+            const nombre = item?.nombre || item?.name || item?.email || `ID ${id}`;
+            responsablesMap.set(String(id), String(nombre));
+        });
+
+        if (responsablesMap.size === 0) {
+            (Array.isArray(fallbackRows) ? fallbackRows : []).forEach((row) => {
+                const id = row?.crm_responsable_id;
+                if (!id) {
+                    return;
+                }
+                const nombre = row?.crm_responsable_nombre || `ID ${id}`;
+                responsablesMap.set(String(id), String(nombre));
+            });
+        }
+
+        const sorted = Array.from(responsablesMap.entries())
+            .sort((a, b) => a[1].localeCompare(b[1], 'es', { sensitivity: 'base' }));
+
+        responsableFilter.innerHTML = '<option value="">Todos</option><option value="sin_asignar">Sin responsable</option>';
+        sorted.forEach(([id, nombre]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = nombre;
+            responsableFilter.appendChild(option);
+        });
+
+        if (selectedValue && Array.from(responsableFilter.options).some((opt) => opt.value === selectedValue)) {
+            responsableFilter.value = selectedValue;
+        }
     };
 
     const cargarKanban = (filtros = {}) => {
@@ -1359,8 +1485,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (options.crm) {
                     setCrmOptions(options.crm);
+                    poblarResponsables(options.crm.responsables || [], normalized);
                 } else {
                     setCrmOptions({});
+                    poblarResponsables([], normalized);
                 }
 
                 // Restaurar selección de filtros después de repoblar opciones
@@ -1388,7 +1516,7 @@ document.addEventListener('DOMContentLoaded', () => {
         conciliacion.reload();
     };
 
-    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter'].forEach(id => {
+    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter', 'kanbanResponsableFilter'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener('change', () => window.aplicarFiltros());

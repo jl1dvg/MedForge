@@ -30,7 +30,7 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label for="task-filter-assigned" class="form-label mb-1">Asignado</label>
+                            <label for="task-filter-assigned" class="form-label mb-1">Responsable</label>
                             <select id="task-filter-assigned" class="form-select form-select-sm">
                                 <option value="">Todos</option>
                                 <?php foreach (($assignableUsers ?? []) as $user): ?>

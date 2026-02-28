@@ -33,9 +33,10 @@ $assignableUsers = $leadViewData['assignableUsers'] ?? [];
                 </select>
             </div>
             <div class="col-md-2">
-                <label for="lead-filter-assigned" class="form-label mb-1">Asignado</label>
+                <label for="lead-filter-assigned" class="form-label mb-1">Responsable</label>
                 <select id="lead-filter-assigned" class="form-select form-select-sm">
                     <option value="">Todos</option>
+                    <option value="sin_asignar">Sin responsable</option>
                     <?php foreach ($assignableUsers as $user): ?>
                         <option value="<?= htmlspecialchars((string) ($user['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                             <?= htmlspecialchars((string) ($user['nombre'] ?? ''), ENT_QUOTES, 'UTF-8') ?>

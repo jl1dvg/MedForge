@@ -91,9 +91,14 @@ class LeadModel
             }
         }
 
-        if (!empty($filters['assigned_to'])) {
-            $sql .= " AND l.assigned_to = :assigned_to";
-            $params[':assigned_to'] = (int)$filters['assigned_to'];
+        if (array_key_exists('assigned_to', $filters) && $filters['assigned_to'] !== null && $filters['assigned_to'] !== '') {
+            $assignedFilter = (string)$filters['assigned_to'];
+            if (in_array($assignedFilter, ['sin_asignar', 'unassigned'], true)) {
+                $sql .= " AND (l.assigned_to IS NULL OR l.assigned_to = 0)";
+            } else {
+                $sql .= " AND l.assigned_to = :assigned_to";
+                $params[':assigned_to'] = (int)$filters['assigned_to'];
+            }
         }
 
         if (!empty($filters['search'])) {
@@ -157,9 +162,14 @@ class LeadModel
             }
         }
 
-        if (!empty($filters['assigned_to'])) {
-            $sql .= " AND l.assigned_to = :assigned_to";
-            $params[':assigned_to'] = (int)$filters['assigned_to'];
+        if (array_key_exists('assigned_to', $filters) && $filters['assigned_to'] !== null && $filters['assigned_to'] !== '') {
+            $assignedFilter = (string)$filters['assigned_to'];
+            if (in_array($assignedFilter, ['sin_asignar', 'unassigned'], true)) {
+                $sql .= " AND (l.assigned_to IS NULL OR l.assigned_to = 0)";
+            } else {
+                $sql .= " AND l.assigned_to = :assigned_to";
+                $params[':assigned_to'] = (int)$filters['assigned_to'];
+            }
         }
 
         if (!empty($filters['search'])) {

@@ -20,6 +20,15 @@ if (file_exists($composerAutoload)) {
 
 // === Autocargador manual para módulos ===
 spl_autoload_register(function ($class) {
+    // Forzar siempre el modelo modular de solicitudes para evitar cargar el legado.
+    if ($class === 'Models\\SolicitudModel') {
+        $preferredModel = __DIR__ . '/modules/solicitudes/models/SolicitudModel.php';
+        if (file_exists($preferredModel)) {
+            require_once $preferredModel;
+            return;
+        }
+    }
+
     $prefixes = [
         'Modules\\' => __DIR__ . '/modules/',
         'Core\\' => __DIR__ . '/core/',
@@ -59,7 +68,7 @@ spl_autoload_register(function ($class) {
             return;
         }
     }
-});
+}, true, true);
 
 // === Cargar variables de entorno (.env) ===
 use Dotenv\Dotenv;
