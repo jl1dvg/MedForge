@@ -297,34 +297,8 @@ class GuardarProyeccionController
         $ejecutado = $stmt2->rowCount();
         error_log("📌 Registros afectados en procedimiento_proyectado: $ejecutado");
 
-        // Registrar en el historial si se ha insertado o actualizado
-        if ($exists && !empty($data['estado_agenda'])) {
-            // Ver estado anterior
-            $stmtEstado = $this->db->prepare("SELECT estado_agenda FROM procedimiento_proyectado WHERE form_id = ?");
-            $stmtEstado->execute([$form_id]);
-            $estadoActual = $stmtEstado->fetchColumn();
-
-            if ($estadoActual !== $data['estado_agenda']) {
-                $stmtHistorial = $this->db->prepare("
-                    INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
-                    VALUES (?, ?, NOW())
-                ");
-                $stmtHistorial->execute([
-                    $form_id,
-                    $data['estado_agenda']
-                ]);
-            }
-        } elseif (!$exists && !empty($data['estado_agenda'])) {
-            // Insertar directamente para nuevos registros
-            $stmtHistorial = $this->db->prepare("
-                INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
-                VALUES (?, ?, NOW())
-            ");
-            $stmtHistorial->execute([
-                $form_id,
-                $data['estado_agenda']
-            ]);
-        }
+        // Registrar en historial solo si el último estado registrado es diferente.
+        $this->registrarEstadoHistorialSiCambio((string) $form_id, $data['estado_agenda'] ?? null);
 
         // Nueva lógica de éxito/error según existencia y filas afectadas
         $estadoActual = $this->obtenerEstado($form_id);
@@ -560,6 +534,74 @@ class GuardarProyeccionController
         $estadoHistorial = $historialStmt->fetchColumn();
 
         return $estadoHistorial !== false ? $estadoHistorial : null;
+    }
+
+    private function normalizarEstado(?string $estado): ?string
+    {
+        if ($estado === null) {
+            return null;
+        }
+
+        $estadoNormalizado = strtoupper(trim($estado));
+        return $estadoNormalizado !== '' ? $estadoNormalizado : null;
+    }
+
+    private function obtenerUltimoEstadoRegistrado(string $formId): ?string
+    {
+        $historialStmt = $this->db->prepare(
+            "SELECT estado
+             FROM procedimiento_proyectado_estado
+             WHERE form_id = :form_id
+             ORDER BY fecha_hora_cambio DESC
+             LIMIT 1"
+        );
+        $historialStmt->execute([':form_id' => $formId]);
+        $estadoHistorial = $historialStmt->fetchColumn();
+        $estadoHistorialNormalizado = $estadoHistorial !== false
+            ? $this->normalizarEstado((string) $estadoHistorial)
+            : null;
+        if ($estadoHistorialNormalizado !== null) {
+            return $estadoHistorialNormalizado;
+        }
+
+        $actualStmt = $this->db->prepare(
+            "SELECT estado_agenda
+             FROM procedimiento_proyectado
+             WHERE form_id = :form_id
+             LIMIT 1"
+        );
+        $actualStmt->execute([':form_id' => $formId]);
+        $estadoActual = $actualStmt->fetchColumn();
+
+        return $estadoActual !== false
+            ? $this->normalizarEstado((string) $estadoActual)
+            : null;
+    }
+
+    private function registrarEstadoHistorialSiCambio(string $formId, ?string $nuevoEstado): bool
+    {
+        $formId = trim($formId);
+        $estadoNormalizado = $this->normalizarEstado($nuevoEstado);
+        if ($formId === '' || $estadoNormalizado === null) {
+            return false;
+        }
+
+        $ultimoEstado = $this->obtenerUltimoEstadoRegistrado($formId);
+        if ($ultimoEstado !== null && $ultimoEstado === $estadoNormalizado) {
+            error_log("⚪ Estado repetido omitido para form_id {$formId}: {$estadoNormalizado}");
+            return false;
+        }
+
+        $stmtHistorial = $this->db->prepare(
+            "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
+             VALUES (:form_id, :estado, NOW())"
+        );
+        $stmtHistorial->execute([
+            ':form_id' => $formId,
+            ':estado' => $estadoNormalizado,
+        ]);
+
+        return true;
     }
 
     public function obtenerFlujoPacientesPorVisita($fecha = null): array
@@ -839,9 +881,7 @@ class GuardarProyeccionController
             ]);
             error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
             if ($stmt->rowCount() > 0) {
-                $sql2 = "INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)"
-                         . " VALUES (?, ?, NOW())";
-                $this->db->prepare($sql2)->execute([$resolvedFormId, $nuevoEstado]);
+                $this->registrarEstadoHistorialSiCambio((string) $resolvedFormId, $nuevoEstado);
                 return ['success' => true, 'message' => 'Estado actualizado'];
             }
 
