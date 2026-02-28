@@ -25,6 +25,14 @@ if (!isset($dashboard) || !is_array($dashboard)) {
 
 $dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
 $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+$exportQuery = http_build_query([
+    'fecha_inicio' => (string)($filters['fecha_inicio'] ?? ''),
+    'fecha_fin' => (string)($filters['fecha_fin'] ?? ''),
+    'afiliacion' => (string)($filters['afiliacion'] ?? ''),
+    'tipo_examen' => (string)($filters['tipo_examen'] ?? ''),
+    'paciente' => (string)($filters['paciente'] ?? ''),
+    'estado_agenda' => (string)($filters['estado_agenda'] ?? ''),
+]);
 
 $estadoOpciones = [];
 foreach (($rows ?? []) as $row) {
@@ -53,9 +61,19 @@ sort($estadoOpciones);
     <div class="box mb-3">
         <div class="box-header with-border d-flex justify-content-between align-items-center">
             <h4 class="box-title mb-0">Filtros</h4>
-            <a href="/imagenes/examenes-realizados" class="btn btn-outline-primary btn-sm">
-                <i class="mdi mdi-format-list-bulleted me-1"></i> Ir a imágenes realizadas
-            </a>
+            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                <a href="/imagenes/dashboard/export/pdf<?= $exportQuery !== '' ? ('?' . htmlspecialchars($exportQuery, ENT_QUOTES, 'UTF-8')) : '' ?>"
+                   class="btn btn-outline-danger btn-sm">
+                    <i class="mdi mdi-file-pdf-box me-1"></i> Descargar PDF
+                </a>
+                <a href="/imagenes/dashboard/export/excel<?= $exportQuery !== '' ? ('?' . htmlspecialchars($exportQuery, ENT_QUOTES, 'UTF-8')) : '' ?>"
+                   class="btn btn-outline-success btn-sm">
+                    <i class="mdi mdi-file-excel-box me-1"></i> Descargar Excel
+                </a>
+                <a href="/imagenes/examenes-realizados" class="btn btn-outline-primary btn-sm">
+                    <i class="mdi mdi-format-list-bulleted me-1"></i> Ir a imágenes realizadas
+                </a>
+            </div>
         </div>
         <div class="box-body">
             <form class="row g-2 align-items-end" method="get">
@@ -140,6 +158,14 @@ sort($estadoOpciones);
                 <h6 class="imagenes-chart-title">Trazabilidad facturación</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesTrazabilidad"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesCitasRealizados"></canvas>
                 </div>
             </div>
         </div>
@@ -240,6 +266,7 @@ sort($estadoOpciones);
             const charts = (dashboardData && dashboardData.charts) ? dashboardData.charts : {};
             const serie = charts.serie_diaria || {};
             const trazabilidad = charts.trazabilidad || {};
+            const citasRealizados = charts.citas_vs_realizados || {};
             const mix = charts.mix_codigos || {};
             const aging = charts.aging_backlog || {};
 
@@ -355,6 +382,32 @@ sort($estadoOpciones);
                     };
                 },
                 Array.isArray(aging.values) && aging.values.some(function (value) { return Number(value || 0) > 0; })
+            );
+
+            drawChart(
+                'chartImagenesCitasRealizados',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(citasRealizados.labels) ? citasRealizados.labels : [],
+                            datasets: [
+                                {
+                                    label: 'Casos',
+                                    data: Array.isArray(citasRealizados.values) ? citasRealizados.values : [],
+                                    backgroundColor: ['#0d6efd', '#198754', '#fd7e14']
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {display: false}},
+                            scales: {y: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                Array.isArray(citasRealizados.values) && citasRealizados.values.some(function (value) { return Number(value || 0) > 0; })
             );
         });
     })();

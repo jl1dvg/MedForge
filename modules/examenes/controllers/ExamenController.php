@@ -23,6 +23,9 @@ use Modules\MailTemplates\Services\CoberturaMailTemplateService;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Pacientes\Services\PacienteService;
 use Modules\Reporting\Services\ReportService;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PDO;
 use RuntimeException;
 use Services\PreviewService;
@@ -3996,6 +3999,270 @@ class ExamenController extends BaseController
         );
     }
 
+    public function imagenesDashboardExportPdf(): void
+    {
+        $this->requireAuth();
+
+        $filters = $this->buildImagenesRealizadasFilters();
+        $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
+        $detailRows = $this->buildImagenesDashboardDetailRows($rows);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters);
+
+        $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.pdf';
+
+        try {
+            $reportService = new ReportService();
+            $pdf = $reportService->renderPdf('imagenes_dashboard', [
+                'titulo' => 'Dashboard de KPIs de imágenes',
+                'generatedAt' => (new DateTimeImmutable('now'))->format('d-m-Y H:i'),
+                'filters' => $filtersSummary,
+                'cards' => is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [],
+                'meta' => is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [],
+                'rows' => $detailRows,
+                'total' => count($detailRows),
+            ], [
+                'destination' => 'S',
+                'filename' => $filename,
+                'mpdf' => [
+                    'orientation' => 'L',
+                    'margin_left' => 6,
+                    'margin_right' => 6,
+                    'margin_top' => 8,
+                    'margin_bottom' => 8,
+                ],
+            ]);
+
+            if (strncmp($pdf, '%PDF-', 5) !== 0) {
+                $this->json(['error' => 'No se pudo generar el PDF (contenido inválido).'], 500);
+                return;
+            }
+
+            if (!headers_sent()) {
+                if (ob_get_length()) {
+                    ob_clean();
+                }
+                header('Content-Length: ' . strlen($pdf));
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('X-Content-Type-Options: nosniff');
+            }
+
+            echo $pdf;
+            return;
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_dashboard_export',
+                'Error exportando PDF del dashboard de imágenes',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $this->json(['error' => 'No se pudo generar el PDF (ref: ' . $errorId . ')'], 500);
+        }
+    }
+
+    public function imagenesDashboardExportExcel(): void
+    {
+        $this->requireAuth();
+
+        $filters = $this->buildImagenesRealizadasFilters();
+        $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
+        $detailRows = $this->buildImagenesDashboardDetailRows($rows);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters);
+        $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
+
+        try {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Resumen');
+
+            $row = 1;
+            $sheet->setCellValue("A{$row}", 'Dashboard de KPIs de imágenes');
+            $sheet->mergeCells("A{$row}:E{$row}");
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(15);
+
+            $row++;
+            $sheet->setCellValue("A{$row}", 'Generado:');
+            $sheet->setCellValue("B{$row}", (new DateTimeImmutable('now'))->format('d-m-Y H:i'));
+            $sheet->setCellValue("D{$row}", 'Registros:');
+            $sheet->setCellValueExplicit("E{$row}", (string)count($detailRows), DataType::TYPE_STRING);
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+            $sheet->getStyle("D{$row}")->getFont()->setBold(true);
+
+            $row += 2;
+            $sheet->setCellValue("A{$row}", 'Filtros aplicados');
+            $sheet->mergeCells("A{$row}:E{$row}");
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+
+            if (empty($filtersSummary)) {
+                $row++;
+                $sheet->setCellValue("A{$row}", 'Sin filtros específicos.');
+                $sheet->mergeCells("A{$row}:E{$row}");
+            } else {
+                foreach ($filtersSummary as $filter) {
+                    $row++;
+                    $sheet->setCellValue("A{$row}", (string)($filter['label'] ?? ''));
+                    $sheet->setCellValue("B{$row}", (string)($filter['value'] ?? ''));
+                    $sheet->mergeCells("B{$row}:E{$row}");
+                    $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+                }
+            }
+
+            $row += 2;
+            $sheet->setCellValue("A{$row}", 'KPIs');
+            $sheet->mergeCells("A{$row}:E{$row}");
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+
+            $row++;
+            $sheet->setCellValue("A{$row}", 'Indicador');
+            $sheet->setCellValue("B{$row}", 'Valor');
+            $sheet->setCellValue("C{$row}", 'Detalle');
+            $sheet->mergeCells("C{$row}:E{$row}");
+            $sheet->getStyle("A{$row}:E{$row}")->getFont()->setBold(true);
+
+            $cards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
+            foreach ($cards as $card) {
+                $row++;
+                $sheet->setCellValue("A{$row}", (string)($card['label'] ?? ''));
+                $sheet->setCellValueExplicit("B{$row}", (string)($card['value'] ?? ''), DataType::TYPE_STRING);
+                $sheet->setCellValue("C{$row}", (string)($card['hint'] ?? ''));
+                $sheet->mergeCells("C{$row}:E{$row}");
+            }
+
+            $meta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+            $tatPromedio = ($meta['tat_promedio_horas'] ?? null) !== null ? number_format((float)$meta['tat_promedio_horas'], 2) . ' h' : '—';
+            $tatMediana = ($meta['tat_mediana_horas'] ?? null) !== null ? number_format((float)$meta['tat_mediana_horas'], 2) . ' h' : '—';
+            $tatP90 = ($meta['tat_p90_horas'] ?? null) !== null ? number_format((float)$meta['tat_p90_horas'], 2) . ' h' : '—';
+            $row++;
+            $sheet->setCellValue("A{$row}", 'TAT');
+            $sheet->setCellValue("B{$row}", $tatPromedio);
+            $sheet->setCellValue("C{$row}", 'Mediana: ' . $tatMediana . ' | P90: ' . $tatP90);
+            $sheet->mergeCells("C{$row}:E{$row}");
+
+            $sheet->getColumnDimension('A')->setWidth(36);
+            $sheet->getColumnDimension('B')->setWidth(18);
+            $sheet->getColumnDimension('C')->setWidth(34);
+            $sheet->getColumnDimension('D')->setWidth(16);
+            $sheet->getColumnDimension('E')->setWidth(16);
+
+            $detailSheet = $spreadsheet->createSheet();
+            $detailSheet->setTitle('Detalle');
+            $detailHeaders = [
+                '#',
+                'Fecha examen',
+                'Form ID',
+                'HC',
+                'Paciente',
+                'Afiliación',
+                'Estado agenda',
+                'Cita generada',
+                'Examen realizado',
+                'Informado',
+                'Facturado',
+                'Código',
+                'Examen',
+            ];
+
+            $detailRow = 1;
+            foreach ($detailHeaders as $idx => $label) {
+                $column = $this->excelColumnByIndex($idx);
+                $detailSheet->setCellValue("{$column}{$detailRow}", $label);
+            }
+            $detailSheet->getStyle("A1:M1")->getFont()->setBold(true);
+            $detailSheet->setAutoFilter("A1:M1");
+
+            foreach ($detailRows as $index => $item) {
+                $detailRow++;
+                $values = [
+                    (string)($index + 1),
+                    (string)($item['fecha_examen'] ?? '—'),
+                    (string)($item['form_id'] ?? ''),
+                    (string)($item['hc_number'] ?? ''),
+                    (string)($item['paciente'] ?? ''),
+                    (string)($item['afiliacion'] ?? ''),
+                    (string)($item['estado_agenda'] ?? ''),
+                    !empty($item['cita_generada']) ? 'SI' : 'NO',
+                    !empty($item['examen_realizado']) ? 'SI' : 'NO',
+                    !empty($item['informado']) ? 'SI' : 'NO',
+                    !empty($item['facturado']) ? 'SI' : 'NO',
+                    (string)($item['codigo'] ?? ''),
+                    (string)($item['examen'] ?? ''),
+                ];
+
+                foreach ($values as $idx => $value) {
+                    $column = $this->excelColumnByIndex($idx);
+                    $detailSheet->setCellValueExplicit("{$column}{$detailRow}", $value, DataType::TYPE_STRING);
+                }
+            }
+
+            $detailSheet->freezePane('A2');
+            $detailSheet->getColumnDimension('A')->setWidth(6);
+            $detailSheet->getColumnDimension('B')->setWidth(20);
+            $detailSheet->getColumnDimension('C')->setWidth(12);
+            $detailSheet->getColumnDimension('D')->setWidth(14);
+            $detailSheet->getColumnDimension('E')->setWidth(36);
+            $detailSheet->getColumnDimension('F')->setWidth(24);
+            $detailSheet->getColumnDimension('G')->setWidth(20);
+            $detailSheet->getColumnDimension('H')->setWidth(14);
+            $detailSheet->getColumnDimension('I')->setWidth(16);
+            $detailSheet->getColumnDimension('J')->setWidth(12);
+            $detailSheet->getColumnDimension('K')->setWidth(12);
+            $detailSheet->getColumnDimension('L')->setWidth(10);
+            $detailSheet->getColumnDimension('M')->setWidth(62);
+
+            if ($detailRow > 1) {
+                $detailSheet->getStyle("M2:M{$detailRow}")
+                    ->getAlignment()
+                    ->setWrapText(true);
+            }
+
+            $writer = new Xlsx($spreadsheet);
+            $stream = fopen('php://temp', 'r+');
+            $writer->save($stream);
+            rewind($stream);
+            $content = stream_get_contents($stream) ?: '';
+            fclose($stream);
+            $spreadsheet->disconnectWorksheets();
+
+            if ($content === '' || strncmp($content, 'PK', 2) !== 0) {
+                $this->json(['error' => 'No se pudo generar el Excel (contenido inválido).'], 500);
+                return;
+            }
+
+            if (!headers_sent()) {
+                if (ob_get_length()) {
+                    ob_clean();
+                }
+                header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Length: ' . strlen($content));
+                header('X-Content-Type-Options: nosniff');
+            }
+
+            echo $content;
+            return;
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            JsonLogger::log(
+                'imagenes_dashboard_export',
+                'Error exportando Excel del dashboard de imágenes',
+                $e,
+                [
+                    'error_id' => $errorId,
+                    'user_id' => $this->getCurrentUserId(),
+                ]
+            );
+
+            $this->json(['error' => 'No se pudo generar el Excel (ref: ' . $errorId . ')'], 500);
+        }
+    }
+
     public function imagenesNasList(): void
     {
         $this->requireAuth();
@@ -4454,6 +4721,174 @@ class ExamenController extends BaseController
     }
 
     /**
+     * @param array{
+     *     fecha_inicio?: string,
+     *     fecha_fin?: string,
+     *     afiliacion?: string,
+     *     tipo_examen?: string,
+     *     paciente?: string,
+     *     estado_agenda?: string
+     * } $filters
+     * @return array<int, array{label: string, value: string}>
+     */
+    private function buildImagenesDashboardFiltersSummary(array $filters): array
+    {
+        $summary = [];
+        $map = [
+            'fecha_inicio' => 'Desde',
+            'fecha_fin' => 'Hasta',
+            'afiliacion' => 'Afiliación',
+            'tipo_examen' => 'Tipo examen',
+            'paciente' => 'Paciente/Cédula',
+            'estado_agenda' => 'Estado agenda',
+        ];
+
+        foreach ($map as $key => $label) {
+            $value = trim((string)($filters[$key] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $summary[] = ['label' => $label, 'value' => $value];
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildImagenesDashboardDetailRows(array $rows): array
+    {
+        $output = [];
+        $tarifarioCache = [];
+
+        foreach ($rows as $row) {
+            $tipoRaw = trim((string)($row['tipo_examen'] ?? ''));
+            $parsedTipo = $this->parseProcedimientoImagen($tipoRaw);
+            $tipoTexto = trim((string)($parsedTipo['texto'] ?? ''));
+            $codigo = (string)($this->extraerCodigoTarifario($tipoTexto !== '' ? $tipoTexto : $tipoRaw) ?? '');
+            $nombreTarifario = '';
+
+            if ($codigo !== '') {
+                if (!isset($tarifarioCache[$codigo])) {
+                    $tarifarioCache[$codigo] = $this->obtenerTarifarioPorCodigo($codigo);
+                }
+                $tarifa = $tarifarioCache[$codigo];
+                if (is_array($tarifa) && !empty($tarifa)) {
+                    $nombreTarifario = trim((string)($tarifa['descripcion'] ?? $tarifa['short_description'] ?? ''));
+                }
+            }
+
+            $detalle = $tipoTexto !== '' ? $tipoTexto : $tipoRaw;
+            if ($codigo !== '') {
+                $detalle = trim((string)(preg_replace('/\b' . preg_quote($codigo, '/') . '\b\s*[-:]?\s*/iu', '', $detalle) ?? $detalle));
+            }
+            $detalle = trim($detalle, " -\t\n\r\0\x0B");
+
+            if ($codigo !== '' && $nombreTarifario !== '') {
+                $examen = $codigo . ' - ' . $nombreTarifario;
+                $suffix = $this->normalizarDetalleEstudio012A($detalle, $nombreTarifario);
+                if ($suffix !== '') {
+                    $examen .= ' - ' . $suffix;
+                }
+            } elseif ($codigo !== '') {
+                $examen = $codigo . ' - ' . ($detalle !== '' ? $detalle : 'SIN DETALLE');
+            } else {
+                $examen = $detalle !== '' ? $detalle : 'SIN CÓDIGO';
+            }
+
+            $ojo = trim((string)($parsedTipo['ojo'] ?? ''));
+            if ($ojo !== '') {
+                $examen .= ' - ' . $ojo;
+            }
+
+            $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
+
+            $output[] = [
+                'id' => isset($row['id']) ? (int)$row['id'] : 0,
+                'form_id' => trim((string)($row['form_id'] ?? '')),
+                'fecha_examen' => $this->formatDashboardDate((string)($row['fecha_examen'] ?? '')),
+                'hc_number' => trim((string)($row['hc_number'] ?? '')),
+                'paciente' => trim((string)($row['full_name'] ?? '')),
+                'afiliacion' => trim((string)($row['afiliacion'] ?? '')),
+                'estado_agenda' => $estadoAgenda,
+                'cita_generada' => $this->isImagenCitaGeneradaEstado($estadoAgenda),
+                'examen_realizado' => $this->isImagenExamenRealizadoEstado($estadoAgenda),
+                'informado' => !empty($row['informe_id']),
+                'facturado' => (int)($row['facturado'] ?? 0) === 1,
+                'codigo' => $codigo,
+                'examen' => $examen,
+            ];
+        }
+
+        return $output;
+    }
+
+    private function formatDashboardDate(?string $value): string
+    {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return '—';
+        }
+
+        try {
+            return (new DateTimeImmutable($value))->format('d-m-Y H:i');
+        } catch (\Throwable) {
+            return $value;
+        }
+    }
+
+    private function isImagenCitaGeneradaEstado(string $estado): bool
+    {
+        $estadoNorm = $this->normalizarTexto($estado);
+        if ($estadoNorm === '') {
+            return false;
+        }
+
+        $cancelKeywords = ['cancel', 'anul', 'no show', 'no asist'];
+        foreach ($cancelKeywords as $keyword) {
+            if (str_contains($estadoNorm, $keyword)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isImagenExamenRealizadoEstado(string $estado): bool
+    {
+        $estadoNorm = $this->normalizarTexto($estado);
+        if ($estadoNorm === '') {
+            return false;
+        }
+        if (!$this->isImagenCitaGeneradaEstado($estadoNorm)) {
+            return false;
+        }
+
+        foreach (['atend', 'terminad', 'realizad', 'completad'] as $keyword) {
+            if (str_contains($estadoNorm, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function excelColumnByIndex(int $index): string
+    {
+        $index = max(0, $index);
+        $column = '';
+        do {
+            $remainder = $index % 26;
+            $column = chr(65 + $remainder) . $column;
+            $index = intdiv($index, 26) - 1;
+        } while ($index >= 0);
+
+        return $column;
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $rows
      * @param array{
      *     fecha_inicio?: string,
@@ -4473,6 +4908,8 @@ class ExamenController extends BaseController
         $facturadosEInformados = 0;
         $facturadosSinInformar = 0;
         $informadosSinFacturar = 0;
+        $citasGeneradas = 0;
+        $examenesRealizados = 0;
 
         $tatHoras = [];
         $sla48Cumple = 0;
@@ -4491,9 +4928,17 @@ class ExamenController extends BaseController
         foreach ($rows as $row) {
             $informado = !empty($row['informe_id']);
             $facturado = (int)($row['facturado'] ?? 0) === 1;
+            $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
             $fechaExamenRaw = trim((string)($row['fecha_examen'] ?? ''));
             $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
             $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
+
+            if ($this->isImagenCitaGeneradaEstado($estadoAgenda)) {
+                $citasGeneradas++;
+            }
+            if ($this->isImagenExamenRealizadoEstado($estadoAgenda)) {
+                $examenesRealizados++;
+            }
 
             if ($fechaExamenDia !== '') {
                 if (!isset($dailyMap[$fechaExamenDia])) {
@@ -4610,6 +5055,7 @@ class ExamenController extends BaseController
         $tatMediana = $this->calcularPercentil($tatHoras, 0.50);
         $tatP90 = $this->calcularPercentil($tatHoras, 0.90);
         $sla48Pct = $sla48Total > 0 ? ($sla48Cumple * 100 / $sla48Total) : null;
+        $cumplimientoCitaPct = $citasGeneradas > 0 ? ($examenesRealizados * 100 / $citasGeneradas) : null;
 
         $rangeLabel = trim((string)($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string)($filters['fecha_fin'] ?? ''));
         $rangeLabel = trim($rangeLabel, ' a');
@@ -4635,6 +5081,21 @@ class ExamenController extends BaseController
                     'label' => 'Facturados',
                     'value' => $facturados,
                     'hint' => $total > 0 ? (number_format(($facturados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Citas generadas',
+                    'value' => $citasGeneradas,
+                    'hint' => $total > 0 ? (number_format(($citasGeneradas * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Exámenes realizados',
+                    'value' => $examenesRealizados,
+                    'hint' => $citasGeneradas > 0 ? ($examenesRealizados . ' de ' . $citasGeneradas . ' citas') : 'Sin citas en rango',
+                ],
+                [
+                    'label' => 'Cumplimiento cita->realización',
+                    'value' => $cumplimientoCitaPct !== null ? (number_format($cumplimientoCitaPct, 1) . '%') : '—',
+                    'hint' => 'Objetivo: subir conversión de cita a examen',
                 ],
                 [
                     'label' => 'Facturados e informados',
@@ -4688,6 +5149,18 @@ class ExamenController extends BaseController
                         $facturadosSinInformar,
                         $informadosSinFacturar,
                         max(0, $noInformados - $facturadosSinInformar),
+                    ],
+                ],
+                'citas_vs_realizados' => [
+                    'labels' => [
+                        'Citas generadas',
+                        'Exámenes realizados',
+                        'Pendientes por realizar',
+                    ],
+                    'values' => [
+                        $citasGeneradas,
+                        $examenesRealizados,
+                        max(0, $citasGeneradas - $examenesRealizados),
                     ],
                 ],
             ],

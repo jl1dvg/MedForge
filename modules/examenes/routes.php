@@ -24,6 +24,14 @@ return function (Router $router) {
         (new ExamenController($pdo))->imagenesDashboard();
     });
 
+    $router->get('/imagenes/dashboard/export/pdf', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesDashboardExportPdf();
+    });
+
+    $router->get('/imagenes/dashboard/export/excel', function (\PDO $pdo) {
+        (new ExamenController($pdo))->imagenesDashboardExportExcel();
+    });
+
     $router->get('/imagenes/examenes-realizados/nas/list', function (\PDO $pdo) {
         (new ExamenController($pdo))->imagenesNasList();
     });
