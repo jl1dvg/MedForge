@@ -204,6 +204,7 @@
         var typingTimerId = null;
         var toastStack = null;
         var handoffAudioContext = null;
+        var notificationPermissionRequested = false;
         var templatesLoaded = false;
         var templateState = null;
         var templateFieldInputs = {};
@@ -306,6 +307,7 @@
                 if (currentUnread > previousUnread && !(state.selectedId && Number(state.selectedId) === Number(conversation.id))) {
                     var incomingName = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
                     showHandoffToast('Nuevo mensaje de ' + incomingName);
+                    maybeShowDesktopNotification('WhatsApp · Nuevo mensaje', incomingName, { onlyWhenInactive: true });
                 }
 
                 var previousNeedsHuman = Boolean(state.needsHumanByConversation[key]);
@@ -313,7 +315,7 @@
                 if (!previousNeedsHuman && currentNeedsHuman) {
                     var handoffName = conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'Contacto';
                     showHandoffToast('Solicitud de agente: ' + handoffName);
-                    maybeShowDesktopNotification('WhatsApp · Solicitud de agente', handoffName);
+                    maybeShowDesktopNotification('WhatsApp · Solicitud de agente', handoffName, { onlyWhenInactive: true });
                     playHandoffSound();
                 }
             });
@@ -895,16 +897,62 @@
             });
         }
 
-        function maybeShowDesktopNotification(title, body) {
+        function isDesktopNotificationEnabled() {
             var realtimeConfig = window.MEDF_PusherConfig || {};
-            if (!realtimeConfig.desktop_notifications || typeof window === 'undefined' || !('Notification' in window)) {
+            if (realtimeConfig.desktop_notifications === false) {
+                return false;
+            }
+
+            return true;
+        }
+
+        function isPageInactive() {
+            if (typeof document === 'undefined') {
+                return true;
+            }
+
+            if (document.hidden) {
+                return true;
+            }
+
+            if (typeof document.hasFocus === 'function') {
+                return !document.hasFocus();
+            }
+
+            return true;
+        }
+
+        function requestDesktopNotificationPermission() {
+            if (typeof window === 'undefined' || !('Notification' in window)) {
+                return;
+            }
+            if (!isDesktopNotificationEnabled()) {
+                return;
+            }
+            if (Notification.permission !== 'default') {
+                return;
+            }
+            if (notificationPermissionRequested) {
                 return;
             }
 
-            if (Notification.permission === 'default') {
-                Notification.requestPermission().catch(function () {});
+            notificationPermissionRequested = true;
+            Notification.requestPermission().catch(function () {});
+        }
+
+        function maybeShowDesktopNotification(title, body, options) {
+            var realtimeConfig = window.MEDF_PusherConfig || {};
+            if (typeof window === 'undefined' || !('Notification' in window)) {
+                return;
+            }
+            if (!isDesktopNotificationEnabled()) {
+                return;
             }
 
+            var onlyWhenInactive = !options || options.onlyWhenInactive !== false;
+            if (onlyWhenInactive && !isPageInactive()) {
+                return;
+            }
             if (Notification.permission !== 'granted') {
                 return;
             }
@@ -1049,7 +1097,7 @@
 
                 var name = data.display_name || data.patient_full_name || data.wa_number || 'Contacto';
                 showHandoffToast('Nueva solicitud de agente: ' + name);
-                maybeShowDesktopNotification('WhatsApp · Nuevo handoff', name);
+                maybeShowDesktopNotification('WhatsApp · Nuevo handoff', name, { onlyWhenInactive: true });
                 playHandoffSound();
 
                 loadConversations();
@@ -3048,6 +3096,7 @@
         var refreshTimerId = null;
         var isRefreshing = false;
         var refreshBaseMs = 5000;
+        var refreshHiddenMs = 20000;
         var refreshMaxMs = 30000;
         var refreshIntervalMs = refreshBaseMs;
 
@@ -3060,13 +3109,10 @@
         }
 
         function runAutoRefresh() {
-            if (document.hidden) {
-                scheduleRefresh(refreshIntervalMs);
-                return;
-            }
+            var hidden = document.hidden;
 
             if (isRefreshing) {
-                scheduleRefresh(refreshIntervalMs);
+                scheduleRefresh(hidden ? refreshHiddenMs : refreshIntervalMs);
                 return;
             }
 
@@ -3074,18 +3120,22 @@
 
             var promises = [loadConversations()];
             var isPlayingAudio = isAudioPlaybackActive();
-            if (state.selectedId && !isPlayingAudio) {
+            if (!hidden && state.selectedId && !isPlayingAudio) {
                 promises.push(openConversation(state.selectedId, {silent: true}));
             }
 
             Promise.all(promises).then(function () {
-                refreshIntervalMs = refreshBaseMs;
+                if (!hidden) {
+                    refreshIntervalMs = refreshBaseMs;
+                }
             }).catch(function (error) {
                 console.error('Error durante la actualización automática del chat', error);
-                refreshIntervalMs = Math.min(refreshMaxMs, Math.round(refreshIntervalMs * 1.7));
+                if (!hidden) {
+                    refreshIntervalMs = Math.min(refreshMaxMs, Math.round(refreshIntervalMs * 1.7));
+                }
             }).finally(function () {
                 isRefreshing = false;
-                scheduleRefresh(refreshIntervalMs);
+                scheduleRefresh(document.hidden ? refreshHiddenMs : refreshIntervalMs);
             });
         }
 
@@ -3124,11 +3174,16 @@
         window.addEventListener('beforeunload', stopAutoRefresh);
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) {
-                stopAutoRefresh();
+                scheduleRefresh(refreshHiddenMs);
             } else {
+                refreshIntervalMs = refreshBaseMs;
                 startAutoRefresh();
+                scheduleRefresh(800);
             }
         });
+
+        document.addEventListener('click', requestDesktopNotificationPermission, { capture: true });
+        document.addEventListener('keydown', requestDesktopNotificationPermission, { capture: true });
 
         setupRealtime();
         syncQueueFilterButtons();
