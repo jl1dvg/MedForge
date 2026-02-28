@@ -200,6 +200,7 @@
                        class="waves-effect full-screen waves-light btn-danger-light"
                        data-notification-panel-toggle="true" aria-controls="kanbanNotificationPanel">
                         <i class="icon-Settings1"><span class="path1"></span><span class="path2"></span></i>
+                        <span class="badge bg-danger notification-unread-badge d-none" data-notification-unread-badge>0</span>
                     </a>
                 </li>
 

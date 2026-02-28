@@ -70,6 +70,7 @@ if (!function_exists('isTreeOpen')) {
                     $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
                     $canAccessCirugiasDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']);
                     $canAccessSolicitudesDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'solicitudes.dashboard.view']);
+                    $canAccessQuirurgicoDashboard = $canAccessCirugiasDashboard || $canAccessSolicitudesDashboard;
                     ?>
                     <li class="<?= isActive('/dashboard') ?>">
                         <a href="/dashboard">
@@ -196,20 +197,13 @@ if (!function_exists('isTreeOpen')) {
                                     <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
                                 </a>
                             </li>
-                            <?php if ($canAccessSolicitudesDashboard): ?>
-                                <li class="<?= isActive('/solicitudes/dashboard') ?>">
-                                    <a href="/solicitudes/dashboard">
-                                        <i class="mdi mdi-chart-timeline"></i>Dashboard solicitudes
-                                    </a>
-                                </li>
-                            <?php endif; ?>
                             <li class="<?= isActive('/cirugias') ?>">
                                 <a href="/cirugias">
                                     <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
                                 </a>
                             </li>
-                            <?php if ($canAccessCirugiasDashboard): ?>
-                                <li class="<?= isActive('/cirugias/dashboard') ?>">
+                            <?php if ($canAccessQuirurgicoDashboard): ?>
+                                <li class="<?= isActive('/cirugias/dashboard') ?: isActive('/solicitudes/dashboard') ?>">
                                     <a href="/cirugias/dashboard">
                                         <i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico
                                     </a>

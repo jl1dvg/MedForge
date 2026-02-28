@@ -208,8 +208,10 @@ $scriptStack = array_values(array_unique($scriptStack));
         'sms' => false,
         'daily_summary' => false,
     ];
+    $panelRetentionDays = 7;
     $pusherEnabled = false;
     $pusherKey = '';
+    $notificationStorageKey = 'medf:notification-panel:u' . (int) ($_SESSION['user_id'] ?? 0);
 
     $pdoInstance = $GLOBALS['pdo'] ?? null;
 
@@ -219,6 +221,7 @@ $scriptStack = array_values(array_unique($scriptStack));
             $panelConfig = $pusherService->getPublicConfig();
 
             $notificationChannels = $panelConfig['channels'] ?? $notificationChannels;
+            $panelRetentionDays = max(0, (int) ($panelConfig['panel_retention_days'] ?? $panelRetentionDays));
             $pusherEnabled = (bool)($panelConfig['enabled'] ?? false);
             $pusherKey = (string)($panelConfig['key'] ?? '');
         } catch (\Throwable $exception) {
@@ -230,6 +233,10 @@ $scriptStack = array_values(array_unique($scriptStack));
             'sms' => (bool)get_option('notifications_sms_enabled'),
             'daily_summary' => (bool)get_option('notifications_daily_summary'),
         ];
+        $rawRetentionDays = get_option('notifications_panel_retention_days');
+        if ($rawRetentionDays !== null && $rawRetentionDays !== false && $rawRetentionDays !== '') {
+            $panelRetentionDays = max(0, (int) $rawRetentionDays);
+        }
         $pusherEnabled = (bool)get_option('pusher_realtime_notifications');
         $pusherKey = (string)get_option('pusher_app_key');
     }
@@ -243,7 +250,9 @@ $scriptStack = array_values(array_unique($scriptStack));
         const panel = window.MEDF.notificationPanel || createNotificationPanel({
             panelId: 'kanbanNotificationPanel',
             backdropId: 'notificationPanelBackdrop',
-            toggleSelector: '[data-notification-panel-toggle]'
+            toggleSelector: '[data-notification-panel-toggle]',
+            storageKey: '<?= htmlspecialchars($notificationStorageKey, ENT_QUOTES, 'UTF-8') ?>',
+            retentionDays: <?= (int) $panelRetentionDays ?>
         });
         window.MEDF.notificationPanel = panel;
 
