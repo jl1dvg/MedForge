@@ -12,6 +12,7 @@
 /** @var array $programacion_kpis */
 /** @var array $reingreso_mismo_diagnostico */
 /** @var array $cirugias_sin_solicitud_previa */
+/** @var array $tat_revision_protocolos */
 /** @var array $kpi_cards */
 /** @var string $afiliacion_filter */
 /** @var array<int,array{value:string,label:string}> $afiliacion_options */
@@ -136,6 +137,16 @@ $helpMarkdown = is_file($helpMdPath)
     ? (string)file_get_contents($helpMdPath)
     : "# Guía no disponible\n\nNo se encontró el archivo de ayuda del dashboard.";
 $helpHtml = cirugiasDashboardRenderMarkdown($helpMarkdown);
+$tatPromedioHoras = isset($tat_revision_protocolos['tat_promedio_horas']) && $tat_revision_protocolos['tat_promedio_horas'] !== null
+    ? (float)$tat_revision_protocolos['tat_promedio_horas']
+    : null;
+$tatMedianaHoras = isset($tat_revision_protocolos['tat_mediana_horas']) && $tat_revision_protocolos['tat_mediana_horas'] !== null
+    ? (float)$tat_revision_protocolos['tat_mediana_horas']
+    : null;
+$tatP90Horas = isset($tat_revision_protocolos['tat_p90_horas']) && $tat_revision_protocolos['tat_p90_horas'] !== null
+    ? (float)$tat_revision_protocolos['tat_p90_horas']
+    : null;
+$tatMuestra = (int)($tat_revision_protocolos['muestra'] ?? 0);
 ?>
 
 <div class="content-header">
@@ -234,6 +245,13 @@ $helpHtml = cirugiasDashboardRenderMarkdown($helpMarkdown);
                         <p class="cirugias-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
                     </article>
                 <?php endforeach; ?>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 align-items-center text-muted small mb-3">
+                <span><strong>TAT promedio:</strong> <?= $tatPromedioHoras !== null ? htmlspecialchars(number_format($tatPromedioHoras, 2) . ' h -> ~' . number_format($tatPromedioHoras / 24, 1) . ' dias', ENT_QUOTES, 'UTF-8') : '—' ?></span>
+                <span><strong>TAT mediana:</strong> <?= $tatMedianaHoras !== null ? htmlspecialchars(number_format($tatMedianaHoras, 2) . ' h -> ~' . number_format($tatMedianaHoras / 24, 1) . ' dias', ENT_QUOTES, 'UTF-8') : '—' ?></span>
+                <span><strong>TAT P90:</strong> <?= $tatP90Horas !== null ? htmlspecialchars(number_format($tatP90Horas, 2) . ' h -> ~' . number_format($tatP90Horas / 24, 1) . ' dias', ENT_QUOTES, 'UTF-8') : '—' ?></span>
+                <span><strong>Muestra:</strong> <?= htmlspecialchars((string)$tatMuestra, ENT_QUOTES, 'UTF-8') ?> protocolos revisados</span>
             </div>
         </div>
 

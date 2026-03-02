@@ -242,7 +242,16 @@ $scriptStack = array_values(array_unique($scriptStack));
     }
 
     $panelModuleAsset = asset('js/pages/solicitudes/notifications/panel.js');
+    $frontendUserContext = [
+        'id' => isset($currentUser['id']) ? (int) $currentUser['id'] : 0,
+        'name' => (string) ($currentUser['display_name'] ?? ''),
+        'email' => (string) ($currentUser['email'] ?? ''),
+    ];
     ?>
+    <script>
+        window.MEDF = window.MEDF || {};
+        window.MEDF.currentUser = <?= json_encode($frontendUserContext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    </script>
     <script type="module">
         import {createNotificationPanel} from '<?= $panelModuleAsset ?>';
 

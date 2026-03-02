@@ -100,8 +100,16 @@
                     </a>
                 </li>
                 <li class="dropdown notifications-menu">
-                    <a href="#" class="waves-effect waves-light dropdown-toggle btn-info-light" data-bs-toggle="dropdown" title="Notifications">
+                    <a
+                        href="#"
+                        class="waves-effect waves-light dropdown-toggle btn-info-light"
+                        data-bs-toggle="dropdown"
+                        title="Notifications"
+                        data-notification-panel-toggle="true"
+                        aria-controls="kanbanNotificationPanel"
+                    >
                         <i class="icon-Notification"><span class="path1"></span><span class="path2"></span></i>
+                        <span class="badge bg-danger notification-unread-badge d-none" data-notification-unread-badge>0</span>
                     </a>
                     <ul class="dropdown-menu animated bounceIn">
                         <li class="header">
@@ -140,8 +148,6 @@
                         data-toggle="control-sidebar"
                         title="Setting"
                         class="waves-effect full-screen waves-light btn-danger-light"
-                        data-notification-panel-toggle="true"
-                        aria-controls="kanbanNotificationPanel"
                     >
                         <i class="icon-Settings1"><span class="path1"></span><span class="path2"></span></i>
                     </a>
