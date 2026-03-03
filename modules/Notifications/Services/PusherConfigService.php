@@ -20,6 +20,7 @@ class PusherConfigService
     public const EVENT_POST_CONSULTA = 'post_consulta';
     public const EVENT_EXAMS_EXPIRING = 'exams_expiring';
     public const EVENT_EXAM_REMINDER = 'exam_reminder';
+    public const EVENT_CRM_TASK_REMINDER = 'crm_task_reminder';
     public const EVENT_TURNERO_UPDATED = 'turnero_updated';
     public const EVENT_WHATSAPP_HANDOFF = 'whatsapp_handoff';
 
@@ -36,6 +37,7 @@ class PusherConfigService
         self::EVENT_POST_CONSULTA => 'postconsulta',
         self::EVENT_EXAMS_EXPIRING => 'alerta-examenes-por-vencer',
         self::EVENT_EXAM_REMINDER => 'recordatorio-examen',
+        self::EVENT_CRM_TASK_REMINDER => 'crm.task-reminder',
         self::EVENT_TURNERO_UPDATED => 'turnero.turno-actualizado',
         self::EVENT_WHATSAPP_HANDOFF => 'whatsapp.handoff',
     ];

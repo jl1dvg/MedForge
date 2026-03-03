@@ -120,7 +120,7 @@ class HandoffService
 
         if (!empty($config['handoff_notify_in_app'])) {
             try {
-                $this->notifyHandoff($conversationId);
+                $this->notifyHandoff($conversationId, 'requested');
             } catch (Throwable $exception) {
                 $this->handoffs->insertEvent($handoffId, 'notify_realtime_failed', null, $this->sanitizeNotes($exception->getMessage()));
             }
@@ -167,6 +167,7 @@ class HandoffService
             ]);
             $this->handoffs->insertEvent($handoffId, 'assigned', $actorId ?? $agentId, 'Asignación manual');
             $this->conversations->assignConversation($conversationId, $agentId);
+            $this->notifyHandoff($conversationId, 'assigned', $actorId ?? $agentId, $agentId);
 
             return true;
         }
@@ -181,6 +182,7 @@ class HandoffService
         if ($assigned) {
             $this->handoffs->insertEvent($activeId, 'assigned', $actorId ?? $agentId, null);
             $this->conversations->assignConversation($conversationId, $agentId);
+            $this->notifyHandoff($conversationId, 'assigned', $actorId ?? $agentId, $agentId);
         }
 
         return $assigned;
@@ -215,6 +217,7 @@ class HandoffService
             ]);
             $this->handoffs->insertEvent($handoffId, 'transferred', $actorId, $note);
             $this->conversations->transferConversation($conversationId, $agentId, $note);
+            $this->notifyHandoff($conversationId, 'transferred', $actorId ?? $agentId, $agentId);
 
             return true;
         }
@@ -224,6 +227,7 @@ class HandoffService
         if ($ok) {
             $this->handoffs->insertEvent($handoffId, 'transferred', $actorId, $note);
             $this->conversations->transferConversation($conversationId, $agentId, $note);
+            $this->notifyHandoff($conversationId, 'transferred', $actorId ?? $agentId, $agentId);
         }
 
         return $ok;
@@ -277,7 +281,7 @@ class HandoffService
             if ($conversationId > 0) {
                 $roleId = isset($handoff['handoff_role_id']) ? (int) $handoff['handoff_role_id'] : null;
                 $this->conversations->setHandoffFlag($conversationId, true, $note, $roleId);
-                $this->notifyHandoff($conversationId);
+                $this->notifyHandoff($conversationId, 'requeued');
                 $waNumber = $handoff['wa_number'] ?? null;
                 if (is_string($waNumber) && $waNumber !== '') {
                     $this->notifyAgents($waNumber, $handoffId, $roleId, $note, $conversationId);
@@ -363,6 +367,7 @@ class HandoffService
             $conversationId = isset($handoff['conversation_id']) ? (int) $handoff['conversation_id'] : 0;
             if ($conversationId > 0) {
                 $this->conversations->assignConversation($conversationId, $agentId);
+                $this->notifyHandoff($conversationId, 'assigned', $agentId, $agentId);
             }
 
             $label = $this->resolveConversationLabel($conversationId, $handoff['wa_number'] ?? null);
@@ -642,7 +647,7 @@ class HandoffService
         return null;
     }
 
-    private function notifyHandoff(int $conversationId): void
+    private function notifyHandoff(int $conversationId, string $action = 'requested', ?int $actorId = null, ?int $targetUserId = null): void
     {
         if (!$this->pusher instanceof PusherConfigService) {
             return;
@@ -653,8 +658,19 @@ class HandoffService
             return;
         }
 
+        $normalizedAction = strtolower(trim($action));
+        if (!in_array($normalizedAction, ['requested', 'assigned', 'transferred', 'requeued', 'resolved'], true)) {
+            $normalizedAction = 'requested';
+        }
+
+        $actorUserId = $actorId !== null && $actorId > 0 ? $actorId : null;
+        $targetUserId = $targetUserId !== null && $targetUserId > 0 ? $targetUserId : null;
+        $actorUserName = $actorUserId !== null ? $this->resolveAgentName($actorUserId) : null;
+        $targetUserName = $targetUserId !== null ? $this->resolveAgentName($targetUserId) : null;
+
         $payload = [
             'type' => 'whatsapp_handoff',
+            'handoff_action' => $normalizedAction,
             'conversation_id' => (int) $conversation['id'],
             'wa_number' => $conversation['wa_number'],
             'display_name' => $conversation['display_name'] ?? null,
@@ -662,7 +678,14 @@ class HandoffService
             'handoff_notes' => $conversation['handoff_notes'] ?? null,
             'handoff_role_id' => isset($conversation['handoff_role_id']) ? (int) $conversation['handoff_role_id'] : null,
             'handoff_role_name' => $conversation['handoff_role_name'] ?? null,
+            'assigned_user_id' => isset($conversation['assigned_user_id']) ? (int) $conversation['assigned_user_id'] : null,
+            'assigned_user_name' => $conversation['assigned_user_name'] ?? null,
+            'actor_user_id' => $actorUserId,
+            'actor_user_name' => $actorUserName,
+            'target_user_id' => $targetUserId,
+            'target_user_name' => $targetUserName,
             'last_message_at' => $conversation['last_message_at'] ?? null,
+            'occurred_at' => date('c'),
         ];
 
         $this->pusher->trigger($payload, null, PusherConfigService::EVENT_WHATSAPP_HANDOFF);

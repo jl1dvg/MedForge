@@ -250,6 +250,7 @@ class CirugiasDashboardController extends BaseController
         $programacionKpis = $this->service->getProgramacionKpis($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
         $reingresoMismoDiagnostico = $this->service->getReingresoMismoDiagnostico($startSql, $endSql);
         $cirugiasSinSolicitudPrevia = $this->service->getCirugiasSinSolicitudPrevia($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $tatRevisionProtocolos = $this->service->getTatRevisionProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
 
         return [
             'date_range' => $dateRangeView,
@@ -265,6 +266,7 @@ class CirugiasDashboardController extends BaseController
             'programacion_kpis' => $programacionKpis,
             'reingreso_mismo_diagnostico' => $reingresoMismoDiagnostico,
             'cirugias_sin_solicitud_previa' => $cirugiasSinSolicitudPrevia,
+            'tat_revision_protocolos' => $tatRevisionProtocolos,
             'afiliacion_filter' => $afiliacionFilter,
             'afiliacion_options' => $afiliacionOptions,
             'afiliacion_categoria_filter' => $afiliacionCategoriaFilter,
@@ -276,7 +278,8 @@ class CirugiasDashboardController extends BaseController
                 $estadoProtocolos,
                 $programacionKpis,
                 $reingresoMismoDiagnostico,
-                $cirugiasSinSolicitudPrevia
+                $cirugiasSinSolicitudPrevia,
+                $tatRevisionProtocolos
             ),
         ];
     }
@@ -328,7 +331,8 @@ class CirugiasDashboardController extends BaseController
         array $estadoProtocolos,
         array $programacionKpis,
         array $reingresoMismoDiagnostico,
-        array $cirugiasSinSolicitudPrevia
+        array $cirugiasSinSolicitudPrevia,
+        array $tatRevisionProtocolos
     ): array {
         $programadas = (int)($programacionKpis['programadas'] ?? 0);
         $realizadas = (int)($programacionKpis['realizadas'] ?? 0);
@@ -351,6 +355,10 @@ class CirugiasDashboardController extends BaseController
         $reingresosEpisodios = (int)($reingresoMismoDiagnostico['episodios'] ?? 0);
         $cirugiasSinSolicitudPreviaTotal = (int)($cirugiasSinSolicitudPrevia['total'] ?? 0);
         $cirugiasSinSolicitudPreviaPct = (float)($cirugiasSinSolicitudPrevia['porcentaje'] ?? 0);
+        $tatRevisionMuestra = (int)($tatRevisionProtocolos['muestra'] ?? 0);
+        $tatRevisionPromedioHoras = $tatRevisionProtocolos['tat_promedio_horas'] ?? null;
+        $tatRevisionMedianaHoras = $tatRevisionProtocolos['tat_mediana_horas'] ?? null;
+        $tatRevisionP90Horas = $tatRevisionProtocolos['tat_p90_horas'] ?? null;
 
         return [
             ['label' => 'Cirugías en el periodo', 'value' => (string)$totalCirugias, 'hint' => 'Total de protocolos quirúrgicos en el rango'],
@@ -367,6 +375,9 @@ class CirugiasDashboardController extends BaseController
             ['label' => 'Completadas con evidencia', 'value' => $this->formatPercent($completadasConEvidenciaPct), 'hint' => $completadasConEvidencia . ' con match / ' . $completadasTotal . ' completadas'],
             ['label' => 'Concordancia de lateralidad', 'value' => $this->formatPercent($lateralidadConcordanciaPct), 'hint' => $lateralidadConcordante . ' concordantes / ' . $lateralidadEvaluable . ' evaluables'],
             ['label' => 'Cirugías sin solicitud previa', 'value' => $this->formatPercent($cirugiasSinSolicitudPreviaPct), 'hint' => $cirugiasSinSolicitudPreviaTotal . ' de ' . $totalCirugias . ' cirugías'],
+            ['label' => 'TAT revisión promedio', 'value' => $this->formatHours($tatRevisionPromedioHoras), 'hint' => $tatRevisionMuestra . ' protocolos revisados'],
+            ['label' => 'TAT revisión mediana', 'value' => $this->formatHours($tatRevisionMedianaHoras), 'hint' => 'Caso central de revisión'],
+            ['label' => 'TAT revisión P90', 'value' => $this->formatHours($tatRevisionP90Horas), 'hint' => '90% revisado antes de este tiempo'],
         ];
     }
 
@@ -469,5 +480,14 @@ class CirugiasDashboardController extends BaseController
         }
 
         return number_format($value, 1) . ' días';
+    }
+
+    private function formatHours(mixed $value): string
+    {
+        if ($value === null || !is_numeric($value) || (float)$value < 0) {
+            return '—';
+        }
+
+        return number_format((float)$value, 2) . ' h';
     }
 }

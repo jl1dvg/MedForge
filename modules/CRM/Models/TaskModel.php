@@ -643,13 +643,19 @@ class TaskModel
             INSERT INTO crm_task_reminders (task_id, company_id, remind_at, channel)
             VALUES (:task_id, :company_id, :remind_at, :channel)
         ");
+        $channels = ['in_app', 'email'];
+        if ($channel === 'whatsapp') {
+            $channels[] = 'whatsapp';
+        }
 
-        $stmt->execute([
-            ':task_id' => $taskId,
-            ':company_id' => $companyId,
-            ':remind_at' => $remindAt,
-            ':channel' => $channel,
-        ]);
+        foreach (array_values(array_unique($channels)) as $targetChannel) {
+            $stmt->execute([
+                ':task_id' => $taskId,
+                ':company_id' => $companyId,
+                ':remind_at' => $remindAt,
+                ':channel' => $targetChannel,
+            ]);
+        }
     }
 
     public function addEvidence(int $taskId, int $companyId, string $type, array $payload, ?int $userId = null): void

@@ -99,6 +99,20 @@ let currentData = null;
 let currentLead = null;
 let currentDetalle = null;
 
+function parsePositiveInt(value) {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveCurrentUserId() {
+    const fromMedf = parsePositiveInt(window?.MEDF?.currentUser?.id);
+    if (fromMedf !== null) {
+        return fromMedf;
+    }
+
+    return parsePositiveInt(currentData?.viewer?.user_id);
+}
+
 function setCrmOptions(options = {}) {
     crmOptions = {
         responsables: Array.isArray(options.responsables) ? options.responsables : [],
@@ -876,11 +890,17 @@ function renderResumen(detalle, lead) {
     const proximoVencimiento = detalle.crm_proximo_vencimiento ? formatDate(detalle.crm_proximo_vencimiento) : '—';
     const telefono = detalle.crm_contacto_telefono || detalle.paciente_celular || 'Sin teléfono';
     const correo = detalle.crm_contacto_email || 'Sin correo registrado';
+    const pedidoSolicitud = detalle.derivacion_pedido_id || detalle.pedido_origen_id || detalle.form_id || '—';
+    const fechaSolicitud = detalle.created_at ? formatDateTime(detalle.created_at) : 'Sin fecha registrada';
+    const fechaConsulta = detalle.fecha_consulta ? formatDateTime(detalle.fecha_consulta) : 'Sin fecha de consulta';
     const dias = Number.isFinite(detalle.dias_en_estado) ? `${detalle.dias_en_estado} día(s) en el estado actual` : 'Tiempo en estado no disponible';
     const leadId = lead?.id ?? detalle.crm_lead_id ?? null;
     const leadStatus = lead?.status ?? detalle.crm_lead_status ?? 'Sin estado';
     const leadSource = lead?.source ?? detalle.crm_lead_source ?? 'Sin fuente';
     const leadUrl = lead?.url ?? (leadId ? `/crm?lead=${leadId}` : null);
+    const currentUserId = resolveCurrentUserId();
+    const responsableId = parsePositiveInt(detalle.crm_responsable_id);
+    const assignedToMe = currentUserId !== null && responsableId !== null && currentUserId === responsableId;
     const leadInfo = leadId
         ? `Lead #${escapeHtml(String(leadId))} · ${escapeHtml(leadStatus)} · ${escapeHtml(leadSource)}`
         : 'Sin lead vinculado aún';
@@ -891,6 +911,7 @@ function renderResumen(detalle, lead) {
                 <span class="badge text-bg-secondary">HC ${escapeHtml(String(hc))}</span>
                 <span class="badge text-bg-info">${escapeHtml(pipeline)}</span>
                 <span class="badge text-bg-light text-dark">${escapeHtml(prioridad)}</span>
+                ${assignedToMe ? '<span class="badge text-bg-primary">Asignada a ti</span>' : ''}
                 ${leadId ? `<span class="badge text-bg-primary">Lead #${escapeHtml(String(leadId))}</span>` : ''}
             </div>
             <div>
@@ -900,8 +921,11 @@ function renderResumen(detalle, lead) {
             <div class="row g-2 small text-muted">
                 <div class="col-6"><strong>Estado actual:</strong> ${escapeHtml(estado)}</div>
                 <div class="col-6"><strong>Afiliación:</strong> ${escapeHtml(afiliacion)}</div>
+                <div class="col-6"><strong>Pedido/Formulario:</strong> ${escapeHtml(String(pedidoSolicitud))}</div>
+                <div class="col-6"><strong>Fecha solicitud:</strong> ${escapeHtml(fechaSolicitud)}</div>
                 <div class="col-6"><strong>Responsable:</strong> ${escapeHtml(responsable)}</div>
                 <div class="col-6"><strong>Contacto:</strong> ${escapeHtml(telefono)} • ${escapeHtml(correo)}</div>
+                <div class="col-6"><strong>Fecha consulta:</strong> ${escapeHtml(fechaConsulta)}</div>
                 <div class="col-6"><strong>Notas:</strong> ${totalNotas}</div>
                 <div class="col-6"><strong>Adjuntos:</strong> ${totalAdjuntos}</div>
                 <div class="col-6"><strong>Tareas activas:</strong> ${tareasPendientes}/${tareasTotales}</div>
@@ -1068,6 +1092,7 @@ function renderTareas(tareas) {
         return;
     }
 
+    const currentUserId = resolveCurrentUserId();
     tareas.forEach(tarea => {
         const item = document.createElement('div');
         item.className = 'list-group-item crm-task-item d-flex justify-content-between align-items-start gap-3';
@@ -1079,10 +1104,21 @@ function renderTareas(tareas) {
         titulo.className = 'mb-1 d-flex align-items-center gap-2';
         titulo.textContent = tarea.titulo || 'Tarea sin título';
 
+        const assignedToId = parsePositiveInt(tarea.assigned_to);
+        const assignedToCurrentUser = currentUserId !== null && assignedToId !== null && currentUserId === assignedToId;
+
         const estadoBadge = document.createElement('span');
         estadoBadge.className = `badge ${estadoBadgeClass(tarea.estado)}`;
         estadoBadge.textContent = tarea.estado || 'pendiente';
         titulo.appendChild(estadoBadge);
+
+        if (assignedToCurrentUser) {
+            const assignedBadge = document.createElement('span');
+            assignedBadge.className = 'badge text-bg-primary';
+            assignedBadge.textContent = 'Asignada a ti';
+            titulo.appendChild(assignedBadge);
+            item.classList.add('border-start', 'border-3', 'border-primary');
+        }
 
         cuerpo.appendChild(titulo);
 
@@ -1096,9 +1132,10 @@ function renderTareas(tareas) {
         const meta = document.createElement('p');
         meta.className = 'mb-0 text-muted small';
         const asignado = tarea.assigned_name || 'Sin asignar';
+        const asignadoTexto = assignedToCurrentUser ? `${asignado} (tú)` : asignado;
         const creador = tarea.created_name || 'Equipo';
         const due = tarea.due_date ? formatDate(tarea.due_date) : 'Sin fecha límite';
-        meta.textContent = `Responsable: ${asignado} • Creador: ${creador} • Límite: ${due}`;
+        meta.textContent = `Responsable: ${asignadoTexto} • Creador: ${creador} • Límite: ${due}`;
         cuerpo.appendChild(meta);
 
         item.appendChild(cuerpo);

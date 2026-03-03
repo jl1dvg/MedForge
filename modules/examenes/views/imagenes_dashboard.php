@@ -2,6 +2,8 @@
 /** @var array<string, string> $filters */
 /** @var array<string, mixed> $dashboard */
 /** @var array<int, array<string, mixed>> $rows */
+/** @var array<int, array{value:string,label:string}> $afiliacionOptions */
+/** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
 
 if (!isset($scripts) || !is_array($scripts)) {
     $scripts = [];
@@ -13,6 +15,7 @@ if (!isset($filters) || !is_array($filters)) {
         'fecha_inicio' => '',
         'fecha_fin' => '',
         'afiliacion' => '',
+        'afiliacion_categoria' => '',
         'tipo_examen' => '',
         'paciente' => '',
         'estado_agenda' => '',
@@ -25,10 +28,13 @@ if (!isset($dashboard) || !is_array($dashboard)) {
 
 $dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
 $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+$afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas'], ['value' => 'iess', 'label' => 'IESS']];
+$afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']];
 $exportQuery = http_build_query([
     'fecha_inicio' => (string)($filters['fecha_inicio'] ?? ''),
     'fecha_fin' => (string)($filters['fecha_fin'] ?? ''),
     'afiliacion' => (string)($filters['afiliacion'] ?? ''),
+    'afiliacion_categoria' => (string)($filters['afiliacion_categoria'] ?? ''),
     'tipo_examen' => (string)($filters['tipo_examen'] ?? ''),
     'paciente' => (string)($filters['paciente'] ?? ''),
     'estado_agenda' => (string)($filters['estado_agenda'] ?? ''),
@@ -89,9 +95,25 @@ sort($estadoOpciones);
                 </div>
                 <div class="col-sm-6 col-md-2">
                     <label class="form-label">Afiliación</label>
-                    <input type="text" class="form-control" name="afiliacion"
-                           value="<?= htmlspecialchars($filters['afiliacion'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                           placeholder="IESS, ISSFA, ...">
+                    <select class="form-select" name="afiliacion">
+                        <?php foreach ($afiliacionOptions as $option): ?>
+                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion'] ?? '')) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Categoría afiliación</label>
+                    <select class="form-select" name="afiliacion_categoria">
+                        <?php foreach ($afiliacionCategoriaOptions as $option): ?>
+                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion_categoria'] ?? '')) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="col-sm-6 col-md-2">
                     <label class="form-label">Tipo examen</label>
@@ -166,6 +188,14 @@ sort($estadoOpciones);
                 <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesCitasRealizados"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title">Tráfico por día de semana</h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesTraficoSemana"></canvas>
                 </div>
             </div>
         </div>
@@ -267,6 +297,7 @@ sort($estadoOpciones);
             const serie = charts.serie_diaria || {};
             const trazabilidad = charts.trazabilidad || {};
             const citasRealizados = charts.citas_vs_realizados || {};
+            const traficoSemana = charts.trafico_dia_semana || {};
             const mix = charts.mix_codigos || {};
             const aging = charts.aging_backlog || {};
 
@@ -408,6 +439,32 @@ sort($estadoOpciones);
                     };
                 },
                 Array.isArray(citasRealizados.values) && citasRealizados.values.some(function (value) { return Number(value || 0) > 0; })
+            );
+
+            drawChart(
+                'chartImagenesTraficoSemana',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(traficoSemana.labels) ? traficoSemana.labels : [],
+                            datasets: [
+                                {
+                                    label: 'Estudios',
+                                    data: Array.isArray(traficoSemana.values) ? traficoSemana.values : [],
+                                    backgroundColor: '#6f42c1'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {display: false}},
+                            scales: {y: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                Array.isArray(traficoSemana.values) && traficoSemana.values.some(function (value) { return Number(value || 0) > 0; })
             );
         });
     })();

@@ -145,7 +145,6 @@
                 <li class="btn-group nav-item">
                     <a
                         href="#"
-                        data-toggle="control-sidebar"
                         title="Setting"
                         class="waves-effect full-screen waves-light btn-danger-light"
                     >

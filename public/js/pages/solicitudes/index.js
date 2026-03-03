@@ -1626,6 +1626,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     icon: 'mdi mdi-file-alert-outline',
                     tone: 'warning',
                 },
+                {
+                    key: 'crm_task',
+                    eventName: events.crm_task_reminder || 'crm.task-reminder',
+                    defaultLabel: 'Recordatorio de tarea CRM',
+                    icon: 'mdi mdi-format-list-checks',
+                    tone: 'warning',
+                },
             ];
 
             notificationPanel.setIntegrationWarning('');
@@ -1738,11 +1745,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 channel.bind(config.eventName, rawData => {
                     const data = rawData || {};
-                    const paciente = data.full_name || `Solicitud #${(data.id ?? '')}`;
+                    const currentUserId = Number.parseInt(String(window?.MEDF?.currentUser?.id ?? ''), 10);
+                    const assignedTo = Number.parseInt(String(data?.assigned_to ?? ''), 10);
+                    const audienceUserIds = Array.isArray(data?.audience_user_ids)
+                        ? data.audience_user_ids
+                            .map(value => Number.parseInt(String(value), 10))
+                            .filter(value => Number.isFinite(value) && value > 0)
+                        : [];
+                    const isAudienceUser = Number.isFinite(currentUserId)
+                        && currentUserId > 0
+                        && audienceUserIds.includes(currentUserId);
+                    if (
+                        config.key === 'crm_task'
+                        && Number.isFinite(currentUserId)
+                        && currentUserId > 0
+                        && !isAudienceUser
+                        && (!Number.isFinite(assignedTo) || assignedTo !== currentUserId)
+                    ) {
+                        return;
+                    }
+
+                    const paciente = config.key === 'crm_task'
+                        ? (data.assigned_name || data.full_name || 'Tarea CRM')
+                        : (data.full_name || `Solicitud #${(data.id ?? '')}`);
                     const reminderLabel = data.reminder_label || config.defaultLabel;
                     const reminderContext = data.reminder_context || '';
 
-                    const dueIso = data.due_at || data.fecha_programada || null;
+                    const dueIso = data.remind_at || data.due_at || data.fecha_programada || null;
                     const dueDate = dueIso ? new Date(dueIso) : null;
                     const dueLabel = dueDate && !Number.isNaN(dueDate.getTime())
                         ? dueDate.toLocaleString()
@@ -1754,22 +1783,34 @@ document.addEventListener('DOMContentLoaded', () => {
                         ? examExpiry.toLocaleDateString()
                         : '';
 
-                    const meta = [
-                        data.procedimiento || '',
-                        data.doctor ? `Dr(a). ${data.doctor}` : '',
-                        data.quirofano ? `Quirófano: ${data.quirofano}` : '',
-                        data.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
-                        reminderContext,
-                    ].filter(Boolean);
+                    const meta = config.key === 'crm_task'
+                        ? [
+                            data.title ? `Tarea: ${data.title}` : '',
+                            data.source_module ? `Módulo: ${String(data.source_module).toUpperCase()}` : '',
+                            data.source_ref_id ? `Referencia: ${data.source_ref_id}` : '',
+                            data.assigned_name ? `Responsable: ${data.assigned_name}` : '',
+                            data.escalated ? 'Escalada a supervisión' : '',
+                            data.task_url ? `Acceso: ${data.task_url}` : '',
+                            reminderContext,
+                        ].filter(Boolean)
+                        : [
+                            data.procedimiento || '',
+                            data.doctor ? `Dr(a). ${data.doctor}` : '',
+                            data.quirofano ? `Quirófano: ${data.quirofano}` : '',
+                            data.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
+                            reminderContext,
+                        ].filter(Boolean);
 
                     if (config.key === 'exams' && examLabel) {
                         meta.push(`Vencen: ${examLabel}`);
                     }
 
                     notificationPanel.pushPending({
-                        dedupeKey: `recordatorio-${config.key}-${data.id ?? Date.now()}-${dueIso ?? data.fecha_programada ?? ''}`,
+                        dedupeKey: `recordatorio-${config.key}-${data.task_id ?? data.id ?? Date.now()}-${data.reminder_id ?? dueIso ?? data.fecha_programada ?? ''}`,
                         title: paciente,
-                        message: reminderLabel,
+                        message: config.key === 'crm_task'
+                            ? `${reminderLabel}${data.title ? ` · ${data.title}` : ''}`
+                            : reminderLabel,
                         meta,
                         badges: [
                             dueLabel ? { label: dueLabel, variant: 'bg-primary text-white' } : null,
@@ -1782,9 +1823,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     const toastLabel = reminderLabel || 'Recordatorio';
-                    const mensaje = dueLabel
-                        ? `${toastLabel}: ${paciente} · ${dueLabel}`
-                        : `${toastLabel}: ${paciente}`;
+                    const mensaje = config.key === 'crm_task'
+                        ? `${toastLabel}: ${data.title || 'Tarea CRM'}${dueLabel ? ` · ${dueLabel}` : ''}`
+                        : (dueLabel
+                            ? `${toastLabel}: ${paciente} · ${dueLabel}`
+                            : `${toastLabel}: ${paciente}`);
                     showToast(mensaje, true, toastDurationMs);
                     maybeShowDesktopNotification(toastLabel, mensaje);
                 });

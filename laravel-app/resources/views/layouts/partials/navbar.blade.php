@@ -107,7 +107,7 @@
                         </ul>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/insumos', '/insumos/medicamentos', '/insumos/lentes']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/insumos', '/insumos/medicamentos', '/insumos/lentes', '/farmacia']) }}">
                         <a href="#">
                             <i class="mdi mdi-medical-bag"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>
                             <span>Inventario y logística</span>
@@ -117,10 +117,11 @@
                             <li class="{{ $isActive('/insumos') }}"><a href="/insumos"><i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos</a></li>
                             <li class="{{ $isActive('/insumos/medicamentos') }}"><a href="/insumos/medicamentos"><i class="mdi mdi-pill"></i>Lista de Medicamentos</a></li>
                             <li class="{{ $isActive('/insumos/lentes') }}"><a href="/insumos/lentes"><i class="mdi mdi-glasses"></i>Catálogo de Lentes</a></li>
+                            <li class="{{ $isActive('/farmacia') }}"><a href="/farmacia"><i class="mdi mdi-pill"></i>Dashboard farmacia</a></li>
                         </ul>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/examenes', '/imagenes/examenes-realizados']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard']) }}">
                         <a href="#">
                             <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
                             <span>Imágenes</span>
@@ -129,6 +130,7 @@
                         <ul class="treeview-menu">
                             <li class="{{ $isActive('/examenes') }}"><a href="/examenes"><i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)</a></li>
                             <li class="{{ $isActive('/imagenes/examenes-realizados') }}"><a href="/imagenes/examenes-realizados"><i class="mdi mdi-file-image"></i>Exámenes realizados</a></li>
+                            <li class="{{ $isActive('/imagenes/dashboard') }}"><a href="/imagenes/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard imágenes</a></li>
                         </ul>
                     </li>
 

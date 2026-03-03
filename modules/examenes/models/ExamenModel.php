@@ -9,6 +9,20 @@ use PDO;
 
 class ExamenModel
 {
+    private const IESS_AFFILIATIONS = [
+        'contribuyente voluntario',
+        'conyuge',
+        'conyuge pensionista',
+        'seguro campesino',
+        'seguro campesino jubilado',
+        'seguro general',
+        'seguro general jubilado',
+        'seguro general por montepio',
+        'seguro general tiempo parcial',
+        'hijos dependientes',
+        'sin cobertura',
+    ];
+
     private PDO $db;
     /** @var array<string, bool>|null */
     private ?array $examenColumns = null;
@@ -1364,6 +1378,7 @@ class ExamenModel
      *     fecha_inicio?: string,
      *     fecha_fin?: string,
      *     afiliacion?: string,
+     *     afiliacion_categoria?: string,
      *     tipo_examen?: string,
      *     paciente?: string,
      *     estado_agenda?: string
@@ -1371,6 +1386,10 @@ class ExamenModel
      */
     public function fetchImagenesRealizadas(array $filters = [], bool $includeFacturado = false): array
     {
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
+
         $facturadoSelect = $includeFacturado
             ? "CASE WHEN bm.form_id IS NULL THEN 0 ELSE 1 END AS facturado"
             : "0 AS facturado";
@@ -1394,6 +1413,8 @@ class ExamenModel
                     ELSE NULL
                 END AS fecha_examen,
                 COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación') AS afiliacion,
+                {$afiliacionKeyExpr} AS afiliacion_key,
+                {$categoriaContext['expr']} AS afiliacion_categoria,
                 CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS full_name,
                 COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number) AS cedula,
                 NULLIF(TRIM(pp.procedimiento_proyectado), '') AS tipo_examen,
@@ -1409,6 +1430,7 @@ class ExamenModel
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             LEFT JOIN imagenes_informes ii ON ii.form_id = pp.form_id
+            {$categoriaContext['join']}
             {$facturadoJoin}
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
@@ -1422,9 +1444,16 @@ class ExamenModel
             $params[':fecha_fin'] = $filters['fecha_fin'];
         }
 
-        if (!empty($filters['afiliacion'])) {
-            $sql .= " AND COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '') LIKE :afiliacion";
-            $params[':afiliacion'] = '%' . $filters['afiliacion'] . '%';
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string)($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
         }
 
         if (!empty($filters['tipo_examen'])) {
@@ -1451,6 +1480,249 @@ class ExamenModel
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function getImagenesAfiliacionOptions(string $startDate, string $endDate): array
+    {
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
+        $afiliacionLabelExpr = $this->afiliacionLabelExpr($rawAfiliacionExpr);
+
+        $sql = <<<SQL
+            SELECT x.value_key, MAX(x.value_label) AS value_label
+            FROM (
+                SELECT
+                    {$afiliacionKeyExpr} AS value_key,
+                    {$afiliacionLabelExpr} AS value_label
+                FROM procedimiento_proyectado pp
+                LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+                WHERE pp.fecha BETWEEN :fecha_inicio AND :fecha_fin
+                  AND pp.estado_agenda IS NOT NULL
+                  AND TRIM(pp.estado_agenda) <> ''
+                  AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'
+            ) x
+            GROUP BY x.value_key
+            ORDER BY value_label ASC
+        SQL;
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':fecha_inicio' => $startDate,
+            ':fecha_fin' => $endDate,
+        ]);
+
+        $options = [
+            ['value' => '', 'label' => 'Todas'],
+            ['value' => 'iess', 'label' => 'IESS'],
+        ];
+        $seen = [
+            '' => true,
+            'iess' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $key = trim((string)($row['value_key'] ?? ''));
+            $label = trim((string)($row['value_label'] ?? ''));
+            if ($key === '' || $label === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $options[] = [
+                'value' => $key,
+                'label' => $label,
+            ];
+            $seen[$key] = true;
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function getImagenesAfiliacionCategoriaOptions(string $startDate, string $endDate): array
+    {
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
+
+        $sql = <<<SQL
+            SELECT
+                {$categoriaContext['expr']} AS categoria,
+                COUNT(*) AS total
+            FROM procedimiento_proyectado pp
+            LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+            {$categoriaContext['join']}
+            WHERE pp.fecha BETWEEN :fecha_inicio AND :fecha_fin
+              AND pp.estado_agenda IS NOT NULL
+              AND TRIM(pp.estado_agenda) <> ''
+              AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'
+            GROUP BY {$categoriaContext['expr']}
+            ORDER BY total DESC
+        SQL;
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':fecha_inicio' => $startDate,
+            ':fecha_fin' => $endDate,
+        ]);
+
+        $options = [
+            ['value' => '', 'label' => 'Todas las categorías'],
+            ['value' => 'publico', 'label' => 'Pública'],
+            ['value' => 'privado', 'label' => 'Privada'],
+        ];
+        $seen = [
+            '' => true,
+            'publico' => true,
+            'privado' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $key = trim((string)($row['categoria'] ?? ''));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $options[] = [
+                'value' => $key,
+                'label' => $this->formatCategoriaLabel($key),
+            ];
+            $seen[$key] = true;
+        }
+
+        return $options;
+    }
+
+    private function normalizeAfiliacionFilter(string $afiliacionFilter): string
+    {
+        $value = strtolower(trim($afiliacionFilter));
+        if ($value === 'sin convenio') {
+            return 'sin_convenio';
+        }
+
+        return $value;
+    }
+
+    private function normalizeAfiliacionCategoriaFilter(string $categoryFilter): string
+    {
+        $value = strtolower(trim($categoryFilter));
+        if ($value === 'publica') {
+            return 'publico';
+        }
+        if ($value === 'privada') {
+            return 'privado';
+        }
+
+        return $value;
+    }
+
+    private function formatCategoriaLabel(string $key): string
+    {
+        return match ($key) {
+            'publico' => 'Pública',
+            'privado' => 'Privada',
+            'particular' => 'Particular',
+            'fundacional' => 'Fundacional',
+            'otros' => 'Otros',
+            default => ucwords(str_replace('_', ' ', $key)),
+        };
+    }
+
+    private function afiliacionGroupKeyExpr(string $rawAffiliationExpr): string
+    {
+        $col = "LOWER(TRIM(COALESCE({$rawAffiliationExpr}, '')))";
+        return "CASE
+            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'iess'
+            WHEN {$col} = '' THEN 'sin_convenio'
+            ELSE {$col}
+        END";
+    }
+
+    private function afiliacionLabelExpr(string $rawAffiliationExpr): string
+    {
+        $col = "LOWER(TRIM(COALESCE({$rawAffiliationExpr}, '')))";
+        return "CASE
+            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'IESS'
+            WHEN {$col} = '' THEN 'Sin convenio'
+            ELSE TRIM({$rawAffiliationExpr})
+        END";
+    }
+
+    private function iessAffiliationsSqlList(): string
+    {
+        return "'" . implode("','", self::IESS_AFFILIATIONS) . "'";
+    }
+
+    /**
+     * @return array{join:string,expr:string}
+     */
+    private function resolveAfiliacionCategoriaContext(string $rawAffiliationExpr, string $mapAlias = 'acm'): array
+    {
+        $afiliacionNormExpr = $this->normalizeSqlKey($rawAffiliationExpr);
+        $fallbackExpr = "CASE
+            WHEN {$afiliacionNormExpr} = '' THEN 'otros'
+            WHEN {$afiliacionNormExpr} LIKE '%particular%' THEN 'particular'
+            WHEN {$afiliacionNormExpr} LIKE '%fundacion%' OR {$afiliacionNormExpr} LIKE '%fundacional%' THEN 'fundacional'
+            WHEN {$afiliacionNormExpr} REGEXP 'iess|issfa|isspol|seguro_general|seguro_campesino|jubilado|montepio|contribuyente|voluntario|publico' THEN 'publico'
+            ELSE 'privado'
+        END";
+
+        if (
+            $this->tableExists('afiliacion_categoria_map')
+            && $this->columnExists('afiliacion_categoria_map', 'afiliacion_norm')
+            && $this->columnExists('afiliacion_categoria_map', 'categoria')
+        ) {
+            $join = "LEFT JOIN afiliacion_categoria_map {$mapAlias}
+                     ON ({$mapAlias}.afiliacion_norm COLLATE utf8mb4_unicode_ci)
+                      = ({$afiliacionNormExpr} COLLATE utf8mb4_unicode_ci)";
+            $expr = "LOWER(COALESCE(NULLIF({$mapAlias}.categoria, ''), {$fallbackExpr}))";
+
+            return ['join' => $join, 'expr' => $expr];
+        }
+
+        return ['join' => '', 'expr' => $fallbackExpr];
+    }
+
+    private function normalizeSqlText(string $expr): string
+    {
+        return "LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$expr}, 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U'), 'Ñ', 'N'), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u'), 'ñ', 'n'))";
+    }
+
+    private function normalizeSqlKey(string $expr): string
+    {
+        $normalized = $this->normalizeSqlText($expr);
+
+        return "REPLACE(REPLACE({$normalized}, ' ', '_'), '-', '_')";
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
+        );
+        $stmt->execute([':table' => $table]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :table
+               AND COLUMN_NAME = :column"
+        );
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+
+        return (int)$stmt->fetchColumn() > 0;
     }
 
     public function actualizarProcedimientoProyectado(int $id, string $tipoExamen): bool

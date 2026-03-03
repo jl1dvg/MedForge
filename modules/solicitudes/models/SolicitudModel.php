@@ -641,9 +641,7 @@ class SolicitudModel
         $stmt = $this->db->prepare(
             'UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id'
         );
-        $stmt->execute($params);
-
-        return $stmt->rowCount() > 0;
+        return $stmt->execute($params);
     }
 
     public function obtenerSolicitudIdPorFormHc(string $formId, string $hcNumber): ?int

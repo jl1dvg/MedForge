@@ -1,374 +1,349 @@
 <?php
 /**
- * @var array $filtros
- * @var array $resumen
- * @var array $porMes
- * @var array $porProducto
- * @var array $porDoctor
- * @var array $porProductoDoctor
- * @var array $detalle
- * @var array $doctores
+ * @var array<string, string> $filters
+ * @var array<string, mixed> $dashboard
+ * @var array<int, array<string, mixed>> $rows
+ * @var array<int, string> $doctorOptions
+ * @var array<int, string> $afiliacionOptions
+ * @var array<int, string> $localidadOptions
+ * @var array<int, string> $departamentoOptions
  */
-$totalRecetas = (int)($resumen['total_recetas'] ?? 0);
-$totalUnidades = (int)($resumen['total_unidades'] ?? 0);
-$totalDoctores = (int)($resumen['total_doctores'] ?? 0);
-$totalProductos = (int)($resumen['total_productos'] ?? 0);
 
-$porProductoTop = array_slice($porProducto ?? [], 0, 10);
-$porDoctorTop = array_slice($porDoctor ?? [], 0, 10);
-$porMesChart = array_reverse($porMes ?? []);
-
-$chartMonthly = array_map(static function (array $row): array {
-    return [
-        'label' => $row['mes'] ?? '',
-        'recetas' => (int)($row['total_recetas'] ?? 0),
-        'unidades' => (int)($row['total_unidades'] ?? 0),
+if (!isset($filters) || !is_array($filters)) {
+    $filters = [
+        'fecha_inicio' => '',
+        'fecha_fin' => '',
+        'doctor' => '',
+        'afiliacion' => '',
+        'producto' => '',
+        'localidad' => '',
+        'departamento' => '',
     ];
-}, $porMesChart);
+}
 
-$chartProducts = array_map(static function (array $row): array {
-    return [
-        'label' => $row['producto'] ?? '',
-        'recetas' => (int)($row['total_recetas'] ?? 0),
-        'unidades' => (int)($row['total_unidades'] ?? 0),
-    ];
-}, $porProductoTop);
+if (!isset($dashboard) || !is_array($dashboard)) {
+    $dashboard = ['cards' => [], 'meta' => [], 'charts' => []];
+}
 
-$chartDoctors = array_map(static function (array $row): array {
-    return [
-        'label' => $row['doctor'] ?? 'Sin médico',
-        'recetas' => (int)($row['total_recetas'] ?? 0),
-        'unidades' => (int)($row['total_unidades'] ?? 0),
-    ];
-}, $porDoctorTop);
+$dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
+$dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+$rows = is_array($rows ?? null) ? $rows : [];
+$doctorOptions = is_array($doctorOptions ?? null) ? $doctorOptions : [];
+$afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [];
+$localidadOptions = is_array($localidadOptions ?? null) ? $localidadOptions : [];
+$departamentoOptions = is_array($departamentoOptions ?? null) ? $departamentoOptions : [];
+
+$exportQuery = http_build_query([
+    'fecha_inicio' => (string)($filters['fecha_inicio'] ?? ''),
+    'fecha_fin' => (string)($filters['fecha_fin'] ?? ''),
+    'doctor' => (string)($filters['doctor'] ?? ''),
+    'afiliacion' => (string)($filters['afiliacion'] ?? ''),
+    'producto' => (string)($filters['producto'] ?? ''),
+    'localidad' => (string)($filters['localidad'] ?? ''),
+    'departamento' => (string)($filters['departamento'] ?? ''),
+]);
+
+$dashboardPayload = json_encode(
+    $dashboard,
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+) ?: '{"cards":[],"meta":[],"charts":{}}';
+
+$inlineScripts = array_merge($inlineScripts ?? [], [
+    "window.farmaciaDashboardData = {$dashboardPayload};",
+    "if (window.initFarmaciaDashboard) { window.initFarmaciaDashboard(window.farmaciaDashboardData); }",
+]);
 ?>
 
-<div id="farmacia-dashboard"
-     data-monthly='<?= htmlspecialchars(json_encode($chartMonthly, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>'
-     data-products='<?= htmlspecialchars(json_encode($chartProducts, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>'
-     data-doctors='<?= htmlspecialchars(json_encode($chartDoctors, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>'>
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
-            <h3 class="page-title">Farmacia</h3>
-            <div class="d-inline-block align-items-center">
-                <nav>
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item">
-                            <a href="/dashboard"><i class="mdi mdi-home-outline"></i></a>
-                        </li>
-                        <li class="breadcrumb-item active" aria-current="page">Estadísticas de recetas</li>
-                    </ol>
-                </nav>
-            </div>
+            <h3 class="page-title">Dashboard de Recetas</h3>
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
+                <li class="breadcrumb-item"><a href="/farmacia">Farmacia</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+            </ol>
         </div>
     </div>
 </div>
 
 <section class="content">
-    <div class="row">
-        <div class="col-12">
-            <form class="card card-body mb-3" method="get" action="/farmacia">
-                <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label mb-0">Desde</label>
-                        <input type="date" name="fecha_inicio" class="form-control form-control-sm"
-                               value="<?= htmlspecialchars($filtros['fecha_inicio'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label mb-0">Hasta</label>
-                        <input type="date" name="fecha_fin" class="form-control form-control-sm"
-                               value="<?= htmlspecialchars($filtros['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label mb-0">Médico</label>
-                        <select name="doctor" class="form-select form-select-sm">
-                            <option value="">— Todos —</option>
-                            <?php foreach ($doctores as $doctor): ?>
-                                <?php $selected = ($filtros['doctor'] ?? '') === $doctor ? 'selected' : ''; ?>
-                                <option value="<?= htmlspecialchars($doctor, ENT_QUOTES, 'UTF-8') ?>" <?= $selected ?>>
-                                    <?= htmlspecialchars($doctor, ENT_QUOTES, 'UTF-8') ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label mb-0">Medicamento</label>
-                        <input type="text" name="producto" class="form-control form-control-sm"
-                               placeholder="Ej: paracetamol"
-                               value="<?= htmlspecialchars($filtros['producto'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    </div>
-                    <div class="col-12 d-flex gap-2">
-                        <button class="btn btn-primary btn-sm" type="submit">
-                            <i class="mdi mdi-filter"></i> Aplicar filtros
-                        </button>
-                        <a class="btn btn-outline-secondary btn-sm" href="/farmacia">Limpiar</a>
-                    </div>
+    <div class="box mb-3">
+        <div class="box-header with-border d-flex justify-content-between align-items-center">
+            <h4 class="box-title mb-0">Filtros</h4>
+            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                <a href="/farmacia/dashboard/export/pdf<?= $exportQuery !== '' ? ('?' . htmlspecialchars($exportQuery, ENT_QUOTES, 'UTF-8')) : '' ?>"
+                   class="btn btn-outline-danger btn-sm">
+                    <i class="mdi mdi-file-pdf-box me-1"></i> Descargar PDF
+                </a>
+                <a href="/farmacia/dashboard/export/excel<?= $exportQuery !== '' ? ('?' . htmlspecialchars($exportQuery, ENT_QUOTES, 'UTF-8')) : '' ?>"
+                   class="btn btn-outline-success btn-sm">
+                    <i class="mdi mdi-file-excel-box me-1"></i> Descargar Excel
+                </a>
+            </div>
+        </div>
+        <div class="box-body">
+            <form class="row g-2 align-items-end" method="get">
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Desde</label>
+                    <input type="date" class="form-control" name="fecha_inicio"
+                           value="<?= htmlspecialchars($filters['fecha_inicio'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" class="form-control" name="fecha_fin"
+                           value="<?= htmlspecialchars($filters['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Médico</label>
+                    <select class="form-select" name="doctor">
+                        <option value="">Todos</option>
+                        <?php foreach ($doctorOptions as $doctor): ?>
+                            <option value="<?= htmlspecialchars($doctor, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['doctor'] ?? '') === (string)$doctor ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($doctor, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Localidad</label>
+                    <select class="form-select" name="localidad">
+                        <option value="">Todas</option>
+                        <?php foreach ($localidadOptions as $localidad): ?>
+                            <option value="<?= htmlspecialchars($localidad, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['localidad'] ?? '') === (string)$localidad ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($localidad, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Departamento</label>
+                    <select class="form-select" name="departamento">
+                        <option value="">Todos</option>
+                        <?php foreach ($departamentoOptions as $departamento): ?>
+                            <option value="<?= htmlspecialchars($departamento, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['departamento'] ?? '') === (string)$departamento ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($departamento, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Afiliación</label>
+                    <select class="form-select" name="afiliacion">
+                        <option value="">Todas</option>
+                        <?php foreach ($afiliacionOptions as $afiliacion): ?>
+                            <option value="<?= htmlspecialchars($afiliacion, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['afiliacion'] ?? '') === (string)$afiliacion ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($afiliacion, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-12 col-md-4">
+                    <label class="form-label">Producto</label>
+                    <input type="text" class="form-control" name="producto"
+                           value="<?= htmlspecialchars($filters['producto'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                           placeholder="Ej: Paracetamol">
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="mdi mdi-filter-variant"></i> Aplicar filtros
+                    </button>
+                    <a href="/farmacia" class="btn btn-outline-secondary btn-sm">
+                        <i class="mdi mdi-close-circle-outline"></i> Limpiar
+                    </a>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="row">
-        <?php
-        $cards = [
-            ['label' => 'Recetas', 'value' => number_format($totalRecetas, 0, '', '.')],
-            ['label' => 'Unidades', 'value' => number_format($totalUnidades, 0, '', '.')],
-            ['label' => 'Médicos', 'value' => number_format($totalDoctores, 0, '', '.')],
-            ['label' => 'Medicamentos', 'value' => number_format($totalProductos, 0, '', '.')],
-        ];
-        ?>
-        <?php foreach ($cards as $card): ?>
-            <div class="col-md-3 col-sm-6">
-                <div class="box text-center">
-                    <div class="box-body">
-                        <h2 class="mb-0"><?= htmlspecialchars($card['value'], ENT_QUOTES, 'UTF-8') ?></h2>
-                        <p class="text-muted mb-0"><?= htmlspecialchars($card['label'], ENT_QUOTES, 'UTF-8') ?></p>
-                    </div>
-                </div>
-            </div>
+    <div class="farmacia-kpi-grid mb-3">
+        <?php foreach ($dashboardCards as $card): ?>
+            <article class="farmacia-kpi-card">
+                <p class="farmacia-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                <h4 class="farmacia-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
+                <p class="farmacia-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+            </article>
         <?php endforeach; ?>
     </div>
 
-    <div class="row">
-        <div class="col-lg-4">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Evolución mensual</h4>
-                </div>
-                <div class="box-body" style="height: 280px;">
-                    <canvas id="chartFarmaciaMes"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Top medicamentos</h4>
-                </div>
-                <div class="box-body" style="height: 280px;">
-                    <canvas id="chartFarmaciaProductos"></canvas>
+    <div class="d-flex flex-wrap gap-3 align-items-center text-muted small mb-3">
+        <span><strong>TAT promedio:</strong> <?= htmlspecialchars(($dashboardMeta['tat_promedio_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_promedio_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>TAT mediana:</strong> <?= htmlspecialchars(($dashboardMeta['tat_mediana_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_mediana_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>TAT P90:</strong> <?= htmlspecialchars(($dashboardMeta['tat_p90_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_p90_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>SLA <= 24h:</strong> <?= htmlspecialchars(($dashboardMeta['sla_24h_pct'] ?? null) !== null ? number_format((float)$dashboardMeta['sla_24h_pct'], 1) . '%' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Serie diaria (ítems y unidades)</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaSerieDiaria"></canvas>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Top médicos</h4>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Top productos</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaTopProductos"></canvas>
                 </div>
-                <div class="box-body" style="height: 280px;">
-                    <canvas id="chartFarmaciaDoctores"></canvas>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Top médicos</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaTopDoctores"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Distribución por vía</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaVias"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Distribución por afiliación</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaAfiliacion"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Distribución por localidad</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaLocalidad"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Distribución por departamento</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaDepartamento"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-6">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Recetas por mes</h4>
-                </div>
-                <div class="box-body table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead>
-                        <tr>
-                            <th>Mes</th>
-                            <th>Recetas</th>
-                            <th>Unidades</th>
-                            <th>% del total</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (!empty($porMes)): ?>
-                            <?php foreach ($porMes as $row): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['mes'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <?php
-                                    $recetas = (int)($row['total_recetas'] ?? 0);
-                                    $participacion = $totalRecetas > 0 ? round(($recetas / $totalRecetas) * 100, 1) : 0;
-                                    ?>
-                                    <td><?= number_format($recetas, 0, '', '.') ?></td>
-                                    <td><?= number_format((int)($row['total_unidades'] ?? 0), 0, '', '.') ?></td>
-                                    <td><?= htmlspecialchars((string) $participacion, ENT_QUOTES, 'UTF-8') ?>%</td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="4" class="text-muted text-center">Sin datos para los filtros actuales.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+    <div class="box">
+        <div class="box-header with-border">
+            <h4 class="box-title">Detalle de recetas</h4>
         </div>
-        <div class="col-lg-6">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Medicamentos más recetados</h4>
-                </div>
-                <div class="box-body table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead>
+        <div class="box-body table-responsive">
+            <table class="table table-striped table-sm">
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Localidad</th>
+                    <th>Departamento</th>
+                    <th>Médico</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Unid. farmacia</th>
+                    <th>Diagnóstico</th>
+                    <th>Paciente</th>
+                    <th>Cédula paciente</th>
+                    <th>Edad</th>
+                    <th>Form ID</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!empty($rows)): ?>
+                    <?php foreach ($rows as $row): ?>
                         <tr>
-                            <th>Medicamento</th>
-                            <th>Recetas</th>
-                            <th>Unidades</th>
-                            <th>% del total</th>
+                            <td><?= htmlspecialchars((string)($row['fecha_receta'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['localidad'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['departamento'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['doctor'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['producto'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['cantidad'] ?? 0), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['total_farmacia'] ?? 0), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['diagnostico'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['paciente_nombre'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['cedula_paciente'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['edad_paciente'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                         </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (!empty($porProducto)): ?>
-                            <?php foreach ($porProducto as $row): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['producto'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <?php
-                                    $recetas = (int)($row['total_recetas'] ?? 0);
-                                    $participacion = $totalRecetas > 0 ? round(($recetas / $totalRecetas) * 100, 1) : 0;
-                                    ?>
-                                    <td><?= number_format($recetas, 0, '', '.') ?></td>
-                                    <td><?= number_format((int)($row['total_unidades'] ?? 0), 0, '', '.') ?></td>
-                                    <td><?= htmlspecialchars((string) $participacion, ENT_QUOTES, 'UTF-8') ?>%</td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="4" class="text-muted text-center">Sin datos para los filtros actuales.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-6">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Recetas por médico</h4>
-                </div>
-                <div class="box-body table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead>
-                        <tr>
-                            <th>Médico</th>
-                            <th>Recetas</th>
-                            <th>Unidades</th>
-                            <th>% del total</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (!empty($porDoctor)): ?>
-                            <?php foreach ($porDoctor as $row): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['doctor'] ?? 'Sin médico', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <?php
-                                    $recetas = (int)($row['total_recetas'] ?? 0);
-                                    $participacion = $totalRecetas > 0 ? round(($recetas / $totalRecetas) * 100, 1) : 0;
-                                    ?>
-                                    <td><?= number_format($recetas, 0, '', '.') ?></td>
-                                    <td><?= number_format((int)($row['total_unidades'] ?? 0), 0, '', '.') ?></td>
-                                    <td><?= htmlspecialchars((string) $participacion, ENT_QUOTES, 'UTF-8') ?>%</td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="4" class="text-muted text-center">Sin datos para los filtros actuales.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-6">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Médico + medicamento</h4>
-                </div>
-                <div class="box-body table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead>
-                        <tr>
-                            <th>Médico</th>
-                            <th>Medicamento</th>
-                            <th>Recetas</th>
-                            <th>Unidades</th>
-                            <th>% del total</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (!empty($porProductoDoctor)): ?>
-                            <?php foreach ($porProductoDoctor as $row): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['doctor'] ?? 'Sin médico', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars($row['producto'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <?php
-                                    $recetas = (int)($row['total_recetas'] ?? 0);
-                                    $participacion = $totalRecetas > 0 ? round(($recetas / $totalRecetas) * 100, 1) : 0;
-                                    ?>
-                                    <td><?= number_format($recetas, 0, '', '.') ?></td>
-                                    <td><?= number_format((int)($row['total_unidades'] ?? 0), 0, '', '.') ?></td>
-                                    <td><?= htmlspecialchars((string) $participacion, ENT_QUOTES, 'UTF-8') ?>%</td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="5" class="text-muted text-center">Sin datos para los filtros actuales.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12">
-            <div class="box">
-                <div class="box-header with-border">
-                    <h4 class="box-title">Detalle de recetas</h4>
-                </div>
-                <div class="box-body table-responsive">
-                    <table class="table table-striped table-sm">
-                        <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Médico</th>
-                            <th>Paciente</th>
-                            <th>Medicamento</th>
-                            <th>Dosis</th>
-                            <th>Cantidad</th>
-                            <th>Unidades farmacia</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <?php if (!empty($detalle)): ?>
-                            <?php foreach ($detalle as $row): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['fecha_receta'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars($row['doctor'] ?? 'Sin médico', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars($row['hc_number'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars($row['producto'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars($row['dosis'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= number_format((int)($row['cantidad'] ?? 0), 0, '', '.') ?></td>
-                                    <td><?= number_format((int)($row['total_farmacia'] ?? 0), 0, '', '.') ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="7" class="text-muted text-center">Sin datos para los filtros actuales.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="12" class="text-muted text-center">Sin datos para los filtros actuales.</td>
+                    </tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </section>
-</div>
+
+<style>
+    .farmacia-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .farmacia-kpi-card {
+        border: 1px solid #e7ebf0;
+        border-radius: 0.75rem;
+        padding: 0.75rem 0.9rem;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .farmacia-kpi-label {
+        font-size: 0.78rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    .farmacia-kpi-value {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #0b4f9c;
+    }
+
+    .farmacia-kpi-hint {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    .farmacia-chart-card {
+        border: 1px solid #e7ebf0;
+        border-radius: 0.75rem;
+        padding: 0.75rem 0.9rem;
+        background: #fff;
+    }
+
+    .farmacia-chart-title {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+        color: #34495e;
+    }
+
+    .farmacia-chart-wrap {
+        position: relative;
+        height: 290px;
+        max-height: 290px;
+    }
+
+    .farmacia-chart-wrap canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+
+    @media (max-width: 991.98px) {
+        .farmacia-chart-wrap {
+            height: 240px;
+            max-height: 240px;
+        }
+    }
+</style>

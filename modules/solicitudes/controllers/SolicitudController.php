@@ -2552,12 +2552,19 @@ class SolicitudController extends BaseController
         }
 
         $seleccion = null;
+        $source = null;
         if ($solicitudId) {
             $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccion($solicitudId);
+            if ($seleccion) {
+                $source = 'solicitud_preseleccion';
+            }
         }
 
         if (!$seleccion) {
             $seleccion = $this->solicitudModel->obtenerDerivacionPreseleccionPorFormHc($formId, $hcNumber);
+            if ($seleccion) {
+                $source = 'form_hc_preseleccion';
+            }
         }
 
         if (!empty($seleccion['derivacion_pedido_id'])) {
@@ -2570,6 +2577,7 @@ class SolicitudController extends BaseController
                     'fecha_vigencia' => $seleccion['derivacion_fecha_vigencia_sel'] ?? null,
                     'prefactura' => $seleccion['derivacion_prefactura'] ?? null,
                 ],
+                'source' => $source ?? 'unknown',
                 'needs_selection' => false,
                 'options' => [],
             ]);

@@ -198,7 +198,7 @@
                 </li>
                 <!-- Control Sidebar Toggle Button -->
                 <li class="btn-group nav-item">
-                    <a href="#" data-toggle="control-sidebar" title="Setting"
+                    <a href="#" title="Setting"
                        class="waves-effect full-screen waves-light btn-danger-light">
                         <i class="icon-Settings1"><span class="path1"></span><span class="path2"></span></i>
                     </a>

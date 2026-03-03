@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\CronManager\Services;
 
+use Core\Permissions;
 use Controllers\DerivacionController;
 use DateInterval;
 use DateTimeImmutable;
@@ -16,6 +17,7 @@ use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
+use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\Reporting\Services\AsyncReportQueueService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
@@ -196,6 +198,24 @@ class CronRunner
                 'interval' => 600,
                 'callback' => function (): array {
                     return $this->runRemindersTask();
+                },
+            ],
+            [
+                'slug' => 'crm-task-reminders',
+                'name' => 'Recordatorios de tareas CRM',
+                'description' => 'Dispara avisos internos y por correo cuando vence remind_at de una tarea CRM.',
+                'interval' => 60,
+                'callback' => function (): array {
+                    return $this->runCrmTaskRemindersTask();
+                },
+            ],
+            [
+                'slug' => 'crm-task-supervisor-escalations',
+                'name' => 'Escalamientos de tareas CRM',
+                'description' => 'Notifica a supervisores cuando una tarea CRM sigue sin trámite tras su vencimiento.',
+                'interval' => 300,
+                'callback' => function (): array {
+                    return $this->runCrmTaskSupervisorEscalationsTask();
                 },
             ],
             [
@@ -460,6 +480,698 @@ class CronRunner
                 'sent' => count($sent),
             ],
         ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runCrmTaskRemindersTask(): array
+    {
+        $now = new DateTimeImmutable('now');
+        $sql = <<<'SQL'
+            SELECT
+                r.id AS reminder_id,
+                r.task_id,
+                r.company_id,
+                r.remind_at,
+                r.channel,
+                t.title,
+                t.description,
+                t.status,
+                t.assigned_to,
+                t.source_module,
+                t.source_ref_id,
+                t.entity_type,
+                t.entity_id,
+                t.hc_number,
+                t.form_id,
+                t.due_at,
+                t.due_date,
+                u.nombre AS assigned_name,
+                u.email AS assigned_email
+            FROM crm_task_reminders r
+            INNER JOIN crm_tasks t
+                ON t.id = r.task_id
+               AND t.company_id = r.company_id
+            LEFT JOIN users u ON u.id = t.assigned_to
+            WHERE r.remind_at <= :now
+              AND COALESCE(t.status, 'pendiente') NOT IN ('completada', 'cancelada')
+            ORDER BY r.remind_at ASC
+            LIMIT 120
+        SQL;
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':now' => $now->format('Y-m-d H:i:s')]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if ($rows === []) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No hay recordatorios de tareas CRM pendientes para enviar.',
+            ];
+        }
+
+        $pusher = new PusherConfigService($this->pdo);
+        $pusherConfig = $pusher->getConfig();
+        $mailer = new NotificationMailer($this->pdo);
+        $mailerConfigured = $mailer->isConfigured();
+        $notificationChannels = $pusher->getNotificationChannels();
+
+        $deleteStmt = $this->pdo->prepare('DELETE FROM crm_task_reminders WHERE id = :id');
+
+        $sentInApp = 0;
+        $sentEmail = 0;
+        $skippedNoAssignee = 0;
+        $skippedNoEmail = 0;
+        $skippedInAppDisabled = 0;
+        $skippedEmailDisabled = 0;
+        $failed = 0;
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($rows as $row) {
+            $reminderId = (int) ($row['reminder_id'] ?? 0);
+            if ($reminderId <= 0) {
+                continue;
+            }
+
+            $channel = strtolower(trim((string) ($row['channel'] ?? 'in_app')));
+            $assignedTo = (int) ($row['assigned_to'] ?? 0);
+            $assignedEmail = trim((string) ($row['assigned_email'] ?? ''));
+
+            $isSent = false;
+            $shouldDelete = false;
+
+            if ($channel === 'in_app') {
+                if ($assignedTo <= 0) {
+                    $skippedNoAssignee++;
+                    $shouldDelete = true;
+                } elseif (empty($pusherConfig['enabled'])) {
+                    $skippedInAppDisabled++;
+                    $shouldDelete = true;
+                } else {
+                    $payload = $this->buildCrmTaskReminderPayload($row, $notificationChannels);
+                    $isSent = $pusher->trigger($payload, null, PusherConfigService::EVENT_CRM_TASK_REMINDER);
+                    if ($isSent) {
+                        $sentInApp++;
+                        $shouldDelete = true;
+                    } else {
+                        $failed++;
+                        if (count($errors) < 8) {
+                            $errors[] = [
+                                'reminder_id' => $reminderId,
+                                'task_id' => (int) ($row['task_id'] ?? 0),
+                                'channel' => 'in_app',
+                                'message' => 'No se pudo emitir el evento Pusher para el recordatorio interno.',
+                            ];
+                        }
+                    }
+                }
+            } elseif ($channel === 'email') {
+                if ($assignedEmail === '' || filter_var($assignedEmail, FILTER_VALIDATE_EMAIL) === false) {
+                    $skippedNoEmail++;
+                    $shouldDelete = true;
+                } elseif (!$mailerConfigured) {
+                    $skippedEmailDisabled++;
+                    $shouldDelete = true;
+                } else {
+                    $subject = 'Recordatorio de tarea CRM: ' . trim((string) ($row['title'] ?? 'Tarea'));
+                    $body = $this->buildCrmTaskReminderMailBody($row);
+                    $result = $mailer->sendPatientUpdate($assignedEmail, $subject, $body);
+                    $isSent = (bool) ($result['success'] ?? false);
+
+                    if ($isSent) {
+                        $sentEmail++;
+                        $shouldDelete = true;
+                    } else {
+                        $failed++;
+                        if (count($errors) < 8) {
+                            $errors[] = [
+                                'reminder_id' => $reminderId,
+                                'task_id' => (int) ($row['task_id'] ?? 0),
+                                'channel' => 'email',
+                                'message' => $result['error'] ?? 'No se pudo enviar el correo de recordatorio.',
+                            ];
+                        }
+                    }
+                }
+            } else {
+                // Canal no implementado en este flujo: se descarta para evitar reintentos infinitos.
+                $shouldDelete = true;
+            }
+
+            if ($shouldDelete) {
+                $deleteStmt->execute([':id' => $reminderId]);
+                $deleted++;
+            }
+        }
+
+        $totalSent = $sentInApp + $sentEmail;
+        $status = 'success';
+        if ($totalSent === 0 && $failed === 0) {
+            $status = 'skipped';
+        } elseif ($totalSent === 0 && $failed > 0) {
+            $status = 'failed';
+        }
+
+        return [
+            'status' => $status,
+            'message' => sprintf(
+                'Recordatorios CRM procesados: in-app=%d, email=%d, omitidos=%d, fallidos=%d.',
+                $sentInApp,
+                $sentEmail,
+                $skippedNoAssignee + $skippedNoEmail + $skippedInAppDisabled + $skippedEmailDisabled,
+                $failed
+            ),
+            'details' => [
+                'processed' => count($rows),
+                'sent_in_app' => $sentInApp,
+                'sent_email' => $sentEmail,
+                'skipped_no_assignee' => $skippedNoAssignee,
+                'skipped_no_email' => $skippedNoEmail,
+                'skipped_in_app_disabled' => $skippedInAppDisabled,
+                'skipped_email_disabled' => $skippedEmailDisabled,
+                'failed' => $failed,
+                'deleted' => $deleted,
+                'errors' => $errors,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runCrmTaskSupervisorEscalationsTask(): array
+    {
+        $now = new DateTimeImmutable('now');
+        $graceMinutes = 120;
+        $cutoff = $now->sub(new DateInterval('PT' . $graceMinutes . 'M'));
+
+        $sql = <<<'SQL'
+            SELECT
+                t.id AS task_id,
+                t.company_id,
+                t.title,
+                t.description,
+                t.status,
+                t.assigned_to,
+                t.created_by,
+                t.source_module,
+                t.source_ref_id,
+                t.entity_type,
+                t.entity_id,
+                t.hc_number,
+                t.form_id,
+                t.due_at,
+                t.due_date,
+                t.remind_at,
+                assignee.nombre AS assigned_name,
+                assignee.email AS assigned_email,
+                creator.nombre AS created_name,
+                creator.email AS created_email
+            FROM crm_tasks t
+            LEFT JOIN users assignee ON assignee.id = t.assigned_to
+            LEFT JOIN users creator ON creator.id = t.created_by
+            WHERE COALESCE(t.status, 'pendiente') NOT IN ('completada', 'cancelada')
+              AND COALESCE(t.due_at, CONCAT(t.due_date, ' 23:59:59'), t.remind_at) IS NOT NULL
+              AND COALESCE(t.due_at, CONCAT(t.due_date, ' 23:59:59'), t.remind_at) <= :cutoff
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM crm_task_evidence e
+                  WHERE e.task_id = t.id
+                    AND e.company_id = t.company_id
+                    AND e.evidence_type = 'supervisor_escalation'
+              )
+            ORDER BY COALESCE(t.due_at, CONCAT(t.due_date, ' 23:59:59'), t.remind_at) ASC
+            LIMIT 80
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':cutoff' => $cutoff->format('Y-m-d H:i:s')]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $exception) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No se pudo ejecutar el escalamiento de tareas CRM. Verifica migraciones de CRM.',
+                'details' => [
+                    'error' => $exception->getMessage(),
+                ],
+            ];
+        }
+
+        if ($rows === []) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No hay tareas CRM vencidas para escalar.',
+            ];
+        }
+
+        $supervisors = $this->resolveCrmTaskSupervisors();
+        $pusher = new PusherConfigService($this->pdo);
+        $pusherConfig = $pusher->getConfig();
+        $notificationChannels = $pusher->getNotificationChannels();
+        $mailer = new NotificationMailer($this->pdo);
+        $mailerConfigured = $mailer->isConfigured();
+
+        $escalated = 0;
+        $sentInApp = 0;
+        $sentEmails = 0;
+        $skippedNoSupervisor = 0;
+        $skippedNoEmail = 0;
+        $skippedInAppDisabled = 0;
+        $skippedEmailDisabled = 0;
+        $failed = 0;
+        $evidenceLogged = 0;
+        $errors = [];
+
+        foreach ($rows as $row) {
+            $taskId = (int) ($row['task_id'] ?? 0);
+            $companyId = (int) ($row['company_id'] ?? 0);
+            if ($taskId <= 0 || $companyId <= 0) {
+                continue;
+            }
+
+            $recipients = $this->resolveCrmTaskEscalationRecipients($row, $supervisors);
+            if ($recipients === []) {
+                $skippedNoSupervisor++;
+                continue;
+            }
+
+            $supervisorIds = array_values(array_unique(array_map(static function (array $recipient): int {
+                return (int) ($recipient['id'] ?? 0);
+            }, $recipients)));
+            $supervisorIds = array_values(array_filter($supervisorIds, static fn(int $id): bool => $id > 0));
+
+            $sentInAppForTask = false;
+            if (!empty($pusherConfig['enabled']) && $supervisorIds !== []) {
+                $payload = $this->buildCrmTaskSupervisorEscalationPayload($row, $supervisorIds, $notificationChannels, $graceMinutes, $now);
+                $sentInAppForTask = $pusher->trigger($payload, null, PusherConfigService::EVENT_CRM_TASK_REMINDER);
+                if ($sentInAppForTask) {
+                    $sentInApp++;
+                } else {
+                    $failed++;
+                    if (count($errors) < 8) {
+                        $errors[] = [
+                            'task_id' => $taskId,
+                            'channel' => 'in_app',
+                            'message' => 'No se pudo emitir la alerta de escalación por Pusher.',
+                        ];
+                    }
+                }
+            } elseif (empty($pusherConfig['enabled'])) {
+                $skippedInAppDisabled++;
+            }
+
+            $sentEmailsForTask = 0;
+            if ($mailerConfigured) {
+                foreach ($recipients as $recipient) {
+                    $email = trim((string) ($recipient['email'] ?? ''));
+                    if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                        $skippedNoEmail++;
+                        continue;
+                    }
+
+                    $subject = sprintf('Escalación CRM: tarea pendiente #%d', $taskId);
+                    $body = $this->buildCrmTaskSupervisorEscalationMailBody(
+                        $row,
+                        (string) ($recipient['name'] ?? ''),
+                        $graceMinutes,
+                        $now
+                    );
+                    $result = $mailer->sendPatientUpdate($email, $subject, $body);
+
+                    if ((bool) ($result['success'] ?? false)) {
+                        $sentEmails++;
+                        $sentEmailsForTask++;
+                    } else {
+                        $failed++;
+                        if (count($errors) < 8) {
+                            $errors[] = [
+                                'task_id' => $taskId,
+                                'channel' => 'email',
+                                'recipient' => $email,
+                                'message' => $result['error'] ?? 'No se pudo enviar la escalación por correo.',
+                            ];
+                        }
+                    }
+                }
+            } else {
+                $skippedEmailDisabled++;
+            }
+
+            if ($sentInAppForTask || $sentEmailsForTask > 0) {
+                $payload = [
+                    'escalated_at' => $now->format('Y-m-d H:i:s'),
+                    'grace_minutes' => $graceMinutes,
+                    'supervisor_ids' => $supervisorIds,
+                    'in_app_sent' => $sentInAppForTask,
+                    'emails_sent' => $sentEmailsForTask,
+                ];
+                if ($this->insertCrmTaskEscalationEvidence($taskId, $companyId, $payload)) {
+                    $evidenceLogged++;
+                }
+                $escalated++;
+            }
+        }
+
+        $status = 'success';
+        if ($escalated === 0 && $failed === 0) {
+            $status = 'skipped';
+        } elseif ($escalated === 0 && $failed > 0) {
+            $status = 'failed';
+        }
+
+        $skipped = $skippedNoSupervisor + $skippedNoEmail + $skippedInAppDisabled + $skippedEmailDisabled;
+
+        return [
+            'status' => $status,
+            'message' => sprintf(
+                'Escalamientos CRM procesados: escaladas=%d, in-app=%d, emails=%d, omitidos=%d, fallidos=%d.',
+                $escalated,
+                $sentInApp,
+                $sentEmails,
+                $skipped,
+                $failed
+            ),
+            'details' => [
+                'processed' => count($rows),
+                'escalated' => $escalated,
+                'sent_in_app' => $sentInApp,
+                'sent_emails' => $sentEmails,
+                'skipped_no_supervisor' => $skippedNoSupervisor,
+                'skipped_no_email' => $skippedNoEmail,
+                'skipped_in_app_disabled' => $skippedInAppDisabled,
+                'skipped_email_disabled' => $skippedEmailDisabled,
+                'failed' => $failed,
+                'evidence_logged' => $evidenceLogged,
+                'errors' => $errors,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array{id:int,name:string,email:string}>
+     */
+    private function resolveCrmTaskSupervisors(): array
+    {
+        $sql = 'SELECT u.id, u.nombre, u.email, u.permisos, r.permissions AS role_permissions '
+            . 'FROM users u LEFT JOIN roles r ON r.id = u.role_id';
+
+        try {
+            $stmt = $this->pdo->query($sql);
+            $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        } catch (Throwable) {
+            return [];
+        }
+
+        $supervisors = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
+            if (!Permissions::containsAny($permissions, ['crm.tasks.manage', 'crm.manage', 'administrativo'])) {
+                continue;
+            }
+
+            $name = trim((string) ($row['nombre'] ?? ''));
+            if ($name === '') {
+                $name = 'Supervisor #' . $id;
+            }
+
+            $supervisors[$id] = [
+                'id' => $id,
+                'name' => $name,
+                'email' => trim((string) ($row['email'] ?? '')),
+            ];
+        }
+
+        return array_values($supervisors);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<int, array{id:int,name:string,email:string}> $supervisors
+     * @return array<int, array{id:int,name:string,email:string}>
+     */
+    private function resolveCrmTaskEscalationRecipients(array $row, array $supervisors): array
+    {
+        $assigneeId = (int) ($row['assigned_to'] ?? 0);
+        $recipients = [];
+
+        foreach ($supervisors as $supervisor) {
+            $id = (int) ($supervisor['id'] ?? 0);
+            if ($id <= 0 || $id === $assigneeId) {
+                continue;
+            }
+
+            $recipients[$id] = [
+                'id' => $id,
+                'name' => (string) ($supervisor['name'] ?? ('Supervisor #' . $id)),
+                'email' => (string) ($supervisor['email'] ?? ''),
+            ];
+        }
+
+        if ($recipients === []) {
+            $createdBy = (int) ($row['created_by'] ?? 0);
+            if ($createdBy > 0 && $createdBy !== $assigneeId) {
+                $name = trim((string) ($row['created_name'] ?? ''));
+                if ($name === '') {
+                    $name = 'Supervisor #' . $createdBy;
+                }
+
+                $recipients[$createdBy] = [
+                    'id' => $createdBy,
+                    'name' => $name,
+                    'email' => trim((string) ($row['created_email'] ?? '')),
+                ];
+            }
+        }
+
+        return array_values($recipients);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<int> $supervisorIds
+     * @param array<string, bool> $channels
+     * @return array<string, mixed>
+     */
+    private function buildCrmTaskSupervisorEscalationPayload(
+        array $row,
+        array $supervisorIds,
+        array $channels,
+        int $graceMinutes,
+        DateTimeImmutable $now
+    ): array {
+        $payload = $this->buildCrmTaskReminderPayload($row, $channels);
+        $payload['audience_user_ids'] = $supervisorIds;
+        $payload['escalated'] = true;
+        $payload['escalated_at'] = $now->format(DateTimeImmutable::ATOM);
+        $payload['reminder_type'] = 'crm_task_escalation';
+        $payload['reminder_label'] = 'Escalación: tarea CRM sin trámite';
+        $payload['reminder_context'] = sprintf(
+            'La tarea sigue pendiente después de %d minutos del vencimiento.',
+            $graceMinutes
+        );
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function buildCrmTaskSupervisorEscalationMailBody(
+        array $row,
+        string $supervisorName,
+        int $graceMinutes,
+        DateTimeImmutable $now
+    ): string {
+        $taskTitle = trim((string) ($row['title'] ?? 'Tarea CRM'));
+        $assignedName = trim((string) ($row['assigned_name'] ?? ''));
+        $sourceModule = trim((string) ($row['source_module'] ?? ''));
+        $sourceRefId = trim((string) ($row['source_ref_id'] ?? ''));
+        $status = trim((string) ($row['status'] ?? 'pendiente'));
+
+        $dueAt = $this->formatReminderDate($row['due_at'] ?? null, 'd/m/Y H:i');
+        if ($dueAt === null) {
+            $dueAt = $this->formatReminderDate($row['due_date'] ?? null, 'd/m/Y');
+        }
+        if ($dueAt === null) {
+            $dueAt = $this->formatReminderDate($row['remind_at'] ?? null, 'd/m/Y H:i');
+        }
+
+        $lines = [];
+        $lines[] = 'Hola' . ($supervisorName !== '' ? ' ' . $supervisorName : '') . ',';
+        $lines[] = '';
+        $lines[] = 'Se escaló una tarea CRM porque no recibió trámite en el tiempo esperado.';
+        $lines[] = 'Tarea: ' . $taskTitle;
+        $lines[] = 'Responsable actual: ' . ($assignedName !== '' ? $assignedName : 'Sin responsable asignado');
+        if ($sourceModule !== '') {
+            $lines[] = 'Módulo: ' . strtoupper($sourceModule);
+        }
+        if ($sourceRefId !== '') {
+            $lines[] = 'Referencia: ' . $sourceRefId;
+        }
+        if ($status !== '') {
+            $lines[] = 'Estado actual: ' . $status;
+        }
+        if ($dueAt !== null) {
+            $lines[] = 'Vencimiento: ' . $dueAt;
+        }
+        $lines[] = sprintf('Escalada tras %d minutos sin actualización.', $graceMinutes);
+        $lines[] = 'Fecha de escalación: ' . $now->format('d/m/Y H:i');
+        $lines[] = 'Acceso: ' . $this->buildCrmTaskReminderUrl($row);
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function insertCrmTaskEscalationEvidence(int $taskId, int $companyId, array $payload): bool
+    {
+        if ($taskId <= 0 || $companyId <= 0) {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare('
+                INSERT INTO crm_task_evidence (task_id, company_id, evidence_type, payload, created_by)
+                VALUES (:task_id, :company_id, :evidence_type, :payload, NULL)
+            ');
+            $stmt->execute([
+                ':task_id' => $taskId,
+                ':company_id' => $companyId,
+                ':evidence_type' => 'supervisor_escalation',
+                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            ]);
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, bool> $channels
+     * @return array<string, mixed>
+     */
+    private function buildCrmTaskReminderPayload(array $row, array $channels): array
+    {
+        $taskId = (int) ($row['task_id'] ?? 0);
+        $reminderId = (int) ($row['reminder_id'] ?? 0);
+        $sourceRefId = trim((string) ($row['source_ref_id'] ?? ''));
+        $dueAt = trim((string) ($row['due_at'] ?? ''));
+        if ($dueAt === '') {
+            $dueDate = trim((string) ($row['due_date'] ?? ''));
+            $dueAt = $dueDate !== '' ? $dueDate . ' 23:59:59' : '';
+        }
+        $dueAtIso = $this->formatReminderDate($dueAt, DateTimeImmutable::ATOM);
+        $remindAtIso = $this->formatReminderDate($row['remind_at'] ?? null, DateTimeImmutable::ATOM);
+
+        return [
+            'id' => $sourceRefId !== '' ? $sourceRefId : $taskId,
+            'full_name' => trim((string) ($row['assigned_name'] ?? '')) ?: 'Tarea CRM',
+            'task_id' => $taskId,
+            'reminder_id' => $reminderId,
+            'title' => trim((string) ($row['title'] ?? 'Tarea CRM')),
+            'description' => trim((string) ($row['description'] ?? '')),
+            'estado' => trim((string) ($row['status'] ?? 'pendiente')),
+            'assigned_to' => (int) ($row['assigned_to'] ?? 0),
+            'assigned_name' => trim((string) ($row['assigned_name'] ?? '')),
+            'source_module' => trim((string) ($row['source_module'] ?? '')),
+            'source_ref_id' => $sourceRefId,
+            'hc_number' => trim((string) ($row['hc_number'] ?? '')),
+            'form_id' => trim((string) ($row['form_id'] ?? '')),
+            'entity_type' => trim((string) ($row['entity_type'] ?? '')),
+            'entity_id' => trim((string) ($row['entity_id'] ?? '')),
+            'due_at' => $dueAtIso,
+            'remind_at' => $remindAtIso,
+            'reminder_type' => 'crm_task',
+            'reminder_label' => 'Recordatorio de tarea CRM',
+            'reminder_context' => 'Revisa la tarea y actualiza su estado en el CRM.',
+            'task_url' => $this->buildCrmTaskReminderUrl($row),
+            'channels' => $channels,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function buildCrmTaskReminderMailBody(array $row): string
+    {
+        $assignedName = trim((string) ($row['assigned_name'] ?? ''));
+        $taskTitle = trim((string) ($row['title'] ?? 'Tarea CRM'));
+        $sourceModule = trim((string) ($row['source_module'] ?? ''));
+        $sourceRefId = trim((string) ($row['source_ref_id'] ?? ''));
+        $status = trim((string) ($row['status'] ?? 'pendiente'));
+
+        $remindAt = $this->formatReminderDate($row['remind_at'] ?? null, 'd/m/Y H:i');
+        $dueAt = $this->formatReminderDate($row['due_at'] ?? null, 'd/m/Y H:i');
+        if ($dueAt === null) {
+            $dueAt = $this->formatReminderDate($row['due_date'] ?? null, 'd/m/Y');
+        }
+
+        $lineas = [];
+        $lineas[] = 'Hola' . ($assignedName !== '' ? ' ' . $assignedName : '') . ',';
+        $lineas[] = '';
+        $lineas[] = 'Tienes un recordatorio de tarea CRM pendiente.';
+        $lineas[] = 'Tarea: ' . $taskTitle;
+        if ($sourceModule !== '') {
+            $lineas[] = 'Módulo: ' . strtoupper($sourceModule);
+        }
+        if ($sourceRefId !== '') {
+            $lineas[] = 'Referencia: ' . $sourceRefId;
+        }
+        if ($status !== '') {
+            $lineas[] = 'Estado actual: ' . $status;
+        }
+        if ($dueAt !== null) {
+            $lineas[] = 'Fecha límite: ' . $dueAt;
+        }
+        if ($remindAt !== null) {
+            $lineas[] = 'Recordatorio: ' . $remindAt;
+        }
+        $lineas[] = 'Acceso: ' . $this->buildCrmTaskReminderUrl($row);
+
+        return implode("\n", $lineas);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function buildCrmTaskReminderUrl(array $row): string
+    {
+        $base = defined('BASE_URL') ? rtrim((string) BASE_URL, '/') : '';
+        $sourceModule = strtolower(trim((string) ($row['source_module'] ?? '')));
+        $sourceRefId = trim((string) ($row['source_ref_id'] ?? ''));
+
+        $path = '/crm';
+        if ($sourceModule === 'solicitudes' && $sourceRefId !== '') {
+            $path = '/solicitudes/' . rawurlencode($sourceRefId) . '/crm';
+        } elseif ($sourceModule === 'examenes' && $sourceRefId !== '') {
+            $path = '/examenes/' . rawurlencode($sourceRefId) . '/crm';
+        }
+
+        return $base !== '' ? ($base . $path) : $path;
+    }
+
+    private function formatReminderDate(mixed $value, string $format): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return (new DateTimeImmutable($value))->format($format);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

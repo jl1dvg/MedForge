@@ -1065,6 +1065,144 @@
             }
         }
 
+        function resolveHandoffAction(action) {
+            var normalized = String(action || '').toLowerCase().trim();
+            if (normalized === 'assigned' || normalized === 'transferred' || normalized === 'requeued' || normalized === 'resolved') {
+                return normalized;
+            }
+            return 'requested';
+        }
+
+        function describeHandoffEvent(data) {
+            var action = resolveHandoffAction(data && data.handoff_action);
+            var contactName = (data && (data.display_name || data.patient_full_name || data.wa_number)) || 'Contacto';
+            var targetName = (data && (data.target_user_name || data.assigned_user_name)) || 'agente';
+            var actorName = data && data.actor_user_name ? String(data.actor_user_name) : '';
+
+            if (action === 'assigned') {
+                return {
+                    action: action,
+                    toastMessage: 'Chat asignado: ' + contactName + ' -> ' + targetName,
+                    desktopTitle: 'WhatsApp · Chat asignado',
+                    desktopBody: contactName + ' asignado a ' + targetName,
+                    panelMessage: 'Asignado a ' + targetName,
+                    panelTone: 'success',
+                    panelIcon: 'mdi mdi-account-check-outline',
+                    panelBadge: { label: 'Asignado', variant: 'bg-success text-white' },
+                    playSound: false,
+                    actorName: actorName,
+                    contactName: contactName,
+                    targetName: targetName
+                };
+            }
+
+            if (action === 'transferred') {
+                return {
+                    action: action,
+                    toastMessage: 'Chat derivado: ' + contactName + ' -> ' + targetName,
+                    desktopTitle: 'WhatsApp · Chat derivado',
+                    desktopBody: contactName + ' derivado a ' + targetName,
+                    panelMessage: 'Derivado a ' + targetName,
+                    panelTone: 'info',
+                    panelIcon: 'mdi mdi-account-switch-outline',
+                    panelBadge: { label: 'Derivado', variant: 'bg-info text-white' },
+                    playSound: false,
+                    actorName: actorName,
+                    contactName: contactName,
+                    targetName: targetName
+                };
+            }
+
+            if (action === 'requeued') {
+                return {
+                    action: action,
+                    toastMessage: 'Handoff reencolado: ' + contactName,
+                    desktopTitle: 'WhatsApp · Handoff reencolado',
+                    desktopBody: contactName + ' volvió a la cola de handoff',
+                    panelMessage: 'Handoff reencolado',
+                    panelTone: 'warning',
+                    panelIcon: 'mdi mdi-history',
+                    panelBadge: { label: 'Reencolado', variant: 'bg-warning text-dark' },
+                    playSound: true,
+                    actorName: actorName,
+                    contactName: contactName,
+                    targetName: targetName
+                };
+            }
+
+            if (action === 'resolved') {
+                return {
+                    action: action,
+                    toastMessage: 'Handoff resuelto: ' + contactName,
+                    desktopTitle: 'WhatsApp · Handoff resuelto',
+                    desktopBody: contactName + ' fue marcado como resuelto',
+                    panelMessage: 'Handoff resuelto',
+                    panelTone: 'primary',
+                    panelIcon: 'mdi mdi-check-decagram-outline',
+                    panelBadge: { label: 'Resuelto', variant: 'bg-primary text-white' },
+                    playSound: false,
+                    actorName: actorName,
+                    contactName: contactName,
+                    targetName: targetName
+                };
+            }
+
+            return {
+                action: 'requested',
+                toastMessage: 'Nueva solicitud de agente: ' + contactName,
+                desktopTitle: 'WhatsApp · Nuevo handoff',
+                desktopBody: contactName,
+                panelMessage: 'Se solicitó atención humana',
+                panelTone: 'warning',
+                panelIcon: 'mdi mdi-account-alert-outline',
+                panelBadge: { label: 'Derivación', variant: 'bg-warning text-dark' },
+                playSound: true,
+                actorName: actorName,
+                contactName: contactName,
+                targetName: targetName
+            };
+        }
+
+        function pushHandoffToPanel(data, details) {
+            if (typeof window === 'undefined' || !window.MEDF || !window.MEDF.notificationPanel) {
+                return;
+            }
+
+            var panel = window.MEDF.notificationPanel;
+            if (typeof panel.pushRealtime !== 'function') {
+                return;
+            }
+
+            var meta = [];
+            if (data && data.handoff_role_name) {
+                meta.push('Equipo: ' + data.handoff_role_name);
+            }
+            if (details && details.actorName) {
+                meta.push('Acción por: ' + details.actorName);
+            }
+            if (data && data.handoff_notes) {
+                meta.push('Nota: ' + String(data.handoff_notes).slice(0, 120));
+            }
+
+            var badge = details && details.panelBadge ? details.panelBadge : null;
+            var occurredAt = data && (data.occurred_at || data.last_message_at) ? new Date(data.occurred_at || data.last_message_at) : new Date();
+            var action = details && details.action ? details.action : resolveHandoffAction(data && data.handoff_action);
+            var conversationId = data && data.conversation_id ? String(data.conversation_id) : '0';
+            var assignedId = data && (data.assigned_user_id || data.target_user_id) ? String(data.assigned_user_id || data.target_user_id) : '0';
+            var marker = data && (data.occurred_at || data.last_message_at) ? String(data.occurred_at || data.last_message_at) : String(Date.now());
+
+            panel.pushRealtime({
+                dedupeKey: 'wa-handoff-' + action + '-' + conversationId + '-' + assignedId + '-' + marker,
+                title: details && details.contactName ? details.contactName : ((data && (data.display_name || data.patient_full_name || data.wa_number)) || 'Contacto'),
+                message: details && details.panelMessage ? details.panelMessage : 'Actualización de handoff',
+                meta: meta,
+                badges: badge ? [badge] : [],
+                icon: details && details.panelIcon ? details.panelIcon : 'mdi mdi-whatsapp',
+                tone: details && details.panelTone ? details.panelTone : 'info',
+                timestamp: occurredAt
+            });
+        }
+
         function setupRealtime() {
             var realtimeConfig = window.MEDF_PusherConfig || {};
             if (!realtimeConfig.enabled) {
@@ -1092,13 +1230,20 @@
                 }
 
                 if (data.handoff_role_id && currentRoleId && Number(data.handoff_role_id) !== currentRoleId) {
-                    return;
+                    var actorUserId = Number(data.actor_user_id || 0);
+                    var assignedUserId = Number(data.assigned_user_id || data.target_user_id || 0);
+                    if (actorUserId !== currentUserId && assignedUserId !== currentUserId) {
+                        return;
+                    }
                 }
 
-                var name = data.display_name || data.patient_full_name || data.wa_number || 'Contacto';
-                showHandoffToast('Nueva solicitud de agente: ' + name);
-                maybeShowDesktopNotification('WhatsApp · Nuevo handoff', name, { onlyWhenInactive: true });
-                playHandoffSound();
+                var details = describeHandoffEvent(data);
+                showHandoffToast(details.toastMessage);
+                maybeShowDesktopNotification(details.desktopTitle, details.desktopBody, { onlyWhenInactive: true });
+                if (details.playSound) {
+                    playHandoffSound();
+                }
+                pushHandoffToPanel(data, details);
 
                 loadConversations();
             });

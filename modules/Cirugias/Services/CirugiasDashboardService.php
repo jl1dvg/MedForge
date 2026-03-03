@@ -239,6 +239,99 @@ class CirugiasDashboardService
         return (float) $stmt->fetchColumn();
     }
 
+    /**
+     * TAT de revisión de protocolos (cirugía -> revisión).
+     *
+     * Se toma como inicio de cirugía, en orden de prioridad:
+     * 1) fecha_fin + hora_fin
+     * 2) fecha_inicio + hora_fin
+     * 3) fecha_inicio + hora_inicio
+     * 4) fecha_inicio 00:00:00
+     *
+     * Y como cierre de revisión: fecha_firma.
+     */
+    public function getTatRevisionProtocolos(
+        string $start,
+        string $end,
+        string $afiliacionFilter = '',
+        string $afiliacionCategoriaFilter = ''
+    ): array
+    {
+        if (!$this->columnExists('protocolo_data', 'fecha_firma')) {
+            return [
+                'muestra' => 0,
+                'tat_promedio_horas' => null,
+                'tat_mediana_horas' => null,
+                'tat_p90_horas' => null,
+            ];
+        }
+
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
+        $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
+        $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+
+        $sql = "SELECT
+                    pr.fecha_inicio,
+                    pr.fecha_fin,
+                    pr.hora_inicio,
+                    pr.hora_fin,
+                    pr.fecha_firma
+                FROM protocolo_data pr
+                LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                {$categoriaContext['join']}
+                WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                  AND pr.status = 1
+                  AND pr.fecha_firma IS NOT NULL
+                  AND TRIM(CAST(pr.fecha_firma AS CHAR)) <> ''
+                  AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                  AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start,
+            ':fin' => $end,
+            ':afiliacion_filter' => $afiliacionFilterValue,
+            ':afiliacion_filter_match' => $afiliacionFilterValue,
+            ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
+            ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+        ]);
+
+        $tatHoras = [];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $inicioTs = $this->resolveInicioCirugiaTimestamp($row);
+            $firmaTs = $this->parseTimestamp((string)($row['fecha_firma'] ?? ''));
+            if ($inicioTs === null || $firmaTs === null || $firmaTs < $inicioTs) {
+                continue;
+            }
+
+            $tatHoras[] = ($firmaTs - $inicioTs) / 3600;
+        }
+
+        if ($tatHoras === []) {
+            return [
+                'muestra' => 0,
+                'tat_promedio_horas' => null,
+                'tat_mediana_horas' => null,
+                'tat_p90_horas' => null,
+            ];
+        }
+
+        $promedio = array_sum($tatHoras) / count($tatHoras);
+        $mediana = $this->calculatePercentile($tatHoras, 0.50);
+        $p90 = $this->calculatePercentile($tatHoras, 0.90);
+
+        return [
+            'muestra' => count($tatHoras),
+            'tat_promedio_horas' => round($promedio, 2),
+            'tat_mediana_horas' => $mediana !== null ? round($mediana, 2) : null,
+            'tat_p90_horas' => $p90 !== null ? round($p90, 2) : null,
+        ];
+    }
+
     public function getEstadoProtocolos(
         string $start,
         string $end,
@@ -902,6 +995,111 @@ class CirugiasDashboardService
         }
 
         return round(($numerator / $denominator) * 100, 2);
+    }
+
+    /**
+     * @param array<int,float|int> $values
+     */
+    private function calculatePercentile(array $values, float $percent): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+
+        $percent = max(0.0, min(1.0, $percent));
+        sort($values, SORT_NUMERIC);
+        $n = count($values);
+
+        if ($n === 1) {
+            return (float)$values[0];
+        }
+
+        $index = ($n - 1) * $percent;
+        $lower = (int)floor($index);
+        $upper = (int)ceil($index);
+
+        if ($lower === $upper) {
+            return (float)$values[$lower];
+        }
+
+        $weight = $index - $lower;
+        return ((float)$values[$lower] * (1 - $weight)) + ((float)$values[$upper] * $weight);
+    }
+
+    private function resolveInicioCirugiaTimestamp(array $row): ?int
+    {
+        $fechaInicio = $this->normalizeDate((string)($row['fecha_inicio'] ?? ''));
+        $fechaFin = $this->normalizeDate((string)($row['fecha_fin'] ?? ''));
+        $horaInicio = $this->normalizeTime((string)($row['hora_inicio'] ?? ''));
+        $horaFin = $this->normalizeTime((string)($row['hora_fin'] ?? ''));
+
+        $candidates = [];
+
+        if ($fechaFin !== null && $horaFin !== null) {
+            $candidates[] = $fechaFin . ' ' . $horaFin;
+        }
+        if ($fechaInicio !== null && $horaFin !== null) {
+            $candidates[] = $fechaInicio . ' ' . $horaFin;
+        }
+        if ($fechaInicio !== null && $horaInicio !== null) {
+            $candidates[] = $fechaInicio . ' ' . $horaInicio;
+        }
+        if ($fechaInicio !== null) {
+            $candidates[] = $fechaInicio . ' 00:00:00';
+        }
+
+        foreach ($candidates as $candidate) {
+            $timestamp = $this->parseTimestamp($candidate);
+            if ($timestamp !== null) {
+                return $timestamp;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeDate(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '' || str_starts_with($value, '0000-00-00')) {
+            return null;
+        }
+
+        return strlen($value) >= 10 ? substr($value, 0, 10) : null;
+    }
+
+    private function normalizeTime(string $value): ?string
+    {
+        $value = trim($value);
+        if (
+            $value === ''
+            || $value === '00:00'
+            || $value === '00:00:00'
+            || str_starts_with($value, '0000-00-00')
+        ) {
+            return null;
+        }
+
+        if (!preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $value)) {
+            return null;
+        }
+
+        return strlen($value) === 5 ? $value . ':00' : $value;
+    }
+
+    private function parseTimestamp(string $value): ?int
+    {
+        $value = trim($value);
+        if ($value === '' || str_starts_with($value, '0000-00-00')) {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false || $timestamp <= 0) {
+            return null;
+        }
+
+        return $timestamp;
     }
 
     private function normalizeAfiliacionFilter(string $afiliacionFilter): string

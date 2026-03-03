@@ -900,6 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const reminderEventName = events.exam_reminder
                 || events.surgery_reminder
                 || 'recordatorio-examen';
+            const crmTaskReminderEventName = events.crm_task_reminder || 'crm.task-reminder';
 
             notificationPanel.setIntegrationWarning('');
 
@@ -1025,6 +1026,63 @@ document.addEventListener('DOMContentLoaded', () => {
                     const mensaje = fechaTexto ? `⏰ Cirugía ${paciente} · ${fechaTexto}` : `⏰ Cirugía ${paciente}`;
                     showToast(mensaje, true, toastDurationMs);
                     maybeShowDesktopNotification('Recordatorio de cirugía', mensaje);
+                });
+            }
+
+            if (crmTaskReminderEventName) {
+                channel.bind(crmTaskReminderEventName, data => {
+                    const currentUserId = Number.parseInt(String(window?.MEDF?.currentUser?.id ?? ''), 10);
+                    const assignedTo = Number.parseInt(String(data?.assigned_to ?? ''), 10);
+                    const audienceUserIds = Array.isArray(data?.audience_user_ids)
+                        ? data.audience_user_ids
+                            .map(value => Number.parseInt(String(value), 10))
+                            .filter(value => Number.isFinite(value) && value > 0)
+                        : [];
+                    const isAudienceUser = Number.isFinite(currentUserId)
+                        && currentUserId > 0
+                        && audienceUserIds.includes(currentUserId);
+
+                    if (
+                        Number.isFinite(currentUserId)
+                        && currentUserId > 0
+                        && !isAudienceUser
+                        && (!Number.isFinite(assignedTo) || assignedTo !== currentUserId)
+                    ) {
+                        return;
+                    }
+
+                    const remindAt = data?.remind_at ? new Date(data.remind_at) : null;
+                    const remindLabel = remindAt && !Number.isNaN(remindAt.getTime())
+                        ? remindAt.toLocaleString()
+                        : '';
+                    const title = data?.title || 'Tarea CRM';
+                    const reminderLabel = data?.reminder_label || 'Recordatorio de tarea CRM';
+                    const owner = data?.assigned_name || 'Responsable asignado';
+
+                    notificationPanel.pushPending({
+                        dedupeKey: `recordatorio-crm-task-${data?.task_id ?? Date.now()}-${data?.reminder_id ?? ''}`,
+                        title: owner,
+                        message: `${reminderLabel} · ${title}`,
+                        meta: [
+                            data?.assigned_name ? `Responsable: ${data.assigned_name}` : '',
+                            data?.escalated ? 'Escalada a supervisión' : '',
+                            data?.source_module ? `Módulo: ${String(data.source_module).toUpperCase()}` : '',
+                            data?.source_ref_id ? `Referencia: ${data.source_ref_id}` : '',
+                            data?.task_url ? `Acceso: ${data.task_url}` : '',
+                        ].filter(Boolean),
+                        badges: [
+                            remindLabel ? { label: remindLabel, variant: 'bg-primary text-white' } : null,
+                        ].filter(Boolean),
+                        icon: 'mdi mdi-format-list-checks',
+                        tone: 'warning',
+                        timestamp: new Date(),
+                        dueAt: remindAt,
+                        channels: mapChannels(data?.channels),
+                    });
+
+                    const mensaje = `${reminderLabel}: ${title}${remindLabel ? ` · ${remindLabel}` : ''}`;
+                    showToast(mensaje, true, toastDurationMs);
+                    maybeShowDesktopNotification(reminderLabel, mensaje);
                 });
             }
         }

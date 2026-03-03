@@ -475,6 +475,14 @@ function formatHours(value) {
     return `${rounded} h`;
 }
 
+function resolveCurrentUserId() {
+    const parsed = Number.parseInt(
+        String(window?.MEDF?.currentUser?.id ?? ""),
+        10
+    );
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function getAlertBadges(item = {}) {
     const alerts = [];
 
@@ -515,6 +523,29 @@ function getAlertBadges(item = {}) {
             label: "Tarea vencida",
             icon: "mdi-clipboard-alert-outline",
             className: "badge bg-danger text-white",
+        });
+    }
+
+    const currentUserId = resolveCurrentUserId();
+    const responsableId = Number.parseInt(
+        String(item.crm_responsable_id ?? ""),
+        10
+    );
+    const tareasPendientes = Number.parseInt(
+        String(item.crm_tareas_pendientes ?? "0"),
+        10
+    );
+    if (
+        currentUserId !== null &&
+        Number.isFinite(responsableId) &&
+        responsableId === currentUserId &&
+        Number.isFinite(tareasPendientes) &&
+        tareasPendientes > 0
+    ) {
+        alerts.push({
+            label: `Tus tareas (${tareasPendientes})`,
+            icon: "mdi-bell-alert-outline",
+            className: "badge bg-primary text-white",
         });
     }
 
@@ -856,6 +887,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                           <strong class="d-block">${escapeHtml(pacienteNombre)}</strong>
                         </div>
                         <span class="text-muted small"><i class="mdi mdi-card-account-details-outline me-1"></i>${escapeHtml(solicitud.hc_number ?? "—")}</span>
+                        <small class="text-muted d-block"><i class="mdi mdi-file-document-outline me-1"></i>Pedido/Form: ${escapeHtml(solicitud.form_id ?? "—")}</small>
                         <div class="d-flex align-items-center justify-content-between gap-2 mt-1">
                           <small class="text-muted"><i class="mdi mdi-calendar me-1"></i>${escapeHtml(fechaFormateada)}</small>
                           ${slaBadgeHtml}

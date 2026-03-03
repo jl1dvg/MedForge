@@ -28,11 +28,17 @@ Este panel permite monitorear en un solo lugar la produccion quirurgica, la cali
 - **Completadas con evidencia**: porcentaje de solicitudes completadas que tienen protocolo confirmado.
 - **Concordancia de lateralidad**: porcentaje de coincidencia entre lateralidad solicitada y realizada.
 - **Cirugias sin solicitud previa**: cirugias realizadas sin solicitud registrada previa.
+- **TAT revision promedio / mediana / P90**:
+  - mide el tiempo desde la cirugia hasta la revision del protocolo (`fecha_firma`);
+  - **Promedio**: tiempo medio;
+  - **Mediana**: caso central (menos sensible a extremos);
+  - **P90**: tiempo bajo el cual cae el 90% de los protocolos revisados.
 
 ## Que significa cada grafico
 - **Cirugias por mes**: tendencia de volumen en el tiempo.
 - **Estado de protocolos**: distribucion entre revisado, no revisado e incompleto.
 - **Top procedimientos**: procedimientos con mayor volumen.
+- **Top cirujanos (realizadas)**: cirujanos con mayor numero de protocolos realizados en el periodo.
 - **Top doctores solicitantes (realizadas)**:
   - considera solo solicitudes con cirugia confirmada;
   - toma doctor prioritariamente desde `procedimiento_proyectado.doctor`;

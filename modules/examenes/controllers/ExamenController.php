@@ -3987,6 +3987,7 @@ class ExamenController extends BaseController
         $filters = $this->buildImagenesRealizadasFilters();
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
+        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
 
         $this->render(
             __DIR__ . '/../views/imagenes_dashboard.php',
@@ -3995,6 +3996,8 @@ class ExamenController extends BaseController
                 'filters' => $filters,
                 'dashboard' => $dashboard,
                 'rows' => $rows,
+                'afiliacionOptions' => $afiliacionOptions,
+                'afiliacionCategoriaOptions' => $afiliacionCategoriaOptions,
             ]
         );
     }
@@ -4007,7 +4010,8 @@ class ExamenController extends BaseController
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
-        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters);
+        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions);
 
         $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.pdf';
 
@@ -4074,7 +4078,8 @@ class ExamenController extends BaseController
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
-        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters);
+        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions);
         $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
 
         try {
@@ -4685,6 +4690,7 @@ class ExamenController extends BaseController
      *     fecha_inicio: string,
      *     fecha_fin: string,
      *     afiliacion: string,
+     *     afiliacion_categoria: string,
      *     tipo_examen: string,
      *     paciente: string,
      *     estado_agenda: string
@@ -4702,9 +4708,57 @@ class ExamenController extends BaseController
             'fecha_inicio' => $fechaInicio,
             'fecha_fin' => $fechaFin,
             'afiliacion' => trim((string)($_GET['afiliacion'] ?? '')),
+            'afiliacion_categoria' => trim((string)($_GET['afiliacion_categoria'] ?? '')),
             'tipo_examen' => trim((string)($_GET['tipo_examen'] ?? '')),
             'paciente' => trim((string)($_GET['paciente'] ?? '')),
             'estado_agenda' => trim((string)($_GET['estado_agenda'] ?? '')),
+        ];
+    }
+
+    private function normalizeImagenesAfiliacionFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === 'sin convenio') {
+            return 'sin_convenio';
+        }
+
+        return $value;
+    }
+
+    private function normalizeImagenesAfiliacionCategoriaFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === 'publica') {
+            return 'publico';
+        }
+        if ($value === 'privada') {
+            return 'privado';
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param array{
+     *     fecha_inicio?: string,
+     *     fecha_fin?: string
+     * } $filters
+     * @return array{0: array<int, array{value:string,label:string}>, 1: array<int, array{value:string,label:string}>}
+     */
+    private function resolveImagenesDashboardAffiliationOptions(array $filters): array
+    {
+        $fechaInicio = trim((string)($filters['fecha_inicio'] ?? ''));
+        $fechaFin = trim((string)($filters['fecha_fin'] ?? ''));
+        if ($fechaInicio === '' || $fechaFin === '') {
+            return [
+                [['value' => '', 'label' => 'Todas'], ['value' => 'iess', 'label' => 'IESS']],
+                [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']],
+            ];
+        }
+
+        return [
+            $this->examenModel->getImagenesAfiliacionOptions($fechaInicio, $fechaFin),
+            $this->examenModel->getImagenesAfiliacionCategoriaOptions($fechaInicio, $fechaFin),
         ];
     }
 
@@ -4731,13 +4785,16 @@ class ExamenController extends BaseController
      * } $filters
      * @return array<int, array{label: string, value: string}>
      */
-    private function buildImagenesDashboardFiltersSummary(array $filters): array
+    private function buildImagenesDashboardFiltersSummary(
+        array $filters,
+        array $afiliacionOptions = [],
+        array $afiliacionCategoriaOptions = []
+    ): array
     {
         $summary = [];
         $map = [
             'fecha_inicio' => 'Desde',
             'fecha_fin' => 'Hasta',
-            'afiliacion' => 'Afiliación',
             'tipo_examen' => 'Tipo examen',
             'paciente' => 'Paciente/Cédula',
             'estado_agenda' => 'Estado agenda',
@@ -4749,6 +4806,30 @@ class ExamenController extends BaseController
                 continue;
             }
             $summary[] = ['label' => $label, 'value' => $value];
+        }
+
+        $afiliacionFilter = $this->normalizeImagenesAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $afiliacionLabel = $afiliacionFilter;
+            foreach ($afiliacionOptions as $option) {
+                if ((string)($option['value'] ?? '') === $afiliacionFilter) {
+                    $afiliacionLabel = (string)($option['label'] ?? $afiliacionFilter);
+                    break;
+                }
+            }
+            $summary[] = ['label' => 'Afiliación', 'value' => $afiliacionLabel];
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeImagenesAfiliacionCategoriaFilter((string)($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $categoriaLabel = $afiliacionCategoriaFilter;
+            foreach ($afiliacionCategoriaOptions as $option) {
+                if ((string)($option['value'] ?? '') === $afiliacionCategoriaFilter) {
+                    $categoriaLabel = (string)($option['label'] ?? $afiliacionCategoriaFilter);
+                    break;
+                }
+            }
+            $summary[] = ['label' => 'Categoría de afiliación', 'value' => $categoriaLabel];
         }
 
         return $summary;
@@ -4805,6 +4886,7 @@ class ExamenController extends BaseController
 
             $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
 
+            $informado = !empty($row['informe_id']);
             $output[] = [
                 'id' => isset($row['id']) ? (int)$row['id'] : 0,
                 'form_id' => trim((string)($row['form_id'] ?? '')),
@@ -4814,8 +4896,8 @@ class ExamenController extends BaseController
                 'afiliacion' => trim((string)($row['afiliacion'] ?? '')),
                 'estado_agenda' => $estadoAgenda,
                 'cita_generada' => $this->isImagenCitaGeneradaEstado($estadoAgenda),
-                'examen_realizado' => $this->isImagenExamenRealizadoEstado($estadoAgenda),
-                'informado' => !empty($row['informe_id']),
+                'examen_realizado' => $this->isImagenExamenRealizado($informado, $estadoAgenda),
+                'informado' => $informado,
                 'facturado' => (int)($row['facturado'] ?? 0) === 1,
                 'codigo' => $codigo,
                 'examen' => $examen,
@@ -4856,23 +4938,20 @@ class ExamenController extends BaseController
         return true;
     }
 
-    private function isImagenExamenRealizadoEstado(string $estado): bool
+    private function isImagenExamenRealizado(bool $informado, string $estado): bool
     {
-        $estadoNorm = $this->normalizarTexto($estado);
-        if ($estadoNorm === '') {
-            return false;
+        // Regla de negocio: si tiene informe, se considera realizado.
+        if ($informado) {
+            return true;
         }
-        if (!$this->isImagenCitaGeneradaEstado($estadoNorm)) {
+
+        // Si no tiene informe: solo ATENDIDO o PAGADO se consideran realizados.
+        $estadoKey = strtoupper(trim($estado));
+        if ($estadoKey === '') {
             return false;
         }
 
-        foreach (['atend', 'terminad', 'realizad', 'completad'] as $keyword) {
-            if (str_contains($estadoNorm, $keyword)) {
-                return true;
-            }
-        }
-
-        return false;
+        return in_array($estadoKey, ['ATENDIDO', 'PAGADO'], true);
     }
 
     private function excelColumnByIndex(int $index): string
@@ -4916,6 +4995,24 @@ class ExamenController extends BaseController
         $sla48Total = 0;
 
         $dailyMap = [];
+        $traficoSemana = [
+            1 => 0, // Lunes
+            2 => 0, // Martes
+            3 => 0, // Miércoles
+            4 => 0, // Jueves
+            5 => 0, // Viernes
+            6 => 0, // Sábado
+            7 => 0, // Domingo
+        ];
+        $traficoSemanaLabels = [
+            1 => 'Lunes',
+            2 => 'Martes',
+            3 => 'Miércoles',
+            4 => 'Jueves',
+            5 => 'Viernes',
+            6 => 'Sábado',
+            7 => 'Domingo',
+        ];
         $mixMap = [];
         $tarifarioCache = [];
         $aging = [
@@ -4932,11 +5029,17 @@ class ExamenController extends BaseController
             $fechaExamenRaw = trim((string)($row['fecha_examen'] ?? ''));
             $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
             $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
+            if ($fechaExamenTs !== false) {
+                $weekDay = (int)date('N', $fechaExamenTs);
+                if (isset($traficoSemana[$weekDay])) {
+                    $traficoSemana[$weekDay]++;
+                }
+            }
 
             if ($this->isImagenCitaGeneradaEstado($estadoAgenda)) {
                 $citasGeneradas++;
             }
-            if ($this->isImagenExamenRealizadoEstado($estadoAgenda)) {
+            if ($this->isImagenExamenRealizado($informado, $estadoAgenda)) {
                 $examenesRealizados++;
             }
 
@@ -5056,6 +5159,17 @@ class ExamenController extends BaseController
         $tatP90 = $this->calcularPercentil($tatHoras, 0.90);
         $sla48Pct = $sla48Total > 0 ? ($sla48Cumple * 100 / $sla48Total) : null;
         $cumplimientoCitaPct = $citasGeneradas > 0 ? ($examenesRealizados * 100 / $citasGeneradas) : null;
+        $maxTraficoValor = !empty($traficoSemana) ? max($traficoSemana) : 0;
+        $maxTraficoDiaNum = 0;
+        if ($maxTraficoValor > 0) {
+            foreach ($traficoSemana as $dayNum => $totalDia) {
+                if ($totalDia === $maxTraficoValor) {
+                    $maxTraficoDiaNum = (int)$dayNum;
+                    break;
+                }
+            }
+        }
+        $maxTraficoDiaLabel = $maxTraficoDiaNum > 0 ? (string)($traficoSemanaLabels[$maxTraficoDiaNum] ?? '') : '—';
 
         $rangeLabel = trim((string)($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string)($filters['fecha_fin'] ?? ''));
         $rangeLabel = trim($rangeLabel, ' a');
@@ -5081,6 +5195,11 @@ class ExamenController extends BaseController
                     'label' => 'Facturados',
                     'value' => $facturados,
                     'hint' => $total > 0 ? (number_format(($facturados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Día pico de tráfico',
+                    'value' => $maxTraficoDiaLabel,
+                    'hint' => $maxTraficoValor > 0 ? ($maxTraficoValor . ' estudios') : 'Sin datos',
                 ],
                 [
                     'label' => 'Citas generadas',
@@ -5162,6 +5281,10 @@ class ExamenController extends BaseController
                         $examenesRealizados,
                         max(0, $citasGeneradas - $examenesRealizados),
                     ],
+                ],
+                'trafico_dia_semana' => [
+                    'labels' => array_values($traficoSemanaLabels),
+                    'values' => array_values($traficoSemana),
                 ],
             ],
         ];
