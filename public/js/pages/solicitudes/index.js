@@ -1738,6 +1738,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            const whatsappHandoffEventName = events.whatsapp_handoff || 'whatsapp.handoff';
+            if (whatsappHandoffEventName) {
+                channel.bind(whatsappHandoffEventName, data => {
+                    const action = String(data?.handoff_action || 'requested').toLowerCase().trim();
+                    const contactName = data?.display_name || data?.patient_full_name || data?.wa_number || 'Contacto';
+                    const targetName = data?.target_user_name || data?.assigned_user_name || 'agente';
+                    const occurredAt = data?.occurred_at || data?.last_message_at || null;
+
+                    const messageByAction = {
+                        assigned: `Asignado a ${targetName}`,
+                        transferred: `Derivado a ${targetName}`,
+                        requeued: 'Handoff reencolado',
+                        resolved: 'Handoff resuelto',
+                        requested: 'Se solicitó atención humana',
+                    };
+
+                    const badgeByAction = {
+                        assigned: { label: 'Asignado', variant: 'bg-success text-white' },
+                        transferred: { label: 'Derivado', variant: 'bg-info text-white' },
+                        requeued: { label: 'Reencolado', variant: 'bg-warning text-dark' },
+                        resolved: { label: 'Resuelto', variant: 'bg-primary text-white' },
+                        requested: { label: 'Derivación', variant: 'bg-warning text-dark' },
+                    };
+
+                    notificationPanel.pushRealtime({
+                        dedupeKey: `wa-handoff-${action}-${data?.conversation_id ?? '0'}-${data?.assigned_user_id ?? data?.target_user_id ?? '0'}-${occurredAt ?? Date.now()}`,
+                        title: contactName,
+                        message: messageByAction[action] || messageByAction.requested,
+                        meta: [
+                            data?.handoff_role_name ? `Equipo: ${data.handoff_role_name}` : '',
+                            data?.actor_user_name ? `Acción por: ${data.actor_user_name}` : '',
+                            data?.handoff_notes ? `Nota: ${String(data.handoff_notes).slice(0, 120)}` : '',
+                        ].filter(Boolean),
+                        badges: [badgeByAction[action] || badgeByAction.requested],
+                        icon: 'mdi mdi-whatsapp',
+                        tone: (action === 'assigned' ? 'success' : (action === 'resolved' ? 'primary' : (action === 'transferred' ? 'info' : 'warning'))),
+                        timestamp: occurredAt ? new Date(occurredAt) : new Date(),
+                        channels: mapChannels(data?.channels),
+                    });
+                });
+            }
+
             const bindReminderEvent = config => {
                 if (!config.eventName) {
                     return;
