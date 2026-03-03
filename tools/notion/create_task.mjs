@@ -25,7 +25,15 @@ if (!token || !databaseId) {
 }
 
 const project = String(options.project || 'MedForge').trim();
-const status = String(options.status || 'Pendiente').trim();
+const rawStatus = String(options.status || 'Pendiente').trim();
+const statusMap = {
+  pendiente: 'Sin empezar',
+  'sin empezar': 'Sin empezar',
+  'en curso': 'En curso',
+  hecho: 'Listo',
+  listo: 'Listo',
+};
+const status = statusMap[rawStatus.toLowerCase()] || rawStatus;
 const priority = String(options.priority || 'Media').trim();
 const moduleName = String(options.module || 'General').trim();
 const date = String(options.date || new Date().toISOString().slice(0, 10)).trim();
@@ -33,17 +41,22 @@ const notes = String(options.notes || '').trim();
 const commit = String(options.commit || '').trim();
 const responsible = String(options.responsible || 'Patricio').trim();
 
+const defaultRepoUrl = process.env.GITHUB_REPO_URL || 'https://github.com/jl1dvg/MedForge';
+const commitUrl = commit
+  ? (/^https?:\/\//i.test(commit) ? commit : `${defaultRepoUrl.replace(/\/$/, '')}/commit/${commit}`)
+  : '';
+
 const payload = {
   parent: { database_id: databaseId },
   properties: {
-    Tarea: { title: [{ text: { content: title } }] },
+    Nombre: { title: [{ text: { content: title } }] },
     Proyecto: { select: { name: project } },
     Estado: { status: { name: status } },
     Prioridad: { select: { name: priority } },
-    'Módulo': { rich_text: moduleName ? [{ text: { content: moduleName } }] : [] },
+    Modulo: { select: { name: moduleName } },
     Fecha: { date: { start: date } },
-    'Notas técnicas': { rich_text: notes ? [{ text: { content: notes } }] : [] },
-    Commit: { rich_text: commit ? [{ text: { content: commit } }] : [] },
+    'Notas Tecnicas': { rich_text: notes ? [{ text: { content: notes } }] : [] },
+    Commit: { url: commitUrl || null },
     Responsable: { select: { name: responsible } },
   },
 };
