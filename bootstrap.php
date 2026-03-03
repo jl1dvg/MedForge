@@ -35,6 +35,7 @@ spl_autoload_register(function ($class) {
         'Controllers\\' => __DIR__ . '/controllers/',
         'Models\\' => __DIR__ . '/models/',
         'Helpers\\' => __DIR__ . '/helpers/',
+        'Services\\' => __DIR__ . '/controllers/Services/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {
