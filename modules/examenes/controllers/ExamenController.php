@@ -4896,7 +4896,7 @@ class ExamenController extends BaseController
                 'afiliacion' => trim((string)($row['afiliacion'] ?? '')),
                 'estado_agenda' => $estadoAgenda,
                 'cita_generada' => $this->isImagenCitaGeneradaEstado($estadoAgenda),
-                'examen_realizado' => $this->isImagenExamenRealizado($informado, $estadoAgenda),
+                'examen_realizado' => $this->isImagenExamenRealizado($estadoAgenda),
                 'informado' => $informado,
                 'facturado' => (int)($row['facturado'] ?? 0) === 1,
                 'codigo' => $codigo,
@@ -4938,20 +4938,14 @@ class ExamenController extends BaseController
         return true;
     }
 
-    private function isImagenExamenRealizado(bool $informado, string $estado): bool
+    private function isImagenExamenRealizado(string $estado): bool
     {
-        // Regla de negocio: si tiene informe, se considera realizado.
-        if ($informado) {
-            return true;
-        }
-
-        // Si no tiene informe: solo ATENDIDO o PAGADO se consideran realizados.
         $estadoKey = strtoupper(trim($estado));
         if ($estadoKey === '') {
             return false;
         }
 
-        return in_array($estadoKey, ['ATENDIDO', 'PAGADO'], true);
+        return !in_array($estadoKey, ['AGENDADO', 'CONFIRMADO'], true);
     }
 
     private function excelColumnByIndex(int $index): string
@@ -5039,7 +5033,7 @@ class ExamenController extends BaseController
             if ($this->isImagenCitaGeneradaEstado($estadoAgenda)) {
                 $citasGeneradas++;
             }
-            if ($this->isImagenExamenRealizado($informado, $estadoAgenda)) {
+            if ($this->isImagenExamenRealizado($estadoAgenda)) {
                 $examenesRealizados++;
             }
 
