@@ -1,0 +1,20 @@
+# Keep folder structure versioned, but not uploaded media binaries.
+*
+!.gitignore
+!.gitkeep
+!users/
+
+users/*
+!users/.gitkeep
+!users/seals/
+!users/signatures/
+!users/photos/
+
+users/seals/*
+!users/seals/.gitkeep
+
+users/signatures/*
+!users/signatures/.gitkeep
+
+users/photos/*
+!users/photos/.gitkeep
