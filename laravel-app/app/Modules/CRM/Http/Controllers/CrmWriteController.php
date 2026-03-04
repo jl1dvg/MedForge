@@ -84,23 +84,23 @@ class CrmWriteController
             }
 
             $columns = $this->tableColumns('crm_leads');
-            $changes = [
-                'name' => $payload['name'] ?? null,
-                'email' => $payload['email'] ?? null,
-                'phone' => $payload['phone'] ?? null,
-                'status' => $payload['status'] ?? null,
-                'source' => $payload['source'] ?? null,
-                'notes' => $payload['notes'] ?? null,
-                'assigned_to' => $payload['assigned_to'] ?? null,
-                'customer_id' => $payload['customer_id'] ?? null,
-            ];
+            $allowed = ['name', 'email', 'phone', 'status', 'source', 'notes', 'assigned_to', 'customer_id'];
+            $changes = [];
+            foreach ($allowed as $field) {
+                if (array_key_exists($field, $payload) && in_array($field, $columns, true)) {
+                    $changes[$field] = $payload[$field];
+                }
+            }
 
             if (in_array('updated_at', $columns, true)) {
                 $changes['updated_at'] = now();
             }
 
-            $filtered = array_filter($changes, static fn ($_, $k) => in_array($k, $columns, true), ARRAY_FILTER_USE_BOTH);
-            DB::table('crm_leads')->where('id', (int) $existing->id)->update($filtered);
+            if ($changes === []) {
+                return response()->json(['ok' => false, 'error' => 'Sin cambios para aplicar'], 422);
+            }
+
+            DB::table('crm_leads')->where('id', (int) $existing->id)->update($changes);
 
             $lead = DB::selectOne('SELECT * FROM crm_leads WHERE id = ? LIMIT 1', [(int) $existing->id]);
             return response()->json(['ok' => true, 'data' => $lead]);
