@@ -4,10 +4,10 @@ namespace Modules\Cirugias\Controllers;
 
 use Controllers\IplPlanificadorController;
 use Core\BaseController;
-use Modules\Cirugias\Models\Cirugia;
 use Modules\Cirugias\Services\CirugiaService;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
+use Throwable;
 
 class CirugiasController extends BaseController
 {
@@ -23,14 +23,84 @@ class CirugiasController extends BaseController
     {
         $this->requireAuth();
 
-        $cirugias = $this->service->obtenerListaCirugias();
-        $meses = $this->buildMesesDisponibles($cirugias);
+        $fechaFinDefault = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $fechaInicioDefault = (new \DateTimeImmutable('today'))->modify('-30 days')->format('Y-m-d');
 
         $this->render('modules/Cirugias/views/index.php', [
             'pageTitle' => 'Reporte de Cirugías',
-            'cirugias' => $cirugias,
-            'mesesDisponibles' => $meses,
+            'afiliacionOptions' => $this->service->obtenerAfiliacionOptions(),
+            'afiliacionCategoriaOptions' => $this->service->obtenerAfiliacionCategoriaOptions(),
+            'fechaInicioDefault' => $fechaInicioDefault,
+            'fechaFinDefault' => $fechaFinDefault,
         ]);
+    }
+
+    public function datatable(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json([
+                'draw' => isset($_POST['draw']) ? (int)$_POST['draw'] : 1,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => 'Sesion expirada',
+            ], 401);
+            return;
+        }
+
+        try {
+            $draw = isset($_POST['draw']) ? (int)$_POST['draw'] : 1;
+            $start = isset($_POST['start']) ? (int)$_POST['start'] : 0;
+            $length = isset($_POST['length']) ? (int)$_POST['length'] : 25;
+            $search = (string)($_POST['search']['value'] ?? '');
+            $orderColumnIndex = isset($_POST['order'][0]['column']) ? (int)$_POST['order'][0]['column'] : 4;
+            $orderDir = (string)($_POST['order'][0]['dir'] ?? 'desc');
+
+            $columnMap = [
+                0 => 'form_id',
+                1 => 'hc_number',
+                2 => 'full_name',
+                3 => 'afiliacion',
+                4 => 'fecha_inicio',
+                5 => 'membrete',
+            ];
+            $orderColumn = $columnMap[$orderColumnIndex] ?? 'fecha_inicio';
+
+            $result = $this->service->obtenerCirugiasPaginadas(
+                $start,
+                $length,
+                $search,
+                $orderColumn,
+                strtoupper($orderDir),
+                [
+                    'fecha_inicio' => (string)($_POST['fecha_inicio'] ?? ''),
+                    'fecha_fin' => (string)($_POST['fecha_fin'] ?? ''),
+                    'afiliacion' => (string)($_POST['afiliacion'] ?? ''),
+                    'afiliacion_categoria' => (string)($_POST['afiliacion_categoria'] ?? ''),
+                ]
+            );
+
+            $data = array_map(fn(array $row): array => $this->buildDatatableRow($row), $result['data']);
+
+            $this->json([
+                'draw' => $draw,
+                'recordsTotal' => (int)($result['recordsTotal'] ?? 0),
+                'recordsFiltered' => (int)($result['recordsFiltered'] ?? 0),
+                'data' => $data,
+            ]);
+        } catch (Throwable $exception) {
+            error_log('Cirugias datatable error: ' . $exception->getMessage());
+            $errorDetail = trim($exception->getMessage()) !== ''
+                ? ('No se pudo cargar la tabla de cirugias: ' . $exception->getMessage())
+                : 'No se pudo cargar la tabla de cirugias';
+            $this->json([
+                'draw' => isset($_POST['draw']) ? (int)$_POST['draw'] : 1,
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => $errorDetail,
+            ], 500);
+        }
     }
 
     public function wizard(): void
@@ -299,25 +369,81 @@ class CirugiasController extends BaseController
         $this->json(['success' => $ok]);
     }
 
-    private function buildMesesDisponibles(array $cirugias): array
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, string>
+     */
+    private function buildDatatableRow(array $row): array
     {
-        $meses = [];
+        $esc = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 
-        /** @var Cirugia $cirugia */
-        foreach ($cirugias as $cirugia) {
-            $fecha = $cirugia->fecha_inicio ?? null;
-            if (!$fecha) {
-                continue;
-            }
-            $mes = substr($fecha, 0, 7);
-            if (!$mes) {
-                continue;
-            }
-            $meses[$mes] = date('F Y', strtotime($mes . '-01'));
+        $cirugia = new \Modules\Cirugias\Models\Cirugia($row);
+        $estado = $cirugia->getEstado();
+        $printed = (int)($row['printed'] ?? 0);
+
+        $badgeEstado = match ($estado) {
+            'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
+            'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
+            default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>",
+        };
+        $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : '';
+
+        $formId = (string)($row['form_id'] ?? '');
+        $hcNumber = (string)($row['hc_number'] ?? '');
+        $formIdEsc = $esc($formId);
+        $hcNumberEsc = $esc($hcNumber);
+        $formIdJs = json_encode($formId, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+        $hcNumberJs = json_encode($hcNumber, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+
+        $protocoloHtml = '<a href="#" class="btn btn-app btn-info" '
+            . 'title="Ver protocolo quirurgico" '
+            . 'data-bs-toggle="modal" data-bs-target="#resultModal" '
+            . 'data-form-id="' . $formIdEsc . '" '
+            . 'data-hc-number="' . $hcNumberEsc . '" '
+            . 'onclick="loadProtocolData(this)">'
+            . $badgeEstado . '<i class="mdi mdi-file-document"></i> Protocolo</a>';
+
+        $descansoOnClick = 'emitirCertificadoDescanso(' . $formIdJs . ', ' . $hcNumberJs . ')';
+        $descansoHtml = '<a class="btn btn-app btn-warning" '
+            . 'title="Generar certificado de descanso postquirurgico" '
+            . 'onclick="' . $esc($descansoOnClick) . '">'
+            . '<i class="mdi mdi-file-document-box"></i> Descanso</a>';
+
+        $printOnClick = $estado === 'revisado'
+            ? 'togglePrintStatus(' . $formIdJs . ', ' . $hcNumberJs . ', this, ' . $printed . ')'
+            : "Swal.fire({ icon: 'warning', title: 'Pendiente revision', text: 'Debe revisar el protocolo antes de imprimir.' })";
+
+        $imprimirHtml = '<a class="btn btn-app btn-primary ' . ($printed ? 'active' : '') . '" '
+            . 'title="Imprimir protocolo" onclick="' . $esc($printOnClick) . '">'
+            . $badgePrinted . '<i class="fa fa-print"></i> Imprimir</a>';
+
+        $fechaInicioRaw = (string)($row['fecha_inicio'] ?? '');
+        $fechaInicio = '';
+        if ($fechaInicioRaw !== '') {
+            $ts = strtotime($fechaInicioRaw);
+            $fechaInicio = $ts ? date('d/m/Y', $ts) : $fechaInicioRaw;
         }
 
-        krsort($meses);
+        $afiliacion = trim((string)($row['afiliacion_label'] ?? $row['afiliacion'] ?? ''));
+        if ($afiliacion === '') {
+            $afiliacion = 'Sin convenio';
+        }
+        $categoria = trim((string)($row['afiliacion_categoria'] ?? ''));
+        $afiliacionHtml = $esc($afiliacion);
+        if ($categoria !== '') {
+            $afiliacionHtml .= '<span class="d-block text-muted fs-11">Categoria: ' . $esc(ucfirst($categoria)) . '</span>';
+        }
 
-        return $meses;
+        return [
+            'form_id' => $esc((string)($row['form_id'] ?? '')),
+            'hc_number' => $esc((string)($row['hc_number'] ?? '')),
+            'full_name' => $esc($cirugia->getNombreCompleto()),
+            'afiliacion_html' => $afiliacionHtml,
+            'fecha_inicio' => $esc($fechaInicio),
+            'membrete' => $esc((string)($row['membrete'] ?? '')),
+            'protocolo_html' => $protocoloHtml,
+            'descanso_html' => $descansoHtml,
+            'imprimir_html' => $imprimirHtml,
+        ];
     }
 }

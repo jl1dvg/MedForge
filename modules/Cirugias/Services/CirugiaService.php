@@ -7,7 +7,25 @@ use PDO;
 
 class CirugiaService
 {
+    private const IESS_AFFILIATIONS = [
+        'contribuyente voluntario',
+        'conyuge',
+        'conyuge pensionista',
+        'seguro campesino',
+        'seguro campesino jubilado',
+        'seguro general',
+        'seguro general jubilado',
+        'seguro general por montepio',
+        'seguro general tiempo parcial',
+        'hijos dependientes',
+        'sin cobertura',
+    ];
+
     private ?string $lastError = null;
+    /** @var array<string, bool> */
+    private array $tableExistsCache = [];
+    /** @var array<string, bool> */
+    private array $columnExistsCache = [];
 
     public function __construct(private PDO $db)
     {
@@ -201,6 +219,239 @@ class CirugiaService
         $rows = $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
         return array_map(fn(array $row) => new Cirugia($row), $rows);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{
+     *     recordsTotal:int,
+     *     recordsFiltered:int,
+     *     data:array<int, array<string, mixed>>
+     * }
+     */
+    public function obtenerCirugiasPaginadas(
+        int $start,
+        int $length,
+        string $search,
+        string $orderColumn,
+        string $orderDir,
+        array $filters = []
+    ): array {
+        $start = max(0, $start);
+        $length = $length > 0 ? min($length, 500) : 25;
+        $search = trim($search);
+
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
+        $afiliacionLabelExpr = $this->afiliacionLabelExpr('p');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string)($filters['afiliacion_categoria'] ?? ''));
+        $fechaInicio = $this->isValidDate((string)($filters['fecha_inicio'] ?? '')) ? (string)$filters['fecha_inicio'] : '';
+        $fechaFin = $this->isValidDate((string)($filters['fecha_fin'] ?? '')) ? (string)$filters['fecha_fin'] : '';
+
+        $baseFrom = "FROM protocolo_data pr
+            INNER JOIN patient_data p
+                ON p.hc_number = pr.hc_number
+            {$categoriaContext['join']}";
+
+        $buildWhere = function (bool $includeSearch, array &$params) use (
+            $fechaInicio,
+            $fechaFin,
+            $afiliacionFilter,
+            $afiliacionCategoriaFilter,
+            $afiliacionKeyExpr,
+            $afiliacionLabelExpr,
+            $categoriaContext,
+            $search
+        ): string {
+            $clauses = ['1 = 1'];
+
+            if ($fechaInicio !== '') {
+                $clauses[] = "DATE(pr.fecha_inicio) >= :fecha_inicio";
+                $params[':fecha_inicio'] = $fechaInicio;
+            }
+
+            if ($fechaFin !== '') {
+                $clauses[] = "DATE(pr.fecha_inicio) <= :fecha_fin";
+                $params[':fecha_fin'] = $fechaFin;
+            }
+
+            if ($afiliacionFilter !== '') {
+                $clauses[] = "{$afiliacionKeyExpr} = :afiliacion_filter";
+                $params[':afiliacion_filter'] = $afiliacionFilter;
+            }
+
+            if ($afiliacionCategoriaFilter !== '') {
+                $clauses[] = "{$categoriaContext['expr']} = :afiliacion_categoria_filter";
+                $params[':afiliacion_categoria_filter'] = $afiliacionCategoriaFilter;
+            }
+
+            if ($includeSearch && $search !== '') {
+                $searchValue = '%' . $search . '%';
+                $clauses[] = "(
+                    pr.form_id LIKE :search_form_id
+                    OR p.hc_number LIKE :search_hc_number
+                    OR CONCAT_WS(' ', COALESCE(p.fname, ''), COALESCE(p.lname, ''), COALESCE(p.lname2, '')) LIKE :search_full_name
+                    OR COALESCE(pr.membrete, '') LIKE :search_membrete
+                    OR {$afiliacionLabelExpr} LIKE :search_afiliacion
+                )";
+                $params[':search_form_id'] = $searchValue;
+                $params[':search_hc_number'] = $searchValue;
+                $params[':search_full_name'] = $searchValue;
+                $params[':search_membrete'] = $searchValue;
+                $params[':search_afiliacion'] = $searchValue;
+            }
+
+            return 'WHERE ' . implode(' AND ', $clauses);
+        };
+
+        $paramsTotal = [];
+        $whereTotal = $buildWhere(false, $paramsTotal);
+        $stmtTotal = $this->db->prepare("SELECT COUNT(*) {$baseFrom} {$whereTotal}");
+        $stmtTotal->execute($paramsTotal);
+        $recordsTotal = (int)$stmtTotal->fetchColumn();
+
+        $paramsFiltered = [];
+        $whereFiltered = $buildWhere(true, $paramsFiltered);
+        $stmtFiltered = $this->db->prepare("SELECT COUNT(*) {$baseFrom} {$whereFiltered}");
+        $stmtFiltered->execute($paramsFiltered);
+        $recordsFiltered = (int)$stmtFiltered->fetchColumn();
+
+        $orderColumns = [
+            'form_id' => 'pr.form_id',
+            'hc_number' => 'p.hc_number',
+            'full_name' => "CONCAT_WS(' ', COALESCE(p.fname, ''), COALESCE(p.lname, ''), COALESCE(p.lname2, ''))",
+            'afiliacion' => $afiliacionLabelExpr,
+            'fecha_inicio' => 'pr.fecha_inicio',
+            'membrete' => 'pr.membrete',
+        ];
+        $orderExpr = $orderColumns[$orderColumn] ?? 'pr.fecha_inicio';
+        $orderDir = strtoupper($orderDir) === 'ASC' ? 'ASC' : 'DESC';
+
+        $sqlData = "SELECT
+                pr.form_id,
+                p.hc_number,
+                p.fname,
+                p.lname,
+                p.lname2,
+                p.afiliacion,
+                {$afiliacionLabelExpr} AS afiliacion_label,
+                {$categoriaContext['expr']} AS afiliacion_categoria,
+                pr.fecha_inicio,
+                pr.membrete,
+                pr.printed,
+                pr.status
+            {$baseFrom}
+            {$whereFiltered}
+            ORDER BY {$orderExpr} {$orderDir}, pr.id DESC
+            LIMIT :limit OFFSET :offset";
+
+        $stmtData = $this->db->prepare($sqlData);
+        foreach ($paramsFiltered as $key => $value) {
+            $stmtData->bindValue($key, $value);
+        }
+        $stmtData->bindValue(':limit', $length, PDO::PARAM_INT);
+        $stmtData->bindValue(':offset', $start, PDO::PARAM_INT);
+        $stmtData->execute();
+
+        $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $rows,
+        ];
+    }
+
+    /**
+     * @return array<int, array{value:string,label:string}>
+     */
+    public function obtenerAfiliacionOptions(): array
+    {
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
+        $afiliacionLabelExpr = $this->afiliacionLabelExpr('p');
+
+        $sql = "SELECT
+                    x.value_key,
+                    MAX(x.value_label) AS value_label
+                FROM (
+                    SELECT
+                        {$afiliacionKeyExpr} AS value_key,
+                        {$afiliacionLabelExpr} AS value_label
+                    FROM protocolo_data pr
+                    INNER JOIN patient_data p ON p.hc_number = pr.hc_number
+                ) x
+                GROUP BY x.value_key
+                ORDER BY value_label ASC";
+
+        $stmt = $this->db->query($sql);
+
+        $options = [
+            ['value' => '', 'label' => 'Todas'],
+            ['value' => 'iess', 'label' => 'IESS'],
+        ];
+        $seen = [
+            '' => true,
+            'iess' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $value = trim((string)($row['value_key'] ?? ''));
+            $label = trim((string)($row['value_label'] ?? ''));
+            if ($value === '' || $label === '' || isset($seen[$value])) {
+                continue;
+            }
+
+            $options[] = ['value' => $value, 'label' => $label];
+            $seen[$value] = true;
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, array{value:string,label:string}>
+     */
+    public function obtenerAfiliacionCategoriaOptions(): array
+    {
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $sql = "SELECT
+                    {$categoriaContext['expr']} AS categoria,
+                    COUNT(*) AS total
+                FROM protocolo_data pr
+                INNER JOIN patient_data p ON p.hc_number = pr.hc_number
+                {$categoriaContext['join']}
+                GROUP BY {$categoriaContext['expr']}
+                ORDER BY total DESC";
+
+        $stmt = $this->db->query($sql);
+
+        $options = [
+            ['value' => '', 'label' => 'Todas las categorias'],
+            ['value' => 'publico', 'label' => 'Publica'],
+            ['value' => 'privado', 'label' => 'Privada'],
+        ];
+        $seen = [
+            '' => true,
+            'publico' => true,
+            'privado' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $value = trim((string)($row['categoria'] ?? ''));
+            if ($value === '' || isset($seen[$value])) {
+                continue;
+            }
+
+            $options[] = [
+                'value' => $value,
+                'label' => $this->formatCategoriaLabel($value),
+            ];
+            $seen[$value] = true;
+        }
+
+        return $options;
     }
 
     public function obtenerCirugiaPorId(string $formId, string $hcNumber): ?Cirugia
@@ -726,5 +977,149 @@ class CirugiaService
         $this->lastError = $errorInfo[2] ?? 'No se pudo actualizar el autosave.';
 
         return false;
+    }
+
+    private function normalizeAfiliacionFilter(string $afiliacionFilter): string
+    {
+        $value = strtolower(trim($afiliacionFilter));
+        if ($value === 'sin convenio') {
+            return 'sin_convenio';
+        }
+
+        return $value;
+    }
+
+    private function normalizeAfiliacionCategoriaFilter(string $categoryFilter): string
+    {
+        $value = strtolower(trim($categoryFilter));
+        if ($value === 'publica') {
+            return 'publico';
+        }
+        if ($value === 'privada') {
+            return 'privado';
+        }
+
+        return $value;
+    }
+
+    private function formatCategoriaLabel(string $key): string
+    {
+        return match ($key) {
+            'publico' => 'Publica',
+            'privado' => 'Privada',
+            'particular' => 'Particular',
+            'fundacional' => 'Fundacional',
+            'otros' => 'Otros',
+            default => ucwords(str_replace('_', ' ', $key)),
+        };
+    }
+
+    private function afiliacionGroupKeyExpr(string $alias): string
+    {
+        $col = "LOWER(TRIM(COALESCE({$alias}.afiliacion, '')))";
+        return "CASE
+            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'iess'
+            WHEN {$col} = '' THEN 'sin_convenio'
+            ELSE {$col}
+        END";
+    }
+
+    private function afiliacionLabelExpr(string $alias): string
+    {
+        $col = "LOWER(TRIM(COALESCE({$alias}.afiliacion, '')))";
+        return "CASE
+            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'IESS'
+            WHEN {$col} = '' THEN 'Sin convenio'
+            ELSE TRIM({$alias}.afiliacion)
+        END";
+    }
+
+    private function iessAffiliationsSqlList(): string
+    {
+        return "'" . implode("','", self::IESS_AFFILIATIONS) . "'";
+    }
+
+    /**
+     * @return array{join:string,expr:string}
+     */
+    private function resolveAfiliacionCategoriaContext(string $rawAffiliationExpr, string $mapAlias = 'acm'): array
+    {
+        $afiliacionNormExpr = $this->normalizeSqlKey($rawAffiliationExpr);
+        $fallbackExpr = "CASE
+            WHEN {$afiliacionNormExpr} = '' THEN 'otros'
+            WHEN {$afiliacionNormExpr} LIKE '%particular%' THEN 'particular'
+            WHEN {$afiliacionNormExpr} LIKE '%fundacion%' OR {$afiliacionNormExpr} LIKE '%fundacional%' THEN 'fundacional'
+            WHEN {$afiliacionNormExpr} REGEXP 'iess|issfa|isspol|seguro_general|seguro_campesino|jubilado|montepio|contribuyente|voluntario|publico' THEN 'publico'
+            ELSE 'privado'
+        END";
+        return ['join' => '', 'expr' => $fallbackExpr];
+    }
+
+    private function normalizeSqlText(string $expr): string
+    {
+        return "LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$expr}, 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U'), 'Ñ', 'N'), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u'), 'ñ', 'n'))";
+    }
+
+    private function normalizeSqlKey(string $expr): string
+    {
+        $normalized = $this->normalizeSqlText($expr);
+
+        return "REPLACE(REPLACE({$normalized}, ' ', '_'), '-', '_')";
+    }
+
+    private function tableExists(string $table): bool
+    {
+        if (array_key_exists($table, $this->tableExistsCache)) {
+            return $this->tableExistsCache[$table];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
+        );
+        $stmt->execute([':table' => $table]);
+        $exists = (int)$stmt->fetchColumn() > 0;
+        $this->tableExistsCache[$table] = $exists;
+
+        return $exists;
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        $cacheKey = $table . '.' . $column;
+        if (array_key_exists($cacheKey, $this->columnExistsCache)) {
+            return $this->columnExistsCache[$cacheKey];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*)
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :table
+               AND COLUMN_NAME = :column"
+        );
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+        $exists = (int)$stmt->fetchColumn() > 0;
+        $this->columnExistsCache[$cacheKey] = $exists;
+
+        return $exists;
+    }
+
+    private function isValidDate(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return false;
+        }
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return false;
+        }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $value));
+        return checkdate($month, $day, $year);
     }
 }

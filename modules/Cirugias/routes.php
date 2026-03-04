@@ -9,6 +9,10 @@ return function (Router $router) {
         (new CirugiasController($pdo))->index();
     });
 
+    $router->post('/cirugias/datatable', function (\PDO $pdo) {
+        (new CirugiasController($pdo))->datatable();
+    });
+
     $router->get('/cirugias/dashboard', function (\PDO $pdo) {
         (new CirugiasDashboardController($pdo))->index();
     });

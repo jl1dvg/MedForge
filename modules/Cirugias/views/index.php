@@ -1,6 +1,12 @@
 <?php
 /** @var string $username */
 /** @var array $scripts */
+/** @var array<int, array{value:string,label:string}> $afiliacionOptions */
+/** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
+/** @var string $fechaInicioDefault */
+/** @var string $fechaFinDefault */
+$fechaInicioDefaultValue = htmlspecialchars((string)($fechaInicioDefault ?? ''), ENT_QUOTES, 'UTF-8');
+$fechaFinDefaultValue = htmlspecialchars((string)($fechaFinDefault ?? ''), ENT_QUOTES, 'UTF-8');
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/datatable/datatables.min.js',
     'js/pages/cirugias.js',
@@ -31,6 +37,56 @@ $scripts = array_merge($scripts ?? [], [
                     <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                         <h4 class="box-title mb-0">Cirugías realizadas</h4>
                     </div>
+                    <form id="filtrosCirugias" class="row g-2 align-items-end mb-3">
+                        <div class="col-sm-6 col-md-3">
+                            <label for="filtroFechaInicio" class="form-label">Desde</label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="filtroFechaInicio"
+                                   name="fecha_inicio"
+                                   value="<?= $fechaInicioDefaultValue ?>"
+                                   data-default="<?= $fechaInicioDefaultValue ?>">
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <label for="filtroFechaFin" class="form-label">Hasta</label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="filtroFechaFin"
+                                   name="fecha_fin"
+                                   value="<?= $fechaFinDefaultValue ?>"
+                                   data-default="<?= $fechaFinDefaultValue ?>">
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <label for="filtroAfiliacion" class="form-label">Afiliación</label>
+                            <select class="form-select" id="filtroAfiliacion" name="afiliacion">
+                                <?php foreach (($afiliacionOptions ?? []) as $option): ?>
+                                    <?php $value = (string)($option['value'] ?? ''); ?>
+                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <label for="filtroAfiliacionCategoria" class="form-label">Categoría afiliación</label>
+                            <select class="form-select" id="filtroAfiliacionCategoria" name="afiliacion_categoria">
+                                <?php foreach (($afiliacionCategoriaOptions ?? []) as $option): ?>
+                                    <?php $value = (string)($option['value'] ?? ''); ?>
+                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-12 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="mdi mdi-filter-variant"></i> Aplicar filtros
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnLimpiarFiltrosCirugias">
+                                <i class="mdi mdi-close-circle-outline"></i> Limpiar
+                            </button>
+                        </div>
+                    </form>
                     <div class="table-responsive">
                         <table id="surgeryTable" class="table table-striped table-hover">
                             <thead>
@@ -46,60 +102,7 @@ $scripts = array_merge($scripts ?? [], [
                                 <th class="bb-2" title="Imprimir protocolo"><i class="mdi mdi-printer"></i></th>
                             </tr>
                             </thead>
-                            <tbody id="patientTableBody">
-                            <?php foreach ($cirugias as $cirugia): ?>
-                                <?php
-                                /** @var \Modules\Cirugias\Models\Cirugia $cirugia */
-                                $printed = (int)($cirugia->printed ?? 0);
-                                $estado = $cirugia->getEstado();
-                                $badgeEstado = match ($estado) {
-                                    'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
-                                    'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
-                                    default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>",
-                                };
-                                $onclick = $estado === 'revisado'
-                                    ? "togglePrintStatus('" . htmlspecialchars($cirugia->form_id) . "', '" . htmlspecialchars($cirugia->hc_number) . "', this, " . $printed . ")"
-                                    : "Swal.fire({ icon: 'warning', title: 'Pendiente revisión', text: 'Debe revisar el protocolo antes de imprimir.' })";
-                                $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : '';
-                                ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($cirugia->form_id ?? '') ?></td>
-                                    <td><?= htmlspecialchars($cirugia->hc_number ?? '') ?></td>
-                                    <td><?= htmlspecialchars($cirugia->getNombreCompleto()) ?></td>
-                                    <td><?= htmlspecialchars($cirugia->afiliacion ?? '') ?></td>
-                                    <td><?= $cirugia->fecha_inicio ? date('d/m/Y', strtotime($cirugia->fecha_inicio)) : '' ?></td>
-                                    <td><?= htmlspecialchars($cirugia->membrete ?? '') ?></td>
-                                    <td>
-                                        <a href="#"
-                                           class="btn btn-app btn-info"
-                                           title="Ver protocolo quirúrgico"
-                                           data-bs-toggle="modal"
-                                           data-bs-target="#resultModal"
-                                           data-form-id="<?= htmlspecialchars($cirugia->form_id) ?>"
-                                           data-hc-number="<?= htmlspecialchars($cirugia->hc_number) ?>"
-                                           onclick="loadProtocolData(this)">
-                                            <?= $badgeEstado ?>
-                                            <i class="mdi mdi-file-document"></i> Protocolo
-                                        </a>
-                                    </td>
-                                    <td>
-                                        <a class="btn btn-app btn-warning"
-                                           title="Generar certificado de descanso postquirurgico"
-                                           onclick="emitirCertificadoDescanso('<?= htmlspecialchars($cirugia->form_id) ?>', '<?= htmlspecialchars($cirugia->hc_number) ?>')">
-                                            <i class="mdi mdi-file-document-box"></i> Descanso
-                                        </a>
-                                    </td>
-                                    <td>
-                                        <a class="btn btn-app btn-primary <?= $printed ? 'active' : '' ?>"
-                                           title="Imprimir protocolo"
-                                           onclick="<?= $onclick ?>">
-                                            <?= $badgePrinted ?>
-                                            <i class="fa fa-print"></i> Imprimir
-                                        </a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
+                            <tbody></tbody>
                         </table>
                     </div>
                 </div>
@@ -175,19 +178,6 @@ $scripts = array_merge($scripts ?? [], [
             return;
         }
         window.location.href = `/cirugias/wizard?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
-    }
-
-    function reloadPatientTable() {
-        fetch(window.location.href, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-            .then(response => response.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const newBody = doc.getElementById('patientTableBody');
-                if (newBody) {
-                    document.getElementById('patientTableBody').innerHTML = newBody.innerHTML;
-                }
-            });
     }
 
     function loadProtocolData(button) {
