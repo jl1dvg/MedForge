@@ -178,25 +178,10 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             const filasTxt = filasSinProcedimiento.join(', ');
             const msg = `Se omitieron filas sin procedimiento: ${filasTxt}`;
             console.warn(`⚠️ ${msg}`);
-            if (typeof notifySwal === 'function') {
-                notifySwal({
-                    icon: 'warning',
-                    title: 'Solicitud incompleta',
-                    text: msg,
-                    timer: 3200
-                });
-            }
         }
 
         if (!data.solicitudes.length) {
-            if (typeof notifySwal === 'function') {
-                notifySwal({
-                    icon: 'error',
-                    title: 'No se envió la solicitud',
-                    text: 'No hay filas válidas para guardar.',
-                    timer: 3200
-                });
-            }
+            console.warn('⚠️ No hay filas válidas para guardar solicitud.');
             return;
         }
 
@@ -235,14 +220,6 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             }
             const finalMessage = backendMessage || err?.message || 'No se pudo guardar la solicitud.';
             if (DEBUG_SOLICITUD) console.error('❌ Error al enviar solicitud:', err, finalMessage);
-            if (typeof notifySwal === 'function') {
-                notifySwal({
-                    icon: 'error',
-                    title: 'Error al guardar solicitud',
-                    text: finalMessage,
-                    timer: 4200
-                });
-            }
         } finally {
             if (btnGuardar) btnGuardar.disabled = false;
         }
