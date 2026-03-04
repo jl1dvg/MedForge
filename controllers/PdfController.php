@@ -9,6 +9,7 @@ use Helpers\PdfGenerator;
 use Models\ProtocoloModel;
 use Modules\Consulta\Services\ConsultaReportService;
 use Modules\Reporting\Controllers\ReportController as ReportingReportController;
+use Modules\Reporting\Services\PostSurgeryRestCertificateService;
 use Modules\Reporting\Services\ProtocolReportService;
 use Modules\Reporting\Services\ReportService;
 use Modules\Reporting\Support\SolicitudDataFormatter;
@@ -238,6 +239,37 @@ class PdfController
         $data = SolicitudDataFormatter::enrich($data, $form_id, $hc_number);
         $filename = sprintf('consulta_iess_%s_%s.pdf', $form_id, $hc_number);
         $pdfContent = $this->reportService->renderPdf('002', $data, [
+            'filename' => $filename,
+        ]);
+
+        $this->emitPdf($pdfContent, $filename, 'I');
+    }
+
+    public function generatePostSurgeryRestCertificate(
+        string $formId,
+        string $hcNumber,
+        ?int $restDays = null,
+        ?string $restStartDate = null,
+        ?string $observaciones = null
+    ): void {
+        $service = new PostSurgeryRestCertificateService($this->db);
+        $data = $service->buildData($formId, $hcNumber, [
+            'dias_descanso' => $restDays,
+            'fecha_inicio_descanso' => $restStartDate,
+            'observaciones' => $observaciones,
+        ]);
+
+        if (!is_array($data) || $data === []) {
+            http_response_code(404);
+            echo 'No se encontraron datos para el certificado solicitado.';
+            return;
+        }
+
+        $safeFormId = preg_replace('/[^A-Za-z0-9_-]/', '', $formId) ?? $formId;
+        $safeHcNumber = preg_replace('/[^A-Za-z0-9_-]/', '', $hcNumber) ?? $hcNumber;
+        $filename = sprintf('certificado_descanso_%s_%s.pdf', $safeFormId, $safeHcNumber);
+
+        $pdfContent = $this->reportService->renderPdf('certificado_descanso_postquirurgico', $data, [
             'filename' => $filename,
         ]);
 

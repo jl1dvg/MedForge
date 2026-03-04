@@ -218,8 +218,9 @@
 
         const credentialModes = (() => {
             if (credentials === 'include' && !isSameOrigin(url)) {
-                // Evita ruido CORS: primero intenta vía background y, si falla, retrocede a fetch sin credenciales.
-                return ['background', 'include', 'omit'];
+                // Para cross-origin, include desde content script suele disparar CORS.
+                // Preferimos proxy en background y, como fallback, omit sin cookies.
+                return ['background', 'omit'];
             }
             return [credentials];
         })();

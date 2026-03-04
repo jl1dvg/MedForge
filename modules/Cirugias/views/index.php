@@ -42,6 +42,7 @@ $scripts = array_merge($scripts ?? [], [
                                 <th class="bb-2">Fecha</th>
                                 <th class="bb-2">Procedimiento</th>
                                 <th class="bb-2" title="Ver protocolo"><i class="mdi mdi-file-document"></i></th>
+                                <th class="bb-2" title="Certificado de descanso"><i class="mdi mdi-file-document-box"></i></th>
                                 <th class="bb-2" title="Imprimir protocolo"><i class="mdi mdi-printer"></i></th>
                             </tr>
                             </thead>
@@ -82,6 +83,13 @@ $scripts = array_merge($scripts ?? [], [
                                         </a>
                                     </td>
                                     <td>
+                                        <a class="btn btn-app btn-warning"
+                                           title="Generar certificado de descanso postquirurgico"
+                                           onclick="emitirCertificadoDescanso('<?= htmlspecialchars($cirugia->form_id) ?>', '<?= htmlspecialchars($cirugia->hc_number) ?>')">
+                                            <i class="mdi mdi-file-document-box"></i> Descanso
+                                        </a>
+                                    </td>
+                                    <td>
                                         <a class="btn btn-app btn-primary <?= $printed ? 'active' : '' ?>"
                                            title="Imprimir protocolo"
                                            onclick="<?= $onclick ?>">
@@ -103,6 +111,31 @@ $scripts = array_merge($scripts ?? [], [
 <?php include __DIR__ . '/components/modal_protocolo.php'; ?>
 
 <script>
+    function emitirCertificadoDescanso(formId, hcNumber) {
+        const value = window.prompt('Ingrese los dias de descanso postquirurgico', '5');
+        if (value === null) {
+            return;
+        }
+
+        const dias = Number.parseInt(value, 10);
+        if (!Number.isFinite(dias) || dias <= 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Valor invalido',
+                text: 'Debe ingresar un numero entero mayor a cero.',
+            });
+            return;
+        }
+
+        const params = new URLSearchParams({
+            form_id: formId,
+            hc_number: hcNumber,
+            dias_descanso: String(dias),
+        });
+
+        window.open(`/reports/cirugias/descanso/pdf?${params.toString()}`, '_blank');
+    }
+
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
         const isActive = button.classList.contains('active');
         const newStatus = isActive ? 0 : 1;

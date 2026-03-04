@@ -170,4 +170,47 @@ return static function (Router $router, \PDO $pdo): void {
         $controller = new PdfController($pdo);
         $controller->generateConsultaIess($formId, $hcNumber);
     });
+
+    $router->get('/reports/cirugias/descanso/pdf', static function (\PDO $pdo): void {
+        $formId = $_GET['form_id'] ?? null;
+        $hcNumber = $_GET['hc_number'] ?? null;
+
+        if (!$formId || !$hcNumber) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'Faltan parametros obligatorios.',
+                'required' => ['form_id', 'hc_number'],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return;
+        }
+
+        $restDays = null;
+        if (isset($_GET['dias_descanso']) && $_GET['dias_descanso'] !== '') {
+            $restDays = (int) $_GET['dias_descanso'];
+        }
+
+        $restStartDate = isset($_GET['fecha_inicio_descanso']) && is_string($_GET['fecha_inicio_descanso'])
+            ? trim($_GET['fecha_inicio_descanso'])
+            : null;
+        if ($restStartDate === '') {
+            $restStartDate = null;
+        }
+
+        $observaciones = isset($_GET['observaciones']) && is_string($_GET['observaciones'])
+            ? trim($_GET['observaciones'])
+            : null;
+        if ($observaciones === '') {
+            $observaciones = null;
+        }
+
+        $controller = new PdfController($pdo);
+        $controller->generatePostSurgeryRestCertificate(
+            (string) $formId,
+            (string) $hcNumber,
+            $restDays,
+            $restStartDate,
+            $observaciones
+        );
+    });
 };

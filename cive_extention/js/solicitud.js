@@ -57,6 +57,7 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
     async function extraerDatosSolicitudYEnviar(btnGuardar) {
         const apiPath = '/solicitudes/guardar.php';
         const data = {};
+        const filasSinProcedimiento = [];
 
         const div = document.querySelector('.media-body.responsive');
         if (!div) return;
@@ -136,6 +137,10 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             // Ignora filas vacías (sin procedimiento ni tipo ni afiliación ni doctor ni fecha)
             const tieneContenido = tipoTxt || afiliacionTxt || procedimientoTxt || doctorTxt || fecha || observacion || productoTxt || ojos.length || detalles.length;
             if (!tieneContenido) return;
+            if (!procedimientoTxt) {
+                filasSinProcedimiento.push(i + 1);
+                return;
+            }
 
             const payloadSolicitud = {
                 secuencia: i + 1,
@@ -169,7 +174,31 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
             data.solicitudes.push(payloadSolicitud);
         });
 
-        if (!data.solicitudes.length) return;
+        if (filasSinProcedimiento.length > 0) {
+            const filasTxt = filasSinProcedimiento.join(', ');
+            const msg = `Se omitieron filas sin procedimiento: ${filasTxt}`;
+            console.warn(`⚠️ ${msg}`);
+            if (typeof notifySwal === 'function') {
+                notifySwal({
+                    icon: 'warning',
+                    title: 'Solicitud incompleta',
+                    text: msg,
+                    timer: 3200
+                });
+            }
+        }
+
+        if (!data.solicitudes.length) {
+            if (typeof notifySwal === 'function') {
+                notifySwal({
+                    icon: 'error',
+                    title: 'No se envió la solicitud',
+                    text: 'No hay filas válidas para guardar.',
+                    timer: 3200
+                });
+            }
+            return;
+        }
 
         if (btnGuardar) btnGuardar.disabled = true;
 
@@ -195,7 +224,25 @@ if (window.location.href.includes('/documentacion/doc-solicitud-procedimientos/h
                 console.groupEnd();
             }
         } catch (err) {
-            if (DEBUG_SOLICITUD) console.error('❌ Error al enviar solicitud:', err);
+            let backendMessage = '';
+            if (err?.response && typeof err.response.clone === 'function') {
+                try {
+                    const body = await err.response.clone().json();
+                    backendMessage = body?.message || '';
+                } catch (parseError) {
+                    // ignore parse errors
+                }
+            }
+            const finalMessage = backendMessage || err?.message || 'No se pudo guardar la solicitud.';
+            if (DEBUG_SOLICITUD) console.error('❌ Error al enviar solicitud:', err, finalMessage);
+            if (typeof notifySwal === 'function') {
+                notifySwal({
+                    icon: 'error',
+                    title: 'Error al guardar solicitud',
+                    text: finalMessage,
+                    timer: 4200
+                });
+            }
         } finally {
             if (btnGuardar) btnGuardar.disabled = false;
         }
