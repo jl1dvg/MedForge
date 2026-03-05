@@ -234,6 +234,54 @@ $solicitudesDummiesToolbar = [
                 'file' => 'kanban-drag-drop.md',
                 'markdown' => "### ¿Qué hace?\nPermite cambiar estado arrastrando la tarjeta entre columnas.",
         ],
+        'prefactura.how-to' => [
+                'title' => 'Prefactura: Cómo usar el detalle',
+                'description' => 'Guía operativa del modal de detalle',
+                'file' => 'prefactura-how-to.md',
+                'markdown' => "### ¿Qué hace?\nResume cómo trabajar el detalle de solicitud sin salir del modal.",
+        ],
+        'sigcenter.select-sede' => [
+                'title' => 'Sigcenter: Seleccionar sede',
+                'description' => 'Elegir sede para agendar',
+                'file' => 'sigcenter-select-sede.md',
+                'markdown' => "### ¿Qué hace?\nDefine la sede en la que se buscará disponibilidad quirúrgica en Sigcenter.",
+        ],
+        'sigcenter.load-days' => [
+                'title' => 'Sigcenter: Cargar días disponibles',
+                'description' => 'Buscar días disponibles',
+                'file' => 'sigcenter-load-days.md',
+                'markdown' => "### ¿Qué hace?\nConsulta en Sigcenter los días disponibles para el médico y sede elegidos.",
+        ],
+        'sigcenter.select-slot' => [
+                'title' => 'Sigcenter: Seleccionar día y hora',
+                'description' => 'Seleccionar fecha y hora',
+                'file' => 'sigcenter-select-slot.md',
+                'markdown' => "### ¿Qué hace?\nPermite elegir el bloque de fecha y hora para el agendamiento.",
+        ],
+        'sigcenter.schedule' => [
+                'title' => 'Sigcenter: Agendar',
+                'description' => 'Confirmar agendamiento en Sigcenter',
+                'file' => 'sigcenter-schedule.md',
+                'markdown' => "### ¿Qué hace?\nConfirma la agenda quirúrgica en Sigcenter con el slot seleccionado.",
+        ],
+        'cobertura.send-mail' => [
+                'title' => 'Cobertura Mail: Enviar correo',
+                'description' => 'Enviar correo de cobertura',
+                'file' => 'cobertura-send-mail.md',
+                'markdown' => "### ¿Qué hace?\nEnvía la solicitud de cobertura con asunto, cuerpo y adjunto.",
+        ],
+        'cobertura.pdf-link' => [
+                'title' => 'Cobertura Mail: PDF adjunto',
+                'description' => 'Ver PDF de respaldo',
+                'file' => 'cobertura-pdf-link.md',
+                'markdown' => "### ¿Qué hace?\nAbre el PDF de soporte para validar el adjunto antes del envío.",
+        ],
+        'cobertura.cancel' => [
+                'title' => 'Cobertura Mail: Cancelar',
+                'description' => 'Cancelar envío',
+                'file' => 'cobertura-cancel.md',
+                'markdown' => "### ¿Qué hace?\nCierra el modal sin enviar el correo.",
+        ],
         'overview.metric-actionable' => [
                 'title' => 'Overview: Tarjetas métricas',
                 'description' => 'Exportar reporte de esta métrica',
@@ -1995,6 +2043,14 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
+                <button type="button"
+                        class="btn btn-sm btn-outline-info ms-auto me-2"
+                        id="prefacturaHowToButton"
+                        title="Abrir guía operativa del detalle"
+                        aria-label="Cómo usar el detalle de prefactura"
+                        data-dummies-key="prefactura.how-to">
+                    <i class="mdi mdi-help-circle-outline"></i> Guía del detalle
+                </button>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body prefactura-modal-body">
@@ -2006,17 +2062,25 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                 <!--<button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
                     🔄 Re-scrapear derivación
                 </button> -->
-                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
+                <button type="button"
+                        class="btn btn-outline-primary d-none"
+                        id="btnGenerarTurnoModal"
+                        title="Generar turno para esta solicitud"
+                        aria-label="Generar turno para esta solicitud">
+                    📞 Generar turno para esta solicitud
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
-                        data-estado="En atención">👥 En atención
+                        data-estado="En atención"
+                        title="Marcar paciente en atención"
+                        aria-label="Marcar paciente en atención">👥 Marcar paciente en atención
                 </button>
                 <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
                         type="button"
                         id="btnSolicitarExamenesPrequirurgicos"
                         data-bs-toggle="tooltip"
-                        title="Enviar solicitud de exámenes prequirúrgicos al paciente">
-                    <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
+                        title="Imprimir orden de exámenes prequirúrgicos"
+                        aria-label="Imprimir orden de exámenes prequirúrgicos">
+                    <i class="mdi mdi-file-multiple me-1"></i> Imprimir orden de exámenes prequirúrgicos
                 </button>
                 <!-- <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
                         data-estado="Revisión Códigos" data-completado="0">

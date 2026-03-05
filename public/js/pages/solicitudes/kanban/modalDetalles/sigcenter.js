@@ -109,6 +109,11 @@ export function initSigcenterPanel(container) {
     const arrivalInput = card.querySelector("[data-sigcenter-arrival]");
     const selectedLabel = card.querySelector("[data-sigcenter-selected]");
     const status = card.querySelector("[data-sigcenter-status]");
+    const applyActionLabel = (element, label) => {
+        if (!element || !label) return;
+        element.setAttribute("title", label);
+        element.setAttribute("aria-label", label);
+    };
 
     const solicitudId = Number(card.dataset.solicitudId || 0);
     const hcNumber = (card.dataset.hcNumber || "").trim();
@@ -255,12 +260,15 @@ export function initSigcenterPanel(container) {
     const setScheduleLabel = () => {
         if (!scheduleBtn) return;
         const icon = scheduleBtn.querySelector("i");
-        const label = state.action === "UPDATE" ? "Reagendar" : "Agendar";
+        const label = state.action === "UPDATE"
+            ? "Reagendar en Sigcenter"
+            : "Confirmar agendamiento en Sigcenter";
         if (icon) {
             scheduleBtn.innerHTML = `${icon.outerHTML} ${label}`;
         } else {
             scheduleBtn.textContent = label;
         }
+        applyActionLabel(scheduleBtn, label);
     };
 
     function loadSedes() {
@@ -388,6 +396,7 @@ export function initSigcenterPanel(container) {
             btn.type = "button";
             btn.className = `btn btn-sm ${item === selectedValue ? "btn-primary" : "btn-outline-secondary"}`;
             btn.textContent = item;
+            applyActionLabel(btn, "Seleccionar fecha y hora");
             btn.addEventListener("click", () => onSelect(item));
             containerEl.appendChild(btn);
         });
@@ -655,6 +664,12 @@ export function initSigcenterPanel(container) {
         const fecha = state.selectedDate;
         let hora = state.selectedTime;
         if (!fecha || !hora) return;
+        const confirmationMessage = state.action === "UPDATE"
+            ? "¿Confirmar reagendamiento en Sigcenter con la fecha y hora seleccionadas?"
+            : "¿Confirmar agendamiento en Sigcenter con la fecha y hora seleccionadas?";
+        if (!window.confirm(confirmationMessage)) {
+            return;
+        }
         if (hora.includes(" - ")) {
             hora = hora.split(" - ")[0].trim();
         }
@@ -728,6 +743,7 @@ export function initSigcenterPanel(container) {
     };
 
     if (sedeSelect) {
+        applyActionLabel(sedeSelect, "Elegir sede para agendar");
         sedeSelect.addEventListener("change", (event) => {
             state.sedeId = event.target.value;
             updateScheduleButton();
@@ -735,10 +751,12 @@ export function initSigcenterPanel(container) {
     }
 
     if (loadDaysBtn) {
+        applyActionLabel(loadDaysBtn, "Buscar días disponibles");
         loadDaysBtn.addEventListener("click", () => loadDays());
     }
 
     if (scheduleBtn) {
+        applyActionLabel(scheduleBtn, "Confirmar agendamiento en Sigcenter");
         scheduleBtn.addEventListener("click", () => schedule());
     }
 

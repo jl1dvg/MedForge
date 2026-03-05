@@ -292,12 +292,18 @@ if ($sessionUsername === 'jl1dvg') {
         <div class="mt-3">
             <h6 class="text-muted text-uppercase">Acciones</h6>
             <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">
-                    <i class="mdi mdi-phone me-1"></i> Generar turno
+                <button type="button"
+                        class="btn btn-outline-primary d-none"
+                        id="btnGenerarTurnoModal"
+                        title="Generar turno para esta solicitud"
+                        aria-label="Generar turno para esta solicitud">
+                    <i class="mdi mdi-phone me-1"></i> Generar turno para esta solicitud
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
-                        data-estado="En atención">
-                    <i class="mdi mdi-account-clock-outline me-1"></i> En atención
+                        data-estado="En atención"
+                        title="Marcar paciente en atención"
+                        aria-label="Marcar paciente en atención">
+                    <i class="mdi mdi-account-clock-outline me-1"></i> Marcar paciente en atención
                 </button>
                 <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa"
                         data-estado="Revisión Códigos" data-completado="1">
@@ -381,8 +387,10 @@ if ($sessionUsername === 'jl1dvg') {
                 </div>
                 <div class="d-flex flex-column gap-3 d-none" data-sigcenter-controls>
                     <div>
-                        <label class="form-label mb-1">Sede (Sigcenter)</label>
-                        <select class="form-select form-select-sm" data-sigcenter-sede>
+                        <label class="form-label mb-1">Sede para agenda</label>
+                        <select class="form-select form-select-sm" data-sigcenter-sede
+                                title="Elegir sede para agendar"
+                                aria-label="Elegir sede para agendar">
                             <option value="">Selecciona una sede</option>
                         </select>
                         <small class="text-muted">Se cargan desde Sigcenter según el médico.</small>
@@ -396,11 +404,17 @@ if ($sessionUsername === 'jl1dvg') {
                     </div>
                     <div class="d-flex flex-column gap-2">
                         <button type="button" class="btn btn-outline-primary btn-sm align-self-start"
-                                data-sigcenter-load-days>
-                            <i class="bi bi-calendar3 me-1"></i> Cargar días disponibles
+                                data-sigcenter-load-days
+                                title="Buscar días disponibles"
+                                aria-label="Buscar días disponibles">
+                            <i class="bi bi-calendar3 me-1"></i> Buscar días disponibles
                         </button>
-                        <div class="d-flex flex-wrap gap-2" data-sigcenter-days></div>
-                        <div class="d-flex flex-wrap gap-2" data-sigcenter-times></div>
+                        <div class="d-flex flex-wrap gap-2" data-sigcenter-days
+                             title="Seleccionar fecha y hora"
+                             aria-label="Seleccionar fecha y hora"></div>
+                        <div class="d-flex flex-wrap gap-2" data-sigcenter-times
+                             title="Seleccionar fecha y hora"
+                             aria-label="Seleccionar fecha y hora"></div>
                     </div>
                     <div>
                         <label class="form-label mb-1">Hora de llegada (interna)</label>
@@ -408,8 +422,10 @@ if ($sessionUsername === 'jl1dvg') {
                         <small class="text-muted">Este dato se guarda en agenda interna, no en Sigcenter.</small>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <button type="button" class="btn btn-success btn-sm" data-sigcenter-agendar disabled>
-                            <i class="bi bi-check2-circle me-1"></i> Agendar
+                        <button type="button" class="btn btn-success btn-sm" data-sigcenter-agendar disabled
+                                title="Confirmar agendamiento en Sigcenter"
+                                aria-label="Confirmar agendamiento en Sigcenter">
+                            <i class="bi bi-check2-circle me-1"></i> Confirmar agendamiento en Sigcenter
                         </button>
                         <small class="text-muted" data-sigcenter-selected></small>
                     </div>
@@ -474,14 +490,19 @@ if ($sessionUsername === 'jl1dvg') {
                         </div>
                         <div class="d-flex flex-wrap gap-2">
                             <button type="button" class="btn btn-warning btn-sm"
-                                    id="btnPrefacturaSolicitarCoberturaMail">
-                                <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
+                                    id="btnPrefacturaSolicitarCoberturaMail"
+                                    title="Redactar correo de cobertura"
+                                    aria-label="Redactar correo de cobertura">
+                                <i class="bi bi-envelope-fill me-1"></i> Redactar correo de cobertura
                             </button>
                             <?php if ($archivoHref): ?>
                                 <a class="btn btn-outline-secondary btn-sm"
                                    href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
-                                   target="_blank" rel="noopener">
-                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                                   target="_blank"
+                                   rel="noopener"
+                                   title="Descargar PDF de derivación"
+                                   aria-label="Descargar PDF de derivación">
+                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar PDF de derivación
                                 </a>
                             <?php endif; ?>
                         </div>
@@ -1247,8 +1268,10 @@ if ($sessionUsername === 'jl1dvg') {
                         </div>
                         <div class="col-12 d-flex flex-wrap align-items-center gap-2">
                             <a class="btn btn-outline-secondary btn-sm d-none" data-cobertura-mail-pdf
-                               target="_blank" rel="noopener">
-                                <i class="mdi mdi-file-pdf-box"></i> Ver PDF de derivación
+                               target="_blank" rel="noopener"
+                               title="Ver PDF de respaldo"
+                               aria-label="Ver PDF de respaldo">
+                                <i class="mdi mdi-file-pdf-box"></i> Ver PDF de respaldo
                             </a>
                             <small class="text-muted">Adjunta el PDF de la derivación antes de enviar.</small>
                         </div>
@@ -1263,9 +1286,13 @@ if ($sessionUsername === 'jl1dvg') {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success" data-cobertura-mail-send>
-                        <i class="mdi mdi-send"></i> Enviar correo
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal" data-cobertura-mail-cancel
+                            title="Cancelar envío"
+                            aria-label="Cancelar envío">Cancelar envío</button>
+                    <button type="submit" class="btn btn-success" data-cobertura-mail-send
+                            title="Enviar correo de cobertura"
+                            aria-label="Enviar correo de cobertura">
+                        <i class="mdi mdi-send"></i> Enviar correo de cobertura
                     </button>
                 </div>
             </form>

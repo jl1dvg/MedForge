@@ -180,6 +180,7 @@ function getCoberturaMailModalElements() {
         body: modal.querySelector('[data-cobertura-mail-body]'),
         attachment: modal.querySelector('[data-cobertura-mail-attachment]'),
         pdfLink: modal.querySelector('[data-cobertura-mail-pdf]'),
+        cancelButton: modal.querySelector('[data-cobertura-mail-cancel]'),
         sendButton: modal.querySelector('[data-cobertura-mail-send]'),
     };
 }
@@ -340,12 +341,23 @@ function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
     }
 
     if (elements.pdfLink) {
+        elements.pdfLink.setAttribute('title', 'Ver PDF de respaldo');
+        elements.pdfLink.setAttribute('aria-label', 'Ver PDF de respaldo');
         if (derivacionPdf) {
             elements.pdfLink.href = derivacionPdf;
             elements.pdfLink.classList.remove('d-none');
         } else {
             elements.pdfLink.classList.add('d-none');
         }
+    }
+
+    if (elements.sendButton) {
+        elements.sendButton.setAttribute('title', 'Enviar correo de cobertura');
+        elements.sendButton.setAttribute('aria-label', 'Enviar correo de cobertura');
+    }
+    if (elements.cancelButton) {
+        elements.cancelButton.setAttribute('title', 'Cancelar envío');
+        elements.cancelButton.setAttribute('aria-label', 'Cancelar envío');
     }
 
     const instance = window.bootstrap.Modal.getInstance(elements.modal) ?? new window.bootstrap.Modal(elements.modal);
