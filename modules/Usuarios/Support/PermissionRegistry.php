@@ -43,6 +43,7 @@ class PermissionRegistry
                 'whatsapp.chat.view' => 'WhatsApp - Ver conversaciones',
                 'whatsapp.chat.send' => 'WhatsApp - Enviar mensajes',
                 'whatsapp.chat.assign' => 'WhatsApp - Asignar o transferir chats',
+                'whatsapp.chat.supervise' => 'WhatsApp - Supervisar, reasignar y cerrar chats',
                 'whatsapp.templates.manage' => 'WhatsApp - Gestionar plantillas',
                 'whatsapp.autoresponder.manage' => 'WhatsApp - Gestionar automatizaciones',
                 'whatsapp.manage' => 'WhatsApp - Acceso total (atajo)',

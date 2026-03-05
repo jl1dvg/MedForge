@@ -1157,6 +1157,42 @@ class SettingsHelper
                                 ),
                                 ['min' => 1, 'max' => 1440]
                             ),
+                            self::checkboxField(
+                                'whatsapp_handoff_escalation_enabled',
+                                'Escalar handoffs en cola',
+                                true,
+                                'Cuando una solicitud permanece en cola más del tiempo definido, se reasigna al rol de supervisión.'
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_handoff_escalation_minutes',
+                                    'Escalar después de (minutos)',
+                                    30,
+                                    'Aplica a handoffs en estado queued sin agente asignado.'
+                                ),
+                                ['min' => 5, 'max' => 1440]
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_handoff_escalation_role_id',
+                                    'Rol supervisor para escalamiento',
+                                    0,
+                                    'ID del rol que recibirá las solicitudes escaladas. Usa 0 para desactivar el escalamiento por rol.'
+                                ),
+                                ['min' => 0]
+                            ),
+                            self::checkboxField(
+                                'whatsapp_handoff_escalation_notify_in_app',
+                                'Notificar escalamiento en plataforma',
+                                true,
+                                'Genera evento en tiempo real cuando un handoff entra a escalamiento.'
+                            ),
+                            self::checkboxField(
+                                'whatsapp_handoff_escalation_notify_agents',
+                                'Notificar escalamiento por WhatsApp',
+                                false,
+                                'Envía aviso por WhatsApp personal solo a agentes del rol supervisor.'
+                            ),
                             array_merge(
                                 self::textareaField(
                                     'whatsapp_handoff_agent_message',
@@ -1165,6 +1201,15 @@ class SettingsHelper
                                     "Paciente {{contact}} necesita asistencia.\\nToca para tomar ✅\\n\\nNota: {{notes}}"
                                 ),
                                 ['rows' => 4]
+                            ),
+                            array_merge(
+                                self::textareaField(
+                                    'whatsapp_autoresponder_action_catalog',
+                                    'Catálogo de acciones del Flow (JSON)',
+                                    'Personaliza etiquetas y ayudas del constructor no-code. Si queda vacío, usa el catálogo estándar.',
+                                    "[{\"value\":\"send_message\",\"label\":\"Enviar mensaje o multimedia\",\"help\":\"Entrega un mensaje simple, imagen, documento o ubicación.\"},{\"value\":\"send_sequence\",\"label\":\"Enviar secuencia de mensajes\",\"help\":\"Combina varios mensajes consecutivos en una sola acción.\"},{\"value\":\"send_buttons\",\"label\":\"Enviar botones\",\"help\":\"Presenta botones interactivos para guiar la respuesta.\"},{\"value\":\"send_list\",\"label\":\"Enviar lista interactiva\",\"help\":\"Muestra un menú desplegable con secciones y múltiples opciones.\"},{\"value\":\"send_template\",\"label\":\"Enviar plantilla aprobada\",\"help\":\"Usa una plantilla autorizada por Meta con variables predefinidas.\"},{\"value\":\"set_state\",\"label\":\"Actualizar estado\",\"help\":\"Actualiza el estado del flujo para controlar próximos pasos.\"},{\"value\":\"set_context\",\"label\":\"Guardar en contexto\",\"help\":\"Almacena pares clave-valor disponibles en mensajes futuros.\"},{\"value\":\"store_consent\",\"label\":\"Guardar consentimiento\",\"help\":\"Registra si el paciente aceptó o rechazó la autorización.\"},{\"value\":\"lookup_patient\",\"label\":\"Validar cédula en BD\",\"help\":\"Busca al paciente usando la cédula o historia clínica proporcionada.\"},{\"value\":\"handoff_agent\",\"label\":\"Derivar a agente\",\"help\":\"Marca la conversación para atención humana y define el equipo responsable.\"},{\"value\":\"conditional\",\"label\":\"Condicional\",\"help\":\"Divide el flujo en acciones alternativas según una condición.\"},{\"value\":\"goto_menu\",\"label\":\"Redirigir al menú\",\"help\":\"Envía nuevamente el mensaje de menú configurado más abajo.\"},{\"value\":\"upsert_patient_from_context\",\"label\":\"Guardar paciente con datos actuales\",\"help\":\"Crea o actualiza el paciente con los datos capturados en contexto.\"}]"
+                                ),
+                                ['rows' => 8]
                             ),
                             array_merge(
                                 self::textField(

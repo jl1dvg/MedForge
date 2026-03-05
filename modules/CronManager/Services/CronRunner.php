@@ -1180,20 +1180,37 @@ class CronRunner
     private function runWhatsappHandoffRequeueTask(): array
     {
         $service = new HandoffService($this->pdo);
-        $result = $service->requeueExpired();
-        $count = $result['count'] ?? 0;
+        $requeueResult = $service->requeueExpired();
+        $escalationResult = $service->escalateQueued();
 
-        if ($count === 0) {
+        $requeuedCount = isset($requeueResult['count']) ? (int) $requeueResult['count'] : 0;
+        $escalatedCount = isset($escalationResult['count']) ? (int) $escalationResult['count'] : 0;
+
+        if ($requeuedCount === 0 && $escalatedCount === 0) {
             return [
                 'status' => 'skipped',
-                'message' => 'No hay handoffs vencidos para reencolar.',
-                'details' => $result,
+                'message' => 'No hay handoffs vencidos ni casos para escalamiento.',
+                'details' => [
+                    'requeue' => $requeueResult,
+                    'escalation' => $escalationResult,
+                ],
             ];
         }
 
+        $summaryParts = [];
+        if ($requeuedCount > 0) {
+            $summaryParts[] = sprintf('reencolados: %d', $requeuedCount);
+        }
+        if ($escalatedCount > 0) {
+            $summaryParts[] = sprintf('escalados: %d', $escalatedCount);
+        }
+
         return [
-            'message' => sprintf('Se reencolaron %d handoffs vencidos.', $count),
-            'details' => $result,
+            'message' => 'Handoffs procesados (' . implode(', ', $summaryParts) . ').',
+            'details' => [
+                'requeue' => $requeueResult,
+                'escalation' => $escalationResult,
+            ],
         ];
     }
 
