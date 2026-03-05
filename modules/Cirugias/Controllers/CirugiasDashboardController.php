@@ -29,7 +29,8 @@ class CirugiasDashboardController extends BaseController
         $dateRange = $this->resolveDateRange();
         $afiliacionFilter = $this->resolveAfiliacionFilter();
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter();
-        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $sedeFilter = $this->resolveSedeFilter();
+        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $data['pageTitle'] = 'Dashboard quirúrgico';
 
         $this->render('modules/Cirugias/views/dashboard.php', $data);
@@ -42,13 +43,16 @@ class CirugiasDashboardController extends BaseController
         $dateRange = $this->resolveDateRange();
         $afiliacionFilter = $this->resolveAfiliacionFilter();
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter();
-        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $sedeFilter = $this->resolveSedeFilter();
+        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $filters = $this->buildDashboardFiltersSummary(
             $data['date_range'],
             $afiliacionFilter,
             $data['afiliacion_options'],
             $afiliacionCategoriaFilter,
-            $data['afiliacion_categoria_options']
+            $data['afiliacion_categoria_options'],
+            $sedeFilter,
+            $data['sede_options']
         );
         $filename = 'dashboard_cirugias_' . date('Ymd_His') . '.pdf';
 
@@ -112,13 +116,16 @@ class CirugiasDashboardController extends BaseController
         $dateRange = $this->resolveDateRange();
         $afiliacionFilter = $this->resolveAfiliacionFilter();
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter();
-        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $sedeFilter = $this->resolveSedeFilter();
+        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $filters = $this->buildDashboardFiltersSummary(
             $data['date_range'],
             $afiliacionFilter,
             $data['afiliacion_options'],
             $afiliacionCategoriaFilter,
-            $data['afiliacion_categoria_options']
+            $data['afiliacion_categoria_options'],
+            $sedeFilter,
+            $data['sede_options']
         );
         $filename = 'dashboard_cirugias_' . date('Ymd_His') . '.xlsx';
 
@@ -226,7 +233,8 @@ class CirugiasDashboardController extends BaseController
     private function buildDashboardPayload(
         array $dateRange,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $startSql = $dateRange['start']->format('Y-m-d 00:00:00');
@@ -234,23 +242,25 @@ class CirugiasDashboardController extends BaseController
         $dateRangeView = $this->formatDateRangeForView($dateRange);
         $afiliacionFilter = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilter = $this->normalizeSedeFilter($sedeFilter);
         $afiliacionOptions = $this->service->getAfiliacionOptions($startSql, $endSql);
         $afiliacionCategoriaOptions = $this->service->getAfiliacionCategoriaOptions($startSql, $endSql);
+        $sedeOptions = $this->service->getSedeOptions($startSql, $endSql);
 
-        $totalCirugias = $this->service->getTotalCirugias($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $sinFacturar = $this->service->getCirugiasSinFacturar($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $duracionPromedioRaw = $this->service->getDuracionPromedioMinutos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $totalCirugias = $this->service->getTotalCirugias($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $sinFacturar = $this->service->getCirugiasSinFacturar($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $duracionPromedioRaw = $this->service->getDuracionPromedioMinutos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $duracionPromedio = $this->formatMinutes($duracionPromedioRaw);
-        $estadoProtocolos = $this->service->getEstadoProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $cirugiasPorMes = $this->service->getCirugiasPorMes($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $topProcedimientos = $this->service->getTopProcedimientos($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $topCirujanos = $this->service->getTopCirujanos($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $topDoctoresSolicitudesRealizadas = $this->service->getTopDoctoresSolicitudesRealizadas($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $cirugiasPorConvenio = $this->service->getCirugiasPorConvenio($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $programacionKpis = $this->service->getProgramacionKpis($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $estadoProtocolos = $this->service->getEstadoProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $cirugiasPorMes = $this->service->getCirugiasPorMes($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $topProcedimientos = $this->service->getTopProcedimientos($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $topCirujanos = $this->service->getTopCirujanos($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $topDoctoresSolicitudesRealizadas = $this->service->getTopDoctoresSolicitudesRealizadas($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $cirugiasPorConvenio = $this->service->getCirugiasPorConvenio($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $programacionKpis = $this->service->getProgramacionKpis($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $reingresoMismoDiagnostico = $this->service->getReingresoMismoDiagnostico($startSql, $endSql);
-        $cirugiasSinSolicitudPrevia = $this->service->getCirugiasSinSolicitudPrevia($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
-        $tatRevisionProtocolos = $this->service->getTatRevisionProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $cirugiasSinSolicitudPrevia = $this->service->getCirugiasSinSolicitudPrevia($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $tatRevisionProtocolos = $this->service->getTatRevisionProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
 
         return [
             'date_range' => $dateRangeView,
@@ -271,6 +281,8 @@ class CirugiasDashboardController extends BaseController
             'afiliacion_options' => $afiliacionOptions,
             'afiliacion_categoria_filter' => $afiliacionCategoriaFilter,
             'afiliacion_categoria_options' => $afiliacionCategoriaOptions,
+            'sede_filter' => $sedeFilter,
+            'sede_options' => $sedeOptions,
             'kpi_cards' => $this->buildKpiCards(
                 $totalCirugias,
                 $sinFacturar,
@@ -289,7 +301,9 @@ class CirugiasDashboardController extends BaseController
         string $afiliacionFilter,
         array $afiliacionOptions,
         string $afiliacionCategoriaFilter,
-        array $afiliacionCategoriaOptions
+        array $afiliacionCategoriaOptions,
+        string $sedeFilter,
+        array $sedeOptions
     ): array
     {
         $filters = [
@@ -319,6 +333,18 @@ class CirugiasDashboardController extends BaseController
                 }
             }
             $filters[] = ['label' => 'Categoría de afiliación', 'value' => $afiliacionCategoriaLabel];
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter($sedeFilter);
+        if ($sedeFilter !== '') {
+            $sedeLabel = $sedeFilter;
+            foreach ($sedeOptions as $option) {
+                if ((string)($option['value'] ?? '') === $sedeFilter) {
+                    $sedeLabel = (string)($option['label'] ?? $sedeFilter);
+                    break;
+                }
+            }
+            $filters[] = ['label' => 'Sede', 'value' => $sedeLabel];
         }
 
         return $filters;
@@ -420,6 +446,12 @@ class CirugiasDashboardController extends BaseController
         return $this->normalizeAfiliacionCategoriaFilter($value);
     }
 
+    private function resolveSedeFilter(): string
+    {
+        $value = trim((string)($_GET['sede'] ?? ''));
+        return $this->normalizeSedeFilter($value);
+    }
+
     private function normalizeAfiliacionFilter(string $value): string
     {
         $value = strtolower(trim($value));
@@ -441,6 +473,23 @@ class CirugiasDashboardController extends BaseController
         }
 
         return $value;
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz')) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 
     private function formatDateRangeForView(array $range): array

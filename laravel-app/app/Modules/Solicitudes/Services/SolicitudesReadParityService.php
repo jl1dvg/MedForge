@@ -132,12 +132,14 @@ class SolicitudesReadParityService
         }
 
         $afiliaciones = $this->distinctSortedValues($kanban, 'afiliacion');
+        $sedes = $this->distinctSortedValues($kanban, 'sede');
         $doctores = $this->distinctSortedValues($kanban, 'doctor');
 
         return [
             'data' => $kanban,
             'options' => [
                 'afiliaciones' => $afiliaciones,
+                'sedes' => $sedes,
                 'doctores' => $doctores,
                 'crm' => [
                     'responsables' => $this->assignableUsers(),
@@ -850,7 +852,7 @@ class SolicitudesReadParityService
 
     /**
      * @param array<string,mixed> $payload
-     * @return array{afiliacion:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string}
+     * @return array{afiliacion:string,sede:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string}
      */
     private function sanitizeFilters(array $payload): array
     {
@@ -866,6 +868,7 @@ class SolicitudesReadParityService
 
         return [
             'afiliacion' => trim((string) ($payload['afiliacion'] ?? '')),
+            'sede' => $this->normalizeSedeFilter((string) ($payload['sede'] ?? '')),
             'doctor' => trim((string) ($payload['doctor'] ?? '')),
             'prioridad' => trim((string) ($payload['prioridad'] ?? '')),
             'fechaTexto' => $fechaTexto,
@@ -873,6 +876,34 @@ class SolicitudesReadParityService
             'date_to' => $dateTo,
             'search' => trim((string) ($payload['search'] ?? '')),
         ];
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function sedeExpression(string $alias = 'pp'): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     /**
@@ -910,6 +941,7 @@ class SolicitudesReadParityService
      */
     private function querySolicitudesKanban(array $filters): array
     {
+        $sedeExpr = $this->sedeExpression('pp');
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
@@ -917,6 +949,7 @@ class SolicitudesReadParityService
                 TRIM(CONCAT_WS(" ", NULLIF(TRIM(pd.fname), ""), NULLIF(TRIM(pd.mname), ""), NULLIF(TRIM(pd.lname), ""), NULLIF(TRIM(pd.lname2), ""))) AS full_name,
                 sp.tipo,
                 COALESCE(NULLIF(TRIM(sp.afiliacion), ""), NULLIF(TRIM(pd.afiliacion), "")) AS afiliacion,
+                ' . $sedeExpr . ' AS sede,
                 pd.celular AS paciente_celular,
                 sp.procedimiento,
                 sp.doctor,
@@ -955,6 +988,7 @@ class SolicitudesReadParityService
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = sp.form_id AND pp.hc_number = sp.hc_number
             LEFT JOIN (
                 SELECT c.hc_number, c.form_id, MAX(c.fecha) AS fecha
                 FROM consulta_data c
@@ -992,6 +1026,11 @@ class SolicitudesReadParityService
             $params[] = '%' . $filters['afiliacion'] . '%';
         }
 
+        if ($filters['sede'] !== '') {
+            $sql .= ' AND ' . $sedeExpr . ' = ?';
+            $params[] = $filters['sede'];
+        }
+
         if ($filters['doctor'] !== '') {
             $sql .= ' AND sp.doctor LIKE ?';
             $params[] = '%' . $filters['doctor'] . '%';
@@ -1022,7 +1061,7 @@ class SolicitudesReadParityService
         }
 
         $term = mb_strtolower($search);
-        $keys = ['full_name', 'hc_number', 'procedimiento', 'doctor', 'afiliacion', 'estado', 'crm_pipeline_stage'];
+        $keys = ['full_name', 'hc_number', 'procedimiento', 'doctor', 'afiliacion', 'sede', 'estado', 'crm_pipeline_stage'];
 
         return array_values(array_filter($rows, static function (array $row) use ($keys, $term): bool {
             foreach ($keys as $key) {

@@ -161,6 +161,11 @@ array_push(
         </div>
         <div class="ms-auto d-flex flex-wrap gap-2">
             <input type="text" class="form-control date-range" id="billing-range-input" placeholder="Selecciona rango" autocomplete="off">
+            <select class="form-select" id="billing-sede" style="min-width: 170px;">
+                <option value="">Todas las sedes</option>
+                <option value="MATRIZ">MATRIZ</option>
+                <option value="CEIBOS">CEIBOS</option>
+            </select>
             <button type="button" class="btn btn-primary" id="billing-refresh">
                 <i class="mdi mdi-refresh"></i> Actualizar
             </button>
@@ -299,7 +304,11 @@ array_push(
                     </option>
                 <?php endfor; ?>
             </select>
-            <input type="text" class="form-control" id="procedimientos-sede" placeholder="Villa Club" style="min-width: 180px;">
+            <select class="form-select" id="procedimientos-sede" style="min-width: 180px;">
+                <option value="">Todas las sedes</option>
+                <option value="MATRIZ">MATRIZ</option>
+                <option value="CEIBOS">CEIBOS</option>
+            </select>
             <select class="form-select" id="procedimientos-cliente" style="min-width: 180px;">
                 <option value="todos">Todos los clientes</option>
                 <option value="privado">Privado</option>

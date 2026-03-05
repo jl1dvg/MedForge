@@ -15,6 +15,7 @@ $pacienteService = $pacienteService ?? null;
 $billingController = $billingController ?? null;
 $pacientesCache = $pacientesCache ?? [];
 $datosCache = $datosCache ?? [];
+$sedesCache = $sedesCache ?? [];
 $scrapingOutput = $scrapingOutput ?? null;
 $grupoConfig = $grupoConfig ?? [];
 $vista = isset($vista) ? (string)$vista : '';
@@ -58,6 +59,7 @@ $afiliacionesPermitidas = array_map(
         $afiliacionesPermitidas
 );
 $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
+$sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
 
 ?>
 <style>
@@ -135,6 +137,20 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                         if ($afiliacionSeleccionada && $afiliacionSeleccionada !== $afiliacion) {
                                             continue;
                                         }
+                                        $formIdMes = (string)($factura['form_id'] ?? '');
+                                        if ($sedeSeleccionada !== '') {
+                                            if ($formIdMes === '') {
+                                                continue;
+                                            }
+                                            if (!isset($sedesCache[$formIdMes])) {
+                                                $sedesCache[$formIdMes] = InformesHelper::normalizarSede(
+                                                    $billingController ? $billingController->obtenerSedePorFormId($formIdMes) : ''
+                                                );
+                                            }
+                                            if (($sedesCache[$formIdMes] ?? '') !== $sedeSeleccionada) {
+                                                continue;
+                                            }
+                                        }
                                         if (in_array($afiliacion, $afiliacionesPermitidas, true)) {
                                             $mesesValidos[$mes] = true;
                                         }
@@ -211,6 +227,17 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                     <option value="sin" <?= ($filtros['derivacion'] ?? '') === 'sin' ? 'selected' : '' ?>>
                                         Solo sin código
                                     </option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="sede" class="form-label fw-bold">
+                                    <i class="mdi mdi-hospital-building"></i> Sede:
+                                </label>
+                                <select name="sede" id="sede" class="form-select">
+                                    <option value="">Todas</option>
+                                    <option value="MATRIZ" <?= $sedeSeleccionada === 'MATRIZ' ? 'selected' : '' ?>>MATRIZ</option>
+                                    <option value="CEIBOS" <?= $sedeSeleccionada === 'CEIBOS' ? 'selected' : '' ?>>CEIBOS</option>
                                 </select>
                             </div>
 
@@ -342,7 +369,8 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                         null,
                         $cacheDerivaciones,
                         $pacientesCache,
-                        $datosCache
+                        $datosCache,
+                        $sedesCache
                 );
 
                 $categoriasIess = [
@@ -436,6 +464,27 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                             <form method="post" action="<?= htmlspecialchars($basePath) ?>"
                                                   class="d-flex gap-2 align-items-center bulk-derivaciones-form">
                                                 <input type="hidden" name="scrape_derivacion" value="1">
+                                                <?php if (!empty($mesSeleccionado)): ?>
+                                                    <input type="hidden" name="mes" value="<?= htmlspecialchars((string)$mesSeleccionado) ?>">
+                                                <?php endif; ?>
+                                                <?php if (!empty($filtros['afiliacion'])): ?>
+                                                    <input type="hidden" name="afiliacion" value="<?= htmlspecialchars((string)$filtros['afiliacion']) ?>">
+                                                <?php endif; ?>
+                                                <?php if (!empty($filtros['sede'])): ?>
+                                                    <input type="hidden" name="sede" value="<?= htmlspecialchars((string)$filtros['sede']) ?>">
+                                                <?php endif; ?>
+                                                <?php if (!empty($filtros['apellido'])): ?>
+                                                    <input type="hidden" name="apellido" value="<?= htmlspecialchars((string)$filtros['apellido']) ?>">
+                                                <?php endif; ?>
+                                                <?php if (!empty($filtros['hc_number'])): ?>
+                                                    <input type="hidden" name="hc_number" value="<?= htmlspecialchars((string)$filtros['hc_number']) ?>">
+                                                <?php endif; ?>
+                                                <?php if (!empty($filtros['derivacion'])): ?>
+                                                    <input type="hidden" name="derivacion" value="<?= htmlspecialchars((string)$filtros['derivacion']) ?>">
+                                                <?php endif; ?>
+                                                <?php if ($vista !== ''): ?>
+                                                    <input type="hidden" name="vista" value="<?= htmlspecialchars((string)$vista) ?>">
+                                                <?php endif; ?>
                                                 <div class="bulk-derivaciones-fields"></div>
                                                 <button type="submit"
                                                         class="btn btn-warning btn-sm bulk-derivaciones-submit"
@@ -451,6 +500,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                     <?php endif; ?>
                                                     <?php if (!empty($filtros['afiliacion'])): ?>
                                                         <input type="hidden" name="afiliacion" value="<?= htmlspecialchars((string)$filtros['afiliacion']) ?>">
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($filtros['sede'])): ?>
+                                                        <input type="hidden" name="sede" value="<?= htmlspecialchars((string)$filtros['sede']) ?>">
                                                     <?php endif; ?>
                                                     <?php if (!empty($filtros['apellido'])): ?>
                                                         <input type="hidden" name="apellido" value="<?= htmlspecialchars((string)$filtros['apellido']) ?>">
@@ -593,6 +645,27 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                                                                            value="<?= htmlspecialchars($formIdsPaciente) ?>">
                                                                     <input type="hidden" name="hc_number_scrape"
                                                                            value="<?= htmlspecialchars($pacienteInfo['hc_number'] ?? '') ?>">
+                                                                    <?php if (!empty($mesSeleccionado)): ?>
+                                                                        <input type="hidden" name="mes" value="<?= htmlspecialchars((string)$mesSeleccionado) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($filtros['afiliacion'])): ?>
+                                                                        <input type="hidden" name="afiliacion" value="<?= htmlspecialchars((string)$filtros['afiliacion']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($filtros['sede'])): ?>
+                                                                        <input type="hidden" name="sede" value="<?= htmlspecialchars((string)$filtros['sede']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($filtros['apellido'])): ?>
+                                                                        <input type="hidden" name="apellido" value="<?= htmlspecialchars((string)$filtros['apellido']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($filtros['hc_number'])): ?>
+                                                                        <input type="hidden" name="hc_number" value="<?= htmlspecialchars((string)$filtros['hc_number']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($filtros['derivacion'])): ?>
+                                                                        <input type="hidden" name="derivacion" value="<?= htmlspecialchars((string)$filtros['derivacion']) ?>">
+                                                                    <?php endif; ?>
+                                                                    <?php if ($vista !== ''): ?>
+                                                                        <input type="hidden" name="vista" value="<?= htmlspecialchars((string)$vista) ?>">
+                                                                    <?php endif; ?>
                                                                     <button type="submit" name="scrape_derivacion"
                                                                             class="btn btn-sm btn-warning">📌 Obtener
                                                                         Código Derivación
@@ -635,6 +708,9 @@ $afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliac
                     }
                     if (!empty($filtros['afiliacion'])) {
                         $params['afiliacion'] = $filtros['afiliacion'];
+                    }
+                    if (!empty($filtros['sede'])) {
+                        $params['sede'] = $filtros['sede'];
                     }
                     if (!empty($filtros['apellido'])) {
                         $params['apellido'] = $filtros['apellido'];

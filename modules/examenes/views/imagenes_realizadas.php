@@ -27,11 +27,18 @@ if (!isset($filters) || !is_array($filters)) {
             'fecha_inicio' => '',
             'fecha_fin' => '',
             'afiliacion' => '',
+            'sede' => '',
             'tipo_examen' => '',
             'paciente' => '',
             'estado_agenda' => '',
     ];
 }
+
+$sedeOptions = [
+    ['value' => '', 'label' => 'Todas las sedes'],
+    ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+    ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+];
 
 $parseProcedimiento = static function (string $raw): array {
     $texto = trim($raw);
@@ -180,9 +187,20 @@ sort($estadoOpciones);
                     </select>
                 </div>
                 <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Sede</label>
+                    <select class="form-select" name="sede">
+                        <?php foreach ($sedeOptions as $option): ?>
+                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['sede'] ?? '')) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
                     <label class="form-label">Tipo examen</label>
                     <select class="form-select" name="tipo_examen" id="filtroTipoExamen"
-                            data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                           data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                         <option value="">Todos</option>
                     </select>
                 </div>

@@ -311,14 +311,25 @@ class InformesController extends BaseController
             $scrapingOutput = $scrapingLimitMessage;
         }
 
+        $readInput = static function (string $key, $default = '') {
+            if (array_key_exists($key, $_GET)) {
+                return $_GET[$key];
+            }
+            if (array_key_exists($key, $_POST)) {
+                return $_POST[$key];
+            }
+            return $default;
+        };
+
         $filtros = [
             'modo' => 'consolidado',
-            'billing_id' => $_GET['billing_id'] ?? null,
-            'mes' => $_GET['mes'] ?? '',
-            'apellido' => $_GET['apellido'] ?? '',
-            'hc_number' => $_GET['hc_number'] ?? '',
-            'derivacion' => $_GET['derivacion'] ?? '',
-            'afiliacion' => $_GET['afiliacion'] ?? '',
+            'billing_id' => $readInput('billing_id', null),
+            'mes' => (string)$readInput('mes', ''),
+            'apellido' => (string)$readInput('apellido', ''),
+            'hc_number' => (string)$readInput('hc_number', ''),
+            'derivacion' => (string)$readInput('derivacion', ''),
+            'afiliacion' => (string)$readInput('afiliacion', ''),
+            'sede' => $this->normalizeSedeFilter((string)$readInput('sede', '')),
         ];
 
         $mesSeleccionado = $filtros['mes'];
@@ -354,6 +365,7 @@ class InformesController extends BaseController
         $cachePorMes = [];
         $pacientesCache = [];
         $datosCache = [];
+        $sedesCache = [];
         if (!empty($mesSeleccionado)) {
             foreach ($facturas as $factura) {
                 $fechaOrdenada = $factura['fecha_ordenada'] ?? null;
@@ -419,6 +431,7 @@ class InformesController extends BaseController
             'billingController' => $this->billingController,
             'pacientesCache' => $pacientesCache,
             'datosCache' => $datosCache,
+            'sedesCache' => $sedesCache,
             'grupoConfig' => $config,
             'requestQuery' => $_GET,
         ]);
@@ -618,5 +631,22 @@ class InformesController extends BaseController
         }
 
         return $this->settingsModel;
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 }

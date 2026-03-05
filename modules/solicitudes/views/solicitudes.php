@@ -1301,6 +1301,14 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </select>
                     </div>
                     <div class="col-lg-2 col-md-6">
+                        <label for="kanbanSedeFilter" class="form-label">Sede</label>
+                        <select id="kanbanSedeFilter" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="MATRIZ">MATRIZ</option>
+                            <option value="CEIBOS">CEIBOS</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
                         <label for="kanbanTipoFilter" class="form-label">Tipo de solicitud</label>
                         <select id="kanbanTipoFilter" class="form-select">
                             <option value="">Todas</option>

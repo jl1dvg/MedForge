@@ -244,15 +244,19 @@ class CirugiaService
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionLabelExpr = $this->afiliacionLabelExpr('p');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $sedeExpr = $this->sedeExpr('pp');
 
         $afiliacionFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string)($filters['afiliacion_categoria'] ?? ''));
+        $sedeFilter = $this->normalizeSedeFilter((string)($filters['sede'] ?? ''));
         $fechaInicio = $this->isValidDate((string)($filters['fecha_inicio'] ?? '')) ? (string)$filters['fecha_inicio'] : '';
         $fechaFin = $this->isValidDate((string)($filters['fecha_fin'] ?? '')) ? (string)$filters['fecha_fin'] : '';
 
         $baseFrom = "FROM protocolo_data pr
             INNER JOIN patient_data p
                 ON p.hc_number = pr.hc_number
+            LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
             {$categoriaContext['join']}";
 
         $buildWhere = function (bool $includeSearch, array &$params) use (
@@ -260,9 +264,11 @@ class CirugiaService
             $fechaFin,
             $afiliacionFilter,
             $afiliacionCategoriaFilter,
+            $sedeFilter,
             $afiliacionKeyExpr,
             $afiliacionLabelExpr,
             $categoriaContext,
+            $sedeExpr,
             $search
         ): string {
             $clauses = ['1 = 1'];
@@ -285,6 +291,11 @@ class CirugiaService
             if ($afiliacionCategoriaFilter !== '') {
                 $clauses[] = "{$categoriaContext['expr']} = :afiliacion_categoria_filter";
                 $params[':afiliacion_categoria_filter'] = $afiliacionCategoriaFilter;
+            }
+
+            if ($sedeFilter !== '') {
+                $clauses[] = "{$sedeExpr} = :sede_filter";
+                $params[':sede_filter'] = $sedeFilter;
             }
 
             if ($includeSearch && $search !== '') {
@@ -338,6 +349,7 @@ class CirugiaService
                 p.afiliacion,
                 {$afiliacionLabelExpr} AS afiliacion_label,
                 {$categoriaContext['expr']} AS afiliacion_categoria,
+                {$sedeExpr} AS sede,
                 pr.fecha_inicio,
                 pr.membrete,
                 pr.printed,
@@ -448,6 +460,44 @@ class CirugiaService
                 'value' => $value,
                 'label' => $this->formatCategoriaLabel($value),
             ];
+            $seen[$value] = true;
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, array{value:string,label:string}>
+     */
+    public function obtenerSedeOptions(): array
+    {
+        $sedeExpr = $this->sedeExpr('pp');
+
+        $sql = "SELECT DISTINCT {$sedeExpr} AS sede
+                FROM protocolo_data pr
+                LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ORDER BY sede ASC";
+
+        $stmt = $this->db->query($sql);
+        $options = [
+            ['value' => '', 'label' => 'Todas las sedes'],
+            ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+            ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+        ];
+        $seen = [
+            '' => true,
+            'MATRIZ' => true,
+            'CEIBOS' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $value = trim((string)($row['sede'] ?? ''));
+            if ($value === '' || isset($seen[$value])) {
+                continue;
+            }
+
+            $options[] = ['value' => $value, 'label' => $value];
             $seen[$value] = true;
         }
 
@@ -1002,6 +1052,23 @@ class CirugiaService
         return $value;
     }
 
+    private function normalizeSedeFilter(string $sedeFilter): string
+    {
+        $value = strtolower(trim($sedeFilter));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
     private function formatCategoriaLabel(string $key): string
     {
         return match ($key) {
@@ -1037,6 +1104,17 @@ class CirugiaService
     private function iessAffiliationsSqlList(): string
     {
         return "'" . implode("','", self::IESS_AFFILIATIONS) . "'";
+    }
+
+    private function sedeExpr(string $alias): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     /**

@@ -254,6 +254,7 @@ class SolicitudController extends BaseController
                 'options' => [
                     'afiliaciones' => [],
                     'doctores' => [],
+                    'sedes' => [],
                 ],
                 'error' => 'Sesión expirada',
             ], 401);
@@ -274,6 +275,7 @@ class SolicitudController extends BaseController
         $filtros = [
             'afiliacion' => trim($payload['afiliacion'] ?? ''),
             'doctor' => trim($payload['doctor'] ?? ''),
+            'sede' => $this->normalizeSedeFilter((string)($payload['sede'] ?? '')),
             'prioridad' => trim($payload['prioridad'] ?? ''),
             'responsable_id' => $this->sanitizeResponsableFilter($payload['responsable_id'] ?? null),
             'fechaTexto' => trim($payload['fechaTexto'] ?? ''),
@@ -316,11 +318,18 @@ class SolicitudController extends BaseController
             ))));
             sort($doctores, SORT_NATURAL | SORT_FLAG_CASE);
 
+            $sedes = array_values(array_unique(array_filter(array_map(
+                static fn($row) => $row['sede'] ?? null,
+                $solicitudes
+            ))));
+            sort($sedes, SORT_NATURAL | SORT_FLAG_CASE);
+
             $this->json([
                 'data' => $solicitudes,
                 'options' => [
                     'afiliaciones' => $afiliaciones,
                     'doctores' => $doctores,
+                    'sedes' => $sedes,
                     'crm' => [
                         'responsables' => $responsables,
                         'etapas' => $pipelineStages,
@@ -349,6 +358,7 @@ class SolicitudController extends BaseController
                 'options' => [
                     'afiliaciones' => [],
                     'doctores' => [],
+                    'sedes' => [],
                     'crm' => [
                         'responsables' => [],
                         'etapas' => $pipelineStages,
@@ -1357,6 +1367,7 @@ class SolicitudController extends BaseController
         $search = trim((string)($filters['search'] ?? ''));
         $doctor = trim((string)($filters['doctor'] ?? ''));
         $afiliacion = trim((string)($filters['afiliacion'] ?? ''));
+        $sede = $this->normalizeSedeFilter((string)($filters['sede'] ?? ''));
         $responsableId = $this->sanitizeResponsableFilter($filters['responsable_id'] ?? null);
         $prioridad = trim((string)($filters['prioridad'] ?? ''));
         $estado = trim((string)($filters['estado'] ?? ''));
@@ -1377,6 +1388,7 @@ class SolicitudController extends BaseController
             'search' => $search,
             'doctor' => $doctor,
             'afiliacion' => $afiliacion,
+            'sede' => $sede,
             'responsable_id' => $responsableId,
             'prioridad' => $prioridad,
             'date_from' => $dateFrom,
@@ -1464,6 +1476,23 @@ class SolicitudController extends BaseController
         return $date ? $date->format('Y-m-d') : null;
     }
 
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
     /**
      * @return array{0: string|null, 1: string|null}
      */
@@ -1532,6 +1561,7 @@ class SolicitudController extends BaseController
             'procedimiento',
             'doctor',
             'afiliacion',
+            'sede',
             'estado',
             'crm_pipeline_stage',
             'crm_responsable_nombre',
@@ -1615,6 +1645,9 @@ class SolicitudController extends BaseController
         }
         if (!empty($filters['afiliacion'])) {
             $summary[] = ['label' => 'Afiliación', 'value' => $filters['afiliacion']];
+        }
+        if (!empty($filters['sede'])) {
+            $summary[] = ['label' => 'Sede', 'value' => $filters['sede']];
         }
         if (!empty($filters['responsable_id'])) {
             $summary[] = [

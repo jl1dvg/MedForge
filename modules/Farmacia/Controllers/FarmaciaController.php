@@ -36,6 +36,7 @@ class FarmaciaController extends BaseController
             'rows' => $payload['detail_rows'],
             'doctorOptions' => $payload['doctor_options'],
             'afiliacionOptions' => $payload['afiliacion_options'],
+            'sedeOptions' => $payload['sede_options'],
             'estadoOptions' => $payload['estado_options'],
             'viaOptions' => $payload['via_options'],
             'localidadOptions' => $payload['localidad_options'],
@@ -59,7 +60,8 @@ class FarmaciaController extends BaseController
             $payload['doctor_options'],
             $payload['afiliacion_options'],
             $payload['estado_options'],
-            $payload['via_options']
+            $payload['via_options'],
+            $payload['sede_options']
         );
         $filename = 'dashboard_farmacia_' . date('Ymd_His') . '.pdf';
 
@@ -128,7 +130,8 @@ class FarmaciaController extends BaseController
             $payload['doctor_options'],
             $payload['afiliacion_options'],
             $payload['estado_options'],
-            $payload['via_options']
+            $payload['via_options'],
+            $payload['sede_options']
         );
         $filename = 'dashboard_farmacia_' . date('Ymd_His') . '.xlsx';
 
@@ -344,6 +347,7 @@ class FarmaciaController extends BaseController
      *     detail_rows: array<int, array<string, mixed>>,
      *     doctor_options: array<int, string>,
      *     afiliacion_options: array<int, string>,
+     *     sede_options: array<int, string>,
      *     estado_options: array<int, string>,
      *     via_options: array<int, string>,
      *     localidad_options: array<int, string>,
@@ -367,6 +371,7 @@ class FarmaciaController extends BaseController
             'detail_rows' => $detailRows,
             'doctor_options' => $this->recetaModel->listarDoctores($dateFilter),
             'afiliacion_options' => $this->recetaModel->listarAfiliaciones($dateFilter),
+            'sede_options' => $this->recetaModel->listarSedes($dateFilter),
             'estado_options' => $this->recetaModel->listarEstadosReceta($dateFilter),
             'via_options' => $this->recetaModel->listarVias($dateFilter),
             'localidad_options' => $this->recetaModel->listarLocalidades($dateFilter),
@@ -383,6 +388,7 @@ class FarmaciaController extends BaseController
      *     estado_receta: string,
      *     via: string,
      *     producto: string,
+     *     sede: string,
      *     localidad: string,
      *     departamento: string
      * }
@@ -408,9 +414,27 @@ class FarmaciaController extends BaseController
             'estado_receta' => $this->normalizeTextFilter((string)($_GET['estado_receta'] ?? ''), 120),
             'via' => $this->normalizeTextFilter((string)($_GET['via'] ?? ''), 120),
             'producto' => $this->normalizeTextFilter((string)($_GET['producto'] ?? ''), 120),
+            'sede' => $this->normalizeSedeFilter((string)($_GET['sede'] ?? '')),
             'localidad' => $this->normalizeTextFilter((string)($_GET['localidad'] ?? ''), 120),
             'departamento' => $this->normalizeTextFilter((string)($_GET['departamento'] ?? ''), 120),
         ];
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 
     private function normalizeDateFilter(string $value, string $fallback): string
@@ -731,6 +755,7 @@ class FarmaciaController extends BaseController
                 'departamento' => trim((string)($row['departamento'] ?? 'Sin departamento')),
                 'doctor' => trim((string)($row['doctor'] ?? '')),
                 'afiliacion' => trim((string)($row['afiliacion'] ?? '')),
+                'sede' => trim((string)($row['sede'] ?? 'Sin sede')),
                 'producto' => trim((string)($row['producto'] ?? '')),
                 'via' => trim((string)($row['via'] ?? '')),
                 'estado_receta' => trim((string)($row['estado_receta'] ?? '')),
@@ -908,6 +933,7 @@ class FarmaciaController extends BaseController
      *     estado_receta:string,
      *     via:string,
      *     producto:string,
+     *     sede:string,
      *     localidad:string,
      *     departamento:string
      * } $filters
@@ -915,6 +941,7 @@ class FarmaciaController extends BaseController
      * @param array<int, string> $afiliacionOptions
      * @param array<int, string> $estadoOptions
      * @param array<int, string> $viaOptions
+     * @param array<int, string> $sedeOptions
      * @return array<int, array{label:string,value:string}>
      */
     private function buildDashboardFiltersSummary(
@@ -922,7 +949,8 @@ class FarmaciaController extends BaseController
         array $doctorOptions = [],
         array $afiliacionOptions = [],
         array $estadoOptions = [],
-        array $viaOptions = []
+        array $viaOptions = [],
+        array $sedeOptions = []
     ): array {
         $summary = [
             ['label' => 'Desde', 'value' => $filters['fecha_inicio']],
@@ -951,6 +979,12 @@ class FarmaciaController extends BaseController
             $summary[] = [
                 'label' => 'Vía',
                 'value' => in_array($filters['via'], $viaOptions, true) ? $filters['via'] : $filters['via'],
+            ];
+        }
+        if ($filters['sede'] !== '') {
+            $summary[] = [
+                'label' => 'Sede',
+                'value' => in_array($filters['sede'], $sedeOptions, true) ? $filters['sede'] : $filters['sede'],
             ];
         }
         if ($filters['localidad'] !== '') {

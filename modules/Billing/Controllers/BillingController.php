@@ -118,9 +118,14 @@ class BillingController extends BaseController
         $range = $this->resolveDashboardRange($payload);
         $start = $range['start'];
         $end = $range['end'];
+        $sedeFilter = $this->normalizeSedeFilter((string)($payload['sede'] ?? ''));
 
         try {
-            $data = $this->dashboardService->buildSummary($start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59'));
+            $data = $this->dashboardService->buildSummary(
+                $start->format('Y-m-d 00:00:00'),
+                $end->format('Y-m-d 23:59:59'),
+                $sedeFilter
+            );
         } catch (Throwable $exception) {
             $this->json(['error' => 'No se pudo cargar el dashboard de billing.'], 500);
             return;
@@ -130,6 +135,7 @@ class BillingController extends BaseController
             'filters' => [
                 'date_from' => $range['from'],
                 'date_to' => $range['to'],
+                'sede' => $sedeFilter,
             ],
             'data' => $data,
         ]);
@@ -309,6 +315,7 @@ class BillingController extends BaseController
             'fecha_desde' => $_GET['fecha_desde'] ?? null,
             'fecha_hasta' => $_GET['fecha_hasta'] ?? null,
             'afiliacion' => $afiliaciones,
+            'sede' => $this->normalizeSedeFilter((string)($_GET['sede'] ?? '')),
             'estado_revision' => $_GET['estado_revision'] ?? null,
             'informado' => $_GET['informado'] ?? null,
             'estado_agenda' => $estadosAgenda,
@@ -340,6 +347,34 @@ class BillingController extends BaseController
         header('Content-Type: application/json');
         echo json_encode([
             'data' => $afiliaciones,
+        ]);
+    }
+
+    public function apiSedes(): void
+    {
+        $this->requireAuth();
+
+        $sedes = $this->noFacturadosService->listarSedes();
+        if (!in_array('MATRIZ', $sedes, true)) {
+            $sedes[] = 'MATRIZ';
+        }
+        if (!in_array('CEIBOS', $sedes, true)) {
+            $sedes[] = 'CEIBOS';
+        }
+
+        usort($sedes, static function (string $a, string $b): int {
+            $order = ['MATRIZ' => 1, 'CEIBOS' => 2];
+            $oa = $order[$a] ?? 99;
+            $ob = $order[$b] ?? 99;
+            if ($oa === $ob) {
+                return strcasecmp($a, $b);
+            }
+            return $oa <=> $ob;
+        });
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'data' => array_values(array_unique(array_filter(array_map('trim', $sedes)))),
         ]);
     }
 
@@ -413,5 +448,22 @@ class BillingController extends BaseController
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 }

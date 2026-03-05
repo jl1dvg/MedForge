@@ -129,6 +129,33 @@ class BillingController
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    public function obtenerSedePorFormId(string $formId): string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT * FROM procedimiento_proyectado WHERE form_id = ? ORDER BY fecha DESC LIMIT 1'
+        );
+        $stmt->execute([$formId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $raw = strtolower(trim((string)(
+            $row['sede_departamento']
+                ?? $row['id_sede']
+                ?? ''
+        )));
+
+        if ($raw === '') {
+            return '';
+        }
+        if (str_contains($raw, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($raw, 'matriz') || str_contains($raw, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
 
     public function obtenerDerivacionPorFormId($formId)
     {

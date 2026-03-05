@@ -133,16 +133,61 @@ class CirugiasDashboardService
         return $options;
     }
 
+    public function getSedeOptions(string $start, string $end): array
+    {
+        $sedeExpr = $this->sedeExpr('pp');
+        $sql = <<<SQL
+            SELECT DISTINCT {$sedeExpr} AS sede
+            FROM protocolo_data pr
+            LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+            ORDER BY sede ASC
+        SQL;
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start,
+            ':fin' => $end,
+        ]);
+
+        $options = [
+            ['value' => '', 'label' => 'Todas las sedes'],
+            ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+            ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+        ];
+        $seen = [
+            '' => true,
+            'MATRIZ' => true,
+            'CEIBOS' => true,
+        ];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $value = trim((string)($row['sede'] ?? ''));
+            if ($value === '' || isset($seen[$value])) {
+                continue;
+            }
+
+            $options[] = ['value' => $value, 'label' => $value];
+            $seen[$value] = true;
+        }
+
+        return $options;
+    }
+
     public function getTotalCirugias(
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): int
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT COUNT(*)
@@ -150,10 +195,13 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)"
+               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)"
         );
         $stmt->execute([
             ':inicio' => $start,
@@ -162,6 +210,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         return (int) $stmt->fetchColumn();
@@ -171,12 +221,15 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): int
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT COUNT(*)
@@ -184,12 +237,15 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND bm.id IS NULL
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)"
+               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)"
         );
         $stmt->execute([
             ':inicio' => $start,
@@ -198,6 +254,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         return (int) $stmt->fetchColumn();
@@ -207,12 +265,15 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): float
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT AVG(TIMESTAMPDIFF(MINUTE, hora_inicio, hora_fin))
@@ -220,12 +281,15 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND hora_inicio IS NOT NULL
                AND hora_fin IS NOT NULL
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)"
+               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)"
         );
         $stmt->execute([
             ':inicio' => $start,
@@ -234,6 +298,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         return (float) $stmt->fetchColumn();
@@ -254,7 +320,8 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         if (!$this->columnExists('protocolo_data', 'fecha_firma')) {
@@ -269,6 +336,8 @@ class CirugiasDashboardService
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
 
         $sql = "SELECT
@@ -281,13 +350,16 @@ class CirugiasDashboardService
                 LEFT JOIN patient_data p
                     ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                      = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
                 {$categoriaContext['join']}
                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                   AND pr.status = 1
                   AND pr.fecha_firma IS NOT NULL
                   AND TRIM(CAST(pr.fecha_firma AS CHAR)) <> ''
                   AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-                  AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)";
+                  AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                  AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
@@ -297,6 +369,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         $tatHoras = [];
@@ -336,12 +410,15 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT pr.status, pr.membrete, pr.dieresis, pr.exposicion, pr.hallazgo,
@@ -356,7 +433,8 @@ class CirugiasDashboardService
              LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)"
+               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)"
         );
         $stmt->execute([
             ':inicio' => $start,
@@ -365,6 +443,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         $counts = [
@@ -388,12 +468,15 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT DATE_FORMAT(fecha_inicio, '%Y-%m') AS mes, COUNT(*) AS total
@@ -401,10 +484,13 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
              GROUP BY DATE_FORMAT(fecha_inicio, '%Y-%m')
              ORDER BY mes ASC"
         );
@@ -415,6 +501,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         $labels = [];
@@ -433,12 +521,15 @@ class CirugiasDashboardService
         string $end,
         int $limit = 10,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT NULLIF(TRIM(membrete), '') AS procedimiento, COUNT(*) AS total
@@ -446,10 +537,13 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
              GROUP BY NULLIF(TRIM(membrete), '')
              ORDER BY total DESC
              LIMIT :limit"
@@ -460,6 +554,8 @@ class CirugiasDashboardService
         $stmt->bindValue(':afiliacion_filter_match', $afiliacionFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter', $afiliacionCategoriaFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter_match', $afiliacionCategoriaFilterValue);
+        $stmt->bindValue(':sede_filter', $sedeFilterValue);
+        $stmt->bindValue(':sede_filter_match', $sedeFilterValue);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -479,12 +575,15 @@ class CirugiasDashboardService
         string $end,
         int $limit = 10,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT NULLIF(TRIM(cirujano_1), '') AS cirujano, COUNT(*) AS total
@@ -492,10 +591,13 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
              GROUP BY NULLIF(TRIM(cirujano_1), '')
              ORDER BY total DESC
              LIMIT :limit"
@@ -506,6 +608,8 @@ class CirugiasDashboardService
         $stmt->bindValue(':afiliacion_filter_match', $afiliacionFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter', $afiliacionCategoriaFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter_match', $afiliacionCategoriaFilterValue);
+        $stmt->bindValue(':sede_filter', $sedeFilterValue);
+        $stmt->bindValue(':sede_filter_match', $sedeFilterValue);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -532,7 +636,8 @@ class CirugiasDashboardService
         string $end,
         int $limit = 10,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         if (!$this->tableExists('solicitud_crm_meta')) {
@@ -542,6 +647,8 @@ class CirugiasDashboardService
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeFilterCondition = $this->solicitudSedeFilterCondition('sp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $hasProcedimientoDoctor = $this->tableExists('procedimiento_proyectado')
             && $this->columnExists('procedimiento_proyectado', 'form_id')
@@ -583,6 +690,7 @@ class CirugiasDashboardService
                   AND TRIM(sp.procedimiento) <> 'SELECCIONE'
                   AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
                   AND (:afiliacion_categoria_filter = '' OR %AFILIACION_CATEGORIA_EXPR% = :afiliacion_categoria_filter_match)
+                  AND %SEDE_FILTER_CONDITION%
             ) base
             INNER JOIN (
                 SELECT
@@ -603,6 +711,7 @@ class CirugiasDashboardService
         $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $sql);
         $sql = str_replace('%DOCTOR_EXPR%', $doctorExpr, $sql);
         $sql = str_replace('%PP_JOIN%', $ppJoin, $sql);
+        $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':inicio', $start);
@@ -611,6 +720,8 @@ class CirugiasDashboardService
         $stmt->bindValue(':afiliacion_filter_match', $afiliacionFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter', $afiliacionCategoriaFilterValue);
         $stmt->bindValue(':afiliacion_categoria_filter_match', $afiliacionCategoriaFilterValue);
+        $stmt->bindValue(':sede_filter', $sedeFilterValue);
+        $stmt->bindValue(':sede_filter_match', $sedeFilterValue);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -629,13 +740,16 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionLabelExpr = $this->afiliacionLabelExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
             "SELECT {$afiliacionLabelExpr} AS afiliacion, COUNT(*) AS total
@@ -643,10 +757,13 @@ class CirugiasDashboardService
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
              GROUP BY {$afiliacionLabelExpr}
              ORDER BY total DESC"
         );
@@ -657,6 +774,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         $labels = [];
@@ -682,7 +801,8 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         if (!$this->tableExists('solicitud_crm_meta')) {
@@ -692,6 +812,8 @@ class CirugiasDashboardService
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeFilterCondition = $this->solicitudSedeFilterCondition('sp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $sql = <<<'SQL'
             SELECT
@@ -729,6 +851,7 @@ class CirugiasDashboardService
                   AND TRIM(sp.procedimiento) <> 'SELECCIONE'
                   AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
                   AND (:afiliacion_categoria_filter = '' OR %AFILIACION_CATEGORIA_EXPR% = :afiliacion_categoria_filter_match)
+                  AND %SEDE_FILTER_CONDITION%
             ) base
             LEFT JOIN (
                 SELECT
@@ -759,6 +882,7 @@ class CirugiasDashboardService
         $sql = str_replace('%AFILIACION_KEY_EXPR%', $afiliacionKeyExpr, $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_JOIN%', $categoriaContext['join'], $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $sql);
+        $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
@@ -768,6 +892,8 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -929,7 +1055,8 @@ class CirugiasDashboardService
         string $start,
         string $end,
         string $afiliacionFilter = '',
-        string $afiliacionCategoriaFilter = ''
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
     ): array
     {
         if (!$this->tableExists('solicitud_procedimiento')) {
@@ -939,6 +1066,8 @@ class CirugiasDashboardService
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $sql = <<<'SQL'
             SELECT COUNT(*) AS total
@@ -946,10 +1075,13 @@ class CirugiasDashboardService
             LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+            LEFT JOIN procedimiento_proyectado pp
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
             %AFILIACION_CATEGORIA_JOIN%
             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
               AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
               AND (:afiliacion_categoria_filter = '' OR %AFILIACION_CATEGORIA_EXPR% = :afiliacion_categoria_filter_match)
+              AND (:sede_filter = '' OR %SEDE_EXPR% = :sede_filter_match)
               AND NOT EXISTS (
                   SELECT 1
                   FROM solicitud_procedimiento sp
@@ -968,6 +1100,7 @@ class CirugiasDashboardService
         $sql = str_replace('%AFILIACION_KEY_EXPR%', $afiliacionKeyExpr, $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_JOIN%', $categoriaContext['join'], $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $sql);
+        $sql = str_replace('%SEDE_EXPR%', $sedeExpr, $sql);
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
@@ -977,10 +1110,12 @@ class CirugiasDashboardService
             ':afiliacion_filter_match' => $afiliacionFilterValue,
             ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
         ]);
 
         $total = (int) $stmt->fetchColumn();
-        $totalCirugias = $this->getTotalCirugias($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter);
+        $totalCirugias = $this->getTotalCirugias($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
 
         return [
             'total' => $total,
@@ -1125,6 +1260,23 @@ class CirugiasDashboardService
         return $value;
     }
 
+    private function normalizeSedeFilter(string $sedeFilter): string
+    {
+        $value = strtolower(trim($sedeFilter));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
     private function formatCategoriaLabel(string $key): string
     {
         return match ($key) {
@@ -1162,6 +1314,17 @@ class CirugiasDashboardService
         return "'" . implode("','", self::IESS_AFFILIATIONS) . "'";
     }
 
+    private function sedeExpr(string $alias): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' THEN 'MATRIZ'
+            ELSE ''
+        END";
+    }
+
     /**
      * @return array{join:string,expr:string}
      */
@@ -1190,6 +1353,30 @@ class CirugiasDashboardService
         }
 
         return ['join' => '', 'expr' => $fallbackExpr];
+    }
+
+    private function solicitudSedeFilterCondition(string $solicitudAlias): string
+    {
+        if (
+            !$this->tableExists('procedimiento_proyectado')
+            || !$this->columnExists('procedimiento_proyectado', 'form_id')
+        ) {
+            return "(:sede_filter = '')";
+        }
+
+        $sedeExpr = $this->sedeExpr('pp_sede');
+        $hcCondition = $this->columnExists('procedimiento_proyectado', 'hc_number')
+            ? " AND CONVERT(pp_sede.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 = CONVERT({$solicitudAlias}.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci"
+            : '';
+
+        return "(:sede_filter = '' OR EXISTS (
+            SELECT 1
+            FROM procedimiento_proyectado pp_sede
+            WHERE CONVERT(pp_sede.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                  = CONVERT({$solicitudAlias}.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci{$hcCondition}
+              AND {$sedeExpr} = :sede_filter_match
+        ))";
     }
 
     private function normalizeSqlText(string $expr): string

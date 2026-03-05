@@ -1379,6 +1379,7 @@ class ExamenModel
      *     fecha_fin?: string,
      *     afiliacion?: string,
      *     afiliacion_categoria?: string,
+     *     sede?: string,
      *     tipo_examen?: string,
      *     paciente?: string,
      *     estado_agenda?: string
@@ -1389,6 +1390,7 @@ class ExamenModel
         $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
+        $sedeExpr = $this->imagenesSedeExpr();
 
         $facturadoSelect = $includeFacturado
             ? "CASE WHEN bm.form_id IS NULL THEN 0 ELSE 1 END AS facturado"
@@ -1422,6 +1424,7 @@ class ExamenModel
                 NULL AS examen_codigo,
                 NULL AS imagen_ruta,
                 NULL AS imagen_nombre,
+                {$sedeExpr} AS sede,
                 pp.estado_agenda,
                 ii.id AS informe_id,
                 ii.firmado_por AS informe_firmado_por,
@@ -1454,6 +1457,12 @@ class ExamenModel
         if ($afiliacionCategoriaFilter !== '') {
             $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
             $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string)($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
         }
 
         if (!empty($filters['tipo_examen'])) {
@@ -1617,6 +1626,34 @@ class ExamenModel
         }
 
         return $value;
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function imagenesSedeExpr(): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(pp.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     private function formatCategoriaLabel(string $key): string

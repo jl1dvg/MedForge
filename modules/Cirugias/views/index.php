@@ -3,6 +3,7 @@
 /** @var array $scripts */
 /** @var array<int, array{value:string,label:string}> $afiliacionOptions */
 /** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
+/** @var array<int, array{value:string,label:string}> $sedeOptions */
 /** @var string $fechaInicioDefault */
 /** @var string $fechaFinDefault */
 $fechaInicioDefaultValue = htmlspecialchars((string)($fechaInicioDefault ?? ''), ENT_QUOTES, 'UTF-8');
@@ -71,6 +72,17 @@ $scripts = array_merge($scripts ?? [], [
                             <label for="filtroAfiliacionCategoria" class="form-label">Categoría afiliación</label>
                             <select class="form-select" id="filtroAfiliacionCategoria" name="afiliacion_categoria">
                                 <?php foreach (($afiliacionCategoriaOptions ?? []) as $option): ?>
+                                    <?php $value = (string)($option['value'] ?? ''); ?>
+                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <label for="filtroSede" class="form-label">Sede</label>
+                            <select class="form-select" id="filtroSede" name="sede">
+                                <?php foreach (($sedeOptions ?? []) as $option): ?>
                                     <?php $value = (string)($option['value'] ?? ''); ?>
                                     <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>">
                                         <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>

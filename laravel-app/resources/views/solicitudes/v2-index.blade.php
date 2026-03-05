@@ -404,6 +404,14 @@
                         </select>
                     </div>
                     <div class="col-lg-2 col-md-3">
+                        <label for="solSede" class="form-label">Sede</label>
+                        <select id="solSede" name="sede" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="MATRIZ">MATRIZ</option>
+                            <option value="CEIBOS">CEIBOS</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-3">
                         <label for="solDoctor" class="form-label">Doctor</label>
                         <select id="solDoctor" name="doctor" class="form-select">
                             <option value="">Todos</option>

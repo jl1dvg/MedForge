@@ -49,3 +49,44 @@ export function poblarDoctoresUnicos(data) {
             select.appendChild(option);
         });
 }
+
+export function poblarSedesUnicas(data) {
+    const select = document.getElementById('kanbanSedeFilter');
+    if (!select) return;
+
+    const currentValue = select.value || '';
+    select.innerHTML = '<option value="">Todas</option>';
+
+    const valores = Array.isArray(data)
+        ? data
+        : [];
+
+    const sedes = Array.from(new Set(valores.map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') return item.sede;
+        return null;
+    }).filter(Boolean)));
+
+    const ordered = sedes
+        .map(item => String(item).trim())
+        .filter(Boolean)
+        .sort((a, b) => {
+            const order = { MATRIZ: 1, CEIBOS: 2 };
+            const oa = order[a] ?? 99;
+            const ob = order[b] ?? 99;
+            if (oa === ob) {
+                return a.localeCompare(b, 'es', { sensitivity: 'base' });
+            }
+            return oa - ob;
+        });
+
+    ordered.forEach(sede => {
+        const option = document.createElement('option');
+        option.value = sede;
+        option.textContent = sede;
+        if (sede === currentValue) {
+            option.selected = true;
+        }
+        select.appendChild(option);
+    });
+}

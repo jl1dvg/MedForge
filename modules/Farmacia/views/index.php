@@ -5,6 +5,7 @@
  * @var array<int, array<string, mixed>> $rows
  * @var array<int, string> $doctorOptions
  * @var array<int, string> $afiliacionOptions
+ * @var array<int, string> $sedeOptions
  * @var array<int, string> $localidadOptions
  * @var array<int, string> $departamentoOptions
  */
@@ -15,6 +16,7 @@ if (!isset($filters) || !is_array($filters)) {
         'fecha_fin' => '',
         'doctor' => '',
         'afiliacion' => '',
+        'sede' => '',
         'producto' => '',
         'localidad' => '',
         'departamento' => '',
@@ -30,6 +32,7 @@ $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
 $rows = is_array($rows ?? null) ? $rows : [];
 $doctorOptions = is_array($doctorOptions ?? null) ? $doctorOptions : [];
 $afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [];
+$sedeOptions = is_array($sedeOptions ?? null) ? $sedeOptions : [];
 $localidadOptions = is_array($localidadOptions ?? null) ? $localidadOptions : [];
 $departamentoOptions = is_array($departamentoOptions ?? null) ? $departamentoOptions : [];
 
@@ -38,6 +41,7 @@ $exportQuery = http_build_query([
     'fecha_fin' => (string)($filters['fecha_fin'] ?? ''),
     'doctor' => (string)($filters['doctor'] ?? ''),
     'afiliacion' => (string)($filters['afiliacion'] ?? ''),
+    'sede' => (string)($filters['sede'] ?? ''),
     'producto' => (string)($filters['producto'] ?? ''),
     'localidad' => (string)($filters['localidad'] ?? ''),
     'departamento' => (string)($filters['departamento'] ?? ''),
@@ -112,6 +116,17 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                         <?php foreach ($localidadOptions as $localidad): ?>
                             <option value="<?= htmlspecialchars($localidad, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['localidad'] ?? '') === (string)$localidad ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($localidad, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Sede</label>
+                    <select class="form-select" name="sede">
+                        <option value="">Todas</option>
+                        <?php foreach ($sedeOptions as $sede): ?>
+                            <option value="<?= htmlspecialchars($sede, ENT_QUOTES, 'UTF-8') ?>" <?= (string)($filters['sede'] ?? '') === (string)$sede ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($sede, ENT_QUOTES, 'UTF-8') ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -241,6 +256,7 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                 <thead>
                 <tr>
                     <th>Fecha</th>
+                    <th>Sede</th>
                     <th>Localidad</th>
                     <th>Departamento</th>
                     <th>Médico</th>
@@ -259,6 +275,7 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                     <?php foreach ($rows as $row): ?>
                         <tr>
                             <td><?= htmlspecialchars((string)($row['fecha_receta'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['sede'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars((string)($row['localidad'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars((string)($row['departamento'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars((string)($row['doctor'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
@@ -274,7 +291,7 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="12" class="text-muted text-center">Sin datos para los filtros actuales.</td>
+                        <td colspan="13" class="text-muted text-center">Sin datos para los filtros actuales.</td>
                     </tr>
                 <?php endif; ?>
                 </tbody>

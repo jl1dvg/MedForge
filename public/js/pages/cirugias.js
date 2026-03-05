@@ -6,6 +6,7 @@ $(function () {
     const $fechaFin = $("#filtroFechaFin");
     const $afiliacion = $("#filtroAfiliacion");
     const $afiliacionCategoria = $("#filtroAfiliacionCategoria");
+    const $sede = $("#filtroSede");
     const $surgeryTable = $("#surgeryTable");
     const defaultFechaInicio = ($fechaInicio.data("default") || "").toString();
     const defaultFechaFin = ($fechaFin.data("default") || "").toString();
@@ -34,6 +35,7 @@ $(function () {
                 d.fecha_fin = $fechaFin.val();
                 d.afiliacion = $afiliacion.val();
                 d.afiliacion_categoria = $afiliacionCategoria.val();
+                d.sede = $sede.val();
             },
             error: function (xhr) {
                 const backendMessage = xhr && xhr.responseJSON && xhr.responseJSON.error

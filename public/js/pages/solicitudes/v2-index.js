@@ -17,6 +17,7 @@
     const board = document.getElementById('solV2Kanban');
     const toast = document.getElementById('solV2Toast');
     const afiliacionSelect = document.getElementById('solAfiliacion');
+    const sedeSelect = document.getElementById('solSede');
     const doctorSelect = document.getElementById('solDoctor');
     const prioridadSelect = document.getElementById('solPrioridad');
     const searchInput = document.getElementById('solSearch');
@@ -27,6 +28,7 @@
         rows: [],
         options: {
             afiliaciones: [],
+            sedes: [],
             doctores: [],
             metrics: {},
             crm: {},
@@ -95,6 +97,7 @@
     const getFilters = () => ({
         search: searchInput ? searchInput.value.trim() : '',
         afiliacion: afiliacionSelect ? afiliacionSelect.value.trim() : '',
+        sede: sedeSelect ? sedeSelect.value.trim() : '',
         doctor: doctorSelect ? doctorSelect.value.trim() : '',
         prioridad: prioridadSelect ? prioridadSelect.value.trim() : '',
         date_from: dateFromInput ? dateFromInput.value.trim() : '',
@@ -122,6 +125,9 @@
         }
         if (prioridadSelect && typeof initialFilters.prioridad === 'string') {
             prioridadSelect.value = initialFilters.prioridad;
+        }
+        if (sedeSelect && typeof initialFilters.sede === 'string') {
+            sedeSelect.value = initialFilters.sede;
         }
     };
 
@@ -582,6 +588,7 @@
             syncLegacyKanbanBridge();
 
             renderSelectOptions(afiliacionSelect, state.options.afiliaciones || [], filters.afiliacion);
+            renderSelectOptions(sedeSelect, state.options.sedes || ['MATRIZ', 'CEIBOS'], filters.sede);
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
             renderMetrics((state.options.metrics || {}));
             renderBoard();

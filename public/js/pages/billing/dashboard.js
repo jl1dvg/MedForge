@@ -8,6 +8,7 @@
         loaderOverlay: document.getElementById('billing-dashboard-loader'),
         rangeLabel: document.getElementById('billing-range'),
         rangeInput: document.getElementById('billing-range-input'),
+        billingSede: document.getElementById('billing-sede'),
         refreshButton: document.getElementById('billing-refresh'),
         metricFacturas: document.getElementById('metric-facturas'),
         metricMonto: document.getElementById('metric-monto'),
@@ -236,7 +237,8 @@
         const { data, filters } = payload;
 
         if (elements.rangeLabel && filters) {
-            elements.rangeLabel.textContent = `${filters.date_from ?? '—'} a ${filters.date_to ?? '—'}`;
+            const sedeLabel = (filters.sede && String(filters.sede).trim() !== '') ? filters.sede : 'Todas las sedes';
+            elements.rangeLabel.textContent = `${filters.date_from ?? '—'} a ${filters.date_to ?? '—'} · ${sedeLabel}`;
         }
 
         setMetricText(elements.metricFacturas, formatNumber(data.kpis?.total_facturas ?? 0));
@@ -395,11 +397,19 @@
     };
 
     const fetchDashboard = (filters = {}) => {
+        const payload = { ...filters };
+        const sede = elements.billingSede?.value?.trim() || '';
+        if (sede) {
+            payload.sede = sede;
+        } else {
+            delete payload.sede;
+        }
+
         setLoading(true);
         return fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(filters),
+            body: JSON.stringify(payload),
         })
             .then(response => {
                 if (!response.ok) {
@@ -548,6 +558,18 @@
 
     if (elements.refreshButton) {
         elements.refreshButton.addEventListener('click', () => {
+            const value = elements.rangeInput.value || '';
+            if (value.includes(' - ')) {
+                const [from, to] = value.split(' - ');
+                fetchDashboard({ date_from: from.trim(), date_to: to.trim() });
+                return;
+            }
+            fetchDashboard();
+        });
+    }
+
+    if (elements.billingSede) {
+        elements.billingSede.addEventListener('change', () => {
             const value = elements.rangeInput.value || '';
             if (value.includes(' - ')) {
                 const [from, to] = value.split(' - ');

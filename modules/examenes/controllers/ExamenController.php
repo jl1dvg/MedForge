@@ -3987,7 +3987,7 @@ class ExamenController extends BaseController
         $filters = $this->buildImagenesRealizadasFilters();
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
-        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
 
         $this->render(
             __DIR__ . '/../views/imagenes_dashboard.php',
@@ -3998,6 +3998,7 @@ class ExamenController extends BaseController
                 'rows' => $rows,
                 'afiliacionOptions' => $afiliacionOptions,
                 'afiliacionCategoriaOptions' => $afiliacionCategoriaOptions,
+                'sedeOptions' => $sedeOptions,
             ]
         );
     }
@@ -4010,8 +4011,8 @@ class ExamenController extends BaseController
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
-        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
-        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions);
+        [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions);
 
         $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.pdf';
 
@@ -4078,8 +4079,8 @@ class ExamenController extends BaseController
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
-        [$afiliacionOptions, $afiliacionCategoriaOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
-        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions);
+        [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        $filtersSummary = $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions);
         $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
 
         try {
@@ -4691,6 +4692,7 @@ class ExamenController extends BaseController
      *     fecha_fin: string,
      *     afiliacion: string,
      *     afiliacion_categoria: string,
+     *     sede: string,
      *     tipo_examen: string,
      *     paciente: string,
      *     estado_agenda: string
@@ -4709,6 +4711,7 @@ class ExamenController extends BaseController
             'fecha_fin' => $fechaFin,
             'afiliacion' => trim((string)($_GET['afiliacion'] ?? '')),
             'afiliacion_categoria' => trim((string)($_GET['afiliacion_categoria'] ?? '')),
+            'sede' => trim((string)($_GET['sede'] ?? '')),
             'tipo_examen' => trim((string)($_GET['tipo_examen'] ?? '')),
             'paciente' => trim((string)($_GET['paciente'] ?? '')),
             'estado_agenda' => trim((string)($_GET['estado_agenda'] ?? '')),
@@ -4738,27 +4741,55 @@ class ExamenController extends BaseController
         return $value;
     }
 
+    private function normalizeImagenesSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
     /**
      * @param array{
      *     fecha_inicio?: string,
      *     fecha_fin?: string
      * } $filters
-     * @return array{0: array<int, array{value:string,label:string}>, 1: array<int, array{value:string,label:string}>}
+     * @return array{
+     *     0: array<int, array{value:string,label:string}>,
+     *     1: array<int, array{value:string,label:string}>,
+     *     2: array<int, array{value:string,label:string}>
+     * }
      */
     private function resolveImagenesDashboardAffiliationOptions(array $filters): array
     {
         $fechaInicio = trim((string)($filters['fecha_inicio'] ?? ''));
         $fechaFin = trim((string)($filters['fecha_fin'] ?? ''));
+        $sedeOptions = [
+            ['value' => '', 'label' => 'Todas las sedes'],
+            ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+            ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+        ];
         if ($fechaInicio === '' || $fechaFin === '') {
             return [
                 [['value' => '', 'label' => 'Todas'], ['value' => 'iess', 'label' => 'IESS']],
                 [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']],
+                $sedeOptions,
             ];
         }
 
         return [
             $this->examenModel->getImagenesAfiliacionOptions($fechaInicio, $fechaFin),
             $this->examenModel->getImagenesAfiliacionCategoriaOptions($fechaInicio, $fechaFin),
+            $sedeOptions,
         ];
     }
 
@@ -4779,6 +4810,7 @@ class ExamenController extends BaseController
      *     fecha_inicio?: string,
      *     fecha_fin?: string,
      *     afiliacion?: string,
+     *     sede?: string,
      *     tipo_examen?: string,
      *     paciente?: string,
      *     estado_agenda?: string
@@ -4788,7 +4820,8 @@ class ExamenController extends BaseController
     private function buildImagenesDashboardFiltersSummary(
         array $filters,
         array $afiliacionOptions = [],
-        array $afiliacionCategoriaOptions = []
+        array $afiliacionCategoriaOptions = [],
+        array $sedeOptions = []
     ): array
     {
         $summary = [];
@@ -4830,6 +4863,18 @@ class ExamenController extends BaseController
                 }
             }
             $summary[] = ['label' => 'Categoría de afiliación', 'value' => $categoriaLabel];
+        }
+
+        $sedeFilter = $this->normalizeImagenesSedeFilter((string)($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sedeLabel = $sedeFilter;
+            foreach ($sedeOptions as $option) {
+                if ((string)($option['value'] ?? '') === $sedeFilter) {
+                    $sedeLabel = (string)($option['label'] ?? $sedeFilter);
+                    break;
+                }
+            }
+            $summary[] = ['label' => 'Sede', 'value' => $sedeLabel];
         }
 
         return $summary;

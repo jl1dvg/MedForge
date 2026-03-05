@@ -30,6 +30,7 @@ class CirugiasController extends BaseController
             'pageTitle' => 'Reporte de Cirugías',
             'afiliacionOptions' => $this->service->obtenerAfiliacionOptions(),
             'afiliacionCategoriaOptions' => $this->service->obtenerAfiliacionCategoriaOptions(),
+            'sedeOptions' => $this->service->obtenerSedeOptions(),
             'fechaInicioDefault' => $fechaInicioDefault,
             'fechaFinDefault' => $fechaFinDefault,
         ]);
@@ -77,6 +78,7 @@ class CirugiasController extends BaseController
                     'fecha_fin' => (string)($_POST['fecha_fin'] ?? ''),
                     'afiliacion' => (string)($_POST['afiliacion'] ?? ''),
                     'afiliacion_categoria' => (string)($_POST['afiliacion_categoria'] ?? ''),
+                    'sede' => (string)($_POST['sede'] ?? ''),
                 ]
             );
 

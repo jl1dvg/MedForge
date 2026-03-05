@@ -46,6 +46,10 @@ return function (Router $router) {
         (new BillingController($pdo))->apiAfiliaciones();
     });
 
+    $router->get('/api/billing/sedes', function (\PDO $pdo) {
+        (new BillingController($pdo))->apiSedes();
+    });
+
     $router->get('/views/billing/no_facturados.php', function () {
         header('Location: /billing/no-facturados', true, 302);
         exit;
@@ -65,6 +69,10 @@ return function (Router $router) {
 
     $router->match(['GET', 'POST'], '/informes/issfa', function (\PDO $pdo) {
         (new InformesController($pdo))->informeIssfa();
+    });
+
+    $router->match(['GET', 'POST'], '/informes/msp', function (\PDO $pdo) {
+        (new InformesController($pdo))->informeMsp();
     });
 
     $router->match(['GET', 'POST'], '/informes/particulares', function (\PDO $pdo) {

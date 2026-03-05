@@ -12,6 +12,7 @@ class RecetaModel
     private const VIA_FALLBACK = 'Sin vía';
     private const PRODUCTO_FALLBACK = 'Sin producto';
     private const LOCALIDAD_FALLBACK = 'Sin localidad';
+    private const SEDE_FALLBACK = 'Sin sede';
     private const DEPARTAMENTO_FALLBACK = 'Sin departamento';
     private const DIAGNOSTICO_FALLBACK = 'Sin diagnóstico';
     private const PATIENT_FALLBACK = 'Sin paciente';
@@ -287,6 +288,29 @@ class RecetaModel
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 
+    public function listarSedes(array $filtros = []): array
+    {
+        $sql = "
+            SELECT DISTINCT {$this->sedeExpression()} AS sede
+            FROM recetas_items re
+            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+        $this->appendDateFilters($sql, $params, $filtros);
+        $sql .= " ORDER BY CASE sede
+                    WHEN 'MATRIZ' THEN 1
+                    WHEN 'CEIBOS' THEN 2
+                    WHEN '" . self::SEDE_FALLBACK . "' THEN 99
+                    ELSE 50
+                 END, sede ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
     public function listarDepartamentos(array $filtros = []): array
     {
         $sql = "
@@ -393,6 +417,7 @@ class RecetaModel
                 COALESCE(re.total_farmacia, 0) AS total_farmacia,
                 {$this->doctorExpression()} AS doctor,
                 {$this->afiliacionExpression()} AS afiliacion,
+                {$this->sedeExpression()} AS sede,
                 COALESCE(NULLIF(TRIM(pp.procedimiento_proyectado), ''), '') AS procedimiento_proyectado,
                 COALESCE(NULLIF(TRIM(pp.hc_number), ''), '') AS hc_number,
                 {$this->localidadExpression()} AS localidad,
@@ -463,7 +488,8 @@ class RecetaModel
         bool $allowEstado = true,
         bool $allowVia = true,
         bool $allowLocalidad = true,
-        bool $allowDepartamento = true
+        bool $allowDepartamento = true,
+        bool $allowSede = true
     ): void {
         $doctor = trim((string)($filtros['doctor'] ?? ''));
         if ($allowDoctor && $doctor !== '') {
@@ -499,6 +525,12 @@ class RecetaModel
         if ($allowLocalidad && $localidad !== '') {
             $sql .= " AND {$this->localidadExpression()} = :localidad";
             $params[':localidad'] = $localidad;
+        }
+
+        $sede = trim((string)($filtros['sede'] ?? ''));
+        if ($allowSede && $sede !== '') {
+            $sql .= " AND {$this->sedeExpression()} = :sede";
+            $params[':sede'] = $sede;
         }
 
         $departamento = trim((string)($filtros['departamento'] ?? ''));
@@ -543,6 +575,18 @@ class RecetaModel
             WHEN {$sedeExpr} LIKE '%ceibos%' OR {$sedeExpr} LIKE '%cbo%' THEN 'Ceibos'
             WHEN {$sedeExpr} LIKE '%villa_club%' OR {$sedeExpr} LIKE '%vclub%' OR {$sedeExpr} LIKE '%villa%' THEN 'Villa Club'
             ELSE COALESCE(NULLIF(TRIM({$rawExpr}), ''), '" . self::LOCALIDAD_FALLBACK . "')
+        END";
+    }
+
+    private function sedeExpression(): string
+    {
+        $sedeExpr = $this->normalizeSqlKey($this->sedeRawExpression());
+
+        return "CASE
+            WHEN {$sedeExpr} = '' THEN '" . self::SEDE_FALLBACK . "'
+            WHEN {$sedeExpr} LIKE '%ceib%' OR {$sedeExpr} LIKE '%cbo%' THEN 'CEIBOS'
+            WHEN {$sedeExpr} LIKE '%matriz%' OR {$sedeExpr} LIKE '%villa_club%' OR {$sedeExpr} LIKE '%vclub%' OR {$sedeExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE UPPER(TRIM({$this->sedeRawExpression()}))
         END";
     }
 

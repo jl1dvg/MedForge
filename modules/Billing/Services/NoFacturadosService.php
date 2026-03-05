@@ -6,18 +6,24 @@ use PDO;
 
 class NoFacturadosService
 {
+    /**
+     * @var array<string,bool>
+     */
+    private array $columnExistsCache = [];
+
     public function __construct(private readonly PDO $db)
     {
     }
 
     private function getBaseSql(): string
     {
-        return <<<'SQL'
+        $sql = <<<'SQL'
             SELECT
                 base.form_id,
                 base.hc_number,
                 base.fecha,
                 base.afiliacion,
+                base.sede,
                 base.paciente,
                 base.procedimiento,
                 base.tipo,
@@ -32,6 +38,7 @@ class NoFacturadosService
                     pr.hc_number,
                     pr.fecha AS fecha,
                     pa.afiliacion,
+                    %SEDE_EXPR% AS sede,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     pr.procedimiento_proyectado AS procedimiento,
                     CASE
@@ -71,6 +78,7 @@ class NoFacturadosService
                     pd.hc_number,
                     pd.fecha_inicio AS fecha,
                     pa.afiliacion,
+                    %SEDE_EXPR% AS sede,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
                     CASE
@@ -103,6 +111,8 @@ class NoFacturadosService
                   )
             ) AS base
         SQL;
+
+        return str_replace('%SEDE_EXPR%', $this->sedeExpression('pr'), $sql);
     }
 
     public function listar(array $filters, int $start, int $length): array
@@ -243,6 +253,21 @@ class NoFacturadosService
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
 
+    public function listarSedes(): array
+    {
+        $baseSql = $this->getBaseSql();
+        $sql = "SELECT DISTINCT TRIM(base.sede) AS sede
+                FROM ({$baseSql}) AS base
+                WHERE base.sede IS NOT NULL AND TRIM(base.sede) <> ''
+                ORDER BY CASE TRIM(base.sede)
+                    WHEN 'MATRIZ' THEN 1
+                    WHEN 'CEIBOS' THEN 2
+                    ELSE 99
+                END, base.sede";
+        $stmt = $this->db->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
     private function parseImagenProcedimiento(string $texto): ?array
     {
         $nombre = $this->sanitizeImagenNombre($texto);
@@ -293,6 +318,7 @@ class NoFacturadosService
         $valorMax = $filters['valor_max'] ?? null;
         $informado = $filters['informado'] ?? null;
         $estadosAgenda = array_values(array_filter(array_map('trim', (array)($filters['estado_agenda'] ?? [])), static fn($value) => $value !== ''));
+        $sede = $this->normalizeSedeFilter($filters['sede'] ?? null);
 
         if (!empty($filters['fecha_desde'])) {
             $conditions[] = 'base.fecha >= :fecha_desde';
@@ -312,6 +338,11 @@ class NoFacturadosService
                 $params[$placeholder] = $afiliacion;
             }
             $conditions[] = 'base.afiliacion IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        if ($sede !== '') {
+            $conditions[] = 'base.sede = :sede';
+            $params[':sede'] = $sede;
         }
 
         if ($estadoRevision !== '' && $estadoRevision !== null) {
@@ -374,5 +405,66 @@ class NoFacturadosService
         }
 
         return $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';
+    }
+
+    private function normalizeSedeFilter(mixed $value): string
+    {
+        $raw = strtolower(trim((string) $value));
+        if ($raw === '') {
+            return '';
+        }
+
+        if (str_contains($raw, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($raw, 'matriz') || str_contains($raw, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function sedeExpression(string $alias): string
+    {
+        $parts = [];
+        if ($this->columnExists('procedimiento_proyectado', 'sede_departamento')) {
+            $parts[] = "NULLIF(TRIM({$alias}.sede_departamento), '')";
+        }
+        if ($this->columnExists('procedimiento_proyectado', 'id_sede')) {
+            $parts[] = "NULLIF(TRIM({$alias}.id_sede), '')";
+        }
+
+        $rawExpr = "''";
+        if (!empty($parts)) {
+            $rawExpr = 'COALESCE(' . implode(', ', $parts) . ", '')";
+        }
+        $normalized = "LOWER(TRIM({$rawExpr}))";
+
+        return "CASE
+            WHEN {$normalized} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$normalized} LIKE '%matriz%' OR {$normalized} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        $key = $table . '.' . $column;
+        if (array_key_exists($key, $this->columnExistsCache)) {
+            return $this->columnExistsCache[$key];
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
+        );
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+
+        $exists = (int) $stmt->fetchColumn() > 0;
+        $this->columnExistsCache[$key] = $exists;
+        return $exists;
     }
 }

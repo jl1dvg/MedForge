@@ -16,9 +16,10 @@ class BillingDashboardService
         $this->noFacturadosService = $noFacturadosService ?? new NoFacturadosService($db);
     }
 
-    public function buildSummary(string $start, string $end): array
+    public function buildSummary(string $start, string $end, string $sedeFilter = ''): array
     {
-        $billingRows = $this->fetchBillingRows($start, $end);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $billingRows = $this->fetchBillingRows($start, $end, $sedeFilterValue);
         $kpis = $this->buildKpis($billingRows);
 
         $facturasTotal = $kpis['total_facturas'] ?? 0;
@@ -26,6 +27,7 @@ class BillingDashboardService
         $leakageFilters = [
             'fecha_desde' => $start,
             'fecha_hasta' => $end,
+            'sede' => $sedeFilterValue,
         ];
         $leakage = $this->noFacturadosService->getLeakageSummary($leakageFilters, 10);
         $leakageTotal = $leakage['total'] ?? 0;
@@ -41,19 +43,21 @@ class BillingDashboardService
             'series' => [
                 'por_dia' => $this->groupByDate($billingRows),
                 'por_afiliacion' => $this->groupByAffiliation($billingRows),
-                'top_procedimientos' => $this->getTopProcedimientos($start, $end, 20),
+                'top_procedimientos' => $this->getTopProcedimientos($start, $end, 20, $sedeFilterValue),
             ],
             'leakage' => $leakage,
         ];
     }
 
-    private function fetchBillingRows(string $start, string $end): array
+    private function fetchBillingRows(string $start, string $end, string $sedeFilter = ''): array
     {
+        $sedeExpr = $this->sedeExpr('pp');
         $sql = "
             SELECT
                 bm.id,
                 COALESCE(pd.fecha_inicio, pp.fecha, bm.created_at) AS fecha,
                 COALESCE(NULLIF(TRIM(pa.afiliacion), ''), 'Sin afiliación') AS afiliacion,
+                {$sedeExpr} AS sede,
                 COALESCE(proc.total, 0) + COALESCE(der.total, 0) + COALESCE(ins.total, 0)
                     + COALESCE(ane.total, 0) + COALESCE(oxi.total, 0) AS total_facturado,
                 COALESCE(proc.items_count, 0) + COALESCE(der.items_count, 0) + COALESCE(ins.items_count, 0)
@@ -88,6 +92,7 @@ class BillingDashboardService
                 GROUP BY billing_id
             ) AS oxi ON oxi.billing_id = bm.id
             WHERE COALESCE(pd.fecha_inicio, pp.fecha, bm.created_at) BETWEEN :inicio AND :fin
+              AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
             ORDER BY fecha ASC
         ";
 
@@ -95,6 +100,8 @@ class BillingDashboardService
         $stmt->execute([
             ':inicio' => $start,
             ':fin' => $end,
+            ':sede_filter' => $sedeFilter,
+            ':sede_filter_match' => $sedeFilter,
         ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -165,8 +172,9 @@ class BillingDashboardService
         ];
     }
 
-    private function getTopProcedimientos(string $start, string $end, int $limit = 20): array
+    private function getTopProcedimientos(string $start, string $end, int $limit = 20, string $sedeFilter = ''): array
     {
+        $sedeExpr = $this->sedeExpr('pp');
         $stmt = $this->db->prepare(
             "SELECT COALESCE(NULLIF(TRIM(bp.proc_detalle), ''), bp.proc_codigo, 'Sin detalle') AS procedimiento,
                     SUM(bp.proc_precio) AS total
@@ -175,12 +183,15 @@ class BillingDashboardService
              LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
              LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
              WHERE COALESCE(pd.fecha_inicio, pp.fecha, bm.created_at) BETWEEN :inicio AND :fin
+               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
              GROUP BY COALESCE(NULLIF(TRIM(bp.proc_detalle), ''), bp.proc_codigo, 'Sin detalle')
              ORDER BY total DESC
              LIMIT :limit"
         );
         $stmt->bindValue(':inicio', $start);
         $stmt->bindValue(':fin', $end);
+        $stmt->bindValue(':sede_filter', $sedeFilter);
+        $stmt->bindValue(':sede_filter_match', $sedeFilter);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -204,5 +215,33 @@ class BillingDashboardService
         } catch (\Throwable) {
             return $value;
         }
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function sedeExpr(string $alias): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 }

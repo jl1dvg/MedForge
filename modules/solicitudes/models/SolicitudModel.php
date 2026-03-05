@@ -264,6 +264,7 @@ class SolicitudModel
         }
         $derivacionVigenciaExpr = 'COALESCE(' . implode(', ', $vigenciaParts) . ')';
         $doctorAvatarMatchCondition = $this->buildDoctorUserMatchCondition('sp.doctor', 'u');
+        $sedeExpr = $this->sedeExpr('pp');
 
         $sql = "SELECT
                 sp.id,
@@ -277,6 +278,7 @@ class SolicitudModel
                 )) AS full_name, 
                 sp.tipo,
                 pd.afiliacion,
+                {$sedeExpr} AS sede,
                 pd.celular AS paciente_celular,
                 sp.procedimiento,
                 sp.doctor,
@@ -321,6 +323,7 @@ class SolicitudModel
                 {$derivacionVigenciaExpr} AS derivacion_fecha_vigencia
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON sp.hc_number = pp.hc_number AND sp.form_id = pp.form_id
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
             {$derivacionSelectionJoin}
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
@@ -393,6 +396,12 @@ class SolicitudModel
             $params[] = '%' . trim((string)$filtros['doctor']) . '%';
         }
 
+        $sede = $this->normalizeSedeFilter((string)($filtros['sede'] ?? ''));
+        if ($sede !== '') {
+            $sql .= " AND {$this->sedeExpr('pp')} = ?";
+            $params[] = $sede;
+        }
+
         if (!empty($filtros['prioridad'])) {
             $sql .= " AND sp.prioridad COLLATE utf8mb4_unicode_ci = ?";
             $params[] = trim((string)$filtros['prioridad']);
@@ -422,6 +431,34 @@ class SolicitudModel
         }
 
         return [$sql, $params];
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function sedeExpr(string $alias): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     /**

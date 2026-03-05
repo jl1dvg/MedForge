@@ -78,6 +78,14 @@
                             </select>
                         </div>
                         <div class="col-md-2">
+                            <label for="fSede" class="form-label">Sede</label>
+                            <select id="fSede" name="sede" class="form-select form-select-sm">
+                                <option value="">Todas</option>
+                                <option value="MATRIZ">MATRIZ</option>
+                                <option value="CEIBOS">CEIBOS</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label for="fEstadoRevision" class="form-label">Estado revisión</label>
                             <select id="fEstadoRevision" name="estado_revision" class="form-select form-select-sm">
                                 <option value="">Todos</option>

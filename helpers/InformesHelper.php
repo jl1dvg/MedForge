@@ -194,7 +194,8 @@ class InformesHelper
         ?string           $categoriaFiltro = null,
         array             &$cacheDerivaciones = [],
         array             &$pacientesCache = [],
-        array             &$datosCache = []
+        array             &$datosCache = [],
+        array             &$sedesCache = []
     ): array
     {
         $categoriaFiltro = $categoriaFiltro ? strtolower(trim($categoriaFiltro)) : null;
@@ -206,12 +207,27 @@ class InformesHelper
         $hcFiltro = trim((string)($filtros['hc_number'] ?? ''));
         $derivacionFiltro = $filtros['derivacion'] ?? '';
         $afiliacionFiltro = self::normalizarAfiliacion($filtros['afiliacion'] ?? '');
+        $sedeFiltro = self::normalizarSede($filtros['sede'] ?? '');
         $vistaRapida = ($filtros['vista'] ?? '') === 'rapida';
 
         $consolidado = [];
 
         foreach ($facturas as $factura) {
             $hcNumber = $factura['hc_number'];
+            $formId = (string)($factura['form_id'] ?? '');
+
+            if ($sedeFiltro !== '') {
+                if ($formId === '') {
+                    continue;
+                }
+                if (!isset($sedesCache[$formId])) {
+                    $sedesCache[$formId] = self::normalizarSede($billingController->obtenerSedePorFormId($formId));
+                }
+                if (($sedesCache[$formId] ?? '') !== $sedeFiltro) {
+                    continue;
+                }
+            }
+
             if (!isset($pacientesCache[$hcNumber])) {
                 $pacientesCache[$hcNumber] = $pacienteService->getPatientDetails($hcNumber);
             }
@@ -265,7 +281,6 @@ class InformesHelper
                 }
             }
 
-            $formId = $factura['form_id'];
             if (!isset($datosCache[$formId])) {
                 $datosCache[$formId] = $billingController->obtenerDatos($formId);
             }
@@ -296,6 +311,7 @@ class InformesHelper
                 'total' => $total,
                 'id' => $factura['id'],
                 'categoria' => $categoria,
+                'sede' => $sedesCache[$formId] ?? '',
                 'derivacion' => $derivacion,
                 'vista_rapida' => $vistaRapida,
             ];
@@ -397,6 +413,23 @@ class InformesHelper
             'ñ' => 'n', 'Ñ' => 'n'
         ]);
         return $str;
+    }
+
+    public static function normalizarSede($value): string
+    {
+        $value = strtolower(trim((string)$value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 
     public static function filtrarPacientes(array $pacientes, array &$pacientesCache, array &$datosCache, PacienteService $pacienteService, $billingController, string $apellidoFiltro): array

@@ -18,6 +18,8 @@
 /** @var array<int,array{value:string,label:string}> $afiliacion_options */
 /** @var string $afiliacion_categoria_filter */
 /** @var array<int,array{value:string,label:string}> $afiliacion_categoria_options */
+/** @var string $sede_filter */
+/** @var array<int,array{value:string,label:string}> $sede_options */
 
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
@@ -43,6 +45,7 @@ $exportQuery = http_build_query([
     'end_date' => (string)($date_range['end'] ?? ''),
     'afiliacion' => (string)($afiliacion_filter ?? ''),
     'afiliacion_categoria' => (string)($afiliacion_categoria_filter ?? ''),
+    'sede' => (string)($sede_filter ?? ''),
 ]);
 
 if (!function_exists('cirugiasDashboardInlineFormat')) {
@@ -215,6 +218,17 @@ $tatMuestra = (int)($tat_revision_protocolos['muestra'] ?? 0);
                                 <?php foreach (($afiliacion_categoria_options ?? []) as $option): ?>
                                     <?php $optionValue = (string)($option['value'] ?? ''); ?>
                                     <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($afiliacion_categoria_filter ?? '')) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <label for="sede" class="form-label">Sede</label>
+                            <select id="sede" name="sede" class="form-select">
+                                <?php foreach (($sede_options ?? []) as $option): ?>
+                                    <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                                    <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($sede_filter ?? '')) ? 'selected' : '' ?>>
                                         <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endforeach; ?>

@@ -42,6 +42,7 @@ class SolicitudesUiController
             'initialFilters' => [
                 'search' => trim((string) $request->query('search', '')),
                 'afiliacion' => trim((string) $request->query('afiliacion', '')),
+                'sede' => trim((string) $request->query('sede', '')),
                 'doctor' => trim((string) $request->query('doctor', '')),
                 'prioridad' => trim((string) $request->query('prioridad', '')),
                 'date_from' => trim((string) $request->query('date_from', '')),

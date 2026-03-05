@@ -314,6 +314,12 @@ class SolicitudModel
 
     public function fetchSolicitudesConDetallesFiltrado(array $filtros = []): array
     {
+        $sedeExpr = "CASE
+                WHEN LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(pp.id_sede, ''), ''))) LIKE '%ceib%' THEN 'CEIBOS'
+                WHEN LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(pp.id_sede, ''), ''))) LIKE '%matriz%'
+                  OR LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(pp.id_sede, ''), ''))) LIKE '%villa%' THEN 'MATRIZ'
+                ELSE ''
+            END";
         $sql = "SELECT 
                 sp.id,
                 sp.hc_number, 
@@ -326,6 +332,7 @@ class SolicitudModel
                 )) AS full_name, 
                 sp.tipo,
                 pd.afiliacion,
+                {$sedeExpr} AS sede,
                 sp.procedimiento,
                 sp.doctor AS doctor_raw,
                 COALESCE(NULLIF(TRIM(sp.doctor), ''), 'Sin asignar') AS doctor,
@@ -348,6 +355,7 @@ class SolicitudModel
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
+            LEFT JOIN procedimiento_proyectado pp ON sp.hc_number = pp.hc_number AND sp.form_id = pp.form_id
             LEFT JOIN derivaciones_form_id d ON d.form_id = sp.form_id AND d.hc_number = sp.hc_number
             LEFT JOIN users u ON LOWER(TRIM(sp.doctor)) = LOWER(TRIM(u.nombre))
             WHERE sp.procedimiento IS NOT NULL
@@ -367,6 +375,11 @@ class SolicitudModel
         if (!empty($filtros['doctor'])) {
             $sql .= " AND COALESCE(NULLIF(TRIM(sp.doctor), ''), 'Sin asignar') COLLATE utf8mb4_unicode_ci LIKE ?";
             $params[] = '%' . trim($filtros['doctor']) . '%';
+        }
+
+        if (!empty($filtros['sede'])) {
+            $sql .= " AND {$sedeExpr} = ?";
+            $params[] = trim($filtros['sede']);
         }
 
         if (!empty($filtros['prioridad'])) {
