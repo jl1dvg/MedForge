@@ -1167,6 +1167,98 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
         </div>
     </div>
 
+    <div class="box mb-3 border border-info" id="solicitudesForDummies">
+        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h5 class="box-title mb-1">🧠 Solicitudes — Guía rápida (for dummies)</h5>
+                <small class="text-muted">Qué usar, cuándo usarlo y qué resultado esperar.</small>
+            </div>
+            <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#solicitudesForDummiesBody" aria-expanded="false" aria-controls="solicitudesForDummiesBody">
+                <i class="mdi mdi-school-outline"></i> Ver guía
+            </button>
+        </div>
+        <div id="solicitudesForDummiesBody" class="collapse">
+            <div class="box-body">
+                <div class="alert alert-light border mb-3" role="alert">
+                    <strong>Orden recomendado:</strong>
+                    1) Fecha → 2) Doctor/Afiliación → 3) Responsable CRM → 4) Buscar texto → 5) Derivación vencida/por vencer.
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Herramienta</th>
+                            <th>Tipo</th>
+                            <th>Cuándo usarla</th>
+                            <th>Qué debería pasar</th>
+                            <th>Error común</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td><strong>Buscar</strong> <code>#kanbanSearchFilter</code></td>
+                            <td><span class="badge bg-warning text-dark">Local</span></td>
+                            <td>Cuando ya tienes el tablero cargado y quieres encontrar un paciente/HC rápido.</td>
+                            <td>Filtra tarjetas visibles sin recargar.</td>
+                            <td>Buscar antes de cargar rango de fecha útil.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Doctor</strong> <code>#kanbanDoctorFilter</code></td>
+                            <td><span class="badge bg-primary">Servidor</span></td>
+                            <td>Cuando quieres distribuir trabajo por médico.</td>
+                            <td>Se actualiza tablero con solo solicitudes del doctor elegido.</td>
+                            <td>Creer que es instantáneo local (sí reconsulta).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fecha</strong> <code>#kanbanDateFilter</code></td>
+                            <td><span class="badge bg-primary">Servidor</span></td>
+                            <td>Al inicio de turno para acotar volumen.</td>
+                            <td>Muestra solicitudes del rango seleccionado.</td>
+                            <td>No aplicar rango y pensar que “faltan” casos.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Afiliación</strong> <code>#kanbanAfiliacionFilter</code></td>
+                            <td><span class="badge bg-primary">Servidor</span></td>
+                            <td>Para priorizar cobertura/aseguradoras.</td>
+                            <td>Tablero filtrado por afiliación.</td>
+                            <td>Combinación de filtros que deja 0 resultados.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tipo solicitud</strong> <code>#kanbanTipoFilter</code></td>
+                            <td><span class="badge bg-warning text-dark">Local</span></td>
+                            <td>Para separar CIRUGÍA vs PROCEDIMIENTO.</td>
+                            <td>Filtra tarjetas ya cargadas por tipo.</td>
+                            <td>Esperar que cambie datos no cargados.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Derivación vencida / por vencer</strong> <code>#kanbanDerivacionVencidaFilter</code> / <code>#kanbanDerivacionPorVencerFilter</code></td>
+                            <td><span class="badge bg-warning text-dark">Local</span></td>
+                            <td>Para priorizar riesgo documental hoy.</td>
+                            <td>Solo se muestran casos vencidos o por vencer según días.</td>
+                            <td>No ajustar días en <code>#kanbanDerivacionDiasInput</code>.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Responsable CRM</strong> <code>#kanbanResponsableFilter</code></td>
+                            <td><span class="badge bg-primary">Servidor</span></td>
+                            <td>Para asignación y seguimiento por dueño de caso.</td>
+                            <td>Tablero filtrado por responsable.</td>
+                            <td>Olvidar limpiar el filtro luego.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sin responsable</strong> <code>#kanbanCrmSinResponsableFilter</code></td>
+                            <td><span class="badge bg-warning text-dark">Local</span></td>
+                            <td>Al inicio de turno para rescatar casos huérfanos.</td>
+                            <td>Solo tarjetas sin responsable CRM.</td>
+                            <td>Confundirlo con el filtro servidor “Sin responsable”.</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="solicitudesConciliacionSection" class="box mb-3 d-none">
         <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
