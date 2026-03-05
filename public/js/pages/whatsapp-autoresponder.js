@@ -62,7 +62,7 @@
         {value: 'patient_found', label: 'Paciente localizado', input: 'boolean', help: 'Verifica si la búsqueda de paciente devolvió un registro.'},
     ];
 
-    const ACTION_OPTIONS = [
+    const DEFAULT_ACTION_OPTIONS = [
         {value: 'send_message', label: 'Enviar mensaje o multimedia', help: 'Entrega un mensaje simple, imagen, documento o ubicación.'},
         {value: 'send_sequence', label: 'Enviar secuencia de mensajes', help: 'Combina varios mensajes consecutivos en una sola acción.'},
         {value: 'send_buttons', label: 'Enviar botones', help: 'Presenta botones interactivos para guiar la respuesta.'},
@@ -77,6 +77,7 @@
         {value: 'goto_menu', label: 'Redirigir al menú', help: 'Envía nuevamente el mensaje de menú configurado más abajo.'},
         {value: 'upsert_patient_from_context', label: 'Guardar paciente con datos actuales', help: 'Crea o actualiza el paciente con los datos capturados en contexto.'},
     ];
+    let ACTION_OPTIONS = DEFAULT_ACTION_OPTIONS.slice();
 
     const BASE_SCENARIO_STAGE_OPTIONS = [
         {value: 'arrival', label: 'Llegada y saludo', description: 'Primer contacto automático con el paciente.'},
@@ -93,8 +94,8 @@
 
     let SCENARIO_STAGE_OPTIONS = BASE_SCENARIO_STAGE_OPTIONS.slice();
 
-    const SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu', 'handoff_agent']);
-    const ADVANCED_ACTION_TYPES = new Set(['send_sequence', 'send_list', 'send_template', 'set_context', 'conditional', 'upsert_patient_from_context']);
+    let SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu', 'handoff_agent']);
+    let ADVANCED_ACTION_TYPES = new Set(['send_sequence', 'send_list', 'send_template', 'set_context', 'conditional', 'upsert_patient_from_context']);
     const BASIC_CONDITION_TYPES = new Set(['always', 'message_in', 'message_contains']);
 
     let STAGE_VALUE_SET = new Set(SCENARIO_STAGE_OPTIONS.map((option) => option.value));
@@ -608,6 +609,71 @@
         persistExpandedScenarios();
     }
 
+    function resetActionTypeSets() {
+        SIMPLE_ACTION_TYPES = new Set(['send_message', 'send_buttons', 'lookup_patient', 'store_consent', 'goto_menu', 'handoff_agent']);
+        ADVANCED_ACTION_TYPES = new Set(['send_sequence', 'send_list', 'send_template', 'set_context', 'conditional', 'upsert_patient_from_context']);
+    }
+
+    function applyActionCatalog(catalog) {
+        if (!Array.isArray(catalog) || catalog.length === 0) {
+            ACTION_OPTIONS = DEFAULT_ACTION_OPTIONS.slice();
+            resetActionTypeSets();
+
+            return;
+        }
+
+        const fallbackByValue = {};
+        DEFAULT_ACTION_OPTIONS.forEach((entry) => {
+            if (entry && entry.value) {
+                fallbackByValue[entry.value] = entry;
+            }
+        });
+
+        const resolved = [];
+        const simpleSet = new Set();
+        catalog.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return;
+            }
+
+            const value = typeof entry.value === 'string' ? entry.value.trim() : '';
+            if (!value || !fallbackByValue[value]) {
+                return;
+            }
+
+            const fallback = fallbackByValue[value];
+            const label = typeof entry.label === 'string' && entry.label.trim() !== '' ? entry.label.trim() : fallback.label;
+            const help = typeof entry.help === 'string' && entry.help.trim() !== '' ? entry.help.trim() : fallback.help;
+
+            resolved.push({
+                value: value,
+                label: label,
+                help: help,
+            });
+
+            if (entry.simple === true) {
+                simpleSet.add(value);
+            }
+        });
+
+        if (resolved.length === 0) {
+            ACTION_OPTIONS = DEFAULT_ACTION_OPTIONS.slice();
+            resetActionTypeSets();
+
+            return;
+        }
+
+        ACTION_OPTIONS = resolved;
+        if (simpleSet.size === 0) {
+            resetActionTypeSets();
+        } else {
+            SIMPLE_ACTION_TYPES = simpleSet;
+            ADVANCED_ACTION_TYPES = new Set(resolved
+                .map((entry) => entry.value)
+                .filter((value) => !simpleSet.has(value)));
+        }
+    }
+
     function scenarioUsesAdvancedFeatures(scenario) {
         if (!scenario) {
             return false;
@@ -626,6 +692,16 @@
     }
 
     function getActionOptionsForCurrentMode(currentType) {
+        const current = (currentType || '').trim();
+        const hasCurrent = current !== '' && ACTION_OPTIONS.some((option) => option.value === current);
+
+        if (current !== '' && !hasCurrent) {
+            const fallback = DEFAULT_ACTION_OPTIONS.find((option) => option.value === current);
+            if (fallback) {
+                ACTION_OPTIONS = ACTION_OPTIONS.concat([fallback]);
+            }
+        }
+
         if (!uiState.simpleMode) {
             return ACTION_OPTIONS;
         }
@@ -866,6 +942,7 @@
 
 
     const bootstrapPayload = parseBootstrap();
+    applyActionCatalog(bootstrapPayload && bootstrapPayload.actionCatalog ? bootstrapPayload.actionCatalog : []);
     const bootstrapContract = bootstrapPayload && bootstrapPayload.contract ? bootstrapPayload.contract : null;
     const roleCatalog = Array.isArray(bootstrapPayload && bootstrapPayload.roles) ? bootstrapPayload.roles : [];
     applyContractConstraints(bootstrapContract);

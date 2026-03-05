@@ -325,6 +325,69 @@ class HandoffService
         return ['count' => $count, 'ids' => $ids];
     }
 
+    /**
+     * @return array{count:int,ids:array<int,int>,role_id:int,minutes:int}
+     */
+    public function escalateQueued(): array
+    {
+        $config = $this->settings->get();
+        $roleId = isset($config['handoff_escalation_role_id']) ? (int) $config['handoff_escalation_role_id'] : 0;
+        $minutes = isset($config['handoff_escalation_minutes']) ? (int) $config['handoff_escalation_minutes'] : 30;
+        $enabled = !empty($config['handoff_escalation_enabled']);
+
+        if (!$enabled || $roleId <= 0 || $minutes <= 0) {
+            return ['count' => 0, 'ids' => [], 'role_id' => $roleId, 'minutes' => $minutes];
+        }
+
+        $minutes = max(5, min(1440, $minutes));
+        $cutoff = (new DateTimeImmutable('now'))->modify('-' . $minutes . ' minutes')->format('Y-m-d H:i:s');
+        $queued = $this->handoffs->findQueuedForEscalation($cutoff, $roleId);
+        $count = 0;
+        $ids = [];
+
+        foreach ($queued as $handoff) {
+            $handoffId = isset($handoff['id']) ? (int) $handoff['id'] : 0;
+            if ($handoffId <= 0) {
+                continue;
+            }
+
+            if (!$this->handoffs->escalateToRole($handoffId, $roleId)) {
+                continue;
+            }
+
+            $count++;
+            $ids[] = $handoffId;
+            $this->handoffs->insertEvent($handoffId, 'escalated', null, 'Escalado por SLA a rol ' . $roleId);
+
+            $conversationId = isset($handoff['conversation_id']) ? (int) $handoff['conversation_id'] : 0;
+            $notes = $this->sanitizeNotes($handoff['notes'] ?? null);
+            if ($conversationId > 0) {
+                try {
+                    $this->conversations->setHandoffFlag($conversationId, true, $notes, $roleId);
+                } catch (Throwable $exception) {
+                    $this->handoffs->insertEvent($handoffId, 'conversation_update_failed', null, $this->sanitizeNotes($exception->getMessage()));
+                }
+
+                if (!empty($config['handoff_escalation_notify_in_app'])) {
+                    $this->notifyHandoff($conversationId, 'escalated');
+                } else {
+                    $this->handoffs->insertEvent($handoffId, 'notify_realtime_skipped', null, 'Escalamiento in-app desactivado.');
+                }
+            }
+
+            if (!empty($config['handoff_escalation_notify_agents'])) {
+                $waNumber = isset($handoff['wa_number']) ? (string) $handoff['wa_number'] : '';
+                if ($waNumber !== '') {
+                    $this->notifyAgents($waNumber, $handoffId, $roleId, $notes, $conversationId > 0 ? $conversationId : null);
+                }
+            } else {
+                $this->handoffs->insertEvent($handoffId, 'notify_whatsapp_skipped', null, 'Escalamiento por WhatsApp personal desactivado.');
+            }
+        }
+
+        return ['count' => $count, 'ids' => $ids, 'role_id' => $roleId, 'minutes' => $minutes];
+    }
+
     public function handleAgentReply(string $sender, ?string $text): bool
     {
         $agent = $this->findAgentByWhatsapp($sender);
@@ -542,7 +605,7 @@ class HandoffService
         $excludedUnavailable = 0;
         foreach ($rows as $row) {
             $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
-            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.manage'])) {
+            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.chat.supervise', 'whatsapp.manage'])) {
                 $excludedNoPermission++;
                 continue;
             }
@@ -668,7 +731,7 @@ class HandoffService
 
         foreach ($rows as $row) {
             $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
-            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.manage'])) {
+            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.chat.supervise', 'whatsapp.manage'])) {
                 continue;
             }
 
@@ -705,7 +768,7 @@ class HandoffService
         }
 
         $normalizedAction = strtolower(trim($action));
-        if (!in_array($normalizedAction, ['requested', 'assigned', 'transferred', 'requeued', 'resolved'], true)) {
+        if (!in_array($normalizedAction, ['requested', 'assigned', 'transferred', 'requeued', 'resolved', 'escalated'], true)) {
             $normalizedAction = 'requested';
         }
 

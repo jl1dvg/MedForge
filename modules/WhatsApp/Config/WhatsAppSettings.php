@@ -51,9 +51,15 @@ class WhatsAppSettings
      *     handoff_sla_target_minutes: int,
      *     handoff_notify_in_app: bool,
      *     handoff_notify_agents: bool,
+     *     handoff_escalation_enabled: bool,
+     *     handoff_escalation_minutes: int,
+     *     handoff_escalation_role_id: int,
+     *     handoff_escalation_notify_in_app: bool,
+     *     handoff_escalation_notify_agents: bool,
      *     handoff_agent_message: string,
      *     handoff_button_take_label: string,
-     *     handoff_button_ignore_label: string
+     *     handoff_button_ignore_label: string,
+     *     autoresponder_action_catalog: array<int, array{value:string,label:string,help:string,simple:bool}>
      * }
      */
     public function get(): array
@@ -85,9 +91,15 @@ class WhatsAppSettings
             'handoff_sla_target_minutes' => 15,
             'handoff_notify_in_app' => true,
             'handoff_notify_agents' => false,
+            'handoff_escalation_enabled' => true,
+            'handoff_escalation_minutes' => 30,
+            'handoff_escalation_role_id' => 0,
+            'handoff_escalation_notify_in_app' => true,
+            'handoff_escalation_notify_agents' => false,
             'handoff_agent_message' => "Paciente {{contact}} necesita asistencia.\nToca para tomar ✅\n\nNota: {{notes}}",
             'handoff_button_take_label' => 'Tomar',
             'handoff_button_ignore_label' => 'Ignorar',
+            'autoresponder_action_catalog' => self::defaultAutoresponderActionCatalog(),
         ];
 
         if ($this->settingsModel instanceof SettingsModel) {
@@ -112,9 +124,15 @@ class WhatsAppSettings
                     'whatsapp_handoff_sla_target_minutes',
                     'whatsapp_handoff_notify_in_app',
                     'whatsapp_handoff_notify_agents',
+                    'whatsapp_handoff_escalation_enabled',
+                    'whatsapp_handoff_escalation_minutes',
+                    'whatsapp_handoff_escalation_role_id',
+                    'whatsapp_handoff_escalation_notify_in_app',
+                    'whatsapp_handoff_escalation_notify_agents',
                     'whatsapp_handoff_agent_message',
                     'whatsapp_handoff_button_take_label',
                     'whatsapp_handoff_button_ignore_label',
+                    'whatsapp_autoresponder_action_catalog',
                     'whatsapp_autoresponder_flow',
                     'companyname',
                 ]);
@@ -187,6 +205,17 @@ class WhatsAppSettings
 
                 $config['handoff_notify_in_app'] = ($options['whatsapp_handoff_notify_in_app'] ?? '1') === '1';
                 $config['handoff_notify_agents'] = ($options['whatsapp_handoff_notify_agents'] ?? '0') === '1';
+                $config['handoff_escalation_enabled'] = ($options['whatsapp_handoff_escalation_enabled'] ?? '1') === '1';
+
+                $handoffEscalationMinutes = (int) ($options['whatsapp_handoff_escalation_minutes'] ?? 30);
+                if ($handoffEscalationMinutes > 0) {
+                    $config['handoff_escalation_minutes'] = max(5, min(1440, $handoffEscalationMinutes));
+                }
+
+                $handoffEscalationRoleId = (int) ($options['whatsapp_handoff_escalation_role_id'] ?? 0);
+                $config['handoff_escalation_role_id'] = max(0, $handoffEscalationRoleId);
+                $config['handoff_escalation_notify_in_app'] = ($options['whatsapp_handoff_escalation_notify_in_app'] ?? '1') === '1';
+                $config['handoff_escalation_notify_agents'] = ($options['whatsapp_handoff_escalation_notify_agents'] ?? '0') === '1';
 
                 $agentMessage = trim((string) ($options['whatsapp_handoff_agent_message'] ?? ''));
                 if ($agentMessage !== '') {
@@ -201,6 +230,11 @@ class WhatsAppSettings
                 $ignoreLabel = trim((string) ($options['whatsapp_handoff_button_ignore_label'] ?? ''));
                 if ($ignoreLabel !== '') {
                     $config['handoff_button_ignore_label'] = $ignoreLabel;
+                }
+
+                $actionCatalog = $this->parseActionCatalogOption($options['whatsapp_autoresponder_action_catalog'] ?? null);
+                if ($actionCatalog !== []) {
+                    $config['autoresponder_action_catalog'] = $actionCatalog;
                 }
 
                 $brand = trim((string) ($options['companyname'] ?? ''));
@@ -267,6 +301,81 @@ class WhatsAppSettings
     public function getBrandName(): string
     {
         return $this->get()['brand'];
+    }
+
+    /**
+     * @return array<int, array{value:string,label:string,help:string,simple:bool}>
+     */
+    public static function defaultAutoresponderActionCatalog(): array
+    {
+        return [
+            ['value' => 'send_message', 'label' => 'Enviar mensaje o multimedia', 'help' => 'Entrega un mensaje simple, imagen, documento o ubicación.', 'simple' => true],
+            ['value' => 'send_sequence', 'label' => 'Enviar secuencia de mensajes', 'help' => 'Combina varios mensajes consecutivos en una sola acción.', 'simple' => false],
+            ['value' => 'send_buttons', 'label' => 'Enviar botones', 'help' => 'Presenta botones interactivos para guiar la respuesta.', 'simple' => true],
+            ['value' => 'send_list', 'label' => 'Enviar lista interactiva', 'help' => 'Muestra un menú desplegable con secciones y múltiples opciones.', 'simple' => false],
+            ['value' => 'send_template', 'label' => 'Enviar plantilla aprobada', 'help' => 'Usa una plantilla autorizada por Meta con variables predefinidas.', 'simple' => false],
+            ['value' => 'set_state', 'label' => 'Actualizar estado', 'help' => 'Actualiza el estado del flujo para controlar próximos pasos.', 'simple' => true],
+            ['value' => 'set_context', 'label' => 'Guardar en contexto', 'help' => 'Almacena pares clave-valor disponibles en mensajes futuros.', 'simple' => false],
+            ['value' => 'store_consent', 'label' => 'Guardar consentimiento', 'help' => 'Registra si el paciente aceptó o rechazó la autorización.', 'simple' => true],
+            ['value' => 'lookup_patient', 'label' => 'Validar cédula en BD', 'help' => 'Busca al paciente usando la cédula o historia clínica proporcionada.', 'simple' => true],
+            ['value' => 'handoff_agent', 'label' => 'Derivar a agente', 'help' => 'Marca la conversación para atención humana y define el equipo responsable.', 'simple' => true],
+            ['value' => 'conditional', 'label' => 'Condicional', 'help' => 'Divide el flujo en acciones alternativas según una condición.', 'simple' => false],
+            ['value' => 'goto_menu', 'label' => 'Redirigir al menú', 'help' => 'Envía nuevamente el mensaje de menú configurado más abajo.', 'simple' => true],
+            ['value' => 'upsert_patient_from_context', 'label' => 'Guardar paciente con datos actuales', 'help' => 'Crea o actualiza el paciente con los datos capturados en contexto.', 'simple' => false],
+        ];
+    }
+
+    /**
+     * @return array<int, array{value:string,label:string,help:string,simple:bool}>
+     */
+    private function parseActionCatalogOption(mixed $raw): array
+    {
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $defaults = self::defaultAutoresponderActionCatalog();
+        $allowed = [];
+        $defaultByValue = [];
+        foreach ($defaults as $entry) {
+            $value = (string) ($entry['value'] ?? '');
+            if ($value === '') {
+                continue;
+            }
+            $allowed[$value] = true;
+            $defaultByValue[$value] = $entry;
+        }
+
+        $catalog = [];
+        foreach ($decoded as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $value = trim((string) ($entry['value'] ?? ''));
+            if ($value === '' || empty($allowed[$value])) {
+                continue;
+            }
+
+            $fallback = $defaultByValue[$value] ?? ['label' => $value, 'help' => '', 'simple' => false];
+            $label = trim((string) ($entry['label'] ?? $fallback['label']));
+            $help = trim((string) ($entry['help'] ?? $fallback['help']));
+            $simple = isset($entry['simple']) ? (bool) $entry['simple'] : (bool) $fallback['simple'];
+
+            $catalog[] = [
+                'value' => $value,
+                'label' => $label !== '' ? $label : (string) $fallback['label'],
+                'help' => $help !== '' ? $help : (string) $fallback['help'],
+                'simple' => $simple,
+            ];
+        }
+
+        return $catalog;
     }
 
     /**

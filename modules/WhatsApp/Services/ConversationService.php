@@ -389,7 +389,7 @@ class ConversationService
         $agents = [];
         foreach ($rows as $row) {
             $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
-            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.manage'])) {
+            if (!Permissions::containsAny($permissions, ['whatsapp.chat.send', 'whatsapp.chat.supervise', 'whatsapp.manage'])) {
                 continue;
             }
 

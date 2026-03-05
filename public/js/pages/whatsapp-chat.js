@@ -1249,7 +1249,7 @@
 
         function resolveHandoffAction(action) {
             var normalized = String(action || '').toLowerCase().trim();
-            if (normalized === 'assigned' || normalized === 'transferred' || normalized === 'requeued' || normalized === 'resolved') {
+            if (normalized === 'assigned' || normalized === 'transferred' || normalized === 'requeued' || normalized === 'resolved' || normalized === 'escalated') {
                 return normalized;
             }
             return 'requested';
@@ -1323,6 +1323,23 @@
                     panelIcon: 'mdi mdi-check-decagram-outline',
                     panelBadge: { label: 'Resuelto', variant: 'bg-primary text-white' },
                     playSound: false,
+                    actorName: actorName,
+                    contactName: contactName,
+                    targetName: targetName
+                };
+            }
+
+            if (action === 'escalated') {
+                return {
+                    action: action,
+                    toastMessage: 'Handoff escalado: ' + contactName,
+                    desktopTitle: 'WhatsApp · Handoff escalado',
+                    desktopBody: contactName + ' fue escalado al equipo supervisor',
+                    panelMessage: 'Escalado a supervisor',
+                    panelTone: 'danger',
+                    panelIcon: 'mdi mdi-alert-decagram-outline',
+                    panelBadge: { label: 'Escalado', variant: 'bg-danger text-white' },
+                    playSound: true,
                     actorName: actorName,
                     contactName: contactName,
                     targetName: targetName

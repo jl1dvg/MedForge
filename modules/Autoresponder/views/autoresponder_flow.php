@@ -127,12 +127,17 @@ $editorState = [
     'menu' => $editorFlow['menu'] ?? [],
     'settings' => $editorFlow['settings'] ?? [],
 ];
+$actionCatalog = [];
+if (isset($config['autoresponder_action_catalog']) && is_array($config['autoresponder_action_catalog'])) {
+    $actionCatalog = $config['autoresponder_action_catalog'];
+}
 
 $autoresponderBootstrap = [
     'brand' => $brand,
     'flow' => $editorState,
     'contract' => $contract,
     'roles' => $rolesCatalog,
+    'actionCatalog' => $actionCatalog,
     'api' => [
         'publish' => '/whatsapp/api/flowmaker/publish',
     ],

@@ -147,6 +147,47 @@ class HandoffRepository
         return $stmt->rowCount() > 0;
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function findQueuedForEscalation(string $cutoff, int $supervisorRoleId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT h.*
+             FROM whatsapp_handoffs h
+             WHERE h.status = \'queued\'
+               AND h.assigned_agent_id IS NULL
+               AND h.queued_at <= :cutoff
+               AND (:role_id <= 0 OR COALESCE(h.handoff_role_id, 0) <> :role_id)
+             ORDER BY h.queued_at ASC, h.id ASC'
+        );
+        $stmt->execute([
+            ':cutoff' => $cutoff,
+            ':role_id' => $supervisorRoleId,
+        ]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    public function escalateToRole(int $handoffId, int $roleId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_handoffs
+             SET handoff_role_id = :role_id,
+                 last_activity_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = :id
+               AND status = \'queued\''
+        );
+        $stmt->execute([
+            ':id' => $handoffId,
+            ':role_id' => $roleId > 0 ? $roleId : null,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
     public function insertEvent(int $handoffId, string $eventType, ?int $actorUserId = null, ?string $notes = null): void
     {
         $stmt = $this->pdo->prepare(

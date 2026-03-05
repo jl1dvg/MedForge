@@ -40,7 +40,7 @@ class ChatController extends BaseController
         $isEnabled = (bool) ($config['enabled'] ?? false);
         $authUser = Auth::user();
         $permissions = $authUser['permisos'] ?? [];
-        $canAssign = Permissions::containsAny($permissions, ['whatsapp.chat.assign', 'whatsapp.manage', 'administrativo']);
+        $canAssign = Permissions::containsAny($permissions, ['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
         $pusher = new PusherConfigService($this->pdo);
 
         $this->render(BASE_PATH . '/modules/WhatsApp/views/chat.php', [
@@ -93,7 +93,7 @@ class ChatController extends BaseController
     public function listAgents(): void
     {
         $this->requireAuth();
-        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $roleId = $this->getQueryInt('role_id');
@@ -167,7 +167,7 @@ class ChatController extends BaseController
     public function assignConversation(int $conversationId): void
     {
         $this->requireAuth();
-        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $authUser = Auth::user();
@@ -181,8 +181,9 @@ class ChatController extends BaseController
         try {
             $payload = $this->getBody();
             $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : $currentUserId;
+            $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
 
-            if ($targetUserId !== $currentUserId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+            if ($targetUserId !== $currentUserId && !$canSupervise) {
                 $this->json(['ok' => false, 'error' => 'No tienes permisos para asignar a otro agente'], 403);
 
                 return;
@@ -228,7 +229,7 @@ class ChatController extends BaseController
 
                     return;
                 }
-                if (!empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+                if (!empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId && !$canSupervise) {
                     $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
 
                     return;
@@ -271,11 +272,12 @@ class ChatController extends BaseController
     public function transferConversation(int $conversationId): void
     {
         $this->requireAuth();
-        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
         $authUser = Auth::user();
         $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
         if ($currentUserId <= 0) {
             $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
 
@@ -299,13 +301,13 @@ class ChatController extends BaseController
         }
 
         $assignedUserId = isset($summary['assigned_user_id']) ? (int) $summary['assigned_user_id'] : 0;
-        if ($assignedUserId <= 0) {
+        if ($assignedUserId <= 0 && !$canSupervise) {
             $this->json(['ok' => false, 'error' => 'Debes tomar la conversación antes de derivarla.'], 423);
 
             return;
         }
 
-        if ($assignedUserId !== $currentUserId) {
+        if ($assignedUserId > 0 && $assignedUserId !== $currentUserId && !$canSupervise) {
             $this->json(['ok' => false, 'error' => 'Solo el agente asignado puede transferir esta conversación.'], 403);
 
             return;
@@ -320,7 +322,7 @@ class ChatController extends BaseController
 
         $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
         if ($roleId !== null && $roleId > 0 && !empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId
-            && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+            && !$canSupervise) {
             $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
 
             return;
@@ -339,12 +341,28 @@ class ChatController extends BaseController
     public function closeConversation(int $conversationId): void
     {
         $this->requireAuth();
-        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.manage', 'settings.manage', 'administrativo']);
+        $this->requirePermission(['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
+
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
+        if ($currentUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
+
+            return;
+        }
 
         $summary = $this->conversations->getConversationSummary($conversationId);
         if ($summary === null) {
             $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        $assignedUserId = isset($summary['assigned_user_id']) ? (int) $summary['assigned_user_id'] : 0;
+        if ($assignedUserId > 0 && $assignedUserId !== $currentUserId && !$canSupervise) {
+            $this->json(['ok' => false, 'error' => 'Solo el agente asignado puede cerrar esta conversación.'], 403);
 
             return;
         }

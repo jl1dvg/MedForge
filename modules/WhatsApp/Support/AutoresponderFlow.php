@@ -910,7 +910,7 @@ class AutoresponderFlow
             return $payload;
         }
 
-        return $payload;
+        return [];
     }
 
     /**
