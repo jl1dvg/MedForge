@@ -86,9 +86,63 @@ $solicitudesDummiesToolbar = [
         ],
         'table.crm-button' => [
                 'title' => 'Tabla: Botón CRM',
-                'description' => 'Abrir seguimiento CRM',
+                'description' => 'Abrir gestión CRM de esta solicitud',
                 'file' => 'table-crm-button.md',
                 'markdown' => "### ¿Qué hace?\nAbre el panel CRM para seguimiento del caso.",
+        ],
+        'crm.open-panel' => [
+                'title' => 'CRM Offcanvas: Abrir panel CRM',
+                'description' => 'Abrir gestión CRM de esta solicitud',
+                'file' => 'crm-open-panel.md',
+                'markdown' => "### ¿Qué hace?\nCarga los datos CRM de la solicitud y abre el panel lateral.",
+        ],
+        'crm.save-details' => [
+                'title' => 'CRM Offcanvas: Guardar detalles',
+                'description' => 'Guardar cambios CRM',
+                'file' => 'crm-save-details.md',
+                'markdown' => "### ¿Qué hace?\nGuarda etapa, responsable, contacto y campos personalizados del caso.",
+        ],
+        'crm.add-field' => [
+                'title' => 'CRM Offcanvas: Añadir campo personalizado',
+                'description' => 'Agregar campo personalizado',
+                'file' => 'crm-add-field.md',
+                'markdown' => "### ¿Qué hace?\nAgrega una fila de campo personalizado para completar antes de guardar.",
+        ],
+        'crm.remove-field' => [
+                'title' => 'CRM Offcanvas: Quitar campo',
+                'description' => 'Quitar este campo',
+                'file' => 'crm-remove-field.md',
+                'markdown' => "### ¿Qué hace?\nElimina la fila de campo personalizado en pantalla.",
+        ],
+        'crm.save-note' => [
+                'title' => 'CRM Offcanvas: Guardar nota',
+                'description' => 'Registrar nota de seguimiento',
+                'file' => 'crm-save-note.md',
+                'markdown' => "### ¿Qué hace?\nRegistra una nota interna para dejar trazabilidad del seguimiento.",
+        ],
+        'crm.upload-document' => [
+                'title' => 'CRM Offcanvas: Subir documento',
+                'description' => 'Cargar documento al caso',
+                'file' => 'crm-upload-document.md',
+                'markdown' => "### ¿Qué hace?\nAdjunta documentos al caso CRM de la solicitud.",
+        ],
+        'crm.add-task' => [
+                'title' => 'CRM Offcanvas: Agregar tarea',
+                'description' => 'Crear tarea para el equipo',
+                'file' => 'crm-add-task.md',
+                'markdown' => "### ¿Qué hace?\nCrea recordatorios y tareas con responsable y vencimiento.",
+        ],
+        'crm.toggle-task-state' => [
+                'title' => 'CRM Offcanvas: Completar/Reabrir tarea',
+                'description' => 'Cambiar estado de la tarea',
+                'file' => 'crm-toggle-task-state.md',
+                'markdown' => "### ¿Qué hace?\nMarca la tarea como completada o la reabre según el avance.",
+        ],
+        'crm.block-schedule' => [
+                'title' => 'CRM Offcanvas: Bloquear horario',
+                'description' => 'Reservar espacio en agenda',
+                'file' => 'crm-block-schedule.md',
+                'markdown' => "### ¿Qué hace?\nRegistra un bloqueo de agenda para coordinación quirúrgica.",
         ],
         'toolbar.conciliacion' => [
                 'title' => 'Vista Conciliación',
@@ -218,7 +272,7 @@ $solicitudesDummiesToolbar = [
         ],
         'kanban.open-crm' => [
                 'title' => 'Kanban: Abrir CRM',
-                'description' => 'Ver seguimiento de esta solicitud',
+                'description' => 'Abrir gestión CRM de esta solicitud',
                 'file' => 'kanban-open-crm.md',
                 'markdown' => "### ¿Qué hace?\nAbre el CRM contextual del caso para registrar seguimiento.",
         ],
@@ -1556,8 +1610,17 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                 <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
-                    data-preserve-disabled="true"></button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-dummies-key="crm.open-panel"
+                        title="Abrir guía operativa del CRM"
+                        aria-label="Abrir guía operativa del CRM"
+                        data-preserve-disabled="true">
+                    <i class="mdi mdi-school-outline me-1"></i>Guía CRM
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
+                        data-preserve-disabled="true"></button>
+            </div>
         </div>
         <div class="offcanvas-body d-flex flex-column gap-3">
             <div id="crmLoading" class="alert alert-info d-none crm-fixed-top" role="status">
@@ -1640,14 +1703,14 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                                         <label class="form-label mb-0">Campos personalizados</label>
                                         <button type="button" class="btn btn-sm btn-outline-secondary"
                                                 id="crmAgregarCampo" data-preserve-disabled="true">
-                                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
+                                            <i class="mdi mdi-plus-circle-outline me-1"></i>Agregar campo personalizado
                                         </button>
                                     </div>
                                     <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
                                 </div>
                                 <div class="d-flex justify-content-end mt-3">
                                     <button type="submit" class="btn btn-primary">
-                                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
+                                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar cambios CRM
                                     </button>
                                 </div>
                             </form>
@@ -1668,7 +1731,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                                   placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
                         <div class="d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary">
-                                <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
+                                <i class="mdi mdi-comment-plus-outline me-1"></i>Registrar nota de seguimiento
                             </button>
                         </div>
                     </form>
@@ -1698,7 +1761,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-primary">
-                                <i class="mdi mdi-upload me-1"></i>Subir documento
+                                <i class="mdi mdi-upload me-1"></i>Cargar documento al caso
                             </button>
                         </div>
                     </form>
@@ -1736,7 +1799,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-success">
-                                <i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea
+                                <i class="mdi mdi-playlist-plus me-1"></i>Crear tarea para el equipo
                             </button>
                         </div>
                     </form>
@@ -1779,7 +1842,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-dark">
-                                <i class="mdi mdi-calendar-lock-outline me-1"></i>Bloquear horario
+                                <i class="mdi mdi-calendar-lock-outline me-1"></i>Reservar espacio en agenda
                             </button>
                         </div>
                     </form>
@@ -1794,8 +1857,16 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                 <h5 class="offcanvas-title mb-0" id="crmOffcanvasLabel">Gestión CRM de la solicitud</h5>
                 <p class="text-muted small mb-0" id="crmOffcanvasSubtitle"></p>
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
-                    data-preserve-disabled="true"></button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-info"
+                        data-dummies-key="crm.open-panel"
+                        title="Abrir guía operativa del CRM"
+                        aria-label="Abrir guía operativa del CRM">
+                    <i class="mdi mdi-school-outline me-1"></i>Guía CRM
+                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"
+                        data-preserve-disabled="true"></button>
+            </div>
         </div>
         <div class="offcanvas-body d-flex flex-column gap-3">
             <div id="crmLoading" class="alert alert-info d-none" role="status">
@@ -1864,14 +1935,14 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="form-label mb-0">Campos personalizados</label>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="crmAgregarCampo">
-                            <i class="mdi mdi-plus-circle-outline me-1"></i>Añadir campo
+                            <i class="mdi mdi-plus-circle-outline me-1"></i>Agregar campo personalizado
                         </button>
                     </div>
                     <div id="crmCamposContainer" data-empty-text="Sin campos adicionales"></div>
                 </div>
                 <div class="d-flex justify-content-end mt-3">
                     <button type="submit" class="btn btn-primary">
-                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar detalles
+                        <i class="mdi mdi-content-save-outline me-1"></i>Guardar cambios CRM
                     </button>
                 </div>
             </form>
@@ -1888,7 +1959,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                               placeholder="Registrar avances, autorizaciones o conversaciones" required></textarea>
                     <div class="d-flex justify-content-end">
                         <button type="submit" class="btn btn-primary">
-                            <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
+                            <i class="mdi mdi-comment-plus-outline me-1"></i>Registrar nota de seguimiento
                         </button>
                     </div>
                 </form>
@@ -1918,7 +1989,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-primary">
-                                <i class="mdi mdi-upload me-1"></i>Subir documento
+                                <i class="mdi mdi-upload me-1"></i>Cargar documento al caso
                             </button>
                         </div>
                     </form>
@@ -1956,7 +2027,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                         </div>
                         <div class="col-12 d-flex justify-content-end">
                             <button type="submit" class="btn btn-outline-success">
-                                <i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea
+                                <i class="mdi mdi-playlist-plus me-1"></i>Crear tarea para el equipo
                             </button>
                         </div>
                     </form>

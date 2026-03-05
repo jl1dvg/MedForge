@@ -2,7 +2,7 @@
 Abre el seguimiento CRM de la solicitud seleccionada.
 
 ### Label operativo
-Abrir seguimiento CRM.
+Abrir gestión CRM de esta solicitud.
 
 ### Ruta / Endpoint
 `GET /solicitudes/{id}/crm`

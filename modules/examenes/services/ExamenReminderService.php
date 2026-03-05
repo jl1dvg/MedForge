@@ -5,6 +5,7 @@ namespace Modules\Examenes\Services;
 use DateInterval;
 use DateTimeImmutable;
 use Modules\Notifications\Services\PusherConfigService;
+use Modules\Notifications\Services\ReminderConfigService;
 use Modules\Examenes\Models\ExamenModel;
 use PDO;
 
@@ -14,6 +15,7 @@ class ExamenReminderService
 
     private PDO $pdo;
     private PusherConfigService $pusher;
+    private ReminderConfigService $reminderConfig;
     private ExamenModel $model;
     private string $cachePath;
 
@@ -21,12 +23,17 @@ class ExamenReminderService
     {
         $this->pdo = $pdo;
         $this->pusher = $pusher;
+        $this->reminderConfig = new ReminderConfigService($pdo);
         $this->model = new ExamenModel($pdo);
         $this->cachePath = BASE_PATH . self::CACHE_FILENAME;
     }
 
     public function dispatchUpcoming(int $hoursAhead = 24): array
     {
+        if (!$this->reminderConfig->isReminderEventEnabled('exam')) {
+            return [];
+        }
+
         if ($hoursAhead <= 0) {
             $hoursAhead = 24;
         }

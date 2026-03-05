@@ -360,6 +360,15 @@ document.addEventListener('DOMContentLoaded', () => {
             'table.row-detail',
             'table.eye-button',
             'table.crm-button',
+            'crm.open-panel',
+            'crm.save-details',
+            'crm.add-field',
+            'crm.remove-field',
+            'crm.save-note',
+            'crm.upload-document',
+            'crm.add-task',
+            'crm.toggle-task-state',
+            'crm.block-schedule',
             'toolbar.conciliacion',
             'conciliacion.refresh',
             'conciliacion.confirm',
@@ -1352,8 +1361,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const crmButton = tr.querySelector('.btn-open-crm');
             if (crmButton) {
-                crmButton.setAttribute('title', 'Abrir seguimiento CRM');
-                crmButton.setAttribute('aria-label', 'Abrir seguimiento CRM');
+                crmButton.setAttribute('title', 'Abrir gestión CRM de esta solicitud');
+                crmButton.setAttribute('aria-label', 'Abrir gestión CRM de esta solicitud');
             }
 
             fragment.appendChild(tr);

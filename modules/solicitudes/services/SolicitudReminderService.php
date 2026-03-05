@@ -6,6 +6,7 @@ use DateInterval;
 use DateTimeImmutable;
 use Models\SolicitudModel;
 use Modules\Notifications\Services\PusherConfigService;
+use Modules\Notifications\Services\ReminderConfigService;
 use PDO;
 
 class SolicitudReminderService
@@ -22,7 +23,7 @@ class SolicitudReminderService
      *     source: 'scheduled'|'expiration'
      * }>
      */
-    private const SCENARIOS = [
+    private const BASE_SCENARIOS = [
         'preop' => [
             'event' => PusherConfigService::EVENT_PREOP_REMINDER,
             'label' => 'Preparación preoperatoria',
@@ -83,6 +84,7 @@ class SolicitudReminderService
 
     private PDO $pdo;
     private PusherConfigService $pusher;
+    private ReminderConfigService $reminderConfig;
     private SolicitudModel $solicitudModel;
     private string $cachePath;
 
@@ -90,6 +92,7 @@ class SolicitudReminderService
     {
         $this->pdo = $pdo;
         $this->pusher = $pusher;
+        $this->reminderConfig = new ReminderConfigService($pdo);
         $this->solicitudModel = new SolicitudModel($pdo);
         $this->cachePath = BASE_PATH . self::CACHE_FILENAME;
     }
@@ -113,10 +116,15 @@ class SolicitudReminderService
             $hoursBack = 0;
         }
 
+        $scenarios = $this->resolveScenarios();
+        if ($scenarios === []) {
+            return [];
+        }
+
         $ahora = new DateTimeImmutable('now');
 
-        $rangoFuturo = $this->resolveMaxFutureOffset($hoursAhead);
-        $rangoPasado = $this->resolveMaxPastOffset($hoursBack);
+        $rangoFuturo = $this->resolveMaxFutureOffset($hoursAhead, $scenarios);
+        $rangoPasado = $this->resolveMaxPastOffset($hoursBack, $scenarios);
 
         $desde = $rangoPasado > 0
             ? $ahora->sub(new DateInterval(sprintf('PT%dH', (int) ceil($rangoPasado))))
@@ -141,7 +149,7 @@ class SolicitudReminderService
                 ? new DateTimeImmutable((string) $solicitud['fecha_caducidad'])
                 : null;
 
-            foreach (self::SCENARIOS as $scenarioKey => $scenario) {
+            foreach ($scenarios as $scenarioKey => $scenario) {
                 $dueDate = $this->resolveDueDate($scenario, $fechaProgramada, $fechaCaducidad);
                 if (!$dueDate) {
                     continue;
@@ -234,22 +242,28 @@ class SolicitudReminderService
         return $seconds / 3600;
     }
 
-    private function resolveMaxFutureOffset(int $hoursAhead): float
+    /**
+     * @param array<string, array{event:string,label:string,context:string,minOffsetHours:float,maxOffsetHours:float,source:string}> $scenarios
+     */
+    private function resolveMaxFutureOffset(int $hoursAhead, array $scenarios): float
     {
         $max = (float) $hoursAhead;
 
-        foreach (self::SCENARIOS as $scenario) {
+        foreach ($scenarios as $scenario) {
             $max = max($max, max(0.0, $scenario['minOffsetHours'], $scenario['maxOffsetHours']));
         }
 
         return $max;
     }
 
-    private function resolveMaxPastOffset(int $hoursBack): float
+    /**
+     * @param array<string, array{event:string,label:string,context:string,minOffsetHours:float,maxOffsetHours:float,source:string}> $scenarios
+     */
+    private function resolveMaxPastOffset(int $hoursBack, array $scenarios): float
     {
         $max = (float) $hoursBack;
 
-        foreach (self::SCENARIOS as $scenario) {
+        foreach ($scenarios as $scenario) {
             $minCandidate = min($scenario['minOffsetHours'], $scenario['maxOffsetHours'], 0.0);
             if ($minCandidate < 0) {
                 $max = max($max, abs($minCandidate));
@@ -288,5 +302,40 @@ class SolicitudReminderService
             $this->cachePath,
             json_encode($cache, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
         );
+    }
+
+    /**
+     * @return array<string, array{event:string,label:string,context:string,minOffsetHours:float,maxOffsetHours:float,source:string}>
+     */
+    private function resolveScenarios(): array
+    {
+        $enabledEvents = $this->reminderConfig->getEnabledReminderEvents();
+        $enabledMap = array_fill_keys($enabledEvents, true);
+
+        $scenarios = [];
+        foreach (self::BASE_SCENARIOS as $key => $scenario) {
+            if (empty($enabledMap[$key])) {
+                continue;
+            }
+            $scenarios[$key] = $scenario;
+        }
+
+        foreach ($this->reminderConfig->getCustomReminderRules() as $rule) {
+            $ruleId = (string) ($rule['id'] ?? '');
+            if ($ruleId === '') {
+                continue;
+            }
+
+            $scenarios[$ruleId] = [
+                'event' => (string) ($rule['event'] ?? PusherConfigService::EVENT_SURGERY_REMINDER),
+                'label' => (string) ($rule['label'] ?? $ruleId),
+                'context' => (string) ($rule['context'] ?? ''),
+                'minOffsetHours' => (float) ($rule['min_offset_hours'] ?? 0.0),
+                'maxOffsetHours' => (float) ($rule['max_offset_hours'] ?? 24.0),
+                'source' => (string) ($rule['source'] ?? 'scheduled'),
+            ];
+        }
+
+        return $scenarios;
     }
 }

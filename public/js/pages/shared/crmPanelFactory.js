@@ -56,6 +56,16 @@ function notify(message, ok = true) {
     }
 }
 
+function applyActionLabel(element, label) {
+    if (!element || typeof label !== 'string' || label.trim() === '') {
+        return;
+    }
+
+    const normalized = label.trim();
+    element.setAttribute('title', normalized);
+    element.setAttribute('aria-label', normalized);
+}
+
 function selectionMessage(action) {
     return `Selecciona ${panelConfig.entityArticle} ${panelConfig.entityLabel} para ${action}`;
 }
@@ -155,6 +165,8 @@ function initCrmInteractions() {
         console.warn('CRM ▶ No se encontraron botones .btn-open-crm en el DOM');
     }
     buttons.forEach(button => {
+        applyActionLabel(button, 'Abrir gestión CRM de esta solicitud');
+
         if (button.dataset.crmBound === '1') {
             return;
         }
@@ -275,6 +287,8 @@ function populateStaticOptions() {
 function bindForms() {
     const detalleForm = document.getElementById('crmDetalleForm');
     if (detalleForm) {
+        applyActionLabel(detalleForm.querySelector('button[type="submit"]'), 'Guardar cambios CRM');
+
         detalleForm.addEventListener('submit', async event => {
             event.preventDefault();
             if (!currentEntityId) {
@@ -296,6 +310,8 @@ function bindForms() {
 
     const notaForm = document.getElementById('crmNotaForm');
     if (notaForm) {
+        applyActionLabel(notaForm.querySelector('button[type="submit"]'), 'Registrar nota de seguimiento');
+
         notaForm.addEventListener('submit', async event => {
             event.preventDefault();
             if (!currentEntityId) {
@@ -326,6 +342,8 @@ function bindForms() {
 
     const adjuntoForm = document.getElementById('crmAdjuntoForm');
     if (adjuntoForm) {
+        applyActionLabel(adjuntoForm.querySelector('button[type="submit"]'), 'Cargar documento al caso');
+
         adjuntoForm.addEventListener('submit', async event => {
             event.preventDefault();
             if (!currentEntityId) {
@@ -360,6 +378,8 @@ function bindForms() {
 
     const tareaForm = document.getElementById('crmTareaForm');
     if (tareaForm) {
+        applyActionLabel(tareaForm.querySelector('button[type="submit"]'), 'Crear tarea para el equipo');
+
         tareaForm.addEventListener('submit', async event => {
             event.preventDefault();
             if (!currentEntityId) {
@@ -387,6 +407,8 @@ function bindForms() {
 
     const bloqueoForm = document.getElementById('crmBloqueoForm');
     if (bloqueoForm) {
+        applyActionLabel(bloqueoForm.querySelector('button[type="submit"]'), 'Reservar espacio en agenda');
+
         bloqueoForm.addEventListener('submit', async event => {
             event.preventDefault();
             if (!currentEntityId) {
@@ -415,6 +437,8 @@ function bindForms() {
 
     const agregarCampoBtn = document.getElementById('crmAgregarCampo');
     if (agregarCampoBtn) {
+        applyActionLabel(agregarCampoBtn, 'Agregar campo personalizado');
+
         agregarCampoBtn.addEventListener('click', () => {
             addCampoPersonalizado();
         });
@@ -1151,6 +1175,7 @@ function renderTareas(tareas) {
         btn.innerHTML = tarea.estado === 'completada'
             ? '<i class="mdi mdi-restore"></i> Reabrir'
             : '<i class="mdi mdi-check-circle-outline"></i> Completar';
+        applyActionLabel(btn, 'Cambiar estado de la tarea');
         btn.addEventListener('click', () => {
             const nuevoEstado = tarea.estado === 'completada' ? 'pendiente' : 'completada';
             actualizarEstadoTarea(tarea.id, nuevoEstado);
@@ -1312,6 +1337,7 @@ function addCampoPersonalizado(campo = {}) {
     removeButton.type = 'button';
     removeButton.className = 'btn btn-outline-danger btn-sm';
     removeButton.innerHTML = '<i class="mdi mdi-close"></i>';
+    applyActionLabel(removeButton, 'Quitar este campo');
     removeButton.addEventListener('click', () => {
         row.remove();
         if (!container.querySelector('.crm-campo')) {

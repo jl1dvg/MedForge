@@ -19,6 +19,7 @@ use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
+use Modules\Notifications\Services\ReminderConfigService;
 use Modules\Reporting\Services\AsyncReportQueueService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
@@ -487,6 +488,14 @@ class CronRunner
      */
     private function runCrmTaskRemindersTask(): array
     {
+        $reminderConfig = new ReminderConfigService($this->pdo);
+        if (!$reminderConfig->isReminderEventEnabled('crm_task')) {
+            return [
+                'status' => 'skipped',
+                'message' => 'Los recordatorios de tareas CRM están desactivados en Settings.',
+            ];
+        }
+
         $now = new DateTimeImmutable('now');
         $sql = <<<'SQL'
             SELECT
@@ -663,6 +672,14 @@ class CronRunner
      */
     private function runCrmTaskSupervisorEscalationsTask(): array
     {
+        $reminderConfig = new ReminderConfigService($this->pdo);
+        if (!$reminderConfig->isReminderEventEnabled('crm_task_escalation')) {
+            return [
+                'status' => 'skipped',
+                'message' => 'Las escalaciones de tareas CRM están desactivadas en Settings.',
+            ];
+        }
+
         $now = new DateTimeImmutable('now');
         $graceMinutes = 120;
         $cutoff = $now->sub(new DateInterval('PT' . $graceMinutes . 'M'));

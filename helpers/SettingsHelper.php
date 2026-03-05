@@ -560,6 +560,66 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'reminder_editor',
+                        'title' => 'Editor de reminders',
+                        'description' => 'Activa eventos, limita acciones de handoff y crea reglas personalizadas basadas en evento.',
+                        'fields' => [
+                            self::checkboxGroupField(
+                                'notifications_reminder_enabled_events',
+                                'Eventos automáticos habilitados',
+                                [
+                                    'preop' => 'Preparación preoperatoria',
+                                    'surgery_24h' => 'Confirmación 24h',
+                                    'surgery_2h' => 'Recordatorio 2h',
+                                    'surgery' => 'Recordatorio de cirugía',
+                                    'postop' => 'Control postoperatorio',
+                                    'postconsulta' => 'Postconsulta',
+                                    'exams' => 'Exámenes por vencer',
+                                    'exam' => 'Recordatorio de exámenes (módulo Exámenes)',
+                                    'crm_task' => 'Recordatorio de tareas CRM',
+                                    'crm_task_escalation' => 'Escalación de tareas CRM',
+                                ],
+                                [
+                                    'preop',
+                                    'surgery_24h',
+                                    'surgery_2h',
+                                    'surgery',
+                                    'postop',
+                                    'postconsulta',
+                                    'exams',
+                                    'exam',
+                                    'crm_task',
+                                    'crm_task_escalation',
+                                ],
+                                'Los eventos desmarcados no generarán nuevos reminders automáticos.'
+                            ),
+                            self::checkboxGroupField(
+                                'notifications_handoff_enabled_actions',
+                                'Acciones de handoff notificadas',
+                                [
+                                    'requested' => 'Solicitado',
+                                    'assigned' => 'Asignado',
+                                    'transferred' => 'Derivado',
+                                    'requeued' => 'Reencolado',
+                                    'resolved' => 'Resuelto',
+                                ],
+                                [
+                                    'requested',
+                                    'assigned',
+                                    'transferred',
+                                    'requeued',
+                                    'resolved',
+                                ],
+                                'Aplica a notificaciones in-app de WhatsApp handoff.'
+                            ),
+                            self::textareaField(
+                                'notifications_custom_reminder_rules',
+                                'Reglas personalizadas (JSON)',
+                                'Formato: [{"id":"followup_12h","enabled":true,"event":"recordatorio-postop","label":"Seguimiento 12h","context":"Confirmar evolución","source":"scheduled","min_offset_hours":-18,"max_offset_hours":-10}]'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'quiet_hours',
                         'title' => 'Ventanas de silencio y alertas críticas',
                         'description' => 'Establece horarios sin notificaciones y los destinatarios de alertas críticas.',

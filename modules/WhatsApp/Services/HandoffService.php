@@ -5,6 +5,7 @@ namespace Modules\WhatsApp\Services;
 use Core\Permissions;
 use DateTimeImmutable;
 use Modules\Notifications\Services\PusherConfigService;
+use Modules\Notifications\Services\ReminderConfigService;
 use Modules\WhatsApp\Config\WhatsAppSettings;
 use Modules\WhatsApp\Repositories\ConversationRepository;
 use Modules\WhatsApp\Repositories\HandoffRepository;
@@ -22,6 +23,7 @@ class HandoffService
     private WhatsAppSettings $settings;
     private Messenger $messenger;
     private ?PusherConfigService $pusher = null;
+    private ReminderConfigService $reminderConfig;
     /**
      * @var array<int, string>|null
      */
@@ -35,6 +37,7 @@ class HandoffService
         $this->settings = new WhatsAppSettings($pdo);
         $this->messenger = new Messenger($pdo);
         $this->pusher = new PusherConfigService($pdo);
+        $this->reminderConfig = new ReminderConfigService($pdo);
     }
 
     public function requestHandoff(string $waNumber, ?string $notes = null, ?int $roleId = null, ?string $topic = null, string $priority = 'normal'): ?int
@@ -707,6 +710,9 @@ class HandoffService
         $normalizedAction = strtolower(trim($action));
         if (!in_array($normalizedAction, ['requested', 'assigned', 'transferred', 'requeued', 'resolved'], true)) {
             $normalizedAction = 'requested';
+        }
+        if (!$this->reminderConfig->isHandoffActionEnabled($normalizedAction)) {
+            return;
         }
 
         $actorUserId = $actorId !== null && $actorId > 0 ? $actorId : null;

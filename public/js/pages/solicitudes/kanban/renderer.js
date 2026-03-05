@@ -1150,8 +1150,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
             '<i class="mdi mdi-account-box-outline"></i> CRM';
         crmButton.dataset.solicitudId = solicitud.id ?? "";
         crmButton.dataset.pacienteNombre = solicitud.full_name ?? "";
-        crmButton.title = "Ver seguimiento de esta solicitud";
-        crmButton.setAttribute("aria-label", "Ver seguimiento de esta solicitud");
+        crmButton.title = "Abrir gestión CRM de esta solicitud";
+        crmButton.setAttribute("aria-label", "Abrir gestión CRM de esta solicitud");
         const crmActionsSlot = tarjeta.querySelector('[data-crm-actions]');
         if (crmActionsSlot) {
             crmButton.className = "btn btn-sm btn-outline-secondary btn-open-crm";
