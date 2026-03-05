@@ -10,7 +10,6 @@ use PDOException;
 class PacienteService
 {
     private PDO $db;
-    private ?bool $prefacturaTableExists = null;
     /** @var array<string, bool> */
     private array $tablaDisponibleCache = [];
     private PatientIdentityService $identityService;
@@ -670,30 +669,18 @@ class PacienteService
             $countFiltered = (int) $stmtFiltered->fetchColumn();
         }
 
-        $hasPrefactura = $this->hasPrefacturaTable();
-
-        $estadoSelect = $hasPrefactura
-            ? "CASE\n                WHEN cobertura.fecha_vigencia IS NULL THEN 'N/A'\n                WHEN cobertura.fecha_vigencia >= CURRENT_DATE THEN 'Con Cobertura'\n                ELSE 'Sin Cobertura'\n            END AS estado_cobertura"
-            : "'N/A' AS estado_cobertura";
-
-        $coberturaJoin = $hasPrefactura
-            ? "LEFT JOIN (\n                SELECT base.hc_number, base.cod_derivacion, base.fecha_vigencia\n                FROM prefactura_paciente base\n                INNER JOIN (\n                    SELECT hc_number, MAX(fecha_vigencia) AS max_fecha\n                    FROM prefactura_paciente\n                    WHERE cod_derivacion IS NOT NULL AND cod_derivacion != ''\n                    GROUP BY hc_number\n                ) AS ult ON ult.hc_number = base.hc_number AND ult.max_fecha = base.fecha_vigencia\n                WHERE base.cod_derivacion IS NOT NULL AND base.cod_derivacion != ''\n            ) AS cobertura ON cobertura.hc_number = p.hc_number"
-            : '';
-
         $sql = <<<SQL
             SELECT
                 p.hc_number,
                 CONCAT(p.fname, ' ', p.lname, ' ', p.lname2) AS full_name,
                 ultima.ultima_fecha,
-                p.afiliacion,
-                $estadoSelect
+                p.afiliacion
             FROM patient_data p
             LEFT JOIN (
                 SELECT hc_number, MAX(fecha) AS ultima_fecha
                 FROM consulta_data
                 GROUP BY hc_number
             ) AS ultima ON ultima.hc_number = p.hc_number
-            $coberturaJoin
             $searchSql
             ORDER BY $orderBySql $orderDirection
             LIMIT $start, $length
@@ -708,21 +695,12 @@ class PacienteService
         $data = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $ultimaFecha = $row['ultima_fecha'] ? date('d/m/Y', strtotime($row['ultima_fecha'])) : '';
-            $estado = $row['estado_cobertura'] ?? 'N/A';
-            if ($estado === 'Con Cobertura') {
-                $badgeClass = 'bg-success';
-            } elseif ($estado === 'Sin Cobertura') {
-                $badgeClass = 'bg-danger';
-            } else {
-                $badgeClass = 'bg-secondary';
-            }
 
             $data[] = [
                 'hc_number' => $row['hc_number'],
                 'ultima_fecha' => $ultimaFecha,
                 'full_name' => $row['full_name'],
                 'afiliacion' => $row['afiliacion'],
-                'estado_html' => sprintf("<span class='badge %s'>%s</span>", $badgeClass, htmlspecialchars($estado, ENT_QUOTES, 'UTF-8')),
                 'acciones_html' => "<a href='/pacientes/detalles?hc_number=" . urlencode($row['hc_number']) . "' class='btn btn-sm btn-primary'>Ver</a>",
             ];
         }
@@ -732,22 +710,6 @@ class PacienteService
             'recordsFiltered' => $countFiltered,
             'data' => $data,
         ];
-    }
-
-    private function hasPrefacturaTable(): bool
-    {
-        if ($this->prefacturaTableExists !== null) {
-            return $this->prefacturaTableExists;
-        }
-
-        try {
-            $stmt = $this->db->query("SHOW TABLES LIKE 'prefactura_paciente'");
-            $this->prefacturaTableExists = $stmt !== false && $stmt->fetchColumn() !== false;
-        } catch (PDOException) {
-            $this->prefacturaTableExists = false;
-        }
-
-        return $this->prefacturaTableExists;
     }
 
     private function obtenerProcedimientosNormalizados(int $prefacturaId): ?array

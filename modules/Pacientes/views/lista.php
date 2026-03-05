@@ -34,7 +34,6 @@
                                             <th>Última consulta</th>
                                             <th>Nombre completo</th>
                                             <th>Afiliación</th>
-                                            <th>Estado</th>
                                             <th>Acciones</th>
                                         </tr>
                                         </thead>

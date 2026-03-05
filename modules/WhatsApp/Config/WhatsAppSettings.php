@@ -47,6 +47,7 @@ class WhatsAppSettings
      *     data_consent_no_keywords: array<int, string>,
      *     data_protection_flow: array<string, mixed>,
      *     template_languages: string,
+     *     template_queue_days: int,
      *     handoff_ttl_hours: int,
      *     handoff_sla_target_minutes: int,
      *     handoff_notify_in_app: bool,
@@ -87,6 +88,7 @@ class WhatsAppSettings
             'data_consent_no_keywords' => ['no', 'rechazo', 'no autorizo'],
             'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
             'template_languages' => '',
+            'template_queue_days' => 30,
             'handoff_ttl_hours' => 24,
             'handoff_sla_target_minutes' => 15,
             'handoff_notify_in_app' => true,
@@ -120,6 +122,7 @@ class WhatsAppSettings
                     'whatsapp_data_consent_yes_keywords',
                     'whatsapp_data_consent_no_keywords',
                     'whatsapp_template_languages',
+                    'whatsapp_chat_template_queue_days',
                     'whatsapp_handoff_ttl_hours',
                     'whatsapp_handoff_sla_target_minutes',
                     'whatsapp_handoff_notify_in_app',
@@ -192,6 +195,9 @@ class WhatsAppSettings
                 if (is_string($templateLanguages) && trim($templateLanguages) !== '') {
                     $config['template_languages'] = $templateLanguages;
                 }
+
+                $templateQueueDays = (int) ($options['whatsapp_chat_template_queue_days'] ?? 30);
+                $config['template_queue_days'] = max(0, min(365, $templateQueueDays));
 
                 $ttl = (int) ($options['whatsapp_handoff_ttl_hours'] ?? 24);
                 if ($ttl > 0) {

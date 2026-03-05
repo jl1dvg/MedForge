@@ -44,7 +44,6 @@ $scripts = array_merge($scripts ?? [], [
                                     <th>Última consulta</th>
                                     <th>Nombre completo</th>
                                     <th>Afiliación</th>
-                                    <th>Estado</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -56,4 +55,3 @@ $scripts = array_merge($scripts ?? [], [
         </div>
     </div>
 </section>
-

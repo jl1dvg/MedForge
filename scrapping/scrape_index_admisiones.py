@@ -54,6 +54,21 @@ def clean_text(el) -> str:
     return re.sub(r"\s+", " ", el.get_text(" ", strip=True)).strip()
 
 
+def infer_sede_from_agenda_dpto(value: str) -> str:
+    value = re.sub(r"\s+", " ", (value or "").strip()).upper()
+    if not value:
+        return ""
+
+    pos_ceibos = value.rfind("CEIBOS")
+    pos_matriz = value.rfind("MATRIZ")
+
+    if pos_ceibos == -1 and pos_matriz == -1:
+        return ""
+    if pos_ceibos > pos_matriz:
+        return "CEIBOS"
+    return "MATRIZ"
+
+
 def parse_row_cells_by_colseq(tr):
     """Devuelve dict {col_seq:int -> text:str} para una fila de datos.
     Ignora filas agrupadas (fecha) y filas sin celdas."""
@@ -162,6 +177,8 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                 raw_fecha = current_group_date or c(5) or day_str
                 m_fecha = re.search(r"(\d{2}-\d{2}-\d{4})", raw_fecha)
                 fecha_grupo = m_fecha.group(1) if m_fecha else raw_fecha
+                agenda_dpto = c(27)
+                sede_departamento = infer_sede_from_agenda_dpto(agenda_dpto)
 
                 data = {
                     "fecha_grupo": fecha_grupo,  # e.g. "19-12-2025"
@@ -179,6 +196,8 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                     # Atención
                     "procedimiento": c(24),
                     "doctor_agenda": c(25),
+                    "agenda_dpto": agenda_dpto,
+                    "sede_departamento": sede_departamento,
                     "cie10": c(30),
                     "estado_agenda": c(31),
                     "estado": c(33),

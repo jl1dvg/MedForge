@@ -70,6 +70,7 @@ try {
         'hcNumber', 'form_id', 'procedimiento_proyectado', 'doctor', 'cie10', 'estado_agenda', 'estado',
         'codigo_derivacion', 'num_secuencial_derivacion', 'fname', 'mname', 'lname', 'lname2', 'email',
         'fecha_nacimiento', 'sexo', 'ciudad', 'afiliacion', 'telefono', 'fecha', 'hora', 'nombre_completo',
+        'sede_departamento', 'id_sede',
     ];
     $dateKeys = ['fecha', 'fecha_nacimiento', 'fechaCaducidad', 'fecha_caducidad', 'fecha_nac'];
 
@@ -203,6 +204,8 @@ try {
                 ':procedimiento' => $item['procedimiento_proyectado'],
                 ':doctor' => $item['doctor'] ?? null,
                 ':hc_number' => $item['hcNumber'],
+                ':sede_departamento' => $item['sede_departamento'] ?? null,
+                ':id_sede' => $item['id_sede'] ?? null,
                 ':estado_agenda' => $item['estado_agenda'] ?? $item['estado'] ?? null,
                 ':afiliacion' => $item['afiliacion'] ?? null,
                 ':fecha' => $item['fecha'],
@@ -211,12 +214,14 @@ try {
 
             $sqlProcedimiento = "
                 INSERT INTO procedimiento_proyectado
-                    (form_id, procedimiento_proyectado, doctor, hc_number, estado_agenda, afiliacion, fecha, hora)
+                    (form_id, procedimiento_proyectado, doctor, hc_number, sede_departamento, id_sede, estado_agenda, afiliacion, fecha, hora)
                 VALUES
-                    (:form_id, :procedimiento, :doctor, :hc_number, :estado_agenda, :afiliacion, :fecha, :hora)
+                    (:form_id, :procedimiento, :doctor, :hc_number, :sede_departamento, :id_sede, :estado_agenda, :afiliacion, :fecha, :hora)
                 ON DUPLICATE KEY UPDATE
                     procedimiento_proyectado = VALUES(procedimiento_proyectado),
                     doctor = VALUES(doctor),
+                    sede_departamento = IF(VALUES(sede_departamento) IS NULL OR VALUES(sede_departamento) = '', sede_departamento, VALUES(sede_departamento)),
+                    id_sede = IF(VALUES(id_sede) IS NULL OR VALUES(id_sede) = '', id_sede, VALUES(id_sede)),
                     estado_agenda = IF(VALUES(estado_agenda) IS NULL OR VALUES(estado_agenda) = '', estado_agenda, VALUES(estado_agenda)),
                     afiliacion = IF(VALUES(afiliacion) IS NULL OR VALUES(afiliacion) = '', afiliacion, VALUES(afiliacion)),
                     fecha = VALUES(fecha),

@@ -128,6 +128,10 @@
         var currentUserId = parseInt(root.getAttribute('data-current-user-id'), 10) || 0;
         var currentRoleId = parseInt(root.getAttribute('data-current-role-id'), 10) || 0;
         var canAssign = root.getAttribute('data-can-assign') === '1';
+        var templateQueueDays = parseInt(root.getAttribute('data-template-queue-days'), 10);
+        if (isNaN(templateQueueDays) || templateQueueDays < 0) {
+            templateQueueDays = 30;
+        }
 
         var listContainer = root.querySelector('[data-conversation-list]');
         var emptyListState = root.querySelector('[data-empty-state]');
@@ -618,6 +622,47 @@
             return !isConversationWindowOpen(conversation);
         }
 
+        function resolveConversationLastActivityAt(conversation) {
+            if (!conversation) {
+                return null;
+            }
+
+            var lastMessage = conversation.last_message || {};
+            var candidates = [
+                lastMessage.at,
+                conversation.last_outbound_at,
+                conversation.last_inbound_at
+            ];
+
+            for (var i = 0; i < candidates.length; i++) {
+                var value = candidates[i];
+                if (!value) {
+                    continue;
+                }
+
+                var parsed = new Date(value);
+                if (!isNaN(parsed.getTime())) {
+                    return parsed;
+                }
+            }
+
+            return null;
+        }
+
+        function isConversationInsideTemplateQueueWindow(conversation) {
+            if (templateQueueDays <= 0) {
+                return true;
+            }
+
+            var activityAt = resolveConversationLastActivityAt(conversation);
+            if (!activityAt) {
+                return false;
+            }
+
+            var maxAgeMs = templateQueueDays * 24 * 60 * 60 * 1000;
+            return (Date.now() - activityAt.getTime()) <= maxAgeMs;
+        }
+
         function isConversationAwaitingTemplateReply(conversation) {
             if (!conversation || isConversationWindowOpen(conversation)) {
                 return false;
@@ -660,11 +705,11 @@
             }
 
             if (normalized === 'needs_template') {
-                return isConversationNeedsTemplate(conversation);
+                return isConversationNeedsTemplate(conversation) && isConversationInsideTemplateQueueWindow(conversation);
             }
 
             if (normalized === 'awaiting_template_reply') {
-                return isConversationAwaitingTemplateReply(conversation);
+                return isConversationAwaitingTemplateReply(conversation) && isConversationInsideTemplateQueueWindow(conversation);
             }
 
             if (normalized === 'handoff') {
@@ -753,10 +798,14 @@
                     openWindow += 1;
                 }
                 if (isConversationNeedsTemplate(conversation)) {
-                    needsTemplate += 1;
+                    if (isConversationInsideTemplateQueueWindow(conversation)) {
+                        needsTemplate += 1;
+                    }
                 }
                 if (isConversationAwaitingTemplateReply(conversation)) {
-                    awaitingTemplateReply += 1;
+                    if (isConversationInsideTemplateQueueWindow(conversation)) {
+                        awaitingTemplateReply += 1;
+                    }
                 }
                 if (isConversationHandoff(conversation)) {
                     handoff += 1;
@@ -843,7 +892,11 @@
             if (filter === 'needs_template') {
                 paragraphs[0].textContent = 'No hay conversaciones que requieran plantilla.';
                 if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Estos contactos están fuera de la ventana de 24h.';
+                    if (templateQueueDays > 0) {
+                        paragraphs[1].textContent = 'Se muestran solo contactos fuera de 24h con actividad en los últimos ' + templateQueueDays + ' días.';
+                    } else {
+                        paragraphs[1].textContent = 'Estos contactos están fuera de la ventana de 24h.';
+                    }
                 }
                 return;
             }
@@ -851,7 +904,11 @@
             if (filter === 'awaiting_template_reply') {
                 paragraphs[0].textContent = 'No hay contactos esperando respuesta a plantilla.';
                 if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Aquí verás a quienes ya se les envió plantilla y aún no responden.';
+                    if (templateQueueDays > 0) {
+                        paragraphs[1].textContent = 'Se muestran solo casos con actividad en los últimos ' + templateQueueDays + ' días.';
+                    } else {
+                        paragraphs[1].textContent = 'Aquí verás a quienes ya se les envió plantilla y aún no responden.';
+                    }
                 }
                 return;
             }

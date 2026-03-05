@@ -14,7 +14,6 @@ $(function () {
             {data: 'ultima_fecha'},
             {data: 'full_name'},
             {data: 'afiliacion'},
-            {data: 'estado_html'},
             {data: 'acciones_html'}
         ],
         pageLength: 25,

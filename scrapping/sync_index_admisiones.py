@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime, timedelta
 import json
 import os
+import re
 import sys
 from typing import Dict, Iterable, List, Optional
 
@@ -43,12 +44,31 @@ def normalize_iso_date(value: str) -> Optional[str]:
         return None
 
 
+def infer_sede_from_agenda_dpto(value: str) -> Optional[str]:
+    value = re.sub(r"\s+", " ", (value or "").strip()).upper()
+    if not value:
+        return None
+
+    pos_ceibos = value.rfind("CEIBOS")
+    pos_matriz = value.rfind("MATRIZ")
+
+    if pos_ceibos == -1 and pos_matriz == -1:
+        return None
+    if pos_ceibos > pos_matriz:
+        return "CEIBOS"
+    return "MATRIZ"
+
+
 def chunked(items: List[Dict], size: int) -> Iterable[List[Dict]]:
     for idx in range(0, len(items), size):
         yield items[idx : idx + size]
 
 
 def build_payload(row: Dict) -> Dict:
+    sede_departamento = (row.get("sede_departamento", "") or "").strip()
+    if not sede_departamento:
+        sede_departamento = infer_sede_from_agenda_dpto(row.get("agenda_dpto", "") or "") or ""
+
     payload = {
         "hcNumber": row.get("hc_number", "").strip(),
         "form_id": row.get("pedido_id", "").strip(),
@@ -69,6 +89,7 @@ def build_payload(row: Dict) -> Dict:
         "ciudad": row.get("ciudad", "").strip(),
         "afiliacion": row.get("afiliacion", "").strip(),
         "telefono": row.get("telefono", "").strip(),
+        "sede_departamento": sede_departamento,
     }
 
     fecha = normalize_fecha_grupo(row.get("fecha_grupo", ""))

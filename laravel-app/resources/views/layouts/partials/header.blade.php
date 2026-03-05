@@ -89,8 +89,8 @@
                     </a>
                     <ul class="dropdown-menu animated flipInX">
                         <li class="user-body">
-                            <a class="dropdown-item" href="#"><i class="ti-user text-muted me-2"></i> Profile</a>
-                            <a class="dropdown-item" href="/v2/auth/logout"><i class="ti-lock text-muted me-2"></i> Logout</a>
+                            <a class="dropdown-item" href="#"><i class="ti-user text-muted me-2"></i> Perfil</a>
+                            <a class="dropdown-item" href="/v2/auth/logout"><i class="ti-lock text-muted me-2"></i> Cerrar sesión</a>
                         </li>
                     </ul>
                 </li>

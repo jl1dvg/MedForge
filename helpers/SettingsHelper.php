@@ -1157,6 +1157,15 @@ class SettingsHelper
                                 ),
                                 ['min' => 1, 'max' => 1440]
                             ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_chat_template_queue_days',
+                                    'Días visibles en cola "Requiere plantilla"',
+                                    30,
+                                    'Oculta en el frontend conversaciones fuera de ventana con antigüedad mayor a este valor. Usa 0 para no aplicar límite.'
+                                ),
+                                ['min' => 0, 'max' => 365]
+                            ),
                             self::checkboxField(
                                 'whatsapp_handoff_escalation_enabled',
                                 'Escalar handoffs en cola',
