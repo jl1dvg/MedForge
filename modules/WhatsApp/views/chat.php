@@ -9,6 +9,144 @@ $currentRoleId = is_array($currentUser) ? (int)($currentUser['role_id'] ?? 0) : 
 $canAssign = !empty($canAssign);
 $realtime = $realtime ?? null;
 $phoneNumber = $config['phone_number_id'] ?? '';
+
+$whatsappGuideBasePath = defined('BASE_PATH')
+    ? rtrim((string)BASE_PATH, '/\\')
+    : dirname(__DIR__, 3);
+$whatsappGuideDir = $whatsappGuideBasePath . '/docs/whatsapp-chat-guide';
+$whatsappChatGuide = [
+    'flow.daily' => [
+        'title' => 'Flujo diario recomendado',
+        'description' => 'Orden sugerido para operar chats sin perder casos',
+        'file' => 'flow-daily-operation.md',
+        'markdown' => "### Orden recomendado\n1) Definir tu estado.\n2) Elegir filtro de cola.\n3) Abrir chat y revisar contexto.\n4) Responder o enviar plantilla.\n5) Tomar o derivar si requiere agente.\n6) Cerrar cuando quede atendido.",
+    ],
+    'panel.my-status' => [
+        'title' => 'Mi estado',
+        'description' => 'Disponible, ausente o desconectado',
+        'file' => 'panel-my-status.md',
+        'markdown' => "### Que hace?\nActualiza tu disponibilidad para asignacion de conversaciones.",
+    ],
+    'panel.search' => [
+        'title' => 'Buscar conversacion',
+        'description' => 'Filtrar por nombre, HC o numero',
+        'file' => 'panel-search-conversation.md',
+        'markdown' => "### Que hace?\nFiltra la lista para encontrar un contacto rapido.",
+    ],
+    'panel.filters' => [
+        'title' => 'Filtros de cola',
+        'description' => 'Priorizar casos por tipo de atencion',
+        'file' => 'panel-filters.md',
+        'markdown' => "### Que hace?\nSepara chats en colas operativas: mis activas, ventana 24h, plantilla, handoff y todas.",
+    ],
+    'panel.conversation-list' => [
+        'title' => 'Lista de conversaciones',
+        'description' => 'Abrir y trabajar un chat',
+        'file' => 'panel-conversation-list.md',
+        'markdown' => "### Que hace?\nAl seleccionar una fila se abre historial, acciones y estado del contacto.",
+    ],
+    'chat.open-chat' => [
+        'title' => 'Abrir en WhatsApp',
+        'description' => 'Abrir chat externo en wa.me',
+        'file' => 'chat-open-whatsapp.md',
+        'markdown' => "### Que hace?\nAbre el numero en WhatsApp Web para apoyo externo al panel.",
+    ],
+    'chat.copy-number' => [
+        'title' => 'Copiar numero',
+        'description' => 'Copiar numero del contacto',
+        'file' => 'chat-copy-number.md',
+        'markdown' => "### Que hace?\nCopia el numero para compartirlo con otra area o validar datos.",
+    ],
+    'chat.close-conversation' => [
+        'title' => 'Cerrar conversacion',
+        'description' => 'Marcar como atendida',
+        'file' => 'chat-close-conversation.md',
+        'markdown' => "### Que hace?\nCierra el caso, limpia asignacion y lo deja fuera de atencion activa.",
+    ],
+    'chat.delete-conversation' => [
+        'title' => 'Eliminar conversacion',
+        'description' => 'Eliminar historial del chat',
+        'file' => 'chat-delete-conversation.md',
+        'markdown' => "### Que hace?\nElimina la conversacion y su historial. Es una accion irreversible.",
+    ],
+    'chat.message-input' => [
+        'title' => 'Caja de mensaje',
+        'description' => 'Escribir respuesta al paciente',
+        'file' => 'chat-message-input.md',
+        'markdown' => "### Que hace?\nPermite redactar la respuesta. Enter envia y Shift+Enter agrega salto de linea.",
+    ],
+    'chat.attachment' => [
+        'title' => 'Adjuntar archivo',
+        'description' => 'Agregar imagen, audio o documento',
+        'file' => 'chat-attachment.md',
+        'markdown' => "### Que hace?\nAdjunta evidencia o documento al mensaje actual antes de enviar.",
+    ],
+    'chat.send-message' => [
+        'title' => 'Enviar respuesta',
+        'description' => 'Enviar mensaje en chat abierto',
+        'file' => 'chat-send-message.md',
+        'markdown' => "### Que hace?\nEnvia texto y/o adjunto a la conversacion seleccionada.",
+    ],
+    'warning.open-template' => [
+        'title' => 'Enviar plantilla (fuera de 24h)',
+        'description' => 'Reabrir conversacion con plantilla aprobada',
+        'file' => 'warning-open-template.md',
+        'markdown' => "### Que hace?\nCuando la ventana 24h esta cerrada, abre la pestaña Nuevo para enviar plantilla oficial.",
+    ],
+    'handoff.take-chat' => [
+        'title' => 'Tomar chat',
+        'description' => 'Asignarte una conversacion pendiente',
+        'file' => 'handoff-take-chat.md',
+        'markdown' => "### Que hace?\nTe asigna el chat para que puedas responder y gestionarlo.",
+    ],
+    'handoff.transfer' => [
+        'title' => 'Derivar chat',
+        'description' => 'Transferir a otro agente con nota',
+        'file' => 'handoff-transfer-chat.md',
+        'markdown' => "### Que hace?\nReasigna la conversacion al agente destino y registra nota operativa.",
+    ],
+    'new.patient-search' => [
+        'title' => 'Buscar paciente',
+        'description' => 'Autocompletar datos para nuevo chat',
+        'file' => 'new-patient-search.md',
+        'markdown' => "### Que hace?\nBusca paciente y completa numero/nombre para iniciar conversacion sin errores.",
+    ],
+    'new.template-toggle' => [
+        'title' => 'Enviar plantilla oficial',
+        'description' => 'Habilitar envio por plantilla',
+        'file' => 'new-template-toggle.md',
+        'markdown' => "### Que hace?\nActiva el panel de plantillas oficiales para conversaciones fuera de ventana.",
+    ],
+    'new.template-select' => [
+        'title' => 'Seleccionar plantilla',
+        'description' => 'Elegir plantilla y completar variables',
+        'file' => 'new-template-select.md',
+        'markdown' => "### Que hace?\nCarga plantilla aprobada, variables y vista previa antes de enviar.",
+    ],
+    'new.send-initial' => [
+        'title' => 'Enviar mensaje inicial',
+        'description' => 'Crear o reusar conversacion y enviar',
+        'file' => 'new-send-initial.md',
+        'markdown' => "### Que hace?\nEnvia primer mensaje del contacto. Si aplica, envia plantilla oficial.",
+    ],
+];
+
+foreach ($whatsappChatGuide as $key => $meta) {
+    $fileName = (string)($meta['file'] ?? '');
+    $filePath = $fileName !== '' ? $whatsappGuideDir . '/' . $fileName : '';
+    $markdown = '';
+    if ($filePath !== '' && is_readable($filePath)) {
+        $markdown = (string)file_get_contents($filePath);
+    }
+    if (trim($markdown) === '') {
+        $markdown = (string)($meta['markdown'] ?? '');
+    }
+    $whatsappChatGuide[$key] = [
+        'title' => (string)($meta['title'] ?? ''),
+        'description' => (string)($meta['description'] ?? ''),
+        'markdown' => trim($markdown),
+    ];
+}
 ?>
 <style>
     .whatsapp-patient-results {
@@ -210,6 +348,28 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         opacity: 0.7;
         transform: scale(0.82);
     }
+    .whatsapp-guide-modal .modal-body {
+        max-height: 65vh;
+        overflow-y: auto;
+    }
+    .whatsapp-guide-content h6 {
+        margin-top: 0.75rem;
+        margin-bottom: 0.45rem;
+        font-weight: 700;
+    }
+    .whatsapp-guide-content p {
+        margin-bottom: 0.6rem;
+    }
+    .whatsapp-guide-content ul {
+        padding-left: 1.1rem;
+        margin-bottom: 0.65rem;
+    }
+    .whatsapp-guide-content code {
+        background: #eef2ff;
+        border-radius: 4px;
+        padding: 0.08rem 0.3rem;
+        color: #1e293b;
+    }
 </style>
 <section class="content">
     <div
@@ -236,19 +396,34 @@ $phoneNumber = $config['phone_number_id'] ?? '';
         <div class="col-lg-3 col-12">
             <div class="box">
                 <div class="box-header">
-                    <ul class="nav nav-tabs customtab nav-justified" role="tablist">
-                        <li class="nav-item">
-                            <a class="nav-link active" data-bs-toggle="tab" href="#messages" role="tab">Chat</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" data-bs-toggle="tab" href="#contacts" role="tab">Nuevo</a>
-                        </li>
-                    </ul>
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <ul class="nav nav-tabs customtab nav-justified flex-grow-1 mb-0" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#messages" role="tab">Chat</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#contacts" role="tab">Nuevo</a>
+                            </li>
+                        </ul>
+                        <button type="button"
+                                class="btn btn-outline-info btn-sm"
+                                id="whatsappGuideOpen"
+                                title="Abrir guia operativa de WhatsApp"
+                                aria-label="Guia operativa de WhatsApp">
+                            <i class="mdi mdi-help-circle-outline"></i> Guia operativa
+                        </button>
+                    </div>
                 </div>
                 <div class="box-body">
                     <div class="mb-3">
                         <label class="form-label mb-1" for="agentPresenceSelect">Mi estado</label>
-                        <select class="form-select form-select-sm" id="agentPresenceSelect" data-agent-presence>
+                        <select class="form-select form-select-sm"
+                                id="agentPresenceSelect"
+                                data-agent-presence
+                                data-guide-open
+                                data-guide-key="panel.my-status"
+                                title="Actualizar mi estado operativo"
+                                aria-label="Actualizar mi estado operativo">
                             <option value="available">Disponible</option>
                             <option value="away">Ausente</option>
                             <option value="offline">Desconectado</option>
@@ -263,10 +438,20 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
                                         <input type="search" class="form-control" placeholder="Buscar conversación"
-                                               autocomplete="off" data-conversation-search>
+                                               autocomplete="off"
+                                               data-conversation-search
+                                               data-guide-open
+                                               data-guide-key="panel.search"
+                                               title="Buscar por nombre, HC o numero"
+                                               aria-label="Buscar por nombre historia clinica o numero">
                                     </div>
                                 </div>
-                                <div class="whatsapp-queue-filters mb-2" data-queue-filter-group>
+                                <div class="whatsapp-queue-filters mb-2"
+                                     data-queue-filter-group
+                                     data-guide-open
+                                     data-guide-key="panel.filters"
+                                     title="Ver guia de filtros de cola"
+                                     aria-label="Ver guia de filtros de cola">
                                     <button type="button" class="btn btn-primary btn-sm" data-queue-filter="mine">
                                         Mis activas
                                         <span class="badge bg-light text-dark" data-queue-count="mine">0</span>
@@ -284,7 +469,7 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <span class="badge bg-primary-light text-primary" data-queue-count="awaiting_template_reply">0</span>
                                     </button>
                                     <button type="button" class="btn btn-outline-danger btn-sm" data-queue-filter="handoff">
-                                        Requieren agente
+                                        Pendientes por tomar
                                         <span class="badge bg-danger-light text-danger" data-queue-count="handoff">0</span>
                                     </button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" data-queue-filter="all">
@@ -292,7 +477,23 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <span class="badge bg-secondary-light text-secondary" data-queue-count="all">0</span>
                                     </button>
                                 </div>
-                                <div class="media-list media-list-hover" data-conversation-list>
+                                <div class="d-flex justify-content-end mb-2">
+                                    <button type="button"
+                                            class="btn btn-outline-info btn-sm"
+                                            data-guide-open
+                                            data-guide-action="open"
+                                            data-guide-key="panel.filters"
+                                            title="Como usar filtros y colas"
+                                            aria-label="Como usar filtros y colas">
+                                        <i class="mdi mdi-information-outline"></i> Guia de colas
+                                    </button>
+                                </div>
+                                <div class="media-list media-list-hover"
+                                     data-conversation-list
+                                     data-guide-open
+                                     data-guide-key="panel.conversation-list"
+                                     title="Como operar la lista de conversaciones"
+                                     aria-label="Como operar la lista de conversaciones">
                                     <div class="media flex-column align-items-center py-5 text-center text-muted"
                                          data-empty-state>
                                         <i class="mdi mdi-forum text-primary" style="font-size: 2.5rem;"></i>
@@ -306,12 +507,27 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                         <div class="tab-pane" id="contacts" role="tabpanel">
                             <div class="chat-box-one-side3">
                                 <form class="p-10" data-new-conversation-form>
-                                    <h5 class="mb-3">Iniciar conversación</h5>
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                        <h5 class="mb-0">Iniciar conversación</h5>
+                                        <button type="button"
+                                                class="btn btn-outline-info btn-sm"
+                                                data-guide-open
+                                                data-guide-action="open"
+                                                data-guide-key="new.send-initial"
+                                                title="Guia para iniciar chat"
+                                                aria-label="Guia para iniciar chat">
+                                            <i class="mdi mdi-school-outline"></i> Guia
+                                        </button>
+                                    </div>
                                     <div class="mb-2">
                                         <label for="patientSearch" class="form-label">Buscar paciente</label>
                                         <input type="search" class="form-control form-control-sm" id="patientSearch"
                                                placeholder="Nombre, historia clínica o teléfono" autocomplete="off"
-                                               data-patient-search>
+                                               data-patient-search
+                                               data-guide-open
+                                               data-guide-key="new.patient-search"
+                                               title="Buscar paciente para autocompletar"
+                                               aria-label="Buscar paciente para autocompletar">
                                         <div class="list-group mt-2 d-none whatsapp-patient-results" data-patient-results></div>
                                     </div>
                                     <div class="mb-2">
@@ -331,13 +547,23 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                     </div>
                                     <div class="form-check form-switch mb-3">
                                         <input class="form-check-input" type="checkbox" role="switch" id="waUseTemplate"
-                                               data-template-toggle>
+                                               data-template-toggle
+                                               data-guide-open
+                                               data-guide-key="new.template-toggle"
+                                               title="Habilitar envio por plantilla oficial"
+                                               aria-label="Habilitar envio por plantilla oficial">
                                         <label class="form-check-label" for="waUseTemplate">Enviar plantilla oficial</label>
                                     </div>
                                     <div class="d-none" data-template-panel>
                                         <div class="mb-2">
                                             <label for="waTemplate" class="form-label">Plantilla</label>
-                                            <select class="form-select form-select-sm" id="waTemplate" data-template-select>
+                                            <select class="form-select form-select-sm"
+                                                    id="waTemplate"
+                                                    data-template-select
+                                                    data-guide-open
+                                                    data-guide-key="new.template-select"
+                                                    title="Elegir plantilla oficial"
+                                                    aria-label="Elegir plantilla oficial">
                                                 <option value="">Selecciona una plantilla</option>
                                             </select>
                                         </div>
@@ -350,7 +576,11 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         </div>
                                     </div>
                                     <button type="submit"
-                                            class="btn btn-primary btn-sm w-100" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
+                                            class="btn btn-primary btn-sm w-100"
+                                            data-guide-open
+                                            data-guide-key="new.send-initial"
+                                            title="Enviar mensaje inicial al contacto"
+                                            aria-label="Enviar mensaje inicial al contacto" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
                                         <i class="mdi mdi-send"></i> Enviar mensaje
                                     </button>
                                     <div class="small mt-2" data-new-conversation-feedback></div>
@@ -402,16 +632,45 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                                         data-unread-indicator></span></li>
                                         </ul>
                                         <div class="btn-group" role="group" data-chat-actions>
-                                            <a class="btn btn-outline-success disabled" href="#" target="_blank" rel="noopener" data-action-open-chat>
+                                            <a class="btn btn-outline-success disabled"
+                                               href="#"
+                                               target="_blank"
+                                               rel="noopener"
+                                               data-action-open-chat
+                                               data-guide-open
+                                               data-guide-key="chat.open-chat"
+                                               title="Abrir chat en WhatsApp Web"
+                                               aria-label="Abrir chat en WhatsApp Web">
                                                 <i class="mdi mdi-whatsapp"></i>
                                             </a>
-                                            <button class="btn btn-outline-secondary" type="button" data-action-copy-number disabled>
+                                            <button class="btn btn-outline-secondary"
+                                                    type="button"
+                                                    data-action-copy-number
+                                                    data-guide-open
+                                                    data-guide-key="chat.copy-number"
+                                                    title="Copiar numero del contacto"
+                                                    aria-label="Copiar numero del contacto"
+                                                    disabled>
                                                 <i class="mdi mdi-content-copy"></i>
                                             </button>
-                                            <button class="btn btn-outline-warning" type="button" data-action-close-conversation disabled title="Cerrar conversación">
+                                            <button class="btn btn-outline-warning"
+                                                    type="button"
+                                                    data-action-close-conversation
+                                                    data-guide-open
+                                                    data-guide-key="chat.close-conversation"
+                                                    disabled
+                                                    title="Cerrar conversación"
+                                                    aria-label="Cerrar conversacion">
                                                 <i class="mdi mdi-check-circle-outline"></i>
                                             </button>
-                                            <button class="btn btn-outline-danger" type="button" data-action-delete-conversation disabled title="Eliminar conversación">
+                                            <button class="btn btn-outline-danger"
+                                                    type="button"
+                                                    data-action-delete-conversation
+                                                    data-guide-open
+                                                    data-guide-key="chat.delete-conversation"
+                                                    disabled
+                                                    title="Eliminar conversación"
+                                                    aria-label="Eliminar conversacion">
                                                 <i class="mdi mdi-delete-circle"></i>
                                             </button>
                                         </div>
@@ -436,11 +695,23 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                         <div class="box-footer no-border" data-chat-composer>
                             <form class="d-md-flex d-block justify-content-between align-items-center bg-white p-5 rounded10 b-1 overflow-hidden"
                                   data-message-form>
-                        <textarea class="form-control b-0 py-10" id="chatMessage" rows="2"
-                                  placeholder="Escribe algo..." <?= $isIntegrationEnabled ? '' : 'disabled'; ?> required></textarea>
+                        <textarea class="form-control b-0 py-10"
+                                  id="chatMessage"
+                                  rows="2"
+                                  placeholder="Escribe algo..."
+                                  data-guide-open
+                                  data-guide-key="chat.message-input"
+                                  title="Escribir respuesta al paciente"
+                                  aria-label="Escribir respuesta al paciente" <?= $isIntegrationEnabled ? '' : 'disabled'; ?> required></textarea>
                                 <div class="d-flex flex-wrap justify-content-between align-items-center mt-md-0 mt-30 gap-2">
                                     <div class="d-flex align-items-center gap-2">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-attachment-trigger <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-sm"
+                                                data-attachment-trigger
+                                                data-guide-open
+                                                data-guide-key="chat.attachment"
+                                                title="Adjuntar archivo"
+                                                aria-label="Adjuntar archivo" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
                                             <i class="mdi mdi-paperclip"></i>
                                         </button>
                                         <input type="file" class="d-none" data-attachment-input
@@ -448,7 +719,11 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                         <div class="small text-muted d-none whatsapp-attachment-preview" data-attachment-preview></div>
                                     </div>
                                     <button type="submit"
-                                            class="btn btn-primary" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
+                                            class="btn btn-primary"
+                                            data-guide-open
+                                            data-guide-key="chat.send-message"
+                                            title="Enviar respuesta al contacto"
+                                            aria-label="Enviar respuesta al contacto" <?= $isIntegrationEnabled ? '' : 'disabled'; ?>>
                                         Enviar
                                     </button>
                                 </div>
@@ -525,11 +800,28 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                             <div class="border-top pt-3 mt-3" data-handoff-panel>
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <h6 class="mb-0">Asignación</h6>
-                                    <span class="badge bg-secondary-light text-secondary" data-handoff-badge>Sin asignar</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button"
+                                                class="btn btn-outline-info btn-sm"
+                                                data-guide-open
+                                                data-guide-action="open"
+                                                data-guide-key="handoff.transfer"
+                                                title="Guia de asignacion y derivacion"
+                                                aria-label="Guia de asignacion y derivacion">
+                                            <i class="mdi mdi-help-circle-outline"></i> Guia
+                                        </button>
+                                        <span class="badge bg-secondary-light text-secondary" data-handoff-badge>Sin asignar</span>
+                                    </div>
                                 </div>
                                 <div class="small text-muted mb-2" data-handoff-queue>Equipo: —</div>
                                 <div class="d-flex gap-2 mb-2">
-                                    <button type="button" class="btn btn-sm btn-primary d-none" data-action="take-conversation">
+                                    <button type="button"
+                                            class="btn btn-sm btn-primary d-none"
+                                            data-action="take-conversation"
+                                            data-guide-open
+                                            data-guide-key="handoff.take-chat"
+                                            title="Tomar chat para atender"
+                                            aria-label="Tomar chat para atender">
                                         <i class="mdi mdi-account-check-outline me-1"></i>Tomar chat
                                     </button>
                                 </div>
@@ -537,9 +829,22 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                     <label class="form-label small text-muted">Derivar a agente</label>
                                     <div class="d-flex gap-2">
                                         <select class="form-select form-select-sm" data-transfer-agent></select>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="transfer-conversation">Derivar</button>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary"
+                                                data-action="transfer-conversation"
+                                                data-guide-open
+                                                data-guide-key="handoff.transfer"
+                                                title="Derivar chat a otro agente"
+                                                aria-label="Derivar chat a otro agente">Derivar</button>
                                     </div>
-                                    <input type="text" class="form-control form-control-sm mt-2" placeholder="Nota para el agente (opcional)" data-transfer-note>
+                                    <input type="text"
+                                           class="form-control form-control-sm mt-2"
+                                           placeholder="Nota para el agente (opcional)"
+                                           data-transfer-note
+                                           data-guide-open
+                                           data-guide-key="handoff.transfer"
+                                           title="Agregar nota para derivacion"
+                                           aria-label="Agregar nota para derivacion">
                                 </div>
                             </div>
                         </div>
@@ -551,8 +856,37 @@ $phoneNumber = $config['phone_number_id'] ?? '';
     </div>
 </section>
 
+<div class="modal fade whatsapp-guide-modal" id="whatsappGuideModal" tabindex="-1"
+     aria-labelledby="whatsappGuideModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="whatsappGuideModalLabel">Guia operativa de WhatsApp</h5>
+                    <small class="text-muted" id="whatsappGuideModalSubtitle"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="whatsappGuideBody" class="whatsapp-guide-content">
+                    Usa el boton <strong>Guia operativa</strong> para abrir el indice de ayuda.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php if (is_array($realtime)): ?>
     <script>
         window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 <?php endif; ?>
+<script>
+    window.__whatsappChatGuide = <?= json_encode(
+        $whatsappChatGuide,
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    ); ?>;
+</script>

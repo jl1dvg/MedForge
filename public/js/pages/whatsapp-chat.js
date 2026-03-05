@@ -212,6 +212,246 @@
         var templateFieldInputs = {};
         var templateCache = {};
 
+        function escapeGuideHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatGuideInline(text) {
+            var html = escapeGuideHtml(text);
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            return html;
+        }
+
+        function renderGuideMarkdown(markdown) {
+            var lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+            var html = [];
+            var listOpen = false;
+
+            function closeList() {
+                if (!listOpen) {
+                    return;
+                }
+                html.push('</ul>');
+                listOpen = false;
+            }
+
+            lines.forEach(function (rawLine) {
+                var line = String(rawLine || '').trim();
+                var headingMatch;
+                var listMatch;
+
+                if (!line) {
+                    closeList();
+                    return;
+                }
+
+                headingMatch = line.match(/^#{1,3}\s+(.+)$/);
+                if (headingMatch) {
+                    closeList();
+                    html.push('<h6>' + formatGuideInline(headingMatch[1]) + '</h6>');
+                    return;
+                }
+
+                listMatch = line.match(/^(?:-|\d+\.)\s+(.+)$/);
+                if (listMatch) {
+                    if (!listOpen) {
+                        html.push('<ul>');
+                        listOpen = true;
+                    }
+                    html.push('<li>' + formatGuideInline(listMatch[1]) + '</li>');
+                    return;
+                }
+
+                closeList();
+                html.push('<p>' + formatGuideInline(line) + '</p>');
+            });
+
+            closeList();
+            return html.length ? html.join('') : '<p>Guia no disponible.</p>';
+        }
+
+        function initOperationalGuide() {
+            var guides = (window.__whatsappChatGuide && typeof window.__whatsappChatGuide === 'object')
+                ? window.__whatsappChatGuide
+                : {};
+            var indexButton = document.getElementById('whatsappGuideOpen');
+            var keyTriggers = root.querySelectorAll('[data-guide-action="open"][data-guide-key]');
+            var modalElement = document.getElementById('whatsappGuideModal');
+            var modalTitle = document.getElementById('whatsappGuideModalLabel');
+            var modalSubtitle = document.getElementById('whatsappGuideModalSubtitle');
+            var modalBody = document.getElementById('whatsappGuideBody');
+            var modalInstance = null;
+            var guideOrder = [
+                'flow.daily',
+                'panel.my-status',
+                'panel.search',
+                'panel.filters',
+                'panel.conversation-list',
+                'chat.open-chat',
+                'chat.copy-number',
+                'chat.close-conversation',
+                'chat.delete-conversation',
+                'chat.message-input',
+                'chat.attachment',
+                'chat.send-message',
+                'warning.open-template',
+                'handoff.take-chat',
+                'handoff.transfer',
+                'new.patient-search',
+                'new.template-toggle',
+                'new.template-select',
+                'new.send-initial'
+            ];
+
+            if (!indexButton && (!keyTriggers || !keyTriggers.length)) {
+                return;
+            }
+
+            function ensureModal() {
+                if (!modalElement || !window.bootstrap || !window.bootstrap.Modal) {
+                    return null;
+                }
+                if (!modalInstance) {
+                    modalInstance = new window.bootstrap.Modal(modalElement);
+                }
+                return modalInstance;
+            }
+
+            function openGuideByKey(key, fallbackTitle, fallbackSubtitle) {
+                var normalizedKey = String(key || '').trim();
+                var guide = guides[normalizedKey] && typeof guides[normalizedKey] === 'object'
+                    ? guides[normalizedKey]
+                    : {};
+                var title = String(guide.title || fallbackTitle || 'Guia operativa de WhatsApp');
+                var subtitle = String(guide.description || fallbackSubtitle || '');
+                var markdown = String(guide.markdown || '');
+                var contentHtml = markdown.trim() !== ''
+                    ? renderGuideMarkdown(markdown)
+                    : '<p>Guia no disponible.</p>';
+                var actions = '<div class="d-flex justify-content-end mb-2">' +
+                    '<button type="button" class="btn btn-sm btn-outline-secondary" data-guide-open-index>' +
+                    '<i class="mdi mdi-arrow-left"></i> Volver al indice' +
+                    '</button>' +
+                    '</div>';
+
+                if (modalTitle) {
+                    modalTitle.textContent = title;
+                }
+                if (modalSubtitle) {
+                    modalSubtitle.textContent = subtitle;
+                }
+                if (modalBody) {
+                    modalBody.innerHTML = actions + contentHtml;
+                }
+
+                if (ensureModal()) {
+                    modalInstance.show();
+                }
+            }
+
+            function renderGuideIndex() {
+                var entries = [];
+                var fallbackEntries = [];
+
+                guideOrder.forEach(function (key) {
+                    if (guides[key] && typeof guides[key] === 'object') {
+                        entries.push([key, guides[key]]);
+                    }
+                });
+
+                if (!entries.length) {
+                    Object.keys(guides).forEach(function (key) {
+                        if (guides[key] && typeof guides[key] === 'object') {
+                            fallbackEntries.push([key, guides[key]]);
+                        }
+                    });
+                    entries = fallbackEntries;
+                }
+
+                if (modalTitle) {
+                    modalTitle.textContent = 'Guia operativa de WhatsApp';
+                }
+                if (modalSubtitle) {
+                    modalSubtitle.textContent = 'Selecciona una herramienta para ver instrucciones.';
+                }
+                if (modalBody) {
+                    if (!entries.length) {
+                        modalBody.innerHTML = '<p>Guia no disponible.</p>';
+                    } else {
+                        var buttonsHtml = entries.map(function (entry) {
+                            var key = entry[0];
+                            var guide = entry[1] || {};
+                            var title = escapeGuideHtml(String(guide.title || key));
+                            var description = escapeGuideHtml(String(guide.description || ''));
+                            return '<button type="button" class="btn btn-light border text-start" data-guide-open-key="' + escapeGuideHtml(key) + '">' +
+                                '<strong class="d-block">' + title + '</strong>' +
+                                '<small class="text-muted">' + description + '</small>' +
+                                '</button>';
+                        }).join('');
+
+                        modalBody.innerHTML = '<div class="d-flex flex-column gap-2">' + buttonsHtml + '</div>';
+                    }
+                }
+
+                if (ensureModal()) {
+                    modalInstance.show();
+                }
+            }
+
+            if (modalBody && modalBody.getAttribute('data-guide-bound') !== 'true') {
+                modalBody.setAttribute('data-guide-bound', 'true');
+                modalBody.addEventListener('click', function (event) {
+                    var indexButtonEl = event.target.closest('[data-guide-open-index]');
+                    if (indexButtonEl) {
+                        event.preventDefault();
+                        renderGuideIndex();
+                        return;
+                    }
+
+                    var openButton = event.target.closest('[data-guide-open-key]');
+                    if (!openButton) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    openGuideByKey(
+                        openButton.getAttribute('data-guide-open-key') || '',
+                        'Guia operativa de WhatsApp',
+                        ''
+                    );
+                });
+            }
+
+            if (indexButton) {
+                indexButton.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    renderGuideIndex();
+                });
+            }
+
+            if (keyTriggers && keyTriggers.length) {
+                Array.prototype.forEach.call(keyTriggers, function (trigger) {
+                    trigger.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openGuideByKey(
+                            trigger.getAttribute('data-guide-key') || '',
+                            trigger.getAttribute('aria-label') || 'Guia operativa de WhatsApp',
+                            trigger.getAttribute('title') || ''
+                        );
+                    });
+                });
+            }
+
+            window.__whatsappChatGuideOpen = openGuideByKey;
+        }
+
         function getConversationEndpoint(id) {
             return endpoints.conversation.replace('{id}', String(id));
         }
@@ -395,7 +635,9 @@
                 return false;
             }
 
-            return Boolean(conversation.needs_human);
+            var needsHuman = Boolean(conversation.needs_human);
+            var assignedId = Number(conversation.assigned_user_id || 0);
+            return needsHuman && assignedId <= 0;
         }
 
         function isConversationMine(conversation) {
@@ -3534,6 +3776,7 @@
         document.addEventListener('click', requestDesktopNotificationPermission, { capture: true });
         document.addEventListener('keydown', requestDesktopNotificationPermission, { capture: true });
 
+        initOperationalGuide();
         setupRealtime();
         syncQueueFilterButtons();
         toggleComposer(true);

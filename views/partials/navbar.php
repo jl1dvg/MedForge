@@ -390,6 +390,13 @@ if (!function_exists('isTreeOpen')) {
                             </ul>
                         </li>
                     <?php endif; ?>
+
+                    <li>
+                        <a href="/v2/auth/logout">
+                            <i class="mdi mdi-logout"></i>
+                            <span>Cerrar sesión</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>

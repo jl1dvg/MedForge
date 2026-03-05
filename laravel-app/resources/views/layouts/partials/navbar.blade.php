@@ -75,7 +75,7 @@
                         </a>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/pacientes', '/whatsapp/chat', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones', '/mailbox']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/pacientes', '/whatsapp/chat', '/whatsapp/dashboard', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones', '/mailbox']) }}">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Atención al paciente</span>
@@ -87,6 +87,7 @@
                             <li class="{{ $isPrefix('/turnoAgenda') }}"><a href="/turnoAgenda/agenda-doctor/index"><i class="mdi mdi-calendar"></i>Agendamiento</a></li>
                             <li class="{{ $isPrefix('/pacientes/certificaciones') }}"><a href="/pacientes/certificaciones"><i class="mdi mdi-qrcode-scan"></i>Certificación biométrica</a></li>
                             <li class="{{ $isActive('/whatsapp/chat') }}"><a href="/whatsapp/chat"><i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp</a></li>
+                            <li class="{{ $isActive('/whatsapp/dashboard') }}"><a href="/whatsapp/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard WhatsApp</a></li>
                             <li class="{{ $isActive('/mailbox') }}{{ $isActive('/mail') }}"><a href="/mailbox"><i class="mdi mdi-email-open-outline"></i>Mailbox</a></li>
                         </ul>
                     </li>
@@ -153,7 +154,7 @@
                         </ul>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/usuarios', '/roles', '/codes', '/codes/packages', '/mail-templates', '/reglas']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/usuarios', '/roles', '/settings', '/cron-manager', '/codes', '/codes/packages', '/mail-templates', '/reglas']) }}">
                         <a href="#">
                             <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>
                             <span>Administración y TI</span>
@@ -162,10 +163,12 @@
                         <ul class="treeview-menu">
                             <li class="{{ $isPrefix('/usuarios') }}"><a href="/usuarios"><i class="mdi mdi-account-key"></i>Usuarios</a></li>
                             <li class="{{ $isPrefix('/roles') }}"><a href="/roles"><i class="mdi mdi-shield-account"></i>Roles y permisos</a></li>
+                            <li class="{{ $isActive('/settings') }}"><a href="/settings"><i class="mdi mdi-settings"></i>Ajustes</a></li>
+                            <li class="{{ $isActive('/cron-manager') }}"><a href="/cron-manager"><i class="mdi mdi-react"></i>Cron Manager</a></li>
                             <li class="{{ $isPrefix('/codes/packages') }}"><a href="/codes/packages"><i class="mdi mdi-package-variant"></i>Catálogo de paquetes</a></li>
                             <li class="{{ $isPrefix('/codes') }}"><a href="/codes"><i class="mdi mdi-barcode-scan"></i>Códigos médicos</a></li>
                             <li class="{{ $isPrefix('/reglas') }}"><a href="/reglas"><i class="mdi mdi-function"></i>Reglas y automatizaciones</a></li>
-                            <li class="{{ $isPrefix('/mail-templates') }}"><a href="/mail-templates"><i class="mdi mdi-email-edit"></i>Plantillas de correo</a></li>
+                            <li class="{{ $isPrefix('/mail-templates') }}"><a href="/mail-templates/cobertura"><i class="mdi mdi-email-edit"></i>Plantillas de correo</a></li>
                         </ul>
                     </li>
 
