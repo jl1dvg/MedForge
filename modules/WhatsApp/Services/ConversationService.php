@@ -179,12 +179,16 @@ class ConversationService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function listConversations(string $search = '', int $limit = 25): array
+    public function listConversations(string $search = '', ?int $limit = null): array
     {
         $rows = $this->repository->listConversations($search, $limit);
         $result = [];
 
         foreach ($rows as $row) {
+            $lastInboundAt = $this->formatIsoDate($row['last_inbound_at'] ?? null);
+            $lastOutboundAt = $this->formatIsoDate($row['last_outbound_at'] ?? null);
+            $windowExpiresAt = $this->calculateCustomerCareWindowExpiresAt($lastInboundAt);
+
             $result[] = [
                 'id' => (int) $row['id'],
                 'wa_number' => $row['wa_number'],
@@ -200,6 +204,12 @@ class ConversationService
                 'assigned_at' => $this->formatIsoDate($row['assigned_at'] ?? null),
                 'handoff_requested_at' => $this->formatIsoDate($row['handoff_requested_at'] ?? null),
                 'unread_count' => (int) ($row['unread_count'] ?? 0),
+                'has_inbound' => !empty($row['has_inbound']),
+                'has_outbound' => !empty($row['has_outbound']),
+                'last_inbound_at' => $lastInboundAt,
+                'last_outbound_at' => $lastOutboundAt,
+                'window_open' => $this->isCustomerCareWindowOpen($lastInboundAt),
+                'window_expires_at' => $windowExpiresAt,
                 'last_message' => [
                     'at' => $this->formatIsoDate($row['last_message_at'] ?? $row['updated_at'] ?? $row['created_at'] ?? null),
                     'direction' => $row['last_message_direction'] ?? null,
@@ -219,7 +229,11 @@ class ConversationService
             return null;
         }
 
-        $hasInbound = $this->repository->hasInboundMessages($conversationId);
+        $hasInbound = !empty($conversation['has_inbound']);
+        $hasOutbound = !empty($conversation['has_outbound']);
+        $lastInboundAt = $this->formatIsoDate($conversation['last_inbound_at'] ?? null);
+        $lastOutboundAt = $this->formatIsoDate($conversation['last_outbound_at'] ?? null);
+        $windowExpiresAt = $this->calculateCustomerCareWindowExpiresAt($lastInboundAt);
         $messages = $this->repository->fetchMessages($conversationId, $limit);
         $this->repository->markConversationAsRead($conversationId);
 
@@ -260,6 +274,11 @@ class ConversationService
             'handoff_requested_at' => $this->formatIsoDate($conversation['handoff_requested_at'] ?? null),
             'last_message_at' => $this->formatIsoDate($conversation['last_message_at'] ?? null),
             'has_inbound' => $hasInbound,
+            'has_outbound' => $hasOutbound,
+            'last_inbound_at' => $lastInboundAt,
+            'last_outbound_at' => $lastOutboundAt,
+            'window_open' => $this->isCustomerCareWindowOpen($lastInboundAt),
+            'window_expires_at' => $windowExpiresAt,
             'messages' => $mappedMessages,
         ];
     }
@@ -315,6 +334,11 @@ class ConversationService
     public function transferConversation(int $conversationId, int $userId, ?string $notes = null): bool
     {
         return $this->getHandoffService()->transferConversation($conversationId, $userId, $notes);
+    }
+
+    public function getActiveHandoff(int $conversationId): ?array
+    {
+        return $this->getHandoffService()->getActiveHandoff($conversationId);
     }
 
     public function closeConversation(int $conversationId): bool
@@ -719,6 +743,36 @@ class ConversationService
             return $date->format(DATE_ATOM);
         } catch (Throwable $exception) {
             return null;
+        }
+    }
+
+    private function calculateCustomerCareWindowExpiresAt(?string $lastInboundAt): ?string
+    {
+        if ($lastInboundAt === null || $lastInboundAt === '') {
+            return null;
+        }
+
+        try {
+            $expiresAt = (new DateTimeImmutable($lastInboundAt))->modify('+24 hours');
+
+            return $expiresAt->format(DATE_ATOM);
+        } catch (Throwable $exception) {
+            return null;
+        }
+    }
+
+    private function isCustomerCareWindowOpen(?string $lastInboundAt): bool
+    {
+        if ($lastInboundAt === null || $lastInboundAt === '') {
+            return false;
+        }
+
+        try {
+            $expiresAt = (new DateTimeImmutable($lastInboundAt))->modify('+24 hours');
+
+            return $expiresAt->getTimestamp() > time();
+        } catch (Throwable $exception) {
+            return false;
         }
     }
 }

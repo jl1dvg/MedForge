@@ -95,7 +95,7 @@
             search: '',
             loadingConversation: false,
             sending: false,
-            selectedHasInbound: true,
+            selectedWindowOpen: false,
             forceScroll: false,
             lastInboundByConversation: {},
             selectedConversationSignature: '',
@@ -104,7 +104,7 @@
             unreadInitialized: false,
             needsHumanByConversation: {},
             needsHumanInitialized: false,
-            queueFilter: 'workqueue',
+            queueFilter: 'mine',
             canWriteCurrent: false,
             cannotWriteReason: ''
         };
@@ -148,8 +148,10 @@
         var errorAlert = root.querySelector('[data-chat-error]');
         var searchInput = root.querySelector('[data-conversation-search]');
         var queueFilterButtons = root.querySelectorAll('[data-queue-filter]');
-        var queueCountWorkqueue = root.querySelector('[data-queue-count="workqueue"]');
-        var queueCountPending = root.querySelector('[data-queue-count="pending"]');
+        var queueCountOpenWindow = root.querySelector('[data-queue-count="open_window"]');
+        var queueCountNeedsTemplate = root.querySelector('[data-queue-count="needs_template"]');
+        var queueCountAwaitingTemplateReply = root.querySelector('[data-queue-count="awaiting_template_reply"]');
+        var queueCountHandoff = root.querySelector('[data-queue-count="handoff"]');
         var queueCountMine = root.querySelector('[data-queue-count="mine"]');
         var queueCountAll = root.querySelector('[data-queue-count="all"]');
         var newConversationForm = root.querySelector('[data-new-conversation-form]');
@@ -244,7 +246,8 @@
                 var unread = conversation ? Number(conversation.unread_count || 0) : 0;
                 var needsHuman = conversation && conversation.needs_human ? 1 : 0;
                 var assignedId = conversation ? Number(conversation.assigned_user_id || 0) : 0;
-                return [conversation.id || 0, lastAt, unread, needsHuman, assignedId].join(':');
+                var windowOpen = conversation && conversation.window_open ? 1 : 0;
+                return [conversation.id || 0, lastAt, unread, needsHuman, assignedId, windowOpen].join(':');
             }).join('|');
         }
 
@@ -263,6 +266,8 @@
                 conversation.needs_human ? 1 : 0,
                 Number(conversation.assigned_user_id || 0),
                 Number(conversation.handoff_role_id || 0),
+                conversation.window_open ? 1 : 0,
+                conversation.last_inbound_at || '',
                 messages.length,
                 first ? (first.id || first.timestamp || '') : '',
                 last ? (last.id || last.timestamp || '') : '',
@@ -336,21 +341,61 @@
         }
 
         function normalizeQueueFilter(filter) {
-            if (filter === 'all' || filter === 'pending' || filter === 'mine' || filter === 'workqueue') {
+            if (filter === 'all' || filter === 'mine' || filter === 'open_window' || filter === 'needs_template' || filter === 'awaiting_template_reply' || filter === 'handoff') {
                 return filter;
             }
 
-            return 'workqueue';
+            return 'mine';
         }
 
-        function isConversationPending(conversation) {
+        function resolveWindowOpen(conversation) {
             if (!conversation) {
                 return false;
             }
 
-            var assignedId = Number(conversation.assigned_user_id || 0);
+            if (typeof conversation.window_open === 'boolean') {
+                return conversation.window_open;
+            }
 
-            return Boolean(conversation.needs_human) && assignedId <= 0;
+            var lastInboundAt = conversation.last_inbound_at || null;
+            if (!lastInboundAt) {
+                return false;
+            }
+
+            var parsed = new Date(lastInboundAt);
+            if (isNaN(parsed.getTime())) {
+                return false;
+            }
+
+            return (Date.now() - parsed.getTime()) < (24 * 60 * 60 * 1000);
+        }
+
+        function isConversationWindowOpen(conversation) {
+            return resolveWindowOpen(conversation);
+        }
+
+        function isConversationNeedsTemplate(conversation) {
+            return !isConversationWindowOpen(conversation);
+        }
+
+        function isConversationAwaitingTemplateReply(conversation) {
+            if (!conversation || isConversationWindowOpen(conversation)) {
+                return false;
+            }
+
+            var lastMessage = conversation.last_message || {};
+            var direction = String(lastMessage.direction || '').toLowerCase();
+            var type = String(lastMessage.type || '').toLowerCase();
+
+            return direction === 'outbound' && type === 'template';
+        }
+
+        function isConversationHandoff(conversation) {
+            if (!conversation) {
+                return false;
+            }
+
+            return Boolean(conversation.needs_human);
         }
 
         function isConversationMine(conversation) {
@@ -368,30 +413,93 @@
                 return true;
             }
 
-            if (normalized === 'pending') {
-                return isConversationPending(conversation);
+            if (normalized === 'open_window') {
+                return isConversationWindowOpen(conversation);
+            }
+
+            if (normalized === 'needs_template') {
+                return isConversationNeedsTemplate(conversation);
+            }
+
+            if (normalized === 'awaiting_template_reply') {
+                return isConversationAwaitingTemplateReply(conversation);
+            }
+
+            if (normalized === 'handoff') {
+                return isConversationHandoff(conversation);
             }
 
             if (normalized === 'mine') {
                 return isConversationMine(conversation);
             }
 
-            return isConversationMine(conversation) || isConversationPending(conversation);
+            return true;
+        }
+
+        function normalizeSearchText(value) {
+            var text = String(value || '').trim().toLowerCase();
+            if (!text) {
+                return '';
+            }
+            if (typeof text.normalize === 'function') {
+                text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            }
+
+            return text;
+        }
+
+        function matchesConversationSearch(conversation, normalizedQuery) {
+            if (!normalizedQuery) {
+                return true;
+            }
+            if (!conversation) {
+                return false;
+            }
+
+            var lastMessage = conversation.last_message || {};
+            var fields = [
+                conversation.display_name,
+                conversation.patient_full_name,
+                conversation.wa_number,
+                conversation.patient_hc_number,
+                conversation.assigned_user_name,
+                conversation.handoff_role_name,
+                lastMessage.preview,
+                lastMessage.body
+            ];
+
+            for (var i = 0; i < fields.length; i++) {
+                var field = normalizeSearchText(fields[i]);
+                if (field && field.indexOf(normalizedQuery) !== -1) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         function getFilteredConversations() {
+            var normalizedQuery = normalizeSearchText(state.search || '');
+
             return state.conversations.filter(function (conversation) {
                 if (!conversation) {
                     return false;
                 }
 
-                return matchesQueueFilter(conversation, state.queueFilter);
+                if (!matchesQueueFilter(conversation, state.queueFilter)) {
+                    return false;
+                }
+
+                return matchesConversationSearch(conversation, normalizedQuery);
             });
         }
 
         function updateQueueFilterStats() {
             var total = state.conversations.length;
-            var pending = 0;
+            var openWindow = 0;
+            var needsTemplate = 0;
+            var awaitingTemplateReply = 0;
+            var handoff = 0;
             var mine = 0;
 
             state.conversations.forEach(function (conversation) {
@@ -399,8 +507,17 @@
                     return;
                 }
 
-                if (isConversationPending(conversation)) {
-                    pending += 1;
+                if (isConversationWindowOpen(conversation)) {
+                    openWindow += 1;
+                }
+                if (isConversationNeedsTemplate(conversation)) {
+                    needsTemplate += 1;
+                }
+                if (isConversationAwaitingTemplateReply(conversation)) {
+                    awaitingTemplateReply += 1;
+                }
+                if (isConversationHandoff(conversation)) {
+                    handoff += 1;
                 }
                 if (isConversationMine(conversation)) {
                     mine += 1;
@@ -410,14 +527,20 @@
             if (queueCountAll) {
                 queueCountAll.textContent = String(total);
             }
-            if (queueCountPending) {
-                queueCountPending.textContent = String(pending);
+            if (queueCountOpenWindow) {
+                queueCountOpenWindow.textContent = String(openWindow);
+            }
+            if (queueCountNeedsTemplate) {
+                queueCountNeedsTemplate.textContent = String(needsTemplate);
+            }
+            if (queueCountAwaitingTemplateReply) {
+                queueCountAwaitingTemplateReply.textContent = String(awaitingTemplateReply);
+            }
+            if (queueCountHandoff) {
+                queueCountHandoff.textContent = String(handoff);
             }
             if (queueCountMine) {
                 queueCountMine.textContent = String(mine);
-            }
-            if (queueCountWorkqueue) {
-                queueCountWorkqueue.textContent = String(pending + mine);
             }
         }
 
@@ -427,12 +550,18 @@
             }
 
             queueFilterButtons.forEach(function (button) {
-                var value = normalizeQueueFilter(String(button.getAttribute('data-queue-filter') || 'workqueue'));
+                var value = normalizeQueueFilter(String(button.getAttribute('data-queue-filter') || 'mine'));
                 var isActive = value === state.queueFilter;
 
-                button.classList.remove('btn-primary', 'btn-outline-secondary', 'btn-outline-warning', 'btn-outline-success');
-                if (value === 'pending') {
+                button.classList.remove('btn-primary', 'btn-outline-primary', 'btn-outline-secondary', 'btn-outline-warning', 'btn-outline-success', 'btn-outline-info', 'btn-outline-danger');
+                if (value === 'open_window') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-info');
+                } else if (value === 'needs_template') {
                     button.classList.add(isActive ? 'btn-primary' : 'btn-outline-warning');
+                } else if (value === 'awaiting_template_reply') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-primary');
+                } else if (value === 'handoff') {
+                    button.classList.add(isActive ? 'btn-primary' : 'btn-outline-danger');
                 } else if (value === 'mine') {
                     button.classList.add(isActive ? 'btn-primary' : 'btn-outline-success');
                 } else if (value === 'all') {
@@ -461,26 +590,42 @@
                 return;
             }
 
-            if (filter === 'pending') {
-                paragraphs[0].textContent = 'No hay conversaciones pendientes por tomar.';
+            if (filter === 'open_window') {
+                paragraphs[0].textContent = 'No hay conversaciones con ventana 24h abierta.';
                 if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Aquí verás los casos que requieren agente y aún no están asignados.';
+                    paragraphs[1].textContent = 'Aquí verás los chats que aceptan mensajes libres en este momento.';
+                }
+                return;
+            }
+
+            if (filter === 'needs_template') {
+                paragraphs[0].textContent = 'No hay conversaciones que requieran plantilla.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Estos contactos están fuera de la ventana de 24h.';
+                }
+                return;
+            }
+
+            if (filter === 'awaiting_template_reply') {
+                paragraphs[0].textContent = 'No hay contactos esperando respuesta a plantilla.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Aquí verás a quienes ya se les envió plantilla y aún no responden.';
+                }
+                return;
+            }
+
+            if (filter === 'handoff') {
+                paragraphs[0].textContent = 'No hay conversaciones que requieran agente.';
+                if (paragraphs[1]) {
+                    paragraphs[1].textContent = 'Los casos escalados a humano aparecerán aquí.';
                 }
                 return;
             }
 
             if (filter === 'mine') {
-                paragraphs[0].textContent = 'No tienes conversaciones asignadas.';
+                paragraphs[0].textContent = 'No tienes conversaciones activas asignadas.';
                 if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Cuando tomes un caso aparecerá en esta lista.';
-                }
-                return;
-            }
-
-            if (filter === 'workqueue') {
-                paragraphs[0].textContent = 'No tienes pendientes ni conversaciones asignadas.';
-                if (paragraphs[1]) {
-                    paragraphs[1].textContent = 'Puedes revisar "Todas" para consultar el historial completo.';
+                    paragraphs[1].textContent = 'Cuando tomes o te asignen un chat, aparecerá en esta lista.';
                 }
                 return;
             }
@@ -536,6 +681,13 @@
                 };
             }
 
+            if (!isConversationWindowOpen(conversation)) {
+                return {
+                    canWrite: false,
+                    reason: 'La ventana de 24h está cerrada. Envía una plantilla para continuar.'
+                };
+            }
+
             return {
                 canWrite: true,
                 reason: ''
@@ -565,7 +717,7 @@
 
         function resetConversationView() {
             state.selectedId = null;
-            state.selectedHasInbound = true;
+            state.selectedWindowOpen = false;
             state.selectedConversationSignature = '';
             state.canWriteCurrent = false;
             state.cannotWriteReason = '';
@@ -706,9 +858,12 @@
             }
 
             if (transferSelect && transferButton) {
-                var canTransfer = canAssign && (assignedId === currentUserId || !assignedId);
+                var canTransfer = canAssign && assignedId === currentUserId;
                 transferSelect.disabled = !canTransfer;
                 transferButton.disabled = !canTransfer;
+                if (transferNoteInput) {
+                    transferNoteInput.disabled = !canTransfer;
+                }
             }
         }
 
@@ -801,6 +956,56 @@
             }
         }
 
+        function parseApiPayload(response) {
+            return response.text().then(function (raw) {
+                var payload = null;
+                if (raw) {
+                    try {
+                        payload = JSON.parse(raw);
+                    } catch (error) {
+                        payload = null;
+                    }
+                }
+
+                return {
+                    payload: payload,
+                    raw: raw || ''
+                };
+            });
+        }
+
+        function resolveApiError(response, payload, raw, fallbackMessage) {
+            if (payload && payload.error) {
+                var detail = payload.detail ? String(payload.detail) : '';
+                if (detail !== '') {
+                    return String(payload.error) + ' (' + detail + ')';
+                }
+                return String(payload.error);
+            }
+
+            var compact = String(raw || '').replace(/\s+/g, ' ').trim();
+            if (compact !== '') {
+                return compact.length > 180 ? (compact.slice(0, 177) + '...') : compact;
+            }
+
+            if (!response.ok) {
+                return 'HTTP ' + response.status + ' · ' + fallbackMessage;
+            }
+
+            return fallbackMessage;
+        }
+
+        function handleApiResponse(response, fallbackMessage) {
+            return parseApiPayload(response).then(function (result) {
+                var payload = result.payload;
+                if (!response.ok || !payload || !payload.ok) {
+                    throw new Error(resolveApiError(response, payload, result.raw, fallbackMessage));
+                }
+
+                return payload.data;
+            });
+        }
+
         function assignConversation(conversationId, userId) {
             return fetch(getAssignEndpoint(conversationId), {
                 method: 'POST',
@@ -811,13 +1016,7 @@
                 body: JSON.stringify({ user_id: userId }),
                 credentials: 'same-origin'
             }).then(function (response) {
-                return response.json().then(function (payload) {
-                    if (!response.ok || !payload || !payload.ok) {
-                        var error = payload && payload.error ? payload.error : 'No fue posible asignar la conversación.';
-                        throw new Error(error);
-                    }
-                    return payload.data;
-                });
+                return handleApiResponse(response, 'No fue posible asignar la conversación.');
             }).then(function (conversation) {
                 applyConversationUpdate(conversation);
             }).catch(function (error) {
@@ -825,6 +1024,7 @@
                     errorAlert.textContent = error.message || 'No fue posible asignar la conversación.';
                     errorAlert.classList.remove('d-none');
                 }
+                return openConversation(conversationId, { silent: true }).catch(function () {});
             });
         }
 
@@ -838,13 +1038,7 @@
                 body: JSON.stringify({ user_id: userId, note: note || '' }),
                 credentials: 'same-origin'
             }).then(function (response) {
-                return response.json().then(function (payload) {
-                    if (!response.ok || !payload || !payload.ok) {
-                        var error = payload && payload.error ? payload.error : 'No fue posible transferir la conversación.';
-                        throw new Error(error);
-                    }
-                    return payload.data;
-                });
+                return handleApiResponse(response, 'No fue posible transferir la conversación.');
             }).then(function (conversation) {
                 if (transferNoteInput) {
                     transferNoteInput.value = '';
@@ -866,13 +1060,7 @@
                 },
                 credentials: 'same-origin'
             }).then(function (response) {
-                return response.json().then(function (payload) {
-                    if (!response.ok || !payload || !payload.ok) {
-                        var error = payload && payload.error ? payload.error : 'No fue posible cerrar la conversación.';
-                        throw new Error(error);
-                    }
-                    return payload.data;
-                });
+                return handleApiResponse(response, 'No fue posible cerrar la conversación.');
             }).then(function (conversation) {
                 applyConversationUpdate(conversation);
                 return openConversation(conversationId, { silent: true });
@@ -887,13 +1075,7 @@
                 },
                 credentials: 'same-origin'
             }).then(function (response) {
-                return response.json().then(function (payload) {
-                    if (!response.ok || !payload || !payload.ok) {
-                        var error = payload && payload.error ? payload.error : 'No fue posible eliminar la conversación.';
-                        throw new Error(error);
-                    }
-                    return payload.data;
-                });
+                return handleApiResponse(response, 'No fue posible eliminar la conversación.');
             });
         }
 
@@ -1332,8 +1514,18 @@
                     var assignedBadge = createElement('span', 'badge bg-success-light text-success me-1', assignedLabel);
                     badgeWrap.appendChild(assignedBadge);
                 } else if (conversation.needs_human) {
-                    var handoffBadge = createElement('span', 'badge bg-warning-light text-warning me-1', 'Pendiente');
+                    var handoffBadge = createElement('span', 'badge bg-danger-light text-danger me-1', 'Pendiente');
                     badgeWrap.appendChild(handoffBadge);
+                }
+                if (isConversationWindowOpen(conversation)) {
+                    var windowBadge = createElement('span', 'badge bg-info-light text-info me-1', '24h');
+                    badgeWrap.appendChild(windowBadge);
+                } else if (isConversationAwaitingTemplateReply(conversation)) {
+                    var awaitingBadge = createElement('span', 'badge bg-primary-light text-primary me-1', 'Esperando');
+                    badgeWrap.appendChild(awaitingBadge);
+                } else {
+                    var templateBadge = createElement('span', 'badge bg-warning-light text-warning me-1', 'Plantilla');
+                    badgeWrap.appendChild(templateBadge);
                 }
                 if (conversation.unread_count && conversation.unread_count > 0) {
                     var unreadBadge = createElement('span', 'badge bg-primary-light text-primary', String(conversation.unread_count));
@@ -1777,7 +1969,9 @@
                 }
             });
             var hasInbound = Boolean(conversation.has_inbound) || inboundCount > 0;
-            var isInitialContact = hasInbound && outboundCount === 0;
+            var hasOutbound = Boolean(conversation.has_outbound) || outboundCount > 0;
+            var isInitialContact = hasInbound && !hasOutbound;
+            var windowOpen = isConversationWindowOpen(conversation);
 
             if (unreadIndicator) {
                 var unreadCount = summary && summary.unread_count ? summary.unread_count : 0;
@@ -1844,12 +2038,15 @@
                 } else if (conversation.needs_human) {
                     botStatusText = 'Bot en pausa (handoff)';
                     botStatusCompact.classList.add('meta-warning');
-                } else if (isInitialContact) {
-                    botStatusText = 'Bot activo (primer contacto)';
+                } else if (windowOpen) {
+                    botStatusText = 'Ventana 24h abierta';
                     botStatusCompact.classList.add('meta-active');
+                } else if (isConversationAwaitingTemplateReply(conversation)) {
+                    botStatusText = 'Esperando respuesta a plantilla';
+                    botStatusCompact.classList.add('meta-warning');
                 } else {
-                    botStatusText = 'Bot activo';
-                    botStatusCompact.classList.add('meta-active');
+                    botStatusText = 'Fuera de ventana (usa plantilla)';
+                    botStatusCompact.classList.add('meta-warning');
                 }
 
                 botStatusCompact.textContent = botStatusText;
@@ -1956,31 +2153,15 @@
             applyAvatarTheme(headerAvatar, conversation.display_name || conversation.patient_full_name || conversation.wa_number || 'WA');
         }
 
-        function resolveHasInbound(conversation) {
-            if (conversation && typeof conversation.has_inbound === 'boolean') {
-                return conversation.has_inbound;
-            }
-
-            if (conversation && Array.isArray(conversation.messages)) {
-                for (var i = 0; i < conversation.messages.length; i++) {
-                    if (conversation.messages[i] && conversation.messages[i].direction === 'inbound') {
-                        return true;
-                    }
-                }
-            }
-
-            return true;
-        }
-
         function updateTemplateWarning(conversation) {
-            var hasInbound = resolveHasInbound(conversation);
-            state.selectedHasInbound = hasInbound;
+            var windowOpen = isConversationWindowOpen(conversation);
+            state.selectedWindowOpen = windowOpen;
 
             if (!templateWarning) {
                 return;
             }
 
-            if (hasInbound) {
+            if (windowOpen) {
                 templateWarning.classList.add('d-none');
             } else {
                 templateWarning.classList.remove('d-none');
@@ -2283,6 +2464,7 @@
                     state.loadingConversation = false;
                     state.selectedId = null;
                     state.selectedConversationSignature = '';
+                    state.selectedWindowOpen = false;
                     state.canWriteCurrent = false;
                     state.cannotWriteReason = '';
                     console.error('No fue posible cargar la conversación', error);
@@ -2478,9 +2660,9 @@
                     return;
                 }
 
-                if (!state.selectedHasInbound) {
+                if (!state.selectedWindowOpen) {
                     if (errorAlert) {
-                        errorAlert.textContent = 'Este contacto no ha iniciado conversación. Envía una plantilla aprobada desde la pestaña Nuevo.';
+                        errorAlert.textContent = 'Esta conversación está fuera de ventana. Envía una plantilla aprobada desde la pestaña Nuevo.';
                         errorAlert.classList.remove('d-none');
                     }
                     return;
@@ -2531,16 +2713,21 @@
         }
 
         if (searchInput) {
-            searchInput.addEventListener('input', debounce(function (event) {
-                state.search = event.target.value.trim();
+            var debouncedSearchReload = debounce(function () {
                 loadConversations();
-            }, 300));
+            }, 300);
+
+            searchInput.addEventListener('input', function (event) {
+                state.search = event.target.value.trim();
+                renderConversations();
+                debouncedSearchReload();
+            });
         }
 
         if (queueFilterButtons && queueFilterButtons.length) {
             queueFilterButtons.forEach(function (button) {
                 button.addEventListener('click', function () {
-                    var filter = String(button.getAttribute('data-queue-filter') || 'workqueue');
+                    var filter = String(button.getAttribute('data-queue-filter') || 'mine');
                     setQueueFilter(filter);
                 });
             });

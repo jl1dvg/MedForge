@@ -29,10 +29,156 @@
             }
         };
 
+        var kpiGuide = {
+            people_inbound: {
+                title: 'Personas que escribieron',
+                definition: 'Números únicos que enviaron al menos un mensaje inbound en el periodo.',
+                formula: 'COUNT DISTINCT wa_number con direction=inbound'
+            },
+            conversations_attended_human: {
+                title: 'Conversaciones atendidas',
+                definition: 'Conversaciones inbound con respuesta humana luego de asignación de handoff.',
+                formula: 'COUNT conversaciones con first_human_reply_at'
+            },
+            conversations_lost: {
+                title: 'Conversaciones perdidas',
+                definition: 'Conversaciones inbound sin respuesta humana.',
+                formula: 'COUNT conversaciones inbound - conversaciones atendidas'
+            },
+            attention_rate: {
+                title: 'Tasa de atención',
+                definition: 'Porcentaje de personas que escribieron y recibieron atención humana.',
+                formula: '(people_attended_human / people_inbound) * 100'
+            },
+            avg_first_human_response_minutes: {
+                title: 'Tiempo de primera respuesta humana',
+                definition: 'Promedio en minutos entre primer inbound y primera respuesta humana.',
+                formula: 'AVG(TIMESTAMPDIFF(first_inbound_at, first_human_reply_at))'
+            },
+            conversations_abandoned: {
+                title: 'Conversaciones abandonadas',
+                definition: 'Conversaciones sin respuesta humana y sin actividad inbound en más de 24h.',
+                formula: 'COUNT conversaciones lost con last_inbound_at <= NOW()-24h'
+            },
+            conversations_resolved: {
+                title: 'Conversaciones resueltas',
+                definition: 'Conversaciones atendidas sin nueva actividad inbound por 24h.',
+                formula: 'COUNT conversaciones atendidas con last_inbound_at <= NOW()-24h'
+            },
+            peak_open_conversations: {
+                title: 'Pico de conversaciones simultáneas',
+                definition: 'Máximo de conversaciones abiertas al mismo tiempo (desde primer inbound hasta primera respuesta humana).',
+                formula: 'MAX(overlap(intervalos opened_at -> closed_at))'
+            },
+            conversations_new: {
+                title: 'Conversaciones nuevas',
+                definition: 'Cantidad de conversaciones creadas en el periodo.',
+                formula: 'COUNT(whatsapp_conversations.created_at en rango)'
+            },
+            incoming_conversations: {
+                title: 'Conversaciones que ingresaron',
+                definition: 'Conversaciones que entraron a bandeja humana (handoff en cola) según filtros.',
+                formula: 'COUNT DISTINCT conversation_id en whatsapp_handoffs.queued_at en rango'
+            },
+            attended_conversations: {
+                title: 'Conversaciones atendidas',
+                definition: 'Conversaciones con handoff asignado que tuvieron respuesta outbound después de la asignación.',
+                formula: 'COUNT DISTINCT conversation_id con assigned_at y outbound >= assigned_at'
+            },
+            contacts_active: {
+                title: 'Contactos activos',
+                definition: 'Contactos únicos con actividad de mensajes en el periodo.',
+                formula: 'COUNT DISTINCT wa_number con mensajes en rango'
+            },
+            messages_inbound: {
+                title: 'Mensajes inbound',
+                definition: 'Mensajes recibidos desde pacientes/contactos.',
+                formula: 'COUNT whatsapp_messages direction=inbound'
+            },
+            messages_outbound: {
+                title: 'Mensajes outbound',
+                definition: 'Mensajes enviados desde la plataforma.',
+                formula: 'COUNT whatsapp_messages direction=outbound'
+            },
+            avg_first_response_minutes: {
+                title: 'Tiempo de primera respuesta',
+                definition: 'Promedio en minutos entre primer inbound y primera respuesta outbound por conversación.',
+                formula: 'AVG(TIMESTAMPDIFF(first_inbound, first_outbound))'
+            },
+            handoffs_total: {
+                title: 'Handoffs',
+                definition: 'Total de escalados a atención humana.',
+                formula: 'SUM(handoffs por estado)'
+            },
+            handoff_rate: {
+                title: 'Tasa de handoff',
+                definition: 'Porcentaje de conversaciones inbound que escalaron a humano.',
+                formula: '(handoff_conversations / inbound_conversations) * 100'
+            },
+            autoservice_rate: {
+                title: 'Tasa de autoservicio',
+                definition: 'Porcentaje de conversaciones inbound que se resolvieron sin humano.',
+                formula: '(autoservice_conversations / inbound_conversations) * 100'
+            },
+            fallback_rate: {
+                title: 'Fallback / No entendido',
+                definition: 'Porcentaje de mensajes inbound que activaron respuesta de fallback.',
+                formula: '(fallback_messages / messages_inbound) * 100'
+            },
+            sla_assignments_rate: {
+                title: 'SLA de asignación',
+                definition: 'Porcentaje de handoffs asignados dentro de la meta de minutos.',
+                formula: '(asignaciones_en_meta / asignaciones_totales) * 100'
+            },
+            live_queue_total: {
+                title: 'Cola activa',
+                definition: 'Handoffs abiertos actualmente (en cola + asignados).',
+                formula: 'queued + assigned + assigned_overdue'
+            },
+            queue_window_open: {
+                title: 'Ventana 24h abierta',
+                definition: 'Conversaciones con último inbound dentro de 24 horas.',
+                formula: 'COUNT conversaciones con last_inbound_at >= NOW()-24h'
+            },
+            queue_needs_template: {
+                title: 'Requiere plantilla',
+                definition: 'Conversaciones fuera de ventana de 24h para mensaje libre.',
+                formula: 'COUNT conversaciones con last_inbound_at < NOW()-24h o sin inbound'
+            },
+            queue_awaiting_template_reply: {
+                title: 'Esperando respuesta plantilla',
+                definition: 'Fuera de ventana y último mensaje outbound de tipo template.',
+                formula: 'COUNT conversaciones needs_template con last_message=outbound/template'
+            },
+            handoff_transfers: {
+                title: 'Transferencias',
+                definition: 'Cantidad de transferencias entre agentes registradas en el periodo.',
+                formula: 'COUNT eventos transferred'
+            },
+            reopened_24h: {
+                title: 'Reaperturas 24h',
+                definition: 'Casos resueltos que volvieron a escribir en menos de 24 horas.',
+                formula: 'COUNT handoffs con inbound <= 24h post resolución'
+            },
+            reopened_72h: {
+                title: 'Reaperturas 72h',
+                definition: 'Casos resueltos que volvieron a escribir en menos de 72 horas.',
+                formula: 'COUNT handoffs con inbound <= 72h post resolución'
+            },
+            avg_handoff_assignment_minutes: {
+                title: 'Tiempo de asignación handoff',
+                definition: 'Promedio en minutos entre encolado y asignación del handoff.',
+                formula: 'AVG(TIMESTAMPDIFF(queued_at, assigned_at))'
+            }
+        };
+
         var rangeInput = document.getElementById('wa-kpi-range');
         var roleSelect = document.getElementById('wa-kpi-role');
         var agentSelect = document.getElementById('wa-kpi-agent');
         var refreshButton = document.getElementById('wa-kpi-refresh');
+        var exportExcelButton = document.getElementById('wa-kpi-export-excel');
+        var exportPdfButton = document.getElementById('wa-kpi-export-pdf');
+        var exportMarkdownButton = document.getElementById('wa-kpi-export-md');
         var cardNodes = root.querySelectorAll('[data-kpi-card]');
 
         var drilldownModalNode = document.getElementById('waKpiDrilldownModal');
@@ -41,10 +187,16 @@
         var drilldownTable = document.getElementById('wa-kpi-drilldown-table');
         var drilldownPrevButton = document.getElementById('wa-kpi-drilldown-prev');
         var drilldownNextButton = document.getElementById('wa-kpi-drilldown-next');
+        var guideModalNode = document.getElementById('waKpiGuideModal');
+        var guideContent = document.getElementById('wa-kpi-guide-content');
 
         var drilldownModal = null;
+        var guideModal = null;
         if (window.bootstrap && typeof window.bootstrap.Modal === 'function' && drilldownModalNode) {
             drilldownModal = new window.bootstrap.Modal(drilldownModalNode);
+        }
+        if (window.bootstrap && typeof window.bootstrap.Modal === 'function' && guideModalNode) {
+            guideModal = new window.bootstrap.Modal(guideModalNode);
         }
 
         function toIsoDate(date) {
@@ -164,6 +316,211 @@
             return query.toString();
         }
 
+        function metricValueLabel(metricKey, value) {
+            var number = Number(value);
+            if (!Number.isFinite(number)) {
+                return '—';
+            }
+
+            if (metricKey.indexOf('rate') !== -1) {
+                return formatPercent(number);
+            }
+            if (metricKey.indexOf('minutes') !== -1) {
+                return formatDecimal(number, 1) + ' min';
+            }
+
+            return formatNumber(number);
+        }
+
+        function buildSummaryExportRows(summary) {
+            var rows = [];
+            Object.keys(kpiGuide).forEach(function (metricKey) {
+                if (!summary || !Object.prototype.hasOwnProperty.call(summary, metricKey)) {
+                    return;
+                }
+
+                var guide = kpiGuide[metricKey];
+                rows.push([
+                    guide.title,
+                    metricValueLabel(metricKey, summary[metricKey]),
+                    guide.definition
+                ]);
+            });
+
+            return rows;
+        }
+
+        function buildTrendExportRows(data) {
+            var labels = data && data.trends && Array.isArray(data.trends.labels) ? data.trends.labels : [];
+            var rows = [['Fecha', 'Conversaciones', 'Inbound', 'Outbound', 'Handoffs cola', 'Handoffs resueltos', 'Transferencias']];
+
+            labels.forEach(function (label, index) {
+                rows.push([
+                    label,
+                    Number((data.trends.conversations || [])[index] || 0),
+                    Number((data.trends.messages_inbound || [])[index] || 0),
+                    Number((data.trends.messages_outbound || [])[index] || 0),
+                    Number((data.trends.handoffs_queued || [])[index] || 0),
+                    Number((data.trends.handoffs_resolved || [])[index] || 0),
+                    Number((data.trends.handoff_transfers || [])[index] || 0)
+                ]);
+            });
+
+            return rows;
+        }
+
+        function getSelectedText(selectNode) {
+            if (!selectNode || selectNode.selectedIndex < 0) {
+                return 'Todos';
+            }
+
+            var option = selectNode.options[selectNode.selectedIndex];
+            return option ? String(option.textContent || '').trim() : 'Todos';
+        }
+
+        function buildExportFileBaseName() {
+            return 'whatsapp_kpis_' + (state.dateFrom || 'desde') + '_a_' + (state.dateTo || 'hasta');
+        }
+
+        function buildExportContextLines() {
+            var lines = [];
+            lines.push('Periodo: ' + (state.dateFrom || '—') + ' a ' + (state.dateTo || '—'));
+            lines.push('Equipo: ' + getSelectedText(roleSelect));
+            lines.push('Agente: ' + getSelectedText(agentSelect));
+            return lines;
+        }
+
+        function exportToExcel() {
+            if (!state.data || typeof window.XLSX === 'undefined') {
+                window.alert('No hay datos cargados para exportar o falta la librería de Excel.');
+                return;
+            }
+
+            var workbook = window.XLSX.utils.book_new();
+            var summaryRows = [['KPI', 'Valor', 'Definición']].concat(buildSummaryExportRows(state.data.summary || {}));
+            var trendRows = buildTrendExportRows(state.data);
+            var roleRows = [['Equipo', 'Total', 'En cola', 'Asignados', 'Resueltos', 'Vencidos']];
+            var agentRows = [['Agente', 'Conversaciones atendidas', 'Handoffs activos', 'Primera respuesta prom. (min)']];
+
+            (state.data.breakdowns && Array.isArray(state.data.breakdowns.handoffs_by_role) ? state.data.breakdowns.handoffs_by_role : []).forEach(function (row) {
+                roleRows.push([
+                    row.role_name || 'Sin rol',
+                    Number(row.total || 0),
+                    Number(row.queued || 0),
+                    Number(row.assigned || 0),
+                    Number(row.resolved || 0),
+                    Number(row.expired || 0)
+                ]);
+            });
+
+            var activeByAgent = {};
+            (state.data.breakdowns && Array.isArray(state.data.breakdowns.handoffs_by_agent) ? state.data.breakdowns.handoffs_by_agent : []).forEach(function (row) {
+                var userId = Number(row.user_id || 0);
+                if (!userId) {
+                    return;
+                }
+                activeByAgent[userId] = Number(row.active_count || 0);
+            });
+
+            (state.data.breakdowns && Array.isArray(state.data.breakdowns.human_attention_by_agent) ? state.data.breakdowns.human_attention_by_agent : []).forEach(function (row) {
+                var userId = Number(row.user_id || 0);
+                agentRows.push([
+                    row.agent_name || ('Agente #' + row.user_id),
+                    Number(row.attended_conversations || 0),
+                    Number(activeByAgent[userId] || 0),
+                    row.avg_first_response_minutes == null ? '' : Number(row.avg_first_response_minutes)
+                ]);
+            });
+
+            window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.aoa_to_sheet(summaryRows), 'Resumen');
+            window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.aoa_to_sheet(trendRows), 'Tendencia');
+            window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.aoa_to_sheet(roleRows), 'Equipos');
+            window.XLSX.utils.book_append_sheet(workbook, window.XLSX.utils.aoa_to_sheet(agentRows), 'Agentes');
+            window.XLSX.writeFile(workbook, buildExportFileBaseName() + '.xlsx');
+        }
+
+        function exportToPdf() {
+            if (!state.data || !window.jspdf || typeof window.jspdf.jsPDF !== 'function') {
+                window.alert('No hay datos cargados para exportar o falta la librería PDF.');
+                return;
+            }
+
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+            var summaryRows = buildSummaryExportRows(state.data.summary || {});
+            var context = buildExportContextLines();
+            var startY = 42;
+
+            doc.setFontSize(14);
+            doc.text('Dashboard KPI WhatsApp', 40, startY);
+            doc.setFontSize(9);
+            context.forEach(function (line, index) {
+                doc.text(line, 40, startY + 18 + (index * 12));
+            });
+
+            var tableBody = summaryRows.map(function (row) {
+                return [row[0], row[1], row[2]];
+            });
+
+            if (typeof doc.autoTable === 'function') {
+                doc.autoTable({
+                    startY: startY + 60,
+                    head: [['KPI', 'Valor', 'Definición']],
+                    body: tableBody,
+                    styles: { fontSize: 8, cellPadding: 4 },
+                    headStyles: { fillColor: [30, 64, 175] },
+                    columnStyles: {
+                        0: { cellWidth: 150 },
+                        1: { cellWidth: 80 },
+                        2: { cellWidth: 300 }
+                    }
+                });
+            } else {
+                tableBody.slice(0, 30).forEach(function (row, index) {
+                    doc.text(row[0] + ': ' + row[1], 40, startY + 70 + (index * 12));
+                });
+            }
+
+            doc.save(buildExportFileBaseName() + '.pdf');
+        }
+
+        function exportGuideMarkdown() {
+            if (!state.data || !state.data.summary) {
+                window.alert('No hay datos cargados para generar la guía.');
+                return;
+            }
+
+            var lines = [];
+            lines.push('# Guía KPI WhatsApp');
+            lines.push('');
+            buildExportContextLines().forEach(function (line) {
+                lines.push('- ' + line);
+            });
+            lines.push('');
+
+            Object.keys(kpiGuide).forEach(function (metricKey) {
+                var guide = kpiGuide[metricKey];
+                var metricValue = state.data.summary[metricKey];
+                if (metricValue === undefined) {
+                    return;
+                }
+
+                lines.push('## ' + guide.title);
+                lines.push('');
+                lines.push('- Valor actual: **' + metricValueLabel(metricKey, metricValue) + '**');
+                lines.push('- Qué mide: ' + guide.definition);
+                lines.push('- Fórmula: `' + guide.formula + '`');
+                lines.push('');
+            });
+
+            if (guideContent) {
+                guideContent.textContent = lines.join('\n');
+            }
+            if (guideModal) {
+                guideModal.show();
+            }
+        }
+
         function mapStatusLabel(status) {
             var normalized = String(status || '').toLowerCase();
             if (normalized === 'sent') {
@@ -270,15 +627,36 @@
                 return;
             }
 
+            var selectedAgentLabel = '';
+            if (state.agentId && agentSelect && agentSelect.selectedIndex >= 0) {
+                var selectedOption = agentSelect.options[agentSelect.selectedIndex];
+                if (selectedOption && selectedOption.value) {
+                    selectedAgentLabel = String(selectedOption.textContent || '').trim();
+                }
+            }
+
             setText('conversations_new', formatNumber(summary.conversations_new));
             setText('contacts_active', formatNumber(summary.contacts_active));
             setText('messages_inbound', formatNumber(summary.messages_inbound));
             setText('messages_outbound', formatNumber(summary.messages_outbound));
+            setText('people_inbound', formatNumber(summary.people_inbound));
+            setText('conversations_attended_human', formatNumber(summary.conversations_attended_human));
+            setText('conversations_lost', formatNumber(summary.conversations_lost));
+            setText('attention_rate', formatPercent(summary.attention_rate));
+            setText('avg_first_human_response_minutes', summary.avg_first_human_response_minutes == null ? '—' : formatDecimal(summary.avg_first_human_response_minutes, 1));
+            setText('conversations_abandoned', formatNumber(summary.conversations_abandoned));
+            setText('conversations_resolved', formatNumber(summary.conversations_resolved));
+            setText('peak_open_conversations', formatNumber(summary.peak_open_conversations));
             setText('handoffs_total', formatNumber(summary.handoffs_total));
+            setText('incoming_conversations', formatNumber(summary.incoming_conversations));
+            setText('attended_conversations', formatNumber(summary.attended_conversations));
             setText('handoff_rate', formatPercent(summary.handoff_rate));
             setText('autoservice_rate', formatPercent(summary.autoservice_rate));
             setText('fallback_rate', formatPercent(summary.fallback_rate));
             setText('live_queue_total', formatNumber(summary.live_queue_total));
+            setText('queue_window_open', formatNumber(summary.queue_window_open));
+            setText('queue_needs_template', formatNumber(summary.queue_needs_template));
+            setText('queue_awaiting_template_reply', formatNumber(summary.queue_awaiting_template_reply));
             setText('handoff_transfers', formatNumber(summary.handoff_transfers));
             setText('reopened_24h', formatNumber(summary.reopened_24h));
             setText('reopened_72h', formatNumber(summary.reopened_72h));
@@ -286,6 +664,31 @@
             setText('avg_first_response_minutes', summary.avg_first_response_minutes == null ? '—' : formatDecimal(summary.avg_first_response_minutes, 1));
             setText('avg_handoff_assignment_minutes', summary.avg_handoff_assignment_minutes == null ? '—' : formatDecimal(summary.avg_handoff_assignment_minutes, 1));
             setText('sla_assignments_rate', formatPercent(summary.sla_assignments_rate));
+
+            setSubText(
+                'conversations_attended_human',
+                formatNumber(summary.people_attended_human) + ' personas atendidas'
+            );
+
+            setSubText(
+                'conversations_lost',
+                formatNumber(summary.people_lost) + ' personas · ' + formatPercent(summary.loss_rate) + ' pérdida'
+            );
+
+            setSubText(
+                'attention_rate',
+                formatNumber(summary.people_attended_human) + ' de ' + formatNumber(summary.people_inbound) + ' personas'
+            );
+
+            setSubText(
+                'conversations_abandoned',
+                formatPercent(summary.abandonment_rate) + ' sobre personas inbound'
+            );
+
+            setSubText(
+                'peak_open_conversations',
+                summary.peak_open_at ? ('Pico: ' + summary.peak_open_at) : 'Sin superposición detectada'
+            );
 
             setSubText(
                 'sla_assignments_rate',
@@ -298,8 +701,35 @@
             );
 
             setSubText(
+                'queue_window_open',
+                formatPercent(summary.queue_window_open_rate) + ' de ' + formatNumber(summary.queue_conversations_total) + ' conversaciones'
+            );
+
+            setSubText(
+                'queue_needs_template',
+                formatPercent(summary.queue_needs_template_rate) + ' de ' + formatNumber(summary.queue_conversations_total) + ' conversaciones'
+            );
+
+            setSubText(
+                'queue_awaiting_template_reply',
+                formatPercent(summary.queue_awaiting_template_reply_rate) + ' de las que requieren plantilla'
+            );
+
+            setSubText(
                 'handoff_rate',
                 formatNumber(summary.handoff_conversations) + ' de ' + formatNumber(summary.inbound_conversations) + ' conversaciones inbound'
+            );
+
+            setSubText(
+                'incoming_conversations',
+                state.agentId
+                    ? ('Filtrado por ' + (selectedAgentLabel || ('agente #' + state.agentId)))
+                    : 'Filtra por agente para verlo por persona'
+            );
+
+            setSubText(
+                'attended_conversations',
+                formatPercent(summary.attended_rate) + ' de ' + formatNumber(summary.incoming_conversations) + ' ingresadas'
             );
 
             setSubText(
@@ -488,27 +918,34 @@
                 return;
             }
 
-            var rows = data && data.breakdowns && Array.isArray(data.breakdowns.handoffs_by_agent)
-                ? data.breakdowns.handoffs_by_agent
+            var rows = data && data.breakdowns && Array.isArray(data.breakdowns.human_attention_by_agent)
+                ? data.breakdowns.human_attention_by_agent
                 : [];
+            var activeByAgent = {};
+            (data && data.breakdowns && Array.isArray(data.breakdowns.handoffs_by_agent)
+                ? data.breakdowns.handoffs_by_agent
+                : []).forEach(function (row) {
+                var userId = Number(row.user_id || 0);
+                if (!userId) {
+                    return;
+                }
+                activeByAgent[userId] = Number(row.active_count || 0);
+            });
 
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Sin actividad de agentes en el periodo.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Sin actividad de agentes en el periodo.</td></tr>';
                 return;
             }
 
             var html = rows.map(function (row) {
-                var assignmentMinutes = row.avg_assignment_minutes == null ? '—' : formatDecimal(row.avg_assignment_minutes, 1) + ' min';
-                var resolutionMinutes = row.avg_resolution_minutes == null ? '—' : formatDecimal(row.avg_resolution_minutes, 1) + ' min';
+                var firstResponseMinutes = row.avg_first_response_minutes == null ? '—' : formatDecimal(row.avg_first_response_minutes, 1) + ' min';
+                var activeCount = activeByAgent[Number(row.user_id || 0)] || 0;
 
                 return '<tr>' +
                     '<td>' + escapeHtml(row.agent_name || ('Agente #' + row.user_id)) + '</td>' +
-                    '<td>' + formatNumber(row.assigned_count) + '</td>' +
-                    '<td><span class="wa-kpi-badge bg-warning-light text-warning">' + formatNumber(row.active_count) + '</span></td>' +
-                    '<td>' + formatNumber(row.resolved_count) + '</td>' +
-                    '<td>' + formatPercent(row.resolution_rate) + '</td>' +
-                    '<td>' + assignmentMinutes + '</td>' +
-                    '<td>' + resolutionMinutes + '</td>' +
+                    '<td>' + formatNumber(row.attended_conversations) + '</td>' +
+                    '<td><span class="wa-kpi-badge bg-warning-light text-warning">' + formatNumber(activeCount) + '</span></td>' +
+                    '<td>' + firstResponseMinutes + '</td>' +
                     '</tr>';
             }).join('');
 
@@ -558,7 +995,9 @@
             }).then(function (response) {
                 return response.json().then(function (payload) {
                     if (!response.ok || !payload || !payload.ok) {
-                        throw new Error(payload && payload.error ? payload.error : 'No se pudieron cargar los KPIs.');
+                        var baseError = payload && payload.error ? String(payload.error) : 'No se pudieron cargar los KPIs.';
+                        var detail = payload && payload.detail ? String(payload.detail) : '';
+                        throw new Error(detail ? (baseError + ' (' + detail + ')') : baseError);
                     }
                     return payload.data;
                 });
@@ -727,6 +1166,24 @@
             if (refreshButton) {
                 refreshButton.addEventListener('click', function () {
                     fetchKpis();
+                });
+            }
+
+            if (exportExcelButton) {
+                exportExcelButton.addEventListener('click', function () {
+                    exportToExcel();
+                });
+            }
+
+            if (exportPdfButton) {
+                exportPdfButton.addEventListener('click', function () {
+                    exportToPdf();
+                });
+            }
+
+            if (exportMarkdownButton) {
+                exportMarkdownButton.addEventListener('click', function () {
+                    exportGuideMarkdown();
                 });
             }
 

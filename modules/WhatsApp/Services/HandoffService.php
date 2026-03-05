@@ -150,10 +150,15 @@ class HandoffService
             return false;
         }
 
+        $currentAssigned = isset($conversation['assigned_user_id']) ? (int) $conversation['assigned_user_id'] : 0;
         $active = $this->handoffs->findActiveByConversation($conversationId);
         $assignedUntil = $this->resolveAssignedUntil();
 
         if ($active === null) {
+            if ($currentAssigned > 0 && $currentAssigned !== $agentId) {
+                return false;
+            }
+
             $handoffId = $this->handoffs->create([
                 'conversation_id' => $conversationId,
                 'wa_number' => $conversation['wa_number'],
@@ -166,7 +171,7 @@ class HandoffService
                 'notes' => $this->sanitizeNotes($conversation['handoff_notes'] ?? null),
             ]);
             $this->handoffs->insertEvent($handoffId, 'assigned', $actorId ?? $agentId, 'Asignación manual');
-            $this->conversations->assignConversation($conversationId, $agentId);
+            $this->syncConversationAssignment($conversationId, $agentId);
             $this->notifyHandoff($conversationId, 'assigned', $actorId ?? $agentId, $agentId);
 
             return true;
@@ -174,18 +179,46 @@ class HandoffService
 
         $activeId = (int) $active['id'];
         $currentAgent = isset($active['assigned_agent_id']) ? (int) $active['assigned_agent_id'] : null;
-        if ($active['status'] === 'assigned' && $currentAgent !== null) {
-            return $currentAgent === $agentId;
+        if (($active['status'] ?? null) === 'assigned') {
+            if ($currentAgent !== null && $currentAgent > 0) {
+                // Keep conversation table aligned with handoff table for legacy inconsistent rows.
+                $this->syncConversationAssignment($conversationId, $currentAgent);
+
+                if ($currentAgent === $agentId) {
+                    return true;
+                }
+
+                return false;
+            }
+
+            // Recovery path for malformed assigned rows without assigned_agent_id.
+            $recovered = $this->handoffs->transfer($activeId, $agentId, $assignedUntil, 'Asignación recuperada');
+            if ($recovered) {
+                $this->handoffs->insertEvent($activeId, 'assigned', $actorId ?? $agentId, 'Asignación recuperada');
+                $this->syncConversationAssignment($conversationId, $agentId);
+                $this->notifyHandoff($conversationId, 'assigned', $actorId ?? $agentId, $agentId);
+            }
+
+            return $recovered;
         }
 
         $assigned = $this->handoffs->assign($activeId, $agentId, $assignedUntil);
         if ($assigned) {
             $this->handoffs->insertEvent($activeId, 'assigned', $actorId ?? $agentId, null);
-            $this->conversations->assignConversation($conversationId, $agentId);
+            $this->syncConversationAssignment($conversationId, $agentId);
             $this->notifyHandoff($conversationId, 'assigned', $actorId ?? $agentId, $agentId);
         }
 
         return $assigned;
+    }
+
+    public function getActiveHandoff(int $conversationId): ?array
+    {
+        if ($conversationId <= 0) {
+            return null;
+        }
+
+        return $this->handoffs->findActiveByConversation($conversationId);
     }
 
     public function transferConversation(int $conversationId, int $agentId, ?string $note = null, ?int $actorId = null): bool
@@ -366,7 +399,7 @@ class HandoffService
             $this->handoffs->insertEvent($handoffId, 'assigned', $agentId, 'Asignado desde WhatsApp');
             $conversationId = isset($handoff['conversation_id']) ? (int) $handoff['conversation_id'] : 0;
             if ($conversationId > 0) {
-                $this->conversations->assignConversation($conversationId, $agentId);
+                $this->syncConversationAssignment($conversationId, $agentId);
                 $this->notifyHandoff($conversationId, 'assigned', $agentId, $agentId);
             }
 
@@ -383,6 +416,19 @@ class HandoffService
         } else {
             $this->sendAgentMessage($agent, 'No fue posible tomar el chat. Intenta nuevamente.');
         }
+    }
+
+    private function syncConversationAssignment(int $conversationId, int $agentId): void
+    {
+        if ($conversationId <= 0 || $agentId <= 0) {
+            return;
+        }
+
+        if ($this->conversations->assignConversation($conversationId, $agentId)) {
+            return;
+        }
+
+        $this->conversations->forceAssignConversation($conversationId, $agentId);
     }
 
     private function processAgentIgnore(array $agent, int $handoffId): void

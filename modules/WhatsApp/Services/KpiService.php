@@ -46,6 +46,10 @@ class KpiService
         $transferTotal = $this->repository->fetchTransferSummary($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
         $reopenRaw = $this->repository->fetchReopenSummary($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
         $outcomeRaw = $this->repository->fetchConversationOutcomeSummary($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
+        $incomingAttendedRaw = $this->repository->fetchIncomingAndAttendedConversationsSummary($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
+        $humanAttentionRaw = $this->repository->fetchHumanAttentionSummary($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
+        $humanByAgentRaw = $this->repository->fetchHumanAttentionByAgent($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
+        $humanAttentionIntervals = $this->repository->fetchHumanAttentionIntervals($fromDateTime, $toDateTimeExclusive, $roleId, $agentId);
         $fallbackMessages = $this->repository->fetchFallbackMessageCount($fromDateTime, $toDateTimeExclusive);
         $topMenuOptions = $this->repository->fetchTopMenuOptionBreakdown($fromDateTime, $toDateTimeExclusive, $roleId, $agentId, 8);
 
@@ -124,14 +128,44 @@ class KpiService
         $liveQueueAssignedOverdue = (int) ($liveQueueRaw['assigned_overdue'] ?? 0);
         $liveQueueExpired = (int) ($liveQueueRaw['expired'] ?? 0);
         $liveQueueTotal = (int) ($liveQueueRaw['total_open'] ?? ($liveQueueQueued + $liveQueueAssigned + $liveQueueAssignedOverdue));
+        $conversationWindowRaw = is_array($summaryRaw['conversation_window'] ?? null)
+            ? $summaryRaw['conversation_window']
+            : [];
+        $queueConversationsTotal = (int) ($conversationWindowRaw['total'] ?? 0);
+        $queueWindowOpen = (int) ($conversationWindowRaw['window_open'] ?? 0);
+        $queueNeedsTemplate = (int) ($conversationWindowRaw['needs_template'] ?? 0);
+        $queueAwaitingTemplateReply = (int) ($conversationWindowRaw['awaiting_template_reply'] ?? 0);
+        $queueWindowOpenRate = $queueConversationsTotal > 0 ? round(($queueWindowOpen / $queueConversationsTotal) * 100, 2) : 0.0;
+        $queueNeedsTemplateRate = $queueConversationsTotal > 0 ? round(($queueNeedsTemplate / $queueConversationsTotal) * 100, 2) : 0.0;
+        $queueAwaitingTemplateReplyRate = $queueNeedsTemplate > 0
+            ? round(($queueAwaitingTemplateReply / $queueNeedsTemplate) * 100, 2)
+            : 0.0;
 
         $resolvedForReopen = (int) ($reopenRaw['resolved_total'] ?? 0);
         $reopened24h = (int) ($reopenRaw['reopened_24h'] ?? 0);
         $reopened72h = (int) ($reopenRaw['reopened_72h'] ?? 0);
         $reopenRate24h = $resolvedForReopen > 0 ? round(($reopened24h / $resolvedForReopen) * 100, 2) : 0.0;
         $reopenRate72h = $resolvedForReopen > 0 ? round(($reopened72h / $resolvedForReopen) * 100, 2) : 0.0;
+        $incomingConversations = (int) ($incomingAttendedRaw['incoming_conversations'] ?? 0);
+        $attendedConversations = (int) ($incomingAttendedRaw['attended_conversations'] ?? 0);
+        $attendedRate = $incomingConversations > 0 ? round(($attendedConversations / $incomingConversations) * 100, 2) : 0.0;
+        $peopleInbound = (int) ($humanAttentionRaw['people_inbound'] ?? 0);
+        $inboundConversationsHuman = (int) ($humanAttentionRaw['inbound_conversations'] ?? 0);
+        $conversationsAttendedHuman = (int) ($humanAttentionRaw['attended_conversations_human'] ?? 0);
+        $peopleAttendedHuman = (int) ($humanAttentionRaw['attended_people_human'] ?? 0);
+        $conversationsLost = (int) ($humanAttentionRaw['lost_conversations'] ?? 0);
+        $peopleLost = (int) ($humanAttentionRaw['lost_people'] ?? 0);
+        $conversationsAbandoned = (int) ($humanAttentionRaw['abandoned_conversations'] ?? 0);
+        $conversationsResolved = (int) ($humanAttentionRaw['resolved_conversations'] ?? 0);
+        $avgFirstHumanResponseSecondsRaw = $humanAttentionRaw['avg_first_human_response_seconds'] ?? null;
+        $avgFirstHumanResponseSeconds = $avgFirstHumanResponseSecondsRaw !== null ? (float) $avgFirstHumanResponseSecondsRaw : null;
+        $attentionRate = $peopleInbound > 0 ? round(($peopleAttendedHuman / $peopleInbound) * 100, 2) : 0.0;
+        $lossRate = $peopleInbound > 0 ? round(($peopleLost / $peopleInbound) * 100, 2) : 0.0;
+        $abandonmentRate = $peopleInbound > 0 ? round(($conversationsAbandoned / $peopleInbound) * 100, 2) : 0.0;
+        $peakOpen = $this->calculatePeakOpenConversations($humanAttentionIntervals);
 
         $normalizedAgentPerformance = $this->normalizeAgentPerformance($agentPerformance);
+        $normalizedHumanByAgent = $this->normalizeHumanAttentionByAgent($humanByAgentRaw);
         $filterOptions = $this->buildFilterOptions($roleBreakdown, $normalizedAgentPerformance);
 
         return [
@@ -182,12 +216,37 @@ class KpiService
                 'live_queue_assigned' => $liveQueueAssigned,
                 'live_queue_assigned_overdue' => $liveQueueAssignedOverdue,
                 'live_queue_expired' => $liveQueueExpired,
+                'queue_conversations_total' => $queueConversationsTotal,
+                'queue_window_open' => $queueWindowOpen,
+                'queue_needs_template' => $queueNeedsTemplate,
+                'queue_awaiting_template_reply' => $queueAwaitingTemplateReply,
+                'queue_window_open_rate' => $queueWindowOpenRate,
+                'queue_needs_template_rate' => $queueNeedsTemplateRate,
+                'queue_awaiting_template_reply_rate' => $queueAwaitingTemplateReplyRate,
                 'handoff_transfers' => $transferTotal,
                 'resolved_for_reopen' => $resolvedForReopen,
                 'reopened_24h' => $reopened24h,
                 'reopened_72h' => $reopened72h,
                 'reopen_rate_24h' => $reopenRate24h,
                 'reopen_rate_72h' => $reopenRate72h,
+                'incoming_conversations' => $incomingConversations,
+                'attended_conversations' => $attendedConversations,
+                'attended_rate' => $attendedRate,
+                'people_inbound' => $peopleInbound,
+                'inbound_conversations_human' => $inboundConversationsHuman,
+                'conversations_attended_human' => $conversationsAttendedHuman,
+                'people_attended_human' => $peopleAttendedHuman,
+                'conversations_lost' => $conversationsLost,
+                'people_lost' => $peopleLost,
+                'attention_rate' => $attentionRate,
+                'loss_rate' => $lossRate,
+                'avg_first_human_response_seconds' => $avgFirstHumanResponseSeconds !== null ? round($avgFirstHumanResponseSeconds, 2) : null,
+                'avg_first_human_response_minutes' => $avgFirstHumanResponseSeconds !== null ? round($avgFirstHumanResponseSeconds / 60, 2) : null,
+                'conversations_abandoned' => $conversationsAbandoned,
+                'abandonment_rate' => $abandonmentRate,
+                'conversations_resolved' => $conversationsResolved,
+                'peak_open_conversations' => (int) ($peakOpen['count'] ?? 0),
+                'peak_open_at' => $peakOpen['at'] ?? null,
             ],
             'trends' => [
                 'labels' => $labels,
@@ -203,6 +262,7 @@ class KpiService
                 'top_menu_options' => $topMenuOptions,
                 'handoffs_by_role' => $roleBreakdown,
                 'handoffs_by_agent' => $normalizedAgentPerformance,
+                'human_attention_by_agent' => $normalizedHumanByAgent,
                 'handoff_transfers_by_agent' => $transferByAgent,
             ],
             'options' => $filterOptions,
@@ -386,6 +446,92 @@ class KpiService
         }
 
         return $result;
+    }
+
+    private function normalizeHumanAttentionByAgent(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $row) {
+            $avgSeconds = isset($row['avg_first_response_seconds']) && $row['avg_first_response_seconds'] !== null
+                ? (float) $row['avg_first_response_seconds']
+                : null;
+
+            $result[] = [
+                'user_id' => (int) ($row['user_id'] ?? 0),
+                'agent_name' => (string) ($row['agent_name'] ?? ''),
+                'attended_conversations' => (int) ($row['attended_conversations'] ?? 0),
+                'avg_first_response_seconds' => $avgSeconds !== null ? round($avgSeconds, 2) : null,
+                'avg_first_response_minutes' => $avgSeconds !== null ? round($avgSeconds / 60, 2) : null,
+            ];
+        }
+
+        usort($result, static function (array $left, array $right): int {
+            $attendedDiff = ($right['attended_conversations'] ?? 0) <=> ($left['attended_conversations'] ?? 0);
+            if ($attendedDiff !== 0) {
+                return $attendedDiff;
+            }
+
+            return strcmp((string) ($left['agent_name'] ?? ''), (string) ($right['agent_name'] ?? ''));
+        });
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, array{conversation_id:int,opened_at:string,closed_at:string}> $intervals
+     * @return array{count:int,at:?string}
+     */
+    private function calculatePeakOpenConversations(array $intervals): array
+    {
+        if ($intervals === []) {
+            return ['count' => 0, 'at' => null];
+        }
+
+        $events = [];
+        foreach ($intervals as $interval) {
+            $openedAt = isset($interval['opened_at']) ? strtotime((string) $interval['opened_at']) : false;
+            $closedAt = isset($interval['closed_at']) ? strtotime((string) $interval['closed_at']) : false;
+
+            if ($openedAt === false || $closedAt === false) {
+                continue;
+            }
+
+            if ($closedAt < $openedAt) {
+                $closedAt = $openedAt;
+            }
+
+            $events[] = ['time' => $openedAt, 'delta' => 1];
+            $events[] = ['time' => $closedAt, 'delta' => -1];
+        }
+
+        if ($events === []) {
+            return ['count' => 0, 'at' => null];
+        }
+
+        usort($events, static function (array $left, array $right): int {
+            $timeDiff = ($left['time'] ?? 0) <=> ($right['time'] ?? 0);
+            if ($timeDiff !== 0) {
+                return $timeDiff;
+            }
+
+            return ($right['delta'] ?? 0) <=> ($left['delta'] ?? 0);
+        });
+
+        $current = 0;
+        $peak = 0;
+        $peakAt = null;
+        foreach ($events as $event) {
+            $current += (int) ($event['delta'] ?? 0);
+            if ($current > $peak) {
+                $peak = $current;
+                $peakAt = (int) ($event['time'] ?? 0);
+            }
+        }
+
+        return [
+            'count' => max(0, $peak),
+            'at' => $peakAt !== null ? date('Y-m-d H:i:s', $peakAt) : null,
+        ];
     }
 
     /**

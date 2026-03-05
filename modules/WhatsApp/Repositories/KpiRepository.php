@@ -20,6 +20,7 @@ class KpiRepository
      *     contacts_active:int,
      *     messages:array<string,int>,
      *     outbound_status:array<string,int>,
+     *     conversation_window:array<string,int>,
      *     handoffs:array<string,int>,
      *     avg_assignment_seconds:float|null,
      *     avg_first_response_seconds:float|null
@@ -82,6 +83,8 @@ class KpiRepository
             $status = strtolower((string) ($row['status'] ?? 'unknown'));
             $outboundStatus[$status] = (int) ($row['total'] ?? 0);
         }
+
+        $conversationWindow = $this->fetchConversationWindowSummary($roleId, $agentId);
 
         $handoffFilter = $this->buildHandoffFilters('h', $roleId, $agentId, 'summary');
 
@@ -147,9 +150,62 @@ class KpiRepository
             'contacts_active' => $contactsActive,
             'messages' => $messages,
             'outbound_status' => $outboundStatus,
+            'conversation_window' => $conversationWindow,
             'handoffs' => $handoffs,
             'avg_assignment_seconds' => $avgAssignmentSeconds,
             'avg_first_response_seconds' => $avgFirstResponseSeconds,
+        ];
+    }
+
+    /**
+     * @return array{total:int,window_open:int,needs_template:int,awaiting_template_reply:int}
+     */
+    public function fetchConversationWindowSummary(?int $roleId = null, ?int $agentId = null): array
+    {
+        $filter = $this->buildConversationScopeFilters('c', 'u_assigned', $roleId, $agentId, 'conversation_window');
+
+        $sql = 'SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN inbound.last_inbound_at IS NOT NULL
+                               AND inbound.last_inbound_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                             THEN 1 ELSE 0 END) AS window_open,
+                    SUM(CASE WHEN inbound.last_inbound_at IS NULL
+                               OR inbound.last_inbound_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                             THEN 1 ELSE 0 END) AS needs_template,
+                    SUM(CASE WHEN (inbound.last_inbound_at IS NULL
+                                    OR inbound.last_inbound_at < DATE_SUB(NOW(), INTERVAL 24 HOUR))
+                               AND c.last_message_direction = \'outbound\'
+                               AND c.last_message_type = \'template\'
+                             THEN 1 ELSE 0 END) AS awaiting_template_reply
+                FROM whatsapp_conversations c
+                LEFT JOIN (
+                    SELECT
+                        m.conversation_id,
+                        MAX(COALESCE(m.message_timestamp, m.created_at)) AS last_inbound_at
+                    FROM whatsapp_messages m
+                    WHERE m.direction = \'inbound\'
+                    GROUP BY m.conversation_id
+                ) inbound ON inbound.conversation_id = c.id
+                LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM whatsapp_messages m_any
+                    WHERE m_any.conversation_id = c.id
+                )';
+
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($filter['params']);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'window_open' => (int) ($row['window_open'] ?? 0),
+            'needs_template' => (int) ($row['needs_template'] ?? 0),
+            'awaiting_template_reply' => (int) ($row['awaiting_template_reply'] ?? 0),
         ];
     }
 
@@ -402,6 +458,186 @@ class KpiRepository
             'handoff_conversations' => $handoffConversations,
             'autoservice_conversations' => $autoserviceConversations,
         ];
+    }
+
+    /**
+     * @return array{incoming_conversations:int,attended_conversations:int}
+     */
+    public function fetchIncomingAndAttendedConversationsSummary(string $fromDateTime, string $toDateTimeExclusive, ?int $roleId = null, ?int $agentId = null): array
+    {
+        $filter = $this->buildHandoffFilters('h', $roleId, $agentId, 'inbox_attended');
+
+        $incomingSql = 'SELECT COUNT(DISTINCT h.conversation_id)
+                        FROM whatsapp_handoffs h
+                        WHERE h.queued_at >= :inbox_attended_from
+                          AND h.queued_at < :inbox_attended_to';
+        if ($filter['where'] !== '') {
+            $incomingSql .= ' AND ' . $filter['where'];
+        }
+
+        $params = [
+            ':inbox_attended_from' => $fromDateTime,
+            ':inbox_attended_to' => $toDateTimeExclusive,
+        ] + $filter['params'];
+
+        $incoming = $this->fetchScalarInt($incomingSql, $params);
+
+        $attendedSql = 'SELECT COUNT(DISTINCT h.conversation_id)
+                        FROM whatsapp_handoffs h
+                        WHERE h.queued_at >= :inbox_attended_from
+                          AND h.queued_at < :inbox_attended_to
+                          AND h.assigned_at IS NOT NULL
+                          AND EXISTS (
+                              SELECT 1
+                              FROM whatsapp_messages m
+                              WHERE m.conversation_id = h.conversation_id
+                                AND m.direction = \'outbound\'
+                                AND m.message_timestamp >= h.assigned_at
+                                AND m.message_timestamp < :inbox_attended_to_messages
+                          )';
+        if ($filter['where'] !== '') {
+            $attendedSql .= ' AND ' . $filter['where'];
+        }
+
+        $attendedParams = $params + [
+            ':inbox_attended_to_messages' => $toDateTimeExclusive,
+        ];
+        $attended = $this->fetchScalarInt($attendedSql, $attendedParams);
+
+        return [
+            'incoming_conversations' => $incoming,
+            'attended_conversations' => $attended,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     people_inbound:int,
+     *     inbound_conversations:int,
+     *     attended_conversations_human:int,
+     *     attended_people_human:int,
+     *     lost_conversations:int,
+     *     lost_people:int,
+     *     abandoned_conversations:int,
+     *     resolved_conversations:int,
+     *     avg_first_human_response_seconds:float|null
+     * }
+     */
+    public function fetchHumanAttentionSummary(string $fromDateTime, string $toDateTimeExclusive, ?int $roleId = null, ?int $agentId = null): array
+    {
+        $inboundScope = $this->buildInboundScopeSubquery($fromDateTime, $toDateTimeExclusive, $roleId, $agentId, 'human_attention');
+        $humanReply = $this->buildHumanReplySubquery($roleId, $agentId, 'human_attention');
+
+        $sql = 'SELECT
+                    COUNT(*) AS inbound_conversations,
+                    COUNT(DISTINCT inbound.wa_number) AS people_inbound,
+                    SUM(CASE WHEN human.first_human_reply_at IS NOT NULL THEN 1 ELSE 0 END) AS attended_conversations_human,
+                    COUNT(DISTINCT CASE WHEN human.first_human_reply_at IS NOT NULL THEN inbound.wa_number END) AS attended_people_human,
+                    SUM(CASE WHEN human.first_human_reply_at IS NULL THEN 1 ELSE 0 END) AS lost_conversations,
+                    COUNT(DISTINCT CASE WHEN human.first_human_reply_at IS NULL THEN inbound.wa_number END) AS lost_people,
+                    SUM(CASE WHEN human.first_human_reply_at IS NULL AND inbound.last_inbound_at <= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 ELSE 0 END) AS abandoned_conversations,
+                    SUM(CASE WHEN human.first_human_reply_at IS NOT NULL AND inbound.last_inbound_at <= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 ELSE 0 END) AS resolved_conversations,
+                    AVG(CASE WHEN human.first_human_reply_at IS NOT NULL THEN TIMESTAMPDIFF(SECOND, inbound.first_inbound_at, human.first_human_reply_at) END) AS avg_first_human_response_seconds
+                FROM (' . $inboundScope['sql'] . ') inbound
+                LEFT JOIN (' . $humanReply['sql'] . ') human
+                    ON human.conversation_id = inbound.conversation_id';
+
+        $params = $inboundScope['params'] + $humanReply['params'];
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->filterParamsForSql($sql, $params));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'people_inbound' => (int) ($row['people_inbound'] ?? 0),
+            'inbound_conversations' => (int) ($row['inbound_conversations'] ?? 0),
+            'attended_conversations_human' => (int) ($row['attended_conversations_human'] ?? 0),
+            'attended_people_human' => (int) ($row['attended_people_human'] ?? 0),
+            'lost_conversations' => (int) ($row['lost_conversations'] ?? 0),
+            'lost_people' => (int) ($row['lost_people'] ?? 0),
+            'abandoned_conversations' => (int) ($row['abandoned_conversations'] ?? 0),
+            'resolved_conversations' => (int) ($row['resolved_conversations'] ?? 0),
+            'avg_first_human_response_seconds' => isset($row['avg_first_human_response_seconds']) ? (float) $row['avg_first_human_response_seconds'] : null,
+        ];
+    }
+
+    /**
+     * @return array<int, array{
+     *     user_id:int,
+     *     agent_name:string,
+     *     attended_conversations:int,
+     *     avg_first_response_seconds:float|null
+     * }>
+     */
+    public function fetchHumanAttentionByAgent(string $fromDateTime, string $toDateTimeExclusive, ?int $roleId = null, ?int $agentId = null): array
+    {
+        $inboundScope = $this->buildInboundScopeSubquery($fromDateTime, $toDateTimeExclusive, $roleId, $agentId, 'human_agent');
+        $firstReply = $this->buildFirstHumanReplyByAgentSubquery($inboundScope, $roleId, $agentId, 'human_agent');
+
+        $sql = 'SELECT
+                    first_reply.assigned_agent_id AS user_id,
+                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, \' \', u.last_name)), \'\'), NULLIF(u.nombre, \'\'), u.username, CONCAT(\'Usuario #\', first_reply.assigned_agent_id)) AS agent_name,
+                    COUNT(*) AS attended_conversations,
+                    AVG(TIMESTAMPDIFF(SECOND, first_reply.first_inbound_at, first_reply.first_human_reply_at)) AS avg_first_response_seconds
+                FROM (' . $firstReply['sql'] . ') first_reply
+                LEFT JOIN users u ON u.id = first_reply.assigned_agent_id
+                GROUP BY first_reply.assigned_agent_id, agent_name
+                ORDER BY attended_conversations DESC, agent_name ASC';
+
+        $params = $firstReply['params'];
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->filterParamsForSql($sql, $params));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = [
+                'user_id' => (int) ($row['user_id'] ?? 0),
+                'agent_name' => (string) ($row['agent_name'] ?? ''),
+                'attended_conversations' => (int) ($row['attended_conversations'] ?? 0),
+                'avg_first_response_seconds' => isset($row['avg_first_response_seconds']) ? (float) $row['avg_first_response_seconds'] : null,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, array{conversation_id:int,opened_at:string,closed_at:string}>
+     */
+    public function fetchHumanAttentionIntervals(string $fromDateTime, string $toDateTimeExclusive, ?int $roleId = null, ?int $agentId = null): array
+    {
+        $inboundScope = $this->buildInboundScopeSubquery($fromDateTime, $toDateTimeExclusive, $roleId, $agentId, 'human_intervals');
+        $humanReply = $this->buildHumanReplySubquery($roleId, $agentId, 'human_intervals');
+
+        $sql = 'SELECT
+                    inbound.conversation_id,
+                    inbound.first_inbound_at AS opened_at,
+                    COALESCE(human.first_human_reply_at, NOW()) AS closed_at
+                FROM (' . $inboundScope['sql'] . ') inbound
+                LEFT JOIN (' . $humanReply['sql'] . ') human
+                    ON human.conversation_id = inbound.conversation_id
+                WHERE inbound.first_inbound_at IS NOT NULL';
+
+        $params = $inboundScope['params'] + $humanReply['params'];
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->filterParamsForSql($sql, $params));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $result = [];
+        foreach ($rows as $row) {
+            $openedAt = (string) ($row['opened_at'] ?? '');
+            $closedAt = (string) ($row['closed_at'] ?? '');
+            if ($openedAt === '' || $closedAt === '') {
+                continue;
+            }
+            $result[] = [
+                'conversation_id' => (int) ($row['conversation_id'] ?? 0),
+                'opened_at' => $openedAt,
+                'closed_at' => $closedAt,
+            ];
+        }
+
+        return $result;
     }
 
     public function fetchFallbackMessageCount(string $fromDateTime, string $toDateTimeExclusive): int
@@ -1797,6 +2033,155 @@ class KpiRepository
 
         return [
             'where' => implode(' AND ', $where),
+            'params' => $params,
+        ];
+    }
+
+    /**
+     * @return array{where:string,params:array<string,int>}
+     */
+    private function buildConversationScopeFilters(
+        string $conversationAlias,
+        string $assignedUserAlias,
+        ?int $roleId,
+        ?int $agentId,
+        string $prefix
+    ): array {
+        $where = [];
+        $params = [];
+
+        if ($roleId !== null && $roleId > 0) {
+            $paramKey = ':' . $prefix . '_role_id';
+            $where[] = '(' . $conversationAlias . '.handoff_role_id = ' . $paramKey .
+                ' OR ' . $assignedUserAlias . '.role_id = ' . $paramKey . ')';
+            $params[$paramKey] = $roleId;
+        }
+
+        if ($agentId !== null && $agentId > 0) {
+            $paramKey = ':' . $prefix . '_agent_id';
+            $where[] = $conversationAlias . '.assigned_user_id = ' . $paramKey;
+            $params[$paramKey] = $agentId;
+        }
+
+        return [
+            'where' => implode(' AND ', $where),
+            'params' => $params,
+        ];
+    }
+
+    /**
+     * @return array{sql:string,params:array<string,mixed>}
+     */
+    private function buildInboundScopeSubquery(string $fromDateTime, string $toDateTimeExclusive, ?int $roleId, ?int $agentId, string $prefix): array
+    {
+        $handoffFilter = $this->buildHandoffFilters('h_scope', $roleId, $agentId, $prefix . '_scope');
+        $fromKey = ':' . $prefix . '_from';
+        $toKey = ':' . $prefix . '_to';
+
+        $sql = 'SELECT
+                    m.conversation_id,
+                    c.wa_number,
+                    MIN(m.message_timestamp) AS first_inbound_at,
+                    MAX(m.message_timestamp) AS last_inbound_at
+                FROM whatsapp_messages m
+                INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                WHERE m.direction = \'inbound\'
+                  AND m.message_timestamp >= ' . $fromKey . '
+                  AND m.message_timestamp < ' . $toKey;
+
+        if ($handoffFilter['where'] !== '') {
+            $sql .= ' AND EXISTS (
+                          SELECT 1
+                          FROM whatsapp_handoffs h_scope
+                          WHERE h_scope.conversation_id = m.conversation_id
+                            AND ' . $handoffFilter['where'] . '
+                      )';
+        }
+
+        $sql .= ' GROUP BY m.conversation_id, c.wa_number';
+
+        $params = [
+            $fromKey => $fromDateTime,
+            $toKey => $toDateTimeExclusive,
+        ] + $handoffFilter['params'];
+
+        return [
+            'sql' => $sql,
+            'params' => $params,
+        ];
+    }
+
+    /**
+     * @return array{sql:string,params:array<string,mixed>}
+     */
+    private function buildHumanReplySubquery(?int $roleId, ?int $agentId, string $prefix): array
+    {
+        $handoffFilter = $this->buildHandoffFilters('h_reply', $roleId, $agentId, $prefix . '_reply');
+        $sql = 'SELECT
+                    h_reply.conversation_id,
+                    MIN(o.message_timestamp) AS first_human_reply_at
+                FROM whatsapp_handoffs h_reply
+                INNER JOIN whatsapp_messages o
+                    ON o.conversation_id = h_reply.conversation_id
+                   AND o.direction = \'outbound\'
+                   AND h_reply.assigned_at IS NOT NULL
+                   AND o.message_timestamp >= h_reply.assigned_at
+                WHERE h_reply.assigned_at IS NOT NULL';
+        if ($handoffFilter['where'] !== '') {
+            $sql .= ' AND ' . $handoffFilter['where'];
+        }
+        $sql .= ' GROUP BY h_reply.conversation_id';
+
+        return [
+            'sql' => $sql,
+            'params' => $handoffFilter['params'],
+        ];
+    }
+
+    /**
+     * @param array{sql:string,params:array<string,mixed>} $inboundScope
+     * @return array{sql:string,params:array<string,mixed>}
+     */
+    private function buildFirstHumanReplyByAgentSubquery(array $inboundScope, ?int $roleId, ?int $agentId, string $prefix): array
+    {
+        $handoffFilter = $this->buildHandoffFilters('h_agent', $roleId, $agentId, $prefix . '_reply_agent');
+
+        $candidateSql = 'SELECT
+                             h_agent.conversation_id,
+                             inbound_scope.first_inbound_at,
+                             h_agent.assigned_agent_id,
+                             MIN(o.message_timestamp) AS reply_at
+                         FROM whatsapp_handoffs h_agent
+                         INNER JOIN (' . $inboundScope['sql'] . ') inbound_scope
+                             ON inbound_scope.conversation_id = h_agent.conversation_id
+                         INNER JOIN whatsapp_messages o
+                             ON o.conversation_id = h_agent.conversation_id
+                            AND o.direction = \'outbound\'
+                            AND h_agent.assigned_at IS NOT NULL
+                            AND o.message_timestamp >= h_agent.assigned_at
+                         WHERE h_agent.assigned_at IS NOT NULL
+                           AND h_agent.assigned_agent_id IS NOT NULL';
+        if ($handoffFilter['where'] !== '') {
+            $candidateSql .= ' AND ' . $handoffFilter['where'];
+        }
+        $candidateSql .= ' GROUP BY h_agent.conversation_id, inbound_scope.first_inbound_at, h_agent.assigned_agent_id';
+
+        $sql = 'SELECT
+                    candidate.conversation_id,
+                    candidate.first_inbound_at,
+                    CAST(SUBSTRING_INDEX(
+                        GROUP_CONCAT(candidate.assigned_agent_id ORDER BY candidate.reply_at ASC SEPARATOR \',\'),
+                        \',\',
+                        1
+                    ) AS UNSIGNED) AS assigned_agent_id,
+                    MIN(candidate.reply_at) AS first_human_reply_at
+                FROM (' . $candidateSql . ') candidate
+                GROUP BY candidate.conversation_id, candidate.first_inbound_at';
+
+        $params = $inboundScope['params'] + $handoffFilter['params'];
+
+        return [
+            'sql' => $sql,
             'params' => $params,
         ];
     }

@@ -16,6 +16,9 @@ array_push(
     'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
     'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
     'assets/vendor_components/apexcharts-bundle/dist/apexcharts.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js',
     'js/pages/whatsapp-kpis.js'
 );
 ?>
@@ -41,7 +44,7 @@ array_push(
     <style>
         .wa-kpi-toolbar {
             display: grid;
-            grid-template-columns: minmax(180px, 300px) minmax(180px, 260px) minmax(180px, 260px) auto;
+            grid-template-columns: minmax(180px, 300px) minmax(180px, 260px) minmax(180px, 260px) minmax(280px, 1fr);
             gap: .75rem;
             align-items: end;
             margin-bottom: 1rem;
@@ -51,6 +54,13 @@ array_push(
             font-size: .78rem;
             color: #64748b;
             margin-bottom: .35rem;
+        }
+
+        .wa-kpi-toolbar-actions {
+            display: flex;
+            gap: .45rem;
+            justify-content: flex-end;
+            flex-wrap: wrap;
         }
 
         .wa-kpi-grid {
@@ -73,6 +83,16 @@ array_push(
             border-color: rgba(59, 130, 246, .35);
             box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
             transform: translateY(-1px);
+        }
+
+        .wa-kpi-card.wa-kpi-card--static {
+            cursor: default;
+        }
+
+        .wa-kpi-card.wa-kpi-card--static:hover {
+            border-color: rgba(15, 23, 42, .08);
+            box-shadow: none;
+            transform: none;
         }
 
         .wa-kpi-card__label {
@@ -122,6 +142,20 @@ array_push(
             padding: .2rem .55rem;
             font-size: .74rem;
             font-weight: 600;
+        }
+
+        .wa-kpi-guide-pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 10px;
+            padding: .9rem;
+            font-size: .82rem;
+            line-height: 1.45;
+            max-height: 68vh;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-bottom: 0;
         }
 
         .daterangepicker {
@@ -182,23 +216,62 @@ array_push(
                         <option value="">Todos</option>
                     </select>
                 </div>
-                <div class="d-grid">
+                <div class="wa-kpi-toolbar-actions">
                     <button type="button" class="btn btn-primary" id="wa-kpi-refresh">
                         <i class="mdi mdi-refresh"></i> Actualizar
+                    </button>
+                    <button type="button" class="btn btn-outline-success" id="wa-kpi-export-excel">
+                        <i class="mdi mdi-file-excel-outline"></i> Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" id="wa-kpi-export-pdf">
+                        <i class="mdi mdi-file-pdf-box"></i> PDF
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="wa-kpi-export-md">
+                        <i class="mdi mdi-file-document-outline"></i> Guía MD
                     </button>
                 </div>
             </div>
 
             <div class="wa-kpi-grid">
-                <div class="wa-kpi-card" data-kpi-card="conversations_new">
-                    <div class="wa-kpi-card__label">Conversaciones nuevas</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="conversations_new">—</div>
-                    <div class="wa-kpi-card__sub">Periodo seleccionado</div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Personas que escribieron</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="people_inbound">—</div>
+                    <div class="wa-kpi-card__sub">Números únicos inbound</div>
                 </div>
-                <div class="wa-kpi-card" data-kpi-card="contacts_active">
-                    <div class="wa-kpi-card__label">Contactos activos</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="contacts_active">—</div>
-                    <div class="wa-kpi-card__sub">Con actividad</div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Conversaciones atendidas</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="conversations_attended_human">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="conversations_attended_human">Con respuesta humana</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Conversaciones perdidas</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="conversations_lost">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="conversations_lost">Sin respuesta humana</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Tasa de atención</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="attention_rate">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="attention_rate">Atendidas / personas</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">1ra respuesta humana</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="avg_first_human_response_minutes">—</div>
+                    <div class="wa-kpi-card__sub">Promedio (min)</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Conversaciones abandonadas</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="conversations_abandoned">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="conversations_abandoned">Sin atención y >24h</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Conversaciones resueltas</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="conversations_resolved">—</div>
+                    <div class="wa-kpi-card__sub">Atendidas y sin actividad 24h</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Pico simultáneo</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="peak_open_conversations">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="peak_open_conversations">Máx. abiertas al mismo tiempo</div>
                 </div>
                 <div class="wa-kpi-card" data-kpi-card="messages_inbound">
                     <div class="wa-kpi-card__label">Mensajes inbound</div>
@@ -210,10 +283,45 @@ array_push(
                     <div class="wa-kpi-card__value" data-kpi-value="messages_outbound">—</div>
                     <div class="wa-kpi-card__sub">Enviados</div>
                 </div>
-                <div class="wa-kpi-card" data-kpi-card="avg_first_response">
-                    <div class="wa-kpi-card__label">1ra respuesta</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="avg_first_response_minutes">—</div>
-                    <div class="wa-kpi-card__sub">Promedio (min)</div>
+                <div class="wa-kpi-card" data-kpi-card="sla_assignments">
+                    <div class="wa-kpi-card__label">SLA asignación</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="sla_assignments_rate">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="sla_assignments_rate">Meta SLA</div>
+                </div>
+                <div class="wa-kpi-card" data-kpi-card="live_queue">
+                    <div class="wa-kpi-card__label">Cola activa</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="live_queue_total">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="live_queue_total">Pendientes ahora</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Ventana 24h abierta</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="queue_window_open">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="queue_window_open">Listas para mensaje libre</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Requiere plantilla</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="queue_needs_template">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="queue_needs_template">Fuera de ventana 24h</div>
+                </div>
+                <div class="wa-kpi-card wa-kpi-card--static">
+                    <div class="wa-kpi-card__label">Esperando respuesta plantilla</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="queue_awaiting_template_reply">—</div>
+                    <div class="wa-kpi-card__sub" data-kpi-sub="queue_awaiting_template_reply">Sin inbound después de plantilla</div>
+                </div>
+                <div class="wa-kpi-card" data-kpi-card="handoff_transfers">
+                    <div class="wa-kpi-card__label">Transferencias</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="handoff_transfers">—</div>
+                    <div class="wa-kpi-card__sub">Entre agentes</div>
+                </div>
+                <div class="wa-kpi-card" data-kpi-card="conversations_new">
+                    <div class="wa-kpi-card__label">Conversaciones nuevas</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="conversations_new">—</div>
+                    <div class="wa-kpi-card__sub">Periodo seleccionado</div>
+                </div>
+                <div class="wa-kpi-card" data-kpi-card="contacts_active">
+                    <div class="wa-kpi-card__label">Contactos activos</div>
+                    <div class="wa-kpi-card__value" data-kpi-value="contacts_active">—</div>
+                    <div class="wa-kpi-card__sub">Con actividad</div>
                 </div>
                 <div class="wa-kpi-card" data-kpi-card="handoffs_total">
                     <div class="wa-kpi-card__label">Handoffs</div>
@@ -234,21 +342,6 @@ array_push(
                     <div class="wa-kpi-card__label">Fallback / No entendido</div>
                     <div class="wa-kpi-card__value" data-kpi-value="fallback_rate">—</div>
                     <div class="wa-kpi-card__sub" data-kpi-sub="fallback_rate">Mensajes de fallback</div>
-                </div>
-                <div class="wa-kpi-card" data-kpi-card="sla_assignments">
-                    <div class="wa-kpi-card__label">SLA asignación</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="sla_assignments_rate">—</div>
-                    <div class="wa-kpi-card__sub" data-kpi-sub="sla_assignments_rate">Meta SLA</div>
-                </div>
-                <div class="wa-kpi-card" data-kpi-card="live_queue">
-                    <div class="wa-kpi-card__label">Cola activa</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="live_queue_total">—</div>
-                    <div class="wa-kpi-card__sub" data-kpi-sub="live_queue_total">Pendientes ahora</div>
-                </div>
-                <div class="wa-kpi-card" data-kpi-card="handoff_transfers">
-                    <div class="wa-kpi-card__label">Transferencias</div>
-                    <div class="wa-kpi-card__value" data-kpi-value="handoff_transfers">—</div>
-                    <div class="wa-kpi-card__sub">Entre agentes</div>
                 </div>
                 <div class="wa-kpi-card" data-kpi-card="reopened_24h">
                     <div class="wa-kpi-card__label">Reaperturas 24h</div>
@@ -328,7 +421,7 @@ array_push(
 
             <div class="box border mt-3 mb-0">
                 <div class="box-header">
-                    <h4 class="box-title mb-0">Rendimiento por agente</h4>
+                    <h4 class="box-title mb-0">Carga y tiempo por agente</h4>
                 </div>
                 <div class="box-body p-0">
                     <div class="table-responsive">
@@ -336,17 +429,14 @@ array_push(
                             <thead>
                             <tr>
                                 <th>Agente</th>
-                                <th>Asignadas</th>
-                                <th>Activas</th>
-                                <th>Resueltas</th>
-                                <th>Resolución</th>
-                                <th>Asignación prom.</th>
-                                <th>Resolución prom.</th>
+                                <th>Conversaciones atendidas</th>
+                                <th>Handoffs activos</th>
+                                <th>Primera respuesta prom.</th>
                             </tr>
                             </thead>
                             <tbody>
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-3">Cargando...</td>
+                                <td colspan="4" class="text-center text-muted py-3">Cargando...</td>
                             </tr>
                             </tbody>
                         </table>
@@ -381,6 +471,23 @@ array_push(
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="wa-kpi-drilldown-prev">Anterior</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="wa-kpi-drilldown-next">Siguiente</button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="waKpiGuideModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Guía KPI (Markdown)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <pre class="wa-kpi-guide-pre" id="wa-kpi-guide-content">Cargando guía...</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
         </div>

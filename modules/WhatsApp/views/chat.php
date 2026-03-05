@@ -267,17 +267,25 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                                     </div>
                                 </div>
                                 <div class="whatsapp-queue-filters mb-2" data-queue-filter-group>
-                                    <button type="button" class="btn btn-primary btn-sm" data-queue-filter="workqueue">
-                                        Mi cola
-                                        <span class="badge bg-light text-dark" data-queue-count="workqueue">0</span>
+                                    <button type="button" class="btn btn-primary btn-sm" data-queue-filter="mine">
+                                        Mis activas
+                                        <span class="badge bg-light text-dark" data-queue-count="mine">0</span>
                                     </button>
-                                    <button type="button" class="btn btn-outline-warning btn-sm" data-queue-filter="pending">
-                                        Pendientes
-                                        <span class="badge bg-warning-light text-warning" data-queue-count="pending">0</span>
+                                    <button type="button" class="btn btn-outline-info btn-sm" data-queue-filter="open_window">
+                                        Ventana 24h
+                                        <span class="badge bg-info-light text-info" data-queue-count="open_window">0</span>
                                     </button>
-                                    <button type="button" class="btn btn-outline-success btn-sm" data-queue-filter="mine">
-                                        Asignadas a mí
-                                        <span class="badge bg-success-light text-success" data-queue-count="mine">0</span>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" data-queue-filter="needs_template">
+                                        Requiere plantilla
+                                        <span class="badge bg-warning-light text-warning" data-queue-count="needs_template">0</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" data-queue-filter="awaiting_template_reply">
+                                        Esperando respuesta
+                                        <span class="badge bg-primary-light text-primary" data-queue-count="awaiting_template_reply">0</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" data-queue-filter="handoff">
+                                        Requieren agente
+                                        <span class="badge bg-danger-light text-danger" data-queue-count="handoff">0</span>
                                     </button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" data-queue-filter="all">
                                         Todas
@@ -482,8 +490,8 @@ $phoneNumber = $config['phone_number_id'] ?? '';
                             <div class="alert alert-warning d-none mb-3" role="alert" data-chat-template-warning>
                                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                     <div>
-                                        Este contacto no ha iniciado conversación. WhatsApp Cloud API no entregará mensajes libres.
-                                        Envía una plantilla aprobada para abrir la ventana de 24h.
+                                        Esta conversación está fuera de la ventana de atención de 24h.
+                                        Envía una plantilla aprobada para reabrir la conversación antes de escribir mensajes libres.
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-primary" data-action-open-template>
                                         Enviar plantilla
