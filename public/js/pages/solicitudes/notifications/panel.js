@@ -249,7 +249,7 @@ function renderEntry(entry, listType = 'realtime') {
         : '<span class="badge bg-light text-muted">Revisada</span>';
 
     const actionHtml = unread
-        ? `<button type="button" class="btn btn-xs btn-outline-primary" data-action="mark-reviewed" data-list-type="${escapeHtml(listType)}" data-entry-id="${escapeHtml(entry.id)}">Marcar revisada</button>`
+        ? `<button type="button" class="btn btn-xs btn-outline-primary" data-action="mark-reviewed" data-list-type="${escapeHtml(listType)}" data-entry-id="${escapeHtml(entry.id)}" title="Marcar esta alerta como revisada" aria-label="Marcar esta alerta como revisada">Marcar revisada</button>`
         : `<span class="notification-entry__reviewed"><i class="${REVIEWED_ICON}"></i> Revisada</span>`;
 
     const dueHtml = listType === 'pending' && dueLabel
@@ -333,6 +333,7 @@ export function createNotificationPanel(options = {}) {
 
     const toggleSelector = options.toggleSelector || '[data-notification-panel-toggle]';
     const toggleButtons = document.querySelectorAll(toggleSelector);
+    const toggleTextLabels = document.querySelectorAll('[data-notification-toggle-label]');
     const unreadBadges = document.querySelectorAll('[data-notification-unread-badge]');
     const realtimeLimit = options.realtimeLimit || 40;
     const pendingLimit = options.pendingLimit || 40;
@@ -467,6 +468,12 @@ export function createNotificationPanel(options = {}) {
         });
     };
 
+    const updateToggleLabels = (unread) => {
+        toggleTextLabels.forEach(label => {
+            label.textContent = unread > 0 ? `Avisos (${unread})` : 'Avisos';
+        });
+    };
+
     const syncCountersAndSummary = () => {
         const stats = getStats();
 
@@ -477,6 +484,7 @@ export function createNotificationPanel(options = {}) {
 
         updateUnreadBadges(stats.totalUnread);
         updateToggleIndicators(stats.totalUnread);
+        updateToggleLabels(stats.totalUnread);
 
         return stats;
     };
@@ -487,7 +495,7 @@ export function createNotificationPanel(options = {}) {
         }
 
         if (state.realtime.length === 0) {
-            realtimeList.innerHTML = '<p class="notification-empty">Aún no hay eventos recientes.</p>';
+            realtimeList.innerHTML = '<p class="notification-empty">Sin actividad reciente del sistema.</p>';
             return;
         }
 
@@ -502,7 +510,7 @@ export function createNotificationPanel(options = {}) {
         }
 
         if (state.pending.length === 0) {
-            pendingList.innerHTML = '<p class="notification-empty">Sin recordatorios pendientes.</p>';
+            pendingList.innerHTML = '<p class="notification-empty">Sin alertas pendientes por revisar.</p>';
             return;
         }
 
@@ -601,7 +609,7 @@ export function createNotificationPanel(options = {}) {
             return;
         }
 
-        const defaults = ['Tiempo real (Pusher)'];
+        const defaults = ['Actividad del sistema (Pusher)'];
         if (prefs?.email) {
             defaults.push('Correo electrónico');
         }
@@ -701,6 +709,12 @@ export function createNotificationPanel(options = {}) {
         const markAll = event.target.closest('[data-action="mark-all-reviewed"]');
         if (markAll && panel.contains(markAll)) {
             event.preventDefault();
+            if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+                const accepted = window.confirm('¿Desea marcar todas las alertas como revisadas?');
+                if (!accepted) {
+                    return;
+                }
+            }
             markAllReviewed();
         }
     });

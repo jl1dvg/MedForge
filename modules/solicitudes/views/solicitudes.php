@@ -72,11 +72,41 @@ $solicitudesDummiesToolbar = [
                 'file' => 'table.md',
                 'markdown' => "### ¿Qué hace?\nMuestra las solicitudes en formato tabular para comparar campos en una sola vista.",
         ],
+        'table.row-detail' => [
+                'title' => 'Tabla: Click fila',
+                'description' => 'Ver detalle de la solicitud',
+                'file' => 'table-row-detail.md',
+                'markdown' => "### ¿Qué hace?\nAbre la prefactura de la solicitud seleccionada.",
+        ],
+        'table.eye-button' => [
+                'title' => 'Tabla: Botón ojo',
+                'description' => 'Abrir detalle rápido',
+                'file' => 'table-eye-button.md',
+                'markdown' => "### ¿Qué hace?\nAbre el detalle rápido de prefactura desde la fila.",
+        ],
+        'table.crm-button' => [
+                'title' => 'Tabla: Botón CRM',
+                'description' => 'Abrir seguimiento CRM',
+                'file' => 'table-crm-button.md',
+                'markdown' => "### ¿Qué hace?\nAbre el panel CRM para seguimiento del caso.",
+        ],
         'toolbar.conciliacion' => [
                 'title' => 'Vista Conciliación',
                 'description' => 'Revisar match solicitud vs protocolo',
                 'file' => 'conciliacion.md',
                 'markdown' => "### ¿Qué hace?\nPermite validar si la cirugía solicitada coincide con protocolo posterior y confirmar.",
+        ],
+        'conciliacion.refresh' => [
+                'title' => 'Conciliación: Actualizar',
+                'description' => 'Recargar datos de conciliación',
+                'file' => 'conciliacion-refresh.md',
+                'markdown' => "### ¿Qué hace?\nRecarga las solicitudes y coincidencias de protocolo.",
+        ],
+        'conciliacion.confirm' => [
+                'title' => 'Conciliación: Confirmar y completar',
+                'description' => 'Confirmar protocolo compatible',
+                'file' => 'conciliacion-confirm.md',
+                'markdown' => "### ¿Qué hace?\nConfirma el match y completa la solicitud.",
         ],
         'toolbar.turnero' => [
                 'title' => 'Turnero',
@@ -90,6 +120,12 @@ $solicitudesDummiesToolbar = [
                 'file' => 'filtros.md',
                 'markdown' => "### ¿Qué hace?\nMuestra u oculta filtros para recortar el tablero por doctor, fecha y más.",
         ],
+        'filters.operativa' => [
+                'title' => 'Guía rápida de filtros',
+                'description' => 'Cuándo usar cada filtro y qué resultado esperar',
+                'file' => 'filters-operativa.md',
+                'markdown' => "### ¿Qué hace?\nExplica el uso operativo de cada filtro del tablero.",
+        ],
         'toolbar.exportar' => [
                 'title' => 'Exportar',
                 'description' => 'Exportar reporte con filtros',
@@ -98,9 +134,105 @@ $solicitudesDummiesToolbar = [
         ],
         'toolbar.avisos' => [
                 'title' => 'Avisos',
-                'description' => 'Ver alertas y pendientes',
+                'description' => 'Abrir panel de avisos',
                 'file' => 'avisos.md',
                 'markdown' => "### ¿Qué hace?\nAbre el panel lateral con notificaciones en tiempo real y pendientes.",
+        ],
+        'avisos.close-panel' => [
+                'title' => 'Panel Avisos: Cerrar panel',
+                'description' => 'Cerrar panel de avisos',
+                'file' => 'avisos-close-panel.md',
+                'markdown' => "### ¿Qué hace?\nCierra el panel lateral de avisos.",
+        ],
+        'avisos.mark-all-reviewed' => [
+                'title' => 'Panel Avisos: Marcar todo revisado',
+                'description' => 'Marcar todas las alertas como revisadas',
+                'file' => 'avisos-mark-all-reviewed.md',
+                'markdown' => "### ¿Qué hace?\nMarca todas las alertas visibles como revisadas.",
+        ],
+        'avisos.tab-realtime' => [
+                'title' => 'Panel Avisos: Actividad del sistema',
+                'description' => 'Eventos en tiempo real',
+                'file' => 'avisos-tab-realtime.md',
+                'markdown' => "### ¿Qué hace?\nMuestra eventos informativos que ocurren en este momento.",
+        ],
+        'avisos.tab-pending' => [
+                'title' => 'Panel Avisos: Alertas pendientes',
+                'description' => 'Alertas pendientes por revisar',
+                'file' => 'avisos-tab-pending.md',
+                'markdown' => "### ¿Qué hace?\nMuestra recordatorios que requieren acción del equipo.",
+        ],
+        'avisos.mark-reviewed' => [
+                'title' => 'Panel Avisos: Marcar revisada',
+                'description' => 'Marcar esta alerta como revisada',
+                'file' => 'avisos-mark-reviewed.md',
+                'markdown' => "### ¿Qué hace?\nMarca una alerta puntual como revisada.",
+        ],
+        'kanban.how-to' => [
+                'title' => 'Kanban: Cómo usar el tablero',
+                'description' => 'Guía operativa rápida del Kanban',
+                'file' => 'kanban-how-to.md',
+                'markdown' => "### ¿Qué hace?\nExplica cómo trabajar el tablero y qué significa cada acción en el flujo.",
+        ],
+        'kanban.scroll-left' => [
+                'title' => 'Kanban: Navegar izquierda',
+                'description' => 'Ir al inicio del tablero (primeras etapas)',
+                'file' => 'kanban-scroll-left.md',
+                'markdown' => "### ¿Qué hace?\nLleva el scroll horizontal al inicio del tablero.",
+        ],
+        'kanban.scroll-right' => [
+                'title' => 'Kanban: Navegar derecha',
+                'description' => 'Ir al final del tablero (últimas etapas)',
+                'file' => 'kanban-scroll-right.md',
+                'markdown' => "### ¿Qué hace?\nLleva el scroll horizontal al final del tablero.",
+        ],
+        'kanban.open-detail' => [
+                'title' => 'Kanban: Abrir detalle solicitud',
+                'description' => 'Abrir solicitud y ver toda la información',
+                'file' => 'kanban-open-detail.md',
+                'markdown' => "### ¿Qué hace?\nAbre el detalle de la solicitud en modal prefactura.",
+        ],
+        'kanban.toggle-details' => [
+                'title' => 'Kanban: Expandir detalles',
+                'description' => 'Mostrar resumen de esta solicitud',
+                'file' => 'kanban-toggle-details.md',
+                'markdown' => "### ¿Qué hace?\nMuestra u oculta checklist y resumen CRM de la tarjeta.",
+        ],
+        'kanban.next-stage' => [
+                'title' => 'Kanban: Siguiente etapa',
+                'description' => 'Pasar la solicitud a la siguiente etapa',
+                'file' => 'kanban-next-stage.md',
+                'markdown' => "### ¿Qué hace?\nAvanza rápidamente la solicitud a la próxima etapa del flujo.",
+        ],
+        'kanban.checklist-toggle' => [
+                'title' => 'Kanban: Checklist por ítem',
+                'description' => 'Marcar tarea como completada / pendiente',
+                'file' => 'kanban-checklist-toggle.md',
+                'markdown' => "### ¿Qué hace?\nMarca o reabre tareas del checklist según avance real.",
+        ],
+        'kanban.call-turno' => [
+                'title' => 'Kanban: Llamar turno',
+                'description' => 'Llamar al paciente en el turnero',
+                'file' => 'kanban-call-turno.md',
+                'markdown' => "### ¿Qué hace?\nGenera o vuelve a llamar turno para atención.",
+        ],
+        'kanban.open-crm' => [
+                'title' => 'Kanban: Abrir CRM',
+                'description' => 'Ver seguimiento de esta solicitud',
+                'file' => 'kanban-open-crm.md',
+                'markdown' => "### ¿Qué hace?\nAbre el CRM contextual del caso para registrar seguimiento.",
+        ],
+        'kanban.open-project' => [
+                'title' => 'Kanban: Abrir caso CRM Project',
+                'description' => 'Abrir o crear caso de seguimiento en CRM',
+                'file' => 'kanban-open-project.md',
+                'markdown' => "### ¿Qué hace?\nCrea o vincula un proyecto de seguimiento y abre CRM en nueva pestaña.",
+        ],
+        'kanban.drag-drop' => [
+                'title' => 'Kanban: Drag & Drop columna',
+                'description' => 'Mover solicitud a otra etapa del proceso',
+                'file' => 'kanban-drag-drop.md',
+                'markdown' => "### ¿Qué hace?\nPermite cambiar estado arrastrando la tarjeta entre columnas.",
         ],
         'overview.metric-actionable' => [
                 'title' => 'Overview: Tarjetas métricas',
@@ -1066,8 +1198,9 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
             <button class="btn btn-outline-danger" type="button" id="solicitudesExportPdfButton">
                 <i class="mdi mdi-file-pdf-box"></i> Exportar PDF
             </button>
-            <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
-                <i class="mdi mdi-bell-outline"></i> Avisos
+            <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true"
+                    title="Abrir panel de avisos">
+                <i class="mdi mdi-bell-outline"></i> <span data-notification-toggle-label>Avisos</span>
             </button>
             <button class="btn btn-outline-info" type="button" id="solicitudesToolbarHelp"
                     title="Abrir guía rápida de herramientas">
@@ -1081,6 +1214,18 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
     <div class="collapse show" id="solicitudesFilters">
         <div class="box mb-3">
             <div class="box-body">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 border-bottom pb-2">
+                    <div>
+                        <h5 class="mb-0">Filtros avanzados</h5>
+                        <small class="text-muted">Refina el tablero por paciente, fecha, afiliación y seguimiento CRM.</small>
+                    </div>
+                    <button type="button" class="btn btn-outline-info btn-sm"
+                            data-dummies-key="filters.operativa"
+                            title="Abrir guía operativa de filtros"
+                            aria-label="Abrir guía operativa de filtros">
+                        <i class="mdi mdi-school-outline"></i> Guía de filtros
+                    </button>
+                </div>
                 <div class="row g-3 align-items-end flex-nowrap filters-row">
 
                     <div class="col-lg-3 col-md-6">
@@ -1166,106 +1311,15 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
             </div>
         </div>
     </div>
-
-    <div class="box mb-3 border border-info" id="solicitudesForDummies">
-        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <h5 class="box-title mb-1">🧠 Solicitudes — Guía rápida (for dummies)</h5>
-                <small class="text-muted">Qué usar, cuándo usarlo y qué resultado esperar.</small>
-            </div>
-            <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#solicitudesForDummiesBody" aria-expanded="false" aria-controls="solicitudesForDummiesBody">
-                <i class="mdi mdi-school-outline"></i> Ver guía
-            </button>
-        </div>
-        <div id="solicitudesForDummiesBody" class="collapse">
-            <div class="box-body">
-                <div class="alert alert-light border mb-3" role="alert">
-                    <strong>Orden recomendado:</strong>
-                    1) Fecha → 2) Doctor/Afiliación → 3) Responsable CRM → 4) Buscar texto → 5) Derivación vencida/por vencer.
-                </div>
-
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped align-middle mb-0">
-                        <thead>
-                        <tr>
-                            <th>Herramienta</th>
-                            <th>Tipo</th>
-                            <th>Cuándo usarla</th>
-                            <th>Qué debería pasar</th>
-                            <th>Error común</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr>
-                            <td><strong>Buscar</strong> <code>#kanbanSearchFilter</code></td>
-                            <td><span class="badge bg-warning text-dark">Local</span></td>
-                            <td>Cuando ya tienes el tablero cargado y quieres encontrar un paciente/HC rápido.</td>
-                            <td>Filtra tarjetas visibles sin recargar.</td>
-                            <td>Buscar antes de cargar rango de fecha útil.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Doctor</strong> <code>#kanbanDoctorFilter</code></td>
-                            <td><span class="badge bg-primary">Servidor</span></td>
-                            <td>Cuando quieres distribuir trabajo por médico.</td>
-                            <td>Se actualiza tablero con solo solicitudes del doctor elegido.</td>
-                            <td>Creer que es instantáneo local (sí reconsulta).</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Fecha</strong> <code>#kanbanDateFilter</code></td>
-                            <td><span class="badge bg-primary">Servidor</span></td>
-                            <td>Al inicio de turno para acotar volumen.</td>
-                            <td>Muestra solicitudes del rango seleccionado.</td>
-                            <td>No aplicar rango y pensar que “faltan” casos.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Afiliación</strong> <code>#kanbanAfiliacionFilter</code></td>
-                            <td><span class="badge bg-primary">Servidor</span></td>
-                            <td>Para priorizar cobertura/aseguradoras.</td>
-                            <td>Tablero filtrado por afiliación.</td>
-                            <td>Combinación de filtros que deja 0 resultados.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Tipo solicitud</strong> <code>#kanbanTipoFilter</code></td>
-                            <td><span class="badge bg-warning text-dark">Local</span></td>
-                            <td>Para separar CIRUGÍA vs PROCEDIMIENTO.</td>
-                            <td>Filtra tarjetas ya cargadas por tipo.</td>
-                            <td>Esperar que cambie datos no cargados.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Derivación vencida / por vencer</strong> <code>#kanbanDerivacionVencidaFilter</code> / <code>#kanbanDerivacionPorVencerFilter</code></td>
-                            <td><span class="badge bg-warning text-dark">Local</span></td>
-                            <td>Para priorizar riesgo documental hoy.</td>
-                            <td>Solo se muestran casos vencidos o por vencer según días.</td>
-                            <td>No ajustar días en <code>#kanbanDerivacionDiasInput</code>.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Responsable CRM</strong> <code>#kanbanResponsableFilter</code></td>
-                            <td><span class="badge bg-primary">Servidor</span></td>
-                            <td>Para asignación y seguimiento por dueño de caso.</td>
-                            <td>Tablero filtrado por responsable.</td>
-                            <td>Olvidar limpiar el filtro luego.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Sin responsable</strong> <code>#kanbanCrmSinResponsableFilter</code></td>
-                            <td><span class="badge bg-warning text-dark">Local</span></td>
-                            <td>Al inicio de turno para rescatar casos huérfanos.</td>
-                            <td>Solo tarjetas sin responsable CRM.</td>
-                            <td>Confundirlo con el filtro servidor “Sin responsable”.</td>
-                        </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div id="solicitudesConciliacionSection" class="box mb-3 d-none">
         <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
                 <h5 class="box-title mb-1">Conciliación cirugía solicitada vs protocolo</h5>
                 <small class="text-muted">Solicitudes creadas en el mes actual.</small>
             </div>
-            <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm">
+            <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm"
+                    title="Recargar datos de conciliación"
+                    aria-label="Recargar datos de conciliación">
                 <i class="mdi mdi-refresh"></i> Actualizar
             </button>
         </div>
@@ -1322,11 +1376,27 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
     ?>
 
     <div id="solicitudesKanbanNav" class="kanban-nav" aria-label="Navegación horizontal del tablero">
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-kanban-scroll-left>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                data-kanban-scroll-left
+                title="Ir al inicio del tablero (primeras etapas)"
+                aria-label="Ir al inicio del tablero (primeras etapas)">
             <i class="mdi mdi-chevron-left"></i> Izquierda
         </button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-kanban-scroll-right>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                data-kanban-scroll-right
+                title="Ir al final del tablero (últimas etapas)"
+                aria-label="Ir al final del tablero (últimas etapas)">
             Derecha <i class="mdi mdi-chevron-right"></i>
+        </button>
+        <button type="button"
+                id="kanbanHowToButton"
+                class="btn btn-sm btn-outline-info"
+                title="Abrir guía operativa del tablero"
+                aria-label="Cómo usar el tablero"
+                data-dummies-key="kanban.how-to">
+            <i class="mdi mdi-help-circle-outline"></i> Cómo usar el tablero
         </button>
     </div>
 
@@ -1970,7 +2040,7 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
         <div class="modal-content">
             <div class="modal-header">
                 <div>
-                    <h5 class="modal-title" id="solicitudesDummiesModalLabel">Solicitudes for Dummies</h5>
+                    <h5 class="modal-title" id="solicitudesDummiesModalLabel">Guía rápida de Solicitudes</h5>
                     <small class="text-muted" id="solicitudesDummiesModalSubtitle"></small>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>

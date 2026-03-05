@@ -156,6 +156,8 @@ const renderRow = (row) => {
                 data-conciliacion-action="confirmar"
                 data-solicitud-id="${escapeHtml(row?.id ?? '')}"
                 data-protocolo-form-id="${escapeHtml(candidate.form_id)}"
+                title="Confirmar protocolo compatible"
+                aria-label="Confirmar protocolo compatible"
             >
                 Confirmar y completar
             </button>

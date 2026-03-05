@@ -357,11 +357,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const guideOrder = [
             'toolbar.kanban',
             'toolbar.table',
+            'table.row-detail',
+            'table.eye-button',
+            'table.crm-button',
             'toolbar.conciliacion',
+            'conciliacion.refresh',
+            'conciliacion.confirm',
             'toolbar.turnero',
             'toolbar.filtros',
+            'filters.operativa',
             'toolbar.exportar',
             'toolbar.avisos',
+            'avisos.close-panel',
+            'avisos.mark-all-reviewed',
+            'avisos.tab-realtime',
+            'avisos.tab-pending',
+            'avisos.mark-reviewed',
+            'kanban.how-to',
+            'kanban.scroll-left',
+            'kanban.scroll-right',
+            'kanban.open-detail',
+            'kanban.toggle-details',
+            'kanban.next-stage',
+            'kanban.checklist-toggle',
+            'kanban.call-turno',
+            'kanban.open-crm',
+            'kanban.open-project',
+            'kanban.drag-drop',
             'overview.metric-actionable',
             'overview.toggle',
             'reportes.export-format',
@@ -444,7 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
             getTooltipInstance(trigger);
         });
 
-        const openGuideByKey = (key, fallbackTitle = 'Solicitudes for Dummies', fallbackSubtitle = '') => {
+        const openGuideByKey = (key, fallbackTitle = 'Guía rápida de Solicitudes', fallbackSubtitle = '') => {
             const normalizedKey = String(key || '').trim();
             const guide = guides[normalizedKey] && typeof guides[normalizedKey] === 'object'
                 ? guides[normalizedKey]
@@ -483,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const openGuide = (trigger) => {
             const key = String(trigger?.dataset?.dummiesKey || '').trim();
-            const fallbackTitle = trigger?.getAttribute('aria-label') || 'Solicitudes for Dummies';
+            const fallbackTitle = trigger?.getAttribute('aria-label') || 'Guía rápida de Solicitudes';
             const fallbackSubtitle = trigger?.getAttribute('title') || '';
             openGuideByKey(key, fallbackTitle, fallbackSubtitle);
         };
@@ -497,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const entries = entriesByOrder.length ? entriesByOrder : fallbackEntries;
 
             if (modalTitle) {
-                modalTitle.textContent = 'Solicitudes for Dummies';
+                modalTitle.textContent = 'Guía rápida de Solicitudes';
             }
             if (modalSubtitle) {
                 modalSubtitle.textContent = 'Elige una herramienta para ver su guía rápida.';
@@ -542,11 +564,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 event.preventDefault();
                 const key = openButton.getAttribute('data-dummies-open-key') || '';
-                openGuideByKey(key, 'Solicitudes for Dummies', '');
+                openGuideByKey(key, 'Guía rápida de Solicitudes', '');
             });
         }
 
-        openDummiesGuideByKey = (key, fallbackTitle = 'Solicitudes for Dummies', fallbackSubtitle = '') => {
+        openDummiesGuideByKey = (key, fallbackTitle = 'Guía rápida de Solicitudes', fallbackSubtitle = '') => {
             openGuideByKey(key, fallbackTitle, fallbackSubtitle);
         };
         window.__solicitudesDummiesOpenGuideByKey = openDummiesGuideByKey;
@@ -1215,6 +1237,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.dataset.form = item?.form_id ?? '';
             tr.dataset.id = item?.id ?? '';
             tr.dataset.pacienteNombre = item?.full_name ?? '';
+            tr.title = 'Ver detalle de la solicitud';
+            tr.setAttribute('aria-label', 'Ver detalle de la solicitud');
 
             const dias = calcularDias(item?.fecha_programada_iso || item?.fecha || item?.created_at_iso);
             const turno = formatTurno(item?.turno) || '';
@@ -1319,6 +1343,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </td>
             `;
+
+            const prefacturaButton = tr.querySelector('[data-prefactura-trigger="button"]');
+            if (prefacturaButton) {
+                prefacturaButton.setAttribute('title', 'Abrir detalle rápido');
+                prefacturaButton.setAttribute('aria-label', 'Abrir detalle rápido');
+            }
+
+            const crmButton = tr.querySelector('.btn-open-crm');
+            if (crmButton) {
+                crmButton.setAttribute('title', 'Abrir seguimiento CRM');
+                crmButton.setAttribute('aria-label', 'Abrir seguimiento CRM');
+            }
 
             fragment.appendChild(tr);
         });

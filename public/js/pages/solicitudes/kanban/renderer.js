@@ -182,11 +182,11 @@ function formatBadge(label, value, icon) {
 const TURNO_BUTTON_LABELS = {
     recall: {
         html: '<i class="mdi mdi-phone-incoming"></i>',
-        title: 'Volver a llamar',
+        title: 'Volver a llamar al paciente en el turnero',
     },
     generate: {
         html: '<i class="mdi mdi-bell-ring-outline"></i>',
-        title: 'Generar turno',
+        title: 'Llamar al paciente en el turnero',
     },
 };
 
@@ -622,6 +622,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.aseguradora =
             solicitud.aseguradora ?? solicitud.aseguradoraNombre ?? "";
         tarjeta.dataset.prefacturaTrigger = "kanban";
+        tarjeta.title = "Abrir solicitud y ver toda la información";
+        tarjeta.setAttribute("aria-label", "Abrir solicitud y ver toda la información");
 
         const fechaBaseIso =
             solicitud.fecha_programada_iso ||
@@ -847,10 +849,10 @@ export function renderKanban(data, callbackEstadoActualizado) {
               <span class="badge bg-light text-dark">${escapeHtml(`${porcentaje}%`)}</span>
               <div class="d-flex align-items-center gap-2">
                 <span class="text-muted small">→ ${escapeHtml(proximoPaso)}</span>
-                ${nextStageSlug ? `<button type="button" class="btn btn-sm btn-outline-success py-0 px-2" data-next-stage="${escapeHtml(nextStageSlug)}" title="Marcar: ${escapeHtml(nextStageLabel || proximoPaso)}" aria-label="Marcar: ${escapeHtml(nextStageLabel || proximoPaso)}">
+                ${nextStageSlug ? `<button type="button" class="btn btn-sm btn-outline-success py-0 px-2" data-next-stage="${escapeHtml(nextStageSlug)}" title="Pasar la solicitud a la siguiente etapa (${escapeHtml(nextStageLabel || proximoPaso)})" aria-label="Pasar la solicitud a la siguiente etapa">
                     <i class="mdi mdi-check"></i>
                   </button>` : ""}
-                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none kanban-details-toggle" data-bs-toggle="collapse" data-bs-target="#${detailsId}" aria-expanded="false" aria-controls="${detailsId}" title="Ver detalles">
+                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none kanban-details-toggle" data-bs-toggle="collapse" data-bs-target="#${detailsId}" aria-expanded="false" aria-controls="${detailsId}" title="Mostrar resumen de esta solicitud" aria-label="Mostrar resumen de esta solicitud">
                   <i class="mdi mdi-chevron-down" data-icon-collapsed></i>
                   <i class="mdi mdi-chevron-up d-none" data-icon-expanded></i>
                 </button>
@@ -1041,6 +1043,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
             const botonLlamar = document.createElement("button");
             botonLlamar.type = "button";
             botonLlamar.className = "btn btn-sm btn-outline-primary llamar-turno-btn";
+            botonLlamar.setAttribute("title", "Llamar al paciente en el turnero");
+            botonLlamar.setAttribute("aria-label", "Llamar al paciente en el turnero");
             applyTurnoButtonState(
                 botonLlamar,
                 Boolean(turnoAsignado) || estadoNormalizado === "llamado"
@@ -1146,6 +1150,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
             '<i class="mdi mdi-account-box-outline"></i> CRM';
         crmButton.dataset.solicitudId = solicitud.id ?? "";
         crmButton.dataset.pacienteNombre = solicitud.full_name ?? "";
+        crmButton.title = "Ver seguimiento de esta solicitud";
+        crmButton.setAttribute("aria-label", "Ver seguimiento de esta solicitud");
         const crmActionsSlot = tarjeta.querySelector('[data-crm-actions]');
         if (crmActionsSlot) {
             crmButton.className = "btn btn-sm btn-outline-secondary btn-open-crm";
@@ -1155,8 +1161,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
             openProjectButton.type = "button";
             openProjectButton.className = "btn btn-sm btn-outline-success btn-icon";
             openProjectButton.innerHTML = '<i class="mdi mdi-open-in-new"></i>';
-            openProjectButton.title = "Abrir caso";
-            openProjectButton.setAttribute("aria-label", "Abrir caso");
+            openProjectButton.title = "Abrir o crear caso de seguimiento en CRM";
+            openProjectButton.setAttribute("aria-label", "Abrir o crear caso de seguimiento en CRM");
 
             openProjectButton.addEventListener("click", (event) => {
                 event.preventDefault();
@@ -1171,6 +1177,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
         }
 
         tarjeta.querySelectorAll("[data-checklist-toggle]").forEach((input) => {
+            input.title = "Marcar tarea como completada / pendiente";
+            input.setAttribute("aria-label", "Marcar tarea como completada o pendiente");
             input.addEventListener("click", (e) => {
                 e.stopPropagation();
             });
@@ -1230,6 +1238,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
     });
 
     document.querySelectorAll(".kanban-items").forEach((container) => {
+        container.title = "Mover solicitud a otra etapa del proceso (arrastrar y soltar)";
+        container.setAttribute("aria-label", "Mover solicitud a otra etapa del proceso");
         new Sortable(container, {
             group: "kanban",
             animation: 150,

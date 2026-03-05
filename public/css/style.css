@@ -21860,7 +21860,7 @@ body .main-header .navbar .nav > li.search-box > a:hover, body .main-header .nav
       display: block;
       font-size: 24px; }
   .control-sidebar .rpanel-title {
-    position: absolute;
+    position: relative;
     top: 0;
     right: 0;
     color: #ffffff; }
@@ -32242,6 +32242,22 @@ img.away, img.busy, img.offline, img.online {
 .notification-panel__headline p {
   font-size: 0.78rem;
   color: #94a3b8;
+}
+
+.notification-panel__intro {
+  padding: 0.25rem 1.5rem 0.6rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.notification-panel__intro ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.notification-panel__intro li {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-bottom: 0.25rem;
 }
 
 .notification-panel__channels {
