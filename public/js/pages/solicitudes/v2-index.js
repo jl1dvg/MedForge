@@ -75,6 +75,16 @@
         }, 3400);
     };
 
+    const initTooltips = () => {
+        if (!window.bootstrap || !window.bootstrap.Tooltip) {
+            return;
+        }
+
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((node) => {
+            window.bootstrap.Tooltip.getOrCreateInstance(node);
+        });
+    };
+
     const requestId = () => {
         if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
             return `sol-v2-${crypto.randomUUID()}`;
@@ -575,6 +585,7 @@
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
             renderMetrics((state.options.metrics || {}));
             renderBoard();
+            initTooltips();
             await syncCrmPanel();
         } catch (error) {
             showToast(`No se pudo cargar solicitudes: ${error.message || error}`, false);
@@ -730,5 +741,6 @@
     }
 
     applyInitialFilters();
+    initTooltips();
     loadKanban();
 })();

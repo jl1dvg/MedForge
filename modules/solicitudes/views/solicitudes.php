@@ -54,6 +54,96 @@ $solicitudesV2ReadsEnabled = filter_var(
 );
 $solicitudesReadPrefix = $solicitudesV2ReadsEnabled ? '/v2' : '';
 $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
+
+$solicitudesDummiesBasePath = defined('BASE_PATH')
+        ? rtrim((string)BASE_PATH, '/\\')
+        : dirname(__DIR__, 3);
+$solicitudesDummiesToolbarDir = $solicitudesDummiesBasePath . '/docs/solicitudes-for-dummies/toolbar';
+$solicitudesDummiesToolbar = [
+        'toolbar.kanban' => [
+                'title' => 'Vista Tablero',
+                'description' => 'Ver solicitudes en columnas',
+                'file' => 'kanban.md',
+                'markdown' => "### ¿Qué hace?\nMuestra las solicitudes agrupadas por etapa para priorizar rápido.",
+        ],
+        'toolbar.table' => [
+                'title' => 'Vista Tabla',
+                'description' => 'Ver solicitudes en tabla',
+                'file' => 'table.md',
+                'markdown' => "### ¿Qué hace?\nMuestra las solicitudes en formato tabular para comparar campos en una sola vista.",
+        ],
+        'toolbar.conciliacion' => [
+                'title' => 'Vista Conciliación',
+                'description' => 'Revisar match solicitud vs protocolo',
+                'file' => 'conciliacion.md',
+                'markdown' => "### ¿Qué hace?\nPermite validar si la cirugía solicitada coincide con protocolo posterior y confirmar.",
+        ],
+        'toolbar.turnero' => [
+                'title' => 'Turnero',
+                'description' => 'Abrir pantalla de turnos',
+                'file' => 'turnero.md',
+                'markdown' => "### ¿Qué hace?\nAbre el turnero unificado en otra pestaña para llamar pacientes.",
+        ],
+        'toolbar.filtros' => [
+                'title' => 'Filtros',
+                'description' => 'Mostrar filtros avanzados',
+                'file' => 'filtros.md',
+                'markdown' => "### ¿Qué hace?\nMuestra u oculta filtros para recortar el tablero por doctor, fecha y más.",
+        ],
+        'toolbar.exportar' => [
+                'title' => 'Exportar',
+                'description' => 'Exportar reporte con filtros',
+                'file' => 'exportar.md',
+                'markdown' => "### ¿Qué hace?\nAbre el modal de exportación para descargar PDF o Excel con filtros actuales.",
+        ],
+        'toolbar.avisos' => [
+                'title' => 'Avisos',
+                'description' => 'Ver alertas y pendientes',
+                'file' => 'avisos.md',
+                'markdown' => "### ¿Qué hace?\nAbre el panel lateral con notificaciones en tiempo real y pendientes.",
+        ],
+        'overview.metric-actionable' => [
+                'title' => 'Overview: Tarjetas métricas',
+                'description' => 'Exportar reporte de esta métrica',
+                'file' => 'overview-metric-actionable.md',
+                'markdown' => "### ¿Qué hace?\nLas tarjetas con icono PDF permiten exportar un quick report por métrica.",
+        ],
+        'overview.toggle' => [
+                'title' => 'Overview: Ver/Ocultar métricas',
+                'description' => 'Mostrar métricas detalladas',
+                'file' => 'overview-toggle.md',
+                'markdown' => "### ¿Qué hace?\nExpande o colapsa métricas secundarias para mantener la pantalla limpia.",
+        ],
+        'reportes.export-format' => [
+                'title' => 'Reportes: Formato exportación',
+                'description' => 'Elegir formato de descarga',
+                'file' => 'reportes-export-format.md',
+                'markdown' => "### ¿Qué hace?\nEn el modal eliges PDF o Excel y se exporta con filtros activos.",
+        ],
+        'footer.export-zip' => [
+                'title' => 'Footer: Exportar ZIP',
+                'description' => 'Descargar respaldo (pendiente integrar)',
+                'file' => 'footer-export-zip.md',
+                'markdown' => "### Estado actual\nEl control se muestra en pantalla pero no tiene integración activa en legacy.",
+        ],
+];
+
+foreach ($solicitudesDummiesToolbar as $key => $meta) {
+    $fileName = (string)($meta['file'] ?? '');
+    $filePath = $fileName !== '' ? $solicitudesDummiesToolbarDir . '/' . $fileName : '';
+    $markdown = '';
+    if ($filePath !== '' && is_readable($filePath)) {
+        $markdown = (string)file_get_contents($filePath);
+    }
+    if (trim($markdown) === '') {
+        $markdown = (string)($meta['markdown'] ?? '');
+    }
+    $solicitudesDummiesToolbar[$key] = [
+            'title' => (string)($meta['title'] ?? ''),
+            'description' => (string)($meta['description'] ?? ''),
+            'markdown' => trim($markdown),
+    ];
+}
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -156,15 +246,42 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             font-size: 0.9rem;
         }
 
-        .view-toggle .btn {
+        .solicitudes-view-btn {
             min-width: 120px;
         }
 
-        .view-toggle .btn.active {
+        .solicitudes-view-btn.active {
             background: #0ea5e9;
             color: #fff;
             border-color: #0ea5e9;
             box-shadow: 0 3px 12px rgba(14, 165, 233, 0.35);
+        }
+
+        .solicitudes-dummies-modal .modal-body {
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+
+        .solicitudes-dummies-content h6 {
+            margin-top: 0.75rem;
+            margin-bottom: 0.45rem;
+            font-weight: 700;
+        }
+
+        .solicitudes-dummies-content p {
+            margin-bottom: 0.6rem;
+        }
+
+        .solicitudes-dummies-content ul {
+            padding-left: 1.1rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .solicitudes-dummies-content code {
+            background: #eef2ff;
+            border-radius: 4px;
+            padding: 0.08rem 0.3rem;
+            color: #1e293b;
         }
 
         .solicitudes-overview {
@@ -930,17 +1047,15 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             </div>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
-            <div class="btn-group view-toggle" role="group" aria-label="Cambiar vista">
-                <button type="button" class="btn btn-outline-secondary active" data-solicitudes-view="kanban">
-                    <i class="mdi mdi-view-kanban"></i> Tablero
-                </button>
-                <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="table">
-                    <i class="mdi mdi-table-large"></i> Tabla
-                </button>
-                <button type="button" class="btn btn-outline-secondary" data-solicitudes-view="conciliacion">
-                    <i class="mdi mdi-clipboard-check-outline"></i> Conciliación
-                </button>
-            </div>
+            <button type="button" class="btn btn-outline-secondary solicitudes-view-btn active" data-solicitudes-view="kanban">
+                <i class="mdi mdi-view-kanban"></i> Tablero
+            </button>
+            <button type="button" class="btn btn-outline-secondary solicitudes-view-btn" data-solicitudes-view="table">
+                <i class="mdi mdi-table-large"></i> Tabla
+            </button>
+            <button type="button" class="btn btn-outline-secondary solicitudes-view-btn" data-solicitudes-view="conciliacion">
+                <i class="mdi mdi-clipboard-check-outline"></i> Conciliación
+            </button>
             <a class="btn btn-outline-primary" href="/turneros/unificado" target="_blank" rel="noopener">
                 <i class="mdi mdi-monitor"></i> Turnero
             </a>
@@ -953,6 +1068,10 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             </button>
             <button class="btn btn-outline-secondary" type="button" data-notification-panel-toggle="true">
                 <i class="mdi mdi-bell-outline"></i> Avisos
+            </button>
+            <button class="btn btn-outline-info" type="button" id="solicitudesToolbarHelp"
+                    title="Abrir guía rápida de herramientas">
+                <i class="mdi mdi-help-circle-outline"></i> Ayuda
             </button>
         </div>
     </div>
@@ -1697,7 +1816,9 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
                             <small class="text-muted">Descarga el respaldo de documentos asociados</small>
                         </div>
                         <a id="exportExcel" class="fs-18 text-gray hover-info" href="#"
-                           aria-label="Exportar solicitudes">
+                           aria-label="Exportar respaldo ZIP"
+                           data-dummies-key="footer.export-zip"
+                           title="Descargar respaldo (pendiente integrar)">
                             <i class="fa fa-download"></i>
                         </a>
                     </div>
@@ -1751,6 +1872,29 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
     </div>
 </div>
 
+<div class="modal fade solicitudes-dummies-modal" id="solicitudesDummiesModal" tabindex="-1"
+     aria-labelledby="solicitudesDummiesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="solicitudesDummiesModalLabel">Solicitudes for Dummies</h5>
+                    <small class="text-muted" id="solicitudesDummiesModalSubtitle"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div id="solicitudesDummiesBody" class="solicitudes-dummies-content">
+                    Usa el botón <strong>Ayuda</strong> para abrir la guía rápida.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="<?= asset('assets/vendor_components/ckeditor/ckeditor.js') ?>"></script>
 
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
@@ -1767,10 +1911,7 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
                 return CSS.escape(value);
             }
-            return String(value).replace(
-                /([ #;?%&,.+*~\\':"!^$\\[\\]()=>|\\/\\\\@])/g,
-                '\\\\$1'
-            );
+            return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
         };
 
         modal.addEventListener('click', (event) => {
@@ -1789,6 +1930,13 @@ $solicitudesWritePrefix = $solicitudesV2WritesEnabled ? '/v2' : '';
             }
         });
     });
+</script>
+
+<script>
+    window.__solicitudesDummies = <?= json_encode(
+            $solicitudesDummiesToolbar,
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+    ); ?>;
 </script>
 
 <script>

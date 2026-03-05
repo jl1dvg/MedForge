@@ -65,6 +65,20 @@
                     $headerDisplayName = $headerUser['display_name'] ?? ($username ?? 'Usuario');
                     $headerRole = $headerUser['role_name'] ?? 'Usuario';
                     $headerAvatarUrl = $headerUser['profile_photo_url'] ?? null;
+                    $headerAvatarResolvedUrl = $headerAvatarUrl;
+
+                    if (is_string($headerAvatarResolvedUrl) && trim($headerAvatarResolvedUrl) !== '') {
+                        $avatarPath = parse_url($headerAvatarResolvedUrl, PHP_URL_PATH);
+                        if (is_string($avatarPath) && str_starts_with($avatarPath, '/uploads/')) {
+                            $projectRoot = defined('BASE_PATH')
+                                ? rtrim((string) BASE_PATH, '/\\')
+                                : dirname(__DIR__, 2);
+                            $localAvatar = $projectRoot . '/public' . $avatarPath;
+                            if (!is_file($localAvatar)) {
+                                $headerAvatarResolvedUrl = null;
+                            }
+                        }
+                    }
 
                     if (!function_exists('medf_initials')) {
                         function medf_initials(string $name): string
@@ -96,8 +110,8 @@
                                 <p class="pt-5 fs-14 mb-0 fw-700 text-primary"><?= htmlspecialchars((string) $headerDisplayName, ENT_QUOTES, 'UTF-8'); ?></p>
                                 <small class="fs-10 mb-0 text-uppercase text-mute"><?= htmlspecialchars((string) $headerRole, ENT_QUOTES, 'UTF-8'); ?></small>
                             </div>
-                            <?php if ($headerAvatarUrl): ?>
-                                <img src="<?= htmlspecialchars($headerAvatarUrl, ENT_QUOTES, 'UTF-8'); ?>"
+                            <?php if ($headerAvatarResolvedUrl): ?>
+                                <img src="<?= htmlspecialchars((string) $headerAvatarResolvedUrl, ENT_QUOTES, 'UTF-8'); ?>"
                                      class="avatar rounded-10 h-40 w-40"
                                      style="object-fit: cover;"
                                      alt="<?= htmlspecialchars((string) $headerDisplayName, ENT_QUOTES, 'UTF-8'); ?>"/>

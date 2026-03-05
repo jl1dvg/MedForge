@@ -227,10 +227,14 @@ class ConversationRepository
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function listConversations(string $search = '', int $limit = 25): array
+    public function listConversations(string $search = '', ?int $limit = null): array
     {
         $search = trim($search);
         $sql = 'SELECT c.id, c.wa_number, c.display_name, c.patient_hc_number, c.patient_full_name, c.last_message_at, c.last_message_direction, c.last_message_type, c.last_message_preview, c.needs_human, c.handoff_notes, c.handoff_role_id, c.assigned_user_id, c.assigned_at, c.handoff_requested_at, c.unread_count, c.created_at, c.updated_at, ' .
+            'EXISTS(SELECT 1 FROM whatsapp_messages m_in WHERE m_in.conversation_id = c.id AND m_in.direction = "inbound" LIMIT 1) AS has_inbound, ' .
+            'EXISTS(SELECT 1 FROM whatsapp_messages m_out WHERE m_out.conversation_id = c.id AND m_out.direction = "outbound" LIMIT 1) AS has_outbound, ' .
+            '(SELECT MAX(COALESCE(m_in.message_timestamp, m_in.created_at)) FROM whatsapp_messages m_in WHERE m_in.conversation_id = c.id AND m_in.direction = "inbound") AS last_inbound_at, ' .
+            '(SELECT MAX(COALESCE(m_out.message_timestamp, m_out.created_at)) FROM whatsapp_messages m_out WHERE m_out.conversation_id = c.id AND m_out.direction = "outbound") AS last_outbound_at, ' .
             'COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username) AS assigned_user_name, r.name AS handoff_role_name ' .
             'FROM whatsapp_conversations c ' .
             'LEFT JOIN users u ON u.id = c.assigned_user_id ' .
@@ -238,18 +242,28 @@ class ConversationRepository
         $params = [];
 
         if ($search !== '') {
-            $sql .= ' WHERE wa_number LIKE :search OR display_name LIKE :search OR patient_full_name LIKE :search OR patient_hc_number LIKE :search OR last_message_preview LIKE :search';
-            $params[':search'] = '%' . $search . '%';
+            $sql .= ' WHERE wa_number LIKE :search_wa OR display_name LIKE :search_display OR patient_full_name LIKE :search_patient OR patient_hc_number LIKE :search_hc OR last_message_preview LIKE :search_preview';
+            $value = '%' . $search . '%';
+            $params[':search_wa'] = $value;
+            $params[':search_display'] = $value;
+            $params[':search_patient'] = $value;
+            $params[':search_hc'] = $value;
+            $params[':search_preview'] = $value;
         }
 
-        $sql .= ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC, c.id DESC LIMIT :limit';
+        $sql .= ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC, c.id DESC';
+        if ($limit !== null && $limit > 0) {
+            $sql .= ' LIMIT :limit';
+        }
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value);
         }
 
-        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        if ($limit !== null && $limit > 0) {
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        }
         $stmt->execute();
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -261,6 +275,10 @@ class ConversationRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT c.id, c.wa_number, c.display_name, c.patient_hc_number, c.patient_full_name, c.last_message_at, c.last_message_direction, c.last_message_type, c.last_message_preview, c.needs_human, c.handoff_notes, c.handoff_role_id, c.assigned_user_id, c.assigned_at, c.handoff_requested_at, c.unread_count, c.created_at, c.updated_at, ' .
+            'EXISTS(SELECT 1 FROM whatsapp_messages m_in WHERE m_in.conversation_id = c.id AND m_in.direction = "inbound" LIMIT 1) AS has_inbound, ' .
+            'EXISTS(SELECT 1 FROM whatsapp_messages m_out WHERE m_out.conversation_id = c.id AND m_out.direction = "outbound" LIMIT 1) AS has_outbound, ' .
+            '(SELECT MAX(COALESCE(m_in.message_timestamp, m_in.created_at)) FROM whatsapp_messages m_in WHERE m_in.conversation_id = c.id AND m_in.direction = "inbound") AS last_inbound_at, ' .
+            '(SELECT MAX(COALESCE(m_out.message_timestamp, m_out.created_at)) FROM whatsapp_messages m_out WHERE m_out.conversation_id = c.id AND m_out.direction = "outbound") AS last_outbound_at, ' .
             'COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username) AS assigned_user_name, r.name AS handoff_role_name ' .
             'FROM whatsapp_conversations c ' .
             'LEFT JOIN users u ON u.id = c.assigned_user_id ' .
@@ -308,13 +326,16 @@ class ConversationRepository
         try {
             $stmt = $this->pdo->prepare(
                 'UPDATE whatsapp_conversations SET needs_human = :needs_human, handoff_notes = :notes, handoff_role_id = :role_id, ' .
-                'assigned_user_id = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_user_id END, ' .
-                'assigned_at = CASE WHEN :needs_human = 1 THEN NULL ELSE assigned_at END, ' .
-                'handoff_requested_at = CASE WHEN :needs_human = 1 THEN NOW() ELSE handoff_requested_at END, ' .
+                'assigned_user_id = CASE WHEN :needs_human_clear_user = 1 THEN NULL ELSE assigned_user_id END, ' .
+                'assigned_at = CASE WHEN :needs_human_clear_assigned_at = 1 THEN NULL ELSE assigned_at END, ' .
+                'handoff_requested_at = CASE WHEN :needs_human_request = 1 THEN NOW() ELSE handoff_requested_at END, ' .
                 'updated_at = NOW() WHERE id = :id'
             );
             $stmt->execute([
                 ':needs_human' => $needsHuman ? 1 : 0,
+                ':needs_human_clear_user' => $needsHuman ? 1 : 0,
+                ':needs_human_clear_assigned_at' => $needsHuman ? 1 : 0,
+                ':needs_human_request' => $needsHuman ? 1 : 0,
                 ':notes' => $normalizedNotes,
                 ':role_id' => $roleId,
                 ':id' => $conversationId,
@@ -402,8 +423,22 @@ class ConversationRepository
     public function assignConversation(int $conversationId, int $userId): bool
     {
         $stmt = $this->pdo->prepare(
-            'UPDATE whatsapp_conversations SET assigned_user_id = :user_id, assigned_at = COALESCE(assigned_at, NOW()), needs_human = 1, updated_at = NOW() ' .
-            'WHERE id = :id AND (assigned_user_id IS NULL OR assigned_user_id = :user_id)'
+            'UPDATE whatsapp_conversations SET assigned_user_id = :assign_user_id, assigned_at = COALESCE(assigned_at, NOW()), needs_human = 1, updated_at = NOW() ' .
+            'WHERE id = :id AND (assigned_user_id IS NULL OR assigned_user_id = :check_user_id)'
+        );
+        $stmt->execute([
+            ':assign_user_id' => $userId,
+            ':check_user_id' => $userId,
+            ':id' => $conversationId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function forceAssignConversation(int $conversationId, int $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE whatsapp_conversations SET assigned_user_id = :user_id, assigned_at = COALESCE(assigned_at, NOW()), needs_human = 1, updated_at = NOW() WHERE id = :id'
         );
         $stmt->execute([
             ':user_id' => $userId,

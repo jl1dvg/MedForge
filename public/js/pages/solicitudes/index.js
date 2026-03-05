@@ -287,6 +287,303 @@ document.addEventListener('DOMContentLoaded', () => {
         return String(value).replace(/[&<>"'`]/g, character => ESCAPE_MAP[character]);
     };
 
+    const formatInlineMarkdown = (value = '') => {
+        let safe = escapeHtml(value);
+        safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+        safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        return safe;
+    };
+
+    const renderMiniMarkdown = (markdown = '') => {
+        const lines = String(markdown || '')
+            .replace(/\r\n/g, '\n')
+            .split('\n');
+        const html = [];
+        let listOpen = false;
+
+        const closeList = () => {
+            if (!listOpen) {
+                return;
+            }
+            html.push('</ul>');
+            listOpen = false;
+        };
+
+        lines.forEach((rawLine) => {
+            const line = rawLine.trim();
+            if (line === '') {
+                closeList();
+                return;
+            }
+
+            const headingMatch = line.match(/^#{1,3}\s+(.+)$/);
+            if (headingMatch) {
+                closeList();
+                html.push(`<h6>${formatInlineMarkdown(headingMatch[1])}</h6>`);
+                return;
+            }
+
+            const listMatch = line.match(/^(?:-|\d+\.)\s+(.+)$/);
+            if (listMatch) {
+                if (!listOpen) {
+                    html.push('<ul>');
+                    listOpen = true;
+                }
+                html.push(`<li>${formatInlineMarkdown(listMatch[1])}</li>`);
+                return;
+            }
+
+            closeList();
+            html.push(`<p>${formatInlineMarkdown(line)}</p>`);
+        });
+
+        closeList();
+        return html.length ? html.join('') : '<p>Guía no disponible.</p>';
+    };
+
+    let openDummiesGuideByKey = () => {};
+
+    const initSolicitudesForDummies = () => {
+        const triggers = Array.from(document.querySelectorAll('[data-dummies-key]'));
+        const toolbarHelpTrigger = document.getElementById('solicitudesToolbarHelp');
+        if (!triggers.length && !toolbarHelpTrigger) {
+            return;
+        }
+
+        const guides = (window.__solicitudesDummies && typeof window.__solicitudesDummies === 'object')
+            ? window.__solicitudesDummies
+            : {};
+        const guideOrder = [
+            'toolbar.kanban',
+            'toolbar.table',
+            'toolbar.conciliacion',
+            'toolbar.turnero',
+            'toolbar.filtros',
+            'toolbar.exportar',
+            'toolbar.avisos',
+            'overview.metric-actionable',
+            'overview.toggle',
+            'reportes.export-format',
+            'footer.export-zip',
+        ];
+        const modalElement = document.getElementById('solicitudesDummiesModal');
+        const modalTitle = document.getElementById('solicitudesDummiesModalLabel');
+        const modalSubtitle = document.getElementById('solicitudesDummiesModalSubtitle');
+        const modalBody = document.getElementById('solicitudesDummiesBody');
+        let modalInstance = null;
+
+        const ensureModal = () => {
+            if (!modalElement || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+                return null;
+            }
+            if (!modalInstance) {
+                modalInstance = new bootstrap.Modal(modalElement);
+            }
+            return modalInstance;
+        };
+
+        const hasBootstrapTooltip = typeof bootstrap !== 'undefined' && Boolean(bootstrap?.Tooltip);
+        const getTooltipInstance = (trigger) => {
+            if (!hasBootstrapTooltip) {
+                return null;
+            }
+
+            try {
+                if (typeof bootstrap.Tooltip.getOrCreateInstance === 'function') {
+                    return bootstrap.Tooltip.getOrCreateInstance(trigger, {
+                        container: 'body',
+                        trigger: 'hover focus',
+                    });
+                }
+
+                if (typeof bootstrap.Tooltip.getInstance === 'function') {
+                    const existing = bootstrap.Tooltip.getInstance(trigger);
+                    if (existing) {
+                        return existing;
+                    }
+                }
+
+                return new bootstrap.Tooltip(trigger, {
+                    container: 'body',
+                    trigger: 'hover focus',
+                });
+            } catch (error) {
+                return null;
+            }
+        };
+
+        const hideTooltip = (trigger) => {
+            if (hasBootstrapTooltip) {
+                try {
+                    if (typeof bootstrap.Tooltip.getInstance === 'function') {
+                        const tooltip = bootstrap.Tooltip.getInstance(trigger);
+                        if (tooltip && typeof tooltip.hide === 'function') {
+                            tooltip.hide();
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    // fallback below
+                }
+            }
+
+            if (typeof window !== 'undefined' && window.jQuery && typeof window.jQuery.fn.tooltip === 'function') {
+                try {
+                    window.jQuery(trigger).tooltip('hide');
+                } catch (error) {
+                    // ignore jQuery tooltip errors
+                }
+            }
+        };
+
+        const allTooltipTriggers = toolbarHelpTrigger
+            ? [...triggers, toolbarHelpTrigger]
+            : triggers;
+        allTooltipTriggers.forEach((trigger) => {
+            getTooltipInstance(trigger);
+        });
+
+        const openGuideByKey = (key, fallbackTitle = 'Solicitudes for Dummies', fallbackSubtitle = '') => {
+            const normalizedKey = String(key || '').trim();
+            const guide = guides[normalizedKey] && typeof guides[normalizedKey] === 'object'
+                ? guides[normalizedKey]
+                : {};
+            const title = String(guide.title || fallbackTitle);
+            const subtitle = String(guide.description || fallbackSubtitle);
+            const markdown = String(guide.markdown || '');
+            const contentHtml = markdown.trim() !== ''
+                ? renderMiniMarkdown(markdown)
+                : '<p>Guía no disponible.</p>';
+            const topActions = `<div class="d-flex justify-content-end mb-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-dummies-open-index>
+                    <i class="mdi mdi-arrow-left"></i> Volver al índice
+                </button>
+            </div>`;
+
+            if (modalTitle) {
+                modalTitle.textContent = title;
+            }
+            if (modalSubtitle) {
+                modalSubtitle.textContent = subtitle;
+            }
+            if (modalBody) {
+                modalBody.innerHTML = `${topActions}${contentHtml}`;
+            }
+
+            const modal = ensureModal();
+            if (modal) {
+                modal.show();
+                return;
+            }
+
+            const fallback = subtitle ? `${title}: ${subtitle}` : title;
+            showToast(fallback, true);
+        };
+
+        const openGuide = (trigger) => {
+            const key = String(trigger?.dataset?.dummiesKey || '').trim();
+            const fallbackTitle = trigger?.getAttribute('aria-label') || 'Solicitudes for Dummies';
+            const fallbackSubtitle = trigger?.getAttribute('title') || '';
+            openGuideByKey(key, fallbackTitle, fallbackSubtitle);
+        };
+
+        const renderGuideIndex = () => {
+            const entriesByOrder = guideOrder
+                .map(key => [key, guides[key]])
+                .filter(([, guide]) => guide && typeof guide === 'object');
+            const fallbackEntries = Object.entries(guides)
+                .filter(([, guide]) => guide && typeof guide === 'object');
+            const entries = entriesByOrder.length ? entriesByOrder : fallbackEntries;
+
+            if (modalTitle) {
+                modalTitle.textContent = 'Solicitudes for Dummies';
+            }
+            if (modalSubtitle) {
+                modalSubtitle.textContent = 'Elige una herramienta para ver su guía rápida.';
+            }
+            if (modalBody) {
+                if (!entries.length) {
+                    modalBody.innerHTML = '<p>Guía no disponible.</p>';
+                } else {
+                    modalBody.innerHTML = `
+                        <div class="d-flex flex-column gap-2">
+                            ${entries.map(([key, guide]) => `
+                                <button type="button" class="btn btn-light border text-start" data-dummies-open-key="${escapeHtml(key)}">
+                                    <strong class="d-block">${escapeHtml(String(guide.title || key))}</strong>
+                                    <small class="text-muted">${escapeHtml(String(guide.description || ''))}</small>
+                                </button>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            }
+
+            const modal = ensureModal();
+            if (modal) {
+                modal.show();
+            }
+        };
+
+        if (modalBody && modalBody.dataset.dummiesBound !== 'true') {
+            modalBody.dataset.dummiesBound = 'true';
+            modalBody.addEventListener('click', (event) => {
+                const backButton = event.target.closest('[data-dummies-open-index]');
+                if (backButton) {
+                    event.preventDefault();
+                    renderGuideIndex();
+                    return;
+                }
+
+                const openButton = event.target.closest('[data-dummies-open-key]');
+                if (!openButton) {
+                    return;
+                }
+
+                event.preventDefault();
+                const key = openButton.getAttribute('data-dummies-open-key') || '';
+                openGuideByKey(key, 'Solicitudes for Dummies', '');
+            });
+        }
+
+        openDummiesGuideByKey = (key, fallbackTitle = 'Solicitudes for Dummies', fallbackSubtitle = '') => {
+            openGuideByKey(key, fallbackTitle, fallbackSubtitle);
+        };
+        window.__solicitudesDummiesOpenGuideByKey = openDummiesGuideByKey;
+
+        if (toolbarHelpTrigger) {
+            toolbarHelpTrigger.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                hideTooltip(toolbarHelpTrigger);
+                renderGuideIndex();
+            });
+            toolbarHelpTrigger.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    renderGuideIndex();
+                }
+            });
+        }
+
+        triggers.forEach((trigger) => {
+            const handleOpen = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                hideTooltip(trigger);
+                openGuide(trigger);
+            };
+
+            trigger.addEventListener('click', handleOpen);
+            trigger.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    handleOpen(event);
+                }
+            });
+        });
+    };
+
     const normalizeEstado = (value) => {
         return (value ?? '')
             .toString()
@@ -348,6 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         button.textContent = expanded ? 'Ocultar métricas detalladas' : 'Ver métricas detalladas';
+        button.setAttribute('title', expanded ? 'Colapsar métricas secundarias' : 'Mostrar métricas detalladas');
     };
 
     const applyOverviewVisibility = (forceExpanded) => {
@@ -403,6 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
         button.type = 'button';
         button.id = OVERVIEW_TOGGLE_ID;
         button.className = 'btn btn-outline-primary btn-sm';
+        button.dataset.dummiesKey = 'overview.toggle';
+        button.setAttribute('aria-label', 'Mostrar u ocultar métricas detalladas');
         updateOverviewToggleText(button, readOverviewExpanded());
 
         button.addEventListener('click', () => {
@@ -714,10 +1014,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const createOverviewCard = ({ title, count, badge, badgeClass = 'text-bg-secondary', subtitle, metricKey }) => {
         const metricAttr = metricKey ? ` data-metric-key="${escapeHtml(metricKey)}"` : '';
+        const dummiesAttr = metricKey ? ' data-dummies-key="overview.metric-actionable"' : '';
         const actionClass = metricKey ? ' overview-card-actionable' : '';
-        const icon = metricKey ? '<span class="overview-card-action" aria-hidden="true"><i class="mdi mdi-file-pdf-box"></i></span>' : '';
+        const helpTitleAttr = metricKey ? ' title="Exportar reporte de esta métrica"' : '';
+        const icon = metricKey
+            ? '<span class="overview-card-action" aria-hidden="true"><i class="mdi mdi-file-pdf-box"></i></span>'
+            : '';
         return `
-            <div class="overview-card${actionClass}"${metricAttr}>
+            <div class="overview-card${actionClass}"${metricAttr}${dummiesAttr}${helpTitleAttr}>
                 <h6>${escapeHtml(title)}</h6>
                 <div class="d-flex justify-content-between align-items-end">
                     <span class="count">${escapeHtml(String(count))}</span>
@@ -1105,6 +1409,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    initSolicitudesForDummies();
     switchView(currentView, false);
 
     const applyLocalFilters = () => renderFromCache();
@@ -1335,6 +1640,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <input class="form-check-input" type="checkbox" id="exportUseFilters" checked disabled>
                         <label class="form-check-label" for="exportUseFilters">Usar filtros actuales</label>
                     </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-link btn-sm p-0" id="solicitudesExportFormatHelpButton">
+                            ¿Qué formato debo elegir?
+                        </button>
+                    </div>
                 </div>
             `,
             showCancelButton: true,
@@ -1342,6 +1652,21 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelButtonText: 'Cancelar',
             width: 420,
             focusConfirm: false,
+            didOpen: () => {
+                const helpButton = document.getElementById('solicitudesExportFormatHelpButton');
+                if (!helpButton) {
+                    return;
+                }
+                helpButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    Swal.close();
+                    openDummiesGuideByKey(
+                        'reportes.export-format',
+                        'Reportes: Formato exportación',
+                        'Elegir formato de descarga'
+                    );
+                });
+            },
             preConfirm: () => {
                 const selected = document.querySelector('input[name="exportFormat"]:checked');
                 return selected ? selected.value : (formats[0] || 'pdf');

@@ -335,6 +335,18 @@
         .prefactura-content-wrapper {
             min-height: 120px;
         }
+
+        .sol-v2-help-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 999px;
+            padding: 0;
+            font-weight: 700;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 @endpush
 
@@ -352,9 +364,20 @@
                     </nav>
                 </div>
             </div>
-            <a href="/cirugias/dashboard" class="btn btn-light">
-                <i class="mdi mdi-chart-line"></i> Dashboard
-            </a>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/cirugias/dashboard" class="btn btn-light" id="solDashboardBtn">
+                    <i class="mdi mdi-chart-line"></i> Dashboard
+                </a>
+                <button
+                    type="button"
+                    class="btn btn-light sol-v2-help-btn"
+                    data-bs-toggle="tooltip"
+                    data-bs-placement="left"
+                    title="Abre el dashboard quirúrgico para revisar indicadores y avance del embudo de solicitudes."
+                    aria-label="Ayuda: Dashboard quirúrgico">
+                    ?
+                </button>
+            </div>
         </div>
     </div>
 

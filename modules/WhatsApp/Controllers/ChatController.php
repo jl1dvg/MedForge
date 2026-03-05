@@ -62,8 +62,12 @@ class ChatController extends BaseController
 
         $search = $this->getQuery('search');
         $limit = $this->getQueryInt('limit');
-        if ($limit === null || $limit <= 0 || $limit > 100) {
-            $limit = 25;
+        if ($limit !== null) {
+            if ($limit <= 0) {
+                $limit = null;
+            } elseif ($limit > 1000) {
+                $limit = 1000;
+            }
         }
 
         $data = $this->conversations->listConversations($search ?? '', $limit);
@@ -174,59 +178,94 @@ class ChatController extends BaseController
             return;
         }
 
-        $payload = $this->getBody();
-        $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : $currentUserId;
+        try {
+            $payload = $this->getBody();
+            $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : $currentUserId;
 
-        if ($targetUserId !== $currentUserId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
-            $this->json(['ok' => false, 'error' => 'No tienes permisos para asignar a otro agente'], 403);
+            if ($targetUserId !== $currentUserId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+                $this->json(['ok' => false, 'error' => 'No tienes permisos para asignar a otro agente'], 403);
 
-            return;
-        }
+                return;
+            }
 
-        $summary = $this->conversations->getConversationSummary($conversationId);
-        if ($summary === null) {
-            $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+            $summary = $this->conversations->getConversationSummary($conversationId);
+            if ($summary === null) {
+                $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
 
-            return;
-        }
+                return;
+            }
 
-        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] !== $targetUserId) {
-            $this->json(['ok' => false, 'error' => 'La conversación ya está asignada a otro agente.'], 409);
+            $summaryAssignedUserId = !empty($summary['assigned_user_id']) ? (int) $summary['assigned_user_id'] : 0;
+            $activeHandoff = $this->conversations->getActiveHandoff($conversationId);
+            $activeStatus = is_array($activeHandoff) ? (string) ($activeHandoff['status'] ?? '') : '';
+            $activeAssignedUserId = is_array($activeHandoff) && !empty($activeHandoff['assigned_agent_id'])
+                ? (int) $activeHandoff['assigned_agent_id']
+                : 0;
 
-            return;
-        }
+            if ($summaryAssignedUserId > 0 && $summaryAssignedUserId !== $targetUserId) {
+                $recoverableLegacyMismatch = $activeStatus === 'queued'
+                    || ($activeStatus === 'assigned' && $activeAssignedUserId === $targetUserId);
 
-        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] === $targetUserId) {
+                if (!$recoverableLegacyMismatch) {
+                    $this->json(['ok' => false, 'error' => 'La conversación ya está asignada a otro agente.'], 409);
+
+                    return;
+                }
+            }
+
+            if ($summaryAssignedUserId > 0 && $summaryAssignedUserId === $targetUserId) {
+                $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+                $this->json(['ok' => true, 'data' => $conversation]);
+
+                return;
+            }
+
+            $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
+            if ($roleId !== null && $roleId > 0) {
+                $agent = $this->resolveAgent($targetUserId);
+                if ($agent === null) {
+                    $this->json(['ok' => false, 'error' => 'El agente seleccionado no es válido.'], 422);
+
+                    return;
+                }
+                if (!empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+                    $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
+
+                    return;
+                }
+            }
+
+            $assigned = $this->conversations->assignConversation($conversationId, $targetUserId);
+            if (!$assigned) {
+                $latestSummary = $this->conversations->getConversationSummary($conversationId);
+                $latestAssignedUserId = isset($latestSummary['assigned_user_id']) ? (int) $latestSummary['assigned_user_id'] : 0;
+                if ($latestAssignedUserId > 0 && $latestAssignedUserId !== $targetUserId) {
+                    $latestAssignedName = trim((string) ($latestSummary['assigned_user_name'] ?? ''));
+                    if ($latestAssignedName === '') {
+                        $latestAssignedName = 'otro agente';
+                    }
+                    $this->json([
+                        'ok' => false,
+                        'error' => 'La conversación ya fue tomada por ' . $latestAssignedName . '.',
+                    ], 409);
+
+                    return;
+                }
+
+                $this->json(['ok' => false, 'error' => 'No fue posible asignar la conversación.'], 409);
+
+                return;
+            }
+
             $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
             $this->json(['ok' => true, 'data' => $conversation]);
-
-            return;
+        } catch (Throwable $exception) {
+            $this->json([
+                'ok' => false,
+                'error' => 'No fue posible asignar la conversación.',
+                'detail' => $exception->getMessage(),
+            ], 500);
         }
-
-        $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
-        if ($roleId !== null && $roleId > 0) {
-            $agent = $this->resolveAgent($targetUserId);
-            if ($agent === null) {
-                $this->json(['ok' => false, 'error' => 'El agente seleccionado no es válido.'], 422);
-
-                return;
-            }
-            if (!empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
-                $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
-
-                return;
-            }
-        }
-
-        $assigned = $this->conversations->assignConversation($conversationId, $targetUserId);
-        if (!$assigned) {
-            $this->json(['ok' => false, 'error' => 'No fue posible asignar la conversación.'], 409);
-
-            return;
-        }
-
-        $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
-        $this->json(['ok' => true, 'data' => $conversation]);
     }
 
     public function transferConversation(int $conversationId): void
@@ -259,8 +298,14 @@ class ChatController extends BaseController
             return;
         }
 
-        if (!empty($summary['assigned_user_id']) && (int) $summary['assigned_user_id'] !== $currentUserId
-            && !Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.manage'])) {
+        $assignedUserId = isset($summary['assigned_user_id']) ? (int) $summary['assigned_user_id'] : 0;
+        if ($assignedUserId <= 0) {
+            $this->json(['ok' => false, 'error' => 'Debes tomar la conversación antes de derivarla.'], 423);
+
+            return;
+        }
+
+        if ($assignedUserId !== $currentUserId) {
             $this->json(['ok' => false, 'error' => 'Solo el agente asignado puede transferir esta conversación.'], 403);
 
             return;
