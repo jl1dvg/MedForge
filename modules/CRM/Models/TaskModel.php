@@ -2,11 +2,14 @@
 
 namespace Modules\CRM\Models;
 
+use DateTimeImmutable;
+use Modules\Notifications\Services\ReminderConfigService;
 use PDO;
 
 class TaskModel
 {
     private PDO $pdo;
+    private ?ReminderConfigService $reminderConfig = null;
 
     private const STATUSES = ['pendiente', 'en_progreso', 'en_proceso', 'bloqueada', 'completada', 'cancelada'];
     private const PRIORITIES = ['baja', 'media', 'alta', 'urgente'];
@@ -522,6 +525,11 @@ class TaskModel
 
         if ($remindAt) {
             $this->scheduleReminder($taskId, $companyId, $remindAt, $remindChannel);
+        } elseif ($dueAt !== null && $this->reminderConfig()->isCrmTaskAutoReminderEnabled()) {
+            $autoTimes = $this->buildAutoReminderTimes($dueAt);
+            if ($autoTimes !== []) {
+                $this->syncReminderSchedule($taskId, $companyId, $autoTimes, $remindChannel);
+            }
         }
 
         return $this->find($taskId, $companyId);
@@ -544,6 +552,11 @@ class TaskModel
 
     public function reschedule(int $taskId, int $companyId, array $payload): ?array
     {
+        $dueChanged = array_key_exists('due_at', $payload) || array_key_exists('due_date', $payload);
+        $remindChanged = array_key_exists('remind_at', $payload);
+        $existingTask = $this->find($taskId, $companyId);
+        $existingChannel = $existingTask ? $this->sanitizeReminderChannel($existingTask['remind_channel'] ?? 'in_app') : 'in_app';
+
         $dueAt = $this->normalizeDateTime($payload['due_at'] ?? null);
         $dueDate = $this->normalizeDate($payload['due_date'] ?? null);
         if ($dueAt && !$dueDate) {
@@ -553,7 +566,7 @@ class TaskModel
         }
 
         $remindAt = $this->normalizeDateTime($payload['remind_at'] ?? null);
-        $remindChannel = $this->sanitizeReminderChannel($payload['remind_channel'] ?? null);
+        $remindChannel = $this->sanitizeReminderChannel($payload['remind_channel'] ?? $existingChannel);
         $assignedTo = isset($payload['assigned_to']) && $payload['assigned_to'] !== '' ? (int) $payload['assigned_to'] : null;
         $priority = isset($payload['priority']) ? $this->sanitizePriority($payload['priority']) : null;
 
@@ -567,7 +580,7 @@ class TaskModel
             $params[':due_date'] = $dueDate;
         }
 
-        if ($remindAt !== null || array_key_exists('remind_at', $payload)) {
+        if ($remindAt !== null || $remindChanged) {
             $updates[] = 'remind_at = :remind_at';
             $updates[] = 'remind_channel = :remind_channel';
             $params[':remind_at'] = $remindAt;
@@ -609,8 +622,28 @@ class TaskModel
 
         $stmt->execute();
 
-        if ($remindAt) {
-            $this->scheduleReminder($taskId, $companyId, $remindAt, $remindChannel);
+        if ($remindChanged) {
+            if ($remindAt !== null) {
+                $this->scheduleReminder($taskId, $companyId, $remindAt, $remindChannel);
+            } else {
+                $this->clearReminderSchedule($taskId, $companyId);
+            }
+        } elseif ($dueChanged) {
+            $task = $this->find($taskId, $companyId);
+            $dueAtResolved = $task
+                ? $this->resolveDueAt($task['due_at'] ?? null, $task['due_date'] ?? null)
+                : null;
+
+            if ($dueAtResolved !== null && $this->reminderConfig()->isCrmTaskAutoReminderEnabled()) {
+                $autoTimes = $this->buildAutoReminderTimes($dueAtResolved);
+                if ($autoTimes !== []) {
+                    $this->syncReminderSchedule($taskId, $companyId, $autoTimes, $remindChannel);
+                } else {
+                    $this->clearReminderSchedule($taskId, $companyId);
+                }
+            } elseif ($dueAtResolved === null) {
+                $this->clearReminderSchedule($taskId, $companyId);
+            }
         }
 
         return $this->find($taskId, $companyId);
@@ -623,39 +656,7 @@ class TaskModel
             return;
         }
 
-        $channel = $this->sanitizeReminderChannel($channel);
-
-        $this->pdo->prepare('UPDATE crm_tasks SET remind_at = :remind_at, remind_channel = :channel, updated_at = NOW() WHERE id = :id AND company_id = :company_id')
-            ->execute([
-                ':remind_at' => $remindAt,
-                ':channel' => $channel,
-                ':id' => $taskId,
-                ':company_id' => $companyId,
-            ]);
-
-        $this->pdo->prepare('DELETE FROM crm_task_reminders WHERE task_id = :task_id AND company_id = :company_id')
-            ->execute([
-                ':task_id' => $taskId,
-                ':company_id' => $companyId,
-            ]);
-
-        $stmt = $this->pdo->prepare("
-            INSERT INTO crm_task_reminders (task_id, company_id, remind_at, channel)
-            VALUES (:task_id, :company_id, :remind_at, :channel)
-        ");
-        $channels = ['in_app', 'email'];
-        if ($channel === 'whatsapp') {
-            $channels[] = 'whatsapp';
-        }
-
-        foreach (array_values(array_unique($channels)) as $targetChannel) {
-            $stmt->execute([
-                ':task_id' => $taskId,
-                ':company_id' => $companyId,
-                ':remind_at' => $remindAt,
-                ':channel' => $targetChannel,
-            ]);
-        }
+        $this->syncReminderSchedule($taskId, $companyId, [$remindAt], $channel);
     }
 
     public function addEvidence(int $taskId, int $companyId, string $type, array $payload, ?int $userId = null): void
@@ -1046,5 +1047,192 @@ class TaskModel
         }
 
         $task['risk_level'] = 'verde';
+    }
+
+    private function clearReminderSchedule(int $taskId, int $companyId): void
+    {
+        $this->pdo->prepare('UPDATE crm_tasks SET remind_at = NULL, updated_at = NOW() WHERE id = :id AND company_id = :company_id')
+            ->execute([
+                ':id' => $taskId,
+                ':company_id' => $companyId,
+            ]);
+
+        $this->pdo->prepare('DELETE FROM crm_task_reminders WHERE task_id = :task_id AND company_id = :company_id')
+            ->execute([
+                ':task_id' => $taskId,
+                ':company_id' => $companyId,
+            ]);
+    }
+
+    /**
+     * @param array<int, string> $remindTimes
+     */
+    private function syncReminderSchedule(int $taskId, int $companyId, array $remindTimes, string $channel = 'in_app'): void
+    {
+        $channel = $this->sanitizeReminderChannel($channel);
+
+        $normalized = [];
+        foreach ($remindTimes as $remindTime) {
+            $normalizedTime = $this->normalizeDateTime($remindTime);
+            if ($normalizedTime === null) {
+                continue;
+            }
+            $normalized[$normalizedTime] = $normalizedTime;
+        }
+
+        if ($normalized === []) {
+            $this->clearReminderSchedule($taskId, $companyId);
+            return;
+        }
+
+        $times = array_values($normalized);
+        usort($times, static function (string $left, string $right): int {
+            $leftTs = strtotime($left) ?: 0;
+            $rightTs = strtotime($right) ?: 0;
+            return $leftTs <=> $rightTs;
+        });
+
+        $primaryReminderAt = $this->resolvePrimaryReminderTime($times);
+        if ($primaryReminderAt === null) {
+            $this->clearReminderSchedule($taskId, $companyId);
+            return;
+        }
+
+        $this->pdo->prepare('UPDATE crm_tasks SET remind_at = :remind_at, remind_channel = :channel, updated_at = NOW() WHERE id = :id AND company_id = :company_id')
+            ->execute([
+                ':remind_at' => $primaryReminderAt,
+                ':channel' => $channel,
+                ':id' => $taskId,
+                ':company_id' => $companyId,
+            ]);
+
+        $this->pdo->prepare('DELETE FROM crm_task_reminders WHERE task_id = :task_id AND company_id = :company_id')
+            ->execute([
+                ':task_id' => $taskId,
+                ':company_id' => $companyId,
+            ]);
+
+        $stmt = $this->pdo->prepare("
+            INSERT INTO crm_task_reminders (task_id, company_id, remind_at, channel)
+            VALUES (:task_id, :company_id, :remind_at, :channel)
+        ");
+        $channels = $this->resolveReminderChannels($channel);
+
+        foreach ($times as $remindAt) {
+            foreach ($channels as $targetChannel) {
+                $stmt->execute([
+                    ':task_id' => $taskId,
+                    ':company_id' => $companyId,
+                    ':remind_at' => $remindAt,
+                    ':channel' => $targetChannel,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveReminderChannels(string $channel): array
+    {
+        $channels = ['in_app', 'email'];
+        if ($channel === 'whatsapp') {
+            $channels[] = 'whatsapp';
+        }
+
+        return array_values(array_unique($channels));
+    }
+
+    /**
+     * @param array<int, string> $times
+     */
+    private function resolvePrimaryReminderTime(array $times): ?string
+    {
+        if ($times === []) {
+            return null;
+        }
+
+        $now = (new DateTimeImmutable('now'))->getTimestamp();
+        foreach ($times as $time) {
+            $timestamp = strtotime($time);
+            if ($timestamp === false) {
+                continue;
+            }
+
+            if ($timestamp >= $now) {
+                return $time;
+            }
+        }
+
+        return end($times) ?: null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildAutoReminderTimes(string $dueAt): array
+    {
+        $dueAt = $this->normalizeDateTime($dueAt) ?? '';
+        if ($dueAt === '') {
+            return [];
+        }
+
+        try {
+            $dueDate = new DateTimeImmutable($dueAt);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $offsets = $this->reminderConfig()->getCrmTaskDueReminderOffsetsMinutes();
+        if ($offsets === []) {
+            return [];
+        }
+
+        $times = [];
+        foreach ($offsets as $offsetMinutes) {
+            $candidate = $dueDate->modify(sprintf('%+d minutes', (int) $offsetMinutes));
+            if (!($candidate instanceof DateTimeImmutable)) {
+                continue;
+            }
+            $formatted = $candidate->format('Y-m-d H:i:s');
+            $times[$formatted] = $formatted;
+        }
+
+        if ($times === []) {
+            return [];
+        }
+
+        $values = array_values($times);
+        usort($values, static function (string $left, string $right): int {
+            $leftTs = strtotime($left) ?: 0;
+            $rightTs = strtotime($right) ?: 0;
+            return $leftTs <=> $rightTs;
+        });
+
+        return $values;
+    }
+
+    private function resolveDueAt($dueAt, $dueDate): ?string
+    {
+        $normalizedDueAt = $this->normalizeDateTime($dueAt);
+        if ($normalizedDueAt !== null) {
+            return $normalizedDueAt;
+        }
+
+        $normalizedDueDate = $this->normalizeDate($dueDate);
+        if ($normalizedDueDate !== null) {
+            return $normalizedDueDate . ' 23:59:59';
+        }
+
+        return null;
+    }
+
+    private function reminderConfig(): ReminderConfigService
+    {
+        if (!($this->reminderConfig instanceof ReminderConfigService)) {
+            $this->reminderConfig = new ReminderConfigService($this->pdo);
+        }
+
+        return $this->reminderConfig;
     }
 }

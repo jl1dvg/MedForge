@@ -475,7 +475,14 @@ function actualizarDesdeBoton(nuevoEstado, options = {}) {
 }
 
 export function inicializarBotonesModal() {
+    const applyActionLabel = (element, label) => {
+        if (!element || !label) return;
+        element.setAttribute('title', label);
+        element.setAttribute('aria-label', label);
+    };
+
     const generarTurnoBtn = document.getElementById('btnGenerarTurnoModal');
+    applyActionLabel(generarTurnoBtn, 'Generar turno para esta solicitud');
     if (generarTurnoBtn && generarTurnoBtn.dataset.listenerAttached !== 'true') {
         generarTurnoBtn.dataset.listenerAttached = 'true';
         generarTurnoBtn.addEventListener('click', () => {
@@ -516,9 +523,13 @@ export function inicializarBotonesModal() {
     }
 
     const enAtencionBtn = document.getElementById('btnMarcarAtencionModal');
+    applyActionLabel(enAtencionBtn, 'Marcar paciente en atención');
     if (enAtencionBtn && enAtencionBtn.dataset.listenerAttached !== 'true') {
         enAtencionBtn.dataset.listenerAttached = 'true';
         enAtencionBtn.addEventListener('click', () => {
+            if (!window.confirm('¿Marcar paciente en atención?')) {
+                return;
+            }
             const estado = enAtencionBtn.dataset.estado || 'En atención';
             actualizarDesdeBoton(estado, {force: true, completado: true}).catch(() => {
             });
@@ -536,6 +547,7 @@ export function inicializarBotonesModal() {
     }
 
     const examenesBtn = document.getElementById('btnSolicitarExamenesPrequirurgicos');
+    applyActionLabel(examenesBtn, 'Imprimir orden de exámenes prequirúrgicos');
     if (examenesBtn && examenesBtn.dataset.listenerAttached !== 'true') {
         examenesBtn.dataset.listenerAttached = 'true';
         examenesBtn.addEventListener('click', (event) => {
@@ -649,6 +661,8 @@ export function attachPrefacturaCoberturaMail() {
         return;
     }
 
+    button.setAttribute('title', 'Redactar correo de cobertura');
+    button.setAttribute('aria-label', 'Redactar correo de cobertura');
     button.dataset.listenerAttached = 'true';
     button.addEventListener('click', async () => {
         const result = await abrirCoberturaMail();

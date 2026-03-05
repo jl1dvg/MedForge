@@ -681,8 +681,28 @@ class CronRunner
         }
 
         $now = new DateTimeImmutable('now');
-        $graceMinutes = 120;
-        $cutoff = $now->sub(new DateInterval('PT' . $graceMinutes . 'M'));
+        $graceMinutes = $reminderConfig->getCrmTaskEscalationGraceMinutes();
+        $cutoff = $graceMinutes > 0
+            ? $now->sub(new DateInterval('PT' . $graceMinutes . 'M'))
+            : $now;
+        $escalationChannels = $reminderConfig->getCrmTaskEscalationChannels();
+        $allowInAppEscalation = in_array('in_app', $escalationChannels, true);
+        $allowEmailEscalation = in_array('email', $escalationChannels, true);
+        $recipientModes = $reminderConfig->getCrmTaskEscalationRecipients();
+
+        if (!$allowInAppEscalation && !$allowEmailEscalation) {
+            return [
+                'status' => 'skipped',
+                'message' => 'Los canales de escalación CRM están desactivados en Settings.',
+            ];
+        }
+
+        if ($recipientModes === []) {
+            return [
+                'status' => 'skipped',
+                'message' => 'No hay destinatarios de escalación CRM configurados en Settings.',
+            ];
+        }
 
         $sql = <<<'SQL'
             SELECT
@@ -769,20 +789,20 @@ class CronRunner
                 continue;
             }
 
-            $recipients = $this->resolveCrmTaskEscalationRecipients($row, $supervisors);
+            $recipients = $this->resolveCrmTaskEscalationRecipients($row, $supervisors, $recipientModes);
             if ($recipients === []) {
                 $skippedNoSupervisor++;
                 continue;
             }
 
-            $supervisorIds = array_values(array_unique(array_map(static function (array $recipient): int {
+            $audienceIds = array_values(array_unique(array_map(static function (array $recipient): int {
                 return (int) ($recipient['id'] ?? 0);
             }, $recipients)));
-            $supervisorIds = array_values(array_filter($supervisorIds, static fn(int $id): bool => $id > 0));
+            $audienceIds = array_values(array_filter($audienceIds, static fn(int $id): bool => $id > 0));
 
             $sentInAppForTask = false;
-            if (!empty($pusherConfig['enabled']) && $supervisorIds !== []) {
-                $payload = $this->buildCrmTaskSupervisorEscalationPayload($row, $supervisorIds, $notificationChannels, $graceMinutes, $now);
+            if ($allowInAppEscalation && !empty($pusherConfig['enabled']) && $audienceIds !== []) {
+                $payload = $this->buildCrmTaskSupervisorEscalationPayload($row, $audienceIds, $notificationChannels, $graceMinutes, $now);
                 $sentInAppForTask = $pusher->trigger($payload, null, PusherConfigService::EVENT_CRM_TASK_REMINDER);
                 if ($sentInAppForTask) {
                     $sentInApp++;
@@ -796,12 +816,12 @@ class CronRunner
                         ];
                     }
                 }
-            } elseif (empty($pusherConfig['enabled'])) {
+            } elseif ($allowInAppEscalation && empty($pusherConfig['enabled'])) {
                 $skippedInAppDisabled++;
             }
 
             $sentEmailsForTask = 0;
-            if ($mailerConfigured) {
+            if ($allowEmailEscalation && $mailerConfigured) {
                 foreach ($recipients as $recipient) {
                     $email = trim((string) ($recipient['email'] ?? ''));
                     if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
@@ -833,7 +853,7 @@ class CronRunner
                         }
                     }
                 }
-            } else {
+            } elseif ($allowEmailEscalation) {
                 $skippedEmailDisabled++;
             }
 
@@ -841,7 +861,7 @@ class CronRunner
                 $payload = [
                     'escalated_at' => $now->format('Y-m-d H:i:s'),
                     'grace_minutes' => $graceMinutes,
-                    'supervisor_ids' => $supervisorIds,
+                    'recipient_ids' => $audienceIds,
                     'in_app_sent' => $sentInAppForTask,
                     'emails_sent' => $sentEmailsForTask,
                 ];
@@ -932,27 +952,31 @@ class CronRunner
     /**
      * @param array<string, mixed> $row
      * @param array<int, array{id:int,name:string,email:string}> $supervisors
+     * @param array<int, string> $recipientModes
      * @return array<int, array{id:int,name:string,email:string}>
      */
-    private function resolveCrmTaskEscalationRecipients(array $row, array $supervisors): array
+    private function resolveCrmTaskEscalationRecipients(array $row, array $supervisors, array $recipientModes): array
     {
+        $modeMap = array_fill_keys($recipientModes, true);
         $assigneeId = (int) ($row['assigned_to'] ?? 0);
         $recipients = [];
 
-        foreach ($supervisors as $supervisor) {
-            $id = (int) ($supervisor['id'] ?? 0);
-            if ($id <= 0 || $id === $assigneeId) {
-                continue;
-            }
+        if (!empty($modeMap['supervisors'])) {
+            foreach ($supervisors as $supervisor) {
+                $id = (int) ($supervisor['id'] ?? 0);
+                if ($id <= 0 || $id === $assigneeId) {
+                    continue;
+                }
 
-            $recipients[$id] = [
-                'id' => $id,
-                'name' => (string) ($supervisor['name'] ?? ('Supervisor #' . $id)),
-                'email' => (string) ($supervisor['email'] ?? ''),
-            ];
+                $recipients[$id] = [
+                    'id' => $id,
+                    'name' => (string) ($supervisor['name'] ?? ('Supervisor #' . $id)),
+                    'email' => (string) ($supervisor['email'] ?? ''),
+                ];
+            }
         }
 
-        if ($recipients === []) {
+        if (!empty($modeMap['creator'])) {
             $createdBy = (int) ($row['created_by'] ?? 0);
             if ($createdBy > 0 && $createdBy !== $assigneeId) {
                 $name = trim((string) ($row['created_name'] ?? ''));
@@ -966,6 +990,19 @@ class CronRunner
                     'email' => trim((string) ($row['created_email'] ?? '')),
                 ];
             }
+        }
+
+        if (!empty($modeMap['assignee']) && $assigneeId > 0) {
+            $name = trim((string) ($row['assigned_name'] ?? ''));
+            if ($name === '') {
+                $name = 'Responsable #' . $assigneeId;
+            }
+
+            $recipients[$assigneeId] = [
+                'id' => $assigneeId,
+                'name' => $name,
+                'email' => trim((string) ($row['assigned_email'] ?? '')),
+            ];
         }
 
         return array_values($recipients);

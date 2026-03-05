@@ -12,6 +12,12 @@ class ReminderConfigService
     private const OPTION_ENABLED_EVENTS = 'notifications_reminder_enabled_events';
     private const OPTION_CUSTOM_RULES = 'notifications_custom_reminder_rules';
     private const OPTION_HANDOFF_ACTIONS = 'notifications_handoff_enabled_actions';
+    private const OPTION_CRM_TASK_CREATED_NOTIFY = 'notifications_crm_task_creation_notify';
+    private const OPTION_CRM_TASK_AUTO_REMINDER = 'notifications_crm_task_auto_reminder_enabled';
+    private const OPTION_CRM_TASK_DUE_OFFSETS = 'notifications_crm_task_due_offsets';
+    private const OPTION_CRM_ESCALATION_GRACE_MINUTES = 'notifications_crm_task_escalation_grace_minutes';
+    private const OPTION_CRM_ESCALATION_RECIPIENTS = 'notifications_crm_task_escalation_recipients';
+    private const OPTION_CRM_ESCALATION_CHANNELS = 'notifications_crm_task_escalation_channels';
 
     /**
      * @var array<int, string>
@@ -38,6 +44,33 @@ class ReminderConfigService
         'transferred',
         'requeued',
         'resolved',
+    ];
+
+    /**
+     * @var array<int, int>
+     */
+    private const DEFAULT_CRM_TASK_DUE_OFFSETS_MINUTES = [
+        -1440, // 24h antes
+        -120,  // 2h antes
+        0,     // al vencer
+    ];
+
+    private const DEFAULT_CRM_ESCALATION_GRACE_MINUTES = 120;
+
+    /**
+     * @var array<int, string>
+     */
+    private const DEFAULT_CRM_ESCALATION_RECIPIENTS = [
+        'supervisors',
+        'creator',
+    ];
+
+    /**
+     * @var array<int, string>
+     */
+    private const DEFAULT_CRM_ESCALATION_CHANNELS = [
+        'in_app',
+        'email',
     ];
 
     private ?SettingsModel $settingsModel = null;
@@ -125,6 +158,88 @@ class ReminderConfigService
         return in_array($normalized, $this->getEnabledHandoffActions(), true);
     }
 
+    public function isCrmTaskCreationNotificationEnabled(): bool
+    {
+        $options = $this->loadOptions();
+
+        return $this->decodeBoolean(
+            $options[self::OPTION_CRM_TASK_CREATED_NOTIFY] ?? null,
+            true
+        );
+    }
+
+    public function isCrmTaskAutoReminderEnabled(): bool
+    {
+        $options = $this->loadOptions();
+
+        return $this->decodeBoolean(
+            $options[self::OPTION_CRM_TASK_AUTO_REMINDER] ?? null,
+            true
+        );
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function getCrmTaskDueReminderOffsetsMinutes(): array
+    {
+        $options = $this->loadOptions();
+
+        return $this->decodeOffsetMinutes(
+            $options[self::OPTION_CRM_TASK_DUE_OFFSETS] ?? null,
+            self::DEFAULT_CRM_TASK_DUE_OFFSETS_MINUTES
+        );
+    }
+
+    public function getCrmTaskEscalationGraceMinutes(): int
+    {
+        $options = $this->loadOptions();
+        $raw = $options[self::OPTION_CRM_ESCALATION_GRACE_MINUTES] ?? null;
+        if (!is_numeric($raw)) {
+            return self::DEFAULT_CRM_ESCALATION_GRACE_MINUTES;
+        }
+
+        return max(0, (int) $raw);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getCrmTaskEscalationRecipients(): array
+    {
+        $options = $this->loadOptions();
+
+        return $this->decodeJsonList(
+            $options[self::OPTION_CRM_ESCALATION_RECIPIENTS] ?? null,
+            self::DEFAULT_CRM_ESCALATION_RECIPIENTS,
+            ['supervisors', 'creator', 'assignee']
+        );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getCrmTaskEscalationChannels(): array
+    {
+        $options = $this->loadOptions();
+
+        return $this->decodeJsonList(
+            $options[self::OPTION_CRM_ESCALATION_CHANNELS] ?? null,
+            self::DEFAULT_CRM_ESCALATION_CHANNELS,
+            ['in_app', 'email']
+        );
+    }
+
+    public function isCrmTaskEscalationChannelEnabled(string $channel): bool
+    {
+        $normalized = $this->normalizeToken($channel);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array($normalized, $this->getCrmTaskEscalationChannels(), true);
+    }
+
     /**
      * @return array<string, string>
      */
@@ -141,6 +256,12 @@ class ReminderConfigService
                     self::OPTION_ENABLED_EVENTS,
                     self::OPTION_CUSTOM_RULES,
                     self::OPTION_HANDOFF_ACTIONS,
+                    self::OPTION_CRM_TASK_CREATED_NOTIFY,
+                    self::OPTION_CRM_TASK_AUTO_REMINDER,
+                    self::OPTION_CRM_TASK_DUE_OFFSETS,
+                    self::OPTION_CRM_ESCALATION_GRACE_MINUTES,
+                    self::OPTION_CRM_ESCALATION_RECIPIENTS,
+                    self::OPTION_CRM_ESCALATION_CHANNELS,
                 ]);
             } catch (Throwable $exception) {
                 error_log('No fue posible cargar opciones de reminders: ' . $exception->getMessage());
@@ -308,6 +429,111 @@ class ReminderConfigService
         }
 
         return $rules;
+    }
+
+    /**
+     * @param mixed $raw
+     * @param array<int, int> $default
+     * @return array<int, int>
+     */
+    private function decodeOffsetMinutes($raw, array $default): array
+    {
+        $explicitInput = false;
+        $items = null;
+
+        if (is_array($raw)) {
+            $items = $raw;
+            $explicitInput = true;
+        } elseif (is_string($raw) && trim($raw) !== '') {
+            $explicitInput = true;
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $items = $decoded;
+            } else {
+                $items = preg_split('/[\s,;\n\r\t]+/', $raw) ?: [];
+            }
+        }
+
+        if (!is_array($items)) {
+            $items = $default;
+            $explicitInput = false;
+        }
+
+        $normalized = [];
+        foreach ($items as $item) {
+            $minutes = $this->parseOffsetToMinutes((string) $item);
+            if ($minutes === null) {
+                continue;
+            }
+            $normalized[$minutes] = $minutes;
+        }
+
+        if ($normalized === []) {
+            if ($explicitInput) {
+                return [];
+            }
+
+            return $default;
+        }
+
+        $values = array_values($normalized);
+        sort($values, SORT_NUMERIC);
+
+        return $values;
+    }
+
+    /**
+     * @param mixed $raw
+     */
+    private function decodeBoolean($raw, bool $default): bool
+    {
+        if (is_bool($raw)) {
+            return $raw;
+        }
+
+        if (is_int($raw) || is_float($raw)) {
+            return ((int) $raw) !== 0;
+        }
+
+        if (is_string($raw)) {
+            $value = trim($raw);
+            if ($value === '') {
+                return $default;
+            }
+
+            $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($parsed === null) {
+                return $default;
+            }
+
+            return $parsed;
+        }
+
+        return $default;
+    }
+
+    private function parseOffsetToMinutes(string $value): ?int
+    {
+        $token = strtolower(trim($value));
+        if ($token === '') {
+            return null;
+        }
+
+        if (!preg_match('/^([+-]?\d+)\s*([dhm])?$/', $token, $matches)) {
+            return null;
+        }
+
+        $amount = (int) ($matches[1] ?? 0);
+        $unit = strtolower((string) ($matches[2] ?? 'h'));
+
+        $multiplier = 60;
+        if ($unit === 'm') {
+            $multiplier = 1;
+        } elseif ($unit === 'd') {
+            $multiplier = 1440;
+        }
+
+        return $amount * $multiplier;
     }
 
     private function normalizeToken(string $value): string

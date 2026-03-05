@@ -156,8 +156,10 @@ export function buildContextualActionsHtml(solicitud = {}) {
             solicitud.id
         )}" data-form-id="${escapeHtml(
             solicitud.form_id
-        )}">
-                <i class="mdi mdi-check-decagram"></i> Marcar como apto anestesia
+        )}"
+                    title="Confirmar evaluación de anestesia"
+                    aria-label="Confirmar evaluación de anestesia">
+                <i class="mdi mdi-check-decagram"></i> Confirmar evaluación de anestesia
             </button>
         </div>
     `);
@@ -182,11 +184,15 @@ export function buildContextualActionsHtml(solicitud = {}) {
             solicitud.id
         )}" data-form-id="${escapeHtml(
             solicitud.form_id
-        )}" data-base-path="${escapeHtml(basePath)}">
-                    <i class="mdi mdi-calendar-plus"></i> Crear agenda
+        )}" data-base-path="${escapeHtml(basePath)}"
+                        title="Generar agenda quirúrgica"
+                        aria-label="Generar agenda quirúrgica">
+                    <i class="mdi mdi-calendar-plus"></i> Generar agenda quirúrgica
                 </button>
-                <a class="btn btn-dark w-100" href="${agendaUrl}" target="_blank" rel="noopener">
-                    <i class="mdi mdi-file-pdf-box"></i> Exportar protocolo PDF
+                <a class="btn btn-dark w-100" href="${agendaUrl}" target="_blank" rel="noopener"
+                   title="Descargar protocolo para coordinación"
+                   aria-label="Descargar protocolo para coordinación">
+                    <i class="mdi mdi-file-pdf-box"></i> Descargar protocolo para coordinación
                 </a>
             </div>
         </div>

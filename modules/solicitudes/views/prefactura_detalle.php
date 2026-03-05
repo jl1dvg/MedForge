@@ -226,43 +226,50 @@ if ($sessionUsername === 'jl1dvg') {
 </div>
 
 
-<ul class="nav nav-tabs mt-2" id="prefacturaTabs" role="tablist">
+<ul class="nav nav-tabs mt-2" id="prefacturaTabs" role="tablist"
+    title="Cambiar sección del detalle"
+    aria-label="Cambiar sección del detalle">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="prefactura-tab-resumen-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-resumen" type="button" role="tab" aria-controls="prefactura-tab-resumen"
-                aria-selected="true">Resumen
+                aria-selected="true" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: Resumen">Resumen
         </button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-solicitud-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-solicitud" type="button" role="tab"
-                aria-controls="prefactura-tab-solicitud" aria-selected="false">Solicitud
+                aria-controls="prefactura-tab-solicitud" aria-selected="false" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: Solicitud">Solicitud
         </button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-derivacion-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-derivacion" type="button" role="tab"
-                aria-controls="prefactura-tab-derivacion" aria-selected="false">Derivación
+                aria-controls="prefactura-tab-derivacion" aria-selected="false" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: Derivación">Derivación
         </button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-oftalmo-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-oftalmo" type="button" role="tab" aria-controls="prefactura-tab-oftalmo"
-                aria-selected="false">Apto Quirúrgico
+                aria-selected="false" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: Apto quirúrgico">Apto Quirúrgico
         </button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-examen-tab" data-bs-toggle="tab"
                 data-bs-target="#prefactura-tab-examen" type="button" role="tab" aria-controls="prefactura-tab-examen"
-                aria-selected="false">Examen & Plan
+                aria-selected="false" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: Examen y plan">Examen & Plan
         </button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="prefactura-tab-crm-tab" data-bs-toggle="tab" data-bs-target="#prefactura-tab-crm"
-                type="button" role="tab" aria-controls="prefactura-tab-crm" aria-selected="false">CRM
+                type="button" role="tab" aria-controls="prefactura-tab-crm" aria-selected="false" title="Cambiar sección del detalle" aria-label="Cambiar sección del detalle: CRM">CRM
         </button>
     </li>
 </ul>
+
+<div class="text-muted small mt-2 mb-2">
+    <i class="mdi mdi-information-outline me-1"></i>
+    Usa las pestañas para cambiar de sección y trabajar la solicitud paso a paso.
+</div>
 
 <div class="tab-content prefactura-tab-content" id="prefacturaTabsContent">
     <div id="prefacturaCoberturaData"
@@ -292,12 +299,16 @@ if ($sessionUsername === 'jl1dvg') {
         <div class="mt-3">
             <h6 class="text-muted text-uppercase">Acciones</h6>
             <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">
-                    <i class="mdi mdi-phone me-1"></i> Generar turno
+                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal"
+                        title="Generar turno para esta solicitud"
+                        aria-label="Generar turno para esta solicitud">
+                    <i class="mdi mdi-phone me-1"></i> Generar turno para esta solicitud
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
-                        data-estado="En atención">
-                    <i class="mdi mdi-account-clock-outline me-1"></i> En atención
+                        data-estado="En atención"
+                        title="Marcar paciente en atención"
+                        aria-label="Marcar paciente en atención">
+                    <i class="mdi mdi-account-clock-outline me-1"></i> Marcar paciente en atención
                 </button>
                 <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa"
                         data-estado="Revisión Códigos" data-completado="1">
@@ -324,13 +335,16 @@ if ($sessionUsername === 'jl1dvg') {
                    href="#"
                    target="_blank"
                    rel="noopener"
-                   aria-label="Abrir proyecto CRM">
-                    <i class="mdi mdi-open-in-new"></i> Abrir Proyecto CRM
+                   aria-label="Abrir proyecto CRM vinculado"
+                   title="Abrir proyecto CRM vinculado">
+                    <i class="mdi mdi-open-in-new"></i> Abrir proyecto CRM vinculado
                 </a>
                 <button type="button"
                         class="btn btn-outline-secondary btn-sm d-none"
-                        id="prefacturaChecklistBootstrap">
-                    <i class="mdi mdi-playlist-plus me-1"></i> Crear tareas
+                        id="prefacturaChecklistBootstrap"
+                        title="Crear tareas sugeridas automáticamente"
+                        aria-label="Crear tareas sugeridas automáticamente">
+                    <i class="mdi mdi-playlist-plus me-1"></i> Crear tareas sugeridas automáticamente
                 </button>
             </div>
             <div class="card-body">
@@ -474,13 +488,17 @@ if ($sessionUsername === 'jl1dvg') {
                         </div>
                         <div class="d-flex flex-wrap gap-2">
                             <button type="button" class="btn btn-warning btn-sm"
-                                    id="btnPrefacturaSolicitarCoberturaMail">
+                                    id="btnPrefacturaSolicitarCoberturaMail"
+                                    title="Redactar correo de cobertura"
+                                    aria-label="Redactar correo de cobertura">
                                 <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
                             </button>
                             <?php if ($archivoHref): ?>
                                 <a class="btn btn-outline-secondary btn-sm"
                                    href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
-                                   target="_blank" rel="noopener">
+                                   target="_blank" rel="noopener"
+                                   title="Descargar PDF de derivación"
+                                   aria-label="Descargar PDF de derivación">
                                     <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
                                 </a>
                             <?php endif; ?>
@@ -515,7 +533,9 @@ if ($sessionUsername === 'jl1dvg') {
                                     </p>
                                     <button type="button"
                                             class="btn btn-link btn-sm p-0 text-decoration-none prefactura-proc-actions"
-                                            data-bs-toggle="modal" data-bs-target="#prefacturaProcedimientoModal">
+                                            data-bs-toggle="modal" data-bs-target="#prefacturaProcedimientoModal"
+                                            title="Ver procedimiento completo"
+                                            aria-label="Ver procedimiento completo">
                                         Ver más
                                     </button>
                                 </div>
@@ -560,7 +580,9 @@ if ($sessionUsername === 'jl1dvg') {
                                     </div>
                                     <?php if (count($diagnosticos) > 3): ?>
                                         <button type="button" class="btn btn-link btn-sm p-0 mt-2 text-decoration-none"
-                                                data-bs-toggle="modal" data-bs-target="#prefacturaDiagnosticosModal">
+                                                data-bs-toggle="modal" data-bs-target="#prefacturaDiagnosticosModal"
+                                                title="Ver lista completa de diagnósticos"
+                                                aria-label="Ver lista completa de diagnósticos">
                                             Ver todos
                                         </button>
                                     <?php endif; ?>
@@ -705,8 +727,10 @@ if ($sessionUsername === 'jl1dvg') {
                         </div>
                         <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
                            href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank"
-                           rel="noopener">
-                            <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
+                           rel="noopener"
+                           title="Descargar PDF de derivación"
+                           aria-label="Descargar PDF de derivación">
+                            <i class="bi bi-file-earmark-pdf"></i> Descargar PDF de derivación
                         </a>
                     </div>
                 <?php endif; ?>
@@ -864,10 +888,11 @@ if ($sessionUsername === 'jl1dvg') {
                                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-bs-toggle="tooltip"
-                                title="Editar LIO, poder, lateralidad, incisión y médico asignado"
+                                title="Editar datos quirúrgicos"
+                                aria-label="Editar datos quirúrgicos"
                         >
                             <i class="mdi mdi-tune-variant"></i>
-                            <span>Editar cirugía</span>
+                            <span>Editar datos quirúrgicos</span>
                             <span class="badge bg-light text-primary">LIO</span>
                         </button>
                     </div>
@@ -888,11 +913,13 @@ if ($sessionUsername === 'jl1dvg') {
                                         data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
                                         data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                         data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                        title="Confirmar evaluación de anestesia"
+                                        aria-label="Confirmar evaluación de anestesia"
                                         <?= $esAptoAnestesia ? 'disabled' : '' ?>
                                         id="btnPrefacturaConfirmarAnestesia">
                                     <?= $esAptoAnestesia
-                                            ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por anestesia'
-                                            : 'Marcar apto'
+                                            ? '<i class="mdi mdi-check-circle-outline me-1"></i> Evaluación anestesia confirmada'
+                                            : 'Confirmar evaluación de anestesia'
                                     ?>
                                 </button>
                             </div>
@@ -942,9 +969,11 @@ if ($sessionUsername === 'jl1dvg') {
                                         data-id="<?= htmlspecialchars((string)$solicitudIdBtn, ENT_QUOTES, 'UTF-8') ?>"
                                         data-form-id="<?= htmlspecialchars((string)$formId, ENT_QUOTES, 'UTF-8') ?>"
                                         data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                        title="Confirmar evaluación oftalmológica"
+                                        aria-label="Confirmar evaluación oftalmológica"
                                         <?= $esAptoOftalmo ? 'disabled' : '' ?>>
-                                    <?= $esAptoOftalmo ? '<i class="mdi mdi-check-circle-outline me-1"></i> Apto por oftalmólogo'
-                                            : 'Marcar apto' ?>
+                                    <?= $esAptoOftalmo ? '<i class="mdi mdi-check-circle-outline me-1"></i> Evaluación oftalmológica confirmada'
+                                            : 'Confirmar evaluación oftalmológica' ?>
                                 </button>
                             </div>
                         </div>
@@ -1036,11 +1065,15 @@ if ($sessionUsername === 'jl1dvg') {
                     </div>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyExamen">
-                        <i class="bi bi-clipboard"></i> Copiar examen
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyExamen"
+                            title="Copiar examen físico"
+                            aria-label="Copiar examen físico">
+                        <i class="bi bi-clipboard"></i> Copiar examen físico
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyPlan">
-                        <i class="bi bi-clipboard"></i> Copiar plan
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrefacturaCopyPlan"
+                            title="Copiar plan médico"
+                            aria-label="Copiar plan médico">
+                        <i class="bi bi-clipboard"></i> Copiar plan médico
                     </button>
                 </div>
             </div>
@@ -1137,7 +1170,7 @@ if ($sessionUsername === 'jl1dvg') {
                         setTimeout(() => {
                             btnExamen.classList.remove('btn-success');
                             btnExamen.classList.add('btn-outline-secondary');
-                            btnExamen.innerHTML = '<i class="bi bi-clipboard"></i> Copiar examen';
+                            btnExamen.innerHTML = '<i class="bi bi-clipboard"></i> Copiar examen físico';
                         }, 1200);
                     });
                 }
@@ -1154,7 +1187,7 @@ if ($sessionUsername === 'jl1dvg') {
                         setTimeout(() => {
                             btnPlan.classList.remove('btn-success');
                             btnPlan.classList.add('btn-outline-secondary');
-                            btnPlan.innerHTML = '<i class="bi bi-clipboard"></i> Copiar plan';
+                            btnPlan.innerHTML = '<i class="bi bi-clipboard"></i> Copiar plan médico';
                         }, 1200);
                     });
                 }
@@ -1199,8 +1232,9 @@ if ($sessionUsername === 'jl1dvg') {
                             data-crm-proxy
                             data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-paciente-nombre="<?= htmlspecialchars($nombrePaciente ?: 'Solicitud', ENT_QUOTES, 'UTF-8') ?>"
-                            aria-label="Abrir CRM de la solicitud">
-                        <i class="mdi mdi-open-in-new"></i> Abrir CRM
+                            aria-label="Abrir CRM sin salir del detalle"
+                            title="Abrir CRM sin salir del detalle">
+                        <i class="mdi mdi-open-in-new"></i> Abrir CRM sin salir del detalle
                     </button>
                 </div>
             </div>
@@ -1415,7 +1449,9 @@ if ($sessionUsername === 'jl1dvg') {
                     <div class="d-flex flex-column">
                         <label class="d-flex align-items-center gap-2 mb-0">
                             <input type="checkbox" class="form-check-input m-0" data-checklist-toggle
-                                   data-etapa-slug="${slug}" ${checked} ${disabled}>
+                                   data-etapa-slug="${slug}" ${checked} ${disabled}
+                                   title="Actualizar etapa del checklist"
+                                   aria-label="Actualizar etapa del checklist">
                             <span>${label}</span>
                         </label>
                         ${taskInfo}
@@ -1622,10 +1658,13 @@ if ($sessionUsername === 'jl1dvg') {
             if (tipo === 'anestesia' && btnAptoAnestesia) {
                 btnAptoAnestesia.classList.remove('btn-outline-success');
                 btnAptoAnestesia.classList.add('btn-success');
-                btnAptoAnestesia.textContent = 'Apto por anestesia';
+                btnAptoAnestesia.textContent = 'Evaluación anestesia confirmada';
                 btnAptoAnestesia.disabled = true;
             }
             if (tipo === 'oftalmo' && btnAptoOftalmo) {
+                btnAptoOftalmo.classList.remove('btn-outline-success');
+                btnAptoOftalmo.classList.add('btn-success');
+                btnAptoOftalmo.textContent = 'Evaluación oftalmológica confirmada';
                 btnAptoOftalmo.disabled = true;
             }
 

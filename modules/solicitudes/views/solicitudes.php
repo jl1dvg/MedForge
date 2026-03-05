@@ -144,6 +144,126 @@ $solicitudesDummiesToolbar = [
                 'file' => 'crm-block-schedule.md',
                 'markdown' => "### ¿Qué hace?\nRegistra un bloqueo de agenda para coordinación quirúrgica.",
         ],
+        'prefactura.how-to' => [
+                'title' => 'Prefactura: Cómo usar el detalle',
+                'description' => 'Guía operativa rápida del detalle de solicitud',
+                'file' => 'prefactura-how-to.md',
+                'markdown' => "### ¿Qué hace?\nExplica cómo operar el modal de prefactura paso a paso.",
+        ],
+        'prefactura.generate-turno' => [
+                'title' => 'Prefactura: Generar turno',
+                'description' => 'Generar turno para esta solicitud',
+                'file' => 'prefactura-generate-turno.md',
+                'markdown' => "### ¿Qué hace?\nGenera turno desde el detalle de solicitud.",
+        ],
+        'prefactura.mark-in-attention' => [
+                'title' => 'Prefactura: En atención',
+                'description' => 'Marcar paciente en atención',
+                'file' => 'prefactura-mark-in-attention.md',
+                'markdown' => "### ¿Qué hace?\nActualiza el estado a En atención.",
+        ],
+        'prefactura.request-preop-exams' => [
+                'title' => 'Prefactura: Solicitar exámenes prequirúrgicos',
+                'description' => 'Imprimir orden de exámenes prequirúrgicos',
+                'file' => 'prefactura-request-preop-exams.md',
+                'markdown' => "### ¿Qué hace?\nAbre PDF con orden de exámenes prequirúrgicos.",
+        ],
+        'prefactura.tabs' => [
+                'title' => 'Prefactura: Tabs del detalle',
+                'description' => 'Cambiar sección del detalle',
+                'file' => 'prefactura-tabs.md',
+                'markdown' => "### ¿Qué hace?\nNavega entre resumen, solicitud, derivación, apto, examen y CRM.",
+        ],
+        'prefactura.edit-surgery' => [
+                'title' => 'Prefactura: Editar cirugía (LIO)',
+                'description' => 'Editar datos quirúrgicos',
+                'file' => 'prefactura-edit-surgery.md',
+                'markdown' => "### ¿Qué hace?\nPermite editar lente, poder, lateralidad e incisión.",
+        ],
+        'prefactura.confirm-anesthesia' => [
+                'title' => 'Prefactura: Confirmar apto anestesia',
+                'description' => 'Confirmar evaluación de anestesia',
+                'file' => 'prefactura-confirm-anesthesia.md',
+                'markdown' => "### ¿Qué hace?\nMarca evaluación de anestesia como confirmada.",
+        ],
+        'prefactura.confirm-oftalmo' => [
+                'title' => 'Prefactura: Confirmar apto oftalmólogo',
+                'description' => 'Confirmar evaluación oftalmológica',
+                'file' => 'prefactura-confirm-oftalmo.md',
+                'markdown' => "### ¿Qué hace?\nMarca evaluación oftalmológica como confirmada.",
+        ],
+        'prefactura.create-agenda' => [
+                'title' => 'Prefactura: Crear agenda',
+                'description' => 'Generar agenda quirúrgica',
+                'file' => 'prefactura-create-agenda.md',
+                'markdown' => "### ¿Qué hace?\nAbre flujo de agenda quirúrgica contextual.",
+        ],
+        'prefactura.export-protocol' => [
+                'title' => 'Prefactura: Exportar protocolo PDF',
+                'description' => 'Descargar protocolo para coordinación',
+                'file' => 'prefactura-export-protocol.md',
+                'markdown' => "### ¿Qué hace?\nAbre el PDF del protocolo para coordinación.",
+        ],
+        'prefactura.checklist-bootstrap' => [
+                'title' => 'Prefactura: Checklist crear tareas',
+                'description' => 'Crear tareas sugeridas automáticamente',
+                'file' => 'prefactura-checklist-bootstrap.md',
+                'markdown' => "### ¿Qué hace?\nGenera tareas CRM iniciales desde checklist.",
+        ],
+        'prefactura.checklist-toggle' => [
+                'title' => 'Prefactura: Checklist toggle etapa',
+                'description' => 'Actualizar etapa del checklist',
+                'file' => 'prefactura-checklist-toggle.md',
+                'markdown' => "### ¿Qué hace?\nCompleta o reabre etapas del checklist.",
+        ],
+        'prefactura.open-crm-project' => [
+                'title' => 'Prefactura: Abrir proyecto CRM',
+                'description' => 'Abrir proyecto CRM vinculado',
+                'file' => 'prefactura-open-crm-project.md',
+                'markdown' => "### ¿Qué hace?\nAbre el proyecto CRM asociado al checklist.",
+        ],
+        'prefactura.request-coverage-mail' => [
+                'title' => 'Prefactura: Solicitar cobertura por correo',
+                'description' => 'Redactar correo de cobertura',
+                'file' => 'prefactura-request-coverage-mail.md',
+                'markdown' => "### ¿Qué hace?\nAbre modal para redactar y enviar correo de cobertura.",
+        ],
+        'prefactura.download-derivacion' => [
+                'title' => 'Prefactura: Descargar derivación',
+                'description' => 'Descargar PDF de derivación',
+                'file' => 'prefactura-download-derivacion.md',
+                'markdown' => "### ¿Qué hace?\nDescarga soporte PDF de la derivación.",
+        ],
+        'prefactura.view-full-procedure' => [
+                'title' => 'Prefactura: Ver más procedimiento',
+                'description' => 'Ver procedimiento completo',
+                'file' => 'prefactura-view-full-procedure.md',
+                'markdown' => "### ¿Qué hace?\nMuestra el texto completo del procedimiento.",
+        ],
+        'prefactura.view-all-diagnostics' => [
+                'title' => 'Prefactura: Ver todos diagnósticos',
+                'description' => 'Ver lista completa de diagnósticos',
+                'file' => 'prefactura-view-all-diagnostics.md',
+                'markdown' => "### ¿Qué hace?\nAbre modal con diagnóstico completo del caso.",
+        ],
+        'prefactura.copy-exam' => [
+                'title' => 'Prefactura: Copiar examen',
+                'description' => 'Copiar examen físico',
+                'file' => 'prefactura-copy-exam.md',
+                'markdown' => "### ¿Qué hace?\nCopia al portapapeles el examen físico.",
+        ],
+        'prefactura.copy-plan' => [
+                'title' => 'Prefactura: Copiar plan',
+                'description' => 'Copiar plan médico',
+                'file' => 'prefactura-copy-plan.md',
+                'markdown' => "### ¿Qué hace?\nCopia al portapapeles el plan médico.",
+        ],
+        'prefactura.open-crm-proxy' => [
+                'title' => 'Prefactura: Abrir CRM (proxy)',
+                'description' => 'Abrir CRM sin salir del detalle',
+                'file' => 'prefactura-open-crm-proxy.md',
+                'markdown' => "### ¿Qué hace?\nAbre el CRM de la solicitud desde la pestaña CRM del detalle.",
+        ],
         'toolbar.conciliacion' => [
                 'title' => 'Vista Conciliación',
                 'description' => 'Revisar match solicitud vs protocolo',
@@ -2065,7 +2185,16 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="modal-title mb-0" id="prefacturaModalLabel">Detalle de Solicitud</h5>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-info"
+                            data-dummies-key="prefactura.how-to"
+                            title="Abrir guía operativa del detalle"
+                            aria-label="Abrir guía operativa del detalle">
+                        <i class="mdi mdi-school-outline me-1"></i>Guía del detalle
+                    </button>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body prefactura-modal-body">
@@ -2077,17 +2206,22 @@ foreach ($solicitudesDummiesToolbar as $key => $meta) {
                 <!--<button type="button" class="btn btn-outline-secondary" id="btnRescrapeDerivacion">
                     🔄 Re-scrapear derivación
                 </button> -->
-                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">📞 Generar turno
+                <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal"
+                        title="Generar turno para esta solicitud"
+                        aria-label="Generar turno para esta solicitud">📞 Generar turno para esta solicitud
                 </button>
                 <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal"
-                        data-estado="En atención">👥 En atención
+                        data-estado="En atención"
+                        title="Marcar paciente en atención"
+                        aria-label="Marcar paciente en atención">👥 Marcar paciente en atención
                 </button>
                 <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
                         type="button"
                         id="btnSolicitarExamenesPrequirurgicos"
                         data-bs-toggle="tooltip"
-                        title="Enviar solicitud de exámenes prequirúrgicos al paciente">
-                    <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
+                        title="Imprimir orden de exámenes prequirúrgicos"
+                        aria-label="Imprimir orden de exámenes prequirúrgicos">
+                    <i class="mdi mdi-file-multiple me-1"></i> Imprimir orden de exámenes prequirúrgicos
                 </button>
                 <!-- <button type="button" class="btn btn-warning d-none" id="btnSolicitarCobertura"
                         data-estado="Revisión Códigos" data-completado="0">

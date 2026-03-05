@@ -620,6 +620,64 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'crm_task_policies',
+                        'title' => 'Políticas de tareas CRM',
+                        'description' => 'Controla recordatorios automáticos por vencimiento y la escalación de tareas atrasadas.',
+                        'fields' => [
+                            self::checkboxField(
+                                'notifications_crm_task_creation_notify',
+                                'Notificar inmediatamente al crear/asignar una tarea CRM',
+                                true,
+                                'Publica un aviso en el panel de notificaciones apenas se crea la tarea.'
+                            ),
+                            self::checkboxField(
+                                'notifications_crm_task_auto_reminder_enabled',
+                                'Autogenerar reminders usando la fecha de vencimiento',
+                                true,
+                                'Si no se define remind_at manualmente, se crearán recordatorios con los offsets configurados.'
+                            ),
+                            self::textareaField(
+                                'notifications_crm_task_due_offsets',
+                                'Offsets de reminder respecto al vencimiento',
+                                'Formato CSV o JSON. Ej: -24h,-2h,0h,+2h (unidades válidas: d, h, m; sin unidad se asume horas).',
+                                '-24h,-2h,0h'
+                            ),
+                            self::numberField(
+                                'notifications_crm_task_escalation_grace_minutes',
+                                'Minutos de gracia para escalar tareas vencidas',
+                                120,
+                                'Cuando una tarea supere este margen sin completarse, se dispara la escalación.'
+                            ),
+                            self::checkboxGroupField(
+                                'notifications_crm_task_escalation_recipients',
+                                'Destinatarios de escalación',
+                                [
+                                    'supervisors' => 'Supervisores CRM',
+                                    'creator' => 'Creador de la tarea',
+                                    'assignee' => 'Responsable asignado',
+                                ],
+                                [
+                                    'supervisors',
+                                    'creator',
+                                ],
+                                'Puedes combinar destinatarios para cubrir operación y seguimiento.'
+                            ),
+                            self::checkboxGroupField(
+                                'notifications_crm_task_escalation_channels',
+                                'Canales de escalación',
+                                [
+                                    'in_app' => 'Panel en tiempo real (in-app)',
+                                    'email' => 'Correo electrónico',
+                                ],
+                                [
+                                    'in_app',
+                                    'email',
+                                ],
+                                'Si desactivas ambos canales, la escalación no enviará avisos.'
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'quiet_hours',
                         'title' => 'Ventanas de silencio y alertas críticas',
                         'description' => 'Establece horarios sin notificaciones y los destinatarios de alertas críticas.',
