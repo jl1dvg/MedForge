@@ -82,6 +82,7 @@ Objetivo: operar principalmente en Laravel (`/v2/*`) al día 14 con rollback con
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-number='HC-REAL-001'
 php tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
 
@@ -90,6 +91,9 @@ php tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSI
 - `DASHBOARD_V2_UI_ENABLED`
 - `DASHBOARD_V2_DATA_ENABLED`
 - `BILLING_V2_WRITES_ENABLED`
+- `SOLICITUDES_V2_UI_ENABLED`
+- `SOLICITUDES_V2_READS_ENABLED`
+- `SOLICITUDES_V2_WRITES_ENABLED`
 
 ## Ritual diario (10 min, mañana/noche)
 

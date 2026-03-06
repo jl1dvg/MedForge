@@ -65,13 +65,19 @@ return function (Router $router) {
     });
 
     $router->get('/imagenes/informes/012b/pdf', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imprimirInforme012B();
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/imagenes/012b/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
     $router->get('/imagenes/informes/012b/paquete', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imprimirInforme012BPaquete();
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/imagenes/012b/paquete' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
     $router->post('/imagenes/informes/012b/paquete/seleccion', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imprimirInforme012BPaqueteSeleccion();
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/imagenes/012b/paquete/seleccion' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 307);
     });
 
     $router->post('/examenes/kanban-data', function (\PDO $pdo) {
@@ -83,7 +89,9 @@ return function (Router $router) {
     });
 
     $router->get('/examenes/cobertura-012a/pdf', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imprimirCobertura012A();
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/imagenes/012a/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
 
     $router->post('/examenes/reportes/pdf', function (\PDO $pdo) {

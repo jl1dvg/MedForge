@@ -1741,7 +1741,7 @@ sort($estadoOpciones);
                 }
                 let filename = 'paquete.pdf';
                 setButtonLoading(triggerBtn, true);
-                fetch('/imagenes/informes/012b/paquete/seleccion', {
+                fetch('/v2/reports/imagenes/012b/paquete/seleccion', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({items: items})

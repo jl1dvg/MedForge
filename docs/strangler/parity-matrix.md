@@ -48,6 +48,8 @@ Current auth parity policy:
 - Authenticated parity is contract-aware when `--cookie=PHPSESSID=...` is present:
 - `datatable`: full compare (legacy/v2 `200` + DataTable shape).
 - `detalles`: status parity (`200` both sides) + v2 JSON required fields.
+- `detalles/solicitud`: auth parity for validation flow (`422` when missing `form_id`) + guest `401`.
+- `detalles/section`: status parity (`200` both sides) + v2 JSON required fields.
 - `flujo`: status parity (`200` both sides) + v2 JSON required fields.
 - `detalles_update`: status parity (`302` both sides) + v2 post-check de persistencia.
 
@@ -105,6 +107,8 @@ php tools/tests/http_smoke.php --endpoint=dashboard_summary
 php tools/tests/http_smoke.php --endpoint=dashboard_summary --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=dashboard_cutover
 php tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=solicitudes_cutover
+php tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=reporting_cutover
 php tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
@@ -127,6 +131,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
@@ -186,4 +191,33 @@ DASHBOARD_V2_DATA_ENABLED=1
 
 ```bash
 DASHBOARD_V2_DATA_ENABLED=0
+```
+
+## Solicitudes Cutover Flags
+
+- Legacy runtime can switch Solicitudes UI/reads/writes to Laravel `/v2/solicitudes*` with env flags:
+
+```bash
+SOLICITUDES_V2_UI_ENABLED=1
+SOLICITUDES_V2_READS_ENABLED=1
+SOLICITUDES_V2_WRITES_ENABLED=1
+```
+
+- Validation when enabled:
+
+```bash
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
+```
+
+- Expected:
+- `solicitudes_ui_cutover_redirect` returns `302` to `/v2/solicitudes`.
+- `solicitudes_dashboard_ui_cutover_redirect` returns `302` to `/v2/solicitudes/dashboard`.
+- `solicitudes_turnero_ui_cutover_redirect` returns `302` to `/v2/solicitudes/turnero`.
+
+- Fast rollback (no code revert):
+
+```bash
+SOLICITUDES_V2_UI_ENABLED=0
+SOLICITUDES_V2_READS_ENABLED=0
+SOLICITUDES_V2_WRITES_ENABLED=0
 ```

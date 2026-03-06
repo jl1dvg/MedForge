@@ -2,6 +2,7 @@
 
 namespace App\Modules\Pacientes\Http\Controllers;
 
+use App\Modules\Pacientes\Services\Paciente360ParityService;
 use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
@@ -13,12 +14,14 @@ use PDO;
 class PacientesReadController
 {
     private PacientesParityService $service;
+    private Paciente360ParityService $paciente360Service;
 
     public function __construct()
     {
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
         $this->service = new PacientesParityService($pdo);
+        $this->paciente360Service = new Paciente360ParityService($pdo);
     }
 
     public function index(Request $request): JsonResponse
@@ -172,6 +175,70 @@ class PacientesReadController
                 'count' => count($rows),
             ],
         ]);
+    }
+
+    public function detalleSolicitudApi(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $hcNumber = trim((string) ($request->query('hc_number', '')));
+        $formId = trim((string) ($request->query('form_id', '')));
+
+        if ($hcNumber === '' || $formId === '') {
+            return response()->json(['error' => 'hc_number y form_id son obligatorios'], 422);
+        }
+
+        try {
+            $detalle = $this->service->getDetalleSolicitud($hcNumber, $formId);
+            if ($detalle === []) {
+                return response()->json(['error' => 'No se encontró la solicitud'], 404);
+            }
+
+            return response()->json(['data' => $detalle]);
+        } catch (\Throwable) {
+            return response()->json(['error' => 'No se pudo recuperar el detalle de la solicitud'], 500);
+        }
+    }
+
+    public function detallesSection(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $hcNumber = trim((string) ($request->query('hc_number', '')));
+        $section = trim((string) ($request->query('section', '')));
+        $limit = (int) $request->query('limit', 25);
+        $filters = [
+            'date_from' => trim((string) ($request->query('date_from', ''))),
+            'date_to' => trim((string) ($request->query('date_to', ''))),
+            'estado' => trim((string) ($request->query('estado', ''))),
+            'search' => trim((string) ($request->query('search', ''))),
+        ];
+
+        if ($hcNumber === '' || $section === '') {
+            return response()->json(['error' => 'hc_number y section son obligatorios'], 422);
+        }
+
+        try {
+            $payload = $this->paciente360Service->getSection($hcNumber, $section, $limit, $filters);
+
+            return response()->json([
+                'data' => $payload['rows'],
+                'meta' => [
+                    'section' => $payload['section'],
+                    'summary' => $payload['summary'],
+                    'filters' => $payload['filters'],
+                    'total_rows' => $payload['total_rows'],
+                ],
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['error' => $exception->getMessage()], 422);
+        } catch (\Throwable) {
+            return response()->json(['error' => 'No se pudo cargar la sección solicitada'], 500);
+        }
     }
 
     /**

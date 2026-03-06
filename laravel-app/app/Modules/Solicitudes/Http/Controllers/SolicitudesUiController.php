@@ -56,11 +56,19 @@ class SolicitudesUiController
 
     public function dashboard(Request $request): View|RedirectResponse
     {
+        if (!$this->isV2UiEnabled()) {
+            return $this->redirectLegacy($request, '/solicitudes/dashboard');
+        }
+
         if (!LegacySessionAuth::isAuthenticated($request)) {
             return redirect('/auth/login?auth_required=1');
         }
 
-        return $this->redirectLegacy($request, '/cirugias/dashboard');
+        return view('solicitudes.v2-dashboard', [
+            'pageTitle' => 'Dashboard de Solicitudes v2',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'dashboardEndpoint' => '/v2/solicitudes/dashboard-data',
+        ]);
     }
 
     public function turnero(Request $request): View|RedirectResponse

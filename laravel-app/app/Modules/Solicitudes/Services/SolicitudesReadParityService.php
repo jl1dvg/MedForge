@@ -1876,7 +1876,11 @@ class SolicitudesReadParityService
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             LEFT JOIN patient_data pd ON sp.hc_number = pd.hc_number
-            LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
+            LEFT JOIN (
+                SELECT c.hc_number, c.form_id, MAX(c.fecha) AS fecha
+                FROM consulta_data c
+                GROUP BY c.hc_number, c.form_id
+            ) cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
             LEFT JOIN solicitud_crm_detalles detalles ON detalles.solicitud_id = sp.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
             LEFT JOIN crm_leads cl ON detalles.crm_lead_id = cl.id

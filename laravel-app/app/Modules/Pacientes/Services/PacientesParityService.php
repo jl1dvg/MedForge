@@ -177,6 +177,22 @@ class PacientesParityService
         ]);
     }
 
+    public function getDetalleSolicitud(string $hcNumber, string $formId): array
+    {
+        $stmt = $this->db->prepare(
+            <<<'SQL'
+            SELECT sp.*, cd.*
+            FROM solicitud_procedimiento sp
+            LEFT JOIN consulta_data cd ON sp.hc_number = cd.hc_number AND sp.form_id = cd.form_id
+            WHERE sp.hc_number = ? AND sp.form_id = ?
+            LIMIT 1
+            SQL
+        );
+        $stmt->execute([$hcNumber, $formId]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
     private function getDiagnosticosPorPaciente(string $hcNumber): array
     {
         $uniqueDiagnoses = [];

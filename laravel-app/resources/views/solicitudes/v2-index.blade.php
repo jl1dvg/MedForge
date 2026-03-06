@@ -365,7 +365,7 @@
                 </div>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <a href="/cirugias/dashboard" class="btn btn-light" id="solDashboardBtn">
+                <a href="/v2/solicitudes/dashboard" class="btn btn-light" id="solDashboardBtn">
                     <i class="mdi mdi-chart-line"></i> Dashboard
                 </a>
                 <button
@@ -373,8 +373,8 @@
                     class="btn btn-light sol-v2-help-btn"
                     data-bs-toggle="tooltip"
                     data-bs-placement="left"
-                    title="Abre el dashboard quirúrgico para revisar indicadores y avance del embudo de solicitudes."
-                    aria-label="Ayuda: Dashboard quirúrgico">
+                    title="Abre el dashboard operativo de solicitudes para revisar métricas, embudo y carga."
+                    aria-label="Ayuda: Dashboard operativo de solicitudes">
                     ?
                 </button>
             </div>
