@@ -9,3 +9,5 @@ Route::match(['GET', 'POST'], '/pacientes/detalles', [PacientesReadController::c
 Route::get('/pacientes/detalles/solicitud', [PacientesReadController::class, 'detalleSolicitudApi']);
 Route::get('/pacientes/detalles/section', [PacientesReadController::class, 'detallesSection']);
 Route::get('/pacientes/flujo', [PacientesReadController::class, 'flujo']);
+Route::get('/pacientes/flujo/tablero', [PacientesReadController::class, 'flujoTablero']);
+Route::get('/pacientes/flujo/recientes', [PacientesReadController::class, 'flujoRecientes']);

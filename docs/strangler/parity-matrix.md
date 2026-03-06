@@ -34,11 +34,14 @@ Current auth parity policy:
 
 ### Pacientes
 
+- `GET /pacientes` -> `GET /v2/pacientes` (UI cutover por flag)
 - `POST /pacientes/datatable` -> `POST /v2/pacientes/datatable`
 - `GET|POST /pacientes/detalles` -> `GET|POST /v2/pacientes/detalles`
 - `GET /pacientes/detalles/solicitud` -> `GET /v2/pacientes/detalles/solicitud`
 - `GET /pacientes/detalles/section` -> `GET /v2/pacientes/detalles/section`
 - `GET /pacientes/flujo` -> `GET /v2/pacientes/flujo`
+- `GET /public/ajax/flujo.php` -> `GET /v2/pacientes/flujo/tablero` (shim para frontend v2)
+- `GET /public/ajax/flujo_recientes.php` -> `GET /v2/pacientes/flujo/recientes` (shim para frontend v2)
 - `POST /pacientes/detalles?actualizar_paciente=1` -> `POST /v2/pacientes/detalles?actualizar_paciente=1`
 
 Current auth parity policy:
@@ -52,6 +55,7 @@ Current auth parity policy:
 - `detalles/section`: status parity (`200` both sides) + v2 JSON required fields.
 - `flujo`: status parity (`200` both sides) + v2 JSON required fields.
 - `detalles_update`: status parity (`302` both sides) + v2 post-check de persistencia.
+- Con `PACIENTES_V2_UI_ENABLED=1`, legacy `/pacientes*` redirige a `/v2/pacientes*`; por eso los checks de redirect viven en módulo smoke dedicado `pacientes_cutover`.
 
 ### Auth (deferred)
 
@@ -116,6 +120,8 @@ php tools/tests/http_smoke.php --endpoint=pacientes_detalles_solicitud
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_section
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
+php tools/tests/http_smoke.php --module=pacientes_cutover
+php tools/tests/http_smoke.php --module=pacientes_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --fail-fast
 php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-number='HC-REAL-001'
 ```
@@ -132,6 +138,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=pacientes_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
@@ -220,4 +227,29 @@ SOLICITUDES_V2_WRITES_ENABLED=1
 SOLICITUDES_V2_UI_ENABLED=0
 SOLICITUDES_V2_READS_ENABLED=0
 SOLICITUDES_V2_WRITES_ENABLED=0
+```
+
+## Pacientes UI Cutover Flag
+
+- Legacy runtime puede redirigir UI de Pacientes a Laravel `/v2/pacientes*` con:
+
+```bash
+PACIENTES_V2_UI_ENABLED=1
+```
+
+- Validación cuando está habilitado:
+
+```bash
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=pacientes_cutover --cookie='PHPSESSID=...'
+```
+
+- Esperado:
+- `pacientes_ui_cutover_redirect` devuelve `302` con `Location: /v2/pacientes`.
+- `pacientes_detalles_ui_cutover_redirect` devuelve `302` con `Location: /v2/pacientes/detalles?...`.
+- `pacientes_flujo_ui_cutover_redirect` devuelve `302` con `Location: /v2/pacientes/flujo`.
+
+- Rollback rápido:
+
+```bash
+PACIENTES_V2_UI_ENABLED=0
 ```

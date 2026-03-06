@@ -33,6 +33,8 @@
     $dashboardLink = $isV2Shell ? '/v2/dashboard' : '/dashboard';
     $solicitudesLink = $isV2Shell ? '/v2/solicitudes' : '/solicitudes';
     $solicitudesTurneroLink = $isV2Shell ? '/v2/solicitudes/turnero' : '/solicitudes/turnero';
+    $pacientesLink = $isV2Shell ? '/v2/pacientes' : '/pacientes';
+    $pacientesFlujoLink = $isV2Shell ? '/v2/pacientes/flujo' : '/pacientes/flujo';
 @endphp
 <aside class="main-sidebar">
     <section class="sidebar position-relative">
@@ -46,7 +48,7 @@
                         </a>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/crm', '/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/crm', '/pacientes/flujo', '/v2/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) }}">
                         <a href="#">
                             <i class="mdi mdi-sale"><span class="path1"></span><span class="path2"></span></i>
                             <span>Marketing y captación</span>
@@ -54,7 +56,7 @@
                         </a>
                         <ul class="treeview-menu">
                             <li class="{{ $isActive('/crm') }}"><a href="/crm"><i class="mdi mdi-ticket-account"></i>CRM</a></li>
-                            <li class="{{ $isPrefix('/pacientes/flujo') }}"><a href="/pacientes/flujo"><i class="mdi mdi-timetable"></i>Flujo de Pacientes</a></li>
+                            <li class="{{ $isPrefix('/pacientes/flujo') }}{{ $isPrefix('/v2/pacientes/flujo') }}"><a href="{{ $pacientesFlujoLink }}"><i class="mdi mdi-timetable"></i>Flujo de Pacientes</a></li>
                             <li class="{{ $isActive('/leads') }}"><a href="/leads"><i class="mdi mdi-bullhorn"></i>Campañas y Leads</a></li>
                             <li class="{{ $isActive('/whatsapp/autoresponder') }}"><a href="/whatsapp/autoresponder"><i class="mdi mdi-robot"></i>Automatizaciones de WhatsApp</a></li>
                             <li class="{{ $isActive('/whatsapp/templates') }}"><a href="/whatsapp/templates"><i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp</a></li>
@@ -75,14 +77,14 @@
                         </a>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/pacientes', '/whatsapp/chat', '/whatsapp/dashboard', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones', '/mailbox']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/pacientes', '/v2/pacientes', '/whatsapp/chat', '/whatsapp/dashboard', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones', '/mailbox']) }}">
                         <a href="#">
                             <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
                             <span>Atención al paciente</span>
                             <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
                         </a>
                         <ul class="treeview-menu">
-                            <li class="{{ $isActive('/pacientes') }}"><a href="/pacientes"><i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes</a></li>
+                            <li class="{{ $isPrefix('/pacientes') }}{{ $isPrefix('/v2/pacientes') }}"><a href="{{ $pacientesLink }}"><i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes</a></li>
                             <li class="{{ $isActive('/derivaciones') }}"><a href="/derivaciones"><i class="mdi mdi-file-find"></i>Derivaciones</a></li>
                             <li class="{{ $isPrefix('/turnoAgenda') }}"><a href="/turnoAgenda/agenda-doctor/index"><i class="mdi mdi-calendar"></i>Agendamiento</a></li>
                             <li class="{{ $isPrefix('/pacientes/certificaciones') }}"><a href="/pacientes/certificaciones"><i class="mdi mdi-qrcode-scan"></i>Certificación biométrica</a></li>

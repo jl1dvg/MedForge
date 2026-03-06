@@ -783,6 +783,65 @@ return [
                 'notes_auth' => 'Authenticated mode validates section payload contract for paciente 360.',
             ],
         ],
+        'pacientes_cutover' => [
+            [
+                'id' => 'pacientes_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/pacientes',
+                'v2_path' => '/pacientes',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/pacientes',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/pacientes',
+                ],
+                'notes' => 'Use this only when PACIENTES_V2_UI_ENABLED=1 to verify /pacientes redirect to /v2/pacientes.',
+                'notes_auth' => 'Authenticated mode also expects /pacientes redirecting to /v2/pacientes when UI cutover is enabled.',
+            ],
+            [
+                'id' => 'pacientes_detalles_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/pacientes/detalles?hc_number={HC_NUMBER}',
+                'v2_path' => '/pacientes/detalles?hc_number={HC_NUMBER}',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/pacientes/detalles?hc_number=',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/pacientes/detalles?hc_number=',
+                ],
+                'notes' => 'Use this only when PACIENTES_V2_UI_ENABLED=1 to verify /pacientes/detalles redirect to /v2/pacientes/detalles.',
+                'notes_auth' => 'Authenticated mode also expects /pacientes/detalles redirecting to /v2/pacientes/detalles when UI cutover is enabled.',
+            ],
+            [
+                'id' => 'pacientes_flujo_ui_cutover_redirect',
+                'method' => 'GET',
+                'legacy_path' => '/pacientes/flujo',
+                'v2_path' => '/pacientes/flujo',
+                'expect_status' => 302,
+                'expect_v2_status' => 302,
+                'expect_v2_status_auth' => 302,
+                'compare_mode' => 'v2_only',
+                'compare_mode_auth' => 'v2_only',
+                'assert_v2_header_contains' => [
+                    'location' => '/v2/pacientes/flujo',
+                ],
+                'assert_v2_header_contains_auth' => [
+                    'location' => '/v2/pacientes/flujo',
+                ],
+                'notes' => 'Use this only when PACIENTES_V2_UI_ENABLED=1 to verify /pacientes/flujo redirect to /v2/pacientes/flujo.',
+                'notes_auth' => 'Authenticated mode also expects /pacientes/flujo redirecting to /v2/pacientes/flujo when UI cutover is enabled.',
+            ],
+        ],
         'solicitudes' => [
             [
                 'id' => 'solicitudes_kanban_data',

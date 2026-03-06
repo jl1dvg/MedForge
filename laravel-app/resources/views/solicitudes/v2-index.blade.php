@@ -347,6 +347,33 @@
             align-items: center;
             justify-content: center;
         }
+
+        .sol-v2-view-switch .btn.is-active {
+            background: #0f172a;
+            border-color: #0f172a;
+            color: #fff;
+        }
+
+        .sol-v2-table-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: #fff;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+            margin-top: 14px;
+            overflow: hidden;
+        }
+
+        .sol-v2-empty-state {
+            color: #64748b;
+            padding: 16px;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .sol-v2-table-row {
+            cursor: pointer;
+        }
     </style>
 @endpush
 
@@ -365,6 +392,17 @@
                 </div>
             </div>
             <div class="d-flex align-items-center gap-2">
+                <div class="btn-group sol-v2-view-switch" role="group" aria-label="Cambiar vista de solicitudes">
+                    <button type="button" class="btn btn-light is-active" data-solicitudes-view="kanban">
+                        <i class="mdi mdi-view-kanban"></i> Tablero
+                    </button>
+                    <button type="button" class="btn btn-light" data-solicitudes-view="table">
+                        <i class="mdi mdi-table-large"></i> Tabla
+                    </button>
+                    <button type="button" class="btn btn-light" data-solicitudes-view="conciliacion">
+                        <i class="mdi mdi-clipboard-check-outline"></i> Conciliación
+                    </button>
+                </div>
                 <a href="/v2/solicitudes/dashboard" class="btn btn-light" id="solDashboardBtn">
                     <i class="mdi mdi-chart-line"></i> Dashboard
                 </a>
@@ -382,7 +420,7 @@
     </div>
 
     <section class="content">
-        <div class="box sol-v2-toolbar">
+        <div class="box sol-v2-toolbar" id="solV2ToolbarBox">
             <div class="box-body">
                 <form id="solV2Filters" class="row g-2 align-items-end">
                     <div class="col-lg-2 col-md-3">
@@ -441,19 +479,77 @@
             <div class="sol-v2-metric"><div class="sol-v2-metric-label">Autorización pendiente</div><div class="sol-v2-metric-value" id="mAuth">0</div></div>
         </div>
 
-        <div class="sol-v2-kanban-shell">
-            <div class="sol-v2-kanban" id="solV2Kanban">
-                @foreach($columns as $column)
-                    <article class="sol-v2-col" data-column="{{ (string) ($column['slug'] ?? '') }}">
-                        <header class="sol-v2-col-head">
-                            <h5 class="sol-v2-col-title">{{ (string) ($column['label'] ?? '') }}</h5>
-                            <span class="sol-v2-col-count" data-count>0</span>
-                        </header>
-                        <div class="sol-v2-col-body" data-body>
-                            <div class="sol-v2-empty">Sin solicitudes</div>
-                        </div>
-                    </article>
-                @endforeach
+        <div id="solV2ViewKanban">
+            <div class="sol-v2-kanban-shell">
+                <div class="sol-v2-kanban" id="solV2Kanban">
+                    @foreach($columns as $column)
+                        <article class="sol-v2-col" data-column="{{ (string) ($column['slug'] ?? '') }}">
+                            <header class="sol-v2-col-head">
+                                <h5 class="sol-v2-col-title">{{ (string) ($column['label'] ?? '') }}</h5>
+                                <span class="sol-v2-col-count" data-count>0</span>
+                            </header>
+                            <div class="sol-v2-col-body" data-body>
+                                <div class="sol-v2-empty">Sin solicitudes</div>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+
+        <div id="solicitudesViewTable" class="sol-v2-table-card d-none">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0" id="solicitudesTable">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Paciente</th>
+                        <th>Detalle</th>
+                        <th>Estado</th>
+                        <th>CRM</th>
+                        <th>SLA</th>
+                        <th>Turno</th>
+                        <th>Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody id="solicitudesTableBody"></tbody>
+                </table>
+            </div>
+            <div id="solicitudesTableEmpty" class="sol-v2-empty-state d-none">
+                No hay solicitudes para los filtros seleccionados.
+            </div>
+        </div>
+
+        <div id="solicitudesConciliacionSection" class="sol-v2-table-card d-none">
+            <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="box-title mb-1">Conciliación cirugía solicitada vs protocolo</h5>
+                    <small class="text-muted">Solicitudes creadas en el mes actual.</small>
+                </div>
+                <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm">
+                    <i class="mdi mdi-refresh"></i> Actualizar
+                </button>
+            </div>
+            <div class="box-body">
+                <p id="solicitudesConciliacionSummary" class="text-muted small mb-2"></p>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0" id="solicitudesConciliacionTable">
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Paciente</th>
+                            <th>Procedimiento solicitado</th>
+                            <th>Ojo</th>
+                            <th>Protocolo posterior compatible</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                        </thead>
+                        <tbody id="solicitudesConciliacionBody"></tbody>
+                    </table>
+                </div>
+                <div id="solicitudesConciliacionEmpty" class="sol-v2-empty-state d-none">
+                    No hay solicitudes del periodo para conciliación.
+                </div>
             </div>
         </div>
     </section>

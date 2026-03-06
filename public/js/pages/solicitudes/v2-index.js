@@ -23,6 +23,24 @@
     const searchInput = document.getElementById('solSearch');
     const dateFromInput = document.getElementById('solDateFrom');
     const dateToInput = document.getElementById('solDateTo');
+    const toolbarBox = document.getElementById('solV2ToolbarBox');
+    const metricsBox = document.getElementById('solV2Metrics');
+    const kanbanView = document.getElementById('solV2ViewKanban');
+    const tableView = document.getElementById('solicitudesViewTable');
+    const tableBody = document.getElementById('solicitudesTableBody');
+    const tableEmptyState = document.getElementById('solicitudesTableEmpty');
+    const conciliacionView = document.getElementById('solicitudesConciliacionSection');
+    const viewButtons = Array.from(document.querySelectorAll('[data-solicitudes-view]'));
+
+    const VIEW_STORAGE_KEY = 'solicitudes:view-mode';
+    const VIEW_DEFAULT = 'kanban';
+    const VIEW_ALLOWED = new Set(['kanban', 'table', 'conciliacion']);
+    let storedView = '';
+    try {
+        storedView = String(window.localStorage.getItem(VIEW_STORAGE_KEY) || '').toLowerCase();
+    } catch (error) {
+        storedView = '';
+    }
 
     const state = {
         rows: [],
@@ -44,6 +62,12 @@
             loadingPromise: null,
             failed: false,
         },
+        conciliacionPanel: {
+            api: null,
+            loadingPromise: null,
+            failed: false,
+        },
+        view: VIEW_ALLOWED.has(storedView) ? storedView : VIEW_DEFAULT,
     };
 
     const labelByColumn = columns.reduce((acc, col) => {
@@ -78,13 +102,34 @@
     };
 
     const initTooltips = () => {
-        if (!window.bootstrap || !window.bootstrap.Tooltip) {
+        if (window.bootstrap && window.bootstrap.Tooltip) {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((node) => {
+                try {
+                    if (typeof window.bootstrap.Tooltip.getOrCreateInstance === 'function') {
+                        window.bootstrap.Tooltip.getOrCreateInstance(node);
+                        return;
+                    }
+
+                    if (typeof window.bootstrap.Tooltip.getInstance === 'function') {
+                        const existing = window.bootstrap.Tooltip.getInstance(node);
+                        if (existing) {
+                            return;
+                        }
+                    }
+
+                    // Bootstrap versions without getOrCreateInstance.
+                    // eslint-disable-next-line no-new
+                    new window.bootstrap.Tooltip(node);
+                } catch (error) {
+                    // Ignore tooltip init failures to avoid blocking page init.
+                }
+            });
             return;
         }
 
-        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((node) => {
-            window.bootstrap.Tooltip.getOrCreateInstance(node);
-        });
+        if (window.jQuery && typeof window.jQuery.fn.tooltip === 'function') {
+            window.jQuery('[data-bs-toggle="tooltip"]').tooltip();
+        }
     };
 
     const requestId = () => {
@@ -109,6 +154,19 @@
             const from = filters.date_from.split('-').reverse().join('-');
             const to = filters.date_to.split('-').reverse().join('-');
             return `${from} - ${to}`;
+        }
+        return '';
+    };
+
+    const asIsoRangeText = (filters) => {
+        if (filters.date_from && filters.date_to) {
+            return `${filters.date_from} - ${filters.date_to}`;
+        }
+        if (filters.date_from) {
+            return filters.date_from;
+        }
+        if (filters.date_to) {
+            return filters.date_to;
         }
         return '';
     };
@@ -372,6 +430,101 @@
         `;
     };
 
+    const formatTurnoLabel = (turno) => {
+        if (turno == null) {
+            return '';
+        }
+
+        if (typeof turno === 'object') {
+            const candidate = turno.turno ?? turno.numero ?? turno.label ?? turno.codigo ?? '';
+            return String(candidate || '').trim();
+        }
+
+        return String(turno).trim();
+    };
+
+    const tableRowTemplate = (row) => {
+        const solicitudId = String(row.id || '').trim();
+        const hcNumber = String(row.hc_number || '').trim();
+        const formId = String(row.form_id || '').trim();
+        const fullName = String(row.full_name || 'Paciente sin nombre');
+        const procedimiento = String(row.procedimiento || 'Sin procedimiento');
+        const doctor = String(row.doctor || 'Sin doctor');
+        const afiliacion = String(row.afiliacion || 'Sin afiliación');
+        const estado = String(row.estado || 'Sin estado');
+        const estadoKanban = String(row.kanban_estado_label || labelByColumn[row.kanban_estado] || '').trim();
+        const pipeline = String(row.crm_pipeline_stage || 'Recibido');
+        const responsable = String(row.crm_responsable_nombre || 'Sin responsable');
+        const sla = String(row.sla_status || 'sin_fecha').replaceAll('_', ' ');
+        const turno = formatTurnoLabel(row.turno);
+        const nextSlug = String((row.kanban_next && row.kanban_next.slug) || '').trim();
+        const nextLabel = String((row.kanban_next && row.kanban_next.label) || '').trim();
+
+        return `
+            <tr class="sol-v2-table-row" data-id="${escapeHtml(solicitudId)}" data-hc="${escapeHtml(hcNumber)}" data-form="${escapeHtml(formId)}" data-paciente="${escapeHtml(fullName)}">
+                <td>
+                    <div class="fw-semibold">${escapeHtml(fullName)}</div>
+                    <div class="text-muted small">HC ${escapeHtml(hcNumber || '--')} · Form ${escapeHtml(formId || '--')}</div>
+                </td>
+                <td>
+                    <div>${escapeHtml(procedimiento)}</div>
+                    <div class="text-muted small">${escapeHtml(doctor)}</div>
+                    <div class="text-muted small">${escapeHtml(afiliacion)}</div>
+                </td>
+                <td>
+                    <span class="badge text-bg-light text-dark">${escapeHtml(estado)}</span>
+                    ${estadoKanban ? `<div class="text-muted small mt-1">${escapeHtml(estadoKanban)}</div>` : ''}
+                </td>
+                <td>
+                    <div class="fw-semibold small">${escapeHtml(pipeline)}</div>
+                    <div class="text-muted small">${escapeHtml(responsable)}</div>
+                </td>
+                <td>
+                    <span class="sol-v2-chip ${slaToneClass(sla)}">${escapeHtml(sla)}</span>
+                </td>
+                <td>
+                    ${turno ? `<span class="badge text-bg-info text-dark">#${escapeHtml(turno)}</span>` : '<span class="text-muted">—</span>'}
+                </td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <button type="button" class="btn btn-xs btn-outline-primary" data-action="refresh-detalle" data-id="${escapeHtml(solicitudId)}" data-hc="${escapeHtml(hcNumber)}" data-form="${escapeHtml(formId)}" title="Abrir detalle rápido">
+                            <i class="mdi mdi-eye-outline"></i>
+                        </button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary" data-action="open-crm" data-id="${escapeHtml(solicitudId)}" data-paciente="${escapeHtml(fullName)}" data-solicitud-id="${escapeHtml(solicitudId)}" data-paciente-nombre="${escapeHtml(fullName)}" title="Abrir CRM">
+                            <i class="mdi mdi-account-box-outline"></i>
+                        </button>
+                        ${
+                            nextSlug
+                                ? `<button type="button" class="btn btn-xs btn-primary" data-action="advance" data-id="${escapeHtml(solicitudId)}" data-next="${escapeHtml(nextSlug)}" title="Mover al siguiente estado">${escapeHtml(nextLabel || 'Avanzar')}</button>`
+                                : ''
+                        }
+                    </div>
+                </td>
+            </tr>
+        `;
+    };
+
+    const renderTable = (rows) => {
+        if (!tableBody) {
+            return;
+        }
+
+        const list = Array.isArray(rows) ? rows : [];
+        if (!list.length) {
+            tableBody.innerHTML = '';
+            if (tableEmptyState) {
+                tableEmptyState.classList.remove('d-none');
+            }
+            return;
+        }
+
+        if (tableEmptyState) {
+            tableEmptyState.classList.add('d-none');
+        }
+
+        tableBody.innerHTML = list.map((row) => tableRowTemplate(row)).join('');
+    };
+
     const groupRowsByColumn = (rows) => {
         const grouped = {};
         columns.forEach((column) => {
@@ -561,6 +714,104 @@
         });
     };
 
+    const persistView = (view) => {
+        try {
+            window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+        } catch (error) {
+            // Ignore storage errors in restricted browsers.
+        }
+    };
+
+    const ensureConciliacionPanel = async () => {
+        if (state.conciliacionPanel.failed) {
+            return null;
+        }
+
+        if (state.conciliacionPanel.api) {
+            return state.conciliacionPanel.api;
+        }
+
+        if (!state.conciliacionPanel.loadingPromise) {
+            syncLegacyKanbanBridge();
+            state.conciliacionPanel.loadingPromise = import('/js/pages/solicitudes/conciliacion.js')
+                .then((module) => {
+                    if (!module || typeof module.initSolicitudesConciliacion !== 'function') {
+                        throw new Error('Módulo de conciliación no disponible');
+                    }
+
+                    state.conciliacionPanel.api = module.initSolicitudesConciliacion({
+                        showToast,
+                        getFilters: () => {
+                            const filters = getFilters();
+                            return {
+                                ...filters,
+                                fechaTexto: asIsoRangeText(filters),
+                            };
+                        },
+                        onConfirmed: async () => {
+                            await loadKanban();
+                        },
+                    });
+
+                    return state.conciliacionPanel.api;
+                })
+                .catch((error) => {
+                    state.conciliacionPanel.failed = true;
+                    console.error('No se pudo inicializar conciliación', error);
+                    showToast('No se pudo inicializar la vista de conciliación', false);
+                    return null;
+                });
+        }
+
+        return state.conciliacionPanel.loadingPromise;
+    };
+
+    const resolveView = (view) => {
+        const normalized = String(view || '').toLowerCase();
+        return VIEW_ALLOWED.has(normalized) ? normalized : VIEW_DEFAULT;
+    };
+
+    const switchView = async (nextView, persist = true) => {
+        const normalized = resolveView(nextView);
+        state.view = normalized;
+
+        if (kanbanView) {
+            kanbanView.classList.toggle('d-none', normalized !== 'kanban');
+        }
+
+        if (tableView) {
+            tableView.classList.toggle('d-none', normalized !== 'table');
+        }
+
+        if (conciliacionView) {
+            conciliacionView.classList.toggle('d-none', normalized !== 'conciliacion');
+        }
+
+        const hideForConciliacion = normalized === 'conciliacion';
+        if (toolbarBox) {
+            toolbarBox.classList.toggle('d-none', hideForConciliacion);
+        }
+        if (metricsBox) {
+            metricsBox.classList.toggle('d-none', hideForConciliacion);
+        }
+
+        viewButtons.forEach((button) => {
+            const buttonView = resolveView(button.dataset.solicitudesView || '');
+            button.classList.toggle('is-active', buttonView === normalized);
+        });
+
+        if (persist) {
+            persistView(normalized);
+        }
+
+        if (normalized === 'conciliacion') {
+            const panel = await ensureConciliacionPanel();
+            if (panel && typeof panel.reload === 'function') {
+                panel.reload();
+            }
+        }
+    };
+
     const loadKanban = async () => {
         if (state.loading) {
             return;
@@ -592,9 +843,18 @@
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
             renderMetrics((state.options.metrics || {}));
             renderBoard();
+            renderTable(state.rows);
             initTooltips();
             await syncCrmPanel();
+
+            if (state.view === 'conciliacion') {
+                const panel = await ensureConciliacionPanel();
+                if (panel && typeof panel.reload === 'function') {
+                    panel.reload();
+                }
+            }
         } catch (error) {
+            renderTable([]);
             showToast(`No se pudo cargar solicitudes: ${error.message || error}`, false);
         } finally {
             state.loading = false;
@@ -702,6 +962,41 @@
         }
     };
 
+    const handleActionTarget = (target) => {
+        const action = String(target.dataset.action || '');
+
+        if (action === 'advance') {
+            const id = target.dataset.id || '';
+            const next = target.dataset.next || '';
+            if (!id || !next) {
+                return true;
+            }
+            advanceSolicitud(id, next);
+            return true;
+        }
+
+        if (action === 'open-crm') {
+            const id = target.dataset.id || '';
+            const paciente = target.dataset.paciente || '';
+            if (!id) {
+                showToast('Solicitud inválida para abrir CRM', false);
+                return true;
+            }
+            openCrmPanelForSolicitud(id, paciente);
+            return true;
+        }
+
+        if (action === 'refresh-detalle') {
+            const id = target.dataset.id || '';
+            const hc = target.dataset.hc || '';
+            const formId = target.dataset.form || '';
+            openDetalleModal(id, hc, formId);
+            return true;
+        }
+
+        return false;
+    };
+
     if (form) {
         form.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -715,39 +1010,46 @@
             if (!target) {
                 return;
             }
-            const action = String(target.dataset.action || '');
-
-            if (action === 'advance') {
-                const id = target.dataset.id || '';
-                const next = target.dataset.next || '';
-                if (!id || !next) {
-                    return;
-                }
-                advanceSolicitud(id, next);
-                return;
-            }
-
-            if (action === 'open-crm') {
-                const id = target.dataset.id || '';
-                const paciente = target.dataset.paciente || '';
-                if (!id) {
-                    showToast('Solicitud inválida para abrir CRM', false);
-                    return;
-                }
-                openCrmPanelForSolicitud(id, paciente);
-                return;
-            }
-
-            if (action === 'refresh-detalle') {
-                const id = target.dataset.id || '';
-                const hc = target.dataset.hc || '';
-                const formId = target.dataset.form || '';
-                openDetalleModal(id, hc, formId);
-            }
+            handleActionTarget(target);
         });
     }
 
+    if (tableView) {
+        tableView.addEventListener('click', (event) => {
+            const actionTarget = event.target.closest('[data-action]');
+            if (actionTarget) {
+                handleActionTarget(actionTarget);
+                return;
+            }
+
+            const clickable = event.target.closest('button, a, input, select, textarea, label');
+            if (clickable) {
+                return;
+            }
+
+            const row = event.target.closest('tr[data-id]');
+            if (!row) {
+                return;
+            }
+
+            const id = row.dataset.id || '';
+            const hc = row.dataset.hc || '';
+            const formId = row.dataset.form || '';
+            openDetalleModal(id, hc, formId);
+        });
+    }
+
+    viewButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            const targetView = button.dataset.solicitudesView || VIEW_DEFAULT;
+            switchView(targetView);
+        });
+    });
+
     applyInitialFilters();
+    syncLegacyKanbanBridge();
     initTooltips();
+    switchView(state.view, false);
     loadKanban();
 })();
