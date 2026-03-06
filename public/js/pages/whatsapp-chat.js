@@ -1924,14 +1924,93 @@
                 return '';
             };
 
+            var parseMessageDate = function (value) {
+                if (!value) {
+                    return null;
+                }
+
+                try {
+                    var parsed = new Date(value);
+                    if (!isNaN(parsed.getTime())) {
+                        return parsed;
+                    }
+                } catch (e) {
+                }
+
+                return null;
+            };
+
+            var formatDayKey = function (date) {
+                if (!date) {
+                    return '';
+                }
+
+                return [
+                    date.getFullYear(),
+                    String(date.getMonth() + 1).padStart(2, '0'),
+                    String(date.getDate()).padStart(2, '0')
+                ].join('-');
+            };
+
+            var formatDayLabel = function (date) {
+                if (!date) {
+                    return '';
+                }
+
+                var startOfToday = new Date();
+                startOfToday.setHours(0, 0, 0, 0);
+                var startOfMessageDay = new Date(date.getTime());
+                startOfMessageDay.setHours(0, 0, 0, 0);
+                var diffDays = Math.round((startOfToday.getTime() - startOfMessageDay.getTime()) / (24 * 60 * 60 * 1000));
+
+                if (diffDays === 0) {
+                    return 'Hoy';
+                }
+                if (diffDays === 1) {
+                    return 'Ayer';
+                }
+
+                return date.toLocaleDateString([], {weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'});
+            };
+
+            var previousDirection = null;
+            var previousSenderKey = '';
+            var previousTimestampMs = 0;
+            var previousDayKey = '';
+
             data.messages.forEach(function (message) {
                 var isOutbound = message.direction === 'outbound';
                 var senderName = message.sender_name || (isOutbound ? 'Tú' : (data.patient_full_name || data.display_name || data.wa_number || 'Contacto'));
+                var senderKey = (isOutbound ? 'outbound' : 'inbound') + '::' + senderName;
+                var messageDate = parseMessageDate(message.timestamp);
+                var messageDayKey = formatDayKey(messageDate);
+
+                if (messageDayKey && messageDayKey !== previousDayKey) {
+                    var daySeparator = createElement('div', 'whatsapp-chat-day-separator');
+                    var dayLabel = createElement('span', '', formatDayLabel(messageDate));
+                    daySeparator.appendChild(dayLabel);
+                    messageContainer.appendChild(daySeparator);
+                }
+
+                var isContinued = false;
+                if (previousDirection === message.direction && previousSenderKey === senderKey && messageDayKey !== '' && messageDayKey === previousDayKey) {
+                    if (messageDate && previousTimestampMs > 0) {
+                        var gapMinutes = (messageDate.getTime() - previousTimestampMs) / (60 * 1000);
+                        isContinued = gapMinutes >= 0 && gapMinutes <= 8;
+                    } else {
+                        isContinued = true;
+                    }
+                }
+
+                var showSenderMeta = !isContinued;
 
                 // Card container with left/right float and background per sample
                 var cardClass = isOutbound
                     ? 'card d-inline-block mb-3 float-end me-2 bg-primary max-w-p80 whatsapp-chat-bubble'
                     : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80 whatsapp-chat-bubble';
+                if (!showSenderMeta) {
+                    cardClass += ' whatsapp-chat-bubble--continued';
+                }
                 var card = createElement('div', cardClass);
 
                 // Absolute timestamp at top-right
@@ -1948,49 +2027,51 @@
 
                 var body = createElement('div', 'card-body');
 
-                // Header row: avatar + sender name
-                var headerRow = createElement('div', 'd-flex flex-row pb-2');
+                if (showSenderMeta) {
+                    // Header row: avatar + sender name
+                    var headerRow = createElement('div', 'd-flex flex-row pb-2');
 
-                var avatarLink = createElement('a', 'd-flex');
-                avatarLink.href = '#';
+                    var avatarLink = createElement('a', 'd-flex');
+                    avatarLink.href = '#';
 
-                // Choose avatar (prefer message.sender_avatar if present)
-                var avatarEl;
-                if (message.sender_avatar) {
-                    avatarEl = document.createElement('img');
-                    avatarEl.alt = 'Profile';
-                    avatarEl.src = appendCacheBuster(message.sender_avatar);
-                    avatarEl.className = 'avatar me-10';
-                } else if (!isOutbound && data.avatar_url) {
-                    avatarEl = document.createElement('img');
-                    avatarEl.alt = 'Profile';
-                    avatarEl.src = appendCacheBuster(data.avatar_url);
-                    avatarEl.className = 'avatar me-10';
-                } else {
-                    // Fallback avatar with initials + color
-                    avatarEl = createElement('span', 'avatar me-10 d-inline-flex align-items-center justify-content-center');
-                    var initials = computeInitials(senderName || 'WA');
-                    var initialsSpan = createElement('span', 'fw-600', initials || 'WA');
-                    avatarEl.appendChild(initialsSpan);
-                    applyAvatarTheme(avatarEl, senderName || data.wa_number || 'WA');
+                    // Choose avatar (prefer message.sender_avatar if present)
+                    var avatarEl;
+                    if (message.sender_avatar) {
+                        avatarEl = document.createElement('img');
+                        avatarEl.alt = 'Profile';
+                        avatarEl.src = appendCacheBuster(message.sender_avatar);
+                        avatarEl.className = 'avatar me-10';
+                    } else if (!isOutbound && data.avatar_url) {
+                        avatarEl = document.createElement('img');
+                        avatarEl.alt = 'Profile';
+                        avatarEl.src = appendCacheBuster(data.avatar_url);
+                        avatarEl.className = 'avatar me-10';
+                    } else {
+                        // Fallback avatar with initials + color
+                        avatarEl = createElement('span', 'avatar me-10 d-inline-flex align-items-center justify-content-center');
+                        var initials = computeInitials(senderName || 'WA');
+                        var initialsSpan = createElement('span', 'fw-600', initials || 'WA');
+                        avatarEl.appendChild(initialsSpan);
+                        applyAvatarTheme(avatarEl, senderName || data.wa_number || 'WA');
+                    }
+                    avatarLink.appendChild(avatarEl);
+                    headerRow.appendChild(avatarLink);
+
+                    var flexGrow = createElement('div', 'd-flex flex-grow-1 min-width-zero');
+                    var nameWrap = createElement('div', 'm-2 ps-0 align-self-center d-flex flex-column flex-lg-row justify-content-between');
+                    var inner = createElement('div', 'min-width-zero');
+                    var nameP = createElement('p', 'mb-0 fs-16' + (isOutbound ? '' : ' text-dark'));
+                    nameP.textContent = senderName;
+                    inner.appendChild(nameP);
+                    nameWrap.appendChild(inner);
+                    flexGrow.appendChild(nameWrap);
+                    headerRow.appendChild(flexGrow);
+
+                    body.appendChild(headerRow);
                 }
-                avatarLink.appendChild(avatarEl);
-                headerRow.appendChild(avatarLink);
-
-                var flexGrow = createElement('div', 'd-flex flex-grow-1 min-width-zero');
-                var nameWrap = createElement('div', 'm-2 ps-0 align-self-center d-flex flex-column flex-lg-row justify-content-between');
-                var inner = createElement('div', 'min-width-zero');
-                var nameP = createElement('p', 'mb-0 fs-16' + (isOutbound ? '' : ' text-dark'));
-                nameP.textContent = senderName;
-                inner.appendChild(nameP);
-                nameWrap.appendChild(inner);
-                flexGrow.appendChild(nameWrap);
-                headerRow.appendChild(flexGrow);
-
-                body.appendChild(headerRow);
 
                 // Message text block with left padding (ps-55)
-                var textWrap = createElement('div', 'chat-text-start ps-55');
+                var textWrap = createElement('div', showSenderMeta ? 'chat-text-start ps-55' : 'chat-text-start');
                 var paragraph = createElement('p', 'mb-0 text-semi-muted');
                 var hasBody = message.body && String(message.body).trim() !== '';
                 if (hasBody) {
@@ -2014,6 +2095,11 @@
                 card.appendChild(body);
                 messageContainer.appendChild(card);
                 messageContainer.appendChild(createElement('div', 'clearfix'));
+
+                previousDirection = message.direction;
+                previousSenderKey = senderKey;
+                previousTimestampMs = messageDate ? messageDate.getTime() : 0;
+                previousDayKey = messageDayKey;
             });
 
             maybeShowTypingIndicator(data);

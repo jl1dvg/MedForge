@@ -216,12 +216,36 @@ foreach ($whatsappChatGuide as $key => $meta) {
         max-width: 72%;
         border-radius: 14px;
     }
+    .whatsapp-chat-bubble.whatsapp-chat-bubble--continued {
+        margin-top: -6px;
+    }
     .whatsapp-chat-bubble .card-body {
         padding: 0.7rem 0.9rem 0.6rem;
+    }
+    .whatsapp-chat-bubble.whatsapp-chat-bubble--continued .card-body {
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
     }
     .whatsapp-chat-bubble .chat-text-start p {
         font-size: 0.92rem;
         line-height: 1.35;
+    }
+    .whatsapp-chat-day-separator {
+        display: flex;
+        justify-content: center;
+        margin: 0.75rem 0 0.65rem;
+        clear: both;
+    }
+    .whatsapp-chat-day-separator span {
+        background: #f3f4f6;
+        color: #6b7280;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 999px;
+        padding: 0.15rem 0.65rem;
+        font-size: 0.73rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        text-transform: capitalize;
     }
     .whatsapp-chat-media {
         margin-top: 0.5rem;

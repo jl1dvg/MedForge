@@ -3,6 +3,7 @@
 namespace Modules\Pacientes\Controllers;
 
 use Core\BaseController;
+use Modules\Pacientes\Services\Paciente360Service;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
 use Throwable;
@@ -10,11 +11,13 @@ use Throwable;
 class PacientesController extends BaseController
 {
     private PacienteService $service;
+    private Paciente360Service $paciente360Service;
 
     public function __construct(PDO $pdo)
     {
         parent::__construct($pdo);
         $this->service = new PacienteService($pdo);
+        $this->paciente360Service = new Paciente360Service($pdo);
     }
 
     public function index(): void
@@ -130,5 +133,66 @@ class PacientesController extends BaseController
                 $context
             )
         );
+    }
+
+    public function detalleSolicitudApi(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $formId = trim((string)($_GET['form_id'] ?? ''));
+
+        if ($hcNumber === '' || $formId === '') {
+            $this->json(['error' => 'hc_number y form_id son obligatorios'], 422);
+            return;
+        }
+
+        try {
+            $detalle = $this->service->getDetalleSolicitud($hcNumber, $formId);
+            if ($detalle === []) {
+                $this->json(['error' => 'No se encontró la solicitud'], 404);
+                return;
+            }
+
+            $this->json(['data' => $detalle]);
+        } catch (Throwable) {
+            $this->json(['error' => 'No se pudo recuperar el detalle de la solicitud'], 500);
+        }
+    }
+
+    public function detallesSection(): void
+    {
+        if (!$this->isAuthenticated()) {
+            $this->json(['error' => 'Sesión expirada'], 401);
+            return;
+        }
+
+        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
+        $section = trim((string)($_GET['section'] ?? ''));
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 25;
+
+        if ($hcNumber === '' || $section === '') {
+            $this->json(['error' => 'hc_number y section son obligatorios'], 422);
+            return;
+        }
+
+        try {
+            $payload = $this->paciente360Service->getSection($hcNumber, $section, $limit);
+            $this->json([
+                'data' => $payload['rows'],
+                'meta' => [
+                    'section' => $payload['section'],
+                    'summary' => $payload['summary'],
+                    'total_rows' => $payload['total_rows'],
+                ],
+            ]);
+        } catch (\InvalidArgumentException $exception) {
+            $this->json(['error' => $exception->getMessage()], 422);
+        } catch (Throwable) {
+            $this->json(['error' => 'No se pudo cargar la sección solicitada'], 500);
+        }
     }
 }

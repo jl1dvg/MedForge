@@ -193,6 +193,82 @@ $solicitudPdfBaseUrlEscaped = htmlspecialchars($solicitudPdfBaseUrl, ENT_QUOTES,
         <div class="col-xl-8 col-12">
             <?php include __DIR__ . '/components/tarjeta_paciente.php'; ?>
 
+            <div
+                class="box"
+                id="paciente360"
+                data-hc="<?= PacientesHelper::safe($hc_number) ?>"
+                data-sections="solicitudes,examenes,agenda,consultas,protocolos,prefacturas,derivaciones,recetas,crm"
+            >
+                <div class="box-header with-border">
+                    <h4 class="box-title">Paciente 360</h4>
+                </div>
+                <div class="box-body">
+                    <div class="mb-20 d-flex flex-wrap gap-10" id="paciente360Summary">
+                        <span class="badge bg-light text-dark">Cargando resumen...</span>
+                    </div>
+
+                    <ul class="nav nav-tabs mb-15" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#paciente360-tab-solicitudes" type="button" role="tab">Solicitudes</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-examenes" type="button" role="tab">Exámenes</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-agenda" type="button" role="tab">Agenda</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-consultas" type="button" role="tab">Consultas</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-protocolos" type="button" role="tab">Protocolos</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-prefacturas" type="button" role="tab">Prefacturas</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-derivaciones" type="button" role="tab">Derivaciones</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-recetas" type="button" role="tab">Recetas</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-crm" type="button" role="tab">CRM</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="paciente360-tab-solicitudes" role="tabpanel">
+                            <div id="paciente360-panel-solicitudes" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-examenes" role="tabpanel">
+                            <div id="paciente360-panel-examenes" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-agenda" role="tabpanel">
+                            <div id="paciente360-panel-agenda" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-consultas" role="tabpanel">
+                            <div id="paciente360-panel-consultas" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-protocolos" role="tabpanel">
+                            <div id="paciente360-panel-protocolos" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-prefacturas" role="tabpanel">
+                            <div id="paciente360-panel-prefacturas" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-derivaciones" role="tabpanel">
+                            <div id="paciente360-panel-derivaciones" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-recetas" role="tabpanel">
+                            <div id="paciente360-panel-recetas" class="table-responsive"></div>
+                        </div>
+                        <div class="tab-pane fade" id="paciente360-tab-crm" role="tabpanel">
+                            <div id="paciente360-panel-crm" class="table-responsive"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="row">
                 <div class="col-xl-6 col-12">
                     <div class="box">

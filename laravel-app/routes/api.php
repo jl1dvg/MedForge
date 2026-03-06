@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/health.php';
     require __DIR__ . '/v2/dashboard.php';
+    require __DIR__ . '/v2/reporting.php';
     require __DIR__ . '/v2/pacientes.php';
     require __DIR__ . '/v2/agenda.php';
     require __DIR__ . '/v2/billing.php';

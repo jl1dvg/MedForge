@@ -16,6 +16,14 @@ return function (Router $router) {
         (new PacientesController($pdo))->detalles();
     });
 
+    $router->get('/pacientes/detalles/solicitud', function (\PDO $pdo) {
+        (new PacientesController($pdo))->detalleSolicitudApi();
+    });
+
+    $router->get('/pacientes/detalles/section', function (\PDO $pdo) {
+        (new PacientesController($pdo))->detallesSection();
+    });
+
     $router->get('/pacientes/flujo', function (\PDO $pdo) {
         (new PacientesController($pdo))->flujo();
     });

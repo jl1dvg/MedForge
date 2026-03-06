@@ -1862,7 +1862,7 @@ class SettingsHelper
                 } elseif ($field['type'] === 'checkbox_group') {
                     $values = is_array($raw) ? $raw : [];
                     $values = array_values(array_filter(array_map(static function ($item) {
-                        $clean = trim((string) $item);
+                        $clean = trim((string)$item);
                         return $clean === '' ? null : $clean;
                     }, $values)));
                     $value = json_encode($values, JSON_UNESCAPED_UNICODE);
@@ -1977,12 +1977,13 @@ class SettingsHelper
     }
 
     private static function checkboxGroupField(
-        string $key,
-        string $label,
-        array $options,
-        array $default = [],
+        string  $key,
+        string  $label,
+        array   $options,
+        array   $default = [],
         ?string $help = null
-    ): array {
+    ): array
+    {
         return [
             'type' => 'checkbox_group',
             'key' => $key,

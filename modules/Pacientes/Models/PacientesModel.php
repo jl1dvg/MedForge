@@ -106,18 +106,11 @@ class PacientesModel
 
         $data = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $estado = $this->verificarCoberturaPaciente($row['hc_number']);
-
             $data[] = [
                 'hc_number'      => $row['hc_number'],
                 'ultima_fecha'   => $row['ultima_fecha'] ? date('d/m/Y', strtotime($row['ultima_fecha'])) : '',
                 'full_name'      => trim(preg_replace('/\s+/', ' ', $row['full_name'])),
                 'afiliacion'     => $row['afiliacion'] ?? '',
-                'estado_html'    => $estado === 'Con Cobertura'
-                    ? "<span class='badge bg-success'>Con Cobertura</span>"
-                    : ($estado === 'Sin Cobertura'
-                        ? "<span class='badge bg-danger'>Sin Cobertura</span>"
-                        : "<span class='badge bg-secondary'>N/A</span>"),
                 'acciones_html'  => "<a href=\"/pacientes/detalle/{$row['hc_number']}\" class=\"btn btn-sm btn-primary\">Ver</a>"
             ];
         }

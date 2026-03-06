@@ -164,6 +164,25 @@ El primer matcher que coincida con `aseguradoraSlug`, `aseguradoraNombre` o la
 afiliación del paciente determina la plantilla. Si ninguna coincide, se utiliza
 la entrada `cobertura` como fallback.
 
+## Cutover de datos de protocolo a Laravel v2
+
+La construcción del payload para `ProtocolReportService::buildProtocolData()`
+puede ejecutarse desde Laravel (`/v2`) con fallback automático a legacy.
+
+1. Configura en `.env`:
+
+   ```dotenv
+   REPORTING_V2_PROTOCOL_DATA_ENABLED=1
+   ```
+
+2. Con la bandera en `1`, `ProtocolReportService` intenta obtener la data desde:
+   `/v2/reports/protocolo/data?form_id=...&hc_number=...`
+3. Si `/v2` responde error, timeout o payload inválido, el servicio vuelve al
+   builder legacy actual de forma transparente.
+
+Esto permite migrar la lógica de datos progresivamente sin tocar plantillas ni
+layouts de PDF.
+
 ### Ejemplo: cobertura con Ecuasanitas
 
 1. **Registrar la plantilla.** Añade una entrada en
