@@ -71,6 +71,37 @@ class BillingUiService
     }
 
     /**
+     * @return array<int, string>
+     */
+    public function listarCirujanos(): array
+    {
+        if (!$this->tableExists('protocolo_data')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::select(
+                "SELECT DISTINCT NULLIF(TRIM(cirujano_1), '') AS cirujano
+                 FROM protocolo_data
+                 WHERE cirujano_1 IS NOT NULL AND TRIM(cirujano_1) <> ''
+                 ORDER BY cirujano ASC"
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $cirujanos = [];
+        foreach ($rows as $row) {
+            $value = trim((string) ($row->cirujano ?? ''));
+            if ($value !== '') {
+                $cirujanos[] = $value;
+            }
+        }
+
+        return array_values(array_unique($cirujanos));
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function obtenerDetalleFactura(string $formId): ?array

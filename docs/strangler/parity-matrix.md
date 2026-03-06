@@ -28,8 +28,13 @@ Current auth parity policy:
 - `GET /billing` -> `GET /v2/billing` (UI cutover por flag)
 - `GET /billing/no-facturados` -> `GET /v2/billing/no-facturados` (UI cutover por flag)
 - `GET /billing/detalle` -> `GET /v2/billing/detalle` (UI cutover por flag)
+- `GET /billing/dashboard` -> `GET /v2/billing/dashboard` (UI cutover por flag)
+- `GET /billing/honorarios` -> `GET /v2/billing/honorarios` (UI cutover por flag)
 - `GET /api/billing/no-facturados` -> `GET /v2/api/billing/no-facturados`
 - `GET /api/billing/afiliaciones` -> `GET /v2/api/billing/afiliaciones`
+- `POST /billing/dashboard-data` -> `POST /v2/billing/dashboard-data` (implementación nativa Laravel)
+- `POST /billing/honorarios-data` -> `POST /v2/billing/honorarios-data` (implementación nativa Laravel)
+- `GET /api/billing/kpis_procedimientos.php` -> `GET /v2/api/billing/kpis_procedimientos.php` (servicio local Laravel, sin proxy HTTP)
 - `POST /billing/no-facturados/crear` -> `POST /v2/billing/no-facturados/crear` (`/v2/api/billing/no-facturados/crear`)
 - `POST /informes/api/eliminar-factura` -> `POST /v2/informes/api/eliminar-factura` (`/v2/api/billing/facturas/eliminar`)
 - `POST /api/billing/verificacion_derivacion.php` -> `POST /v2/api/billing/verificacion_derivacion.php` (`/v2/api/billing/derivaciones/verificar`)
@@ -185,6 +190,8 @@ BILLING_V2_UI_ENABLED=1
 - `billing_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing`.
 - `billing_no_facturados_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/no-facturados`.
 - `billing_detalle_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/detalle?...`.
+- `billing_dashboard_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/dashboard`.
+- `billing_honorarios_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/honorarios`.
 
 - Rollback rápido:
 

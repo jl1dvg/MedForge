@@ -35,6 +35,9 @@
     $solicitudesTurneroLink = $isV2Shell ? '/v2/solicitudes/turnero' : '/solicitudes/turnero';
     $pacientesLink = $isV2Shell ? '/v2/pacientes' : '/pacientes';
     $pacientesFlujoLink = $isV2Shell ? '/v2/pacientes/flujo' : '/pacientes/flujo';
+    $billingNoFacturadosLink = $isV2Shell ? '/v2/billing/no-facturados' : '/billing/no-facturados';
+    $billingDashboardLink = $isV2Shell ? '/v2/billing/dashboard' : '/billing/dashboard';
+    $billingHonorariosLink = $isV2Shell ? '/v2/billing/honorarios' : '/billing/honorarios';
 @endphp
 <aside class="main-sidebar">
     <section class="sidebar position-relative">
@@ -137,7 +140,7 @@
                         </ul>
                     </li>
 
-                    <li class="treeview{{ $isTreeOpen(['/informes', '/billing', '/views/reportes']) }}">
+                    <li class="treeview{{ $isTreeOpen(['/informes', '/billing', '/v2/billing', '/views/reportes']) }}">
                         <a href="#">
                             <i class="mdi mdi-chart-areaspline"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>
                             <span>Finanzas y análisis</span>
@@ -149,8 +152,9 @@
                             <li class="{{ $isActive('/informes/issfa') }}"><a href="/informes/issfa"><i class="mdi mdi-star"></i>ISSFA</a></li>
                             <li class="{{ $isActive('/informes/iess') }}"><a href="/informes/iess"><i class="mdi mdi-account"></i>IESS</a></li>
                             <li class="{{ $isActive('/informes/particulares') }}"><a href="/informes/particulares"><i class="mdi mdi-account-outline"></i>Particulares</a></li>
-                            <li class="{{ $isPrefix('/billing/no-facturados') }}"><a href="/billing/no-facturados"><i class="mdi mdi-account-outline"></i>No Facturado</a></li>
-                            <li class="{{ $isActive('/billing/dashboard') }}"><a href="/billing/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard Billing</a></li>
+                            <li class="{{ $isPrefix('/billing/no-facturados') }}{{ $isPrefix('/v2/billing/no-facturados') }}"><a href="{{ $billingNoFacturadosLink }}"><i class="mdi mdi-account-outline"></i>No Facturado</a></li>
+                            <li class="{{ $isActive('/billing/dashboard') }}{{ $isActive('/v2/billing/dashboard') }}"><a href="{{ $billingDashboardLink }}"><i class="mdi mdi-chart-line"></i>Dashboard Billing</a></li>
+                            <li class="{{ $isActive('/billing/honorarios') }}{{ $isActive('/v2/billing/honorarios') }}"><a href="{{ $billingHonorariosLink }}"><i class="mdi mdi-account-cash"></i>Honorarios</a></li>
                             <li class="header">Reportes y estadísticas</li>
                             <li class="{{ $isPrefix('/views/reportes/estadistica_flujo.php') }}"><a href="/views/reportes/estadistica_flujo.php"><i class="mdi mdi-chart-line"></i>Flujo de Pacientes</a></li>
                         </ul>

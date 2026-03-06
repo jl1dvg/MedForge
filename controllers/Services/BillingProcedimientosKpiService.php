@@ -161,10 +161,20 @@ class BillingProcedimientosKpiService
     private function fetchProcedimientos(int $year, ?string $sede, ?string $tipoCliente): array
     {
         $dateExpr = "COALESCE(
-            NULLIF(NULLIF(pd.fecha_inicio, '0000-00-00'), '0000-00-00 00:00:00'),
-            NULLIF(NULLIF(pp.fecha, '0000-00-00'), '0000-00-00 00:00:00'),
-            bm.created_at
+            CASE
+                WHEN CAST(pd.fecha_inicio AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE pd.fecha_inicio
+            END,
+            CASE
+                WHEN CAST(pp.fecha AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE pp.fecha
+            END,
+            CASE
+                WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE bm.created_at
+            END
         )";
+        $dateKeyExpr = "LEFT(CAST($dateExpr AS CHAR), 10)";
         $ppCatalogTextExpr = $this->normalizeSqlCatalogText("COALESCE(pp.procedimiento_proyectado, '')");
         $bpCatalogTextExpr = $this->normalizeSqlCatalogText("COALESCE(bp.proc_detalle, '')");
         $bpCodigoExpr = "UPPER(TRIM(NULLIF(bp.proc_codigo, '')))";
@@ -202,7 +212,7 @@ class BillingProcedimientosKpiService
 
         $sql = "
             SELECT
-                MONTH($dateExpr) AS mes,
+                CAST(SUBSTRING($dateKeyExpr, 6, 2) AS UNSIGNED) AS mes,
                 $categorySelect,
                 pr.categoria AS categoria,
                 pr.cirugia AS cirugia,
@@ -217,10 +227,10 @@ class BillingProcedimientosKpiService
             $catalogJoin
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
             {$clienteContext['join']}
-            WHERE YEAR($dateExpr) = :year
+            WHERE $dateKeyExpr LIKE :year_prefix
         ";
 
-        $params = [':year' => $year];
+        $params = [':year_prefix' => sprintf('%04d', $year) . '%'];
 
         if ($sede && $sede !== 'todos') {
             $sql .= " AND $sedeExpr LIKE :sede";
@@ -286,10 +296,20 @@ class BillingProcedimientosKpiService
     private function fetchDetalleProcedimientos(int $year, ?string $sede, ?string $tipoCliente, int $limit): array
     {
         $dateExpr = "COALESCE(
-            NULLIF(NULLIF(pd.fecha_inicio, '0000-00-00'), '0000-00-00 00:00:00'),
-            NULLIF(NULLIF(pp.fecha, '0000-00-00'), '0000-00-00 00:00:00'),
-            bm.created_at
+            CASE
+                WHEN CAST(pd.fecha_inicio AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE pd.fecha_inicio
+            END,
+            CASE
+                WHEN CAST(pp.fecha AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE pp.fecha
+            END,
+            CASE
+                WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                ELSE bm.created_at
+            END
         )";
+        $dateKeyExpr = "LEFT(CAST($dateExpr AS CHAR), 10)";
         $ppCatalogTextExpr = $this->normalizeSqlCatalogText("COALESCE(pp.procedimiento_proyectado, '')");
         $bpCatalogTextExpr = $this->normalizeSqlCatalogText("COALESCE(bp.proc_detalle, '')");
         $bpCodigoExpr = "UPPER(TRIM(NULLIF(bp.proc_codigo, '')))";
@@ -321,7 +341,7 @@ class BillingProcedimientosKpiService
 
         $sql = "
             SELECT
-                DATE($dateExpr) AS fecha,
+                $dateKeyExpr AS fecha,
                 bm.form_id,
                 bm.hc_number,
                 CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
@@ -342,10 +362,10 @@ class BillingProcedimientosKpiService
             LEFT JOIN procedimientos pr ON pr.id = bp.procedimiento_id
             $catalogJoin
             {$clienteContext['join']}
-            WHERE YEAR($dateExpr) = :year
+            WHERE $dateKeyExpr LIKE :year_prefix
         ";
 
-        $params = [':year' => $year];
+        $params = [':year_prefix' => sprintf('%04d', $year) . '%'];
 
         if ($sede && $sede !== 'todos') {
             $sql .= " AND $sedeExpr LIKE :sede";

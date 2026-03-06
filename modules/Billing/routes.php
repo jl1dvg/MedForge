@@ -6,19 +6,68 @@ use Modules\Billing\Controllers\InformesController;
 use Controllers\DerivacionController;
 
 return function (Router $router) {
-    $router->get('/billing', function (\PDO $pdo) {
+    $billingV2UiEnabled = static function (): bool {
+        $rawFlag = null;
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 2);
+        $envPath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.env';
+
+        // Prefer explicit value from .env to avoid stale process-level env vars.
+        if (is_readable($envPath)) {
+            $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+            foreach ($lines as $line) {
+                $line = trim((string) $line);
+                if ($line === '' || str_starts_with($line, '#')) {
+                    continue;
+                }
+
+                [$key, $value] = array_pad(explode('=', $line, 2), 2, '');
+                if (trim($key) !== 'BILLING_V2_UI_ENABLED') {
+                    continue;
+                }
+
+                $rawFlag = trim($value, " \t\n\r\0\x0B\"'");
+                break;
+            }
+        }
+
+        if ($rawFlag === null || trim((string) $rawFlag) === '') {
+            $rawFlag = $_ENV['BILLING_V2_UI_ENABLED'] ?? getenv('BILLING_V2_UI_ENABLED') ?? null;
+        }
+
+        return filter_var((string) ($rawFlag ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    };
+
+    $redirectToV2IfEnabled = static function (string $target) use ($billingV2UiEnabled): void {
+        if (!$billingV2UiEnabled()) {
+            return;
+        }
+
+        $queryString = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        if ($queryString !== '') {
+            $target .= '?' . $queryString;
+        }
+
+        header('Location: ' . $target, true, 302);
+        exit;
+    };
+
+    $router->get('/billing', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/billing');
         (new BillingController($pdo))->index();
     });
 
-    $router->get('/billing/detalle', function (\PDO $pdo) {
+    $router->get('/billing/detalle', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/billing/detalle');
         (new BillingController($pdo))->detalle();
     });
 
-    $router->get('/billing/no-facturados', function (\PDO $pdo) {
+    $router->get('/billing/no-facturados', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/billing/no-facturados');
         (new BillingController($pdo))->noFacturados();
     });
 
-    $router->get('/billing/dashboard', function (\PDO $pdo) {
+    $router->get('/billing/dashboard', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/billing/dashboard');
         (new BillingController($pdo))->dashboard();
     });
 
@@ -26,7 +75,8 @@ return function (Router $router) {
         (new BillingController($pdo))->dashboardData();
     });
 
-    $router->get('/billing/honorarios', function (\PDO $pdo) {
+    $router->get('/billing/honorarios', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/billing/honorarios');
         (new BillingController($pdo))->honorarios();
     });
 
