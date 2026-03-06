@@ -3,6 +3,7 @@
 namespace App\Modules\Pacientes\Http\Controllers;
 
 use App\Modules\Pacientes\Services\Paciente360ParityService;
+use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
@@ -11,13 +12,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use PDO;
 
 class PacientesReadController
 {
     private PacientesParityService $service;
     private Paciente360ParityService $paciente360Service;
+    private PacientesFlujoService $flujoService;
 
     public function __construct()
     {
@@ -25,6 +26,7 @@ class PacientesReadController
         $pdo = DB::connection()->getPdo();
         $this->service = new PacientesParityService($pdo);
         $this->paciente360Service = new Paciente360ParityService($pdo);
+        $this->flujoService = new PacientesFlujoService($pdo);
     }
 
     public function index(Request $request): JsonResponse|RedirectResponse|View
@@ -255,11 +257,15 @@ class PacientesReadController
             $modo = 'visita';
         }
 
-        return $this->proxyLegacyJson(
-            $request,
-            '/public/ajax/flujo.php',
-            ['fecha' => $fecha, 'modo' => $modo]
-        );
+        try {
+            $payload = strtolower($modo) === 'visita'
+                ? $this->flujoService->obtenerFlujoPacientesPorVisita($fecha)
+                : $this->flujoService->obtenerFlujoPacientes($fecha);
+
+            return response()->json($payload);
+        } catch (\Throwable) {
+            return response()->json(['error' => 'No se pudo cargar el flujo de pacientes'], 500);
+        }
     }
 
     public function flujoRecientes(Request $request): JsonResponse
@@ -268,7 +274,13 @@ class PacientesReadController
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        return $this->proxyLegacyJson($request, '/public/ajax/flujo_recientes.php');
+        $desde = trim((string) $request->query('desde', ''));
+
+        try {
+            return response()->json($this->flujoService->obtenerCambiosRecientes($desde));
+        } catch (\Throwable) {
+            return response()->json(['error' => 'No se pudo consultar cambios recientes'], 500);
+        }
     }
 
     public function detallesSection(Request $request): JsonResponse
@@ -361,31 +373,4 @@ class PacientesReadController
         return LegacySessionAuth::readSession($request);
     }
 
-    /**
-     * @param array<string, mixed> $query
-     */
-    private function proxyLegacyJson(Request $request, string $path, array $query = []): JsonResponse
-    {
-        $baseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
-        $url = $baseUrl . $path;
-        $sessionId = LegacySessionAuth::sessionId($request);
-
-        try {
-            $client = Http::acceptJson()->timeout(20);
-            if ($sessionId !== '') {
-                $client = $client->withHeaders(['Cookie' => 'PHPSESSID=' . $sessionId]);
-            }
-
-            $upstream = $client->get($url, $query);
-        } catch (\Throwable) {
-            return response()->json(['error' => 'No se pudo consultar el origen legacy'], 502);
-        }
-
-        $decoded = json_decode((string) $upstream->body(), true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return response()->json(['error' => 'Respuesta inválida del origen legacy'], 502);
-        }
-
-        return response()->json($decoded, $upstream->status());
-    }
 }
