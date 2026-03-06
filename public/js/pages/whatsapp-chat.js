@@ -1984,8 +1984,7 @@
 
             data.messages.forEach(function (message) {
                 var isOutbound = message.direction === 'outbound';
-                var senderName = message.sender_name || (isOutbound ? 'Tú' : (data.patient_full_name || data.display_name || data.wa_number || 'Contacto'));
-                var senderKey = (isOutbound ? 'outbound' : 'inbound') + '::' + senderName;
+                var senderKey = isOutbound ? 'outbound' : 'inbound';
                 var messageDate = parseMessageDate(message.timestamp);
                 var messageDayKey = formatDayKey(messageDate);
 
@@ -2008,20 +2007,18 @@
                     }
                 }
 
-                var showSenderMeta = !isContinued;
-
                 // Card container with left/right float and background per sample
                 var cardClass = isOutbound
                     ? 'card d-inline-block mb-3 float-end me-2 bg-primary max-w-p80 whatsapp-chat-bubble'
                     : 'card d-inline-block mb-3 float-start me-2 no-shadow bg-lighter max-w-p80 whatsapp-chat-bubble';
-                if (!showSenderMeta) {
+                if (isContinued) {
                     cardClass += ' whatsapp-chat-bubble--continued';
                 }
                 var card = createElement('div', cardClass);
 
                 // Absolute timestamp at top-right
-                var stampWrap = createElement('div', 'position-absolute pt-1 pe-2 r-0');
-                var stamp = createElement('span', 'text-extra-small' + (isOutbound ? '' : ' text-muted'), formatTime(message.timestamp));
+                var stampWrap = createElement('div', 'position-absolute pt-0 pe-2 r-0');
+                var stamp = createElement('span', 'whatsapp-chat-stamp' + (isOutbound ? '' : ' text-muted'), formatTime(message.timestamp));
                 stampWrap.appendChild(stamp);
                 if (isOutbound && message.status) {
                     var statusEl = buildStatusIndicator(message.status);
@@ -2033,41 +2030,8 @@
 
                 var body = createElement('div', 'card-body');
 
-                if (showSenderMeta) {
-                    // Header row: avatar only (compact mode)
-                    var headerRow = createElement('div', 'd-flex flex-row pb-1');
-
-                    var avatarLink = createElement('a', 'd-flex');
-                    avatarLink.href = '#';
-
-                    // Choose avatar (prefer message.sender_avatar if present)
-                    var avatarEl;
-                    if (message.sender_avatar) {
-                        avatarEl = document.createElement('img');
-                        avatarEl.alt = 'Profile';
-                        avatarEl.src = appendCacheBuster(message.sender_avatar);
-                        avatarEl.className = 'avatar me-10';
-                    } else if (!isOutbound && data.avatar_url) {
-                        avatarEl = document.createElement('img');
-                        avatarEl.alt = 'Profile';
-                        avatarEl.src = appendCacheBuster(data.avatar_url);
-                        avatarEl.className = 'avatar me-10';
-                    } else {
-                        // Fallback avatar with initials + color
-                        avatarEl = createElement('span', 'avatar me-10 d-inline-flex align-items-center justify-content-center');
-                        var initials = computeInitials(senderName || 'WA');
-                        var initialsSpan = createElement('span', 'fw-600', initials || 'WA');
-                        avatarEl.appendChild(initialsSpan);
-                        applyAvatarTheme(avatarEl, senderName || data.wa_number || 'WA');
-                    }
-                    avatarLink.appendChild(avatarEl);
-                    headerRow.appendChild(avatarLink);
-
-                    body.appendChild(headerRow);
-                }
-
-                // Message text block with left padding (ps-55)
-                var textWrap = createElement('div', showSenderMeta ? 'chat-text-start ps-55' : 'chat-text-start');
+                // Message text block
+                var textWrap = createElement('div', 'chat-text-start');
                 var paragraph = createElement('p', 'mb-0 text-semi-muted');
                 var hasBody = message.body && String(message.body).trim() !== '';
                 if (hasBody) {

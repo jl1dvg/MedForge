@@ -220,11 +220,12 @@ foreach ($whatsappChatGuide as $key => $meta) {
         margin-top: -6px;
     }
     .whatsapp-chat-bubble .card-body {
-        padding: 0.7rem 0.9rem 0.6rem;
+        padding: 0.95rem 2.7rem 0.6rem 0.9rem;
     }
     .whatsapp-chat-bubble.whatsapp-chat-bubble--continued .card-body {
-        padding-top: 0.5rem;
+        padding-top: 0.8rem;
         padding-bottom: 0.5rem;
+        padding-right: 2.7rem;
     }
     .whatsapp-chat-bubble .chat-text-start p {
         font-size: 0.92rem;
@@ -288,7 +289,15 @@ foreach ($whatsappChatGuide as $key => $meta) {
     .whatsapp-status {
         margin-left: 6px;
         font-weight: 600;
-        font-size: 0.75rem;
+        font-size: 0.62rem;
+        vertical-align: baseline;
+    }
+    .whatsapp-chat-stamp {
+        font-size: 0.62rem;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.01em;
+        opacity: 0.85;
     }
     .whatsapp-status.read {
         color: #0d6efd;
