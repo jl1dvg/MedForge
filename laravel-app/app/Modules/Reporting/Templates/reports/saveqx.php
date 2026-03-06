@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../partials/signature_helpers.php';
+
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
         'afiliacion' => $afiliacion ?? '',
@@ -13,6 +15,10 @@ $patient = [
         'fecha_nacimiento' => $fecha_nacimiento ?? '',
         'edad' => $edadPaciente ?? '',
 ];
+
+$ayudanteAnestesiaData = is_array($ayudante_anestesia_data ?? null) ? $ayudante_anestesia_data : [];
+$cirujanoData = is_array($cirujano_data ?? null) ? $cirujano_data : [];
+$anestesiologoData = is_array($anestesiologo_data ?? null) ? $anestesiologo_data : [];
 
 ob_start();
 include __DIR__ . '/../partials/patient_header.php';
@@ -825,9 +831,9 @@ ob_start();
             Cuáles:</td>
         </tr>
         <tr>
-            <td class="blanco" colspan="15">LIC. <?php echo strtoupper($ayudante_anestesia_data['nombre']); ?></td>
-            <td class="blanco" colspan="16">MD. <?php echo strtoupper($cirujano_data['nombre']); ?>
-            <td class="blanco" colspan="15">MD. <?php echo strtoupper($anestesiologo_data['nombre']); ?></td>
+            <td class="blanco" colspan="15">LIC. <?php echo strtoupper(mf_user_value($ayudanteAnestesiaData, 'nombre')); ?></td>
+            <td class="blanco" colspan="16">MD. <?php echo strtoupper(mf_user_value($cirujanoData, 'nombre')); ?>
+            <td class="blanco" colspan="15">MD. <?php echo strtoupper(mf_user_value($anestesiologoData, 'nombre')); ?></td>
             <td class="blanco_unbordered" colspan="24"></td>
         </tr>
         <tr>
@@ -840,13 +846,17 @@ ob_start();
         </tr>
         <tr>
             <td class="blanco" colspan="15"
-                rowspan="5"><?php echo "<img src='" . htmlspecialchars($ayudante_anestesia_data['firma']) . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+                rowspan="5"><?php
+                $ayudanteFirma = mf_user_value($ayudanteAnestesiaData, 'firma');
+                if ($ayudanteFirma !== '') {
+                    echo "<img src='" . htmlspecialchars($ayudanteFirma, ENT_QUOTES, 'UTF-8') . "' alt='Imagen de la firma' style='max-height: 70px;'>";
+                }
                 ?>
             </td>
             <td class="blanco" colspan="16"
                 rowspan="5"><?php
-                $topSrc = (string)($cirujano_data['signature_path'] ?? '');
-                $bottomSrc = (string)($cirujano_data['firma'] ?? '');
+                $topSrc = mf_user_value($cirujanoData, 'signature_path');
+                $bottomSrc = mf_user_value($cirujanoData, 'firma');
 
                 mf_renderMergedSignature($topSrc, $bottomSrc, [
                         'padTop' => 100,
@@ -858,8 +868,8 @@ ob_start();
                 ?></td>
             <td class="blanco" colspan="15"
                 rowspan="5"><?php
-                $topSrc = (string)($anestesiologo_data['signature_path'] ?? '');
-                $bottomSrc = (string)($anestesiologo_data['firma'] ?? '');
+                $topSrc = mf_user_value($anestesiologoData, 'signature_path');
+                $bottomSrc = mf_user_value($anestesiologoData, 'firma');
 
                 mf_renderMergedSignature($topSrc, $bottomSrc, [
                         'padTop' => 100,

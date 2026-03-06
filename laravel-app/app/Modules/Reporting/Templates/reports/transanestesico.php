@@ -1,6 +1,9 @@
 <?php
+require_once __DIR__ . '/../partials/signature_helpers.php';
+
 $layout = __DIR__ . '/../layouts/base.php';
 $header = '';
+$anestesiologoData = is_array($anestesiologo_data ?? null) ? $anestesiologo_data : [];
 
 ob_start();
 ?>
@@ -6325,12 +6328,12 @@ ob_start();
                 <td class="blanco_tr" colspan="5"><?php echo $hora_inicio; ?></td>
                 <td class="verde_tr" colspan="12">NOMBRE Y APELLIDO DEL PROFESIONAL</td>
                 <td class="blanco_tr"
-                    colspan="18"><?php echo $anestesiologo_data['nombre']; ?></td>
+                    colspan="18"><?php echo mf_user_value($anestesiologoData, 'nombre'); ?></td>
                 <td class="verde_tr" colspan="4">FIRMA</td>
                 <td class="blanco_tr"
                     colspan="12"><?php
-                    $topSrc = (string)($anestesiologo_data['signature_path'] ?? '');
-                    $bottomSrc = (string)($anestesiologo_data['firma'] ?? '');
+                    $topSrc = mf_user_value($anestesiologoData, 'signature_path');
+                    $bottomSrc = mf_user_value($anestesiologoData, 'firma');
 
                     mf_renderMergedSignature($topSrc, $bottomSrc, [
                             'padTop' => 100,
@@ -6341,7 +6344,7 @@ ob_start();
                     ]);
                     ?></td>
                 <td class="verde_tr" colspan="4">SELLO Y CÓDIGO</td>
-                <td class="blanco_tr" colspan="10"><?php echo $anestesiologo_data['cedula']; ?></td>
+                <td class="blanco_tr" colspan="10"><?php echo mf_user_value($anestesiologoData, 'cedula'); ?></td>
             </tr>
         </table>
         <table style="border: none">

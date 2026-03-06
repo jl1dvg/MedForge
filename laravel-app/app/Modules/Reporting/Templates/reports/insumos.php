@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../partials/signature_helpers.php';
+
 $layout = __DIR__ . '/../layouts/base.php';
 $patient = [
         'afiliacion' => $afiliacion ?? '',
@@ -12,6 +14,8 @@ $patient = [
         'fecha_nacimiento' => $fecha_nacimiento ?? '',
         'edad' => $edadPaciente ?? '',
 ];
+
+$cirujanoData = is_array($cirujano_data ?? null) ? $cirujano_data : [];
 
 ob_start();
 include __DIR__ . '/../partials/patient_header.php';
@@ -80,8 +84,8 @@ ob_start();
     <br>
     <br>
 <?php
-$topSrc = (string)($cirujano_data['signature_path'] ?? '');
-$bottomSrc = (string)($cirujano_data['firma'] ?? '');
+$topSrc = mf_user_value($cirujanoData, 'signature_path');
+$bottomSrc = mf_user_value($cirujanoData, 'firma');
 
 mf_renderMergedSignature($topSrc, $bottomSrc, [
         'padTop' => 100,
@@ -91,7 +95,7 @@ mf_renderMergedSignature($topSrc, $bottomSrc, [
         'alt' => 'Firma y sello (Cirujano)',
 ]);
 echo"<br>";
-echo strtoupper($cirujano_data['nombre']);
+echo strtoupper(mf_user_value($cirujanoData, 'nombre'));
 echo "<br>";
 ?>
     <table style="border: none">
