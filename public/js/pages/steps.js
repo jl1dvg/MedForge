@@ -45,7 +45,7 @@ $(document).ready(function () {
 
         const formId = form.querySelector('input[name="form_id"]').value;
         const hcNumber = form.querySelector('input[name="hc_number"]').value;
-        window.open('/reports/protocolo/pdf?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
+        window.open('/v2/reports/protocolo/pdf?form_id=' + formId + '&hc_number=' + hcNumber, '_blank');
     };
 
     $(".tab-wizard").steps({

@@ -111,7 +111,7 @@ $protocoloData = $protocolo ?? [];
                         <span class="text-muted small codigo-indice">#<?= (int)$indice ?></span>
                     </td>
                     <td>
-                        <input type="hidden" class="codigo-selector" name="selectores[]" value="<?= htmlspecialchars($selectorAuto, ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" class="codigo-selector" name="selectores_codigos[]" value="<?= htmlspecialchars($selectorAuto, ENT_QUOTES, 'UTF-8') ?>">
                         <span class="text-muted small codigo-indice">#<?= (int)$indice ?></span>
                     </td>
                     <td><button type="button" class="btn btn-danger remove-codigo"><i class="fa fa-trash"></i></button></td>

@@ -2,6 +2,7 @@
 /** @var array $procedimientosPorCategoria */
 /** @var string|null $mensajeExito */
 /** @var string|null $mensajeError */
+/** @var string $csrfToken */
 /** @var string $username */
 /** @var array $scripts */
 $canManage = $canManage ?? false;
@@ -100,6 +101,7 @@ $scripts = array_merge($scripts ?? [], [
                                          data-bs-parent="#accordionProtocolos">
                                         <div class="accordion-body">
                                             <?php foreach ($procedimientos as $procedimiento): ?>
+                                                <?php $procedimientoId = trim((string)($procedimiento['id'] ?? '')); ?>
                                                 <div class="d-flex align-items-center mb-30 border-bottom pb-15">
                                                     <div class="me-15">
                                                         <?php $imagen = $procedimiento['imagen_link'] ?? ''; ?>
@@ -108,8 +110,8 @@ $scripts = array_merge($scripts ?? [], [
                                                              alt="<?= htmlspecialchars($procedimiento['membrete'] ?? 'Imagen protocolo', ENT_QUOTES, 'UTF-8') ?>"/>
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1 fw-500">
-                                                        <?php if ($canManage): ?>
-                                                            <a href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>"
+                                                        <?php if ($canManage && $procedimientoId !== ''): ?>
+                                                            <a href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>"
                                                                class="text-dark hover-primary mb-1 fs-16"
                                                                data-bs-toggle="tooltip"
                                                                title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
@@ -121,6 +123,9 @@ $scripts = array_merge($scripts ?? [], [
                                                                 <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
                                                             </span>
                                                         <?php endif; ?>
+                                                        <?php if ($canManage && $procedimientoId === ''): ?>
+                                                            <span class="badge bg-warning text-dark d-inline-block mt-5">Sin ID</span>
+                                                        <?php endif; ?>
                                                         <span class="text-fade" data-bs-toggle="tooltip"
                                                               title="<?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                                     <?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>
@@ -131,19 +136,25 @@ $scripts = array_merge($scripts ?? [], [
                                                             <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i
                                                                         class="ti-more-alt"></i></a>
                                                             <div class="dropdown-menu dropdown-menu-end">
-                                                                <a class="dropdown-item"
-                                                                   href="/protocolos/editar?id=<?= urlencode($procedimiento['id']) ?>">Editar</a>
-                                                                <a class="dropdown-item"
-                                                                   href="/protocolos/editar?duplicar=<?= urlencode($procedimiento['id']) ?>">Duplicar</a>
-                                                                <form method="POST" action="/protocolos/eliminar"
-                                                                      style="display:inline;"
-                                                                      onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
-                                                                    <input type="hidden" name="id"
-                                                                           value="<?= htmlspecialchars($procedimiento['id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                                    <button type="submit"
-                                                                            class="dropdown-item text-danger">Eliminar
-                                                                    </button>
-                                                                </form>
+                                                                <?php if ($procedimientoId !== ''): ?>
+                                                                    <a class="dropdown-item"
+                                                                       href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>">Editar</a>
+                                                                    <a class="dropdown-item"
+                                                                       href="/protocolos/editar?duplicar=<?= urlencode($procedimientoId) ?>">Duplicar</a>
+                                                                    <form method="POST" action="/protocolos/eliminar"
+                                                                          style="display:inline;"
+                                                                          onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
+                                                                        <input type="hidden" name="csrf_token"
+                                                                               value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                        <input type="hidden" name="id"
+                                                                               value="<?= htmlspecialchars($procedimientoId, ENT_QUOTES, 'UTF-8') ?>">
+                                                                        <button type="submit"
+                                                                                class="dropdown-item text-danger">Eliminar
+                                                                        </button>
+                                                                    </form>
+                                                                <?php else: ?>
+                                                                    <span class="dropdown-item text-muted">ID no disponible</span>
+                                                                <?php endif; ?>
                                                             </div>
                                                         </div>
                                                     <?php endif; ?>

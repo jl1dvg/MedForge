@@ -138,7 +138,15 @@ class EditorController extends BaseController
             return;
         }
 
-        $payload = $_POST;
+        $payload = $this->normalizePayload($_POST);
+
+        if (!$this->isValidPayload($payload, $validationError)) {
+            $this->json([
+                'success' => false,
+                'message' => $validationError,
+            ], 422);
+            return;
+        }
 
         if (empty($payload['id']) && !empty($payload['cirugia'])) {
             $payload['id'] = $this->service->generarIdUnicoDesdeCirugia($payload['cirugia']);
@@ -240,5 +248,84 @@ class EditorController extends BaseController
         }
 
         return hash_equals($sessionToken, $token);
+    }
+
+    private function normalizePayload(array $input): array
+    {
+        $payload = $input;
+
+        $stringFields = [
+            'id',
+            'cirugia',
+            'categoriaQX',
+            'membrete',
+            'dieresis',
+            'exposicion',
+            'hallazgo',
+            'horas',
+            'imagen_link',
+            'operatorio',
+            'pre_evolucion',
+            'pre_indicacion',
+            'post_evolucion',
+            'post_indicacion',
+            'alta_evolucion',
+            'alta_indicacion',
+            'insumos',
+            'medicamentos',
+        ];
+
+        foreach ($stringFields as $field) {
+            $payload[$field] = isset($payload[$field]) ? trim((string)$payload[$field]) : '';
+        }
+
+        $arrayFields = [
+            'codigos',
+            'lateralidades',
+            'selectores_codigos',
+            'funciones',
+            'trabajadores',
+            'nombres_staff',
+            'selectores_staff',
+        ];
+
+        foreach ($arrayFields as $field) {
+            if (!isset($payload[$field]) || !is_array($payload[$field])) {
+                $payload[$field] = [];
+            }
+        }
+
+        return $payload;
+    }
+
+    private function isValidPayload(array $payload, ?string &$error = null): bool
+    {
+        if ($payload['cirugia'] === '') {
+            $error = 'Debes ingresar el nombre corto del procedimiento.';
+            return false;
+        }
+
+        if ($payload['membrete'] === '') {
+            $error = 'Debes ingresar el título del protocolo.';
+            return false;
+        }
+
+        if ($payload['categoriaQX'] === '') {
+            $error = 'Debes seleccionar una categoría.';
+            return false;
+        }
+
+        if ($payload['horas'] !== '' && !is_numeric($payload['horas'])) {
+            $error = 'La duración estimada debe ser numérica.';
+            return false;
+        }
+
+        if ($payload['imagen_link'] !== '' && filter_var($payload['imagen_link'], FILTER_VALIDATE_URL) === false) {
+            $error = 'El enlace de imagen no tiene un formato válido.';
+            return false;
+        }
+
+        $error = null;
+        return true;
     }
 }

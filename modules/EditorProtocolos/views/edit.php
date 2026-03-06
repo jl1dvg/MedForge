@@ -11,6 +11,7 @@
 /** @var bool $duplicando */
 /** @var bool $esNuevo */
 /** @var string|null $duplicarId */
+/** @var string $csrfToken */
 /** @var string $username */
 /** @var array $scripts */
 $scripts = array_merge($scripts ?? [], [
@@ -56,6 +57,7 @@ $scripts = array_merge($scripts ?? [], [
                 </div>
                 <form id="editarProtocoloForm" action="/protocolos/guardar" method="POST" class="form">
                     <input type="hidden" name="id" value="<?= htmlspecialchars($protocolo['id'], ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="insumos" id="insumosInput" value='<?= json_encode($insumosPaciente, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>
                     <input type="hidden" name="medicamentos" id="medicamentosInput" value='<?= json_encode($medicamentos, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>
                     <input type="hidden" name="operatorio" id="operatorioInput" value="<?= htmlspecialchars($protocolo['operatorio'], ENT_QUOTES, 'UTF-8') ?>">

@@ -223,27 +223,38 @@ $(function () {
         actualizarInsumos();
     });
 
-    $('#insumosTable').on('click', '.add-row-btn', function (event) {
-        event.preventDefault();
+    function crearFilaInsumo(currentRow = null) {
         var categoriaOptions = '<option value="">Seleccione categoría</option>';
         for (const cat in insumosDisponibles) {
             categoriaOptions += `<option value="${escapeHtml(cat)}">${escapeHtml(cat.replace('_', ' '))}</option>`;
         }
 
         var newData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, '<select class="form-control nombre-select" name="nombre"><option value="">Seleccione una categoría</option></select>', '1', '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
-
-        const currentRow = $(this).parents('tr');
-        const rowIndex = insumosTable.row(currentRow).index();
         insumosTable.row.add(newData).draw(false);
-        const newRow = insumosTable.row(rowIndex + 1).nodes().to$();
-        newRow.insertAfter(currentRow);
+
+        const newRow = insumosTable.row(':last').nodes().to$();
+        if (currentRow && currentRow.length) {
+            newRow.insertAfter(currentRow);
+        }
+
         newRow.find('td:eq(2)').attr('contenteditable', 'true');
+
         // Hacer scroll hacia la nueva fila
         $('html, body').animate({
             scrollTop: newRow.offset().top - 100
         }, 300);
         $('#insumosTable').editableTableWidget(); // Re-inicializa para nuevas celdas
         actualizarInsumos();
+    }
+
+    $('#insumosTable').on('click', '.add-row-btn', function (event) {
+        event.preventDefault();
+        crearFilaInsumo($(this).parents('tr'));
+    });
+
+    $('#agregar-insumo').on('click', function (event) {
+        event.preventDefault();
+        crearFilaInsumo();
     });
 
     $('#insumosTable').on('change', '.categoria-select', function () {
@@ -258,6 +269,11 @@ $(function () {
             nombreSelect.append('<option value="">Seleccione una categoría primero</option>');
         }
     }).trigger('change');
+
+    // Si no hay insumos cargados, dejar una fila base para iniciar edición.
+    if ($('#insumosTable tbody tr').length === 0) {
+        crearFilaInsumo();
+    }
 
     $('#insumosTable tbody tr').each(function () {
         // Handle both singular and array naming, and class selector

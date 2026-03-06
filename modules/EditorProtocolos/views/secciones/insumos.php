@@ -72,3 +72,6 @@ $renderFila = function (?string $categoria = null, string $insumoId = '', string
         </tbody>
     </table>
 </div>
+<button class="btn btn-primary mt-2" id="agregar-insumo" type="button">
+    <i class="fa fa-plus"></i> Agregar insumo
+</button>

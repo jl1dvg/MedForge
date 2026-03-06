@@ -27,7 +27,7 @@ if (empty($staffList)) {
                         <?php endforeach; ?>
                     </select>
                     <input type="hidden" name="trabajadores[]" value="<?= htmlspecialchars($miembro['trabajador'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    <input type="hidden" name="selectores[]" value="<?= htmlspecialchars($miembro['selector'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="selectores_staff[]" value="<?= htmlspecialchars($miembro['selector'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 </div>
                 <div class="col-md-5">
                     <input type="text" name="nombres_staff[]" class="form-control"
@@ -58,7 +58,7 @@ if (empty($staffList)) {
                         ${funciones.map(funcion => `<option value="${funcion}">${funcion}</option>`).join('')}
                     </select>
                     <input type="hidden" name="trabajadores[]" value="">
-                    <input type="hidden" name="selectores[]" value="#select2-consultasubsecuente-trabajadorprotocolo-${indexStaff}-funcion-container">
+                    <input type="hidden" name="selectores_staff[]" value="#select2-consultasubsecuente-trabajadorprotocolo-${indexStaff}-funcion-container">
                 </div>
                 <div class="col-md-5">
                     <input type="text" name="nombres_staff[]" class="form-control" placeholder="Nombre del trabajador">

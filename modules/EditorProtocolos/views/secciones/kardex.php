@@ -59,3 +59,6 @@ $medicamentosLista = $medicamentos ?? [];
         </tbody>
     </table>
 </div>
+<button class="btn btn-primary mt-2" id="agregar-medicamento" type="button">
+    <i class="fa fa-plus"></i> Agregar medicamento
+</button>
