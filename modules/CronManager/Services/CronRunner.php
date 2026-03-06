@@ -19,7 +19,6 @@ use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Reporting\Services\AsyncReportQueueService;
 use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
 use Modules\WhatsApp\Services\HandoffService;
@@ -346,7 +345,7 @@ class CronRunner
             [
                 'slug' => 'reporting-async-queue',
                 'name' => 'Procesamiento asíncrono de reportes PDF',
-                'description' => 'Procesa la cola de generación asíncrona de reportes PDF con IA.',
+                'description' => 'Tarea descontinuada tras el cutover de reportes PDF a /v2/reports.',
                 'interval' => 60,
                 'callback' => function (): array {
                     return $this->runReportingAsyncQueueTask();
@@ -361,26 +360,13 @@ class CronRunner
      */
     private function runReportingAsyncQueueTask(): array
     {
-        $service = new AsyncReportQueueService($this->pdo);
-        $result = $service->processPending(2);
-
-        if (($result['processed'] ?? 0) === 0) {
-            return [
-                'status' => 'skipped',
-                'message' => 'No hay jobs pendientes en la cola de reportes.',
-                'details' => $result,
-            ];
-        }
-
         return [
-            'status' => ($result['failed'] ?? 0) > 0 ? 'warning' : 'success',
-            'message' => sprintf(
-                'Cola de reportes procesada. Total: %d, completados: %d, fallidos permanentes: %d.',
-                (int) ($result['processed'] ?? 0),
-                (int) ($result['completed'] ?? 0),
-                (int) ($result['failed'] ?? 0)
-            ),
-            'details' => $result,
+            'status' => 'skipped',
+            'message' => 'Cola async legacy desactivada: reporting PDF opera en /v2/reports.',
+            'details' => [
+                'strategy' => 'strangler-v2',
+                'deprecated_at' => '2026-03-06',
+            ],
         ];
     }
 

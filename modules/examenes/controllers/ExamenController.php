@@ -2545,149 +2545,29 @@ class ExamenController extends BaseController
 
     public function imprimirInforme012B(): void
     {
-        $this->requireAuth();
-
-        $formId = trim((string)($_GET['form_id'] ?? ''));
-        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
-
-        if ($formId === '' || $hcNumber === '') {
-            http_response_code(400);
-            echo '<p class="text-danger">Faltan parámetros para generar el informe.</p>';
-            return;
-        }
-        try {
-            $result = $this->renderInforme012B($formId, $hcNumber);
-            $this->emitPdf($result['pdf'], $result['filename'], true);
-        } catch (Throwable $e) {
-            $errorId = bin2hex(random_bytes(6));
-            JsonLogger::log(
-                'imagenes_informes',
-                'Informe 012B falló',
-                $e,
-                [
-                    'error_id' => $errorId,
-                    'user_id' => $this->getCurrentUserId(),
-                    'form_id' => $formId,
-                ]
-            );
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo generar el informe (ref: ' . $errorId . ').</p>';
-        }
+        $this->redirectToReportingV2('/v2/reports/imagenes/012b/pdf');
     }
 
     public function imprimirInforme012BPaquete(): void
     {
-        $this->requireAuth();
-
-        $formId = trim((string)($_GET['form_id'] ?? ''));
-        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
-
-        if ($formId === '' || $hcNumber === '') {
-            http_response_code(400);
-            echo '<p class="text-danger">Faltan parámetros para generar el paquete.</p>';
-            return;
-        }
-
-        try {
-            $result = $this->buildPaqueteInformes([
-                ['form_id' => $formId, 'hc_number' => $hcNumber],
-            ]);
-            $this->emitPdf($result['pdf'], $result['filename'], false);
-        } catch (Throwable $e) {
-            $errorId = bin2hex(random_bytes(6));
-            JsonLogger::log(
-                'imagenes_informes',
-                'Paquete 012B falló',
-                $e,
-                [
-                    'error_id' => $errorId,
-                    'user_id' => $this->getCurrentUserId(),
-                    'form_id' => $formId,
-                    'hc_number' => $hcNumber,
-                ]
-            );
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo generar el paquete (ref: ' . $errorId . ').</p>';
-        }
+        $this->redirectToReportingV2('/v2/reports/imagenes/012b/paquete');
     }
 
     public function imprimirInforme012BPaqueteSeleccion(): void
     {
-        $this->requireAuth();
-
-        $payload = $this->getRequestBody();
-        $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
-
-        if (empty($items)) {
-            http_response_code(422);
-            $this->json(['success' => false, 'error' => 'No se recibieron exámenes para el paquete.']);
-            return;
-        }
-
-        try {
-            $result = $this->buildPaqueteInformes($items);
-            $this->emitPdf($result['pdf'], $result['filename'], false);
-        } catch (RuntimeException $e) {
-            http_response_code(422);
-            $this->json(['success' => false, 'error' => $e->getMessage()]);
-        } catch (Throwable $e) {
-            $errorId = bin2hex(random_bytes(6));
-            JsonLogger::log(
-                'imagenes_informes',
-                'Paquete 012B falló',
-                $e,
-                [
-                    'error_id' => $errorId,
-                    'user_id' => $this->getCurrentUserId(),
-                ]
-            );
-            http_response_code(500);
-            $this->json(['success' => false, 'error' => 'No se pudo generar el paquete (ref: ' . $errorId . ').']);
-        }
+        $this->redirectToReportingV2('/v2/reports/imagenes/012b/paquete/seleccion', 307);
     }
 
     public function imprimirCobertura012A(): void
     {
-        $this->requireAuth();
+        $this->redirectToReportingV2('/v2/reports/imagenes/012a/pdf');
+    }
 
-        $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
-        $formId = trim((string)($_GET['form_id'] ?? ''));
-        $examenId = isset($_GET['examen_id']) ? (int)$_GET['examen_id'] : null;
-
-        if ($hcNumber === '' || $formId === '') {
-            http_response_code(400);
-            echo '<p class="text-danger">Faltan parámetros para generar el formulario 012A.</p>';
-            return;
-        }
-
-        $attachment = $this->buildCobertura012AAttachment($formId, $hcNumber, $examenId);
-        if (!$attachment || empty($attachment['path']) || !is_file($attachment['path'])) {
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo generar el formulario 012A.</p>';
-            return;
-        }
-
-        $filename = $attachment['name'] ?? ('012A_' . $hcNumber . '_' . date('Ymd_His') . '.pdf');
-        $content = @file_get_contents($attachment['path']);
-        @unlink($attachment['path']);
-
-        if ($content === false || $content === '') {
-            http_response_code(500);
-            echo '<p class="text-danger">No se pudo leer el formulario 012A.</p>';
-            return;
-        }
-
-        if (!headers_sent()) {
-            if (ob_get_length()) {
-                ob_clean();
-            }
-            header('Content-Length: ' . strlen($content));
-            header('Content-Type: application/pdf');
-            header('Content-Disposition: inline; filename="' . $filename . '"');
-            header('X-Content-Type-Options: nosniff');
-        }
-
-        echo $content;
+    private function redirectToReportingV2(string $path, int $status = 302): void
+    {
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = $path . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, $status);
     }
 
     /**
