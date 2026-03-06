@@ -601,7 +601,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                                                     if ($slug === 'consulta' && !empty($info['form_ids'])) {
                                                         $hcNumberConsulta = $pacienteInfo['hc_number'] ?? '';
                                                         $consultaLinks = array_map(static function ($formId) use ($hcNumberConsulta) {
-                                                            $url = '/reports/consulta/pdf?form_id=' . urlencode((string)$formId)
+                                                            $url = '/v2/reports/consulta/pdf?form_id=' . urlencode((string)$formId)
                                                                     . '&hc_number=' . urlencode((string)$hcNumberConsulta);
                                                             return '<a href="' . htmlspecialchars($url)
                                                                     . '" class="text-decoration-none" target="_blank">'

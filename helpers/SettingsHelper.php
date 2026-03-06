@@ -1166,6 +1166,15 @@ class SettingsHelper
                                 ),
                                 ['min' => 0, 'max' => 365]
                             ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_chat_group_gap_minutes',
+                                    'Minutos para agrupar burbujas',
+                                    8,
+                                    'Si el mismo remitente envía mensajes dentro de este rango, se compactan sin repetir cabecera.'
+                                ),
+                                ['min' => 0, 'max' => 120]
+                            ),
                             self::checkboxField(
                                 'whatsapp_handoff_escalation_enabled',
                                 'Escalar handoffs en cola',

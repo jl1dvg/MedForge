@@ -48,6 +48,7 @@ class EditorController extends BaseController
             'mensajeExito' => $mensajeExito,
             'mensajeError' => $mensajeError,
             'canManage' => $canManage,
+            'csrfToken' => $this->csrfToken(),
         ]);
     }
 
@@ -129,6 +130,14 @@ class EditorController extends BaseController
             return;
         }
 
+        if (!$this->isValidCsrfToken($_POST['csrf_token'] ?? null)) {
+            $this->json([
+                'success' => false,
+                'message' => 'Token de seguridad inválido. Recarga la página e intenta nuevamente.',
+            ], 419);
+            return;
+        }
+
         $payload = $_POST;
 
         if (empty($payload['id']) && !empty($payload['cirugia'])) {
@@ -143,10 +152,10 @@ class EditorController extends BaseController
                 'generated_id' => $payload['id'] ?? null,
             ], $resultado ? 200 : 500);
         } catch (Throwable $exception) {
+            error_log('❌ Error en EditorController::store: ' . $exception->getMessage());
             $this->json([
                 'success' => false,
                 'message' => 'Excepción capturada al guardar el protocolo.',
-                'error' => $exception->getMessage(),
             ], 500);
         }
     }
@@ -159,6 +168,12 @@ class EditorController extends BaseController
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
             echo 'Método no permitido';
+            return;
+        }
+
+        if (!$this->isValidCsrfToken($_POST['csrf_token'] ?? null)) {
+            http_response_code(419);
+            echo 'Token de seguridad inválido.';
             return;
         }
 
@@ -193,6 +208,7 @@ class EditorController extends BaseController
             'duplicando' => $contexto['duplicando'] ?? false,
             'esNuevo' => $contexto['esNuevo'] ?? false,
             'duplicarId' => $contexto['duplicarId'] ?? null,
+            'csrfToken' => $this->csrfToken(),
         ], $contexto));
     }
 
@@ -200,5 +216,29 @@ class EditorController extends BaseController
     {
         header('Location: /protocolos?error=1');
         exit;
+    }
+
+    private function csrfToken(): string
+    {
+        if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token']) || $_SESSION['csrf_token'] === '') {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+
+        return $_SESSION['csrf_token'];
+    }
+
+    private function isValidCsrfToken(?string $token): bool
+    {
+        $sessionToken = $_SESSION['csrf_token'] ?? null;
+
+        if (!is_string($token) || $token === '') {
+            return false;
+        }
+
+        if (!is_string($sessionToken) || $sessionToken === '') {
+            return false;
+        }
+
+        return hash_equals($sessionToken, $token);
     }
 }

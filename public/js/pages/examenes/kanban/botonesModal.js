@@ -142,7 +142,7 @@ function buildCoberturaUrl(formId, hcNumber, pages) {
         params.set('pages', pages);
     }
 
-    return `/reports/cobertura/pdf?${params.toString()}`;
+    return `/v2/reports/cobertura/pdf?${params.toString()}`;
 }
 
 function buildCobertura012AUrl(formId, hcNumber, examenId) {
@@ -159,7 +159,7 @@ function buildCobertura012AUrl(formId, hcNumber, examenId) {
         params.set('examen_id', examenId);
     }
 
-    return `/examenes/cobertura-012a/pdf?${params.toString()}`;
+    return `/v2/reports/imagenes/012a/pdf?${params.toString()}`;
 }
 
 function getCoberturaMailData() {

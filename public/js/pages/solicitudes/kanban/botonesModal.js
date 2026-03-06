@@ -142,7 +142,7 @@ function buildCoberturaUrl(formId, hcNumber, pages) {
         params.set('pages', pages);
     }
 
-    return `/reports/cobertura/pdf?${params.toString()}`;
+    return `/v2/reports/cobertura/pdf?${params.toString()}`;
 }
 
 function getCoberturaMailData() {

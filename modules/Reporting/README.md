@@ -183,6 +183,48 @@ puede ejecutarse desde Laravel (`/v2`) con fallback automático a legacy.
 Esto permite migrar la lógica de datos progresivamente sin tocar plantillas ni
 layouts de PDF.
 
+## Cutover de datos 012A / 012B a Laravel v2
+
+La data que alimenta los reportes `012A` (solicitud de imagenología) y `012B`
+(informe de imagenología) también puede venir desde Laravel `/v2` con fallback
+automático al builder legacy.
+
+1. Configura en `.env`:
+
+   ```dotenv
+   REPORTING_V2_IMAGENES_012A_DATA_ENABLED=1
+   REPORTING_V2_IMAGENES_012B_DATA_ENABLED=1
+   ```
+
+2. Con cada bandera en `1`, `ExamenController` intenta cargar data desde:
+   - `POST /v2/reports/imagenes/012a/data`
+   - `GET /v2/reports/imagenes/012b/data?form_id=...&hc_number=...`
+3. Si `/v2` responde error, timeout o payload inválido, el flujo vuelve a la
+   lógica legacy actual de forma transparente.
+
+Esto permite migración gradual de la lógica de negocio sin tocar templates de
+PDF ni romper el flujo actual de impresión.
+
+## Cutover de datos de cobertura / consulta / descanso postquirúrgico a Laravel v2
+
+Los reportes de cobertura, consulta IESS y certificado de descanso postquirúrgico
+también pueden consumir su data desde Laravel `/v2` con fallback automático.
+
+1. Configura en `.env`:
+
+   ```dotenv
+   REPORTING_V2_COBERTURA_DATA_ENABLED=1
+   REPORTING_V2_CONSULTA_DATA_ENABLED=1
+   REPORTING_V2_POST_SURGERY_REST_DATA_ENABLED=1
+   ```
+
+2. Con cada bandera en `1`, los servicios legacy intentan cargar data desde:
+   - `GET /v2/reports/cobertura/data?form_id=...&hc_number=...`
+   - `GET /v2/reports/consulta/data?form_id=...&hc_number=...`
+   - `GET|POST /v2/reports/cirugias/descanso/data?form_id=...&hc_number=...`
+3. Si `/v2` responde error, timeout o payload inválido, cada flujo vuelve a la
+   lógica legacy actual de forma transparente.
+
 ### Ejemplo: cobertura con Ecuasanitas
 
 1. **Registrar la plantilla.** Añade una entrada en

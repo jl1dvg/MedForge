@@ -93,46 +93,54 @@ class ProcedimientoModel
                 $stmtInsert->execute([$datos['id'], $medicamentos]);
             }
 
-            // Guardar códigos quirúrgicos
-            if (isset($datos['codigos'], $datos['lateralidades'], $datos['selectores'])) {
-                $codigos = $datos['codigos'];
-                $lateralidades = $datos['lateralidades'];
-                $selectores = $datos['selectores'];
-                $formateados = [];
-
-                foreach ($codigos as $index => $codigo) {
-                    if (!empty($codigo)) {
-                        $formateados[] = [
-                            'nombre' => $codigo,
-                            'lateralidad' => $lateralidades[$index] ?? '',
-                            'selector' => $selectores[$index] ?? ''
-                        ];
-                    }
-                }
-
-                $this->guardarCodigosDeProcedimiento($datos['id'], $formateados);
+            // Guardar códigos quirúrgicos (si no llegan en el payload, se eliminan todos)
+            $codigos = is_array($datos['codigos'] ?? null) ? $datos['codigos'] : [];
+            $lateralidades = is_array($datos['lateralidades'] ?? null) ? $datos['lateralidades'] : [];
+            $selectoresCodigos = $datos['selectores_codigos'] ?? ($datos['selectores'] ?? []);
+            if (!is_array($selectoresCodigos)) {
+                $selectoresCodigos = [];
             }
 
-            // Guardar staff quirúrgico
-            if (isset($datos['funciones'], $datos['trabajadores'], $datos['nombres_staff'], $datos['selectores'])) {
-                $staff = [];
-                foreach ($datos['funciones'] as $index => $funcion) {
-                    if (!empty($funcion)) {
-                        $staff[] = [
-                            'funcion' => $funcion,
-                            'trabajador' => $datos['trabajadores'][$index] ?? '',
-                            'nombre' => $datos['nombres_staff'][$index] ?? '',
-                            'selector' => "#select2-consultasubsecuente-trabajadorprotocolo-{$index}-funcion-container"
-                        ];
-                    }
+            $formateados = [];
+            foreach ($codigos as $index => $codigo) {
+                $codigo = trim((string) $codigo);
+                if ($codigo === '') {
+                    continue;
                 }
 
-                try {
-                    $this->guardarStaffDeProcedimiento($datos['id'], $staff);
-                } catch (\Exception $e) {
-                    error_log("❌ Error al guardar staff: " . $e->getMessage());
-                    throw $e;
+                $formateados[] = [
+                    'nombre' => $codigo,
+                    'lateralidad' => $lateralidades[$index] ?? '',
+                    'selector' => $selectoresCodigos[$index] ?? '',
+                ];
+            }
+            $this->guardarCodigosDeProcedimiento($datos['id'], $formateados);
+
+            // Guardar staff quirúrgico (si no llega en el payload, se elimina todo)
+            $funciones = is_array($datos['funciones'] ?? null) ? $datos['funciones'] : [];
+            $trabajadores = is_array($datos['trabajadores'] ?? null) ? $datos['trabajadores'] : [];
+            $nombresStaff = is_array($datos['nombres_staff'] ?? null) ? $datos['nombres_staff'] : [];
+
+            $staff = [];
+            foreach ($funciones as $index => $funcion) {
+                $funcion = trim((string) $funcion);
+                if ($funcion === '') {
+                    continue;
                 }
+
+                $staff[] = [
+                    'funcion' => $funcion,
+                    'trabajador' => $trabajadores[$index] ?? '',
+                    'nombre' => $nombresStaff[$index] ?? '',
+                    'selector' => "#select2-consultasubsecuente-trabajadorprotocolo-{$index}-funcion-container",
+                ];
+            }
+
+            try {
+                $this->guardarStaffDeProcedimiento($datos['id'], $staff);
+            } catch (\Exception $e) {
+                error_log("❌ Error al guardar staff: " . $e->getMessage());
+                throw $e;
             }
 
             $this->db->commit();
@@ -245,20 +253,12 @@ class ProcedimientoModel
     }
 
     /**
-     * Guarda el staff quirúrgico de un procedimiento, validando coherencia de índices y campos requeridos.
-     * Cada miembro debe tener al menos 'funcion' y 'nombre' definidos.
-     * Si algún índice de trabajador, selector o nombre no existe, se ignora ese registro.
+     * Guarda el staff quirúrgico de un procedimiento.
+     * Si llega vacío, elimina el staff previo.
      */
     public function guardarStaffDeProcedimiento(string $procedimientoId, array $staff): bool
     {
         try {
-            if (
-                count($staff) === 0 ||
-                !is_array($staff)
-            ) {
-                throw new \Exception("Staff vacío o mal formado.");
-            }
-
             foreach ($staff as $index => $miembro) {
                 error_log("👨‍⚕️ Staff[{$index}]: " . json_encode($miembro));
             }
@@ -267,6 +267,10 @@ class ProcedimientoModel
             $sqlDelete = "DELETE FROM procedimientos_tecnicos WHERE procedimiento_id = ?";
             $stmtDelete = $this->db->prepare($sqlDelete);
             $stmtDelete->execute([$procedimientoId]);
+
+            if (count($staff) === 0) {
+                return true;
+            }
 
             // Insertar el nuevo staff
             $sqlInsert = "INSERT INTO procedimientos_tecnicos (procedimiento_id, funcion, trabajador, nombre, selector) VALUES (?, ?, ?, ?, ?)";

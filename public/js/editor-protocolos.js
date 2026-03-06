@@ -14,6 +14,18 @@ $(function () {
         return match ? parseInt(match[1], 10) : fallback;
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function (char) {
+            return ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[char];
+        });
+    }
+
     function reindexCodigos() {
         $('#tablaCodigos tbody tr').each(function (idx) {
             $(this).find('input.codigo-lateralidad').val(baseLateralidad(idx));
@@ -66,7 +78,7 @@ $(function () {
     function renderOperatorioPlaceholders(raw) {
         return raw.replace(/\[\[ID:(\d+)\]\]/g, (match, id) => {
             const insumo = listaInsumos.find(i => String(i.id) === id);
-            const nombre = insumo ? insumo.nombre : '';
+            const nombre = insumo ? escapeHtml(insumo.nombre) : '';
             return `<span class="tag" data-id="${id}">${nombre}</span>&nbsp;`;
         });
     }
@@ -79,27 +91,42 @@ $(function () {
         actualizarMedicamentos();
     });
 
-    $('#medicamentosTable').on('click', '.add-row-btn', function (e) {
-        e.preventDefault();
-
+    function agregarFilaMedicamento(filaReferencia = null) {
         let medicamentoOptions = '';
         opcionesMedicamentos.forEach(function (med) {
-            medicamentoOptions += '<option value="' + med.id + '">' + med.medicamento + '</option>';
+            medicamentoOptions += '<option value="' + escapeHtml(med.id) + '">' + escapeHtml(med.medicamento) + '</option>';
         });
 
         let viaOptions = '';
         vias.forEach(function (via) {
-            viaOptions += '<option value="' + via + '">' + via + '</option>';
+            viaOptions += '<option value="' + escapeHtml(via) + '">' + escapeHtml(via) + '</option>';
         });
 
         let responsableOptions = '';
         responsables.forEach(function (r) {
-            responsableOptions += '<option value="' + r + '">' + r + '</option>';
+            responsableOptions += '<option value="' + escapeHtml(r) + '">' + escapeHtml(r) + '</option>';
         });
 
         const newRow = $('<tr>' + '<td><select class="form-control medicamento-select" name="medicamento[]">' + medicamentoOptions + '</select></td>' + '<td contenteditable="true"></td>' + '<td contenteditable="true"></td>' + '<td><select class="form-control via-select" name="via_administracion[]">' + viaOptions + '</select></td>' + '<td><select class="form-control responsable-select" name="responsable[]">' + responsableOptions + '</select></td>' + '<td><button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button></td>' + '</tr>');
-        $(this).closest('tr').after(newRow);
+
+        if (filaReferencia && filaReferencia.length) {
+            filaReferencia.after(newRow);
+        } else {
+            $('#medicamentosTable tbody').append(newRow);
+        }
+
+        cambiarColorFila();
         actualizarMedicamentos();
+    }
+
+    $('#medicamentosTable').on('click', '.add-row-btn', function (e) {
+        e.preventDefault();
+        agregarFilaMedicamento($(this).closest('tr'));
+    });
+
+    $('#agregar-medicamento').on('click', function (e) {
+        e.preventDefault();
+        agregarFilaMedicamento();
     });
 
     function actualizarMedicamentos() {
@@ -164,7 +191,7 @@ $(function () {
                 // Build category options
                 var categoriaOptions = '';
                 for (const c in insumosDisponibles) {
-                    categoriaOptions += `<option value="${c}">${c.replace('_', ' ')}</option>`;
+                    categoriaOptions += `<option value="${escapeHtml(c)}">${escapeHtml(c.replace('_', ' '))}</option>`;
                 }
                 initialInsumos[cat].forEach(function (item) {
                     console.log('  ➕ Agregando item:', item);
@@ -173,7 +200,7 @@ $(function () {
                     if (insumosDisponibles[cat]) {
                         insumosDisponibles[cat].forEach(function (ins) {
                             var sel = ins.id == item.id ? ' selected' : '';
-                            nombreOptions += `<option value="${ins.id}"${sel}>${ins.nombre}</option>`;
+                            nombreOptions += `<option value="${escapeHtml(ins.id)}"${sel}>${escapeHtml(ins.nombre)}</option>`;
                         });
                     }
                     // Add row to table
@@ -200,16 +227,17 @@ $(function () {
         event.preventDefault();
         var categoriaOptions = '<option value="">Seleccione categoría</option>';
         for (const cat in insumosDisponibles) {
-            categoriaOptions += `<option value="${cat}">${cat.replace('_', ' ')}</option>`;
+            categoriaOptions += `<option value="${escapeHtml(cat)}">${escapeHtml(cat.replace('_', ' '))}</option>`;
         }
 
-        var newData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, '<select class="form-control nombre-select" name="nombre"><option value="">Seleccione una categoría</option></select>', '<td contenteditable="true">1</td>', '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
+        var newData = [`<select class="form-control categoria-select" name="categoria">${categoriaOptions}</select>`, '<select class="form-control nombre-select" name="nombre"><option value="">Seleccione una categoría</option></select>', '1', '<button class="delete-btn btn btn-danger"><i class="fa fa-minus"></i></button> <button class="add-row-btn btn btn-success"><i class="fa fa-plus"></i></button>'];
 
         const currentRow = $(this).parents('tr');
         const rowIndex = insumosTable.row(currentRow).index();
         insumosTable.row.add(newData).draw(false);
         const newRow = insumosTable.row(rowIndex + 1).nodes().to$();
         newRow.insertAfter(currentRow);
+        newRow.find('td:eq(2)').attr('contenteditable', 'true');
         // Hacer scroll hacia la nueva fila
         $('html, body').animate({
             scrollTop: newRow.offset().top - 100
@@ -224,7 +252,7 @@ $(function () {
         nombreSelect.empty();
         if (categoria && insumosDisponibles[categoria]) {
             insumosDisponibles[categoria].forEach(insumo => {
-                nombreSelect.append(`<option value="${insumo.id}">${insumo.nombre}</option>`);
+                nombreSelect.append(`<option value="${escapeHtml(insumo.id)}">${escapeHtml(insumo.nombre)}</option>`);
             });
         } else {
             nombreSelect.append('<option value="">Seleccione una categoría primero</option>');
@@ -329,13 +357,13 @@ $(function () {
         const indice = inferirIndice(lateralidad, selector, $('#tablaCodigos tbody tr').length);
         const fila = `
             <tr>
-                <td><input type="text" class="form-control" name="codigos[]" value="${nombre}"></td>
+                <td><input type="text" class="form-control" name="codigos[]" value="${escapeHtml(nombre)}"></td>
                 <td>
                     <input type="hidden" class="codigo-lateralidad" name="lateralidades[]" value="${baseLateralidad(indice)}">
                     <span class="text-muted small codigo-indice">#${indice}</span>
                 </td>
                 <td>
-                    <input type="hidden" class="codigo-selector" name="selectores[]" value="${baseSelector(indice)}">
+                    <input type="hidden" class="codigo-selector" name="selectores_codigos[]" value="${baseSelector(indice)}">
                     <span class="text-muted small codigo-indice">#${indice}</span>
                 </td>
                 <td><button type="button" class="btn btn-danger remove-codigo"><i class="fa fa-trash"></i></button></td>
@@ -358,10 +386,10 @@ $(function () {
     function agregarFilaStaff(funcion = '', trabajador = '', nombre = '', selector = '') {
         const fila = `
             <tr>
-                <td><input type="text" class="form-control" name="funciones[]" value="${funcion}"></td>
-                <td><input type="text" class="form-control" name="trabajadores[]" value="${trabajador}"></td>
-                <td><input type="text" class="form-control" name="nombres_staff[]" value="${nombre}"></td>
-                <td><input type="text" class="form-control" name="selectores[]" value="${selector}"></td>
+                <td><input type="text" class="form-control" name="funciones[]" value="${escapeHtml(funcion)}"></td>
+                <td><input type="text" class="form-control" name="trabajadores[]" value="${escapeHtml(trabajador)}"></td>
+                <td><input type="text" class="form-control" name="nombres_staff[]" value="${escapeHtml(nombre)}"></td>
+                <td><input type="text" class="form-control" name="selectores_staff[]" value="${escapeHtml(selector)}"></td>
                 <td><button type="button" class="btn btn-danger remove-staff"><i class="fa fa-trash"></i></button></td>
             </tr>
         `;

@@ -148,7 +148,7 @@ $scripts = array_merge($scripts ?? [], [
             dias_descanso: String(dias),
         });
 
-        window.open(`/reports/cirugias/descanso/pdf?${params.toString()}`, '_blank');
+        window.open(`/v2/reports/cirugias/descanso/pdf?${params.toString()}`, '_blank');
     }
 
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
@@ -156,7 +156,7 @@ $scripts = array_merge($scripts ?? [], [
         const newStatus = isActive ? 0 : 1;
 
         if (!isActive) {
-            window.open(`/reports/protocolo/pdf?form_id=${form_id}&hc_number=${hc_number}`, '_blank');
+            window.open(`/v2/reports/protocolo/pdf?form_id=${form_id}&hc_number=${hc_number}`, '_blank');
         }
 
         button.classList.toggle('active');

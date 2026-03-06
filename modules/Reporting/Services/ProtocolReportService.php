@@ -360,7 +360,23 @@ class ProtocolReportService
      */
     private function buildCoberturaData(string $formId, string $hcNumber): array
     {
-        $datos = $this->solicitudController->obtenerDatosParaVista($hcNumber, $formId);
+        $datos = [];
+        if ($this->isCoberturaDataV2Enabled()) {
+            // Evita lock de sesión cuando legacy llama a /v2 dentro del mismo request.
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                @session_write_close();
+            }
+
+            $payload = $this->fetchV2CoberturaDataPayload($formId, $hcNumber);
+            $remoteData = $payload['data'] ?? null;
+            if (is_array($remoteData) && $remoteData !== []) {
+                $datos = $remoteData;
+            }
+        }
+
+        if ($datos === []) {
+            $datos = $this->solicitudController->obtenerDatosParaVista($hcNumber, $formId);
+        }
 
         $datos = SolicitudDataFormatter::enrich($datos, $formId, $hcNumber);
 
@@ -651,6 +667,16 @@ class ProtocolReportService
         return filter_var((string) ($raw ?? '0'), FILTER_VALIDATE_BOOLEAN);
     }
 
+    private function isCoberturaDataV2Enabled(): bool
+    {
+        $raw = $_ENV['REPORTING_V2_COBERTURA_DATA_ENABLED'] ?? getenv('REPORTING_V2_COBERTURA_DATA_ENABLED') ?? null;
+        if ($raw === null || trim((string) $raw) === '') {
+            $raw = $this->readEnvFileValue('REPORTING_V2_COBERTURA_DATA_ENABLED');
+        }
+
+        return filter_var((string) ($raw ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    }
+
     private function readEnvFileValue(string $key): ?string
     {
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 3);
@@ -737,6 +763,52 @@ class ProtocolReportService
         }
 
         $this->lastV2ProtocolDataError = 'ok';
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function fetchV2CoberturaDataPayload(string $formId, string $hcNumber): ?array
+    {
+        $sessionId = (string) session_id();
+        if ($sessionId === '') {
+            return null;
+        }
+
+        $baseUrl = $this->resolveCurrentBaseUrl();
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        $query = http_build_query([
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        $url = rtrim($baseUrl, '/') . '/v2/reports/cobertura/data?' . $query;
+        try {
+            $requestToken = bin2hex(random_bytes(6));
+        } catch (Throwable) {
+            $requestToken = (string) mt_rand(100000, 999999);
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Cookie: PHPSESSID=' . $sessionId,
+            'X-Request-Id: legacy-reporting-' . $requestToken,
+        ];
+
+        [$status, $body] = $this->httpGet($url, $headers, 10);
+        if ($status !== 200 || $body === '') {
+            return null;
+        }
+
+        $payload = json_decode($body, true);
+        if (!is_array($payload)) {
+            return null;
+        }
 
         return $payload;
     }

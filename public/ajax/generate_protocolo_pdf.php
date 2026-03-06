@@ -17,5 +17,5 @@ $query = http_build_query([
     'modo' => $mode,
 ]);
 
-header('Location: /reports/protocolo/pdf?' . $query);
+header('Location: /v2/reports/protocolo/pdf?' . $query);
 exit;

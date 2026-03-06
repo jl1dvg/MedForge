@@ -15,6 +15,5 @@ $query = http_build_query([
     'hc_number' => $hcNumber,
 ]);
 
-header('Location: /reports/cobertura/pdf?' . $query);
+header('Location: /v2/reports/cobertura/pdf?' . $query);
 exit;
-

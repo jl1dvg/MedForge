@@ -165,7 +165,7 @@ export function buildContextualActionsHtml(solicitud = {}) {
 
     if (estado === "listo-para-agenda") {
         const basePath = getKanbanConfig().basePath || "";
-        const agendaUrl = `/reports/protocolo/pdf?hc_number=${encodeURIComponent(
+        const agendaUrl = `/v2/reports/protocolo/pdf?hc_number=${encodeURIComponent(
             solicitud.hc_number || ""
         )}&form_id=${encodeURIComponent(solicitud.form_id || "")}`;
         blocks.push(`
