@@ -414,6 +414,7 @@ foreach ($whatsappChatGuide as $key => $meta) {
             data-endpoint-delete="/whatsapp/api/conversations/{id}/delete"
             data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
             data-template-queue-days="<?= isset($config['template_queue_days']) ? (int) $config['template_queue_days'] : 30; ?>"
+            data-chat-group-gap-minutes="<?= isset($config['chat_group_gap_minutes']) ? (int) $config['chat_group_gap_minutes'] : 8; ?>"
             data-current-user-id="<?= $currentUserId; ?>"
             data-current-role-id="<?= $currentRoleId; ?>"
             data-can-assign="<?= $canAssign ? '1' : '0'; ?>"

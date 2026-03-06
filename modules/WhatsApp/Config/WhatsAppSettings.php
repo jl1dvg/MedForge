@@ -48,6 +48,7 @@ class WhatsAppSettings
      *     data_protection_flow: array<string, mixed>,
      *     template_languages: string,
      *     template_queue_days: int,
+     *     chat_group_gap_minutes: int,
      *     handoff_ttl_hours: int,
      *     handoff_sla_target_minutes: int,
      *     handoff_notify_in_app: bool,
@@ -89,6 +90,7 @@ class WhatsAppSettings
             'data_protection_flow' => DataProtectionCopy::defaults('MedForge'),
             'template_languages' => '',
             'template_queue_days' => 30,
+            'chat_group_gap_minutes' => 8,
             'handoff_ttl_hours' => 24,
             'handoff_sla_target_minutes' => 15,
             'handoff_notify_in_app' => true,
@@ -123,6 +125,7 @@ class WhatsAppSettings
                     'whatsapp_data_consent_no_keywords',
                     'whatsapp_template_languages',
                     'whatsapp_chat_template_queue_days',
+                    'whatsapp_chat_group_gap_minutes',
                     'whatsapp_handoff_ttl_hours',
                     'whatsapp_handoff_sla_target_minutes',
                     'whatsapp_handoff_notify_in_app',
@@ -198,6 +201,9 @@ class WhatsAppSettings
 
                 $templateQueueDays = (int) ($options['whatsapp_chat_template_queue_days'] ?? 30);
                 $config['template_queue_days'] = max(0, min(365, $templateQueueDays));
+
+                $chatGroupGapMinutes = (int) ($options['whatsapp_chat_group_gap_minutes'] ?? 8);
+                $config['chat_group_gap_minutes'] = max(0, min(120, $chatGroupGapMinutes));
 
                 $ttl = (int) ($options['whatsapp_handoff_ttl_hours'] ?? 24);
                 if ($ttl > 0) {

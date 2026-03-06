@@ -132,6 +132,10 @@
         if (isNaN(templateQueueDays) || templateQueueDays < 0) {
             templateQueueDays = 30;
         }
+        var chatGroupGapMinutes = parseInt(root.getAttribute('data-chat-group-gap-minutes'), 10);
+        if (isNaN(chatGroupGapMinutes) || chatGroupGapMinutes < 0) {
+            chatGroupGapMinutes = 8;
+        }
 
         var listContainer = root.querySelector('[data-conversation-list]');
         var emptyListState = root.querySelector('[data-empty-state]');
@@ -1994,9 +1998,11 @@
 
                 var isContinued = false;
                 if (previousDirection === message.direction && previousSenderKey === senderKey && messageDayKey !== '' && messageDayKey === previousDayKey) {
-                    if (messageDate && previousTimestampMs > 0) {
+                    if (chatGroupGapMinutes <= 0) {
+                        isContinued = false;
+                    } else if (messageDate && previousTimestampMs > 0) {
                         var gapMinutes = (messageDate.getTime() - previousTimestampMs) / (60 * 1000);
-                        isContinued = gapMinutes >= 0 && gapMinutes <= 8;
+                        isContinued = gapMinutes >= 0 && gapMinutes <= chatGroupGapMinutes;
                     } else {
                         isContinued = true;
                     }
@@ -2028,8 +2034,8 @@
                 var body = createElement('div', 'card-body');
 
                 if (showSenderMeta) {
-                    // Header row: avatar + sender name
-                    var headerRow = createElement('div', 'd-flex flex-row pb-2');
+                    // Header row: avatar only (compact mode)
+                    var headerRow = createElement('div', 'd-flex flex-row pb-1');
 
                     var avatarLink = createElement('a', 'd-flex');
                     avatarLink.href = '#';
@@ -2056,16 +2062,6 @@
                     }
                     avatarLink.appendChild(avatarEl);
                     headerRow.appendChild(avatarLink);
-
-                    var flexGrow = createElement('div', 'd-flex flex-grow-1 min-width-zero');
-                    var nameWrap = createElement('div', 'm-2 ps-0 align-self-center d-flex flex-column flex-lg-row justify-content-between');
-                    var inner = createElement('div', 'min-width-zero');
-                    var nameP = createElement('p', 'mb-0 fs-16' + (isOutbound ? '' : ' text-dark'));
-                    nameP.textContent = senderName;
-                    inner.appendChild(nameP);
-                    nameWrap.appendChild(inner);
-                    flexGrow.appendChild(nameWrap);
-                    headerRow.appendChild(flexGrow);
 
                     body.appendChild(headerRow);
                 }
